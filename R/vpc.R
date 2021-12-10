@@ -2,20 +2,20 @@
 ##
 ## Copyright (C) 2014 - 2016  Wenping Wang
 ##
-## This file is part of nlmixr.
+## This file is part of nlmixr2.
 ##
-## nlmixr is free software: you can redistribute it and/or modify it
+## nlmixr2 is free software: you can redistribute it and/or modify it
 ## under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 2 of the License, or
 ## (at your option) any later version.
 ##
-## nlmixr is distributed in the hope that it will be useful, but
+## nlmixr2 is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with nlmixr.  If not, see <http:##www.gnu.org/licenses/>.
+## along with nlmixr2.  If not, see <http:##www.gnu.org/licenses/>.
 
 
 sim.one <- function(zz, x) {
@@ -44,12 +44,12 @@ sim.one <- function(zz, x) {
 }
 
 
-##' Vpc function for nlmixr
+##' Vpc function for nlmixr2
 ##'
 ##' @param sim Observed data frame or fit object
 ##' @param ... Other parameters
 ##'
-##' @return a nlmixr composite vpc object
+##' @return a nlmixr2 composite vpc object
 ##'
 ##' @export
 vpc <- function(sim, ...) {
@@ -72,7 +72,7 @@ vpc.default <- function(sim, ...) {
   p <- do.call(getFromNamespace(vpcn, "vpc"), call, envir = parent.frame(1))
 }
 
-##' Visual predictive check (VPC) for nlmixr nlme objects
+##' Visual predictive check (VPC) for nlmixr2 nlme objects
 ##'
 ##' Do visual predictive check (VPC) plots for nlme-based non-linear mixed effect models
 ##'
@@ -85,9 +85,9 @@ vpc.default <- function(sim, ...) {
 ##' @examples
 ##' specs <- list(fixed=lKA+lCL+lV~1, random = pdDiag(lKA+lCL~1), start=c(lKA=0.5, lCL=-3.2, lV=-1))
 ##' fit <- nlme_lin_cmpt(theo_md, par_model=specs, ncmt=1, verbose=TRUE)
-##' vpc_nlmixr_nlme(fit, nsim = 100, condition = NULL)
+##' vpc_nlmixr2_nlme(fit, nsim = 100, condition = NULL)
 ##' @export
-vpc_nlmixr_nlme <- function(fit, nsim = 100, condition = NULL, ...) {
+vpc_nlmixr2_nlme <- function(fit, nsim = 100, condition = NULL, ...) {
   nlmeModList(fit$env)
   on.exit({
     nlmeModList(new.env(parent = emptyenv()))
@@ -114,14 +114,14 @@ vpc_nlmixr_nlme <- function(fit, nsim = 100, condition = NULL, ...) {
   invisible(NULL)
 }
 
-##' @rdname vpc_nlmixr_nlme
+##' @rdname vpc_nlmixr2_nlme
 ##' @export
-vpcNlmixrNlme <- vpc_nlmixr_nlme
+vpcNlmixr2Nlme <- vpc_nlmixr2_nlme
 
-#' @rdname vpc_nlmixr_nlme
+#' @rdname vpc_nlmixr2_nlme
 #' @export
-vpc.nlmixrNlme <- function(sim, ...) {
-  vpc_nlmixr_nlme(sim, ...)
+vpc.nlmixr2Nlme <- function(sim, ...) {
+  vpc_nlmixr2_nlme(sim, ...)
 }
 
 # vpc(fit, 100)

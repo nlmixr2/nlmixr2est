@@ -42,7 +42,7 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
   }
 }
 
-extern "C" SEXP _nlmixr_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
+extern "C" SEXP _nlmixr2_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 				  SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 				  SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
 				  SEXP cwresOpt) {
@@ -148,7 +148,7 @@ BEGIN_RCPP
   // diag(Vfo_full)+diag(dh/deta*Sigma*dh/deta).
   // h = the additional error from the predicted function.
   //
-  // In the nlmixr/FOCEi implemented here, the variance of the err
+  // In the nlmixr2/FOCEi implemented here, the variance of the err
   // term is 1, or Sigma is a 1 by 1 matrix with one element (1)
   //
   // The dh/deta term would be the sd term, or sqrt(r), which means

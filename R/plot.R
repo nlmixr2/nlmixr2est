@@ -28,7 +28,7 @@
 }
 
 .dvPlot <- function(.dat0, vars, log = FALSE) {
-  .xgxr <- getOption("RxODE.xgxr", TRUE) &&
+  .xgxr <- getOption("rxode2.xgxr", TRUE) &&
     requireNamespace("xgxr", quietly = TRUE)
   if (any(names(.dat0) == "CENS")) {
     .data <- data.frame(DV = .dat0$DV, CENS = .dat0$CENS, stack(.dat0[, vars, drop = FALSE]))
@@ -66,7 +66,7 @@
     .logy +
     ggplot2::geom_point(alpha = 0.5) +
     xlab("Predictions") +
-    RxODE::rxTheme() +
+    rxode2::rxTheme() +
     .color +
     .legendPos
 }
@@ -91,7 +91,7 @@
     .color <- NULL
     .legendPos <- NULL
   }
-  .xgxr <- getOption("RxODE.xgxr", TRUE) &&
+  .xgxr <- getOption("rxode2.xgxr", TRUE) &&
     requireNamespace("xgxr", quietly = TRUE)
   .logx <- NULL
   if (log) {
@@ -107,7 +107,7 @@
     ggplot2::ggtitle(.cmt, paste0(vars[1], " vs ", vars[2])) +
     ggplot2::xlab(vars[1]) +
     ggplot2::ylab(vars[2]) +
-    RxODE::rxTheme() +
+    rxode2::rxTheme() +
     .color +
     .legendPos +
     .logx
@@ -125,10 +125,10 @@ bootplot <- function(x, ...) {
 }
 ##' @rdname traceplot
 ##' @export
-bootplot.nlmixrFitCore <- function(x, ...) {
+bootplot.nlmixr2FitCore <- function(x, ...) {
   .fitName <- as.character(substitute(x))
   quantiles <- deltaofv <- Distribution <- label <- NULL # rcheck hack
-  if (inherits(x, "nlmixrFitCore")) {
+  if (inherits(x, "nlmixr2FitCore")) {
     if (exists("bootSummary", x$env) & (!exists(".bootPlotData", x$env))) {
       bootstrapFit(x, x$bootSummary$nboot, plotHist = TRUE, fitName = .fitName)
     }
@@ -146,7 +146,7 @@ bootplot.nlmixrFitCore <- function(x, ...) {
         ggplot2::geom_text(data = .dfD, aes(label = label), hjust = 0) +
         ggplot2::xlab("Distribution quantiles") +
         ggplot2::scale_color_manual(values = c("red", "blue")) +
-        RxODE::rxTheme() +
+        rxode2::rxTheme() +
         ggplot2::theme(legend.position = "bottom", legend.box = "horizontal")
 
       if (requireNamespace("ggtext", quietly = TRUE)) {
@@ -171,19 +171,19 @@ bootplot.nlmixrFitCore <- function(x, ...) {
       }
       .plot
     } else {
-      stop("this nlmixr object does not include boostrap distribution statics for comparison",
+      stop("this nlmixr2 object does not include boostrap distribution statics for comparison",
         call. = FALSE
       )
     }
   } else {
-    stop("this is not a nlmixr object",
+    stop("this is not a nlmixr2 object",
       call. = FALSE
     )
   }
 }
 
 
-#' Plot a nlmixr data object
+#' Plot a nlmixr2 data object
 #'
 #' Plot some standard goodness of fit plots for the focei fitted object
 #'
@@ -192,7 +192,7 @@ bootplot.nlmixrFitCore <- function(x, ...) {
 #' @return Nothing, called for its side effects
 #' @author Wenping Wang & Matthew Fidler
 #' @export
-plot.nlmixrFitData <- function(x, ...) {
+plot.nlmixr2FitData <- function(x, ...) {
   .lst <- list()
   object <- x
   IWRES <- NULL
@@ -270,7 +270,7 @@ plot.nlmixrFitData <- function(x, ...) {
           }
         }
       }
-      ## .idPlot <- try(plot.nlmixrAugPred(nlmixrAugPred(object)));
+      ## .idPlot <- try(plot.nlmixr2AugPred(nlmixr2AugPred(object)));
       ## if (inherits(.idPlot, "try-error")){
       .ids <- unique(.dat0$ID)
       .s <- seq(1, length(.ids), by = 16)
@@ -289,7 +289,7 @@ plot.nlmixrFitData <- function(x, ...) {
         }
         .p3 <- .p3 + ggplot2::facet_wrap(~ID) +
           ggplot2::ggtitle(.cmt, sprintf("Individual Plots (%s of %s)", .j, length(.s))) +
-          RxODE::rxTheme()
+          rxode2::rxTheme()
         if (any(names(.d1) == "lowerLim")) {
           lowerLim <- upperLim <- NULL
           .p3 <- .p3 + geom_cens(aes(lower = lowerLim, upper = upperLim), fill = "purple")
@@ -312,7 +312,7 @@ plot.nlmixrFitData <- function(x, ...) {
       ##     ggplot2::geom_line(aes(x = tad, y = PRED), col = "blue", size = 1.2) +
       ##     ggplot2::facet_wrap(~id2) +
       ##     ggplot2::ggtitle(.cmt, sprintf("Individual TAD Plots (%s of %s)", .j, length(.s))) +
-      ##     RxODE::rxTheme()
+      ##     rxode2::rxTheme()
       ##   if (any(names(.d1) == "lowerLim")) {
       ##     .p3 <- .p3 + geom_cens(aes(lower=lowerLim, upper=upperLim), fill="purple")
       ##   }
@@ -328,12 +328,12 @@ plot.nlmixrFitData <- function(x, ...) {
   ##         plot(.x[[.i]])
   ##     }
   ## }
-  class(.lst) <- "nlmixrPlotList"
+  class(.lst) <- "nlmixr2PlotList"
   return(.lst)
 }
 
 ##' @export
-plot.nlmixrPlotList <- function(x, y, ...) {
+plot.nlmixr2PlotList <- function(x, y, ...) {
   .x <- x
   class(.x) <- NULL
   for (.i in seq_along(.x)) {
@@ -342,12 +342,12 @@ plot.nlmixrPlotList <- function(x, y, ...) {
 }
 
 ##' @export
-plot.nlmixrFitCore <- function(x, ...) {
-  stop("This is not a nlmixr data frame and cannot be plotted")
+plot.nlmixr2FitCore <- function(x, ...) {
+  stop("This is not a nlmixr2 data frame and cannot be plotted")
 }
 
 ##' @export
-plot.nlmixrFitCoreSilent <- plot.nlmixrFitCore
+plot.nlmixr2FitCoreSilent <- plot.nlmixr2FitCore
 
 
 #' @title Produce trace-plot for fit if applicable
@@ -363,7 +363,7 @@ traceplot <- function(x, ...) {
 
 ##' @rdname traceplot
 ##' @export
-traceplot.nlmixrFitCore <- function(x, ...) {
+traceplot.nlmixr2FitCore <- function(x, ...) {
   .m <- x$parHistStacked
   if (!is.null(.m)) {
     .p0 <- ggplot(.m, aes(iter, val)) +
@@ -372,7 +372,7 @@ traceplot.nlmixrFitCore <- function(x, ...) {
     if (!is.null(x$mcmc)) {
       .p0 <- .p0 + ggplot2::geom_vline(xintercept = x$mcmc$niter[1], col = "blue", size = 1.2)
     }
-    .p0 <- .p0 + RxODE::rxTheme()
+    .p0 <- .p0 + rxode2::rxTheme()
     return(.p0)
   } else {
     return(invisible(NULL))
@@ -380,4 +380,4 @@ traceplot.nlmixrFitCore <- function(x, ...) {
 }
 
 ##' @export
-traceplot.nlmixrFitCoreSilent <- traceplot.nlmixrFitCore
+traceplot.nlmixr2FitCoreSilent <- traceplot.nlmixr2FitCore

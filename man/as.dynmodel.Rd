@@ -7,7 +7,7 @@
 as.dynmodel(x)
 }
 \arguments{
-\item{x}{nlmixr object to convert to dynmodel object}
+\item{x}{nlmixr2 object to convert to dynmodel object}
 }
 \value{
 dynmodel

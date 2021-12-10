@@ -9,7 +9,7 @@ forwardSearch(covInfo, fit, pVal = 0.05, outputDir, restart = FALSE)
 \arguments{
 \item{covInfo}{a list containing information about each variable-covariate pair}
 
-\item{fit}{an nlmixr 'fit' object}
+\item{fit}{an nlmixr2 'fit' object}
 
 \item{pVal}{p-value that should be used for selecting covariates in the forward search}
 

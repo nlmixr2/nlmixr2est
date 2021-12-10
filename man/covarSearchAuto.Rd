@@ -16,7 +16,7 @@ covarSearchAuto(
 )
 }
 \arguments{
-\item{fit}{an nlmixr 'fit' object}
+\item{fit}{an nlmixr2 'fit' object}
 
 \item{varsVec}{a list of candidate variables to which the covariates could be added}
 
@@ -67,8 +67,8 @@ one.cmt <- function() {
   })
 }
 
-fit <- nlmixr(one.cmt, theo_sd,"focei")
-RxODE::.rxWithWd(tempdir(), {# with temporary directory
+fit <- nlmixr2(one.cmt, theo_sd,"focei")
+rxode2::.rxWithWd(tempdir(), {# with temporary directory
 
 covarSearchAuto(fit, varsVec = c("ka", "cl"),
     covarsVec = c("WT", "SEX"), catCovariates = c("SEX"))
@@ -81,11 +81,11 @@ d <- theo_sd
 d$SEX <-0
 d$SEX[d$ID<=6] <-1
 
-fit <- nlmixr(one.cmt, d, "focei")
+fit <- nlmixr2(one.cmt, d, "focei")
 
 # This would restart if for some reason the search crashed:
 
-RxODE::.rxWithWd(tempdir(), {# with temporary directory
+rxode2::.rxWithWd(tempdir(), {# with temporary directory
 
 covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
                 catCovariates = c("SEX"), restart = TRUE)

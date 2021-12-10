@@ -1,4 +1,4 @@
-.nlmixrMd5 <- function(obj) {
+.nlmixr2Md5 <- function(obj) {
   if (!exists(".md5", obj$env)) {
     .cls <- class(obj)
     attr(.cls, ".foceiEnv") <- NULL

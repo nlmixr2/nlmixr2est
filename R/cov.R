@@ -1,9 +1,9 @@
 .setCov <- function(obj, ...) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .env <- obj
-  if (RxODE::rxIs(obj, "nlmixrFitData")) {
+  if (rxode2::rxIs(obj, "nlmixr2FitData")) {
     .env <- obj$env
   }
   if (exists("cov", .env)) {
@@ -31,7 +31,7 @@
     .control[[.n]] <- .lst[[.n]]
   }
   if (!is.null(.lst$covMethod)) {
-    if (RxODE::rxIs(.lst$covMethod, "character")) {
+    if (rxode2::rxIs(.lst$covMethod, "character")) {
       .lst$covMethod <- match.arg(.lst$covMethod, c("r,s", "r", "s"))
       .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
       .control$covMethod <- .covMethodIdx[.lst$covMethod]
@@ -86,7 +86,7 @@
   .skipCov <- obj$skipCov
   .inits <- list(
     THTA = as.vector(nlme::fixed.effects(obj)),
-    OMGA = focei.eta.nlmixrFitCore(obj)
+    OMGA = focei.eta.nlmixr2FitCore(obj)
   )
   .fit2 <- foceiFit.data.frame0(
     data = .dat,
@@ -95,7 +95,7 @@
     ## par_trans=fun,
     model = .uif$rxode.pred,
     pred = function() {
-      return(nlmixr_pred)
+      return(nlmixr2_pred)
     },
     err = .uif$error,
     lower = .uif$focei.lower,
@@ -126,7 +126,7 @@
 
 ##' Set the covariance type based on prior calculated covariances
 ##'
-##' @param fit nlmixr fit
+##' @param fit nlmixr2 fit
 ##'
 ##' @param method covariance method
 ##'
@@ -136,11 +136,11 @@
 ##'
 ##' @export
 setCov <- function(fit, method) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .env <- fit
-  if (RxODE::rxIs(fit, "nlmixrFitData")) {
+  if (rxode2::rxIs(fit, "nlmixr2FitData")) {
     .env <- fit$env
   }
   if (method == .env$covMethod) {
@@ -165,11 +165,11 @@ setCov <- function(fit, method) {
 }
 
 ##' @export
-getVarCov.nlmixrFitCore <- function(obj, ...) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+getVarCov.nlmixr2FitCore <- function(obj, ...) {
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .env <- obj
-  if (RxODE::rxIs(obj, "nlmixrFitData")) {
+  if (rxode2::rxIs(obj, "nlmixr2FitData")) {
     .env <- obj$env
   }
   .force <- FALSE
@@ -178,7 +178,7 @@ getVarCov.nlmixrFitCore <- function(obj, ...) {
     .force <- .args$force
   }
   if (exists("cov", envir = .env) && !.force) {
-    if (RxODE::rxIs(.env$cov, "matrix")) {
+    if (rxode2::rxIs(.env$cov, "matrix")) {
       return(.env$cov)
     }
   }
@@ -186,4 +186,4 @@ getVarCov.nlmixrFitCore <- function(obj, ...) {
 }
 
 ##' @export
-getVarCov.nlmixrFitCoreSilent <- getVarCov.nlmixrFitCore
+getVarCov.nlmixr2FitCoreSilent <- getVarCov.nlmixr2FitCore

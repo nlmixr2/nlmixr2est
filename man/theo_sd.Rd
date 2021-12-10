@@ -12,7 +12,7 @@ A data frame with 144 rows by 7 columns
   \item{TIME}{Time (hrs)}
   \item{DV}{Dependent Variable, theophylline concentration}
   \item{AMT}{Dose Amount/kg}
-  \item{EVID}{RxODE/nlmixr event ID (not NONMEM's)}
+  \item{EVID}{rxode2/nlmixr2 event ID (not NONMEM's)}
   \item{CMT}{Compartment Number}
   \item{WT}{Weight (kg)}
 }
@@ -28,7 +28,7 @@ This data set is  the day 1 concentrations of the
 theophylline data that is included in the nlme/NONMEM.
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_1CPT}},
 \code{\link{Bolus_2CPTMM}},
@@ -41,5 +41,5 @@ Other nlmixr datasets:
 \code{\link{theo_md}},
 \code{\link{warfarin}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

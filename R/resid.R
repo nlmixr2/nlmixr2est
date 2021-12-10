@@ -4,9 +4,9 @@
 #'
 #' @return list with:
 #'
-#'  - A RxODE `params` dataset `pred` predictions
+#'  - A rxode2 `params` dataset `pred` predictions
 #'
-#'  - A RxODE `params` dataset for `ipred` predictions
+#'  - A rxode2 `params` dataset for `ipred` predictions
 #'
 #'  - `eta.lst` is a numerical vector for each of the ETAs listed. The first 5 components are the mean, sd, variance, kurtosis and
 #'    skewness statistics.  The rest of the components will be filled in later when calculating the shrinkage dataframe
@@ -16,19 +16,19 @@
 .foceiThetaEtaParameters <- function(fit) {
   .etas <- fit$ranef
   .thetas <- fit$fixef
-  .Call(`_nlmixr_nlmixrParameters`, .thetas, .etas)
+  .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
 }
 
 #' Solve making sure that ID is dropped
 #'
 #' This also suppresses the warning for id sorting
-#' @param ... All parameters set to `RxODE::rxSolve()`
+#' @param ... All parameters set to `rxode2::rxSolve()`
 #' @param fit focei style fit
 #' @return solved tataset
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolveWithId <- function(...) {
-  .ret <- RxODE::rxSolve(..., warnIdSort = FALSE)
+  .ret <- rxode2::rxSolve(..., warnIdSort = FALSE)
   if (names(.ret)[1] == "time") {
     ## For single subject ID is dropped.
     .ret <- data.frame(ID = 1L, .ret)
@@ -38,12 +38,12 @@
 #' Solve for pred/ipred types of calculations (including residuals)
 #'
 #' @param fit focei style fit
-#' @param model RxODE model
+#' @param model rxode2 model
 #' @param pars parameters to solve
 #' @param keep vector of columns to keep
 #' @param what string of what type of calculation is being performed
-#' @inheritParams RxODE::rxSolve
-#' @return Solved RxODE data
+#' @inheritParams rxode2::rxSolve
+#' @return Solved rxode2 data
 #' @author Matthew Fidler
 #' @noRd
 .foceiSolvePars <- function(fit, model, pars=NULL, returnType="data.frame", keep=NULL, what="pred",
@@ -57,7 +57,7 @@
                             maxords = fit$control$maxords, method = fit$control$method,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov
                             )
-  RxODE::rxSolveFree()
+  rxode2::rxSolveFree()
   if (any(is.na(.res$rx_pred_)) && fit$control$method == 2L) {
     .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                               returnType = returnType,
@@ -67,7 +67,7 @@
                               transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
                               maxords = fit$control$maxords, method = "lsoda",
                               keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
-    RxODE::rxSolveFree()
+    rxode2::rxSolveFree()
     if (any(is.na(.res$rx_pred_))) {
       .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
@@ -77,7 +77,7 @@
                                 transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
                                 maxords = fit$control$maxords, method = "dop853",
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
-      RxODE::rxSolveFree()
+      rxode2::rxSolveFree()
       if (any(is.na(.res$rx_pred_))) {
         warning("Problems solving ", what, " liblsoda, lsoda and dop853")
       } else {
@@ -95,7 +95,7 @@
 #' @param fit focei style fit
 #' @param thetaEtaParameters Theta/eta parameter list generated from `.foceiThetaEtaParameters()`
 #' @param predOnly Pred Only for .ipred model (useful for mean/population models)
-#' @inheritParams RxODE::rxSolve
+#' @inheritParams rxode2::rxSolve
 #' @return list with ipred and pred datasets
 #' @author Matthew Fidler
 #' @noRd
@@ -158,21 +158,21 @@
   if (npde) {
     .sim <- .npdeSim(fit, nsim = table$nsim, ties = table$ties, seed = table$seed,
                      cholSEtol = table$cholSEtol, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=table$cores)
-    .Call(`_nlmixr_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
+    .Call(`_nlmixr2_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
           .prdLst$ipred$cens, .prdLst$ipred$limit, table)
   } else {
     if (predOnly){
       .state <- c(fit$model$pred.only$state, fit$model$pred.only$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$model$pred.only$params),c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr_resCalc`, .prdLst, fit$omega,
+      .Call(`_nlmixr2_resCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     } else {
       .state <- c(fit$model$pred.only$state, fit$model$pred.only$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$pred.only)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$model$pred.only$params),c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr_cwresCalc`, .prdLst, fit$omega,
+      .Call(`_nlmixr2_cwresCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     }
@@ -236,7 +236,7 @@
   .state <- c(fit$model$pred.only$state, fit$model$pred.only$stateExtra)
   .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .ipred)), .state)
   .params <- setdiff(intersect(names(fit$dataSav),fit$model$pred.only$params),c("CMT","cmt","Cmt", .state, .lhs))
-  .ret <- .Call(`_nlmixr_iresCalc`, .ipred, dv, .ipred$evid, .ipred$cens, .ipred$limit,
+  .ret <- .Call(`_nlmixr2_iresCalc`, .ipred, dv, .ipred$evid, .ipred$cens, .ipred$limit,
                 .lhs, .state, .params, fit$IDlabel, table)
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
@@ -248,7 +248,7 @@
 
 .calcShrinkOnly <- function(fit, thetaEtaParameters=.foceiThetaEtaParameters(fit)) {
   .omega <- fit$omega
-  .ret <- .Call(`_nlmixr_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  .ret <- .Call(`_nlmixr2_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
   .ret[, -dim(.omega)[1] - 1]
 }
 
@@ -286,7 +286,7 @@
     .ret[[2]] <- .calcCwres(fit, data=fit$dataSav, thetaEtaParameters=.thetaEtaParameters, table=table, dv=.ret[[1]][[1]],
                             predOnly=.predOnly, addDosing=table$addDosing, subsetNonmem=table$subsetNonmem,
                             keep=keep, .prdLst=.prdLst, npde=.npde2)
-  .ret <- .Call(`_nlmixr_popResFinal`, .ret)
+  .ret <- .Call(`_nlmixr2_popResFinal`, .ret)
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
     warning("some duplicate columns were dropped", call.=FALSE)
@@ -303,9 +303,9 @@
   return(.env)
 }
 
-#' NPDE calculation for nlmixr
+#' NPDE calculation for nlmixr2
 #'
-#' @param object nlmixr fit object
+#' @param object nlmixr2 fit object
 #' @param updateObject Boolean indicating if original object should be updated.  By default this is TRUE.
 #' @param table `tableControl()` list of options
 #' @inheritParams foceiControl
@@ -313,7 +313,7 @@
 #' @param ... Other ignored parameters.
 #'
 #'
-#' @return New nlmixr fit object
+#' @return New nlmixr2 fit object
 #' @author Matthew L. Fidler
 #' @examples
 #'
@@ -341,7 +341,7 @@
 #'   })
 #' }
 #'
-#' f <- nlmixr(one.cmt, theo_sd, "saem")
+#' f <- nlmixr2(one.cmt, theo_sd, "saem")
 #'
 #' # even though you may have forgotten to add the NPDE, you can add it to the data.frame:
 #'
@@ -354,8 +354,8 @@ addNpde <- function(object, updateObject = TRUE,
                     envir=parent.frame(1)) {
   .pt <- proc.time()
   .objName <- substitute(object)
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   if (any(names(object) == "NPDE")) {
     warning("already contains NPDE")
     return(object)
@@ -388,9 +388,9 @@ addNpde <- function(object, updateObject = TRUE,
   .new
 }
 
-#' Add table information to nlmixr fit object without tables
+#' Add table information to nlmixr2 fit object without tables
 #'
-#' @param object nlmixr family of objects
+#' @param object nlmixr2 family of objects
 #' @param updateObject Update the object (default FALSE)
 #' @param data Saved data from
 #' @param thetaEtaParameters Intenral theta/eta parameters
@@ -428,7 +428,7 @@ addNpde <- function(object, updateObject = TRUE,
 #' }
 #'
 #' # run without tables step
-#' f <- nlmixr(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
+#' f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #'
 #' print(f)
 #'
@@ -446,8 +446,8 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   .pt <- proc.time()
   message("Calculating residuals/tables")
   .objName <- substitute(object)
-  if (!inherits(object, "nlmixrFitCore")) {
-    stop("requires a nlmixr fit object")
+  if (!inherits(object, "nlmixr2FitCore")) {
+    stop("requires a nlmixr2 fit object")
   }
   .fit <- object$env
   if (exists("origControl", .fit)) {
@@ -482,16 +482,16 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     .control$interaction <- FALSE
   }
   if (.control$interaction) {
-    .cls <- c(paste0("nlmixr", .fit$method, "i"), "nlmixrFitData", "nlmixrFitCore", .cls)
+    .cls <- c(paste0("nlmixr2", .fit$method, "i"), "nlmixr2FitData", "nlmixr2FitCore", .cls)
   } else {
-    .cls <- c(paste0("nlmixr", .fit$method), "nlmixrFitData", "nlmixrFitCore", .cls)
+    .cls <- c(paste0("nlmixr2", .fit$method), "nlmixr2FitData", "nlmixr2FitCore", .cls)
   }
   if (inherits(updateObject, "logical")) {
     if (!updateObject){
       .fit <- .cloneEnv(.fit)
     }
   }
-  class(.fit) <- "nlmixrFitCoreSilent"
+  class(.fit) <- "nlmixr2FitCoreSilent"
   attr(.cls, ".foceiEnv") <- .fit
   class(.df) <- .cls
   if (inherits(updateObject, "logical")) {
@@ -532,7 +532,7 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
 ##'
 ##' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
 ##'
-##' @param cholSEtol The tolerance for the `RxODE::choleSE` function
+##' @param cholSEtol The tolerance for the `rxode2::choleSE` function
 ##'
 ##' @param eta is a Boolean indicating if `eta` values will be included (default `TRUE`)
 ##'
@@ -543,7 +543,7 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
 ##' @param covariates is a Boolean indicating if covariates will be included (default `TRUE`)
 ##'
 ##' @inheritParams addNpde
-##' @inheritParams RxODE::rxSolve
+##' @inheritParams rxode2::rxSolve
 ##'
 ##' @details
 ##'
@@ -551,7 +551,7 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
 ##'
 ##' If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
 ##'
-##' @return A list of table options for nlmixr
+##' @return A list of table options for nlmixr2
 ##' @author Matthew L. Fidler
 ##' @export
 tableControl <- function(npde = NULL,
@@ -567,7 +567,7 @@ tableControl <- function(npde = NULL,
                          addDosing=FALSE, subsetNonmem = TRUE,
                          cores=NULL) {
   if (is.null(cores)) {
-    cores = RxODE::rxCores()
+    cores = rxode2::rxCores()
   }
   .ret <- list(
     npde = npde, cwres = cwres, nsim = nsim, ties = ties, seed = seed,

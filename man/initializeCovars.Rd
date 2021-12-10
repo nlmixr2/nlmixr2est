@@ -14,7 +14,7 @@ initializeCovars(
 )
 }
 \arguments{
-\item{fitobject}{an nlmixr 'fit' object}
+\item{fitobject}{an nlmixr2 'fit' object}
 
 \item{fstring}{a string giving the entire expression for the model function string}
 

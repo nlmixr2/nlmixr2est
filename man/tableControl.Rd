@@ -27,7 +27,7 @@ tableControl(
 \item{cwres}{When TRUE, request CWRES and FOCEi likelihood
 regardless of the algorithm used.}
 
-\item{nsim}{represents the number of simulations.  For RxODE, if
+\item{nsim}{represents the number of simulations.  For rxode2, if
 you supply single subject event tables (created with
 \verb{[eventTable()]})}
 
@@ -44,7 +44,7 @@ you supply single subject event tables (created with
 \item{seed}{an object specifying if and how the random number
 generator should be initialized}
 
-\item{cholSEtol}{The tolerance for the `RxODE::choleSE` function}
+\item{cholSEtol}{The tolerance for the `rxode2::choleSE` function}
 
 \item{state}{is a Boolean indicating if `state` values will be included (default `TRUE`)}
 
@@ -54,16 +54,16 @@ generator should be initialized}
 
 \item{covariates}{is a Boolean indicating if covariates will be included (default `TRUE`)}
 
-\item{addDosing}{Boolean indicating if the solve should add RxODE
+\item{addDosing}{Boolean indicating if the solve should add rxode2
 EVID and related columns.  This will also include dosing
-information and estimates at the doses.  Be default, RxODE
+information and estimates at the doses.  Be default, rxode2
 only includes estimates at the observations. (default
 \code{FALSE}). When \code{addDosing} is \code{NULL}, only
 include \code{EVID=0} on solve and exclude any model-times or
 \code{EVID=2}. If \code{addDosing} is \code{NA} the classic
-\code{RxODE} EVID events are returned. When \code{addDosing} is \code{TRUE}
+\code{rxode2} EVID events are returned. When \code{addDosing} is \code{TRUE}
 add the event information in NONMEM-style format; If
-\code{subsetNonmem=FALSE} RxODE will also include extra event types
+\code{subsetNonmem=FALSE} rxode2 will also include extra event types
 (\code{EVID}) for ending infusion and modeled times:
 \itemize{
 \item \code{EVID=-1} when the modeled rate infusions are turned
@@ -82,10 +82,10 @@ first model time, 102 is the second etc.
 default \code{TRUE}.}
 
 \item{cores}{Number of cores used in parallel ODE solving.  This
-is equivalent to calling \code{\link[RxODE:getRxThreads]{setRxThreads()}}}
+is equivalent to calling \code{\link[rxode2:getRxThreads]{setRxThreads()}}}
 }
 \value{
-A list of table options for nlmixr
+A list of table options for nlmixr2
 }
 \description{
 Output table/data.frame options

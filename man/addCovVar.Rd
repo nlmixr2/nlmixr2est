@@ -2,7 +2,7 @@
 % Please edit documentation in R/autocovar.R
 \name{addCovVar}
 \alias{addCovVar}
-\title{Adding covariate to a given variable in an nlmixr model expression}
+\title{Adding covariate to a given variable in an nlmixr2 model expression}
 \usage{
 addCovVar(
   fitobject,
@@ -18,7 +18,7 @@ addCovVar(
 )
 }
 \arguments{
-\item{fitobject}{an nlmixr 'fit' object}
+\item{fitobject}{an nlmixr2 'fit' object}
 
 \item{varName}{a string giving the variable name to which covariate needs to be added}
 
@@ -42,7 +42,7 @@ addCovVar(
 a list with the updated model expression and data with columns corresponding to normalized covaraite(s) appended
 }
 \description{
-Adding covariate to a given variable in an nlmixr model expression
+Adding covariate to a given variable in an nlmixr2 model expression
 }
 \author{
 Vipul Mann, Matthew Fidler

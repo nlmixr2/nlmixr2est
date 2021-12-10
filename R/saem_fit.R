@@ -2,20 +2,20 @@
 ##
 ## Copyright (C) 2014 - 2016  Wenping Wang
 ##
-## This file is part of nlmixr.
+## This file is part of nlmixr2.
 ##
-## nlmixr is free software: you can redistribute it and/or modify it
+## nlmixr2 is free software: you can redistribute it and/or modify it
 ## under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 2 of the License, or
 ## (at your option) any later version.
 ##
-## nlmixr is distributed in the hope that it will be useful, but
+## nlmixr2 is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with nlmixr.  If not, see <http://www.gnu.org/licenses/>.
+## along with nlmixr2.  If not, see <http://www.gnu.org/licenses/>.
 
 # genSaemUserFunction(f$rxode.pred, f$saem.pars, f$pred, f$error)
 genSaemUserFunction <- function(model, PKpars = attr(model, "default.pars"), pred = NULL, err = NULL,
@@ -25,34 +25,34 @@ genSaemUserFunction <- function(model, PKpars = attr(model, "default.pars"), pre
   .x <- if (.x[1] == "{") .x[2:(.len - 1)] else .x
   .len <- length(.x)
   .nendpnt <- .len
-  .mod <- RxODE::RxODE(RxODE::rxGenSaem(model, function() {
-    return(nlmixr_pred)
+  .mod <- rxode2::rxode2(rxode2::rxGenSaem(model, function() {
+    return(nlmixr2_pred)
   }, PKpars,
   sum.prod = control$sum.prod,
   optExpression = control$optExpression,
   loadSymengine=control$loadSymengine
   ))
   .fnPred <- bquote(function(a, b, c) {
-    RxODE::rxLoad(.(.mod))
-    RxODE::rxLock(.(.mod))
-    RxODE::rxAllowUnload(FALSE)
+    rxode2::rxLoad(.(.mod))
+    rxode2::rxLock(.(.mod))
+    rxode2::rxAllowUnload(FALSE)
     on.exit({
-      RxODE::rxUnlock(.(.mod))
-      RxODE::rxAllowUnload(TRUE)
-      RxODE::rxSolveFree()
+      rxode2::rxUnlock(.(.mod))
+      rxode2::rxAllowUnload(TRUE)
+      rxode2::rxSolveFree()
     })
-    .Call(`_nlmixr_saem_do_pred`, a, b, c)
+    .Call(`_nlmixr2_saem_do_pred`, a, b, c)
   })
   .fn <- bquote(function(a, b, c) {
-    RxODE::rxLoad(.(.mod))
-    RxODE::rxLock(.(.mod))
+    rxode2::rxLoad(.(.mod))
+    rxode2::rxLock(.(.mod))
     on.exit({
-      RxODE::rxUnlock(.(.mod))
-      RxODE::rxAllowUnload(TRUE)
-      RxODE::rxSolveFree()
+      rxode2::rxUnlock(.(.mod))
+      rxode2::rxAllowUnload(TRUE)
+      rxode2::rxSolveFree()
     })
     if (missing(b) && missing(c)) {
-      .ret <- .Call(`_nlmixr_saem_fit`, a, PACKAGE = "nlmixr")
+      .ret <- .Call(`_nlmixr2_saem_fit`, a, PACKAGE = "nlmixr2")
       attr(.ret, "dopred") <- .(.fnPred)
       return(.ret)
     } else {
@@ -60,8 +60,8 @@ genSaemUserFunction <- function(model, PKpars = attr(model, "default.pars"), pre
       return(.curFn(a, b, c))
     }
   })
-  .param <- RxODE::rxParam(.mod)
-  .inits <- names(RxODE::rxInits(.mod))
+  .param <- rxode2::rxParam(.mod)
+  .inits <- names(rxode2::rxInits(.mod))
   .nrhs <- length(.param) - length(.inits)
   if (any(.param == "CMT")) {
     inPars <- unique(c(inPars, "CMT"))
@@ -77,8 +77,8 @@ genSaemUserFunction <- function(model, PKpars = attr(model, "default.pars"), pre
   })
   .fn <- eval(.fn)
   attr(.fn, "form") <- "ode" ## Not sure this is necessary any more
-  attr(.fn, "neq") <- length(RxODE::rxState(.mod))
-  attr(.fn, "nlhs") <- length(RxODE::rxLhs(.mod))
+  attr(.fn, "neq") <- length(rxode2::rxState(.mod))
+  attr(.fn, "nlhs") <- length(rxode2::rxLhs(.mod))
   attr(.fn, "nrhs") <- sum(.parmUpdate)
   attr(.fn, "paramUpdate") <- .parmUpdate
   attr(.fn, "rx") <- .mod
@@ -123,7 +123,7 @@ gen_saem_user_fn <- genSaemUserFunction
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
 #' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)
 #' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
-#' @inheritParams RxODE::rxSEinner
+#' @inheritParams rxode2::rxSEinner
 #' @inheritParams saemControl
 #'
 #' @return Returns a list neede for the saem fit procedure
@@ -140,7 +140,7 @@ gen_saem_user_fn <- genSaemUserFunction
 #'
 #' ode <- "d/dt(depot) =-KA*depot;
 #'         d/dt(centr) = KA*depot - KE*centr;"
-#' m1 <- RxODE(ode)
+#' m1 <- rxode2(ode)
 #'
 #'
 #' # In this ode System, we also specify the concentration as C2 = centr/V
@@ -148,7 +148,7 @@ gen_saem_user_fn <- genSaemUserFunction
 #' ode <- "C2 = centr/V;
 #'       d/dt(depot) =-KA*depot;
 #'       d/dt(centr) = KA*depot - KE*centr;"
-#' m2 = RxODE(ode)
+#' m2 = rxode2(ode)
 #'
 #' PKpars <- function() {
 #'   CL <- exp(lCL)
@@ -166,7 +166,7 @@ gen_saem_user_fn <- genSaemUserFunction
 #' saem_fit <- gen_saem_user_fn(model=m2, PKpars, pred=PRED2)
 #'
 #'
-#' # You can also use the nlmixr UI to run this model and call the lower level functions
+#' # You can also use the nlmixr2 UI to run this model and call the lower level functions
 #'
 #' one.compartment <- function() {
 #' ini({
@@ -189,7 +189,7 @@ gen_saem_user_fn <- genSaemUserFunction
 #'   cp ~ add(add.sd)
 #' })
 #' }
-#' fit  <- nlmixr(one.compartment, theo_sd, "saem")
+#' fit  <- nlmixr2(one.compartment, theo_sd, "saem")
 #' fit
 #'
 #' }
@@ -209,14 +209,14 @@ configsaem <- function(model, data, inits,
   type <- type.idx[type]
   force(ODEopt)
   names(ODEopt) <- gsub("transit_abs", "transitAbs", names(ODEopt))
-  ODEopt <- do.call(RxODE::rxSolve, c(list(object=NULL), ODEopt))
+  ODEopt <- do.call(rxode2::rxSolve, c(list(object=NULL), ODEopt))
   # mcmc=list(niter=c(200,300), nmc=3, nu=c(2,2,2));ODEopt = list(atol=1e-6, rtol=1e-4, stiff=1, transit_abs=0);distribution=c("normal","poisson","binomial");seed=99;data=dat;distribution=1;fixed=NULL
   set.seed(seed)
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
   distribution <- match.arg(distribution)
   distribution <- distribution.idx[distribution]
   .data <- data
-  ## RxODE::rxTrans(data, model)
+  ## rxode2::rxTrans(data, model)
   data <- list(nmdat = data)
 
   neq <- attr(model$saem_mod, "neq")
@@ -352,8 +352,8 @@ configsaem <- function(model, data, inits,
   ## CHECKME
   form <- attr(model$saem_mod, "form")
   .nobs <- 0
-  dat <- RxODE::etTrans(data$nmdat, attr(model$saem_mod, "rx"), addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE)
-  .nobs <- attr(class(dat), ".RxODE.lst")$nobs
+  dat <- rxode2::etTrans(data$nmdat, attr(model$saem_mod, "rx"), addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE)
+  .nobs <- attr(class(dat), ".rxode2.lst")$nobs
   ## if(length(dat) !=7) stop("SAEM doesn't support time varying covariates yet.");
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params
@@ -623,7 +623,7 @@ configsaem <- function(model, data, inits,
   cfg$addProp <- c("combined1" = 1L, "combined2" = 2L)[match.arg(addProp)]
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
-  cfg$phiMFile <- tempfile("phi-", RxODE::rxTempDir(), ".phi")
+  cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")
   cfg$tol <- tol
   cfg$itmax <- itmax
   cfg$type <- type
@@ -709,7 +709,7 @@ print.saemFit <- function(x, ...) {
 #'
 #' Fit an SAEM model using either closed-form solutions or ODE-based model definitions
 #'
-#' @param model an RxODE model or lincmt()
+#' @param model an rxode2 model or lincmt()
 #' @param data input data
 #' @param inits initial values
 #' @param PKpars PKpars function
@@ -742,7 +742,7 @@ saem <- saem.fit
 
 ##' @rdname saem.fit
 ##' @export
-saem.fit.nlmixr.ui.nlme <- function(model, data, inits,
+saem.fit.nlmixr2.ui.nlme <- function(model, data, inits,
                                     PKpars = NULL, pred = NULL,
                                     covars = NULL,
                                     mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
@@ -752,20 +752,20 @@ saem.fit.nlmixr.ui.nlme <- function(model, data, inits,
   call <- as.list(match.call(expand.dots = TRUE))[-1]
   names(call)[1] <- "object"
   call$est <- "saem"
-  return(do.call(getFromNamespace("nlmixr", "nlmixr"), call, envir = parent.frame(1)))
+  return(do.call(getFromNamespace("nlmixr2", "nlmixr2"), call, envir = parent.frame(1)))
 }
 
 ##' @rdname saem.fit
 ##' @export
-saem.fit.function <- saem.fit.nlmixr.ui.nlme
+saem.fit.function <- saem.fit.nlmixr2.ui.nlme
 
 ##' @rdname saem.fit
 ##' @export
-saem.fit.nlmixrUI <- saem.fit.nlmixr.ui.nlme
+saem.fit.nlmixr2UI <- saem.fit.nlmixr2.ui.nlme
 
 ##' @rdname saem.fit
 ##' @export
-saem.fit.RxODE <- function(model, data, inits,
+saem.fit.rxode2 <- function(model, data, inits,
                            PKpars = NULL, pred = NULL,
                            covars = NULL,
                            mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
@@ -811,7 +811,7 @@ focei.theta.saemFit <- function(object, uif, ...) {
   ## Get the thetas needed for FOCEi fit.
   this.env <- environment()
   if (class(uif) == "function") {
-    uif <- nlmixr(uif)
+    uif <- nlmixr2(uif)
   }
   n <- uif$focei.names
   thetas <- structure(rep(NA, length(n)), .Names = n)
@@ -861,7 +861,7 @@ focei.theta.saemFit <- function(object, uif, ...) {
 
 focei.eta.saemFit <- function(object, uif, ...) {
   if (class(uif) == "function") {
-    uif <- nlmixr(uif)
+    uif <- nlmixr2(uif)
   }
   ## Reorder based on translation
   eta.trans <- uif$saem.eta.trans
@@ -913,7 +913,7 @@ as.focei.saemFit <- function(object, uif, pt = proc.time(), ..., data, calcResid
   .saemCfg <- attr(object, "saem.cfg")
   .saemTime <- proc.time() - pt
   if (class(uif) == "function") {
-    uif <- nlmixr(uif)
+    uif <- nlmixr2(uif)
   }
   .dist <- ""
   if (any(uif$saem.distribution == c("poisson", "binomial"))) {
@@ -1042,7 +1042,7 @@ as.focei.saemFit <- function(object, uif, pt = proc.time(), ..., data, calcResid
     }
     if (.addCov) {
       if (!.calcCov) {
-        .cov <- RxODE::rxInv(.tmp)
+        .cov <- rxode2::rxInv(.tmp)
       } else {
         .cov <- .tmp
       }
@@ -1187,7 +1187,7 @@ as.focei.saemFit <- function(object, uif, pt = proc.time(), ..., data, calcResid
     fit.f <- try(foceiFit.data.frame(
       data = dat, inits = init, PKpars = .pars,
       model = .mod, pred = function() {
-        return(nlmixr_pred)
+        return(nlmixr2_pred)
       }, err = uif$error,
       lower = uif$focei.lower,
       upper = uif$focei.upper,
@@ -1202,7 +1202,7 @@ as.focei.saemFit <- function(object, uif, pt = proc.time(), ..., data, calcResid
     ), silent = FALSE)
     if (inherits(fit.f, "try-error")) {
       if (is.na(calcResid)) {
-        warning("Error calculating nlmixr object, return classic object")
+        warning("Error calculating nlmixr2 object, return classic object")
         .notCalced <- FALSE
         return(object)
       } else if (calcResid) {
@@ -1296,10 +1296,10 @@ as.focei.saemFit <- function(object, uif, pt = proc.time(), ..., data, calcResid
   } else {
     row.names(.env$objDf) <- .rn
   }
-  if (inherits(fit.f, "nlmixrFitData")) {
+  if (inherits(fit.f, "nlmixr2FitData")) {
     .cls <- class(fit.f)
     .env <- attr(.cls, ".foceiEnv")
-    .cls[1] <- "nlmixrSaem"
+    .cls[1] <- "nlmixr2Saem"
     class(fit.f) <- .cls
   }
   assign("uif", .syncUif(fit.f$uif, fit.f$popDf, fit.f$omega), fit.f$env)

@@ -36,7 +36,7 @@ gnlmm2(
 
 \item{syspar}{function: calculation of PK parameters}
 
-\item{system}{an optional (compiled) RxODE object}
+\item{system}{an optional (compiled) rxode2 object}
 
 \item{diag.xform}{transformation to diagonal elements of OMEGA during fitting}
 
@@ -90,7 +90,7 @@ ode <- "
 d/dt(depot) =-KA*depot;
 d/dt(centr) = KA*depot - KE*centr;
 "
-sys1 <- RxODE(ode)
+sys1 <- rxode2(ode)
 
 pars <- function() {
   CL <- exp(THETA[1] + ETA[1]) # ; if (CL>100) CL=100

@@ -189,9 +189,9 @@ removeCovariate <- function(funstring, varName, covariate, theta) {
 }
 
 
-#' Adding covariate to a given variable in an nlmixr model expression
+#' Adding covariate to a given variable in an nlmixr2 model expression
 #'
-#' @param fitobject an nlmixr 'fit' object
+#' @param fitobject an nlmixr2 'fit' object
 #' @param varName a string giving the variable name to which covariate needs to be added
 #' @param covariate a string giving the covariate name; must be present in the data used for 'fit'
 #' @param norm the kind of normalization to be used while normalizing covariates; must be either 'mean' or 'median'
@@ -216,8 +216,8 @@ addCovVar <- function(fitobject,
                       initialEst = 0,
                       initialEstLB = -Inf,
                       initialEstUB = Inf) {
-  if (!inherits(fitobject, "nlmixrFitCore")) {
-    stop("'fit' needs to be a nlmixr fit")
+  if (!inherits(fitobject, "nlmixr2FitCore")) {
+    stop("'fit' needs to be a nlmixr2 fit")
   }
 
   if (inherits(norm, "numeric")) {
@@ -388,7 +388,7 @@ addCovVar <- function(fitobject,
 #'
 #' Function to remove covariates from a given variable's equation in the function string text
 #'
-#' @param fitobject an nlmixr 'fit' object
+#' @param fitobject an nlmixr2 'fit' object
 #' @param varName a string giving the variable name to which covariate needs to be added
 #' @param covariate a string giving the covariate name; must be present in the data used for 'fit'
 #' @param categorical a boolean to represent if the covariate to be added is categorical
@@ -404,8 +404,8 @@ removeCovVar <- function(fitobject,
                          covariate,
                          categorical = FALSE,
                          isHS = FALSE) {
-  if (!inherits(fitobject, "nlmixrFitCore")) {
-    stop("'fit' needs to be a nlmixr fit")
+  if (!inherits(fitobject, "nlmixr2FitCore")) {
+    stop("'fit' needs to be a nlmixr2 fit")
   }
 
   funstring <- fitobject$uif$fun.txt
@@ -591,7 +591,7 @@ performNorm <- function(data,
 
 #' Initializing covariates before estimation
 #'
-#' @param fitobject an nlmixr 'fit' object
+#' @param fitobject an nlmixr2 'fit' object
 #' @param fstring a string giving the entire expression for the model function string
 #' @param covNames  a list of covariate names (parameters) that need to be estimates
 #' @param initialEst the initial estimate for the covariate parameters to be estimated; default is 0
@@ -618,7 +618,7 @@ initializeCovars <- function(fitobject,
     ini2[ini2$name == covName, "upper"] <- initialEstUB
   }
 
-  class(ini2) <- c("nlmixrBounds", "data.frame")
+  class(ini2) <- c("nlmixr2Bounds", "data.frame")
   updatedMod$ini <- ini2
 
   updatedMod
@@ -687,7 +687,7 @@ makeDummies <- function(data, covariate, varName) {
 #' Removing multiple covariates
 #'
 #' @param covInfo a list containing information about each variable-covariate pair
-#' @param fitobject an nlmixr 'fit' object
+#' @param fitobject an nlmixr2 'fit' object
 #'
 #' @return a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covaraites removed
 #' @export
@@ -717,17 +717,17 @@ removeCovMultiple <- function(covInfo, fitobject) {
         cli::cli_alert_warning("reasssigned initial value for {r} to 1.0")
       }
 
-      class(ini2) <- c("nlmixrBounds", "data.frame")
+      class(ini2) <- c("nlmixr2Bounds", "data.frame")
       updatedMod$ini <- ini2
     }
 
     # fit2 <-
-    #   suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+    #   suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
 
     fit2 <- tryCatch(
       {
         fit2 <-
-          suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+          suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
         fit2 # to return 'fit2'
       },
       error = function(error_message) {
@@ -750,7 +750,7 @@ removeCovMultiple <- function(covInfo, fitobject) {
 #' Add multiple covariates to a given model, sequentially or all at once
 #'
 #' @param covInfo a list containing information about each variable-covariate pair
-#' @param fitobject an nlmixr 'fit' object
+#' @param fitobject an nlmixr2 'fit' object
 #' @param indep a boolean indicating if the covariates should be added independently, or sequentially (append to the previous model); default is TRUE
 #'
 #' @return A list of fitobject searched
@@ -781,17 +781,17 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
           cli::cli_alert_warning("reasssigned initial value for {r} to 1.0")
         }
 
-        class(ini2) <- c("nlmixrBounds", "data.frame")
+        class(ini2) <- c("nlmixr2Bounds", "data.frame")
         updatedMod$ini <- ini2
       }
 
       # fit2 <-
-      #   suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+      #   suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
 
       fit2 <- tryCatch(
         {
           fit2 <-
-            suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+            suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
           fit2 # to return 'fit2'
         },
         error = function(error_message) {
@@ -826,12 +826,12 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
         covsAdded[[covsAddedIdx]] <- c(x$covariate, x$varName)
 
         # fit2 <-
-        #   suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+        #   suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
 
         fit2 <- tryCatch(
           {
             fit2 <-
-              suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+              suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
             fit2 # to return 'fit2'
           },
           error = function(error_message) {
@@ -852,12 +852,12 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
           c(covsAdded[[covsAddedIdx - 1]], x$covariate, x$varName)
 
         # fit2 <-
-        #   suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+        #   suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
 
         fit2 <- tryCatch(
           {
             fit2 <-
-              suppressWarnings(nlmixr(updatedMod, data, est = getFitMethod(fitobject)))
+              suppressWarnings(nlmixr2(updatedMod, data, est = getFitMethod(fitobject)))
             fit2 # to return 'fit2'
           },
           error = function(error_message) {
@@ -883,7 +883,7 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
 
 #' Stepwise Covariate Model-selection (SCM) method
 #'
-#' @param fit an nlmixr 'fit' object
+#' @param fit an nlmixr2 'fit' object
 #' @param varsVec a list of candidate variables to which the covariates could be added
 #' @param covarsVec a list of candidate covariates that need to be tested
 #' @param pVal a named list with names 'fwd' and 'bck' for specifying the p-values for the forward and backward searches, respectively
@@ -926,8 +926,8 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
 #'   })
 #' }
 #'
-#' fit <- nlmixr(one.cmt, theo_sd,"focei")
-#' RxODE::.rxWithWd(tempdir(), {# with temporary directory
+#' fit <- nlmixr2(one.cmt, theo_sd,"focei")
+#' rxode2::.rxWithWd(tempdir(), {# with temporary directory
 #'
 #' covarSearchAuto(fit, varsVec = c("ka", "cl"),
 #'     covarsVec = c("WT", "SEX"), catCovariates = c("SEX"))
@@ -940,11 +940,11 @@ addCovMultiple <- function(covInfo, fitobject, indep = TRUE) {
 #' d$SEX <-0
 #' d$SEX[d$ID<=6] <-1
 #'
-#' fit <- nlmixr(one.cmt, d, "focei")
+#' fit <- nlmixr2(one.cmt, d, "focei")
 #'
 #' # This would restart if for some reason the search crashed:
 #'
-#' RxODE::.rxWithWd(tempdir(), {# with temporary directory
+#' rxode2::.rxWithWd(tempdir(), {# with temporary directory
 #'
 #' covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
 #'                 catCovariates = c("SEX"), restart = TRUE)
@@ -994,10 +994,10 @@ covarSearchAuto <- # unsuccessful runs info store; check for covInformation befo
     }
 
     outputDir <-
-      paste0("nlmixrCovariateSearchCache_", as.character(substitute(fit)), "_", digest::digest(fit)) # a new directory with this name will be created
+      paste0("nlmixr2CovariateSearchCache_", as.character(substitute(fit)), "_", digest::digest(fit)) # a new directory with this name will be created
 
     # outputDir <-
-    #   paste0("nlmixrCovariateSearchCache_", as.character(substitute(fit)), "_", 'dbdf08b8c1b4cb9cb021c52008d3c343') # a new directory with this name will be created
+    #   paste0("nlmixr2CovariateSearchCache_", as.character(substitute(fit)), "_", 'dbdf08b8c1b4cb9cb021c52008d3c343') # a new directory with this name will be created
 
     if (!dir.exists(outputDir)) {
       dir.create(outputDir)
@@ -1062,7 +1062,7 @@ covarSearchAuto <- # unsuccessful runs info store; check for covInformation befo
 #' Forward covariate search
 #'
 #' @param covInfo a list containing information about each variable-covariate pair
-#' @param fit  an nlmixr 'fit' object
+#' @param fit  an nlmixr2 'fit' object
 #' @param pVal p-value that should be used for selecting covariates in the forward search
 #' @param outputDir the name of the output directory that stores the covariate search result
 #' @param restart a boolean that controls if the search should be restarted; default is FALSE

@@ -10,10 +10,10 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 #include <Rmath.h>
-#include <RxODE.h>
+#include <rxode2.h>
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("RxODE", String)
+#define _(String) dgettext ("rxode2", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)
@@ -26,7 +26,7 @@ extern void setSilentErr(int silent){
   _setSilentErr = silent;
 }
 
-SEXP _nlmixr_setSilentErr(SEXP in) {
+SEXP _nlmixr2_setSilentErr(SEXP in) {
   SEXP ret = PROTECT(Rf_allocVector(LGLSXP, 1));
   int t = TYPEOF(in);
   if (Rf_length(in) > 0) {
@@ -84,7 +84,7 @@ void RSprintf(const char *format, ...) {
   }
 }
 // double x, double lambda, int yj, double low, double high
-SEXP _nlmixr_powerD(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
+SEXP _nlmixr2_powerD(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   int t = TYPEOF(xS);
   int len = Rf_length(xS);
   if (t != REALSXP) {
@@ -139,7 +139,7 @@ SEXP _nlmixr_powerD(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
 }
 
 // double x, double lambda, int yj, double low, double high
-SEXP _nlmixr_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
+SEXP _nlmixr2_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   int t = TYPEOF(xS);
   int len = Rf_length(xS);
   if (t != REALSXP) {

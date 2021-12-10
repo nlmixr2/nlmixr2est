@@ -1,6 +1,6 @@
 ##' @importFrom utils .DollarNames
 ##' @export
-.DollarNames.nlmixrBounds <- function(x, pattern) {
+.DollarNames.nlmixr2Bounds <- function(x, pattern) {
   grep(pattern,
     c(
       names(x),
@@ -12,7 +12,7 @@
   )
 }
 ##' @export
-.DollarNames.nlmixrUI <- function(x, pattern) {
+.DollarNames.nlmixr2UI <- function(x, pattern) {
   ## ui
   ## uiCompletions
   .cmp <- c(
@@ -28,14 +28,14 @@
     "bpop", "multipleEndpoint", "muRefTable", "single.inner.1", "single.inner.2",
     "inner", "inner.par0", "single.saem", "single.saem.params", "pars.saem",
     ## bounds
-    .DollarNames.nlmixrBounds(x$ini, ""),
+    .DollarNames.nlmixr2Bounds(x$ini, ""),
     names(x$nmodel),
     ls(x$meta)
   )
   grep(pattern, .cmp, value = TRUE)
 }
 ##' @export
-.DollarNames.nlmixrFitCore <- function(x, pattern) {
+.DollarNames.nlmixr2FitCore <- function(x, pattern) {
   .env <- x$env
   .cmp <- c(
     names(x),
@@ -53,7 +53,7 @@
   if (exists("uif", .env)) {
     .cmp <- c(
       .cmp, "model.name", "modelName", "dataName", "data.name",
-      .DollarNames.nlmixrUI(.env$uif, "")
+      .DollarNames.nlmixr2UI(.env$uif, "")
     )
   }
   .cmp <- c(.cmp, "env")

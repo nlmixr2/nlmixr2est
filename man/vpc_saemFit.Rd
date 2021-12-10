@@ -3,7 +3,7 @@
 \name{vpc_saemFit}
 \alias{vpc_saemFit}
 \alias{vpc.saemFit}
-\title{VPC for nlmixr saemFit objects}
+\title{VPC for nlmixr2 saemFit objects}
 \usage{
 vpc_saemFit(fit, dat, nsim = 100, by = NULL, ...)
 
@@ -26,7 +26,7 @@ vpc_saemFit(fit, dat, nsim = 100, by = NULL, ...)
 vpc object from the \code{\link[vpc:vpc]{vpc_vpc}} package
 }
 \description{
-VPC for nlmixr saemFit objects
+VPC for nlmixr2 saemFit objects
 }
 \author{
 Wenping Wang

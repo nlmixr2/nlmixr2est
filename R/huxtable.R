@@ -45,28 +45,28 @@
 
 .nmEstMethod <- function(x) {
   .cls1 <- class(x)[1]
-  if (.cls1 == "nlmixrNlmeUI") {
+  if (.cls1 == "nlmixr2NlmeUI") {
     return("nlme")
   }
-  if (.cls1 == "nlmixrPosthoc") {
+  if (.cls1 == "nlmixr2Posthoc") {
     return("posthoc")
   }
-  if (.cls1 == "nlmixrSaem") {
+  if (.cls1 == "nlmixr2Saem") {
     return("saem")
   }
-  if (.cls1 == "nlmixrFOCEi") {
+  if (.cls1 == "nlmixr2FOCEi") {
     return("FOCEi")
   }
-  if (.cls1 == "nlmixrFOCE") {
+  if (.cls1 == "nlmixr2FOCE") {
     return("FOCE")
   }
-  if (.cls1 == "nlmixrFOi") {
+  if (.cls1 == "nlmixr2FOi") {
     return("FOi")
   }
-  if (.cls1 == "nlmixrFO") {
+  if (.cls1 == "nlmixr2FO") {
     return("FO")
   }
-  if (.cls1 == "nlmixrPosthoc") {
+  if (.cls1 == "nlmixr2Posthoc") {
     return("posthoc")
   }
 }
@@ -75,8 +75,8 @@
   .cor <- x$omega
   diag(.cor) <- 0
   .lst <- list(
-    "Full nlmixr Version:" = .getFullNlmixrVersion(),
-    "Full RxODE Version:" = .getFullNlmixrVersion("RxODE"),
+    "Full nlmixr2 Version:" = .getFullNlmixr2Version(),
+    "Full rxode2 Version:" = .getFullNlmixr2Version("rxode2"),
     "R Model Function Name ($modelName):" = x$modelName,
     "R Fit Object:" = bound,
     "R Data Name ($dataName):" = x$dataName,
@@ -84,8 +84,8 @@
     "All variables mu-referenced:" = dim(x$omega)[1] == length(x$mu.ref),
     "Covariance Method ($covMethod):" = x$covMethod,
     "Modeled Correlations:" = !all(.cor == 0),
-    "CWRES:" = ifelse(inherits(x, "nlmixrFitData"), any(names(x) == "CWRES"), FALSE),
-    "NPDE:" = ifelse(inherits(x, "nlmixrFitData"), any(names(x) == "NPDE"), FALSE),
+    "CWRES:" = ifelse(inherits(x, "nlmixr2FitData"), any(names(x) == "CWRES"), FALSE),
+    "NPDE:" = ifelse(inherits(x, "nlmixr2FitData"), any(names(x) == "NPDE"), FALSE),
     "Goodness Of Fit Metrics:" = as.list(x$objDf),
     "Timing Metrics" = as.list(x$time)
   )
@@ -95,13 +95,13 @@
 
 
 .nmHuxHeader <- function(x, bound) {
-  RxODE::rxReq("tibble")
+  rxode2::rxReq("tibble")
   .cor <- x$omega
   diag(.cor) <- 0
   .tab <- tibble::tribble(
     ~Description, ~Value,
-    "Full nlmixr Version:", .getFullNlmixrVersion(),
-    "Full RxODE Version:", .getFullNlmixrVersion("RxODE"),
+    "Full nlmixr2 Version:", .getFullNlmixr2Version(),
+    "Full rxode2 Version:", .getFullNlmixr2Version("rxode2"),
     "R Model Function Name ($modelName):", x$modelName,
     "R Fit Object:", bound,
     "R Data Name ($dataName):", x$dataName,
@@ -109,8 +109,8 @@
     "All variables mu-referenced:", paste(dim(x$omega)[1] == length(x$mu.ref)),
     "Covariance Method ($covMethod):", x$covMethod,
     "Modeled Correlations:", paste0(!all(.cor == 0)),
-    "CWRES:", paste0(ifelse(inherits(x, "nlmixrFitData"), any(names(x) == "CWRES"), FALSE)),
-    "NPDE:", paste0(ifelse(inherits(x, "nlmixrFitData"), any(names(x) == "NPDE"), FALSE)),
+    "CWRES:", paste0(ifelse(inherits(x, "nlmixr2FitData"), any(names(x) == "CWRES"), FALSE)),
+    "NPDE:", paste0(ifelse(inherits(x, "nlmixr2FitData"), any(names(x) == "NPDE"), FALSE)),
   )
   if (requireNamespace("huxtable", quietly = TRUE)) {
     huxtable::as_hux(.tab) %>%
@@ -149,7 +149,7 @@
   return(.tmp)
 }
 
-.getFullNlmixrVersion <- function(pkg = "nlmixr") {
+.getFullNlmixr2Version <- function(pkg = "nlmixr2") {
   .x <- tryCatch(utils::packageDescription(pkg, lib.loc = .libPaths()),
     error = function(e) NA, warning = function(e) NA
   )
@@ -188,14 +188,14 @@
 }
 
 .nmIterHist <- function(x) {
-  if (inherits(x, "nlmixrSaem")) {
+  if (inherits(x, "nlmixr2Saem")) {
     .tmp <- x$parHist
     .nit <- x$mcmc$niter
     return(list(
       "SA iterations" = .tmp[seq(1, .nit[1]), ],
       "EM iterations" = .tmp[-seq(1, .nit[1]), ]
     ))
-  } else if (inherits(x, "nlmixrNlmeUI") || inherits(x, "posthoc")) {
+  } else if (inherits(x, "nlmixr2NlmeUI") || inherits(x, "posthoc")) {
     return(NULL)
   } else if (exists("parHistData", x$env)) {
     .tmp <- x$parHistData$type
@@ -266,7 +266,7 @@
 
 ##' Create a run summary word document
 ##'
-##' @param x nlmixr fit object.
+##' @param x nlmixr2 fit object.
 ##'
 ##' @param docxOut Output file for run information document.  If not
 ##'     specified it is the name of R object where the fit is located
@@ -276,41 +276,41 @@
 ##'
 ##' @param docxTemplate This is the document template.  If not
 ##'     specified it defaults to
-##'     \code{option("nlmixr.docx.template")}.  If
-##'     \code{option("nlmixr.docx.template")} is not specified it uses
-##'     the included nlmixr document template.  When
+##'     \code{option("nlmixr2.docx.template")}.  If
+##'     \code{option("nlmixr2.docx.template")} is not specified it uses
+##'     the included nlmixr2 document template.  When
 ##'     \code{docxTemplate=NULL} it uses the \code{officer} blank
 ##'     document.
 ##'
 ##' @param plot Boolean indicating if the default goodness of fit
 ##'     plots are added to the document.  By default \code{TRUE}
 ##'
-##' @param titleStyle This is the word style name for the nlmixr
-##'     title; Usually this is \code{nlmixr version (R
-##'     object)}. Defaults to \code{option("nlmixr.docx.title")} or
+##' @param titleStyle This is the word style name for the nlmixr2
+##'     title; Usually this is \code{nlmixr2 version (R
+##'     object)}. Defaults to \code{option("nlmixr2.docx.title")} or
 ##'     \code{Title}
 ##'
 ##' @param subtitleStyle This is the word style for the subtitle which
-##'     is \code{nlmixr model name and date}. Defaults to
-##'     \code{option("nlmixr.docx.subtitle")} or \code{Subtitle}
+##'     is \code{nlmixr2 model name and date}. Defaults to
+##'     \code{option("nlmixr2.docx.subtitle")} or \code{Subtitle}
 ##'
 ##' @param normalStyle This is the word style for normal text. Defaults to
-##'     \code{option("nlmixr.docx.normal")} or \code{Normal}
+##'     \code{option("nlmixr2.docx.normal")} or \code{Normal}
 ##'
 ##' @param headerStyle This is the word style for heading text. Defaults to
-##'     \code{option("nlmixr.docx.heading1")} or \code{Heading 1}
+##'     \code{option("nlmixr2.docx.heading1")} or \code{Heading 1}
 ##'
 ##' @param centeredStyle This is the word style for centered text
 ##'     which is used for the figures. Defaults to
-##'     \code{option("nlmixr.docx.centered")} or \code{centered}
+##'     \code{option("nlmixr2.docx.centered")} or \code{centered}
 ##'
 ##' @param preformattedStyle This is the preformatted text style for R
 ##'     output lines.  Defaults to
-##'     \code{option("nlmixr.docx.preformatted")} or \code{HTML Preformatted}
+##'     \code{option("nlmixr2.docx.preformatted")} or \code{HTML Preformatted}
 ##'
 ##' @param width Is an integer representing the number of characters
 ##'     your preformatted style supports.  By default this is
-##'     \code{option("nlmixr.docx.width")} or \code{69}
+##'     \code{option("nlmixr2.docx.width")} or \code{69}
 ##'
 ##' @param save Should the docx be saved in a zip file with the R rds
 ##'     data object for the fit?  By default this is \code{FALSE} with
@@ -324,7 +324,7 @@
 ##'
 ##' @examples
 ##' \donttest{
-##'  library(nlmixr)
+##'  library(nlmixr2)
 ##' pheno <- function() {
 ##'     # Pheno with covariance
 ##'   ini({
@@ -346,10 +346,10 @@
 ##'   })
 ##' }
 ##'
-##' fit.s <- nlmixr(pheno, pheno_sd, "saem")
+##' fit.s <- nlmixr2(pheno, pheno_sd, "saem")
 ##'
 ##' ## Save output information into a word document
-##' RxODE::.rxWithWd(tempdir(), # Put document in temporary directory
+##' rxode2::.rxWithWd(tempdir(), # Put document in temporary directory
 ##'   nmDocx(fit.s)
 ##' )
 ##'
@@ -359,20 +359,20 @@ nmDocx <- function(x,
                    docxOut = NULL,
                    docxTemplate = NULL,
                    plot = TRUE,
-                   titleStyle = getOption("nlmixr.docx.title", "Title"),
-                   subtitleStyle = getOption("nlmixr.docx.subtitle", "Subtitle"),
-                   normalStyle = getOption("nlmixr.docx.normal", "Normal"),
-                   headerStyle = getOption("nlmixr.docx.heading1", "Heading 1"),
-                   centeredStyle = getOption("nlmixr.docx.centered", "centered"),
-                   preformattedStyle = getOption("nlmixr.docx.preformatted", "HTML Preformatted"),
-                   width = getOption("nlmixr.docx.width", 69),
+                   titleStyle = getOption("nlmixr2.docx.title", "Title"),
+                   subtitleStyle = getOption("nlmixr2.docx.subtitle", "Subtitle"),
+                   normalStyle = getOption("nlmixr2.docx.normal", "Normal"),
+                   headerStyle = getOption("nlmixr2.docx.heading1", "Heading 1"),
+                   centeredStyle = getOption("nlmixr2.docx.centered", "centered"),
+                   preformattedStyle = getOption("nlmixr2.docx.preformatted", "HTML Preformatted"),
+                   width = getOption("nlmixr2.docx.width", 69),
                    save = FALSE) {
-  RxODE::rxReq("officer")
-  RxODE::rxReq("flextable")
-  RxODE::rxReq("data.table")
-  RxODE::rxReq("huxtable")
-  if (!inherits(x, "nlmixrFitCore")) {
-    stop("This only applies to nlmixr fit objects")
+  rxode2::rxReq("officer")
+  rxode2::rxReq("flextable")
+  rxode2::rxReq("data.table")
+  rxode2::rxReq("huxtable")
+  if (!inherits(x, "nlmixr2FitCore")) {
+    stop("This only applies to nlmixr2 fit objects")
   }
   .parent <- globalenv()
   .bound <- ""
@@ -388,16 +388,16 @@ nmDocx <- function(x,
   }
   if (missing(docxTemplate)) {
     docxTemplate <- getOption(
-      "nlmixr.docx.template",
+      "nlmixr2.docx.template",
       file.path(
-        system.file(package = "nlmixr"),
-        "nlmixr-template.docx"
+        system.file(package = "nlmixr2"),
+        "nlmixr2-template.docx"
       )
     )
   }
   if (missing(docxOut)) {
     docxOut <- file.path(getwd(), paste0(
-      ifelse(any(.bound == c("", ".")), "nlmixr", .bound),
+      ifelse(any(.bound == c("", ".")), "nlmixr2", .bound),
       "-", .nmEstMethod(x), "-", x$modelName,
       format(Sys.time(), "-%Y-%m-%d.docx")
     ))
@@ -415,7 +415,7 @@ nmDocx <- function(x,
   }
   .doc <- .doc %>%
     officer::body_add_par(sprintf(
-      "nlmixr %s (%s)", utils::packageVersion("nlmixr"),
+      "nlmixr2 %s (%s)", utils::packageVersion("nlmixr2"),
       .bound
     ), style = titleStyle) %>%
     officer::body_add_par(sprintf(
@@ -494,7 +494,7 @@ nmDocx <- function(x,
   .doc <- .doc %>%
     officer::body_add_par("Original arguments to control ($origControl):", style = headerStyle)
   .doc <- .nmDocxPreformat(x$origControl, .doc, preformattedStyle, width)
-  if (plot && inherits(x, "nlmixrFitData")) {
+  if (plot && inherits(x, "nlmixr2FitData")) {
     .doc <- .doc %>%
       officer::body_add_par(sprintf("Basic Goodness of fit, ie plot(%s)", .bound), style = headerStyle)
     .lst <- plot(x)
@@ -531,9 +531,9 @@ nmDocx <- function(x,
   }
 }
 
-##' Create a large output based on a nlmixr fit
+##' Create a large output based on a nlmixr2 fit
 ##'
-##' @param x nlmixr fit object
+##' @param x nlmixr2 fit object
 ##'
 ##' @param lst Listing file.  If not specified, it is determined by
 ##'     the day and the model/R-object name.  If it is specified as
@@ -545,11 +545,11 @@ nmDocx <- function(x,
 ##' @export
 nmLst <- function(x,
                   lst = NULL) {
-  RxODE::rxReq("data.table")
-  RxODE::rxReq("yaml")
-  RxODE::rxReq("huxtable")
-  if (!inherits(x, "nlmixrFitCore")) {
-    stop("This only applies to nlmixr fit objects")
+  rxode2::rxReq("data.table")
+  rxode2::rxReq("yaml")
+  rxode2::rxReq("huxtable")
+  if (!inherits(x, "nlmixr2FitCore")) {
+    stop("This only applies to nlmixr2 fit objects")
   }
   .parent <- globalenv()
   .bound <- ""
@@ -575,7 +575,7 @@ nmLst <- function(x,
   }
   if (missing(lst)) {
     lst <- file.path(getwd(), paste0(
-      ifelse(any(.bound == c("", ".")), "nlmixr", .bound),
+      ifelse(any(.bound == c("", ".")), "nlmixr2", .bound),
       "-", .nmEstMethod(x), "-", x$modelName,
       format(Sys.time(), "-%Y-%m-%d.lst")
     ))
@@ -651,7 +651,7 @@ nmSave <- function(x, ..., save = TRUE) {
 ## Ugly hacks to make word conversion work without loading flextable, officer, etc
 .huxNS <- NULL
 .asFlx <- function(x, ...) {
-  RxODE::rxReq("huxtable")
+  rxode2::rxReq("huxtable")
   if (is.null(.huxNS)) {
     ## ugly hack
     .huxNS <- loadNamespace("huxtable")

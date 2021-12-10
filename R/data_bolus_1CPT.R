@@ -42,7 +42,7 @@
 ##' }
 ##'
 ##' @source Schoemaker R, Xiong Y, Wilkins J, Laveille C, Wang W.
-##'     nlmixr: an open-source package for pharmacometric modelling in
+##'     nlmixr2: an open-source package for pharmacometric modelling in
 ##'     R. ACOP 2016
-##' @family nlmixr datasets
+##' @family nlmixr2 datasets
 "Bolus_1CPT"

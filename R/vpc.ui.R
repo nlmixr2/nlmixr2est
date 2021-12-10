@@ -1,14 +1,14 @@
 ##' VPC based on ui model
 ##'
-##' @param fit nlmixr fit object
+##' @param fit nlmixr2 fit object
 ##' @param data this is the data to use to augment the VPC fit.  By
 ##'     default is the fitted data, (can be retrieved by
 ##'     \code{\link[nlme]{getData}}), but it can be changed by specifying
 ##'     this argument.
 ##' @param n Number of VPC simulations.  By default 100
 ##' @inheritParams vpc::vpc
-##' @inheritParams RxODE::rxSolve
-##' @param ... Args sent to \code{\link[RxODE]{rxSolve}}
+##' @inheritParams rxode2::rxSolve
+##' @param ... Args sent to \code{\link[rxode2]{rxSolve}}
 ##' @return Simulated dataset (invisibly)
 ##' @author Matthew L. Fidler
 ##' @export
@@ -22,9 +22,9 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
   if (!requireNamespace("vpc", quietly = TRUE)) {
     stop("'vpc' is required; Download from CRAN or github https://github.com/ronkeizer/vpc")
   }
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
-  save <- getOption("nlmixr.save", FALSE)
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
+  save <- getOption("nlmixr2.save", FALSE)
   if (save) {
     .modName <- ifelse(is.null(fit$uif$model.name), "", paste0(fit$uif$model.name, "-"))
     if (.modName == ".-") .modName <- ""
@@ -42,12 +42,12 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
       uloq, lloq, log_y, log_y_min,
       xlab, ylab, title, smooth, vpc_theme,
       facet, labeller, vpcdb, verbose,
-      as.character(utils::packageVersion("nlmixr")),
-      as.character(utils::packageVersion("RxODE"))
+      as.character(utils::packageVersion("nlmixr2")),
+      as.character(utils::packageVersion("rxode2"))
     ))
     .saveFile <- file.path(
-      getOption("nlmixr.save.dir", getwd()),
-      paste0("nlmixr-vpc-", .modName, .dataName, "-", .digest, ".rds")
+      getOption("nlmixr2.save.dir", getwd()),
+      paste0("nlmixr2-vpc-", .modName, .dataName, "-", .digest, ".rds")
     )
     if (file.exists(.saveFile)) {
       message(sprintf("Loading vpc already run (%s)", .saveFile))
@@ -64,8 +64,8 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
     }
   }
   .xtra <- list(...)
-  if (inherits(fit, "nlmixrVpc")) {
-    sim <- attr(class(fit), "nlmixrVpc")
+  if (inherits(fit, "nlmixr2Vpc")) {
+    sim <- attr(class(fit), "nlmixr2Vpc")
   } else {
     .xtra$object <- fit
     ## .xtra$returnType <- "data.frame";
@@ -80,7 +80,7 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
       } else {
         .rx <- .si$rx
       }
-      dat <- nlmixrData(.dt, .rx)
+      dat <- nlmixr2Data(.dt, .rx)
     } else {
       dat <- data
     }
@@ -88,7 +88,7 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
     if (!is.null(stratify)) {
       cols <- c(stratify, "dv")
       stratify <- tolower(stratify)
-    } else if (inherits(fit, "nlmixrFitCore")) {
+    } else if (inherits(fit, "nlmixr2FitCore")) {
       .uif <- fit$uif
       if (length(.uif$predDf$cmt) > 1) {
         cols <- c("cmt", "dv")
@@ -107,14 +107,14 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
       .w <- which(tolower(.nd) == tolower(x))
       if (length(.w) == 1L) {
         if (tolower(x) == "cmt") {
-          names(dat)[.w] <<- paste0("nlmixr_", tolower(.nd[.w]))
-          return(paste0("cmt0=0+nlmixr_", tolower(.nd[.w])))
+          names(dat)[.w] <<- paste0("nlmixr2_", tolower(.nd[.w]))
+          return(paste0("cmt0=0+nlmixr2_", tolower(.nd[.w])))
         } else if (tolower(x) == "dvid") {
-          names(dat)[.w] <<- paste0("nlmixr_", tolower(.nd[.w]))
-          return(paste0("dvid0=0+nlmixr_", tolower(.nd[.w])))
+          names(dat)[.w] <<- paste0("nlmixr2_", tolower(.nd[.w]))
+          return(paste0("dvid0=0+nlmixr2_", tolower(.nd[.w])))
         } else {
-          names(dat)[.w] <<- paste0("nlmixr_", tolower(.nd[.w]))
-          return(paste0(.nd[.w], "=0+nlmixr_", tolower(.nd[.w])))
+          names(dat)[.w] <<- paste0("nlmixr2_", tolower(.nd[.w]))
+          return(paste0(.nd[.w], "=0+nlmixr2_", tolower(.nd[.w])))
         }
       }
       return(NULL)
@@ -133,10 +133,10 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
       }
       return(x)
     })
-    if (any(names(dat) == "nlmixr_cmt")) dat$cmt <- dat$nlmixr_cmt
-    if (any(names(dat) == "nlmixr_dvid")) dat$dvid <- dat$nlmixr_dvid
+    if (any(names(dat) == "nlmixr2_cmt")) dat$cmt <- dat$nlmixr2_cmt
+    if (any(names(dat) == "nlmixr2_dvid")) dat$dvid <- dat$nlmixr2_dvid
     .xtra$events <- dat
-    sim <- do.call("nlmixrSim", .xtra)
+    sim <- do.call("nlmixr2Sim", .xtra)
     max.resim <- 10
     while (any(is.na(sim$sim))) {
       sim <- sim[!is.na(sim$sim), ]
@@ -146,9 +146,9 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
     if (any(names(sim) == "cmt0")) names(sim)[names(sim) == "cmt0"] <- "cmt"
     if (any(names(sim) == "dvid0")) names(sim)[names(sim) == "dvid0"] <- "dvid"
     sim0 <- sim
-    if (any(names(dat) == "nlmixr_cmt")) dat <- dat[, names(dat) != "nlmixr_cmt"]
-    if (any(names(dat) == "nlmixr_dvid")) dat <- dat[, names(dat) != "nlmixr_dvid"]
-    names(dat) <- gsub("nlmixr_", "", names(dat))
+    if (any(names(dat) == "nlmixr2_cmt")) dat <- dat[, names(dat) != "nlmixr2_cmt"]
+    if (any(names(dat) == "nlmixr2_dvid")) dat <- dat[, names(dat) != "nlmixr2_dvid"]
+    names(dat) <- gsub("nlmixr2_", "", names(dat))
     onames <- names(dat)
     names(dat) <- tolower(onames)
     w <- which(duplicated(names(dat)))
@@ -171,7 +171,7 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
       .xtra.prd$returnType <- "data.frame"
       .xtra.prd$nStud <- 1
       .xtra.prd$nsim <- NULL
-      sim2 <- do.call("nlmixrSim", .xtra.prd)
+      sim2 <- do.call("nlmixr2Sim", .xtra.prd)
       sim$pred <- sim2$sim
     }
     diff <- proc.time() - pt
@@ -220,7 +220,7 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
     sim <- list(rxsim = sim0, sim = .as.data.frame(sim), obs = dat)
     class(sim) <- "rxHidden"
     attr(sim, "nsim") <- .xtra$nsim
-    class(sim) <- "nlmixrVpc"
+    class(sim) <- "nlmixr2Vpc"
   }
   ns <- loadNamespace("vpc")
   vpc_fun <-
@@ -235,8 +235,8 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
   call$sim_cols <- list(id = "id", dv = "dv", idv = "time")
   call$stratify <- stratify
   p <- do.call(vpc_fun, c(sim, call), envir = parent.frame(1))
-  cls <- c("nlmixrVpc", class(p))
-  attr(cls, "nlmixrVpc") <- sim
+  cls <- c("nlmixr2Vpc", class(p))
+  attr(cls, "nlmixr2Vpc") <- sim
   class(p) <- cls
   if (save) {
     saveRDS(p, file = .saveFile)
@@ -245,25 +245,25 @@ vpc_ui <- function(fit, data = NULL, n = 100, bins = "jenks",
 }
 
 ##' @export
-`$.nlmixrVpc` <- function(obj, arg, exact = TRUE) {
+`$.nlmixr2Vpc` <- function(obj, arg, exact = TRUE) {
   if (arg == "gg") {
     .x <- obj
-    .cls <- class(.x)[class(.x) != "nlmixrVpc"]
-    attr(.cls, "nlmixrVpc") <- NULL
+    .cls <- class(.x)[class(.x) != "nlmixr2Vpc"]
+    attr(.cls, "nlmixr2Vpc") <- NULL
     class(.x) <- .cls
     return(.x)
   } else if (any(arg == c("rxsim", "sim", "obs"))) {
-    .info <- attr(class(obj), "nlmixrVpc")
+    .info <- attr(class(obj), "nlmixr2Vpc")
     return(.info[[arg]])
   }
   NextMethod()
 }
 
 ##' @export
-print.nlmixrVpc <- function(x, ...) {
+print.nlmixr2Vpc <- function(x, ...) {
   cat(sprintf(
-    "nlmixr vpc object of %d simulations.\n",
-    attr(attr(class(x), "nlmixrVpc"), "nsim")
+    "nlmixr2 vpc object of %d simulations.\n",
+    attr(attr(class(x), "nlmixr2Vpc"), "nsim")
   ))
   cat("  $rxsim = original simulated data\n")
   cat("  $sim = merge simulated data\n")
@@ -276,25 +276,25 @@ print.nlmixrVpc <- function(x, ...) {
 
 ##' @rdname vpc_ui
 ##' @export
-vpc.nlmixrFitData <- function(sim, ...) {
+vpc.nlmixr2FitData <- function(sim, ...) {
   vpc_ui(fit = sim, ...)
 }
 
 ##' @export
-vpc.nlmixrFOCEi <- vpc.nlmixrFitData
+vpc.nlmixr2FOCEi <- vpc.nlmixr2FitData
 
 ##' @export
-vpc.nlmixrSaem <- vpc.nlmixrFitData
+vpc.nlmixr2Saem <- vpc.nlmixr2FitData
 
 ##' @export
-vpc.nlmixrNlme <- vpc.nlmixrFitData
+vpc.nlmixr2Nlme <- vpc.nlmixr2FitData
 
 ##' @export
-vpc.nlmixrPosthoc <- vpc.nlmixrFitData
+vpc.nlmixr2Posthoc <- vpc.nlmixr2FitData
 
 ##' @rdname vpc_ui
 ##' @export
-vpc.nlmixrVpc <- function(sim, ...) {
+vpc.nlmixr2Vpc <- function(sim, ...) {
   vpc_ui(fit = sim, ...)
 }
 

@@ -11,7 +11,7 @@
 #include <time.h>
 #include <Rmath.h>
 #include <RcppArmadillo.h>
-#include <RxODE.h>
+#include <rxode2.h>
 
 
 

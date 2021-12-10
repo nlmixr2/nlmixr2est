@@ -2,7 +2,7 @@
 % Please edit documentation in R/nlmixr.R
 \name{nmDataConvert}
 \alias{nmDataConvert}
-\title{Convert data to RxODE format (depreciated)}
+\title{Convert data to rxode2 format (depreciated)}
 \usage{
 nmDataConvert(data)
 }
@@ -10,9 +10,9 @@ nmDataConvert(data)
 \item{data}{Data to "convert"}
 }
 \value{
-Exact same data as was inputRxODE::
+Exact same data as was inputrxode2::
 }
 \description{
-Convert data to RxODE format (depreciated)
+Convert data to rxode2 format (depreciated)
 }
 \keyword{internal}

@@ -10,11 +10,11 @@
 ##'   \item{TIME}{Time (hrs)}
 ##'   \item{DV}{Dependent Variable, theophylline concentration}
 ##'   \item{AMT}{Dose Amount/kg}
-##'   \item{EVID}{RxODE/nlmixr event ID (not NONMEM's)}
+##'   \item{EVID}{rxode2/nlmixr2 event ID (not NONMEM's)}
 ##'   \item{CMT}{Compartment Number}
 ##'   \item{WT}{Weight (kg)}
 ##' }
 ##'
 ##' @source NONMEM/nlme
-##' @family nlmixr datasets
+##' @family nlmixr2 datasets
 "theo_sd"

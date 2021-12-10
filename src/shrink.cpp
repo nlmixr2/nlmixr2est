@@ -2,7 +2,7 @@
 #include "shrink.h"
 
 //[[Rcpp::export]]
-List nlmixrParameters(NumericVector theta, DataFrame eta) {
+List nlmixr2Parameters(NumericVector theta, DataFrame eta) {
   DataFrame eta2 = eta;
   eta2.erase(0);
   NumericVector pred(theta.size()+eta2.ncol());
@@ -116,7 +116,7 @@ void calcShrinkFinalize(arma::mat &omegaMat, int &nid, List& etaLst, arma::vec &
   etaLst.attr("class") = "data.frame";
 }
 
-extern "C" SEXP _nlmixr_calcShrinkOnly(SEXP omegaMatSEXP, SEXP etaLstSEXP, SEXP nidSEXP) {
+extern "C" SEXP _nlmixr2_calcShrinkOnly(SEXP omegaMatSEXP, SEXP etaLstSEXP, SEXP nidSEXP) {
 BEGIN_RCPP
   // These are not needed because IWRES shrinkage isn't calculated
  arma::vec iwres;

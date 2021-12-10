@@ -2,18 +2,18 @@
 % Please edit documentation in R/foceiFit.R
 \name{.nmGetData}
 \alias{.nmGetData}
-\title{This gets the parsed data in the lower-level manner that nlmixr expects.}
+\title{This gets the parsed data in the lower-level manner that nlmixr2 expects.}
 \usage{
 .nmGetData(object, keep = NULL)
 }
 \arguments{
-\item{object}{nlmixr Object}
+\item{object}{nlmixr2 Object}
 }
 \value{
 Gets the parsed data
 }
 \description{
-This gets the parsed data in the lower-level manner that nlmixr expects.
+This gets the parsed data in the lower-level manner that nlmixr2 expects.
 }
 \author{
 Matthew L. Fidler

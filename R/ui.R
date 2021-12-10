@@ -1,4 +1,4 @@
-nlmixrfindRhs <- function(x) {
+nlmixr2findRhs <- function(x) {
   ## Modified from http://adv-r.had.co.nz/Expressions.html find_assign4
   if (is.atomic(x)) {
     character()
@@ -8,13 +8,13 @@ nlmixrfindRhs <- function(x) {
     if ((identical(x[[1]], quote(`<-`)) ||
       identical(x[[1]], quote(`=`))) &&
         is.name(x[[2]])) {
-      unique(c(unlist(nlmixrfindRhs(x[[3]]))))
+      unique(c(unlist(nlmixr2findRhs(x[[3]]))))
     } else {
       x1 <- x[-1]
-      unique(unlist(lapply(x1, nlmixrfindRhs)))
+      unique(unlist(lapply(x1, nlmixr2findRhs)))
     }
   } else if (is.pairlist(x)) {
-    unique(unlist(lapply(x, nlmixrfindRhs)))
+    unique(unlist(lapply(x, nlmixr2findRhs)))
   } else {
     stop("Don't know how to handle type ", typeof(x),
          call. = FALSE
@@ -22,7 +22,7 @@ nlmixrfindRhs <- function(x) {
   }
 }
 
-nlmixrfindLhs <- function(x) {
+nlmixr2findLhs <- function(x) {
   ## Modified from http://adv-r.had.co.nz/Expressions.html find_assign4
   if (is.atomic(x) || is.name(x)) {
     character()
@@ -34,9 +34,9 @@ nlmixrfindLhs <- function(x) {
     } else {
       lhs <- character()
     }
-    unique(c(lhs, unlist(lapply(x, nlmixrfindLhs))))
+    unique(c(lhs, unlist(lapply(x, nlmixr2findLhs))))
   } else if (is.pairlist(x)) {
-    unique(unlist(lapply(x, nlmixrfindLhs)))
+    unique(unlist(lapply(x, nlmixr2findLhs)))
   } else {
     stop("Don't know how to handle type ", typeof(x),
       call. = FALSE
@@ -44,9 +44,9 @@ nlmixrfindLhs <- function(x) {
   }
 }
 
-nlmixrfindRhsLhs <- function(x) {
-  .lhs <- nlmixrfindLhs(x)
-  .rhs <- nlmixrfindRhs(x)
+nlmixr2findRhsLhs <- function(x) {
+  .lhs <- nlmixr2findLhs(x)
+  .rhs <- nlmixr2findRhs(x)
   .rhs <- setdiff(.rhs, .lhs)
   list(lhs=.lhs, rhs=.rhs)
 }
@@ -86,13 +86,13 @@ nlmixrfindRhsLhs <- function(x) {
 }
 
 .getUif <- function(what) {
-  if (inherits(what, "nlmixrFitCore")) {
+  if (inherits(what, "nlmixr2FitCore")) {
     .uif <- what$uif
     assignInMyNamespace(".pipedData", getData(what))
-  } else if (inherits(what, "nlmixrUI")) {
+  } else if (inherits(what, "nlmixr2UI")) {
     .uif <- what
   } else if (inherits(what, "function")) {
-    .uif <- nlmixrUI(what)
+    .uif <- nlmixr2UI(what)
   } else {
     stop("Do not know how to handle object")
   }
@@ -148,7 +148,7 @@ nlmixrfindRhsLhs <- function(x) {
       if (.df$neta1[i] < .df$neta2[i]) {
         return(NULL)
       }
-      .df2 <- nlmixrBoundsTemplate
+      .df2 <- nlmixr2BoundsTemplate
       .df2$neta1 <- .df$neta1[i]
       .df2$neta2 <- .df$neta2[i]
       .df2$name <- .df$name[i]
@@ -162,7 +162,7 @@ nlmixrfindRhsLhs <- function(x) {
     .ini2 <- rbind(.ini2, .ini3)
     .ini2 <- .ini2[order(.ini2$neta1, .ini2$neta2), ]
     .ini2 <- rbind(.ini1, .ini2, .ini4)
-    class(.ini2) <- c("nlmixrBounds", "data.frame")
+    class(.ini2) <- c("nlmixr2Bounds", "data.frame")
     .uif$ini <- .ini2
     return(.uif)
   } else {
@@ -170,7 +170,7 @@ nlmixrfindRhsLhs <- function(x) {
   }
 }
 
-#' nlmixr ini block handling
+#' nlmixr2 ini block handling
 #'
 #' The ini block controls initial conditions for 'theta' (fixed effects),
 #' 'omega' (random effects), and 'sigma' (residual error) elements of the model.
@@ -233,7 +233,7 @@ nlmixrfindRhsLhs <- function(x) {
 #' has a label of "Typical Value of Clearance (L/hr)" is \code{tvCL <- 1;
 #' label("Typical Value of Clearance (L/hr)")}.
 #'
-#' \code{nlmixr} will attempt to determine some back-transformations for the
+#' \code{nlmixr2} will attempt to determine some back-transformations for the
 #' user.  For example, \code{CL <- exp(tvCL)} will detect that \code{tvCL} must
 #' be back-transformed by \code{exp()} for easier interpretation.  When you want
 #' to control the back-transformation, you can specify the back-transformation
@@ -241,15 +241,15 @@ nlmixrfindRhsLhs <- function(x) {
 #' back-transformation to \code{exp()}, you can use \code{tvCL <- 1;
 #' backTransform(exp())}.
 #'
-#' @param ini Ini block or nlmixr model object
-#' @param ... Other arguments parsed by nlmixr
+#' @param ini Ini block or nlmixr2 model object
+#' @param ... Other arguments parsed by nlmixr2
 #' @return bounds expression or parsed ui object
 #' @author Matthew L. Fidler
 #' @export
 ini <- function(ini, ...) {
   if (is(substitute(ini), "{")) {
     .f <- eval(parse(text = sprintf("function() %s", paste(.deparse(substitute(ini)), collapse = "\n"))))
-    .fb <- nlmixrBounds(.f)
+    .fb <- nlmixr2Bounds(.f)
     if (!exists(".ini", parent.frame(1))) {
       assign(".ini", .f, parent.frame(1))
     } else {
@@ -401,10 +401,10 @@ ini <- function(ini, ...) {
 )
 .etaModelReg <- rex::rex(or(group(start, or(.etaParts)), group(or(.etaParts), end)))
 
-##' nlmixr model block
+##' nlmixr2 model block
 ##'
 ##' @param model Model specification
-##' @param ... Other arguments to model object parsed by nlmixr
+##' @param ... Other arguments to model object parsed by nlmixr2
 ##' @param .lines This is an internal argument when code{model} is
 ##'     being called recursively and should not be used.
 ##' @return Parsed UI object
@@ -425,7 +425,7 @@ model <- function(model, ..., .lines = NULL) {
       .ini <- get(".model", parent.frame(1))
       .model <- get(".model", parent.frame(1))
       if (is(.ini, "function") & is(.model, "function")) {
-        return(nlmixrUI(parent.frame(1)))
+        return(nlmixr2UI(parent.frame(1)))
       }
     }
     return(.f)
@@ -442,8 +442,8 @@ model <- function(model, ..., .lines = NULL) {
     .origLines <- .fNew
     if (!inherits(.f, "try-error")) {
       .fOrig <- eval(parse(text = paste(.fNew, collapse = "\n")))
-      .lhsOrig <- nlmixrfindLhs(body(.fOrig))
-      .lhsNew <- nlmixrfindLhs(body(.f))
+      .lhsOrig <- nlmixr2findLhs(body(.fOrig))
+      .lhsNew <- nlmixr2findLhs(body(.f))
       .shared <- intersect(.lhsNew, .lhsOrig)
       .distOrig <- .findDist(body(.fOrig))
       .distNew <- .findDist(body(.f))
@@ -509,7 +509,7 @@ model <- function(model, ..., .lines = NULL) {
           for (.new in .addVars) {
             if (!any(.ini$name == .new)) {
               .maxTheta <- max(.ini$ntheta, na.rm = TRUE)
-              .d2 <- nlmixrBoundsTemplate
+              .d2 <- nlmixr2BoundsTemplate
               .d2$name <- .new
               .d2$ntheta <- .maxTheta + 1
               .d2$est <- 1
@@ -575,7 +575,7 @@ model <- function(model, ..., .lines = NULL) {
                 .maxEta <- suppressWarnings(max(.ini$neta1, na.rm = TRUE))
                 if (is.infinite(.maxEta)) .maxEta <- 0
                 .maxTheta <- max(.ini$ntheta, na.rm = TRUE)
-                .d2 <- nlmixrBoundsTemplate
+                .d2 <- nlmixr2BoundsTemplate
                 .d2$neta1 <- .maxEta + 1
                 .d2$neta2 <- .maxEta + 1
                 .d2$est <- 1
@@ -587,7 +587,7 @@ model <- function(model, ..., .lines = NULL) {
                 .ini <- rbind(.ini, .d2)
               } else if (regexpr(.thetaModelReg, .new) != -1) {
                 .maxTheta <- max(.ini$ntheta, na.rm = TRUE)
-                .d2 <- nlmixrBoundsTemplate
+                .d2 <- nlmixr2BoundsTemplate
                 .d2$ntheta <- .maxTheta + 1
                 .d2$est <- 1
                 .d2$lower <- -Inf
@@ -601,17 +601,17 @@ model <- function(model, ..., .lines = NULL) {
         }
       }
 
-      class(.ini) <- c("nlmixrBounds", "data.frame")
+      class(.ini) <- c("nlmixr2Bounds", "data.frame")
       .model <- eval(parse(text = paste(.fNew, collapse = "\n"), keep.source = TRUE))
       return(.finalizeUiModel(
-        nlmixrUIModel(.model, .ini, NULL),
+        nlmixr2UIModel(.model, .ini, NULL),
         as.list(.uif$meta)
       ))
     }
   }
 }
 
-.nlmixrUpdate <- function(object, ...) {
+.nlmixr2Update <- function(object, ...) {
   .uif <- .getUif(object)
   .iniNames <- paste(.uif$ini$name)
   .call <- match.call(expand.dots = TRUE)[-c(1:2)]
@@ -620,7 +620,7 @@ model <- function(model, ..., .lines = NULL) {
     .callNames <- rep("", length(.call))
   }
   if (any(.callNames %in% c("data", "est", "control", "table", "save"))) {
-    stop("Cannot update these arguments: 'data', 'est', 'control', 'table', or 'save'\nUse these options with nlmixr.")
+    stop("Cannot update these arguments: 'data', 'est', 'control', 'table', or 'save'\nUse these options with nlmixr2.")
   }
   ## Any time the parameters are named, use ini call
   .iniArgs <- which(.callNames %in% .iniNames)
@@ -674,16 +674,16 @@ model <- function(model, ..., .lines = NULL) {
 }
 
 ##' @export
-update.nlmixrUI <- .nlmixrUpdate
+update.nlmixr2UI <- .nlmixr2Update
 
 ##' @export
-update.nlmixrFitCore <- .nlmixrUpdate
+update.nlmixr2FitCore <- .nlmixr2Update
 
 ##' @export
-update.function <- .nlmixrUpdate
+update.function <- .nlmixr2Update
 
 .finalizeUiModel <- function(fun2, meta) {
-  class(fun2) <- "nlmixrUI"
+  class(fun2) <- "nlmixr2UI"
   var.ini <- c(fun2$focei.names, fun2$eta.names)
   var.def <- fun2$all.vars
   diff <- setdiff(var.ini, var.def)
@@ -707,12 +707,12 @@ update.function <- .nlmixrUpdate
     }
   }
   fun2$meta <- list2env(meta, parent = emptyenv())
-  .mv <- RxODE::rxModelVars(paste(c(.deparse1(body(fun2$focei.fun1)),
+  .mv <- rxode2::rxModelVars(paste(c(.deparse1(body(fun2$focei.fun1)),
     .deparse1(body(fun2$pred)), fun2$extra
   ), collapse = "\n"))
   .tmp <- paste(fun2$nmodel$predDf$var)
   .testVars <- c(.mv$lhs, .mv$state)
-  .tmp <- .tmp[!(.tmp %in% c(.testVars, "nlmixr_lincmt_pred"))]
+  .tmp <- .tmp[!(.tmp %in% c(.testVars, "nlmixr2_lincmt_pred"))]
   if (length(.tmp > 0)) {
     .predDf <- fun2$predDf
     if (length(.predDf$var) > 1) {
@@ -728,7 +728,7 @@ update.function <- .nlmixrUpdate
       }
     }
     .tmp <- lapply(.tmp, function(x) {
-      .newPars <- RxODE::rxModelVars(paste0("nlmixr_tmp=", x))$params
+      .newPars <- rxode2::rxModelVars(paste0("nlmixr2_tmp=", x))$params
       if (all(.newPars %in% .testVars)) {
         return(NA_character_)
       }
@@ -748,13 +748,13 @@ update.function <- .nlmixrUpdate
 ##' Prepares the UI function and returns a list.
 ##'
 ##' @param fun UI function
-##' @return nlmixr UI function
+##' @return nlmixr2 UI function
 ##' @author Matthew L. Fidler
 ##' @keywords internal
 ##' @export
-nlmixrUI <- function(fun) {
+nlmixr2UI <- function(fun) {
   if (is(fun, "function")) {
-    lhs0 <- nlmixrfindLhs(body(fun))
+    lhs0 <- nlmixr2findLhs(body(fun))
     dum.fun <- function() {
       return(TRUE)
     }
@@ -768,7 +768,7 @@ nlmixrUI <- function(fun) {
       cli::cli_alert_info("parameter labels from comments are typically ignored in non-interactive mode")
       cli::cli_alert_info("Need to run with the source intact to parse comments")
       ## message(sprintf("Cannot run this way in non-interactive mode.\nTry running:\n\nR -e 'source(\"script\", keep.source=TRUE)'\n\nFor Batch-mode type of running, you can use:\n\nR -e \"source('script.R', keep.source=TRUE, echo=TRUE)\" %s> script.Rout 2>&1", ifelse((.Platform$OS.type == "unix"), "", "1")))
-      ## stop("option \"keep.source\" must be TRUE for nlmixr models.")
+      ## stop("option \"keep.source\" must be TRUE for nlmixr2 models.")
       ## return(eval(fun(), parent.frame(1)))
     } else {
       fun2 <- as.character(fun2, useSource = TRUE)
@@ -813,7 +813,7 @@ nlmixrUI <- function(fun) {
     .ini <- fun$.ini
     env <- new.env(parent = .GlobalEnv)
     lhs0 <- c("data", "desc", "ref", "imp", "est", "control", "table")
-    warning("some information (like parameter labels) is lost by evaluating a nlmixr function")
+    warning("some information (like parameter labels) is lost by evaluating a nlmixr2 function")
     fun <- paste0(
       "function(){\n",
       paste(sapply(lhs0, function(var) {
@@ -834,7 +834,7 @@ nlmixrUI <- function(fun) {
     fun <- eval(parse(text = fun))
     assign("fun", fun, env)
   }
-  ini <- nlmixrBounds(.ini)
+  ini <- nlmixr2Bounds(.ini)
   meta <- list()
   for (var in lhs0) {
     if (!any(var == c(".ini", ".model")) &&
@@ -846,16 +846,16 @@ nlmixrUI <- function(fun) {
     stop("Error parsing initial estimates.")
   }
 
-  fun2 <- nlmixrUIModel(.model, ini, fun)
+  fun2 <- nlmixr2UIModel(.model, ini, fun)
   ## if (inherits(fun2, "try-error")){
   ##     stop("Error parsing model.")
   ## }
   return(.finalizeUiModel(fun2, meta))
 }
-nlmixrUI.multipleEndpoint <- function(x) {
+nlmixr2UI.multipleEndpoint <- function(x) {
   if (length(x$nmodel$predDf$cond) > 1) {
     .info <- x$nmodel$predDf
-    if (getOption("RxODE.combine.dvid", TRUE)) {
+    if (getOption("rxode2.combine.dvid", TRUE)) {
       .info <- .info[order(.info$dvid), ]
     }
     .info <- with(.info, .data.frame(
@@ -866,7 +866,7 @@ nlmixrUI.multipleEndpoint <- function(x) {
       ),
       check.names = FALSE
     ))
-    if (!getOption("RxODE.combine.dvid", TRUE)) {
+    if (!getOption("rxode2.combine.dvid", TRUE)) {
       .info <- .info[, names(.info) != "dvid*"]
     }
     if (requireNamespace("huxtable", quietly = TRUE)) {
@@ -875,7 +875,7 @@ nlmixrUI.multipleEndpoint <- function(x) {
         huxtable::set_bold(row = 1, col = huxtable::everywhere, value = TRUE) %>%
         huxtable::set_position("center") %>%
         huxtable::set_all_borders(TRUE)
-      if (getOption("RxODE.combine.dvid", TRUE)) {
+      if (getOption("rxode2.combine.dvid", TRUE)) {
         .hux <- .hux %>%
           huxtable::add_footnote("* If dvids are outside this range, all dvids are re-numered sequentially, ie 1,7, 10 becomes 1,2,3 etc")
       }
@@ -894,7 +894,7 @@ nlmixrUI.multipleEndpoint <- function(x) {
 ##' @author Matthew L. Fidler
 ##' @return original object (invisibly)
 ##' @export
-print.nlmixrUI <- function(x, ...) {
+print.nlmixr2UI <- function(x, ...) {
   cat(cli::rule(x$model.desc, line = "bar2"), "\n")
   cat(cli::rule(crayon::bold("Initialization:")), "\n")
   print(x$ini)
@@ -927,7 +927,7 @@ print.nlmixrUI <- function(x, ...) {
     }
     cat("\n")
   }
-  cat(cli::rule(crayon::bold(sprintf("Model%s:", ifelse(class(x$rxode) == "RxODE", " (RxODE)", "")))), "\n")
+  cat(cli::rule(crayon::bold(sprintf("Model%s:", ifelse(class(x$rxode) == "rxode2", " (rxode2)", "")))), "\n")
   cat(x$fun.txt, "\n")
   cat(cli::rule(line = "bar2"), "\n")
   invisible(x)
@@ -1041,7 +1041,7 @@ allCalls <- function(x) {
 ##' @author Hadley Wickham and Matthew L. Fidler
 ##' @keywords internal
 ##' @export
-nlmixrfindLhs <- function(x) {
+nlmixr2findLhs <- function(x) {
   ## Modified from http://adv-r.had.co.nz/Expressions.html find_assign4
   if (is.atomic(x) || is.name(x)) {
     character()
@@ -1053,9 +1053,9 @@ nlmixrfindLhs <- function(x) {
     } else {
       lhs <- character()
     }
-    unique(c(lhs, unlist(lapply(x, nlmixrfindLhs))))
+    unique(c(lhs, unlist(lapply(x, nlmixr2findLhs))))
   } else if (is.pairlist(x)) {
-    unique(unlist(lapply(x, nlmixrfindLhs)))
+    unique(unlist(lapply(x, nlmixr2findLhs)))
   } else {
     stop("Don't know how to handle type ", typeof(x),
       call. = FALSE
@@ -1099,16 +1099,16 @@ unsupported.dists <- c(
   "dhyper", "hyper", "dunif", "unif",
   "dweibull", "weibull",
   ## for testing...
-  "nlmixrDist"
+  "nlmixr2Dist"
 )
 add.dists <- c("add", "prop", "propT", "norm", "pow", "powT", "dnorm", "logn", "lnorm", "dlnorm", "tbs", "tbsYj", "boxCox", "yeoJohnson", "logitNorm", "probitNorm")
-nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
+nlmixr2UIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   .md5 <- digest::digest(list(
     .deparse1(body(fun)), .deparse(ini), .deparse(bigmodel),
-    ## Should give different models for different nlmixr versions
-    sessionInfo()$otherPkgs$nlmixr$Version
+    ## Should give different models for different nlmixr2 versions
+    sessionInfo()$otherPkgs$nlmixr2$Version
   ))
-  .wd <- RxODE::rxTempDir()
+  .wd <- rxode2::rxTempDir()
   if (.wd == "") {
     warning("rxTempDir did not work")
     .wd <- tempfile()
@@ -1164,7 +1164,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     sink()
     .thisEnv <- environment()
     .thisEnv$ws <- character(0)
-    ret <- tryCatch(suppressWarnings(withCallingHandlers(.nlmixrUIModel(fun, ini, bigmodel),
+    ret <- tryCatch(suppressWarnings(withCallingHandlers(.nlmixr2UIModel(fun, ini, bigmodel),
       warning = function(w) {
         assign("ws", unique(c(w$message, .thisEnv$ws)), .thisEnv)
       }
@@ -1180,14 +1180,14 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       save(.lst, file = .uiBad)
       ## stop(.lst$em);
       ## Let it error out on its own for the backtrace...
-      ret <- .nlmixrUIModel(fun, ini, bigmodel)
+      ret <- .nlmixr2UIModel(fun, ini, bigmodel)
     }
     save(ret, .lst, file = .uiFile)
     unlink(.uiBad)
     return(ret)
   }
 }
-.nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
+.nlmixr2UIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   ## Parses the UI function to extract predictions and errors, and the other model specification.
   .doAssign <- TRUE
   .assign <- function(...) {
@@ -1203,12 +1203,12 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       stop(sprintf("The following parameter(s) were in the ini block but not in the model block: %s", paste(.diff, collapse = ", ")))
     }
   }
-  if (any(regexpr(rex::rex(start, or("rx_", "nlmixr_")), paste(all.names)) != -1)) {
-    stop("Parameters/States/Variables cannot start with `rx_` or `nlmixr_`")
+  if (any(regexpr(rex::rex(start, or("rx_", "nlmixr2_")), paste(all.names)) != -1)) {
+    stop("Parameters/States/Variables cannot start with `rx_` or `nlmixr2_`")
   }
   all.vars <- allVars(body(fun))
   all.funs <- allCalls(body(fun))
-  all.lhs <- nlmixrfindLhs(body(fun))
+  all.lhs <- nlmixr2findLhs(body(fun))
   errs.specified <- c()
   add.prop.errs <- .data.frame(y = character(), add = logical(), prop = logical())
   bounds <- ini
@@ -1280,7 +1280,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       }
     }
   }
-  .regPar <- rex::rex("nlmixr_", capture(anything), "_par")
+  .regPar <- rex::rex("nlmixr2_", capture(anything), "_par")
   .doDist <- function(distName, distArgs, curCond = NULL) {
     if (any(regexpr(.regPar, distArgs) != -1)) {
       .tmp <- distArgs[regexpr(.regPar, distArgs) != -1]
@@ -1356,7 +1356,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       .tmp1[, "trHi"] <- .trHi
       .tmp1[, "trLow"] <- .trLow
       .tmp <- rbind(.tmp, .tmp1)
-      class(.tmp) <- c("nlmixrBounds", "data.frame")
+      class(.tmp) <- c("nlmixr2Bounds", "data.frame")
       .assign("bounds", .tmp, this.env)
       return(errn)
     }
@@ -1388,7 +1388,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       }
       .tmp$trHi[.w] <- .trHi
       .tmp$trLow[.w] <- .trLow
-      class(.tmp) <- c("nlmixrBounds", "data.frame")
+      class(.tmp) <- c("nlmixr2Bounds", "data.frame")
       .assign("bounds", .tmp, this.env)
     }
     return(errn)
@@ -1402,7 +1402,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     }
     .assign("errs.specified", unique(errs.specified, err1), this.env)
     if (any(do.pred == c(2, 4, 5))) {
-      return(quote(nlmixrIgnore()))
+      return(quote(nlmixr2Ignore()))
     }
     else if (any(do.pred == c(1, 4, 5))) {
       .assign(".predDf", rbind(
@@ -1413,7 +1413,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
         )
       ), this.env)
       return(bquote(if (CMT == .(curCond)) {
-        nlmixr_pred <- .(x2)
+        nlmixr2_pred <- .(x2)
       }))
     } else if (do.pred == 3) {
       .doDist(err1, err1.args, curCond)
@@ -1455,7 +1455,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       tmp <- paste(sort(c(err1, err2)), collapse = "+")
       .assign("errs.specified", unique(errs.specified, tmp), this.env)
       if (any(do.pred == c(2, 4, 5))) {
-        return(quote(nlmixrIgnore()))
+        return(quote(nlmixr2Ignore()))
       }
       else if (any(do.pred == c(1, 4, 5))) {
         .assign(".predDf", rbind(
@@ -1466,7 +1466,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
           )
         ), this.env)
         return(bquote(if (CMT == .(curCond)) {
-          nlmixr_pred <- .(x2)
+          nlmixr2_pred <- .(x2)
         }))
       } else if (do.pred == 3) {
         .doDist(err1, err1.args, curCond)
@@ -1518,7 +1518,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       tmp <- paste(sort(c(err1, err2, err3)), collapse = "+")
       .assign("errs.specified", unique(errs.specified, tmp), this.env)
       if (any(do.pred == c(2, 4, 5))) {
-        return(quote(nlmixrIgnore()))
+        return(quote(nlmixr2Ignore()))
       }
       else if (any(do.pred == c(1, 4, 5))) {
         .assign(".predDf", rbind(
@@ -1529,7 +1529,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
           )
         ), this.env)
         return(bquote(if (CMT == .(curCond)) {
-          nlmixr_pred <- .(x2)
+          nlmixr2_pred <- .(x2)
         }))
       } else if (do.pred == 3) {
         .doDist(err1, err1.args, curCond)
@@ -1566,7 +1566,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   .ff <- function(x) {
     if (is.name(x)) {
       .x <- as.character(x)
-      .x <- sub("^nlmixr_(.*)_par$", "\\1", .x)
+      .x <- sub("^nlmixr2_(.*)_par$", "\\1", .x)
       if (any.theta.names(.x, theta.names)) {
         ## print(as.character(x))
         .assign("theta.ord", unique(c(theta.ord, .x)), this.env)
@@ -1575,7 +1575,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
       if ((identical(x[[1]], quote(`=`)) || identical(x[[1]], quote(`<-`)))) {
         .x2 <- deparse1(x[[2]])
         .x3 <- deparse1(x[[3]])
-        if (paste0("nlmixr_", .x3, "_par") == .x2) {
+        if (paste0("nlmixr2_", .x3, "_par") == .x2) {
           return(NULL)
         }
       }
@@ -1698,13 +1698,13 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
         err2.args <- as.character(x[[3]][[3]][-1])
         .doDist2(err1, err1.v, err1.args, err2, err2.v, err2.args, x[[2]], x[[3]])
       } else if (.isTilde && (do.pred != 2)) {
-        return(quote(nlmixrIgnore()))
+        return(quote(nlmixr2Ignore()))
       } else if (identical(x[[1]], quote(`<-`)) && !any(do.pred == c(2, 4, 5))) {
         .ff(x)
-        return(quote(nlmixrIgnore()))
+        return(quote(nlmixr2Ignore()))
       } else if (identical(x[[1]], quote(`=`)) && !any(do.pred == c(2, 4, 5))) {
         .ff(x)
-        return(quote(nlmixrIgnore()))
+        return(quote(nlmixr2Ignore()))
       } else if (identical(x[[1]], quote(`<-`)) && do.pred == 4) {
         .ff(x)
         ## SAEM requires = instead of <-
@@ -2009,8 +2009,8 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   }
   rm.empty <- function(x) {
     ## empty if/else
-    ## First remove if () followed by nlmixrIgnore()
-    ignoreit <- rex::rex(any_spaces, "nlmixrIgnore()", any_spaces)
+    ## First remove if () followed by nlmixr2Ignore()
+    ignoreit <- rex::rex(any_spaces, "nlmixr2Ignore()", any_spaces)
     w1 <- which(regexpr(rex::rex(start, any_spaces, or(group("if", any_spaces, "(", anything, ")"), "else"), any_spaces, end), x) != -1)
     if (length(w1) > 0) {
       w2 <- which(regexpr(ignoreit, x[w1 + 1]) != -1)
@@ -2096,13 +2096,13 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
           }
           if (.doIt) {
             .rxBegin <- funTxt
-            .rxBegin[.w] <- gsub(.re, paste0("\\1\\2\\3\\4\\5nlmixr_\\3_", repE),
+            .rxBegin[.w] <- gsub(.re, paste0("\\1\\2\\3\\4\\5nlmixr2_\\3_", repE),
               .rxBegin[.w],
               perl = TRUE
             )
             .lines <- gsub(
               rex::rex(.re, anything),
-              paste0("\\1nlmixr_\\3_", repE, "\\5\\6"), .lines
+              paste0("\\1nlmixr2_\\3_", repE, "\\5\\6"), .lines
             )
             ## .w <- min(which(regexpr(.regRx, .rxBegin, perl=TRUE) != -1))-1;
             ## return(c(.rxBegin[1:.w],.lines,.rxBegin[-(1:.w)]));
@@ -2166,7 +2166,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
             } else if (is.name(x)) {
               if (any(as.character(x) == ini$name)) {
                 .assign("extra", unique(c(.env$extra, as.character(x))), .env)
-                return(eval(parse(text = sprintf("quote(nlmixr_%s_par)", as.character(x)))))
+                return(eval(parse(text = sprintf("quote(nlmixr2_%s_par)", as.character(x)))))
               } else {
                 return(x)
               }
@@ -2181,7 +2181,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
           .x <- .deparse(.subs(body(eval(parse(text = paste("function(){\n", paste(funTxt[-(1:w)], collapse = "\n"), "\n}"))))))
           .x <- .x[-1]
           .x <- .x[-length(.x)]
-          return(c(funTxt[1:w], paste0("nlmixr_", .env$extra, "_par <- ", .env$extra), .x))
+          return(c(funTxt[1:w], paste0("nlmixr2_", .env$extra, "_par <- ", .env$extra), .x))
         }
         return(funTxt)
       }
@@ -2198,7 +2198,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     "lag(", "alag(", "r(", "rate(",
     group(anything, any_spaces, "(0)", any_spaces, or("=", "<-"))
   ))
-  .lhs <- nlmixrfindLhs(body(
+  .lhs <- nlmixr2findLhs(body(
     eval(parse(text = paste(
       "function(){",
       paste(.tmp, collapse = "\n"),
@@ -2217,9 +2217,9 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   .reg <- rex::rex(or(
     group(any_spaces, "(", any_spaces, "{", any_spaces),
     group(any_spaces, "}", any_spaces, ")", any_spaces),
-    group(any_spaces, "nlmixrIgnore()", any_spaces),
-    group(any_spaces, "(", any_spaces, "{", any_spaces, "nlmixrIgnore()", any_spaces),
-    group("nlmixrIgnore()", any_spaces, "}", any_spaces, ")")
+    group(any_spaces, "nlmixr2Ignore()", any_spaces),
+    group(any_spaces, "(", any_spaces, "{", any_spaces, "nlmixr2Ignore()", any_spaces),
+    group("nlmixr2Ignore()", any_spaces, "}", any_spaces, ")")
   ))
   .pred <- sapply(pred.txt, function(x) {
     regexpr(.reg, x) != -1
@@ -2297,7 +2297,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     )
     .pred <- gsub(
       .regLin,
-      "nlmixr_lincmt_\\1 <- \\2", rx.txt
+      "nlmixr2_lincmt_\\1 <- \\2", rx.txt
     )
     .pred <- .pred[regexpr(rex::rex(
       start, any_spaces, or("dur", "d", "rate", "r", "lag", "alag", "f", "F"),
@@ -2311,38 +2311,38 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
         start, any_spaces, capture(or(.vars)), any_spaces, or("=", "<-"),
         capture(anything)
       ),
-      "\\1 <- nlmixr_lincmt_\\1", rx.txt
+      "\\1 <- nlmixr2_lincmt_\\1", rx.txt
     )
     .pred <- .pred[regexpr(rex::rex("linCmt("), .pred) == -1]
     if (any(regexpr(rex::rex("linCmt("), .rx) != -1)) .hasLinCmt <- FALSE
     rest <- eval(parse(text = paste(c(
       "function(){",
       .pred, .rx,
-      ifelse(.hasLinCmt, "nlmixr_lincmt_pred <- linCmt()\n}", "}")
+      ifelse(.hasLinCmt, "nlmixr2_lincmt_pred <- linCmt()\n}", "}")
     ),
     collapse = "\n"
     )))
     if (!is.null(saem.pars)) {
       saem.pars <- gsub(
         .regLin,
-        "nlmixr_lincmt_\\1 = \\2", saem.pars
+        "nlmixr2_lincmt_\\1 = \\2", saem.pars
       )
     }
     if (!is.null(nlme.mu.fun)) {
       nlme.mu.fun <- gsub(
         .regLin,
-        "nlmixr_lincmt_\\1 = \\2", nlme.mu.fun
+        "nlmixr2_lincmt_\\1 = \\2", nlme.mu.fun
       )
     }
     pred.txt <- gsub(
       rex::rex("linCmt(", any_spaces, ")"),
-      "nlmixr_lincmt_pred", pred.txt
+      "nlmixr2_lincmt_pred", pred.txt
     )
-    rest.txt <- gsub(.regLin, "nlmixr_lincmt_\\1 = \\2", rest.txt)
+    rest.txt <- gsub(.regLin, "nlmixr2_lincmt_\\1 = \\2", rest.txt)
     .tmp <- .bodyDewrap(as.character(attr(fun, "srcref"), useSource = TRUE))
     .tmp <- .tmp[regexpr("~", .tmp) != -1]
-    .tmp <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr_lincmt_pred", .tmp)
-    .tmp <- c("function()({", .pred, .rx, ifelse(.hasLinCmt, "nlmixr_lincmt_pred <- linCmt()", ""), "})")
+    .tmp <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr2_lincmt_pred", .tmp)
+    .tmp <- c("function()({", .pred, .rx, ifelse(.hasLinCmt, "nlmixr2_lincmt_pred <- linCmt()", ""), "})")
     fun <- eval(parse(text = paste(.tmp, collapse = "\n"), keep.source = TRUE))
     rxode <- TRUE
     .pred <- FALSE
@@ -2357,7 +2357,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     w <- max(w)
     if (any(regexpr(.regRx, rx.txt[1:w], perl = TRUE) != -1)) {
       if (length(rx.txt) == w) {
-        tmp <- RxODE::rxGetModel(paste(rx.txt, collapse = "\n"))
+        tmp <- rxode2::rxGetModel(paste(rx.txt, collapse = "\n"))
         tmp <- paste(tmp$params, "=", tmp$params)
         w <- length(tmp)
         rx.txt <- c(tmp, rx.txt)
@@ -2381,7 +2381,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
           rx.ode <- rx.txt[-(1:.w0)]
           w <- .w0
           if (regexpr(rex::rex("else"), rx.ode[1]) != -1) {
-            stop("else if are not supported in nlmixr")
+            stop("else if are not supported in nlmixr2")
           }
         }
         if (any(regexpr(.regRx, rx.pred, perl = TRUE) != -1)) {
@@ -2450,21 +2450,21 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
 
     rxode <- paste(rx.ode, collapse = "\n")
     if (.linCmt) {
-      rxode <- RxODE::rxNorm(RxODE::rxGetLin(rxode))
+      rxode <- rxode2::rxNorm(rxode2::rxGetLin(rxode))
     }
     rest <- rx.pred
-    all.vars <- all.vars[!(all.vars %in% RxODE::rxState(rxode))]
-    rest.vars <- rest.vars[!(rest.vars %in% RxODE::rxState(rxode))]
+    all.vars <- all.vars[!(all.vars %in% rxode2::rxState(rxode))]
+    rest.vars <- rest.vars[!(rest.vars %in% rxode2::rxState(rxode))]
     all.covs <- setdiff(rest.vars, paste0(bounds$name))
-    all.covs <- all.covs[!(all.covs %in% RxODE::rxLhs(rxode))]
-    all.covs <- all.covs[!(all.covs %in% RxODE::rxState(rxode))]
+    all.covs <- all.covs[!(all.covs %in% rxode2::rxLhs(rxode))]
+    all.covs <- all.covs[!(all.covs %in% rxode2::rxState(rxode))]
     all.covs <- setdiff(all.covs, c(
       "t", "time", "podo", "M_E", "M_LOG2E", "M_LOG10E", "M_LN2", "M_LN10", "M_PI", "M_PI_2", "M_PI_4", "M_1_PI",
       "M_2_PI", "M_2_SQRTPI", "M_SQRT2", "M_SQRT1_2", "M_SQRT_3", "M_SQRT_32", "M_LOG10_2", "M_2PI", "M_SQRT_PI",
       "M_1_SQRT_2PI", "M_SQRT_2dPI", "M_LN_SQRT_PI", "M_LN_SQRT_2PI", "M_LN_SQRT_PId2", "pi",
-      nlmixrfindLhs(body(rest))
+      nlmixr2findLhs(body(rest))
     ))
-    .mv <- RxODE::rxModelVars(rxode)
+    .mv <- rxode2::rxModelVars(rxode)
     .state <- c(.mv$state, .mv$stateExtra)
     .tmp <- .data.frame(cmt = seq_along(.state), cond = .state)
     .predDf$dvid <- seq_along(.predDf$var)
@@ -2500,7 +2500,7 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
     if (any(is.na(.predDf$cmt))) {
       .predDfNa <- .predDf[is.na(.predDf$cmt), names(.predDf) != "cmt"]
       .predDf <- .predDf[!is.na(.predDf$cmt), ]
-      .mv <- RxODE::rxModelVars(rxode)
+      .mv <- rxode2::rxModelVars(rxode)
       .state <- c(.mv$state, .mv$stateExtra)
       .tmp <- .data.frame(cmt = seq_along(.state), cond = .state)
       .predDf <- rbind(
@@ -2564,9 +2564,9 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   if (length(misplaced.dists) > 0) {
     stop(sprintf("distributions need to be on residual model lines (like f ~ add(add.err)).\nmisplaced distribution(s): %s", paste(misplaced.dists, collapse = ", ")))
   }
-  tmp <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr_lincmt_pred", .deparse(pred))
+  tmp <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr2_lincmt_pred", .deparse(pred))
   pred <- eval(parse(text = paste(tmp, collapse = "\n")))
-  tmp <- tmp[regexpr(rex::rex("nlmixr_pred <- "), tmp) != -1]
+  tmp <- tmp[regexpr(rex::rex("nlmixr2_pred <- "), tmp) != -1]
   if (!is.null(saem.pars)) {
     saem.pars <- new.fn(saem.pars)
     saem.theta.trans <- rep(NA, length(theta.names))
@@ -2650,16 +2650,16 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   .predDf <- .predDf[order(.predDf$cmt), ]
   .w <- which(is.na(.predDf$cond))
   if (length(.w) > 0) .predDf$cond[.w] <- ""
-  .predDf$var <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr_lincmt_pred", paste(.predDf$var))
+  .predDf$var <- gsub(rex::rex("linCmt(", any_spaces, ")"), "nlmixr2_lincmt_pred", paste(.predDf$var))
   .predSaem <- eval(parse(text = sprintf("function(){\n%s;\n}", paste(paste(.predDf$var), collapse = ";\n"))))
   .w <- which(!is.na(bounds$err))
   .tmpErr <- paste(bounds$name[.w])
-  .errReg <- rex::rex("nlmixr_", or(.tmpErr), "_par", any_spaces, or("<-", "="), any_spaces, or(.tmpErr))
+  .errReg <- rex::rex("nlmixr2_", or(.tmpErr), "_par", any_spaces, or("<-", "="), any_spaces, or(.tmpErr))
   .subs <- function(x) {
     if (is.atomic(x)) {
       x
     } else if (is.name(x)) {
-      .w <- which(as.character(x) == paste0("nlmixr_", .tmpErr, "_par"))
+      .w <- which(as.character(x) == paste0("nlmixr2_", .tmpErr, "_par"))
       if (length(.w) == 1) {
         return(eval(parse(text = sprintf("quote(%s)", .tmpErr[.w]))))
       } else {
@@ -2742,12 +2742,12 @@ nlmixrUIModel <- function(fun, ini = NULL, bigmodel = NULL) {
   return(ret)
 }
 
-##' Create the nlme specs list for nlmixr nlme solving
-##' @inheritParams nlmixrUI.nlmefun
+##' Create the nlme specs list for nlmixr2 nlme solving
+##' @inheritParams nlmixr2UI.nlmefun
 ##' @param mu.type is the mu-referencing type of model hat nlme will be using.
 ##' @return specs list for nlme
 ##' @author Matthew L. Fidler
-nlmixrUI.nlme.specs <- function(object, mu.type = c("thetas", "covariates", "none")) {
+nlmixr2UI.nlme.specs <- function(object, mu.type = c("thetas", "covariates", "none")) {
   mu.type <- match.arg(mu.type)
   if (mu.type == "thetas") {
     return(list(
@@ -2819,7 +2819,7 @@ nlmixrUI.nlme.specs <- function(object, mu.type = c("thetas", "covariates", "non
 ##' @return Parameter function for nlme
 ##' @author Matthew L. Fidler
 ##' @keywords internal
-nlmixrUI.nlmefun <- function(object, mu.type = c("thetas", "covariates", "none")) {
+nlmixr2UI.nlmefun <- function(object, mu.type = c("thetas", "covariates", "none")) {
   ## create nlme function
   mu.type <- match.arg(mu.type)
   if (mu.type == "thetas") {
@@ -2851,11 +2851,11 @@ nlmixrUI.nlmefun <- function(object, mu.type = c("thetas", "covariates", "none")
 }
 ##' Return dynmodel variable translation function
 ##'
-##' @param object nlmixr ui object
-##' @return nlmixr dynmodel translation
+##' @param object nlmixr2 ui object
+##' @return nlmixr2 dynmodel translation
 ##' @author Matthew Fidler
-nlmixrUI.dynmodelfun <- function(object) {
-  .fn <- nlmixrUI.nlmefun(object, "none")
+nlmixr2UI.dynmodelfun <- function(object) {
+  .fn <- nlmixr2UI.nlmefun(object, "none")
   .fn <- deparse(body(.fn))
   .fn[1] <- paste0("{\n.env <-environment();\nsapply(names(..par),function(x){assign(x,setNames(..par[x],NULL),envir=.env)})\n")
   .fn[length(.fn)] <- paste("return(unlist(as.list(environment())))}")
@@ -2865,14 +2865,14 @@ nlmixrUI.dynmodelfun <- function(object) {
 
 ##' Return dynmodel variable translation function
 ##'
-##' @param object nlmixr ui object
-##' @return nlmixr dynmodel translation
+##' @param object nlmixr2 ui object
+##' @return nlmixr2 dynmodel translation
 ##' @author Matthew Fidler
-nlmixrUI.dynmodelfun2 <- function(object) {
-  .fn <- nlmixrUI.nlmefun(object, "none")
+nlmixr2UI.dynmodelfun2 <- function(object) {
+  .fn <- nlmixr2UI.nlmefun(object, "none")
   .bfn <- body(.fn)
   .fn <- deparse(.bfn)
-  .extra <- paste(deparse(nlmixrfindLhs(.bfn)), collapse = " ")
+  .extra <- paste(deparse(nlmixr2findLhs(.bfn)), collapse = " ")
   .fn[1] <- paste0("{\n.env <-environment();\nsapply(names(..par),function(x){assign(x,setNames(..par[[x]],NULL),envir=.env)})\n")
   .fn[length(.fn)] <- paste0(
     ".names <- unique(c(names(..par),",
@@ -2889,7 +2889,7 @@ nlmixrUI.dynmodelfun2 <- function(object) {
 ##' @return nlme/lme variance object
 ##' @author Matthew L. Fidler
 ##' @keywords internal
-nlmixrUI.nlme.var <- function(object) {
+nlmixr2UI.nlme.var <- function(object) {
   ## Get the variance for the nlme object
   add.prop.errs <- object$add.prop.errs
   w.no.add <- which(!add.prop.errs$add)
@@ -2898,7 +2898,7 @@ nlmixrUI.nlme.var <- function(object) {
   power <- ", fixed=c(1)"
   powera <- ", fixed=list(power=1)"
   if (length(add.prop.errs$y) > 1) {
-    grp <- " | nlmixr.grp"
+    grp <- " | nlmixr2.grp"
   }
   if (length(w.no.add) > 0) {
     const <- sprintf(", fixed=list(%s)", paste(paste0(add.prop.errs$y[w.no.add], "=0"), collapse = ", "))
@@ -2937,12 +2937,12 @@ nlmixrUI.nlme.var <- function(object) {
   }
   return(eval(parse(text = tmp)))
 }
-##' Return RxODE model with predictions appended
+##' Return rxode2 model with predictions appended
 ##'
 ##' @param object UI object
-##' @return String or NULL if RxODE is not specified by UI.
+##' @return String or NULL if rxode2 is not specified by UI.
 ##' @author Matthew L. Fidler
-nlmixrUI.rxode.pred <- function(object) {
+nlmixr2UI.rxode.pred <- function(object) {
   if (is.null(object$rxode)) {
     return(NULL)
   } else {
@@ -2951,16 +2951,16 @@ nlmixrUI.rxode.pred <- function(object) {
   }
 }
 
-##' Return RxODE model with predictions appended
+##' Return rxode2 model with predictions appended
 ##'
 ##' @param object UI object
-##' @return Combined focei model text for RxODE
+##' @return Combined focei model text for rxode2
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.rx1 <- function(object) {
+nlmixr2UI.saem.rx1 <- function(object) {
   .prd <- .deparse1(body(object$pred))
-  .w <- any(regexpr("\\bnlmixr_lincmt_pred\\b", .prd, perl = TRUE) != -1)
+  .w <- any(regexpr("\\bnlmixr2_lincmt_pred\\b", .prd, perl = TRUE) != -1)
   if (length(.w) == 1) {
-    .prd[.w] <- paste0("nlmixr_lincmt_pred <- linCmt()\n", .prd[.w])
+    .prd[.w] <- paste0("nlmixr2_lincmt_pred <- linCmt()\n", .prd[.w])
   }
   if (exists(".sf1", object$env)) {
     .bf <- .deparse1(body(object$env$.sf1))
@@ -2969,18 +2969,18 @@ nlmixrUI.saem.rx1 <- function(object) {
   }
   .ret <- paste(c(.bf, .prd, object$extra), collapse = "\n")
   if (any(regexpr("\\blinCmt[(]", .prd, perl = TRUE) != -1)) {
-    .ret <- RxODE::rxNorm(RxODE::rxGetLin(.ret))
+    .ret <- rxode2::rxNorm(rxode2::rxGetLin(.ret))
   }
   .ret
 }
 
-##' Return RxODE model with predictions appended
+##' Return rxode2 model with predictions appended
 ##'
 ##' @param object UI object
-##' @return Combined focei model text for RxODE
+##' @return Combined focei model text for rxode2
 ##' @author Matthew L. Fidler
 ##' @noRd
-nlmixrUI.focei.rx1 <- function(obj) {
+nlmixr2UI.focei.rx1 <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .dft <- .df[!is.na(.df$ntheta), ]
   .unfixed <- with(.dft, sprintf("%s=THETA[%d]", name, seq_along(.dft$name)))
@@ -2988,16 +2988,16 @@ nlmixrUI.focei.rx1 <- function(obj) {
   .eta <- .eta[.eta$neta1 == .eta$neta2, ]
   .eta <- with(.eta, sprintf("%s=ETA[%d]", name, .eta$neta1))
   .prd <- .deparse1(body(obj$pred))
-  .w <- any(regexpr("\\bnlmixr_lincmt_pred\\b", .prd, perl = TRUE) != -1)
+  .w <- any(regexpr("\\bnlmixr2_lincmt_pred\\b", .prd, perl = TRUE) != -1)
   if (length(.w) == 1) {
-    .prd[.w] <- paste0("nlmixr_lincmt_pred <- linCmt()\n", .prd[.w])
+    .prd[.w] <- paste0("nlmixr2_lincmt_pred <- linCmt()\n", .prd[.w])
   }
   .ret <- paste(c(
     .unfixed, .eta, .deparse1(body(obj$focei.fun1)),
     .prd, obj$extra
   ), collapse = "\n")
   if (any(regexpr("\\blinCmt[(]", .prd, perl = TRUE) != -1)) {
-    .ret <- RxODE::rxNorm(RxODE::rxGetLin(.ret))
+    .ret <- rxode2::rxNorm(rxode2::rxGetLin(.ret))
   }
   .ret
 }
@@ -3007,7 +3007,7 @@ nlmixrUI.focei.rx1 <- function(obj) {
 ##' @param obj UI object
 ##' @return parameters function defined in THETA[#] and ETA[#]s.
 ##' @author Matthew L. Fidler
-nlmixrUI.theta.pars <- function(obj) {
+nlmixr2UI.theta.pars <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .dft <- .df[!is.na(.df$ntheta), ]
   .unfixed <- with(.dft, sprintf("%s=THETA[%d]", name, seq_along(.dft$name)))
@@ -3023,7 +3023,7 @@ nlmixrUI.theta.pars <- function(obj) {
 ##' @param obj UI object
 ##' @return Character of distribution
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.distribution <- function(obj) {
+nlmixr2UI.saem.distribution <- function(obj) {
   .df <- obj$ini$err
   .df <- paste(.df[which(!is.na(.df))])
   if (any(.df %in% c("dpois", "pois"))) {
@@ -3052,7 +3052,7 @@ nlmixrUI.saem.distribution <- function(obj) {
 ##' @param obj UI object
 ##' @return logical vector of fixed THETA parameters
 ##' @author Matthew L. Fidler
-nlmixrUI.focei.fixed <- function(obj) {
+nlmixr2UI.focei.fixed <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .dft <- .df[!is.na(.df$ntheta), ]
   .fix <- .dft$fix
@@ -3065,7 +3065,7 @@ nlmixrUI.focei.fixed <- function(obj) {
 ##' @param obj UI object
 ##' @return List of parameters that are fixed.
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.fixed <- function(obj) {
+nlmixr2UI.saem.fixed <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .dft <- .df[!is.na(.df$ntheta), ]
   .fixError <- .dft[!is.na(.dft$err), ]
@@ -3083,7 +3083,7 @@ nlmixrUI.saem.fixed <- function(obj) {
 ##' @param obj UI object
 ##' @return list with FOCEi style initializations
 ##' @author Matthew L. Fidler
-nlmixrUI.focei.inits <- function(obj) {
+nlmixr2UI.focei.inits <- function(obj) {
   df <- .as.data.frame(obj$ini)
   dft <- df[!is.na(df$ntheta), ]
   eta <- df[!is.na(df$neta1), ]
@@ -3124,7 +3124,7 @@ nlmixrUI.focei.inits <- function(obj) {
 ##' @param obj ui object
 ##' @return list of eta to eta.trans
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.eta.trans <- function(obj) {
+nlmixr2UI.saem.eta.trans <- function(obj) {
   eta.names <- obj$eta.names
   theta.names <- obj$theta.names
   theta.trans <- .saemThetaTrans(obj)
@@ -3150,7 +3150,7 @@ nlmixrUI.saem.eta.trans <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$omega spec
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.model.omega <- function(obj) {
+nlmixr2UI.saem.model.omega <- function(obj) {
   dm <- sum(!is.na(.saemThetaTrans(obj)))
   et <- obj$saem.eta.trans
   mat <- matrix(rep(0, dm * dm), dm)
@@ -3161,7 +3161,7 @@ nlmixrUI.saem.model.omega <- function(obj) {
   return(mat)
 }
 
-nlmixrUI.saem.low <- function(obj) {
+nlmixr2UI.saem.low <- function(obj) {
   .predDf <- obj$predDf
   .ini <- .as.data.frame(obj$ini)
   .ini <- .ini[!is.na(.ini$err), ]
@@ -3179,7 +3179,7 @@ nlmixrUI.saem.low <- function(obj) {
   }))
 }
 
-nlmixrUI.saem.hi <- function(obj) {
+nlmixr2UI.saem.hi <- function(obj) {
   .predDf <- obj$predDf
   .ini <- .as.data.frame(obj$ini)
   .ini <- .ini[!is.na(.ini$err), ]
@@ -3197,7 +3197,7 @@ nlmixrUI.saem.hi <- function(obj) {
   }))
 }
 
-nlmixrUI.saem.propT <- function(obj) {
+nlmixr2UI.saem.propT <- function(obj) {
   if (any(obj$saem.distribution == c("poisson", "binomial"))) {
     return(0L)
   }
@@ -3215,7 +3215,7 @@ nlmixrUI.saem.propT <- function(obj) {
 }
 
 # Get the TBS yj for SAEM
-nlmixrUI.saem.yj <- function(obj) {
+nlmixr2UI.saem.yj <- function(obj) {
   ## yj is for the number of endpoints in the nlmir model
   ## yj = 7 Yeo Johnson and  probit()
   ## yj = 6 probit()
@@ -3266,7 +3266,7 @@ nlmixrUI.saem.yj <- function(obj) {
 }
 
 # Get the lambda estimates for SAEM
-nlmixrUI.saem.lambda <- function(obj) {
+nlmixr2UI.saem.lambda <- function(obj) {
   if (any(obj$saem.distribution == c("poisson", "binomial"))) {
     return(1.0)
   }
@@ -3291,7 +3291,7 @@ nlmixrUI.saem.lambda <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$res.mod spec
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.res.mod <- function(obj) {
+nlmixr2UI.saem.res.mod <- function(obj) {
   if (any(obj$saem.distribution == c("poisson", "binomial"))) {
     return(1)
   }
@@ -3384,7 +3384,7 @@ nlmixrUI.saem.res.mod <- function(obj) {
 ##' @param obj SAEM user interface function.
 ##' @return Names of error estimates for SAEM
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.res.name <- function(obj) {
+nlmixr2UI.saem.res.name <- function(obj) {
   w <- which(sapply(obj$err, function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn"))))
   ret <- c()
   if (length(w) == 1) {
@@ -3404,7 +3404,7 @@ nlmixrUI.saem.res.name <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$ares spec
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.ares <- function(obj) {
+nlmixr2UI.saem.ares <- function(obj) {
   .predDf <- obj$predDf
   .ini <- .as.data.frame(obj$ini)
   .ini <- .ini[!is.na(.ini$err), ]
@@ -3430,7 +3430,7 @@ nlmixrUI.saem.ares <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$ares spec
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.bres <- function(obj) {
+nlmixr2UI.saem.bres <- function(obj) {
   .predDf <- obj$predDf
   .ini <- .as.data.frame(obj$ini)
   .ini <- .ini[!is.na(.ini$err), ]
@@ -3455,7 +3455,7 @@ nlmixrUI.saem.bres <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$ares spec
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.cres <- function(obj) {
+nlmixr2UI.saem.cres <- function(obj) {
   .predDf <- obj$predDf
   .ini <- .as.data.frame(obj$ini)
   .ini <- .ini[!is.na(.ini$err), ]
@@ -3475,7 +3475,7 @@ nlmixrUI.saem.cres <- function(obj) {
 ##' @param obj UI model
 ##' @return SAEM model$log.eta
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.log.eta <- function(obj) {
+nlmixr2UI.saem.log.eta <- function(obj) {
   lt <- obj$log.theta
   dm <- sum(!is.na(.saemThetaTrans(obj)))
   ret <- rep(FALSE, dm)
@@ -3495,11 +3495,11 @@ nlmixrUI.saem.log.eta <- function(obj) {
 ##' @param obj UI object
 ##' @return saem user function
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.fit <- function(obj) {
+nlmixr2UI.saem.fit <- function(obj) {
   if (any(ls(envir = obj$env) == "saem.fit")) {
     return(obj$env$saem.fit)
   } else if (!is.null(obj$rxode)) {
-    ## RxODE function
+    ## rxode2 function
     if (is.null(obj$saem.pars)) {
       stop("SAEM requires mu-referenced parameters")
     }
@@ -3507,8 +3507,8 @@ nlmixrUI.saem.fit <- function(obj) {
     if (length(inPars) == 0) {
       inPars <- NULL
     } else {
-      ## Check for inPars in Covariates in RxODE model
-      .extra <- RxODE::rxModelVars(obj$rxode)
+      ## Check for inPars in Covariates in rxode2 model
+      .extra <- rxode2::rxModelVars(obj$rxode)
       .extra <- intersect(obj$saem.all.covs, .extra$params)
       if (length(.extra) > 0) {
         inPars <- c(inPars, .extra)
@@ -3571,10 +3571,10 @@ nlmixrUI.saem.fit <- function(obj) {
 }
 ##' Generate SAEM model list
 ##'
-##' @param obj  nlmixr UI object
+##' @param obj  nlmixr2 UI object
 ##' @return SAEM model list
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.model <- function(obj) {
+nlmixr2UI.saem.model <- function(obj) {
   mod <- list(saem_mod = obj$saem.fit)
   if (length(obj$saem.all.covs > 0)) {
     if (!is.null(obj$env$.curTv)) {
@@ -3592,7 +3592,7 @@ nlmixrUI.saem.model <- function(obj) {
   ## FIXME option/warning
   mod$ares <- obj$saem.ares
   mod$bres <- obj$saem.bres
-  ## return(nlmixrUI.saem.bres(obj))
+  ## return(nlmixr2UI.saem.bres(obj))
   ## }
   mod$omega <- obj$saem.model.omega
   return(mod)
@@ -3604,7 +3604,7 @@ nlmixrUI.saem.model <- function(obj) {
   } else {
     .ret <- as.character(body(uif$env$.bpars))
     if (.ret[1] == "{") .ret <- .ret[-1]
-    .pars <- RxODE::rxModelVars(paste(.ret, collapse = "\n"))$params
+    .pars <- rxode2::rxModelVars(paste(.ret, collapse = "\n"))$params
     .thetaNames <- uif$ini$theta.names
     .pars <- setdiff(.pars, uif$all.covs)
     .trans <- setNames(sapply(.thetaNames, function(x) {
@@ -3628,12 +3628,12 @@ nlmixrUI.saem.model <- function(obj) {
   }
   return(all.covs)
 }
-##' Get THETA names for nlmixr's SAEM
+##' Get THETA names for nlmixr2's SAEM
 ##'
-##' @param uif nlmixr UI object
+##' @param uif nlmixr2 UI object
 ##' @return SAEM theta names
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.theta.name <- function(uif) {
+nlmixr2UI.saem.theta.name <- function(uif) {
   .trans <- .saemThetaTrans(uif)
   .df <- .as.data.frame(uif$ini)
   .df <- .df[!is.na(.df$ntheta), ]
@@ -3661,10 +3661,10 @@ nlmixrUI.saem.theta.name <- function(uif) {
 }
 ##' Generate SAEM initial estimates for THETA.
 ##'
-##' @param obj nlmixr UI object
+##' @param obj nlmixr2 UI object
 ##' @return SAEM theta initial estimates
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.init.theta <- function(obj) {
+nlmixr2UI.saem.init.theta <- function(obj) {
   theta.name <- obj$saem.theta.name
   .tv <- obj$env$.curTv
   if (is.null(.tv)) {
@@ -3707,12 +3707,12 @@ nlmixrUI.saem.init.theta <- function(obj) {
 }
 ##' SAEM's init$omega
 ##'
-##' @param obj nlmixr UI object
+##' @param obj nlmixr2 UI object
 ##' @param names When \code{TRUE} return the omega names.  By default
 ##'     this is \code{FALSE}.
 ##' @return Return initial matrix
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.init.omega <- function(obj, names = FALSE) {
+nlmixr2UI.saem.init.omega <- function(obj, names = FALSE) {
   dm <- sum(!is.na(.saemThetaTrans(obj)))
   et <- obj$saem.eta.trans
   ret <- rep(NA, dm)
@@ -3739,10 +3739,10 @@ nlmixrUI.saem.init.omega <- function(obj, names = FALSE) {
 }
 ##' Get saem initilization list
 ##'
-##' @param obj nlmixr UI object
+##' @param obj nlmixr2 UI object
 ##' @return Return SAEM inits list.
 ##' @author Matthew L. Fidler
-nlmixrUI.saem.init <- function(obj) {
+nlmixr2UI.saem.init <- function(obj) {
   ret <- list()
   ret$theta <- obj$saem.init.theta
   ## if (FALSE){
@@ -3751,7 +3751,7 @@ nlmixrUI.saem.init <- function(obj) {
   return(ret)
 }
 
-nlmixrUI.focei.mu.ref <- function(obj) {
+nlmixr2UI.focei.mu.ref <- function(obj) {
   .muRef <- obj$mu.ref
   .tn <- obj$focei.names
   sapply(seq_along(.muRef), function(x) {
@@ -3765,39 +3765,39 @@ nlmixrUI.focei.mu.ref <- function(obj) {
   })
 }
 
-nlmixrUI.model.desc <- function(obj) {
-  .mv <- RxODE::rxModelVars(obj$rxode.pred)
+nlmixr2UI.model.desc <- function(obj) {
+  .mv <- rxode2::rxModelVars(obj$rxode.pred)
   if (obj$predSys) {
-    return("RxODE-based Pred model")
+    return("rxode2-based Pred model")
   } else if (.mv$extraCmt == 0) {
-    return("RxODE-based ODE model")
+    return("rxode2-based ODE model")
   } else {
     return(sprintf(
-      "RxODE-based %s-compartment model%s", .mv$flags["ncmt"],
+      "rxode2-based %s-compartment model%s", .mv$flags["ncmt"],
       ifelse(.mv$extraCmt == 2, " with first-order absorption", "")
     ))
   }
 }
 
-nlmixrUI.poped.notfixed_bpop <- function(obj) {
+nlmixr2UI.poped.notfixed_bpop <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .tmp <- .df[!is.na(.df$ntheta) & is.na(.df$err), ]
   return(setNames(1 - .tmp$fix * 1, paste(.tmp$name)))
 }
 
-nlmixrUI.poped.d <- function(obj) {
+nlmixr2UI.poped.d <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .tmp <- .df[which(is.na(.df$ntheta) & .df$neta1 == .df$neta2), ]
   return(setNames(.tmp$est, paste(.tmp$name)))
 }
 
-nlmixrUI.poped.sigma <- function(obj) {
+nlmixr2UI.poped.sigma <- function(obj) {
   .df <- .as.data.frame(obj$ini)
   .tmp <- .df[!which(is.na(.df$err) & .df$neta1 == .df$neta2), ]
   return(setNames(.tmp$est * .tmp$est, paste(.tmp$name)))
 }
 
-nlmixrUI.logThetasList <- function(obj) {
+nlmixr2UI.logThetasList <- function(obj) {
   .ini <- .as.data.frame(obj$ini)
   .logThetas <- as.integer(which(setNames(sapply(obj$focei.names, function(x) any(x == obj$log.theta)), NULL)))
   .thetas <- .ini[!is.na(.ini$ntheta), ]
@@ -3807,7 +3807,7 @@ nlmixrUI.logThetasList <- function(obj) {
   list(.logThetas, .logThetasF)
 }
 
-nlmixrUI.logitThetasList <- function(obj) {
+nlmixr2UI.logitThetasList <- function(obj) {
   .ini <- .as.data.frame(obj$ini)
   .logitThetas <- as.integer(which(setNames(sapply(obj$focei.names, function(x) any(x == obj$logit.theta)), NULL)))
   .thetas <- .ini[!is.na(.ini$ntheta), ]
@@ -3817,8 +3817,8 @@ nlmixrUI.logitThetasList <- function(obj) {
   list(.logitThetas, .logitThetasF)
 }
 
-nlmixrUI.logitThetasListHi <- function(obj) {
-  .thetaList <- nlmixrUI.logitThetasList(obj)
+nlmixr2UI.logitThetasListHi <- function(obj) {
+  .thetaList <- nlmixr2UI.logitThetasList(obj)
   .names <- obj$focei.names
   .hi <- obj$logit.theta.hi
   list(
@@ -3826,8 +3826,8 @@ nlmixrUI.logitThetasListHi <- function(obj) {
     .hi[.names[.thetaList[[2]]]]
   )
 }
-nlmixrUI.logitThetasListLow <- function(obj) {
-  .thetaList <- nlmixrUI.logitThetasList(obj)
+nlmixr2UI.logitThetasListLow <- function(obj) {
+  .thetaList <- nlmixr2UI.logitThetasList(obj)
   .names <- obj$focei.names
   .low <- obj$logit.theta.low
   list(
@@ -3837,7 +3837,7 @@ nlmixrUI.logitThetasListLow <- function(obj) {
 }
 
 
-nlmixrUI.probitThetasList <- function(obj) {
+nlmixr2UI.probitThetasList <- function(obj) {
   .ini <- .as.data.frame(obj$ini)
   .probitThetas <- as.integer(which(setNames(sapply(obj$focei.names, function(x) any(x == obj$probit.theta)), NULL)))
   .thetas <- .ini[!is.na(.ini$ntheta), ]
@@ -3847,8 +3847,8 @@ nlmixrUI.probitThetasList <- function(obj) {
   list(.probitThetas, .probitThetasF)
 }
 
-nlmixrUI.probitThetasListHi <- function(obj) {
-  .thetaList <- nlmixrUI.probitThetasList(obj)
+nlmixr2UI.probitThetasListHi <- function(obj) {
+  .thetaList <- nlmixr2UI.probitThetasList(obj)
   .names <- obj$focei.names
   .hi <- obj$probit.theta.hi
   list(
@@ -3856,8 +3856,8 @@ nlmixrUI.probitThetasListHi <- function(obj) {
     .hi[.names[.thetaList[[2]]]]
   )
 }
-nlmixrUI.probitThetasListLow <- function(obj) {
-  .thetaList <- nlmixrUI.probitThetasList(obj)
+nlmixr2UI.probitThetasListLow <- function(obj) {
+  .thetaList <- nlmixr2UI.probitThetasList(obj)
   .names <- obj$focei.names
   .low <- obj$probit.theta.low
   list(
@@ -3866,7 +3866,7 @@ nlmixrUI.probitThetasListLow <- function(obj) {
   )
 }
 
-nlmixrUI.poped.ff_fun <- function(obj) {
+nlmixr2UI.poped.ff_fun <- function(obj) {
   if (!is.null(obj$lin.solved)) {
     stop("Solved system not supported yet.")
   } else {
@@ -3876,7 +3876,7 @@ nlmixrUI.poped.ff_fun <- function(obj) {
     .eta <- .df[!is.na(.df$neta1), ]
     .eta <- .eta[.eta$neta1 == .eta$neta2, ]
     .eta <- with(.eta, sprintf("%s=b[%d]", name, .eta$neta1))
-    .lhs <- nlmixrfindLhs(body(obj$rest))
+    .lhs <- nlmixr2findLhs(body(obj$rest))
     .f <- .deparse(body(obj$rest))[-1]
     .lhs <- sprintf("return(c(%s))", paste(sprintf("\"%s\"=%s", .lhs, .lhs), collapse = ", "))
     .f <- eval(parse(text = paste(c("function(x,a,bpop,b,bocc){", .unfixed, .eta, .f[-length(.f)], .lhs, "}"), collapse = "\n")))
@@ -3885,7 +3885,7 @@ nlmixrUI.poped.ff_fun <- function(obj) {
 }
 
 ##' @export
-`$.nlmixrUI` <- function(obj, arg, exact = TRUE) {
+`$.nlmixr2UI` <- function(obj, arg, exact = TRUE) {
   x <- obj
   .cls <- class(x)
   class(x) <- "list"
@@ -3896,107 +3896,107 @@ nlmixrUI.poped.ff_fun <- function(obj) {
   } else if (arg == "model") {
     return(x$model)
   } else if (arg == "nlme.fun.mu") {
-    return(nlmixrUI.nlmefun(obj, "thetas"))
+    return(nlmixr2UI.nlmefun(obj, "thetas"))
   } else if (arg == "dynmodel.fun") {
-    return(nlmixrUI.dynmodelfun(obj))
+    return(nlmixr2UI.dynmodelfun(obj))
   } else if (arg == "dynmodel.fun.df") {
-    return(nlmixrUI.dynmodelfun2(obj))
+    return(nlmixr2UI.dynmodelfun2(obj))
   } else if (arg == "nlme.fun") {
-    return(nlmixrUI.nlmefun(obj, "none"))
+    return(nlmixr2UI.nlmefun(obj, "none"))
   } else if (arg == "nlme.fun.mu.cov") {
-    return(nlmixrUI.nlmefun(obj, "covariates"))
+    return(nlmixr2UI.nlmefun(obj, "covariates"))
   } else if (arg == "nlme.specs") {
-    return(nlmixrUI.nlme.specs(obj, "none"))
+    return(nlmixr2UI.nlme.specs(obj, "none"))
   } else if (arg == "nlme.specs.mu") {
-    return(nlmixrUI.nlme.specs(obj, "thetas"))
+    return(nlmixr2UI.nlme.specs(obj, "thetas"))
   } else if (arg == "nlme.specs.mu.cov") {
-    return(nlmixrUI.nlme.specs(obj, "covariates"))
+    return(nlmixr2UI.nlme.specs(obj, "covariates"))
   } else if (arg == "nlme.var") {
-    return(nlmixrUI.nlme.var(obj))
+    return(nlmixr2UI.nlme.var(obj))
   } else if (arg == "rxode.pred") {
-    return(nlmixrUI.rxode.pred(obj))
+    return(nlmixr2UI.rxode.pred(obj))
   } else if (arg == "theta.pars") {
-    return(nlmixrUI.theta.pars(obj))
+    return(nlmixr2UI.theta.pars(obj))
   } else if (arg == "focei.inits") {
-    return(nlmixrUI.focei.inits(obj))
+    return(nlmixr2UI.focei.inits(obj))
   } else if (arg == "focei.fixed") {
-    return(nlmixrUI.focei.fixed(obj))
+    return(nlmixr2UI.focei.fixed(obj))
   } else if (arg == "focei.mu.ref") {
-    return(nlmixrUI.focei.mu.ref(obj))
+    return(nlmixr2UI.focei.mu.ref(obj))
   } else if (arg == "saem.fixed") {
-    return(nlmixrUI.saem.fixed(obj))
+    return(nlmixr2UI.saem.fixed(obj))
   } else if (arg == "saem.theta.name") {
-    return(nlmixrUI.saem.theta.name(obj))
+    return(nlmixr2UI.saem.theta.name(obj))
   } else if (arg == "saem.eta.trans") {
-    return(nlmixrUI.saem.eta.trans(obj))
+    return(nlmixr2UI.saem.eta.trans(obj))
   } else if (arg == "saem.model.omega") {
-    return(nlmixrUI.saem.model.omega(obj))
+    return(nlmixr2UI.saem.model.omega(obj))
   } else if (arg == "saem.res.mod") {
-    return(nlmixrUI.saem.res.mod(obj))
+    return(nlmixr2UI.saem.res.mod(obj))
   } else if (arg == "saem.ares") {
-    return(nlmixrUI.saem.ares(obj))
+    return(nlmixr2UI.saem.ares(obj))
   } else if (arg == "saem.bres") {
-    return(nlmixrUI.saem.bres(obj))
+    return(nlmixr2UI.saem.bres(obj))
   } else if (arg == "saem.cres") {
-    return(nlmixrUI.saem.cres(obj))
+    return(nlmixr2UI.saem.cres(obj))
   } else if (arg == "saem.log.eta") {
-    return(nlmixrUI.saem.log.eta(obj))
+    return(nlmixr2UI.saem.log.eta(obj))
   } else if (arg == "saem.yj") {
-    return(nlmixrUI.saem.yj(obj))
+    return(nlmixr2UI.saem.yj(obj))
   } else if (arg == "saem.propT") {
-    return(nlmixrUI.saem.propT(obj))
+    return(nlmixr2UI.saem.propT(obj))
   } else if (arg == "saem.hi") {
-    return(nlmixrUI.saem.hi(obj))
+    return(nlmixr2UI.saem.hi(obj))
   } else if (arg == "saem.low") {
-    return(nlmixrUI.saem.low(obj))
+    return(nlmixr2UI.saem.low(obj))
   } else if (arg == "saem.lambda") {
-    return(nlmixrUI.saem.lambda(obj))
+    return(nlmixr2UI.saem.lambda(obj))
   } else if (arg == "saem.fit") {
-    return(nlmixrUI.saem.fit(obj))
+    return(nlmixr2UI.saem.fit(obj))
   } else if (arg == "saem.model") {
-    return(nlmixrUI.saem.model(obj))
+    return(nlmixr2UI.saem.model(obj))
   } else if (arg == "saem.init.theta") {
-    return(nlmixrUI.saem.init.theta(obj))
+    return(nlmixr2UI.saem.init.theta(obj))
   } else if (arg == "saem.init.omega") {
-    return(nlmixrUI.saem.init.omega(obj))
+    return(nlmixr2UI.saem.init.omega(obj))
   } else if (arg == "saem.init") {
-    return(nlmixrUI.saem.init(obj))
+    return(nlmixr2UI.saem.init(obj))
   } else if (arg == "saem.omega.name") {
-    return(nlmixrUI.saem.init.omega(obj, TRUE))
+    return(nlmixr2UI.saem.init.omega(obj, TRUE))
   } else if (arg == "saem.res.name") {
-    return(nlmixrUI.saem.res.name(obj))
+    return(nlmixr2UI.saem.res.name(obj))
   } else if (arg == "model.desc") {
-    return(nlmixrUI.model.desc(obj))
+    return(nlmixr2UI.model.desc(obj))
   } else if (arg == "meta") {
     return(x$meta)
   } else if (arg == "saem.distribution") {
-    return(nlmixrUI.saem.distribution(obj))
+    return(nlmixr2UI.saem.distribution(obj))
   } else if (arg == "notfixed_bpop" || arg == "poped.notfixed_bpop") {
-    return(nlmixrUI.poped.notfixed_bpop(obj))
+    return(nlmixr2UI.poped.notfixed_bpop(obj))
   } else if (arg == "poped.ff_fun") {
-    return(nlmixrUI.poped.ff_fun(obj))
+    return(nlmixr2UI.poped.ff_fun(obj))
   } else if (arg == "poped.d") {
-    return(nlmixrUI.poped.d(obj))
+    return(nlmixr2UI.poped.d(obj))
   } else if (arg == "poped.sigma") {
-    return(nlmixrUI.poped.sigma(obj))
+    return(nlmixr2UI.poped.sigma(obj))
   } else if (arg == "logThetasList") {
-    return(nlmixrUI.logThetasList(obj))
+    return(nlmixr2UI.logThetasList(obj))
   } else if (arg == "logitThetasListLow") {
-    return(nlmixrUI.logitThetasListLow(obj))
+    return(nlmixr2UI.logitThetasListLow(obj))
   } else if (arg == "logitThetasListHi") {
-    return(nlmixrUI.logitThetasListHi(obj))
+    return(nlmixr2UI.logitThetasListHi(obj))
   } else if (arg == "logitThetasList") {
-    return(nlmixrUI.logitThetasList(obj))
+    return(nlmixr2UI.logitThetasList(obj))
   } else if (arg == "probitThetasListLow") {
-    return(nlmixrUI.probitThetasListLow(obj))
+    return(nlmixr2UI.probitThetasListLow(obj))
   } else if (arg == "probitThetasListHi") {
-    return(nlmixrUI.probitThetasListHi(obj))
+    return(nlmixr2UI.probitThetasListHi(obj))
   } else if (arg == "probitThetasList") {
-    return(nlmixrUI.probitThetasList(obj))
+    return(nlmixr2UI.probitThetasList(obj))
   } else if (arg == "focei.rx1") {
-    return(nlmixrUI.focei.rx1(obj))
+    return(nlmixr2UI.focei.rx1(obj))
   } else if (arg == "saem.rx1") {
-    return(nlmixrUI.saem.rx1(obj))
+    return(nlmixr2UI.saem.rx1(obj))
   } else if (arg == ".clean.dll") {
     if (exists(".clean.dll", envir = x$meta)) {
       clean <- x$meta$.clean.dll
@@ -4006,33 +4006,33 @@ nlmixrUI.poped.ff_fun <- function(obj) {
     }
     return(TRUE)
   } else if (arg == "random.mu") {
-    return(nlmixrBoundsOmega(x$ini, x$nmodel$mu.ref))
+    return(nlmixr2BoundsOmega(x$ini, x$nmodel$mu.ref))
   } else if (arg == "bpop") {
     arg <- "theta"
   } else if (arg == "multipleEndpoint") {
-    return(nlmixrUI.multipleEndpoint(x))
+    return(nlmixr2UI.multipleEndpoint(x))
   } else if (arg == "muRefTable") {
     class(x) <- .cls
     return(.nmMuTable(x))
   } else if (arg == "single.inner.1") {
-    return(nlmixrUI.inner.model(obj, TRUE, "combined1"))
+    return(nlmixr2UI.inner.model(obj, TRUE, "combined1"))
   } else if (arg == "single.inner.2") {
-    return(nlmixrUI.inner.model(obj, TRUE, "combined2"))
+    return(nlmixr2UI.inner.model(obj, TRUE, "combined2"))
   } else if (arg == "inner") {
-    return(nlmixrUI.inner.model(obj, TRUE, "combined2"))
+    return(nlmixr2UI.inner.model(obj, TRUE, "combined2"))
   } else if (arg == "inner.par0") {
-    return(nlmixrUI.par0(obj))
+    return(nlmixr2UI.par0(obj))
   } else if (arg == "inner.numeric") {
-    return(nlmixrUI.inner.model(obj, TRUE, "combined2", only.numeric = TRUE))
+    return(nlmixr2UI.inner.model(obj, TRUE, "combined2", only.numeric = TRUE))
   } else if (arg == "single.saem") {
-    return(nlmixrUI.saem.1(obj))
+    return(nlmixr2UI.saem.1(obj))
   } else if (arg == "pars.saem") {
-    return(nlmixrUI.saem.2(obj))
+    return(nlmixr2UI.saem.2(obj))
   } else if (arg == "single.saem.params"){
-    return(nlmixrUI.saem.1.params(obj))
+    return(nlmixr2UI.saem.1.params(obj))
   }
   m <- x$ini
-  ret <- `$.nlmixrBounds`(m, arg, exact = exact)
+  ret <- `$.nlmixr2Bounds`(m, arg, exact = exact)
   if (is.null(ret)) {
     m <- x$nmodel
     ret <- m[[arg, exact = exact]]
@@ -4048,7 +4048,7 @@ nlmixrUI.poped.ff_fun <- function(obj) {
 
 
 ##' @export
-str.nlmixrUI <- function(object, ...) {
+str.nlmixr2UI <- function(object, ...) {
   obj <- object
   class(obj) <- "list"
   str(obj$ini)
@@ -4060,7 +4060,7 @@ str.nlmixrUI <- function(object, ...) {
   cat(" $ nlme.fun  : The nlme model function.\n")
   cat(" $ nlme.specs: The nlme model specs.\n")
   cat(" $ nlme.var  : The nlme model varaince.\n")
-  cat(" $ rxode.pred: The RxODE block with pred attached (final pred is nlmixr_pred)\n")
+  cat(" $ rxode.pred: The rxode2 block with pred attached (final pred is nlmixr2_pred)\n")
   cat(" $ theta.pars: Parameters in terms of THETA[#] and ETA[#]\n")
   cat(" $ focei.inits: Initialization for FOCEi style blocks\n")
   cat(" $ focei.fixed: Logical vector of FOCEi fixed parameters\n")
@@ -4084,12 +4084,12 @@ str.nlmixrUI <- function(object, ...) {
   cat(" $ logThetasList: List of logThetas:\n")
   cat("     first element are scaling log thetas;\n")
   cat("     second element are back-transformed thetas;\n")
-  cat(" $ multipleEndpoint: table/huxtable of multiple endpoint translations in nlmixr\n")
+  cat(" $ multipleEndpoint: table/huxtable of multiple endpoint translations in nlmixr2\n")
   cat(" $ muRefTable: table/huxtable of mu-referenced items in a model\n")
 }
 
 .syncUif <- function(uif, popDf = NULL, omega = NULL) {
-  if (inherits(uif, "nlmixrFitCore")) {
+  if (inherits(uif, "nlmixr2FitCore")) {
     popDf <- uif$popDf
     omega <- uif$omega
     uif <- uif$uif
@@ -4115,12 +4115,12 @@ str.nlmixrUI <- function(object, ...) {
       }
     }
   }
-  class(.ini) <- c("nlmixrBounds", "data.frame")
+  class(.ini) <- c("nlmixr2Bounds", "data.frame")
   uif$ini <- .ini
   return(uif)
 }
 
-nlmixrUI.inner.model <- function(obj, singleOde = TRUE, addProp = c("combined1", "combined2"), optExpression = TRUE,
+nlmixr2UI.inner.model <- function(obj, singleOde = TRUE, addProp = c("combined1", "combined2"), optExpression = TRUE,
                                  only.numeric = FALSE) {
   addProp <- match.arg(addProp)
   .mod <- obj$focei.rx1
@@ -4137,8 +4137,8 @@ nlmixrUI.inner.model <- function(obj, singleOde = TRUE, addProp = c("combined1",
   } else {
     .onlyNumeric <- only.numeric
   }
-  RxODE::rxSymPySetupPred(.mod, function() {
-    return(nlmixr_pred)
+  rxode2::rxSymPySetupPred(.mod, function() {
+    return(nlmixr2_pred)
   }, .pars, obj$error,
   grad = FALSE, pred.minus.dv = TRUE, sum.prod = FALSE,
   interaction = TRUE, only.numeric = .onlyNumeric, run.internal = TRUE,
@@ -4146,24 +4146,24 @@ nlmixrUI.inner.model <- function(obj, singleOde = TRUE, addProp = c("combined1",
   )
 }
 
-nlmixrUI.saem.1 <- function(obj, optExpression=FALSE, loadSymengine=FALSE) {
-  .mod <- RxODE::RxODE(RxODE::rxGenSaem(obj$saem.rx1, function() {
-    return(nlmixr_pred)
+nlmixr2UI.saem.1 <- function(obj, optExpression=FALSE, loadSymengine=FALSE) {
+  .mod <- rxode2::rxode2(rxode2::rxGenSaem(obj$saem.rx1, function() {
+    return(nlmixr2_pred)
   }, NULL,
   optExpression = optExpression,
   loadSymengine=loadSymengine))
   .mod
 }
 
-nlmixrUI.saem.2 <- function(obj, optExpression=FALSE, loadSymengine=FALSE) {
-  .mod <- RxODE::RxODE(RxODE::rxGenSaem(obj$rxode.pred, function() {
-    return(nlmixr_pred)
+nlmixr2UI.saem.2 <- function(obj, optExpression=FALSE, loadSymengine=FALSE) {
+  .mod <- rxode2::rxode2(rxode2::rxGenSaem(obj$rxode.pred, function() {
+    return(nlmixr2_pred)
   }, obj$saem.pars, optExpression = optExpression, loadSymengine=loadSymengine))
   .mod
 }
 
-nlmixrUI.saem.1.params <- function(obj) {
-  .m <- nlmixrUI.saem.1(obj)
+nlmixr2UI.saem.1.params <- function(obj) {
+  .m <- nlmixr2UI.saem.1(obj)
   .df <- as.data.frame(obj$ini)
   .tmp <- sapply(.m$params, function(x){
     .w <- which(.df$name == x)
@@ -4174,7 +4174,7 @@ nlmixrUI.saem.1.params <- function(obj) {
   .tmp
 }
 
-nlmixrUI.par0 <- function(obj) {
+nlmixr2UI.par0 <- function(obj) {
   .ini <- as.data.frame(obj$ini)
   .maxEta <- max(.ini$neta1, na.rm = TRUE)
   .theta <- .ini[!is.na(.ini$ntheta), ]

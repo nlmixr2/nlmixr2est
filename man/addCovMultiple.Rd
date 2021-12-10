@@ -9,7 +9,7 @@ addCovMultiple(covInfo, fitobject, indep = TRUE)
 \arguments{
 \item{covInfo}{a list containing information about each variable-covariate pair}
 
-\item{fitobject}{an nlmixr 'fit' object}
+\item{fitobject}{an nlmixr2 'fit' object}
 
 \item{indep}{a boolean indicating if the covariates should be added independently, or sequentially (append to the previous model); default is TRUE}
 }

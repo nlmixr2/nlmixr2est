@@ -7,7 +7,7 @@
 #' @return nothing, displays plots
 #' @export
 nlme_gof <- function(fit, ...) {
-  RxODE::rxReq("lattice")
+  rxode2::rxReq("lattice")
   df <- getData(fit)
   df <- rbind(
     cbind(df[, c("ID", "TIME", "DV")], grp = 0),

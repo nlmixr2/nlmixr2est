@@ -2,14 +2,14 @@
 % Please edit documentation in R/ui.R
 \name{model}
 \alias{model}
-\title{nlmixr model block}
+\title{nlmixr2 model block}
 \usage{
 model(model, ..., .lines = NULL)
 }
 \arguments{
 \item{model}{Model specification}
 
-\item{...}{Other arguments to model object parsed by nlmixr}
+\item{...}{Other arguments to model object parsed by nlmixr2}
 
 \item{.lines}{This is an internal argument when code{model} is
 being called recursively and should not be used.}
@@ -18,7 +18,7 @@ being called recursively and should not be used.}
 Parsed UI object
 }
 \description{
-nlmixr model block
+nlmixr2 model block
 }
 \author{
 Matthew L. Fidler

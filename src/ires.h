@@ -6,7 +6,7 @@
 extern "C" {
 #endif
 
-  SEXP _nlmixr_iresCalc(SEXP ipredDf, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
+  SEXP _nlmixr2_iresCalc(SEXP ipredDf, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 			SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
 			SEXP iresOpt);
 

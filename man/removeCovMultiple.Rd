@@ -9,7 +9,7 @@ removeCovMultiple(covInfo, fitobject)
 \arguments{
 \item{covInfo}{a list containing information about each variable-covariate pair}
 
-\item{fitobject}{an nlmixr 'fit' object}
+\item{fitobject}{an nlmixr2 'fit' object}
 }
 \value{
 a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covaraites removed

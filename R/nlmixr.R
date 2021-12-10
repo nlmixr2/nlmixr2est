@@ -1,15 +1,15 @@
 .resetCacheIfNeeded <- function() {
-  .wd <- RxODE::rxTempDir()
+  .wd <- rxode2::rxTempDir()
   if (.wd != "") {
-    .md5File <- file.path(.wd, "nlmixr.md5")
+    .md5File <- file.path(.wd, "nlmixr2.md5")
     if (file.exists(.md5File)) {
       .md5 <- readLines(.md5File)
-      if (.md5 != nlmixr.md5) {
-        packageStartupMessage("detected new version of nlmixr, cleaning RxODE cache")
-        RxODE::rxClean()
+      if (.md5 != nlmixr2.md5) {
+        packageStartupMessage("detected new version of nlmixr2, cleaning rxode2 cache")
+        rxode2::rxClean()
       }
     } else {
-      writeLines(nlmixr.md5, .md5File)
+      writeLines(nlmixr2.md5, .md5File)
     }
   }
 }
@@ -17,34 +17,34 @@
 .onLoad <- function(libname, pkgname) {
   backports::import(pkgname)
   if (requireNamespace("generics", quietly = TRUE)) {
-    RxODE::.s3register("generics::tidy", "nlmixrFitCore")
-    RxODE::.s3register("generics::tidy", "nlmixrFitCoreSilent")
-    RxODE::.s3register("generics::glance", "nlmixrFitCore")
-    RxODE::.s3register("generics::glance", "nlmixrFitCoreSilent")
-    RxODE::.s3register("generics::augment", "nlmixrFitCore")
-    RxODE::.s3register("generics::augment", "nlmixrFitCoreSilent")
+    rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
+    rxode2::.s3register("generics::tidy", "nlmixr2FitCoreSilent")
+    rxode2::.s3register("generics::glance", "nlmixr2FitCore")
+    rxode2::.s3register("generics::glance", "nlmixr2FitCoreSilent")
+    rxode2::.s3register("generics::augment", "nlmixr2FitCore")
+    rxode2::.s3register("generics::augment", "nlmixr2FitCoreSilent")
   }
   .resetCacheIfNeeded()
 }
 
-compiled.RxODE.md5 <- RxODE::rxMd5()
+compiled.rxode2.md5 <- rxode2::rxMd5()
 
 .onAttach <- function(libname, pkgname) {
   ## nocov start
-  ## Setup RxODE.prefer.tbl
-  if (compiled.RxODE.md5 != RxODE::rxMd5()) {
-    stop("nlmixr compiled against different version of RxODE, cannot run nlmixr\ntry `install.packages(\"nlmixr\", type = \"source\")` to recompile", call.=FALSE)
+  ## Setup rxode2.prefer.tbl
+  if (compiled.rxode2.md5 != rxode2::rxMd5()) {
+    stop("nlmixr2 compiled against different version of rxode2, cannot run nlmixr2\ntry `install.packages(\"nlmixr2\", type = \"source\")` to recompile", call.=FALSE)
   }
-  ## nlmixrSetupMemoize()
+  ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end
 }
 
-##' Convert data to RxODE format (depreciated)
+##' Convert data to rxode2 format (depreciated)
 ##'
 ##' @param data Data to "convert"
 ##'
-##' @return Exact same data as was inputRxODE::
+##' @return Exact same data as was inputrxode2::
 ##'
 ##' @keywords internal
 ##' @export
@@ -61,7 +61,7 @@ nmDataConvert <- function(data) {
 ##' @importFrom nlme groupedData
 ##' @importFrom nlme getData
 ##' @importFrom nlme pdDiag
-##' @importFrom RxODE RxODE
+##' @importFrom rxode2 rxode2
 ##' @importFrom graphics abline lines matplot plot points title
 ##' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
 ##' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData
@@ -70,51 +70,51 @@ nmDataConvert <- function(data) {
 ##' @importFrom Rcpp evalCpp
 ##' @importFrom lbfgsb3c lbfgsb3c
 ##' @importFrom ggplot2 ggplot aes geom_point facet_wrap geom_line geom_abline xlab geom_smooth aes_string
-##' @useDynLib nlmixr, .registration=TRUE
+##' @useDynLib nlmixr2, .registration=TRUE
 
 
-rex::register_shortcuts("nlmixr")
+rex::register_shortcuts("nlmixr2")
 ## GGplot use and other issues...
-utils::globalVariables(c("DV", "ID", "IPRED", "IRES", "PRED", "TIME", "grp", "initCondition", "values", "nlmixr_pred", "iter", "val", "EVID"))
+utils::globalVariables(c("DV", "ID", "IPRED", "IRES", "PRED", "TIME", "grp", "initCondition", "values", "nlmixr2_pred", "iter", "val", "EVID"))
 
-nlmixr.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n"
+nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n"
 
-##' Messages the nlmixr logo...
+##' Messages the nlmixr2 logo...
 ##'
 ##' @param str String to print
 ##' @param version Version information (by default use package version)
 ##' @return nothing; Called to display version information
 ##' @author Matthew L. Fidler
-nlmixrLogo <- function(str = "", version = sessionInfo()$otherPkgs$nlmixr$Version) {
-  message(sprintf(nlmixr.logo, str, version))
+nlmixr2Logo <- function(str = "", version = sessionInfo()$otherPkgs$nlmixr2$Version) {
+  message(sprintf(nlmixr2.logo, str, version))
 }
-##' Display nlmixr's version
+##' Display nlmixr2's version
 ##'
 ##' @author Matthew L. Fidler
 ##' @return Nothing, called for its side effects
 ##' @export
-nlmixrVersion <- function() {
-  nlmixrLogo()
+nlmixr2Version <- function() {
+  nlmixr2Logo()
 }
 
-.nlmixrTime <- NULL
+.nlmixr2Time <- NULL
 
-##' nlmixr fits population PK and PKPD non-linear mixed effects models.
+##' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 ##'
-##' nlmixr is an R package for fitting population pharmacokinetic (PK)
+##' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
 ##' and pharmacokinetic-pharmacodynamic (PKPD) models.
 ##'
-##' The nlmixr generalized function allows common access to the nlmixr
+##' The nlmixr2 generalized function allows common access to the nlmixr2
 ##' estimation routines.
 ##'
 ##' @template uif
 ##'
 ##' @param object Fitted object or function specifying the model.
-##' @inheritParams nlmixr_fit
+##' @inheritParams nlmixr2_fit
 ##' @param ... Other parameters
-##' @param save Boolean to save a nlmixr object in a rds file in the
-##'     working directory.  If \code{NULL}, uses option "nlmixr.save"
-##' @return Either a nlmixr model or a nlmixr fit object
+##' @param save Boolean to save a nlmixr2 object in a rds file in the
+##'     working directory.  If \code{NULL}, uses option "nlmixr2.save"
+##' @return Either a nlmixr2 model or a nlmixr2 fit object
 ##' @author Matthew L. Fidler, Rik Schoemaker
 ##' @examples
 ##'
@@ -142,7 +142,7 @@ nlmixrVersion <- function() {
 ##'         d/dt(centr)  =  KA*depot-kel*centr;
 ##'         ## And the concentration is then calculated
 ##'         cp = centr / Vc;
-##'         ## Last, nlmixr is told that the plasma concentration follows
+##'         ## Last, nlmixr2 is told that the plasma concentration follows
 ##'         ## a proportional error (estimated by the parameter prop.err)
 ##'         cp ~ prop(prop.err)
 ##'     })
@@ -174,64 +174,64 @@ nlmixrVersion <- function() {
 ##' }
 ##'
 ##' # Use nlme algorithm
-##' fit_linCmt_nlme <- try(nlmixr(f_ode, Oral_1CPT, est="nlme",
+##' fit_linCmt_nlme <- try(nlmixr2(f_ode, Oral_1CPT, est="nlme",
 ##'                control=nlmeControl(maxstepsOde = 50000, pnlsTol=0.4)))
 ##' if (!inherits(fit_linCmt_nlme, "try-error")) print(fit_linCmt_nlme)
 ##'
 ##' # Use Focei algorithm
-##' fit_linCmt_focei <- try(nlmixr(f_linCmt, Oral_1CPT, est="focei"))
+##' fit_linCmt_focei <- try(nlmixr2(f_linCmt, Oral_1CPT, est="focei"))
 ##' if (!inherits(fit_linCmt_focei, "try-error")) print(fit_linCmt_focei)
 ##'
 ##' # The ODE model can be fitted using the saem algorithm, more
 ##' # iterations should be used for real applications
 ##'
-##' fit_ode_saem <- try(nlmixr(f_ode, Oral_1CPT, est = "saem",
+##' fit_ode_saem <- try(nlmixr2(f_ode, Oral_1CPT, est = "saem",
 ##'         control = saemControl(n.burn = 50, n.em = 100, print = 50)))
 ##' if (!inherits(fit_ode_saem, "try-error")) print(fit_ode_saem)
 ##'
 ##' }
 ##' @export
-nlmixr <- function(object, data, est = NULL, control = list(),
+nlmixr2 <- function(object, data, est = NULL, control = list(),
                    table = tableControl(), ..., save = NULL,
                    envir = parent.frame()) {
-  assignInMyNamespace(".nlmixrTime", proc.time())
-  RxODE::rxSolveFree()
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  assignInMyNamespace(".nlmixr2Time", proc.time())
+  rxode2::rxSolveFree()
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
-  UseMethod("nlmixr")
+  UseMethod("nlmixr2")
 }
 
-##' @rdname nlmixr
+##' @rdname nlmixr2
 ##' @export
-nlmixr.function <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
+nlmixr2.function <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
                             save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
-  .uif <- nlmixrUI(object)
+  .uif <- nlmixr2UI(object)
   class(.uif) <- "list"
   .uif$nmodel$model.name <- .modName
   if (missing(data) && missing(est)) {
-    class(.uif) <- "nlmixrUI"
+    class(.uif) <- "nlmixr2UI"
     return(.uif)
   } else {
     .uif$nmodel$data.name <- deparse(substitute(data))
-    class(.uif) <- "nlmixrUI"
+    class(.uif) <- "nlmixr2UI"
     .args$data <- data
     .args$est <- est
     .args <- c(list(uif = .uif), .args[-1])
     if (is.null(est)) {
       stop("Need to supply an estimation routine with est=.")
     }
-    return(do.call(nlmixr_fit, .args, envir = envir))
+    return(do.call(nlmixr2_fit, .args, envir = envir))
   }
 }
 
-##' @rdname nlmixr
+##' @rdname nlmixr2
 ##' @export
-nlmixr.nlmixrFitCore <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
+nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
                                  save = NULL, envir = parent.frame()) {
   .uif <- .getUif(object)
   if (missing(data)) {
@@ -241,12 +241,12 @@ nlmixr.nlmixrFitCore <- function(object, data, est = NULL, control = list(), tab
   .args$data <- data
   .args$est <- est
   .args <- c(list(uif = .uif), .args[-1])
-  return(do.call(nlmixr_fit, .args, envir = envir))
+  return(do.call(nlmixr2_fit, .args, envir = envir))
 }
 
-##' @rdname nlmixr
+##' @rdname nlmixr2
 ##' @export
-nlmixr.nlmixrUI <- function(object, data, est = NULL, control = list(), ...,
+nlmixr2.nlmixr2UI <- function(object, data, est = NULL, control = list(), ...,
                             save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- object
@@ -263,40 +263,40 @@ nlmixr.nlmixrUI <- function(object, data, est = NULL, control = list(), ...,
       .args$data <- data
       .args$est <- est
     }
-    return(do.call(nlmixr_fit, .args, envir = envir))
+    return(do.call(nlmixr2_fit, .args, envir = envir))
   }
 }
 
-##' Convert/Format the data appropriately for nlmixr
+##' Convert/Format the data appropriately for nlmixr2
 ##'
 ##' @param data is the name of the data to convert.  Can be a csv file
 ##'     as well.
-##' @param model This is the RxODE model to use to translate against
+##' @param model This is the rxode2 model to use to translate against
 ##'     when parsing the data.
 ##' @return Appropriately formatted data
 ##' @author Matthew L. Fidler
 ##' @keywords internal
 ##' @export
-nlmixrData <- function(data, model = NULL) {
-  UseMethod("nlmixrData")
+nlmixr2Data <- function(data, model = NULL) {
+  UseMethod("nlmixr2Data")
 }
 ##' @export
-##' @rdname nlmixrData
-nlmixrData.character <- function(data, model = NULL) {
+##' @rdname nlmixr2Data
+nlmixr2Data.character <- function(data, model = NULL) {
   if (!file.exists(data)) {
     stop(sprintf("%s does not exist.", data))
   }
   if (regexpr(rex::rex(".csv", end), data) != -1) {
-    return(nlmixrData.default(utils::read.csv(data, na.strings = c(".", "NA", "na", ""))))
+    return(nlmixr2Data.default(utils::read.csv(data, na.strings = c(".", "NA", "na", ""))))
   } else {
     stop(sprintf("Do not know how to read in %s", data))
   }
 }
 ##' @export
-##' @rdname nlmixrData
-nlmixrData.default <- function(data, model = NULL) {
+##' @rdname nlmixr2Data
+nlmixr2Data.default <- function(data, model = NULL) {
   if (!is.null(model)) {
-    dat <- RxODE::etTrans(data, model, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
+    dat <- rxode2::etTrans(data, model, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
   } else {
     dat <- .as.data.frame(data)
   }
@@ -309,7 +309,7 @@ nlmixrData.default <- function(data, model = NULL) {
 #' @param IDLabel Original ID labels
 #' @return Updated model
 #' @noRd
-nlmixrFitUpdateParams <- function(x, IDLabel, origData) {
+nlmixr2FitUpdateParams <- function(x, IDLabel, origData) {
   # Update initial estimates to match current initial estimates
   .uif <- x$uif
   .thetas <- x$theta
@@ -327,7 +327,7 @@ nlmixrFitUpdateParams <- function(x, IDLabel, origData) {
   return(x)
 }
 
-nlmixr_fit0 <- function(uif, data, est = NULL, control = list(), ...,
+nlmixr2_fit0 <- function(uif, data, est = NULL, control = list(), ...,
                         keep=NULL, drop=NULL,
                         sum.prod = FALSE, table = tableControl(),
                         envir = parent.frame()) {
@@ -381,18 +381,18 @@ nlmixr_fit0 <- function(uif, data, est = NULL, control = list(), ...,
   }
   .extra <- ""
   if (inherits(.keep, "character")) {
-    .extra <- paste("nlmixrExtra~", paste(.keep, collapse="+"), "\n")
+    .extra <- paste("nlmixr2Extra~", paste(.keep, collapse="+"), "\n")
   }
-  data <- RxODE::etTrans(inData=data, obj=paste(paste(.tmp, collapse = "\n"), "\n", uif$rxode, "\n", .extra),
+  data <- rxode2::etTrans(inData=data, obj=paste(paste(.tmp, collapse = "\n"), "\n", uif$rxode, "\n", .extra),
                          addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE, keepDosingOnly=FALSE)
 
-  .nTv <- attr(class(data), ".RxODE.lst")$nTv
-  .lab <- attr(class(data), ".RxODE.lst")$idLvl
-  .nid <- attr(class(data), ".RxODE.lst")$nid
+  .nTv <- attr(class(data), ".rxode2.lst")$nTv
+  .lab <- attr(class(data), ".rxode2.lst")$idLvl
+  .nid <- attr(class(data), ".rxode2.lst")$nid
   .modelId <-
     digest::digest(
       list(
-        sessionInfo()$otherPkgs$nlmixr$Version,
+        sessionInfo()$otherPkgs$nlmixr2$Version,
         uif, data, est, control, sum.prod, table, ...
       )
     )
@@ -426,7 +426,7 @@ nlmixr_fit0 <- function(uif, data, est = NULL, control = list(), ...,
     }
   }
 
-  dat <- nlmixrData(data)
+  dat <- nlmixr2Data(data)
   nobs2 <- sum(dat$EVID == 0)
   up.covs <- toupper(uif$all.covs)
   up.names <- toupper(names(dat))
@@ -453,43 +453,43 @@ nlmixr_fit0 <- function(uif, data, est = NULL, control = list(), ...,
     }
   }
   .cur <- environment()
-  class(.cur) <- c(est, "nlmixrEst")
-  .ret <- nlmixrEst(.cur, ...)
+  class(.cur) <- c(est, "nlmixr2Est")
+  .ret <- nlmixr2Est(.cur, ...)
   return(.ret)
 }
 
-##' Fit a nlmixr model
+##' Fit a nlmixr2 model
 ##'
-##' @param data Dataset to estimate.  Needs to be RxODE compatible (see
-##'   \url{https://nlmixrdevelopment.github.io/RxODE/articles/RxODE-event-types.html}
+##' @param data Dataset to estimate.  Needs to be rxode2 compatible (see
+##'   \url{https://nlmixr2development.github.io/rxode2/articles/rxode2-event-types.html}
 ##'   for detailed dataset requirements).
-##' @param uif Parsed nlmixr model (by \code{nlmixr(mod.fn)}).
+##' @param uif Parsed nlmixr2 model (by \code{nlmixr2(mod.fn)}).
 ##' @param est Estimation method
 ##' @param control Estimation control options.  They could be
 ##'   \code{\link[nlme]{nlmeControl}}, \code{\link{saemControl}} or
 ##'   \code{\link{foceiControl}}
 ##' @param ... Parameters passed to estimation method.
 
-##' @param sum.prod Take the RxODE model and use more precise products/sums.
+##' @param sum.prod Take the rxode2 model and use more precise products/sums.
 ##'   Increases solving accuracy and solving time.
 ##' @param table A list controlling the table options (i.e. CWRES, NPDE etc).
 ##'   See \code{\link{tableControl}}.
 ##' @param save This option determines if the fit will be saved to be reloaded
 ##'   if already run.  If NULL, get the option from
-##'   \code{options("nlmixr.save")};
-##' @param envir Environment that nlmixr is evaluated in.
+##'   \code{options("nlmixr2.save")};
+##' @param envir Environment that nlmixr2 is evaluated in.
 ##' @inheritParams foceiFit
-##' @return nlmixr fit object
+##' @return nlmixr2 fit object
 ##' @author Matthew L. Fidler
 ##' @export
-nlmixr_fit <- function(uif, data, est = NULL, control = list(), ...,
+nlmixr2_fit <- function(uif, data, est = NULL, control = list(), ...,
                        sum.prod = FALSE, table = tableControl(),
                        keep=NULL, drop=NULL,
                        save = NULL, envir = parent.frame()) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   if (is.null(save)) {
-    save <- getOption("nlmixr.save", FALSE)
+    save <- getOption("nlmixr2.save", FALSE)
   }
   if (save) {
     .modName <- ifelse(is.null(uif$model.name), "", paste0(uif$model.name, "-"))
@@ -507,13 +507,13 @@ nlmixr_fit <- function(uif, data, est = NULL, control = list(), ...,
           sum.prod,
           table,
           ...,
-          as.character(utils::packageVersion("nlmixr")),
-          as.character(utils::packageVersion("RxODE"))
+          as.character(utils::packageVersion("nlmixr2")),
+          as.character(utils::packageVersion("rxode2"))
         )
       )
     .saveFile <- file.path(
-      getOption("nlmixr.save.dir", getwd()),
-      paste0("nlmixr-", .modName, .dataName, est, "-", .digest, ".rds")
+      getOption("nlmixr2.save.dir", getwd()),
+      paste0("nlmixr2-", .modName, .dataName, est, "-", .digest, ".rds")
     )
     if (file.exists(.saveFile)) {
       message(sprintf("Loading model already run (%s)", .saveFile))
@@ -526,7 +526,7 @@ nlmixr_fit <- function(uif, data, est = NULL, control = list(), ...,
   }
   .ret <-
     .collectWarnings(
-      nlmixr_fit0(
+      nlmixr2_fit0(
         uif = uif, data = data, est = est, control = control, ...,
         sum.prod = sum.prod, table = table, envir = envir,
         keep=keep, drop=drop
@@ -535,23 +535,23 @@ nlmixr_fit <- function(uif, data, est = NULL, control = list(), ...,
     )
   .ws <- .ret[[2]]
   .ret <- .ret[[1]]
-  if (inherits(.ret, "nlmixrFitCore")) {
+  if (inherits(.ret, "nlmixr2FitCore")) {
     .env <- .ret$env
     .env$warnings <- .ws
   }
   for (.i in seq_along(.ws)) {
     warning(.ws[.i])
   }
-  if (inherits(.ret, "nlmixrFitCore")) {
+  if (inherits(.ret, "nlmixr2FitCore")) {
     if (save) {
       AIC(.ret) # Calculate SAEM AIC when saving...
       .env <- .ret$env
-      .extra <- (proc.time() - .nlmixrTime)["elapsed"] - sum(.env$time)
+      .extra <- (proc.time() - .nlmixr2Time)["elapsed"] - sum(.env$time)
       .env$time <- .data.frame(.env$time, "other" = .extra, check.names = FALSE)
       saveRDS(.ret, file = .saveFile)
     } else {
       .env <- .ret$env
-      .extra <- (proc.time() - .nlmixrTime)["elapsed"] - sum(.env$time)
+      .extra <- (proc.time() - .nlmixr2Time)["elapsed"] - sum(.env$time)
       .env$time <- .data.frame(.env$time, "other" = .extra, check.names = FALSE)
     }
   }
@@ -638,13 +638,13 @@ nlmixr_fit <- function(uif, data, est = NULL, control = list(), ...,
 ##'
 ##' @param ... Other arguments to control SAEM.
 ##'
-##' @inheritParams RxODE::rxSolve
+##' @inheritParams rxode2::rxSolve
 ##' @inheritParams foceiControl
 ##' @inheritParams configsaem
-##' @inheritParams nlmixr_fit
-##' @inheritParams RxODE::rxSEinner
-##' @inheritParams RxODE::rxGenSaem
-##' @return List of options to be used in \code{\link{nlmixr}} fit for
+##' @inheritParams nlmixr2_fit
+##' @inheritParams rxode2::rxSEinner
+##' @inheritParams rxode2::rxGenSaem
+##' @return List of options to be used in \code{\link{nlmixr2}} fit for
 ##'     SAEM.
 ##' @author Wenping Wang & Matthew L. Fidler
 ##' @export
@@ -706,7 +706,7 @@ saemControl <- function(seed = 99,
   }
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
-    ODEopt = RxODE::rxControl(
+    ODEopt = rxode2::rxControl(
       atol = atol, rtol = rtol, method = method,
       transitAbs = transitAbs, maxsteps = maxsteps, ...
     ),
@@ -740,27 +740,27 @@ saemControl <- function(seed = 99,
   .ret
 }
 
-##' Generic for nlmixr estimation methods
+##' Generic for nlmixr2 estimation methods
 ##'
-##' @param env Environment for nlmixr estimation routines
+##' @param env Environment for nlmixr2 estimation routines
 ##'
 ##' @param ... Extra arguments sent to estimation routine
 ##'
-##' @return nlmixr estimation object
+##' @return nlmixr2 estimation object
 ##' @author Matthew Fidler
 ##'
 ##' @details
 ##'
-##' This is a S3 generic that allows others to use the nlmixr
+##' This is a S3 generic that allows others to use the nlmixr2
 ##'   environment to do their own estimation routines
 ##' @export
-nlmixrEst <- function(env, ...) {
-  UseMethod("nlmixrEst")
+nlmixr2Est <- function(env, ...) {
+  UseMethod("nlmixr2Est")
 }
 
-##'@rdname  nlmixrEst
+##'@rdname  nlmixr2Est
 ##'@export
-nlmixrEst.saem <- function(env, ...) {
+nlmixr2Est.saem <- function(env, ...) {
   with(env, {
     if (.nid <= 1) stop("SAEM is for mixed effects models, try 'focei', which downgrades to nonlinear regression")
     pt <- proc.time()
@@ -855,13 +855,13 @@ nlmixrEst.saem <- function(env, ...) {
         silent = TRUE
       )
     if (inherits(.ret, "try-error")) {
-      warning("Error converting to nlmixr UI object, returning saem object")
+      warning("Error converting to nlmixr2 UI object, returning saem object")
       return(.fit)
     }
-    if (inherits(.ret, "nlmixrFitCore")) {
-      .ret <- nlmixrFitUpdateParams(.ret, origData = .origData)
+    if (inherits(.ret, "nlmixr2FitCore")) {
+      .ret <- nlmixr2FitUpdateParams(.ret, origData = .origData)
     }
-    if (inherits(.ret, "nlmixrFitCore")) {
+    if (inherits(.ret, "nlmixr2FitCore")) {
       .env <- .ret$env
       .env$adjObj <- .adjObf
       .env$nnodes.gq <- .nnodes.gq
@@ -877,14 +877,14 @@ nlmixrEst.saem <- function(env, ...) {
 }
 
 
-##' @rdname nlmixrEst
+##' @rdname nlmixr2Est
 ##'@export
-nlmixrEst.nlme <- function(env, ...) {
+nlmixr2Est.nlme <- function(env, ...) {
   with(env, {
     if (.nid <= 1) stop("nlme is for mixed effects models, try 'dynmodel' (need more than 1 individual)")
     if (.nTv != 0) stop("nlme does not support time-varying covariates (yet)")
     data <- .as.data.frame(data)
-    if (length(uif$predDf$cond) > 1) stop("nlmixr nlme does not support multiple endpoints.")
+    if (length(uif$predDf$cond) > 1) stop("nlmixr2 nlme does not support multiple endpoints.")
     pt <- proc.time()
     est.type <- est
     if (est == "nlme.free") {
@@ -912,7 +912,7 @@ nlmixrEst.nlme <- function(env, ...) {
       }
     }
     grp.fn <- uif$grp.fn
-    dat$nlmixr.grp <-
+    dat$nlmixr2.grp <-
       factor(apply(dat, 1, function(x) {
         cur <- x
         names(cur) <- names(dat)
@@ -920,14 +920,14 @@ nlmixrEst.nlme <- function(env, ...) {
           return(grp.fn())
         })
       }))
-    dat$nlmixr.num <- seq_along(dat$nlmixr.grp)
+    dat$nlmixr2.num <- seq_along(dat$nlmixr2.grp)
     .addProp <- "combined2"
     if (!is.null(control$addProp)) .addProp <- control$addProp
     if (!any(.addProp == c("combined2", "combined1"))) stop("addProp needs to either be 'combined1' and 'combined2'")
     uif$env$.addProp <- .addProp
     weight <- uif$nlme.var
     if (sum.prod) {
-      rxode <- RxODE::rxSumProdModel(uif$rxode.pred)
+      rxode <- rxode2::rxSumProdModel(uif$rxode.pred)
     } else {
       rxode <- uif$rxode.pred
     }
@@ -944,7 +944,7 @@ nlmixrEst.nlme <- function(env, ...) {
                     model = rxode,
                     par_model = specs,
                     par_trans = fun,
-                    response = "nlmixr_pred",
+                    response = "nlmixr2_pred",
                     weight = weight,
                     verbose = TRUE,
                     control = control,
@@ -955,17 +955,17 @@ nlmixrEst.nlme <- function(env, ...) {
                     )
     class(fit) <- c(est.type, class(fit))
     .ret <- try({
-      as.focei.nlmixrNlme(fit, uif, pt, data = dat, calcResid = calc.resid, nobs2 = nobs2,
+      as.focei.nlmixr2Nlme(fit, uif, pt, data = dat, calcResid = calc.resid, nobs2 = nobs2,
                           keep=.keep, drop=.drop, IDlabel=.lab, table=table)
     })
     if (inherits(.ret, "try-error")) {
-      warning("Error converting to nlmixr UI object, returning nlme object")
+      warning("Error converting to nlmixr2 UI object, returning nlme object")
       return(fit)
     }
-    if (inherits(.ret, "nlmixrFitCore")) {
-      .ret <- nlmixrFitUpdateParams(.ret, origData = .origData)
+    if (inherits(.ret, "nlmixr2FitCore")) {
+      .ret <- nlmixr2FitUpdateParams(.ret, origData = .origData)
     }
-    if (inherits(.ret, "nlmixrFitCore")) {
+    if (inherits(.ret, "nlmixr2FitCore")) {
       .env <- .ret$env
       assign("startTime", start.time, .env)
       assign("est", est, .env)
@@ -977,23 +977,23 @@ nlmixrEst.nlme <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.nlme.mu <- nlmixrEst.nlme
+nlmixr2Est.nlme.mu <- nlmixr2Est.nlme
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.nlme.mu.cov <- nlmixrEst.nlme
+nlmixr2Est.nlme.mu.cov <- nlmixr2Est.nlme
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.nlme.free <- nlmixrEst.nlme
+nlmixr2Est.nlme.free <- nlmixr2Est.nlme
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.posthoc <- function(env, ...) {
+nlmixr2Est.posthoc <- function(env, ...) {
   with(env, {
-    if (class(control) != "foceiControl") control <- do.call(nlmixr::foceiControl, control)
+    if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
     if (any(est == c("foce", "fo"))) {
       control$interaction <- FALSE
     }
@@ -1021,7 +1021,7 @@ nlmixrEst.posthoc <- function(env, ...) {
       ## par_trans=fun,
       model = .mod,
       pred = function() {
-        return(nlmixr_pred)
+        return(nlmixr2_pred)
       },
       err = uif$error,
       lower = uif$focei.lower,
@@ -1084,7 +1084,7 @@ nlmixrEst.posthoc <- function(env, ...) {
             ## par_trans=fun,
             model = .mod,
             pred = function() {
-              return(nlmixr_pred)
+              return(nlmixr2_pred)
             },
             err = .uif$error,
             lower = .uif$focei.lower,
@@ -1121,7 +1121,7 @@ nlmixrEst.posthoc <- function(env, ...) {
         setOfv(env, "fo")
       }
     }
-    fit <- nlmixrFitUpdateParams(fit, origData = .origData)
+    fit <- nlmixr2FitUpdateParams(fit, origData = .origData)
     assign("start.time", start.time, env)
     assign("est", est, env)
     assign("stop.time", Sys.time(), env)
@@ -1131,11 +1131,11 @@ nlmixrEst.posthoc <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.focei <- function(env, ...) {
+nlmixr2Est.focei <- function(env, ...) {
   with(env, {
-    if (class(control) != "foceiControl") control <- do.call(nlmixr::foceiControl, control)
+    if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
     if (any(est == c("foce", "fo"))) {
       control$interaction <- FALSE
     }
@@ -1169,7 +1169,7 @@ nlmixrEst.focei <- function(env, ...) {
                     ## par_trans=fun,
                     model = .mod,
                     pred = function() {
-                      return(nlmixr_pred)
+                      return(nlmixr2_pred)
                     },
                     err = uif$error,
                     lower = uif$focei.lower,
@@ -1232,7 +1232,7 @@ nlmixrEst.focei <- function(env, ...) {
             ## par_trans=fun,
             model = .mod,
             pred = function() {
-              return(nlmixr_pred)
+              return(nlmixr2_pred)
             },
             err = .uif$error,
             lower = .uif$focei.lower,
@@ -1269,7 +1269,7 @@ nlmixrEst.focei <- function(env, ...) {
         setOfv(env, "fo")
       }
     }
-    fit <- nlmixrFitUpdateParams(fit, origData = .origData)
+    fit <- nlmixr2FitUpdateParams(fit, origData = .origData)
     assign("start.time", start.time, env)
     assign("est", est, env)
     assign("stop.time", Sys.time(), env)
@@ -1279,25 +1279,25 @@ nlmixrEst.focei <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.foce <- nlmixrEst.focei
+nlmixr2Est.foce <- nlmixr2Est.focei
 
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.fo <- nlmixrEst.focei
+nlmixr2Est.fo <- nlmixr2Est.focei
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.foi <- nlmixrEst.focei
+nlmixr2Est.foi <- nlmixr2Est.focei
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.posthoc <- function(env, ...){
+nlmixr2Est.posthoc <- function(env, ...){
   with(env, {
     if (.nid <= 1) stop("'posthoc' estimation is for mixed effects models, try 'dynmodel' (need more than 1 individual)")
-    if (class(control) != "foceiControl") control <- do.call(nlmixr::foceiControl, control)
+    if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
     control$covMethod <- 0L
     control$maxOuterIterations <- 0L
     .env <- new.env(parent = emptyenv())
@@ -1317,7 +1317,7 @@ nlmixrEst.posthoc <- function(env, ...){
                     ## par_trans=fun,
                     model = .mod,
                     pred = function() {
-                      return(nlmixr_pred)
+                      return(nlmixr2_pred)
                     },
                     err = uif$error,
                     lower = uif$focei.lower,
@@ -1330,23 +1330,23 @@ nlmixrEst.posthoc <- function(env, ...){
                     drop=.drop,
                     ...
                     )
-    if (inherits(fit, "nlmixrFitData")) {
+    if (inherits(fit, "nlmixr2FitData")) {
       .cls <- class(fit)
       .env <- attr(.cls, ".foceiEnv")
-      .cls[1] <- "nlmixrPosthoc"
+      .cls[1] <- "nlmixr2Posthoc"
       class(fit) <- .cls
     }
     assign("uif", .syncUif(fit, fit$popDf, fit$omega), fit$env)
-    fit <- nlmixrFitUpdateParams(fit, origData = .origData)
+    fit <- nlmixr2FitUpdateParams(fit, origData = .origData)
     assign("origControl", control, fit$env)
     assign("modelId", .modelId, fit$env)
     return(fit)
   })
 }
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.dynmodel <- function(env, ...) {
+nlmixr2Est.dynmodel <- function(env, ...) {
   with(env, {
     if (class(control) != "dynmodelControl") control <- do.call(dynmodelControl, control)
     env <- new.env(parent = emptyenv())
@@ -1355,24 +1355,24 @@ nlmixrEst.dynmodel <- function(env, ...) {
     env$uif <- NULL
 
     # update data to merge for origData and data. first add zeros or whatever is filled in for DV when there is no observations
-    # to match the lengths, then merge observed data for both origData and data, and send to RxODE.
+    # to match the lengths, then merge observed data for both origData and data, and send to rxode2.
 
     # .dynmodelData <- data
-    # nlmixr Object ---
+    # nlmixr2 Object ---
     .nmf <- uif
     # Conversion ---
-    .dynNlmixr <- nlmixrDynmodelConvert(.nmf)
+    .dynNlmixr2 <- nlmixr2DynmodelConvert(.nmf)
     # Model ---
-    .system <- .dynNlmixr$system
+    .system <- .dynNlmixr2$system
     # Initial Estimates ---
-    .inits <- .dynNlmixr$inits
+    .inits <- .dynNlmixr2$inits
     # Error Model ---
-    .model <- .dynNlmixr$model
+    .model <- .dynNlmixr2$model
     # Optional Control ---
-    control$nlmixrOutput <- TRUE
-    control$fixPars <- if (!is.null(.dynNlmixr$fixPars)) .dynNlmixr$fixPars else NULL
-    control$lower <- if (!is.null(.dynNlmixr$lower)) .dynNlmixr$lower else NULL
-    control$upper <- if (!is.null(.dynNlmixr$upper)) .dynNlmixr$upper else NULL
+    control$nlmixr2Output <- TRUE
+    control$fixPars <- if (!is.null(.dynNlmixr2$fixPars)) .dynNlmixr2$fixPars else NULL
+    control$lower <- if (!is.null(.dynNlmixr2$lower)) .dynNlmixr2$lower else NULL
+    control$upper <- if (!is.null(.dynNlmixr2$upper)) .dynNlmixr2$upper else NULL
 
     fit <-
       dynmodel(
@@ -1380,18 +1380,18 @@ nlmixrEst.dynmodel <- function(env, ...) {
         model = .model,
         inits = .inits,
         data = .origData,
-        nlmixrObject = .nmf,
+        nlmixr2Object = .nmf,
         control = control
       )
     .env <- fit$env
     assign("origData", .origData, .env)
-    fit <- nlmixrFitUpdateParams(fit, origData = .origData)
+    fit <- nlmixr2FitUpdateParams(fit, origData = .origData)
     return(fit)
   })
 }
 
-##'@rdname nlmixrEst
+##'@rdname nlmixr2Est
 ##'@export
-nlmixrEst.nlmixrEst <- function(env, ...){
+nlmixr2Est.nlmixr2Est <- function(env, ...){
   with(env, stop("unknown estimation method est=\"", est, "\""))
 }

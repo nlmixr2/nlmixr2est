@@ -2,20 +2,20 @@
 //
 // Copyright (C) 2014 - 2016  Wenping Wang
 //
-// This file is part of nlmixr.
+// This file is part of nlmixr2.
 //
-// nlmixr is free software: you can redistribute it and/or modify it
+// nlmixr2 is free software: you can redistribute it and/or modify it
 // under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 2 of the License, or
 // (at your option) any later version.
 //
-// nlmixr is distributed in the hope that it will be useful, but
+// nlmixr2 is distributed in the hope that it will be useful, but
 // WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with nlmixr.  If not, see <http://www.gnu.org/licenses/>.
+// along with nlmixr2.  If not, see <http://www.gnu.org/licenses/>.
 
 // includes from the plugin
 #include <RcppEigen.h>

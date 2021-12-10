@@ -22,5 +22,5 @@
   .si$thetaMat <- NA
   .si$addDosing <- addDosing
   .si$subsetNonmem <- subsetNonmem
-  do.call("nlmixrSim", .si)
+  do.call("nlmixr2Sim", .si)
 }

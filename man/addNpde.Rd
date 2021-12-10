@@ -2,7 +2,7 @@
 % Please edit documentation in R/resid.R
 \name{addNpde}
 \alias{addNpde}
-\title{NPDE calculation for nlmixr}
+\title{NPDE calculation for nlmixr2}
 \usage{
 addNpde(
   object,
@@ -13,7 +13,7 @@ addNpde(
 )
 }
 \arguments{
-\item{object}{nlmixr fit object}
+\item{object}{nlmixr2 fit object}
 
 \item{updateObject}{Boolean indicating if original object should be updated.  By default this is TRUE.}
 
@@ -25,10 +25,10 @@ addNpde(
 update.  By default this is the global environment.}
 }
 \value{
-New nlmixr fit object
+New nlmixr2 fit object
 }
 \description{
-NPDE calculation for nlmixr
+NPDE calculation for nlmixr2
 }
 \examples{
 
@@ -56,7 +56,7 @@ one.cmt <- function() {
   })
 }
 
-f <- nlmixr(one.cmt, theo_sd, "saem")
+f <- nlmixr2(one.cmt, theo_sd, "saem")
 
 # even though you may have forgotten to add the NPDE, you can add it to the data.frame:
 

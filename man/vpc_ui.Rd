@@ -2,8 +2,8 @@
 % Please edit documentation in R/vpc.ui.R
 \name{vpc_ui}
 \alias{vpc_ui}
-\alias{vpc.nlmixrFitData}
-\alias{vpc.nlmixrVpc}
+\alias{vpc.nlmixr2FitData}
+\alias{vpc.nlmixr2Vpc}
 \alias{vpc.ui}
 \title{VPC based on ui model}
 \usage{
@@ -36,14 +36,14 @@ vpc_ui(
   ...
 )
 
-\method{vpc}{nlmixrFitData}(sim, ...)
+\method{vpc}{nlmixr2FitData}(sim, ...)
 
-\method{vpc}{nlmixrVpc}(sim, ...)
+\method{vpc}{nlmixr2Vpc}(sim, ...)
 
 \method{vpc}{ui}(sim, ...)
 }
 \arguments{
-\item{fit}{nlmixr fit object}
+\item{fit}{nlmixr2 fit object}
 
 \item{data}{this is the data to use to augment the VPC fit.  By
 default is the fitted data, (can be retrieved by
@@ -96,7 +96,7 @@ this argument.}
 
 \item{verbose}{show debugging information (TRUE or FALSE)}
 
-\item{...}{Args sent to \code{\link[RxODE]{rxSolve}}}
+\item{...}{Args sent to \code{\link[rxode2]{rxSolve}}}
 
 \item{sim}{this is usually a data.frame with observed data, containing the independent and dependent variable, a column indicating the individual, and possibly covariates. E.g. load in from NONMEM using \link[vpc]{read_table_nm}.  However it can also be an object like a nlmixr or xpose object}
 }

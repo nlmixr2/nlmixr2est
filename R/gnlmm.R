@@ -2,20 +2,20 @@
 ##
 ## Copyright (C) 2014 - 2016  Wenping Wang
 ##
-## This file is part of nlmixr.
+## This file is part of nlmixr2.
 ##
-## nlmixr is free software: you can redistribute it and/or modify it
+## nlmixr2 is free software: you can redistribute it and/or modify it
 ## under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 2 of the License, or
 ## (at your option) any later version.
 ##
-## nlmixr is distributed in the hope that it will be useful, but
+## nlmixr2 is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with nlmixr.  If not, see <http:##www.gnu.org/licenses/>.
+## along with nlmixr2.  If not, see <http:##www.gnu.org/licenses/>.
 
 # to suppress Rcheck warning
 
@@ -126,7 +126,7 @@ multi2 <- function(mu, vmat, n) {
 #' d/dt(depot) =-KA*depot;
 #' d/dt(centr) = KA*depot - KE*centr;
 #' "
-#' sys1 <- RxODE(ode)
+#' sys1 <- rxode2(ode)
 #'
 #' pars <- function() {
 #'   CL <- exp(THETA[1] + ETA[1]) # ; if (CL>100) CL=100
@@ -259,7 +259,7 @@ prediction <- function(fit, pred, data = NULL, mc.cores = 1) {
 #' @param llik log-likelihood function
 #' @param data data to be fitted
 #' @param inits initial values
-#' @param system an optional (compiled) RxODE object
+#' @param system an optional (compiled) rxode2 object
 #' @param syspar function: calculation of PK parameters
 #' @param diag.xform transformation to diagonal elements of OMEGA during fitting
 #' @param ... additional options
@@ -308,7 +308,7 @@ prediction <- function(fit, pred, data = NULL, mc.cores = 1) {
 #' d/dt(depot) =-KA*depot;
 #' d/dt(centr) = KA*depot - KE*centr;
 #' "
-#' sys1 <- RxODE(ode)
+#' sys1 <- rxode2(ode)
 #'
 #' pars <- function() {
 #'   CL <- exp(THETA[1] + ETA[1]) # ; if (CL>100) CL=100
@@ -364,11 +364,11 @@ gnlmm <- function(llik, data, inits, syspar = NULL,
   names(data) <- tolower(names(data)) # needed in ev
 
   ## model
-  RxODE::rxReq("lbfgs")
+  rxode2::rxReq("lbfgs")
   if (is.null(system)) {}
-  else if (class(system) == "RxODE") {}
+  else if (class(system) == "rxode2") {}
   else if (class(system) == "character") {
-    system <- RxODE(model = system)
+    system <- rxode2(model = system)
   }
   else {
     stop("invalid system input")

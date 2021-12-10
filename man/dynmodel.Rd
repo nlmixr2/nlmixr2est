@@ -10,27 +10,27 @@ dynmodel(
   inits,
   data,
   fixPars = NULL,
-  nlmixrObject = NULL,
+  nlmixr2Object = NULL,
   control = list(),
   ...
 )
 }
 \arguments{
-\item{system}{RxODE object. See \code{\link[RxODE]{RxODE}} for more details.}
+\item{system}{rxode2 object. See \code{\link[rxode2]{rxode2}} for more details.}
 
 \item{model}{Error model.}
 
 \item{inits}{Initial values of system parameters.}
 
-\item{data}{Dataset to estimate. Needs to be RxODE compatible in EVIDs.}
+\item{data}{Dataset to estimate. Needs to be rxode2 compatible in EVIDs.}
 
 \item{fixPars}{Fixed system parameters. Default is NULL.}
 
-\item{nlmixrObject}{nlmixr object. See \code{\link[nlmixr]{nlmixr}} for more
+\item{nlmixr2Object}{nlmixr2 object. See \code{\link[nlmixr2]{nlmixr2}} for more
 details. Default is NULL.}
 
 \item{control}{Control options for dynmodel
-\code{\link[nlmixr]{dynmodelControl}} .}
+\code{\link[nlmixr2]{dynmodelControl}} .}
 
 \item{...}{Other parameters (ignored)}
 }
@@ -51,7 +51,7 @@ ode <- "
       C=X/V;
       PRED = C
       "
-ode_system <- RxODE(model = ode)
+ode_system <- rxode2(model = ode)
 model_error_structure <- cp ~ C + add(0.01) + prop(0.01)
 inits <- c(CL = 1, V = 10)
 control <- dynmodelControl(method = "Nelder-Mead")
@@ -64,7 +64,7 @@ fit <-
     control = control
   ))
 
-# nlmixr model example ----------------------------------------------------------
+# nlmixr2 model example ----------------------------------------------------------
 model_onecmt_bolus <- function() {
   ini({
     CL <- c(0, 5, 10) # Clearance (L/hr)
@@ -80,15 +80,15 @@ model_onecmt_bolus <- function() {
 }
 
 # note on some platforms this fit is not successful
-fit <- try(nlmixr(object = model_onecmt_bolus, data = Bolus_1CPT, est = "dynmodel"))
+fit <- try(nlmixr2(object = model_onecmt_bolus, data = Bolus_1CPT, est = "dynmodel"))
 
-if (inherits(fit, "nlmixrDynmodel")) {
+if (inherits(fit, "nlmixr2Dynmodel")) {
  as.dynmodel(fit)
 }
 
 # method = "focei" is slightly more flexible and well tested
 
-fit <- try(nlmixr(object = model_onecmt_bolus, data = Bolus_1CPT, est = "focei"))
+fit <- try(nlmixr2(object = model_onecmt_bolus, data = Bolus_1CPT, est = "focei"))
 
 }
 }

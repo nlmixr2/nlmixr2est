@@ -26,7 +26,7 @@ rats
 16 pregnant rats have a control diet, and 16 have a chemically
 treated diet.  The litter size for each rat is recorded after 4
 and 21 days.  This dataset is used in the SAS Probit-model with
-binomial data, and saved in the nlmixr package as rats.
+binomial data, and saved in the nlmixr2 package as rats.
 }
 \references{
 Weil, C.S., 1970. Selection of the valid number of
@@ -48,7 +48,7 @@ Ochi, Y. and Prentice, R. L. (1984),
     Biometrika, 71, 531-543.
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_1CPT}},
 \code{\link{Bolus_2CPTMM}},
@@ -61,5 +61,5 @@ Other nlmixr datasets:
 \code{\link{theo_sd}},
 \code{\link{warfarin}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

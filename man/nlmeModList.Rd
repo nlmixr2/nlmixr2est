@@ -2,7 +2,7 @@
 % Please edit documentation in R/nlme_fit.R
 \name{nlmeModList}
 \alias{nlmeModList}
-\title{Access the model list information for nlmixr's nlme user functions}
+\title{Access the model list information for nlmixr2's nlme user functions}
 \usage{
 nlmeModList(x, value)
 }
@@ -19,7 +19,7 @@ When both x and value are missing, this is the
     return the value x in the current nlmeModListEnv.
 }
 \description{
-Access the model list information for nlmixr's nlme user functions
+Access the model list information for nlmixr2's nlme user functions
 }
 \author{
 Matthew L. Fidler

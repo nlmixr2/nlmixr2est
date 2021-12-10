@@ -2,12 +2,12 @@
 % Please edit documentation in R/huxtable.R
 \name{nmLst}
 \alias{nmLst}
-\title{Create a large output based on a nlmixr fit}
+\title{Create a large output based on a nlmixr2 fit}
 \usage{
 nmLst(x, lst = NULL)
 }
 \arguments{
-\item{x}{nlmixr fit object}
+\item{x}{nlmixr2 fit object}
 
 \item{lst}{Listing file.  If not specified, it is determined by
 the day and the model/R-object name.  If it is specified as
@@ -17,7 +17,7 @@ the day and the model/R-object name.  If it is specified as
 invisibly returns fit
 }
 \description{
-Create a large output based on a nlmixr fit
+Create a large output based on a nlmixr2 fit
 }
 \author{
 Matthew Fidler

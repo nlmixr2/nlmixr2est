@@ -7,7 +7,7 @@
 preconditionFit(fit, estType = c("full", "posthoc", "none"), ntry = 10L)
 }
 \arguments{
-\item{fit}{A nlmixr fit to be preconditioned}
+\item{fit}{A nlmixr2 fit to be preconditioned}
 
 \item{estType}{Once the fit has been linearly reparametrized,
 should a "full" estimation, "posthoc" estimation or simply a
@@ -18,7 +18,7 @@ updated}
 covariance estimate}
 }
 \value{
-A nlmixr fit object that was preconditioned to stabilize
+A nlmixr2 fit object that was preconditioned to stabilize
   the variance/covariance calculation
 }
 \description{

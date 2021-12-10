@@ -1,7 +1,7 @@
 #define STRICT_R_HEADER
 #include "ires.h"
 
-extern "C" SEXP _nlmixr_iresCalc(SEXP ipredDfLstSXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
+extern "C" SEXP _nlmixr2_iresCalc(SEXP ipredDfLstSXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 				 SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
 				 SEXP iresOpt) {
 BEGIN_RCPP

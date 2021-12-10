@@ -2,26 +2,26 @@
 ##
 ## Copyright (C) 2014 - 2016  Wenping Wang
 ##
-## This file is part of nlmixr.
+## This file is part of nlmixr2.
 ##
-## nlmixr is free software: you can redistribute it and/or modify it
+## nlmixr2 is free software: you can redistribute it and/or modify it
 ## under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 2 of the License, or
 ## (at your option) any later version.
 ##
-## nlmixr is distributed in the hope that it will be useful, but
+## nlmixr2 is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with nlmixr.  If not, see <http:##www.gnu.org/licenses/>.
+## along with nlmixr2.  If not, see <http:##www.gnu.org/licenses/>.
 
 ## require(lbfgs)
 ## require(lbfgsb3)
 ## require(madness)
 ## require(Rcpp)
-# require(nlmixr)
+# require(nlmixr2)
 ## require(parallel)
 ## require(minqa)
 ## require(Deriv)
@@ -69,7 +69,7 @@ getModelVars <- function(blik, bpar, m1) {
 
   #----------------------------
   f <- deparse(blik)
-  .lhsrhs <- nlmixrfindRhsLhs(blik)
+  .lhsrhs <- nlmixr2findRhsLhs(blik)
 
   states <- m1$get.modelVars()$state
 
@@ -90,7 +90,7 @@ getModelVars <- function(blik, bpar, m1) {
 gnlmm2 <- function(llik, data, inits, syspar = NULL,
                    system = NULL, diag.xform = c("sqrt", "log", "identity"),
                    ..., control = list()) {
-  RxODE::rxReq("Deriv")
+  rxode2::rxReq("Deriv")
   ## data
   if (is.null(data$ID)) stop('"ID" not found in data')
   if (is.null(data$EVID)) data$EVID <- 0
@@ -100,13 +100,13 @@ gnlmm2 <- function(llik, data, inits, syspar = NULL,
 
   # model
   if (is.null(system)) {
-    stop("system must be an RxODE model or string")
+    stop("system must be an rxode2 model or string")
   }
-  else if (class(system) == "RxODE") {
-    system <- RxODE(system, calcSens = TRUE)
+  else if (class(system) == "rxode2") {
+    system <- rxode2(system, calcSens = TRUE)
   }
   else if (class(system) == "character") {
-    system <- RxODE(model = system, calcSens = TRUE)
+    system <- rxode2(model = system, calcSens = TRUE)
   }
   else {
     stop("invalid system input")
@@ -326,7 +326,7 @@ gnlmm2 <- function(llik, data, inits, syspar = NULL,
       dati <- data.sav[data.sav$ID == ix, ]
       evi <- dati[, c("TIME", "EVID", "AMT")]
       names(evi) <- tolower(names(evi))
-      ev <- RxODE::eventTable()
+      ev <- rxode2::eventTable()
       ev$import.EventTable(evi)
       dati <- dati[dati$EVID == 0, ]
 

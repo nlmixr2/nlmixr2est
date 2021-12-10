@@ -3,7 +3,7 @@
 ##' 16 pregnant rats have a control diet, and 16 have a chemically
 ##' treated diet.  The litter size for each rat is recorded after 4
 ##' and 21 days.  This dataset is used in the SAS Probit-model with
-##' binomial data, and saved in the nlmixr package as rats.
+##' binomial data, and saved in the nlmixr2 package as rats.
 ##'
 ##' @format A data frame with 32 rows and 6 columns
 ##'
@@ -36,5 +36,5 @@
 ##'     "Likelihood Inference in a Correlated Probit Regression Model,"
 ##'     Biometrika, 71, 531-543.
 ##'
-##' @family nlmixr datasets
+##' @family nlmixr2 datasets
 "rats"

@@ -9,7 +9,7 @@ for (f in c("src/RcppExports.cpp")) {
   }
 }
 
-unlink("R/nlmixr_md5.R")
+unlink("R/nlmixr2_md5.R")
 
 cpp <- list.files("src", pattern = ".(c|h|cpp|f)$")
 include <- list.files("inst/include")
@@ -18,8 +18,8 @@ md5 <- digest::digest(lapply(c(paste0("src/", cpp),
                                paste0("inst/include/", include),
                                paste0("R/", Rfiles)), digest::digest, file = TRUE))
 
-md5file <- file("R/nlmixr_md5.R", "wb")
-writeLines(sprintf("nlmixr.md5 <- \"%s\"\n", md5), md5file)
+md5file <- file("R/nlmixr2_md5.R", "wb")
+writeLines(sprintf("nlmixr2.md5 <- \"%s\"\n", md5), md5file)
 close(md5file)
 
 if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {

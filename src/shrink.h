@@ -11,7 +11,7 @@ extern "C" {
 
 #endif
 
-  SEXP _nlmixr_calcShrinkOnly(SEXP omegaMatSEXP, SEXP etaLstSEXP, SEXP nidSEXP);
+  SEXP _nlmixr2_calcShrinkOnly(SEXP omegaMatSEXP, SEXP etaLstSEXP, SEXP nidSEXP);
 
 #if defined(__cplusplus)
 }

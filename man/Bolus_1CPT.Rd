@@ -26,7 +26,7 @@ A data frame with 7,920 rows and 14 columns
 }
 \source{
 Schoemaker R, Xiong Y, Wilkins J, Laveille C, Wang W.
-    nlmixr: an open-source package for pharmacometric modelling in
+    nlmixr2: an open-source package for pharmacometric modelling in
     R. ACOP 2016
 }
 \usage{
@@ -57,7 +57,7 @@ samples in 24 hours per subject, using a first-order absorption,
 1-compartment disposition, linear elimination model.
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_2CPTMM}},
 \code{\link{Bolus_2CPT}},
@@ -70,5 +70,5 @@ Other nlmixr datasets:
 \code{\link{theo_sd}},
 \code{\link{warfarin}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

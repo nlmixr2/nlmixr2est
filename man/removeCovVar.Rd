@@ -7,7 +7,7 @@
 removeCovVar(fitobject, varName, covariate, categorical = FALSE, isHS = FALSE)
 }
 \arguments{
-\item{fitobject}{an nlmixr 'fit' object}
+\item{fitobject}{an nlmixr2 'fit' object}
 
 \item{varName}{a string giving the variable name to which covariate needs to be added}
 

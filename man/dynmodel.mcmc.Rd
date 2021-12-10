@@ -17,7 +17,7 @@ dynmodel.mcmc(
 )
 }
 \arguments{
-\item{system}{an RxODE object}
+\item{system}{an rxode2 object}
 
 \item{model}{a list of statistical measurement models}
 
@@ -59,7 +59,7 @@ ode <- "
    d/dt(centr) = fI - CL*C2 - Q*C2 + Q*C3;
    d/dt(peri)  =              Q*C2 - Q*C3;
 "
-sys1 <- RxODE(model = ode)
+sys1 <- rxode2(model = ode)
 
 
 ## ------------------------------------------------------------------------

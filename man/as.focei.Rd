@@ -2,7 +2,7 @@
 % Please edit documentation in R/foceiFit.R, R/nlme_fit.R
 \name{as.focei}
 \alias{as.focei}
-\alias{as.focei.nlmixrNlme}
+\alias{as.focei.nlmixr2Nlme}
 \title{Convert fit to FOCEi style fit}
 \usage{
 as.focei(
@@ -16,7 +16,7 @@ as.focei(
   IDlabel = NULL
 )
 
-\method{as.focei}{nlmixrNlme}(
+\method{as.focei}{nlmixr2Nlme}(
   object,
   uif,
   pt = proc.time(),

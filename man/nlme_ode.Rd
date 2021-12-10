@@ -50,7 +50,7 @@ nlmeOde(
 \arguments{
 \item{dat.o}{data to be fitted}
 
-\item{model}{a string containing the set of ordinary differential equations (ODE) and other expressions defining the changes in the dynamic  system. For details, see the sections \dQuote{Details} and  \dQuote{\code{RxODE Syntax}} below.}
+\item{model}{a string containing the set of ordinary differential equations (ODE) and other expressions defining the changes in the dynamic  system. For details, see the sections \dQuote{Details} and  \dQuote{\code{rxode2 Syntax}} below.}
 
 \item{parModel}{list: model for fixed effects, randoms effects and initial values.}
 
@@ -83,7 +83,7 @@ value is 0.}
 \code{hmax=NA} (default), uses the average difference +
 hmaxSd*sd in times and sampling events. The \code{hmaxSd} is a user
 specified parameter and which defaults to zero.  When
-\code{hmax=NULL} RxODE uses the maximum difference in times in
+\code{hmax=NULL} rxode2 uses the maximum difference in times in
 your sampling and events.  The value 0 is equivalent to infinite
 maximum absolute step size.}
 
@@ -104,28 +104,28 @@ method.  The default value is 5.  This can be between 1 and 5.}
 \item{...}{additional nlme options}
 }
 \value{
-nlmixr nlme fit
+nlmixr2 nlme fit
 }
 \description{
 'nlme_ode' fits a mixed-effect model described using ordinary differential
-equation (ODEs). The ODE-definition follows RxODE syntax.
+equation (ODEs). The ODE-definition follows rxode2 syntax.
 Specification of fixed effects, random effects and initial values follows
 the standard nlme notations.
 }
 \details{
 The ODE-based model specification may be coded inside a character
-   string or in a text file, see Section \emph{RxODE Syntax} below for
-   coding details.  An internal \code{RxODE} compilation manager object
+   string or in a text file, see Section \emph{rxode2 Syntax} below for
+   coding details.  An internal \code{rxode2} compilation manager object
    translates the ODE system into C, compiles it, and dynamically loads the
-   object code into the current R session.  The call to \code{RxODE}
-   produces an object of class \code{RxODE} which consists of a list-like
+   object code into the current R session.  The call to \code{rxode2}
+   produces an object of class \code{rxode2} which consists of a list-like
    structure (closure) with various member functions (see Section
    \emph{Value} below).
 }
-\section{RxODE Syntax}{
+\section{rxode2 Syntax}{
 
 
-   An \code{RxODE} model specification consists of one or more
+   An \code{rxode2} model specification consists of one or more
    statements terminated by semi-colons, \sQuote{\code{;}}, and
    optional comments (comments are delimited by \code{#} and an
    end-of-line marker).  \strong{NB:} Comments are not allowed
@@ -150,7 +150,7 @@ The ODE-based model specification may be coded inside a character
    (Note that the modulo operator \sQuote{\code{\%}} is currently
    not supported.)
 
-   Identifiers in an \code{RxODE} model specification can refer to:
+   Identifiers in an \code{rxode2} model specification can refer to:
    \itemize{
       \item state variables in the dynamic system (e.g., compartments in a
       pharmacokinetic/pharmacodynamic model);
@@ -180,7 +180,7 @@ The ODE-based model specification may be coded inside a character
 
 \examples{
 \donttest{
-library(nlmixr)
+library(nlmixr2)
 ode <- "
 d/dt(depot) =-KA*depot;
 d/dt(centr) = KA*depot - KE*centr;

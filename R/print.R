@@ -32,8 +32,8 @@
     "broom.mixed.sep1" = ":",
     "broom.mixed.sep2" = ","
   )
-  .strong <- getOption("nlmixr.strong.corr", 0.7)
-  .moderate <- getOption("nlmixr.moderate.corr", 0.3)
+  .strong <- getOption("nlmixr2.strong.corr", 0.7)
+  .moderate <- getOption("nlmixr2.moderate.corr", 0.3)
   .lt <- .getR(x)
   .digs <- 3
   .lts <- sapply(.lt, function(x) {
@@ -64,7 +64,7 @@
 ##'
 ##' @param x Data frame
 ##' @param name Name of data  frame
-##' @param bound What the nlmixr object is bound to
+##' @param bound What the nlmixr2 object is bound to
 ##' @return If this is printing to a notebook object
 ##' @author Matthew Fidler
 ##' @noRd
@@ -92,7 +92,7 @@
 }
 
 ##' @export
-print.nlmixrClass <- function(x, ...) {
+print.nlmixr2Class <- function(x, ...) {
   tmp <- x
   attr(tmp, ".foceiEnv") <- NULL
   class(tmp) <- NULL
@@ -101,7 +101,7 @@ print.nlmixrClass <- function(x, ...) {
 }
 
 ##' @export
-print.nlmixrPlotList <- function(x, ...) {
+print.nlmixr2PlotList <- function(x, ...) {
   .x <- x
   class(.x) <- NULL
   for (.i in seq_along(.x)) {
@@ -110,18 +110,18 @@ print.nlmixrPlotList <- function(x, ...) {
 }
 
 ##' @export
-print.nlmixrFitCoreSilent <- function(x, ...) {
+print.nlmixr2FitCoreSilent <- function(x, ...) {
   return(invisible(x))
 }
 
 ##' @export
-print.nlmixrLstSilent <- function(x, ...) {
+print.nlmixr2LstSilent <- function(x, ...) {
   return(invisible(x))
 }
 
 
 ##' @export
-print.nlmixrGill83 <- function(x, ...) {
+print.nlmixr2Gill83 <- function(x, ...) {
   cat(sprintf(
     "Gill83 Derivative/Forward Difference\n  (rtol=%s; K=%s, step=%s, ftol=%s)\n\n",
     x$gillRtol, x$gillK, x$gillStep, x$gillFtol
@@ -130,7 +130,7 @@ print.nlmixrGill83 <- function(x, ...) {
 }
 
 ##' @export
-print.nlmixrFitCore <- function(x, ...) {
+print.nlmixr2FitCore <- function(x, ...) {
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
     if (identical(.parent[[.cur]], x)) {
@@ -280,7 +280,7 @@ print.nlmixrFitCore <- function(x, ...) {
     }
     if (exists("cor", x$env)) {
       .tmp <- .getR(x$cor)
-      if (any(abs(.tmp) >= getOption("nlmixr.strong.corr", 0.7))) {
+      if (any(abs(.tmp) >= getOption("nlmixr2.strong.corr", 0.7))) {
         cat(paste0("  Some strong fixed parameter correlations exist (", crayon::yellow(.bound), crayon::bold$blue("$cor"), ") :\n"))
         .getCorPrint(x$cor)
       } else {
@@ -330,13 +330,13 @@ print.nlmixrFitCore <- function(x, ...) {
         cat("  See https://tinyurl.com/yyrrwkce\n")
         cat("  It could also mean the convergence is poor, check results before accepting fit\n")
         cat("  You may also try a good derivative free optimization:\n")
-        cat("    nlmixr(...,control=list(outerOpt=\"bobyqa\"))\n")
+        cat("    nlmixr2(...,control=list(outerOpt=\"bobyqa\"))\n")
       }
     }
-    if (RxODE::rxIs(x, "nlmixrFitData")) {
+    if (rxode2::rxIs(x, "nlmixr2FitData")) {
       .dfName <- "data.frame"
-      if (RxODE::rxIs(x, "tbl")) .dfName <- "tibble"
-      if (RxODE::rxIs(x, "data.table")) .dfName <- "data.table"
+      if (rxode2::rxIs(x, "tbl")) .dfName <- "tibble"
+      if (rxode2::rxIs(x, "data.table")) .dfName <- "data.table"
       cat("\n")
       cat(cli::cli_format_method({
         cli::cli_rule(paste0(
@@ -348,7 +348,7 @@ print.nlmixrFitCore <- function(x, ...) {
           crayon::blue(.dfName), "):"
         ))
       }), sep = "\n")
-      if (RxODE::rxIs(x, "tbl") || RxODE::rxIs(x, "data.table")) {
+      if (rxode2::rxIs(x, "tbl") || rxode2::rxIs(x, "data.table")) {
         .oldOpts <- options("tibble.print_max", "tibble.print_min")
         on.exit(options(
           tibble.print_max = .oldOpts$tibble.print_max,

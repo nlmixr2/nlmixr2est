@@ -11,7 +11,7 @@
 }
 
 ##' @export
-confint.nlmixrFitCore <- function(object, parm, level = 0.95, ...) {
+confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
   .extra <- list(...)
   .exponentiate <- ifelse(any(names(.extra) == "exponentiate"), .extra$exponentiate, FALSE)
   .ciNames <- ifelse(any(names(.extra) == "ciNames"), .extra$ciNames, TRUE)
@@ -34,10 +34,10 @@ confint.nlmixrFitCore <- function(object, parm, level = 0.95, ...) {
 }
 
 ##' @export
-confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
+confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
-.nlmixrTidyFixed <- function(x, ..., .ranpar = FALSE) {
-  RxODE::rxReq("tibble")
+.nlmixr2TidyFixed <- function(x, ..., .ranpar = FALSE) {
+  rxode2::rxReq("tibble")
   .extra <- list(...)
   .conf.int <- ifelse(any(names(.extra) == "conf.int"), .extra$conf.int, ifelse(any(names(.extra) == "conf.level"), TRUE, FALSE))
   .conf.level <- ifelse(any(names(.extra) == "conf.level"), .extra$conf.level, 0.95)
@@ -46,7 +46,7 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
   .rse <- ifelse(any(names(.extra) == "rse"), .extra$rse, FALSE)
   .bsv <- ifelse(any(names(.extra) == "bsv"), .extra$bsv, FALSE)
   .shrink <- ifelse(any(names(.extra) == "shrink"), .extra$shrink, FALSE)
-  if (.quick) warning("quick does not do anything for nlmixr fit objects")
+  if (.quick) warning("quick does not do anything for nlmixr2 fit objects")
   .df <- .fixNames(x$parFixedDf)
   .exp <- abs(exp(.df$model.est) - .df$estimate) < 1e-6
   if (is.na(.exponentiate)) {
@@ -64,7 +64,7 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
   .df$statistic <- .df$estimate / .df$std.error
   .df$p.value <- stats::pt(.df$statistic, nobs(x) - attr(logLik(x), "df"), lower.tail = FALSE)
   if (.conf.int) {
-    .ci <- confint.nlmixrFitCore(x, level = .conf.level, ciNames = FALSE, exponentiate = .exponentiate)
+    .ci <- confint.nlmixr2FitCore(x, level = .conf.level, ciNames = FALSE, exponentiate = .exponentiate)
     .df$conf.low <- .ci$conf.low
     .df$conf.high <- .ci$conf.high
   } else {
@@ -97,8 +97,8 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
   tibble::as_tibble(.df)
 }
 
-.nlmixrTidyRandom <- function(x, ...) {
-  RxODE::rxReq("tibble")
+.nlmixr2TidyRandom <- function(x, ...) {
+  rxode2::rxReq("tibble")
   .d <- dim(x$omegaR)
   if (.d[1] > 0) {
     .tmp <- stack(x$eta[, -1])
@@ -109,8 +109,8 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
   }
 }
 
-.nlmixrTidyRandomPar <- function(x, ...) {
-  RxODE::rxReq("tibble")
+.nlmixr2TidyRandomPar <- function(x, ...) {
+  rxode2::rxReq("tibble")
   .pars <- .getR(x$omegaR, TRUE)
   if (length(.pars) > 0) {
     .p1 <- data.frame(
@@ -118,7 +118,7 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
       statistic = NA_real_, p.value = NA_real_, stringsAsFactors = FALSE
     ) %>%
       .reorderCols()
-    .p2 <- data.frame(.nlmixrTidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) %>%
+    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) %>%
       .reorderCols()
     .df <- rbind(.p1, .p2)
     for (.v in c("statistic", "p.value", "std.error")) {
@@ -155,7 +155,7 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
 }
 
 .coefPar <- function(x, exponentiate = FALSE, ...) {
-  RxODE::rxReq("tibble")
+  rxode2::rxReq("tibble")
   .d <- dim(x$omegaR)
   if (.d[1] == 0) {
     return(NULL)
@@ -203,8 +203,8 @@ confint.nlmixrFitCoreSilent <- confint.nlmixrFitCore
   return(tibble::as_tibble(.df))
 }
 
-tidy.nlmixrFitCore <- function(x, ...) {
-  RxODE::rxReq("tibble")
+tidy.nlmixr2FitCore <- function(x, ...) {
+  rxode2::rxReq("tibble")
   .extra <- list(...)
   if (any(names(.extra) == "effects")) {
     .effects <- .extra$effects
@@ -220,13 +220,13 @@ tidy.nlmixrFitCore <- function(x, ...) {
   )
   .ret <- list()
   if (any(.effects == "fixed")) {
-    .ret$fixed <- .nlmixrTidyFixed(x, ...)
+    .ret$fixed <- .nlmixr2TidyFixed(x, ...)
   }
   if (any(.effects == "random") || any(.effects == "ran_vals")) {
-    .ret$ran_vals <- .nlmixrTidyRandom(x, ...)
+    .ret$ran_vals <- .nlmixr2TidyRandom(x, ...)
   }
   if (any(.effects == "ran_pars")) {
-    .ret$ran_pars <- .nlmixrTidyRandomPar(x, ...)
+    .ret$ran_pars <- .nlmixr2TidyRandomPar(x, ...)
   }
   if (any(.effects == "ran_coef")) {
     .ret$ran_coef <- .coefPar(x, ...)
@@ -239,10 +239,10 @@ tidy.nlmixrFitCore <- function(x, ...) {
     .reorderCols())
 }
 
-tidy.nlmixrFitCoreSilent <- tidy.nlmixrFitCore
+tidy.nlmixr2FitCoreSilent <- tidy.nlmixr2FitCore
 
-glance.nlmixrFitCore <- function(x, ...) {
-  RxODE::rxReq("tibble")
+glance.nlmixr2FitCore <- function(x, ...) {
+  rxode2::rxReq("tibble")
   .lst <- list(...)
   if (any(names(.lst) == "type")) {
     setOfv(x, type = .lst$type)
@@ -254,10 +254,10 @@ glance.nlmixrFitCore <- function(x, ...) {
   tibble::as_tibble(.df)
 }
 
-glance.nlmixrFitCoreSilent <- glance.nlmixrFitCore
+glance.nlmixr2FitCoreSilent <- glance.nlmixr2FitCore
 
-augment.nlmixrFitCore <- function(x, ...) {
-  stop("augment is not yet implemented for nlmixr models")
+augment.nlmixr2FitCore <- function(x, ...) {
+  stop("augment is not yet implemented for nlmixr2 models")
 }
 
-augment.nlmixrFitCoreSilent <- augment.nlmixrFitCore
+augment.nlmixr2FitCoreSilent <- augment.nlmixr2FitCore

@@ -3,7 +3,7 @@
 \name{vpc}
 \alias{vpc}
 \alias{vpc.default}
-\title{Vpc function for nlmixr}
+\title{Vpc function for nlmixr2}
 \usage{
 vpc(sim, ...)
 
@@ -15,8 +15,8 @@ vpc(sim, ...)
 \item{...}{Other parameters}
 }
 \value{
-a nlmixr composite vpc object
+a nlmixr2 composite vpc object
 }
 \description{
-Vpc function for nlmixr
+Vpc function for nlmixr2
 }

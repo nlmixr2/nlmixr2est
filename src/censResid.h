@@ -13,7 +13,7 @@
 static inline double truncnorm(double mean, double sd, double low, double hi){
   NumericMatrix sigma(1,1);
   sigma(0,0)=sd;
-  SEXP ret =RxODE::rxRmvnSEXP(wrap(IntegerVector::create(1)),
+  SEXP ret =rxode2::rxRmvnSEXP(wrap(IntegerVector::create(1)),
 			      wrap(NumericVector::create(mean)),
 			      wrap(sigma),
 			      wrap(NumericVector::create(low)),

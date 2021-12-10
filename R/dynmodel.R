@@ -9,7 +9,7 @@ err.msg <- function(x, pre = "", post = "") {
 }
 ##' Convert fit to classic dynmodel object
 ##'
-##' @param x nlmixr object to convert to dynmodel object
+##' @param x nlmixr2 object to convert to dynmodel object
 ##' @return dynmodel
 ##' @author Matthew Fidler
 ##' @export
@@ -131,7 +131,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   .Call(neldermead_wrap, fr, rho, length(start), start, step,
     as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
     as.integer(con$trace),
-    PACKAGE = "nlmixr"
+    PACKAGE = "nlmixr2"
   )
 }
 
@@ -148,7 +148,7 @@ mymin <- function(start, fr, rho = NULL, control = list()) {
   .Call(neldermead_wrap, fr, rho, length(start), start, step,
     as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
     as.integer(con$trace),
-    PACKAGE = "nlmixr"
+    PACKAGE = "nlmixr2"
   )
 }
 
@@ -156,13 +156,13 @@ mymin <- function(start, fr, rho = NULL, control = list()) {
 # #########################################################################
 
 # as.focei.dynmodel() -----------------------------------------------------------
-#' Output nlmixr format for dynmodel
+#' Output nlmixr2 format for dynmodel
 #'
-#' Convert dynmodel output to nlmixr focei style output
+#' Convert dynmodel output to nlmixr2 focei style output
 #'
 #' @param .dynmodelObject dynmodel object
-#' @param .nlmixrObject nlmixr object
-#' @param .data RxODE data set
+#' @param .nlmixr2Object nlmixr2 object
+#' @param .data rxode2 data set
 #' @param .time proc.time object used in dynmodel timing
 #' @param .theta estimated terms excluding error terms
 #' @param .fit optimized parameters
@@ -173,45 +173,45 @@ mymin <- function(start, fr, rho = NULL, control = list()) {
 #' @param .dynmodelControl control options for dynmodel
 #' @param .nobs2 -
 #' @param .pt proc.time object used in dynmodel timing
-#' @param .rxControl control options for RxODE
+#' @param .rxControl control options for rxode2
 #' @return A UI version of a dynmodel object
 #' @author Mason McComb and Matt Fidler
 #' @keywords internal
 #' @export
-as.focei.dynmodel <- function(.dynmodelObject, .nlmixrObject, .data,
+as.focei.dynmodel <- function(.dynmodelObject, .nlmixr2Object, .data,
                               .time, .theta, .fit, .message, .inits.err,
                               .cov, .sgy, .dynmodelControl, .nobs2 = 0,
                               .pt = proc.time(),
-                              .rxControl = RxODE::rxControl()) {
+                              .rxControl = rxode2::rxControl()) {
   .Estimates <- .dynmodelObject$res[, 1]
-  .model <- RxODE::rxSymPySetupPred(.nlmixrObject$rxode.pred,
+  .model <- rxode2::rxSymPySetupPred(.nlmixr2Object$rxode.pred,
     function() {
-      return(nlmixr_pred)
+      return(nlmixr2_pred)
     },
-    .nlmixrObject$theta.pars,
-    .nlmixrObject$error,
+    .nlmixr2Object$theta.pars,
+    .nlmixr2Object$error,
     grad = FALSE,
     pred.minus.dv = TRUE, sum.prod = FALSE, # control$sumProd,
     theta.derivs = FALSE, optExpression = TRUE, # control$optExpression,
     run.internal = TRUE, only.numeric = TRUE
   )
   .temp.model <- .model
-  .nlmixrObject.df <- as.data.frame(.nlmixrObject$ini)
+  .nlmixr2Object.df <- as.data.frame(.nlmixr2Object$ini)
   # assign fixed terms
   .fix.index <-
-    if (length(which(.nlmixrObject.df$fix == TRUE)) == 0) {
+    if (length(which(.nlmixr2Object.df$fix == TRUE)) == 0) {
       NULL
     } else {
-      which(.nlmixrObject.df$fix == TRUE)
+      which(.nlmixr2Object.df$fix == TRUE)
     } # obtain row location for fixed terms
-  .ref.fix <- substring(.nlmixrObject.df$name[.fix.index], 2)
+  .ref.fix <- substring(.nlmixr2Object.df$name[.fix.index], 2)
   .temp.log.fixPars.index <- intersect(.fix.index, .temp.model$log.etas)
-  .temp.log.fixPars <- .nlmixrObject.df$est[.temp.log.fixPars.index]
-  names(.temp.log.fixPars) <- substring(.nlmixrObject.df$name[.temp.log.fixPars.index], 2)
+  .temp.log.fixPars <- .nlmixr2Object.df$est[.temp.log.fixPars.index]
+  names(.temp.log.fixPars) <- substring(.nlmixr2Object.df$name[.temp.log.fixPars.index], 2)
 
   .temp.nonlog.fixPars.index <- setdiff(.fix.index, .temp.model$log.etas)
-  .temp.nonlog.fixPars <- .nlmixrObject.df$est[.temp.nonlog.fixPars.index]
-  names(.temp.nonlog.fixPars) <- substring(.nlmixrObject.df$name[.temp.nonlog.fixPars.index], 2)
+  .temp.nonlog.fixPars <- .nlmixr2Object.df$est[.temp.nonlog.fixPars.index]
+  names(.temp.nonlog.fixPars) <- substring(.nlmixr2Object.df$name[.temp.nonlog.fixPars.index], 2)
 
   .fixPars <- c(.temp.log.fixPars, .temp.nonlog.fixPars)
   .fixPars <- .fixPars[order(factor(names(.fixPars), levels = .ref.fix))]
@@ -219,25 +219,25 @@ as.focei.dynmodel <- function(.dynmodelObject, .nlmixrObject, .data,
   # assign theta terms(estimated terms excluding error terms)
   .theta.index <-
     if (is.null(.fix.index)) {
-      which(!is.na(.nlmixrObject.df$ntheta) & is.na(.nlmixrObject.df$err), TRUE)
+      which(!is.na(.nlmixr2Object.df$ntheta) & is.na(.nlmixr2Object.df$err), TRUE)
     } else {
-      which(!is.na(.nlmixrObject.df$ntheta) & is.na(.nlmixrObject.df$err), TRUE)[-which(.nlmixrObject.df$fix == TRUE)]
+      which(!is.na(.nlmixr2Object.df$ntheta) & is.na(.nlmixr2Object.df$err), TRUE)[-which(.nlmixr2Object.df$fix == TRUE)]
     }
 
-  ## $nlmixrObject ----
+  ## $nlmixr2Object ----
   .temp.theta.index <-
     c(1:sum(
       as.data.frame(
-        .nlmixrObject$ini
+        .nlmixr2Object$ini
       )$fix == FALSE &
-        is.na(as.data.frame(.nlmixrObject$ini)$err)
+        is.na(as.data.frame(.nlmixr2Object$ini)$err)
     ))
   .temp.replacements <- .dynmodelObject$res[.theta.index, 1]
-  ini <- as.data.frame(.nlmixrObject$ini)
+  ini <- as.data.frame(.nlmixr2Object$ini)
   ini$est[.temp.theta.index] <- c(.temp.replacements)
-  class(ini) <- c("nlmixrBounds", "data.frame")
-  .nlmixrObject$ini <- ini
-  uif <- .nlmixrObject
+  class(ini) <- c("nlmixr2Bounds", "data.frame")
+  .nlmixr2Object$ini <- ini
+  uif <- .nlmixr2Object
 
   ## now use focei to get the same estimates
   .env <- new.env(parent = emptyenv())
@@ -268,7 +268,7 @@ as.focei.dynmodel <- function(.dynmodelObject, .nlmixrObject, .data,
   fit.f <- try(foceiFit.data.frame(
       data = .data, inits = uif$focei.inits, PKpars = .pars,
       model = .mod, pred = function() {
-        return(nlmixr_pred)
+        return(nlmixr2_pred)
       }, err = uif$error,
       lower = uif$focei.lower,
       upper = uif$focei.upper,
@@ -281,43 +281,43 @@ as.focei.dynmodel <- function(.dynmodelObject, .nlmixrObject, .data,
   assign("method", "dynmodel", .env)
   assign("extra", sprintf("(method: %s)",  .dynmodelControl$method), .env)
   assign("dynmodelObject",  .dynmodelObject, .env)
-  .cls <- c("nlmixrDynmodel", class(fit.f))
+  .cls <- c("nlmixr2Dynmodel", class(fit.f))
   attr(.cls, ".foceiEnv") <- .env
   class(fit.f) <- .cls
   return(fit.f)
 }
 
-# nlmixrDynmodelConvert() #################################################
-#' Converting nlmixr objects to dynmodel objects
+# nlmixr2DynmodelConvert() #################################################
+#' Converting nlmixr2 objects to dynmodel objects
 #'
-#' Convert nlmixr Objects to dynmodel objects for use in fitting non-population dynamic models
+#' Convert nlmixr2 Objects to dynmodel objects for use in fitting non-population dynamic models
 #'
-#' @param .nmf nlmixr object
+#' @param .nmf nlmixr2 object
 #' @return list containing inputs for the dynmodel()
 #' \itemize{
-#' \item \code{$fixPars} - fixed parameters defined as \code{fixed()} in the nlmixr object
+#' \item \code{$fixPars} - fixed parameters defined as \code{fixed()} in the nlmixr2 object
 #' \item \code{$sigma} - error model parameters
 #' \item \code{$inits} - initial estimates for parameters in the model
 #' \item \code{$lower} - lower boundaries for estimated parameters
 #' \item \code{$upper} - upper boundaries for estimated parameters
-#' \item \code{$system} - RxODE object that defines the structural model
+#' \item \code{$system} - rxode2 object that defines the structural model
 #' \item \code{$model} - error model
 #' }
 #'
 #' @author Mason McComb and Matt Fidler
 #' @export
-nlmixrDynmodelConvert <- function(.nmf) {
+nlmixr2DynmodelConvert <- function(.nmf) {
   # initialize list for output
   .return <- list()
 
-  # convert nlmixr model to data.frame
+  # convert nlmixr2 model to data.frame
   .nmf.original <- .nmf
   .nmf <- as.data.frame(.nmf$ini)
   .temp.model <-
-    RxODE::rxSymPySetupPred(
+    rxode2::rxSymPySetupPred(
       .nmf.original$rxode.pred,
       function() {
-        return(nlmixr_pred)
+        return(nlmixr2_pred)
       },
       .nmf.original$theta.pars,
       .nmf.original$error,
@@ -411,14 +411,14 @@ nlmixrDynmodelConvert <- function(.nmf) {
   .return <- c(.return, lower = list(.lower), upper = list(.upper))
 
   # obtain system
-  .system <- RxODE(.nmf.original$rxode.pred) # (use nlmixr_pred)
+  .system <- rxode2(.nmf.original$rxode.pred) # (use nlmixr2_pred)
   .system$stateExtra <- NULL # remove extraState, the error model term should not be inclcuded
   .system$lhs <- .system$lhs[-length(.system$lhs)] # remove the error model term
   .return <- c(.return, system = .system)
 
   # create error model
   .DV <- .nmf$condition[!is.na(.nmf$condition) & .nmf$condition != "ID"]
-  .PRED <- "nlmixr_pred" # need to obtain from data? id dont know
+  .PRED <- "nlmixr2_pred" # need to obtain from data? id dont know
 
   .formula <- list()
   for (i in 1:length(.sigma.index)) {
@@ -440,10 +440,10 @@ nlmixrDynmodelConvert <- function(.nmf) {
 # dynmodelControl() #######################################################
 #' Control Options for dynmodel
 #'
-#' @inheritParams RxODE::rxSolve
+#' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
 #'
-#' @param nlmixrOutput Option to change output style to nlmixr output. By default
+#' @param nlmixr2Output Option to change output style to nlmixr2 output. By default
 #'   this is FALSE.
 #' @param digs Option for the number of significant digits of the output. By
 #'   default this is 3.
@@ -509,11 +509,11 @@ nlmixrDynmodelConvert <- function(.nmf) {
 #'   the Hessian matrix of the objective function. The S matrix is the sum of
 #'   individual gradient cross-product (evaluated at the individual empirical
 #'   Bayes estimates).
-#' @param rxControl This uses RxODE family of objects, file, or model
-#'   specification to solve a ODE system. See \code{\link[RxODE]{rxControl}} for
+#' @param rxControl This uses rxode2 family of objects, file, or model
+#'   specification to solve a ODE system. See \code{\link[rxode2]{rxControl}} for
 #'   more details. By default this is NULL.
 #'
-#' @inheritParams RxODE::rxSolve
+#' @inheritParams rxode2::rxSolve
 #'
 #' @return dynmodelControl list for options during dynmodel optimization
 #'
@@ -521,7 +521,7 @@ nlmixrDynmodelConvert <- function(.nmf) {
 #' @export
 dynmodelControl <- function(...,
                             ci = 0.95,
-                            nlmixrOutput = FALSE,
+                            nlmixr2Output = FALSE,
                             digs = 3,
                             lower = -Inf,
                             upper = Inf,
@@ -536,12 +536,12 @@ dynmodelControl <- function(...,
                             scaleTo = 1.0,
                             scaleObjective = 0,
                             normType = c("rescale2", "constant", "mean", "rescale", "std", "len"),
-                            scaleType = c("nlmixr", "norm", "mult", "multAdd"),
+                            scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
                             scaleCmax = 1e5,
                             scaleCmin = 1e-5,
                             scaleC = NULL,
                             scaleC0 = 1e5,
-                            # RxODE
+                            # rxode2
                             atol = NULL,
                             rtol = NULL,
                             ssAtol = NULL,
@@ -580,7 +580,7 @@ dynmodelControl <- function(...,
                             epsilon = NULL,
                             derivSwitchTol = NULL,
                             sigdig = 4,
-                            covMethod = c("nlmixrHess", "optimHess"),
+                            covMethod = c("nlmixr2Hess", "optimHess"),
                             # rxControl
                             gillK = 10L,
                             gillStep = 4,
@@ -643,13 +643,13 @@ dynmodelControl <- function(...,
     if (!any(names(rxControl) == "ssRtol")) {
       rxControl$ssRtol <- 0.5 * 10^(-sigdig - 1.5)
     }
-    rxControl <- do.call(RxODE::rxControl, rxControl)
+    rxControl <- do.call(rxode2::rxControl, rxControl)
   } else {
     atol <- 0.5 * 10^(-sigdig - 2)
     rtol <- 0.5 * 10^(-sigdig - 2)
     ssAtol <- 0.5 * 10^(-sigdig - 1.5)
     ssRtol <- 0.5 * 10^(-sigdig - 1.5)
-    rxControl <- RxODE::rxControl(atol = atol, rtol = rtol, ssAtol = ssAtol, ssRtol = ssRtol)
+    rxControl <- rxode2::rxControl(atol = atol, rtol = rtol, ssAtol = ssAtol, ssRtol = ssRtol)
   }
 
   if (missing(method)) {
@@ -659,12 +659,12 @@ dynmodelControl <- function(...,
     normType <- "rescale2"
   } # normType= 'constant'
   if (missing(scaleType)) {
-    scaleType <- "nlmixr"
+    scaleType <- "nlmixr2"
   } # scaleType= 'norm'
 
   .ret <- list(
     ci = ci,
-    nlmixrOutput = nlmixrOutput,
+    nlmixr2Output = nlmixr2Output,
     digs = digs,
     lower = lower,
     upper = upper,
@@ -678,7 +678,7 @@ dynmodelControl <- function(...,
     scaleCmin = scaleCmin,
     scaleC = scaleC, # NULL,
     scaleC0 = scaleC0,
-    # RxODE
+    # rxode2
     atol = atol,
     rtol = rtol,
     # bobyqa
@@ -730,15 +730,15 @@ dynmodelControl <- function(...,
 # dynmodel()  #############################################################
 #' Fit a non-population dynamic model
 #'
-#' @param system RxODE object. See \code{\link[RxODE]{RxODE}} for more details.
+#' @param system rxode2 object. See \code{\link[rxode2]{rxode2}} for more details.
 #' @param model Error model.
 #' @param inits Initial values of system parameters.
-#' @param data Dataset to estimate. Needs to be RxODE compatible in EVIDs.
+#' @param data Dataset to estimate. Needs to be rxode2 compatible in EVIDs.
 #' @param fixPars Fixed system parameters. Default is NULL.
-#' @param nlmixrObject nlmixr object. See \code{\link[nlmixr]{nlmixr}} for more
+#' @param nlmixr2Object nlmixr2 object. See \code{\link[nlmixr2]{nlmixr2}} for more
 #'   details. Default is NULL.
 #' @param control Control options for dynmodel
-#'   \code{\link[nlmixr]{dynmodelControl}} .
+#'   \code{\link[nlmixr2]{dynmodelControl}} .
 #' @param ... Other parameters (ignored)
 #' @return A dynmodel fit object
 #' @author Wenping Wang, Mason McComb and Matt Fidler
@@ -753,7 +753,7 @@ dynmodelControl <- function(...,
 #'       C=X/V;
 #'       PRED = C
 #'       "
-#' ode_system <- RxODE(model = ode)
+#' ode_system <- rxode2(model = ode)
 #' model_error_structure <- cp ~ C + add(0.01) + prop(0.01)
 #' inits <- c(CL = 1, V = 10)
 #' control <- dynmodelControl(method = "Nelder-Mead")
@@ -766,7 +766,7 @@ dynmodelControl <- function(...,
 #'     control = control
 #'   ))
 #'
-#' # nlmixr model example ----------------------------------------------------------
+#' # nlmixr2 model example ----------------------------------------------------------
 #' model_onecmt_bolus <- function() {
 #'   ini({
 #'     CL <- c(0, 5, 10) # Clearance (L/hr)
@@ -782,19 +782,19 @@ dynmodelControl <- function(...,
 #' }
 #'
 #' # note on some platforms this fit is not successful
-#' fit <- try(nlmixr(object = model_onecmt_bolus, data = Bolus_1CPT, est = "dynmodel"))
+#' fit <- try(nlmixr2(object = model_onecmt_bolus, data = Bolus_1CPT, est = "dynmodel"))
 #'
-#' if (inherits(fit, "nlmixrDynmodel")) {
+#' if (inherits(fit, "nlmixr2Dynmodel")) {
 #'  as.dynmodel(fit)
 #' }
 #'
 #' # method = "focei" is slightly more flexible and well tested
 #'
-#' fit <- try(nlmixr(object = model_onecmt_bolus, data = Bolus_1CPT, est = "focei"))
+#' fit <- try(nlmixr2(object = model_onecmt_bolus, data = Bolus_1CPT, est = "focei"))
 #'
 #' }
 #' @export
-dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = NULL, control = list(), ...) {
+dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixr2Object = NULL, control = list(), ...) {
   # Timing and environment --------------------------------------------------
   .pt <- proc.time()
   .time <- c()
@@ -803,7 +803,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   .dynmodel.env <- new.env(parent = emptyenv())
 
   # dynmodelControl Handling ------------------------------------------------
-  if (!RxODE::rxIs(control, "dynmodelControl")) {
+  if (!rxode2::rxIs(control, "dynmodelControl")) {
     control <- do.call(dynmodelControl, control)
   }
 
@@ -937,7 +937,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   # NOTES: Check to make sure all there is consistency between error model, data. inits, and ODE model
 
   # data handling
-  ## data <- RxODE::etTrans(data, system, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
+  ## data <- rxode2::etTrans(data, system, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
   .original.data <- data
 
   # warn DV must be in data
@@ -969,7 +969,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   # check to see if there is a discrepency between error model names and data
   nodef <- setdiff(sapply(modelParsed, function(x) x["dv"]), names(data))
   # print error message
-  if (length(nodef) & is.null(nlmixrObject)) {
+  if (length(nodef) & is.null(nlmixr2Object)) {
     msg <- err.msg(nodef, pre = "var(s) not found in data: ")
     stop(msg)
   }
@@ -990,11 +990,11 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   #  "system" variables contain estimated "init" variables and fixed "fixPars" variables?
   # obtain fixed and estimated parameters
   pars <-
-    if (is.null(nlmixrObject)) {
+    if (is.null(nlmixr2Object)) {
       modelVars$params
     } else {
       names(
-        nlmixrDynmodelConvert(nlmixrObject)$inits
+        nlmixr2DynmodelConvert(nlmixr2Object)$inits
       )
     }
 
@@ -1035,15 +1035,15 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
     names(theta) <- names(inits)[1:npar]
     theta <- c(theta, fixPars)
 
-    if (!is.null(nlmixrObject)) {
-      theta <- nlmixrObject$dynmodel.fun(theta)
+    if (!is.null(nlmixr2Object)) {
+      theta <- nlmixr2Object$dynmodel.fun(theta)
     }
     .rxControl <- rxControl
     .rxControl$returnType <- "data.frame"
     # call rxODE for simulation
     s <-
       do.call(
-        RxODE::rxSolve,
+        rxode2::rxSolve,
         c(
           list(object = system, params = theta, events = data),
           .rxControl
@@ -1051,13 +1051,13 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
       )
     i <- 1
     i.max <- 10
-    while (any(is.na(s$nlmixr_pred)) & i < i.max) {
+    while (any(is.na(s$nlmixr2_pred)) & i < i.max) {
       .rxControl$atol <- .rxControl$atol * 100
       .rxControl$rtol <- .rxControl$rtol * 100
 
       s <-
         do.call(
-          RxODE::rxSolve,
+          rxode2::rxSolve,
           c(
             list(object = system, params = theta, events = data),
             .rxControl
@@ -1109,7 +1109,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
       if (!is.null(yeoJohnson)) lambda <- yeoJohnson
       if (!is.null(tbsYj)) lambda <- tbsYj
 
-      # predicted and observed values from RxODE
+      # predicted and observed values from rxode2
       yo <- data0[, "DV"]
       yp <- s[, x["pred"]]
       assign("nobs", length(yo), .env)
@@ -1199,7 +1199,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
 
   # FIXME: Put options from control here gillK etc
   .funs <-
-    nlmixrGradFun(
+    nlmixr2GradFun(
       obj,
       print = control$print,
       gillRtol = control$gillRtol,
@@ -1212,7 +1212,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   # Scaling functions -----------------------------------------------------------------------
   # normType assignment for scaling (normalization type)
   normType <- control$normType
-  if (is.null(nlmixrObject)) {
+  if (is.null(nlmixr2Object)) {
     normType <- "constant"
     scaleType <- "norm"
   }
@@ -1256,15 +1256,15 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   theta <- inits[seq_len(length(inits) - length(inits.err))]
   names(scaleC) <- names(inits)
 
-  if (!is.null(nlmixrObject)) {
+  if (!is.null(nlmixr2Object)) {
     .model <-
-      RxODE::rxSymPySetupPred(
-        nlmixrObject$rxode.pred,
+      rxode2::rxSymPySetupPred(
+        nlmixr2Object$rxode.pred,
         function() {
-          return(nlmixr_pred)
+          return(nlmixr2_pred)
         },
-        nlmixrObject$theta.pars,
-        nlmixrObject$error,
+        nlmixr2Object$theta.pars,
+        nlmixr2Object$error,
         grad = FALSE,
         pred.minus.dv = TRUE,
         sum.prod = FALSE, # control$sumProd,
@@ -1292,12 +1292,12 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   }
 
   # assign value to scaleC based on additional functions
-  if (!is.null(nlmixrObject)) {
+  if (!is.null(nlmixr2Object)) {
     for (i in .model$extraProps$powTheta) {
       if (is.na(scaleC[i])) scaleC[i] <- 1 ## Powers are log-scaled
     }
 
-    .ini <- as.data.frame(nlmixrObject$ini)
+    .ini <- as.data.frame(nlmixr2Object$ini)
 
     for (i in .model$extraProps$factorial) {
       if (is.na(scaleC[i])) scaleC[i] <- abs(1 / digamma(.ini$est[i] + 1))
@@ -1327,7 +1327,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   scalePar <- function(x, i) {
     if (scaleType == "norm") { # simple scaling
       return((x[i] - C1) / C2)
-    } else if (scaleType == "nlmixr") { # nlmixr
+    } else if (scaleType == "nlmixr2") { # nlmixr2
       scaleTo <- (inits[i] - C1) / C2
       return((x[i] - inits[i]) / scaleC[i] + scaleTo)
     } else if (scaleType == "mult") { # simple multiplicatice scaling
@@ -1355,7 +1355,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   unscalePar <- function(x, i) {
     if (scaleType == "norm") { # simple scaling
       return(x[i] * C2 + C1)
-    } else if (scaleType == "nlmixr") { # nlmixr
+    } else if (scaleType == "nlmixr2") { # nlmixr2
       scaleTo <- (inits[i] - C1) / C2
       return((x[i] - scaleTo) * scaleC[i] + inits[i])
     } else if (scaleType == "mult") { # simple multiplicatice scaling
@@ -1476,7 +1476,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
     fit$hessian <- try(optimHess(fit$par, obj, control = control), silent = TRUE)
   } else {
     # FIXME: Put options from control here gillK etc
-    fit$hessian <- try(nlmixrHess(fit$par, obj,
+    fit$hessian <- try(nlmixr2Hess(fit$par, obj,
       gillRtol = control$gillRtol,
       gillK = control$gillKcov,
       gillStep = control$gillStepCov,
@@ -1533,22 +1533,22 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
   .time <- as.data.frame(.time)
   names(.time) <- c("setup", "scaling", "optimization", "Hessian", "total")
 
-  if (!is.null(nlmixrObject) & control$nlmixrOutput) {
-    nlmixr.ouptut <- as.focei.dynmodel(
-      .dynmodelObject = res, .nlmixrObject = nlmixrObject, .data = .original.data, .time = .time, .fit = fit, .message = .message, .inits.err = inits.err, .cov = cov.matrix, .sgy = sgy,
+  if (!is.null(nlmixr2Object) & control$nlmixr2Output) {
+    nlmixr2.ouptut <- as.focei.dynmodel(
+      .dynmodelObject = res, .nlmixr2Object = nlmixr2Object, .data = .original.data, .time = .time, .fit = fit, .message = .message, .inits.err = inits.err, .cov = cov.matrix, .sgy = sgy,
       .dynmodelControl = control, .nobs2 = 0, .pt = proc.time(), .rxControl = rxControl
     )
     ## .hist <- .funs$hist()
-    ## assign("parHistData", .hist, nlmixr.ouptut$env)
+    ## assign("parHistData", .hist, nlmixr2.ouptut$env)
     ## .tmp <- .hist
     ## .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
     ## .iter <- .tmp$iter
     ## .tmp <- .tmp[, names(.tmp) != "iter"]
-    ## .ret <- nlmixr.ouptut$env
+    ## .ret <- nlmixr2.ouptut$env
     ## .ret$parHistStacked <- data.frame(stack(.tmp), iter = .iter)
     ## names(.ret$parHistStacked) <- c("val", "par", "iter")
     ## .ret$parHist <- data.frame(iter = .iter, .tmp)
-    return(nlmixr.ouptut)
+    return(nlmixr2.ouptut)
   }
   else {
     return(res)
@@ -1562,7 +1562,7 @@ dynmodel <- function(system, model, inits, data, fixPars = NULL, nlmixrObject = 
 # ####################################################################### #
 uni_slice <- function(x0, fr, rho = NULL, w = 1, m = 1000, lower = -1.0e20, upper = 1.0e20) {
   if (is.null(rho)) rho <- environment(fr)
-  .Call(slice_wrap, fr, rho, x0, w, as.integer(m), lower, upper, PACKAGE = "nlmixr")$x1
+  .Call(slice_wrap, fr, rho, x0, w, as.integer(m), lower, upper, PACKAGE = "nlmixr2")$x1
 }
 
 # Error model  -------------------------------------------------------------
@@ -1703,7 +1703,7 @@ do.slice <- function(pars, fr0) {
 # dynmodel.mcmc() ---------------------------------------------------------
 #' Fit a non-population dynamic model using mcmc
 #'
-#' @param system an RxODE object
+#' @param system an rxode2 object
 #' @param model a list of statistical measurement models
 #' @param evTable an Event Table object
 #' @param inits initial values of system parameters
@@ -1732,7 +1732,7 @@ do.slice <- function(pars, fr0) {
 #'    d/dt(centr) = fI - CL*C2 - Q*C2 + Q*C3;
 #'    d/dt(peri)  =              Q*C2 - Q*C3;
 #' "
-#' sys1 <- RxODE(model = ode)
+#' sys1 <- rxode2(model = ode)
 #'
 #'
 #' ## ------------------------------------------------------------------------
@@ -1760,8 +1760,8 @@ dynmodel.mcmc <- function(system, model, evTable, inits, data,
   set.seed(seed)
 
   # progress
-  on.exit(RxODE::rxProgressAbort("Aborted MCMC Calculation"))
-  RxODE::rxProgress(nsim)
+  on.exit(rxode2::rxProgressAbort("Aborted MCMC Calculation"))
+  rxode2::rxProgress(nsim)
 
   # slice sampling
   s <-
@@ -1769,7 +1769,7 @@ dynmodel.mcmc <- function(system, model, evTable, inits, data,
       1:nsim,
       function(k, rho) {
         pars <- do.slice(get("pars", rho), fr0)
-        RxODE::rxTick()
+        rxode2::rxTick()
         assign("pars", pars, rho)
       },
       rho = rho
@@ -1779,7 +1779,7 @@ dynmodel.mcmc <- function(system, model, evTable, inits, data,
   attr(s, "calls") <- calls
   attr(s, "obj") <- fr0
   attr(s, "class") <- "dyn.mcmc"
-  RxODE::rxProgressStop()
+  rxode2::rxProgressStop()
   s
 }
 

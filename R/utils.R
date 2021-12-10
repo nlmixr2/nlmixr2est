@@ -2,26 +2,26 @@
 ##
 ## Copyright (C) 2014 - 2016  Wenping Wang
 ##
-## This file is part of nlmixr.
+## This file is part of nlmixr2.
 ##
-## nlmixr is free software: you can redistribute it and/or modify it
+## nlmixr2 is free software: you can redistribute it and/or modify it
 ## under the terms of the GNU General Public License as published by
 ## the Free Software Foundation, either version 2 of the License, or
 ## (at your option) any later version.
 ##
-## nlmixr is distributed in the hope that it will be useful, but
+## nlmixr2 is distributed in the hope that it will be useful, but
 ## WITHOUT ANY WARRANTY; without even the implied warranty of
 ## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ## GNU General Public License for more details.
 ##
 ## You should have received a copy of the GNU General Public License
-## along with nlmixr.  If not, see <http:##www.gnu.org/licenses/>.
+## along with nlmixr2.  If not, see <http:##www.gnu.org/licenses/>.
 
-# Utilities for nlmixr ####################################################
+# Utilities for nlmixr2 ####################################################
 
 # ####################################################################### #
 #
-## Utilities for building nlmixr
+## Utilities for building nlmixr2
 #
 # ####################################################################### #
 
@@ -80,7 +80,7 @@ nsis <- function() { ## build installer...
 }
 # #########################################################################
 
-# nlmixrPrint() -----------------------------------------------------------
+# nlmixr2Print() -----------------------------------------------------------
 ##' Print x using the message facility
 ##'
 ##' This allows the suppressMessages to work on print functions.  This
@@ -94,7 +94,7 @@ nsis <- function() { ## build installer...
 ##' @author Matthew L. Fidler
 ##' @export
 ##' @keywords internal
-nlmixrPrint <- function(x, ...) {
+nlmixr2Print <- function(x, ...) {
   this.env <- environment()
   message(invisible(paste(
     .captureOutput(assign("x", print(x, ...), this.env)),
@@ -145,7 +145,7 @@ nlmixrPrint <- function(x, ...) {
 ##'
 ##' @export
 cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
-  .Call(`_nlmixr_cholSE_`, matrix, tol)
+  .Call(`_nlmixr2_cholSE_`, matrix, tol)
 }
 # #########################################################################
 
@@ -181,13 +181,13 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
 ##' @author Matthew Fidler
 ##' @return Nothing, called for its side effects
 ##' @export
-nlmixrTest <- function(expr, silent = .isTestthat(), test = "cran") {
-  .Call(`_nlmixr_setSilentErr`, 1L, PACKAGE = "nlmixr")
-  RxODE::rxSetSilentErr(1L)
+nlmixr2Test <- function(expr, silent = .isTestthat(), test = "cran") {
+  .Call(`_nlmixr2_setSilentErr`, 1L, PACKAGE = "nlmixr2")
+  rxode2::rxSetSilentErr(1L)
   .test <- .test0 <- Sys.getenv("NOT_CRAN")
   on.exit({
-    .Call(`_nlmixr_setSilentErr`, 0L, PACKAGE = "nlmixr")
-    RxODE::rxSetSilentErr(0L)
+    .Call(`_nlmixr2_setSilentErr`, 0L, PACKAGE = "nlmixr2")
+    rxode2::rxSetSilentErr(0L)
   })
   if (.test == "true") {
     force(expr)

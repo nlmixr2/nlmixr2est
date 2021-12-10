@@ -89,7 +89,7 @@ Fit a generalized nonlinear mixed-effect model by he Stochastic
 
 ode <- "d/dt(depot) =-KA*depot;
         d/dt(centr) = KA*depot - KE*centr;"
-m1 <- RxODE(ode)
+m1 <- rxode2(ode)
 
 
 # In this ode System, we also specify the concentration as C2 = centr/V
@@ -97,7 +97,7 @@ m1 <- RxODE(ode)
 ode <- "C2 = centr/V;
       d/dt(depot) =-KA*depot;
       d/dt(centr) = KA*depot - KE*centr;"
-m2 = RxODE(ode)
+m2 = rxode2(ode)
 
 PKpars <- function() {
   CL <- exp(lCL)
@@ -115,7 +115,7 @@ saem_fit <- gen_saem_user_fn(model = m1, PKpars, pred = PRED)
 saem_fit <- gen_saem_user_fn(model=m2, PKpars, pred=PRED2)
 
 
-# You can also use the nlmixr UI to run this model and call the lower level functions
+# You can also use the nlmixr2 UI to run this model and call the lower level functions
 
 one.compartment <- function() {
 ini({
@@ -138,7 +138,7 @@ model({
   cp ~ add(add.sd)
 })
 }
-fit  <- nlmixr(one.compartment, theo_sd, "saem")
+fit  <- nlmixr2(one.compartment, theo_sd, "saem")
 fit
 
 }

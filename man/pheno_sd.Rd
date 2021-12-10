@@ -48,7 +48,7 @@ analyzed in Boeckmann, Sheiner and Beal (1994), in Davidian and
 Giltinan (1995), and in Littell et al. (1996).
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_1CPT}},
 \code{\link{Bolus_2CPTMM}},
@@ -61,5 +61,5 @@ Other nlmixr datasets:
 \code{\link{theo_sd}},
 \code{\link{warfarin}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

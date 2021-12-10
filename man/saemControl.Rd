@@ -86,7 +86,7 @@ thread-based solving, and ignores user Jacobian specification.
 solving, but allows user Jacobian specification.
 \item \code{"dop853"} -- DOP853 solver.  Does not support parallel thread-based
 solving nor user Jacobain specification
-\item \code{"indLin"} -- Solving through inductive linearization.  The RxODE dll
+\item \code{"indLin"} -- Solving through inductive linearization.  The rxode2 dll
 must be setup specially to use this solving routine.
 }}
 
@@ -132,7 +132,7 @@ quadrature when computing the likelihood with this method
 the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
 times the SD)}
 
-\item{optExpression}{Optimize the RxODE expression to speed up
+\item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
 
 \item{maxsteps}{maximum number of (internally defined) steps allowed
@@ -142,7 +142,7 @@ during one call to the solver. (5000 by default)}
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
 
-\item{sum.prod}{Take the RxODE model and use more precise products/sums.
+\item{sum.prod}{Take the rxode2 model and use more precise products/sums.
 Increases solving accuracy and solving time.}
 
 \item{addProp}{one of "combined1" and "combined2"; These are the
@@ -155,7 +155,7 @@ combined2: transform(y)=transform(f)+(a^2+b^2*f^(2c))*eps}
 
 \item{singleOde}{This option allows a single ode model to include
 the PK parameter information instead of splitting it into a
-function and a RxODE model}
+function and a rxode2 model}
 
 \item{tol}{This is the tolerance for the regression models used
 for complex residual errors (ie add+prop etc)}
@@ -185,7 +185,7 @@ ODE solve.}
 \item{...}{Other arguments to control SAEM.}
 }
 \value{
-List of options to be used in \code{\link{nlmixr}} fit for
+List of options to be used in \code{\link{nlmixr2}} fit for
     SAEM.
 }
 \description{

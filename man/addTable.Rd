@@ -2,7 +2,7 @@
 % Please edit documentation in R/resid.R
 \name{addTable}
 \alias{addTable}
-\title{Add table information to nlmixr fit object without tables}
+\title{Add table information to nlmixr2 fit object without tables}
 \usage{
 addTable(
   object,
@@ -16,7 +16,7 @@ addTable(
 )
 }
 \arguments{
-\item{object}{nlmixr family of objects}
+\item{object}{nlmixr2 family of objects}
 
 \item{updateObject}{Update the object (default FALSE)}
 
@@ -36,7 +36,7 @@ addTable(
 Fit with table information attached
 }
 \description{
-Add table information to nlmixr fit object without tables
+Add table information to nlmixr2 fit object without tables
 }
 \examples{
 
@@ -65,7 +65,7 @@ one.cmt <- function() {
 }
 
 # run without tables step
-f <- nlmixr(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
+f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 
 print(f)
 

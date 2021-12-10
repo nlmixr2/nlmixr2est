@@ -36,7 +36,7 @@ foceiControl(
   scaleTo = 1,
   scaleObjective = 0,
   normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
-  scaleType = c("nlmixr", "norm", "mult", "multAdd"),
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleC = NULL,
@@ -160,7 +160,7 @@ thread-based solving, and ignores user Jacobian specification.
 solving, but allows user Jacobian specification.
 \item \code{"dop853"} -- DOP853 solver.  Does not support parallel thread-based
 solving nor user Jacobain specification
-\item \code{"indLin"} -- Solving through inductive linearization.  The RxODE dll
+\item \code{"indLin"} -- Solving through inductive linearization.  The rxode2 dll
 must be setup specially to use this solving routine.
 }}
 
@@ -208,7 +208,7 @@ value is 0.}
 \code{hmax=NA} (default), uses the average difference +
 hmaxSd*sd in times and sampling events. The \code{hmaxSd} is a user
 specified parameter and which defaults to zero.  When
-\code{hmax=NULL} RxODE uses the maximum difference in times in
+\code{hmax=NULL} rxode2 uses the maximum difference in times in
 your sampling and events.  The value 0 is equivalent to infinite
 maximum absolute step size.}
 
@@ -223,7 +223,7 @@ default value is determined by the solver (when \code{hini = 0})}
 method.  The default value is 5.  This can be between 1 and 5.}
 
 \item{cores}{Number of cores used in parallel ODE solving.  This
-is equivalent to calling \code{\link[RxODE:getRxThreads]{setRxThreads()}}}
+is equivalent to calling \code{\link[rxode2:getRxThreads]{setRxThreads()}}}
 
 \item{covsInterpolation}{specifies the interpolation method for
 time-varying covariates. When solving ODEs it often samples
@@ -257,7 +257,7 @@ value.  By default this is 1.}
 
 \item{normType}{This is the type of parameter
     normalization/scaling used to get the scaled initial values
-    for nlmixr.  These are used with \code{scaleType} of.
+    for nlmixr2.  These are used with \code{scaleType} of.
 
     With the exception of \code{rescale2}, these come
     from
@@ -330,10 +330,10 @@ value.  By default this is 1.}
 
 }}
 
-\item{scaleType}{The scaling scheme for nlmixr.  The supported types are:
+\item{scaleType}{The scaling scheme for nlmixr2.  The supported types are:
 
 \itemize{
-\item \code{nlmixr}  In this approach the scaling is performed by the following equation:
+\item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 
    v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
 
@@ -370,7 +370,7 @@ Otherwise the parameter is scaled multiplicatively.
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
 
 \item{scaleC}{The scaling constant used with
-    \code{scaleType=nlmixr}.  When not specified, it is based on
+    \code{scaleType=nlmixr2}.  When not specified, it is based on
     the type of parameter that is estimated.  The idea is to keep
     the derivatives similar on a log scale to have similar
     gradient sizes.  Hence parameters like log(exp(theta)) would
@@ -506,7 +506,7 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
-\item{optExpression}{Optimize the RxODE expression to speed up
+\item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
 
 \item{ci}{Confidence level for some tables.  By default this is
@@ -603,15 +603,15 @@ not recommended. If not defined, it will be set to 2*n + 1}
 
 \item{rel.tol}{Relative tolerance before nlminb stops.}
 
-\item{x.tol}{X tolerance for nlmixr optimizers}
+\item{x.tol}{X tolerance for nlmixr2 optimizers}
 
 \item{eval.max}{Number of maximum evaluations of the objective function}
 
 \item{iter.max}{Maximum number of iterations allowed.}
 
-\item{abstol}{Absolute tolerance for nlmixr optimizer}
+\item{abstol}{Absolute tolerance for nlmixr2 optimizer}
 
-\item{reltol}{tolerance for nlmixr}
+\item{reltol}{tolerance for nlmixr2}
 
 \item{resetHessianAndEta}{is a boolean representing if the
 individual Hessian is reset when ETAs are reset using the
@@ -672,7 +672,7 @@ R/S matrix estimates of the covariance).  This number controls
 how small the variance is before the covariance matrix is
 rejected.}
 
-\item{adjLik}{In nlmixr, the objective function matches NONMEM's
+\item{adjLik}{In nlmixr2, the objective function matches NONMEM's
 objective function, which removes a 2*pi constant from the
 likelihood calculation. If this is TRUE, the likelihood
 function is adjusted by this 2*pi factor.  When adjusted this
@@ -715,13 +715,13 @@ qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 (excluding zero) times by the 0.95\% normal region}
 
 \item{stiff}{a logical (\code{TRUE} by default) indicating whether
-the ODE system is stiff or not.\preformatted{For stiff ODE systems (`stiff = TRUE`), `RxODE` uses the
+the ODE system is stiff or not.\preformatted{For stiff ODE systems (`stiff = TRUE`), `rxode2` uses the
 LSODA (Livermore Solver for Ordinary Differential Equations)
 Fortran package, which implements an automatic method switching
 for stiff and non-stiff problems along the integration
 interval, authored by Hindmarsh and Petzold (2003).
 
-For non-stiff systems (`stiff = FALSE`), `RxODE` uses
+For non-stiff systems (`stiff = FALSE`), `rxode2` uses
 DOP853, an explicit Runge-Kutta method of order 8(5, 3) of
 Dormand and Prince as implemented in C by Hairer and Wanner
 (1993).
@@ -762,7 +762,7 @@ combined2: transform(y)=transform(f)+(a^2+b^2*f^(2c))*eps}
 
 \item{singleOde}{This option allows a single ode model to include
 the PK parameter information instead of splitting it into a
-function and a RxODE model}
+function and a rxode2 model}
 
 \item{badSolveObjfAdj}{The objective function adjustment when the
 ODE system cannot be solved.  It is based on each individual bad
@@ -794,7 +794,7 @@ be reflective of the scaled problem's condition-number.
 
 \code{\link[n1qn1]{n1qn1}}
 
-\code{\link[RxODE]{rxSolve}}
+\code{\link[rxode2]{rxSolve}}
 }
 \author{
 Matthew L. Fidler

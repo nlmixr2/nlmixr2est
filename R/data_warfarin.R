@@ -15,7 +15,7 @@
 ##' }
 ##'
 ##' @source Funaki T, Holford N, Fujita S (2018). Population PKPD
-##'     analysis using nlmixr and NONMEM. PAGJA 2018
+##'     analysis using nlmixr2 and NONMEM. PAGJA 2018
 ##'
 ##' @references
 ##'
@@ -27,5 +27,5 @@
 ##'   Initiation of warfarin therapy without a loading dose. Circulation
 ##'   1968; 38: 169-177.
 ##'
-##' @family nlmixr datasets
+##' @family nlmixr2 datasets
 "warfarin"

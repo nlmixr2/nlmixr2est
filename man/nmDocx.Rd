@@ -10,20 +10,20 @@ nmDocx(
   docxOut = NULL,
   docxTemplate = NULL,
   plot = TRUE,
-  titleStyle = getOption("nlmixr.docx.title", "Title"),
-  subtitleStyle = getOption("nlmixr.docx.subtitle", "Subtitle"),
-  normalStyle = getOption("nlmixr.docx.normal", "Normal"),
-  headerStyle = getOption("nlmixr.docx.heading1", "Heading 1"),
-  centeredStyle = getOption("nlmixr.docx.centered", "centered"),
-  preformattedStyle = getOption("nlmixr.docx.preformatted", "HTML Preformatted"),
-  width = getOption("nlmixr.docx.width", 69),
+  titleStyle = getOption("nlmixr2.docx.title", "Title"),
+  subtitleStyle = getOption("nlmixr2.docx.subtitle", "Subtitle"),
+  normalStyle = getOption("nlmixr2.docx.normal", "Normal"),
+  headerStyle = getOption("nlmixr2.docx.heading1", "Heading 1"),
+  centeredStyle = getOption("nlmixr2.docx.centered", "centered"),
+  preformattedStyle = getOption("nlmixr2.docx.preformatted", "HTML Preformatted"),
+  width = getOption("nlmixr2.docx.width", 69),
   save = FALSE
 )
 
 nmSave(x, ..., save = TRUE)
 }
 \arguments{
-\item{x}{nlmixr fit object.}
+\item{x}{nlmixr2 fit object.}
 
 \item{docxOut}{Output file for run information document.  If not
 specified it is the name of R object where the fit is located
@@ -33,41 +33,41 @@ object is returned.}
 
 \item{docxTemplate}{This is the document template.  If not
 specified it defaults to
-\code{option("nlmixr.docx.template")}.  If
-\code{option("nlmixr.docx.template")} is not specified it uses
-the included nlmixr document template.  When
+\code{option("nlmixr2.docx.template")}.  If
+\code{option("nlmixr2.docx.template")} is not specified it uses
+the included nlmixr2 document template.  When
 \code{docxTemplate=NULL} it uses the \code{officer} blank
 document.}
 
 \item{plot}{Boolean indicating if the default goodness of fit
 plots are added to the document.  By default \code{TRUE}}
 
-\item{titleStyle}{This is the word style name for the nlmixr
-title; Usually this is \code{nlmixr version (R
-object)}. Defaults to \code{option("nlmixr.docx.title")} or
+\item{titleStyle}{This is the word style name for the nlmixr2
+title; Usually this is \code{nlmixr2 version (R
+object)}. Defaults to \code{option("nlmixr2.docx.title")} or
 \code{Title}}
 
 \item{subtitleStyle}{This is the word style for the subtitle which
-is \code{nlmixr model name and date}. Defaults to
-\code{option("nlmixr.docx.subtitle")} or \code{Subtitle}}
+is \code{nlmixr2 model name and date}. Defaults to
+\code{option("nlmixr2.docx.subtitle")} or \code{Subtitle}}
 
 \item{normalStyle}{This is the word style for normal text. Defaults to
-\code{option("nlmixr.docx.normal")} or \code{Normal}}
+\code{option("nlmixr2.docx.normal")} or \code{Normal}}
 
 \item{headerStyle}{This is the word style for heading text. Defaults to
-\code{option("nlmixr.docx.heading1")} or \code{Heading 1}}
+\code{option("nlmixr2.docx.heading1")} or \code{Heading 1}}
 
 \item{centeredStyle}{This is the word style for centered text
 which is used for the figures. Defaults to
-\code{option("nlmixr.docx.centered")} or \code{centered}}
+\code{option("nlmixr2.docx.centered")} or \code{centered}}
 
 \item{preformattedStyle}{This is the preformatted text style for R
 output lines.  Defaults to
-\code{option("nlmixr.docx.preformatted")} or \code{HTML Preformatted}}
+\code{option("nlmixr2.docx.preformatted")} or \code{HTML Preformatted}}
 
 \item{width}{Is an integer representing the number of characters
 your preformatted style supports.  By default this is
-\code{option("nlmixr.docx.width")} or \code{69}}
+\code{option("nlmixr2.docx.width")} or \code{69}}
 
 \item{save}{Should the docx be saved in a zip file with the R rds
 data object for the fit?  By default this is \code{FALSE} with
@@ -83,7 +83,7 @@ Create a run summary word document
 }
 \examples{
 \donttest{
- library(nlmixr)
+ library(nlmixr2)
 pheno <- function() {
     # Pheno with covariance
   ini({
@@ -105,10 +105,10 @@ pheno <- function() {
   })
 }
 
-fit.s <- nlmixr(pheno, pheno_sd, "saem")
+fit.s <- nlmixr2(pheno, pheno_sd, "saem")
 
 ## Save output information into a word document
-RxODE::.rxWithWd(tempdir(), # Put document in temporary directory
+rxode2::.rxWithWd(tempdir(), # Put document in temporary directory
   nmDocx(fit.s)
 )
 

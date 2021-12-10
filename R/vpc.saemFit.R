@@ -9,7 +9,7 @@ multi2 <- function(mu, vmat, n) {
 
 rmvnorm <- function(n, mu, vmat) multi2(mu, vmat, n)
 
-##' VPC for nlmixr saemFit objects
+##' VPC for nlmixr2 saemFit objects
 ##'
 ##' @param fit  saemFit object
 ##' @param dat  Data to augment the saemFit vpc simulation
@@ -21,7 +21,7 @@ rmvnorm <- function(n, mu, vmat) multi2(mu, vmat, n)
 ##' @author Wenping Wang
 ##' @export
 vpc_saemFit <- function(fit, dat, nsim = 100, by = NULL, ...) {
-  if (class(fit) == "nlmixr.ui.saem") fit <- as.saem(fit)
+  if (class(fit) == "nlmixr2.ui.saem") fit <- as.saem(fit)
   saem.cfg <- attr(fit, "saem.cfg")
   dopred <- attr(fit, "dopred")
   resMat <- fit$resMat

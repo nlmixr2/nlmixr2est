@@ -35,7 +35,7 @@ focei.fit(data, ...)
 )
 }
 \arguments{
-\item{data}{Data to fit; Needs to be RxODE compatible and have
+\item{data}{Data to fit; Needs to be rxode2 compatible and have
 \code{DV}, \code{AMT}, \code{EVID} in the dataset.}
 
 \item{...}{Ignored parameters}
@@ -44,7 +44,7 @@ focei.fit(data, ...)
 
 \item{PKpars}{Pk Parameters function}
 
-\item{model}{The RxODE model to use}
+\item{model}{The rxode2 model to use}
 
 \item{pred}{The Prediction function}
 
@@ -71,7 +71,7 @@ object.}
 \item{etaMat}{Eta matrix for initial estimates or final estimates
 of the ETAs.}
 
-\item{env}{An environment used to build the FOCEi or nlmixr
+\item{env}{An environment used to build the FOCEi or nlmixr2
 object.}
 
 \item{keep}{Columns to keep from either the input dataset. For the
@@ -81,7 +81,7 @@ Observation Carried forward) imputation is performed.}
 \item{drop}{Columns to drop from the output}
 }
 \value{
-A focei fit or nlmixr fit object
+A focei fit or nlmixr2 fit object
 
 FOCEi fit object
 }
@@ -99,7 +99,7 @@ mypar2 = function ()
     k = theta[1] * exp(eta[1]);
 }
 
-mod <- RxODE({
+mod <- rxode2({
     ipre = 10 * exp(-k * t)
 })
 pred <- function() ipre
@@ -117,20 +117,20 @@ w7$DV <- w7$Y
 w7$EVID <- 0
 w7$AMT <- 0
 
-## Wang2007 prop error OBF 39.458 for NONMEM FOCEi, nlmixr matches.
+## Wang2007 prop error OBF 39.458 for NONMEM FOCEi, nlmixr2 matches.
 fitPi <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
      control=foceiControl(maxOuterIterations=0,covMethod=""))
 
 print(fitPi$objective)
 
-## Wang2007 prop error OBF 39.207 for NONMEM FOCE; nlmixr matches.
+## Wang2007 prop error OBF 39.207 for NONMEM FOCE; nlmixr2 matches.
 fitP <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
      control=foceiControl(maxOuterIterations=0,covMethod="",
      interaction=FALSE))
 
 print(fitP$objective)
 
-## Wang 2007 prop error OBF 39.213 for NONMEM FO; nlmixr matches
+## Wang 2007 prop error OBF 39.213 for NONMEM FO; nlmixr2 matches
 fitPfo <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
      control=foceiControl(maxOuterIterations=0,covMethod="",
      fo=TRUE))
@@ -153,11 +153,11 @@ errAdd <- function(){
 }
 
 ## Wang2007 add error of -2.059 for NONMEM FOCE=NONMEM FOCEi;
-## nlmixr matches.
+## nlmixr2 matches.
 fitA <- foceiFit(w7, inits, mypar2,mod,pred,errAdd,
      control=foceiControl(maxOuterIterations=0,covMethod=""))
 
-## Wang2007 add error of 0.026 for NONMEM FO; nlmixr matches
+## Wang2007 add error of 0.026 for NONMEM FO; nlmixr2 matches
 
 fitAfo <- foceiFit(w7, inits, mypar2,mod,pred,errAdd,
      control=foceiControl(maxOuterIterations=0,fo=TRUE,covMethod=""))
@@ -176,7 +176,7 @@ errLogn <- function(){
    return(lnorm(0.1));
 }
 
-## First run the fit with the nlmixr lnorm error
+## First run the fit with the nlmixr2 lnorm error
 
 fitLN <- foceiFit(w7, inits, mypar2,mod,pred,errLogn,
      control=foceiControl(maxOuterIterations=0,covMethod=""))
@@ -203,7 +203,7 @@ mypar2 <- function ()
     v  <- exp(THETA[3] + ETA[3])
 }
 
-mod <- RxODE({
+mod <- rxode2({
     d/dt(depot) <- -ka * depot
     d/dt(center) <- ka * depot - cl / v * center
     cp <- center / v
@@ -232,7 +232,7 @@ errl <- function(){
 
 fit2 <- foceiFit(d, inits, mypar2,mod,pred,errl)
 
-## You can also use the standard nlmixr functions to run FOCEi
+## You can also use the standard nlmixr2 functions to run FOCEi
 
 library(data.table);
 datr <- Infusion_1CPT;
@@ -261,7 +261,7 @@ one.compartment.IV.model <- function(){
     # The model uses the ini-defined variable names
     Vc <- exp(lVc + eta.Vc)
     Cl <- exp(lCl + eta.Cl)
-    # RxODE-style differential equations are supported
+    # rxode2-style differential equations are supported
     d / dt(centr) = -(Cl / Vc) * centr;
     ## Concentration is calculated
     cp = centr / Vc;
@@ -269,7 +269,7 @@ one.compartment.IV.model <- function(){
     cp ~ prop(prop.sd)
    })}
 
-fitIVp <- nlmixr(one.compartment.IV.model, datr, "focei");
+fitIVp <- nlmixr2(one.compartment.IV.model, datr, "focei");
 
 ## You can also use the Box-Cox Transform of both sides with
 ## proportional error (Donse 2016)
@@ -295,7 +295,7 @@ model({ ## Where the model is specified
     ## The model uses the ini-defined variable names
     Vc <- exp(lVc + eta.Vc)
     Cl <- exp(lCl + eta.Cl)
-    ## RxODE-style differential equations are supported
+    ## rxode2-style differential equations are supported
     d / dt(centr) = -(Cl / Vc) * centr;
     ## Concentration is calculated
     cp = centr / Vc;
@@ -304,7 +304,7 @@ model({ ## Where the model is specified
     ## This is proportional to the untransformed f; You can use the transformed f by using powT()
 })}
 
-fitIVtbs <- nlmixr(one.compartment.IV.model, datr, "focei")
+fitIVtbs <- nlmixr2(one.compartment.IV.model, datr, "focei")
 
 ## If you want to use a variance normalizing distribution with
 ## negative/positive data you can use the Yeo-Johnson transformation
@@ -330,7 +330,7 @@ model({ ## Where the model is specified
     ## The model uses the ini-defined variable names
     Vc <- exp(lVc + eta.Vc)
     Cl <- exp(lCl + eta.Cl)
-    ## RxODE-style differential equations are supported
+    ## rxode2-style differential equations are supported
     d / dt(centr) = -(Cl / Vc) * centr;
     ## Concentration is calculated
     cp = centr / Vc;
@@ -338,7 +338,7 @@ model({ ## Where the model is specified
     cp ~ pow(prop.err, delta) + add(add.err) + yeoJohnson(lambda)
 })}
 
-fitIVyj <- nlmixr(one.compartment.IV.model, datr, "focei")
+fitIVyj <- nlmixr2(one.compartment.IV.model, datr, "focei")
 
 ## In addition to using L-BFGS-B for FOCEi (outer problem) you may
 ## use other optimizers.  An example is below
@@ -361,20 +361,20 @@ one.cmt <- function() {
   })
 }
 
-fit <- nlmixr(one.cmt, theo_sd, "focei", foceiControl(outerOpt="bobyqa"))
+fit <- nlmixr2(one.cmt, theo_sd, "focei", foceiControl(outerOpt="bobyqa"))
 
 ## You may also make an arbitrary optimizer work by adding a wrapper function:
 
 newuoa0 <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...){
   ## The function requires par, fn, gr, lower, upper and control
   ##
-  ## The par, fn, gr, lower and upper and sent to the function from nlmixr's focei.
+  ## The par, fn, gr, lower and upper and sent to the function from nlmixr2's focei.
   ## The  control is the foceiControl list
   ##
   ##  The following code modifies the list control list for no warnings.
   .ctl <- control;
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
-  ## nlmixr will print information this is to suppress the printing from the
+  ## nlmixr2 will print information this is to suppress the printing from the
   ## optimizer
   .ctl$iprint <- 0L;
   .ctl <- .ctl[names(.ctl) \%in\% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")];
@@ -391,7 +391,7 @@ newuoa0 <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..
   return(.ret);
 }
 
-fit <- nlmixr(one.cmt, theo_sd, "focei", foceiControl(outerOpt=newuoa0))
+fit <- nlmixr2(one.cmt, theo_sd, "focei", foceiControl(outerOpt=newuoa0))
 
 }
 }

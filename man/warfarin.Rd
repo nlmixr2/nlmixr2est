@@ -21,7 +21,7 @@ A data frame with 519 rows and 9 columns
 }
 \source{
 Funaki T, Holford N, Fujita S (2018). Population PKPD
-    analysis using nlmixr and NONMEM. PAGJA 2018
+    analysis using nlmixr2 and NONMEM. PAGJA 2018
 }
 \usage{
 warfarin
@@ -39,7 +39,7 @@ O'Reilly RA, Aggeler PM. Studies on coumarin anticoagulant drugs
   1968; 38: 169-177.
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_1CPT}},
 \code{\link{Bolus_2CPTMM}},
@@ -52,5 +52,5 @@ Other nlmixr datasets:
 \code{\link{theo_md}},
 \code{\link{theo_sd}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

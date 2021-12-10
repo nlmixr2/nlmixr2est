@@ -2,41 +2,41 @@
 ##' @export
 magrittr::`%>%`
 
-##' @importFrom RxODE RxODE
+##' @importFrom rxode2 rxode2
 ##' @export
-RxODE::RxODE
+rxode2::rxode2
 
 
-##' @importFrom RxODE logit
+##' @importFrom rxode2 logit
 ##' @export
-RxODE::logit
+rxode2::logit
 
-##' @importFrom RxODE expit
+##' @importFrom rxode2 expit
 ##' @export
-RxODE::expit
+rxode2::expit
 
 
-##' @importFrom RxODE probit
+##' @importFrom rxode2 probit
 ##' @export
-RxODE::probit
+rxode2::probit
 
-##' @importFrom RxODE probitInv
+##' @importFrom rxode2 probitInv
 ##' @export
-RxODE::probitInv
+rxode2::probitInv
 
 
-##' @importFrom RxODE rxSolve
+##' @importFrom rxode2 rxSolve
 ##' @export
-RxODE::rxSolve
+rxode2::rxSolve
 
 
-##' @importFrom RxODE rxClean
+##' @importFrom rxode2 rxClean
 ##' @export
-RxODE::rxClean
+rxode2::rxClean
 
-##' @importFrom RxODE rxCat
+##' @importFrom rxode2 rxCat
 ##' @export
-RxODE::rxCat
+rxode2::rxCat
 
 ##' @importFrom nlme nlme
 ##' @export
@@ -80,17 +80,17 @@ nlme::random.effects
 nlme::nlmeControl
 
 
-##' @importFrom RxODE eventTable
+##' @importFrom rxode2 eventTable
 ##' @export
-RxODE::eventTable
+rxode2::eventTable
 
-##' @importFrom RxODE add.dosing
+##' @importFrom rxode2 add.dosing
 ##' @export
-RxODE::add.dosing
+rxode2::add.dosing
 
-##' @importFrom RxODE add.sampling
+##' @importFrom rxode2 add.sampling
 ##' @export
-RxODE::add.sampling
+rxode2::add.sampling
 
 ##' @importFrom nlme pdDiag
 ##' @export
@@ -180,40 +180,40 @@ nlme::groupedData
 ##' @export
 nlme::getData
 
-##' @importFrom RxODE rxSymPySetupPred
+##' @importFrom rxode2 rxSymPySetupPred
 ##' @export
-RxODE::rxSymPySetupPred
+rxode2::rxSymPySetupPred
 
-##' @importFrom RxODE et
+##' @importFrom rxode2 et
 ##' @export
-RxODE::et
+rxode2::et
 
-##' @importFrom RxODE rxParams
+##' @importFrom rxode2 rxParams
 ##' @export
-RxODE::rxParams
+rxode2::rxParams
 
-##' @importFrom RxODE rxParam
+##' @importFrom rxode2 rxParam
 ##' @export
-RxODE::rxParam
+rxode2::rxParam
 
 
-##' @importFrom RxODE et
+##' @importFrom rxode2 et
 ##' @export
-RxODE::et
+rxode2::et
 
-##' @importFrom RxODE geom_cens
+##' @importFrom rxode2 geom_cens
 ##' @export
-RxODE::geom_cens
+rxode2::geom_cens
 
-##' @importFrom RxODE geom_amt
+##' @importFrom rxode2 geom_amt
 ##' @export
-RxODE::geom_amt
+rxode2::geom_amt
 
 
-##' @importFrom RxODE stat_cens
+##' @importFrom rxode2 stat_cens
 ##' @export
-RxODE::stat_cens
+rxode2::stat_cens
 
-##' @importFrom RxODE stat_amt
+##' @importFrom rxode2 stat_amt
 ##' @export
-RxODE::stat_amt
+rxode2::stat_amt

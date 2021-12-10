@@ -58,7 +58,7 @@ arma::mat decorrelateNpdeEigenMat(arma::mat& varsim, unsigned int& warn) {
     warn = NPDE_DECORRELATE_EIGEN_PINV;
   }
   arma::mat ret =  eigvec * diagmat(eigval) * iEigVec;
-  // Try nearPD from R/RxODE
+  // Try nearPD from R/rxode2
   return ret;
 }
 
@@ -299,9 +299,9 @@ calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
 
 rxGetId2_t rxGetId2;
 
-extern "C" SEXP _nlmixr_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
+extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
-  rxGetId2 = (rxGetId2_t) R_GetCCallable("RxODE", "rxGetId");
+  rxGetId2 = (rxGetId2_t) R_GetCCallable("rxode2", "rxGetId");
   if (TYPEOF(npdeSim) != VECSXP) {
     Rf_errorcall(R_NilValue, "npdeSim needs to be a data.frame");
   }

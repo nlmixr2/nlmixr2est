@@ -7,7 +7,7 @@
 dynmodelControl(
   ...,
   ci = 0.95,
-  nlmixrOutput = FALSE,
+  nlmixr2Output = FALSE,
   digs = 3,
   lower = -Inf,
   upper = Inf,
@@ -17,7 +17,7 @@ dynmodelControl(
   scaleTo = 1,
   scaleObjective = 0,
   normType = c("rescale2", "constant", "mean", "rescale", "std", "len"),
-  scaleType = c("nlmixr", "norm", "mult", "multAdd"),
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
   scaleCmax = 1e+05,
   scaleCmin = 1e-05,
   scaleC = NULL,
@@ -54,7 +54,7 @@ dynmodelControl(
   epsilon = NULL,
   derivSwitchTol = NULL,
   sigdig = 4,
-  covMethod = c("nlmixrHess", "optimHess"),
+  covMethod = c("nlmixr2Hess", "optimHess"),
   gillK = 10L,
   gillStep = 4,
   gillFtol = 0,
@@ -74,7 +74,7 @@ like NONMEM.}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{nlmixrOutput}{Option to change output style to nlmixr output. By default
+\item{nlmixr2Output}{Option to change output style to nlmixr2 output. By default
 this is FALSE.}
 
 \item{digs}{Option for the number of significant digits of the output. By
@@ -94,7 +94,7 @@ thread-based solving, and ignores user Jacobian specification.
 solving, but allows user Jacobian specification.
 \item \code{"dop853"} -- DOP853 solver.  Does not support parallel thread-based
 solving nor user Jacobain specification
-\item \code{"indLin"} -- Solving through inductive linearization.  The RxODE dll
+\item \code{"indLin"} -- Solving through inductive linearization.  The rxode2 dll
 must be setup specially to use this solving routine.
 }}
 
@@ -109,7 +109,7 @@ value.  By default this is 1.}
 
 \item{normType}{This is the type of parameter
     normalization/scaling used to get the scaled initial values
-    for nlmixr.  These are used with \code{scaleType} of.
+    for nlmixr2.  These are used with \code{scaleType} of.
 
     With the exception of \code{rescale2}, these come
     from
@@ -182,10 +182,10 @@ value.  By default this is 1.}
 
 }}
 
-\item{scaleType}{The scaling scheme for nlmixr.  The supported types are:
+\item{scaleType}{The scaling scheme for nlmixr2.  The supported types are:
 
 \itemize{
-\item \code{nlmixr}  In this approach the scaling is performed by the following equation:
+\item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 
    v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
 
@@ -222,7 +222,7 @@ Otherwise the parameter is scaled multiplicatively.
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
 
 \item{scaleC}{The scaling constant used with
-    \code{scaleType=nlmixr}.  When not specified, it is based on
+    \code{scaleType=nlmixr2}.  When not specified, it is based on
     the type of parameter that is estimated.  The idea is to keep
     the derivatives similar on a log scale to have similar
     gradient sizes.  Hence parameters like log(exp(theta)) would
@@ -329,9 +329,9 @@ by multiplying this value by \code{.Machine$double.eps}}
     On exit pgtol is unchanged.  This defaults to zero, when the
     check is suppressed.}
 
-\item{abstol}{Absolute tolerance for nlmixr optimizer}
+\item{abstol}{Absolute tolerance for nlmixr2 optimizer}
 
-\item{reltol}{tolerance for nlmixr}
+\item{reltol}{tolerance for nlmixr2}
 
 \item{lmm}{An integer giving the number of BFGS updates retained in the
 "L-BFGS-B" method, It defaults to 7.}
@@ -351,7 +351,7 @@ default of 1e-20 would be more appropriate.}
 
 \item{rel.tol}{Relative tolerance before nlminb stops.}
 
-\item{x.tol}{X tolerance for nlmixr optimizers}
+\item{x.tol}{X tolerance for nlmixr2 optimizers}
 
 \item{xf.tol}{Used in Nelder-Mead optimization and PORT optimization. false
 convergence tolerance. Defaults to 2.2e-14. See \code{\link[stats]{nlminb}}
@@ -436,8 +436,8 @@ step is equal to the new step size = (prior step size)*gillStepCov}
 that is acceptable before issuing a warning/error about the
 gradient estimates during the covariance step.}
 
-\item{rxControl}{This uses RxODE family of objects, file, or model
-specification to solve a ODE system. See \code{\link[RxODE]{rxControl}} for
+\item{rxControl}{This uses rxode2 family of objects, file, or model
+specification to solve a ODE system. See \code{\link[rxode2]{rxControl}} for
 more details. By default this is NULL.}
 }
 \value{

@@ -2,7 +2,7 @@
 % Please edit documentation in R/bootstrap.R
 \name{bootstrapFit}
 \alias{bootstrapFit}
-\title{Bootstrap nlmixr fit}
+\title{Bootstrap nlmixr2 fit}
 \usage{
 bootstrapFit(
   fit,
@@ -18,7 +18,7 @@ bootstrapFit(
 )
 }
 \arguments{
-\item{fit}{the nlmixr fit object}
+\item{fit}{the nlmixr2 fit object}
 
 \item{nboot}{an integer giving the number of bootstrapped models to
 be fit; default value is 200}
@@ -86,9 +86,9 @@ one.cmt <- function() {
   })
 }
 
-fit <- nlmixr(one.cmt, theo_sd, "focei")
+fit <- nlmixr2(one.cmt, theo_sd, "focei")
 
-RxODE::.rxWithWd(tempdir(), { # Run example in temp dir
+rxode2::.rxWithWd(tempdir(), { # Run example in temp dir
 
 bootstrapFit(fit, nboot = 5, restart = TRUE) # overwrites any of the existing data or model files
 bootstrapFit(fit, nboot = 7) # resumes fitting using the stored data and model files

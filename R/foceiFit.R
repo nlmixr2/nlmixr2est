@@ -169,7 +169,7 @@ is.latex <- function() {
 ##'     this is \code{FALSE}.
 ##'
 ##'
-##' @param optExpression Optimize the RxODE expression to speed up
+##' @param optExpression Optimize the rxode2 expression to speed up
 ##'     calculation. By default this is turned on.
 ##'
 ##' @param ci Confidence level for some tables.  By default this is
@@ -294,11 +294,11 @@ is.latex <- function() {
 ##'
 ##' @param rel.tol Relative tolerance before nlminb stops.
 ##'
-##' @param x.tol X tolerance for nlmixr optimizers
+##' @param x.tol X tolerance for nlmixr2 optimizers
 ##'
-##' @param abstol Absolute tolerance for nlmixr optimizer
+##' @param abstol Absolute tolerance for nlmixr2 optimizer
 ##'
-##' @param reltol  tolerance for nlmixr
+##' @param reltol  tolerance for nlmixr2
 ##'
 ##' @param gillK The total number of possible steps to determine the
 ##'     optimal forward/central difference step size per parameter (by
@@ -309,10 +309,10 @@ is.latex <- function() {
 ##' @param gillRtol The relative tolerance used for Gill 1983
 ##'     determination of optimal step size.
 ##'
-##' @param scaleType The scaling scheme for nlmixr.  The supported types are:
+##' @param scaleType The scaling scheme for nlmixr2.  The supported types are:
 ##'
 ##' \itemize{
-##' \item \code{nlmixr}  In this approach the scaling is performed by the following equation:
+##' \item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 ##'
 ##'    v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
 ##'
@@ -345,7 +345,7 @@ is.latex <- function() {
 ##' }
 ##'
 ##' @param scaleC The scaling constant used with
-##'     \code{scaleType=nlmixr}.  When not specified, it is based on
+##'     \code{scaleType=nlmixr2}.  When not specified, it is based on
 ##'     the type of parameter that is estimated.  The idea is to keep
 ##'     the derivatives similar on a log scale to have similar
 ##'     gradient sizes.  Hence parameters like log(exp(theta)) would
@@ -386,7 +386,7 @@ is.latex <- function() {
 ##'
 ##' @param normType This is the type of parameter
 ##'     normalization/scaling used to get the scaled initial values
-##'     for nlmixr.  These are used with \code{scaleType} of.
+##'     for nlmixr2.  These are used with \code{scaleType} of.
 ##'
 ##'     With the exception of \code{rescale2}, these come
 ##'     from
@@ -503,7 +503,7 @@ is.latex <- function() {
 ##'     how small the variance is before the covariance matrix is
 ##'     rejected.
 ##'
-##' @param adjLik In nlmixr, the objective function matches NONMEM's
+##' @param adjLik In nlmixr2, the objective function matches NONMEM's
 ##'     objective function, which removes a 2*pi constant from the
 ##'     likelihood calculation. If this is TRUE, the likelihood
 ##'     function is adjusted by this 2*pi factor.  When adjusted this
@@ -568,14 +568,14 @@ is.latex <- function() {
 ##'
 ##' @param singleOde This option allows a single ode model to include
 ##'   the PK parameter information instead of splitting it into a
-##'   function and a RxODE model
+##'   function and a rxode2 model
 ##'
 ##' @param badSolveObjfAdj The objective function adjustment when the
 ##'   ODE system cannot be solved.  It is based on each individual bad
 ##'   solve.
 ##'
 ##' @inheritParams configsaem
-##' @inheritParams RxODE::rxSolve
+##' @inheritParams rxode2::rxSolve
 ##' @inheritParams minqa::bobyqa
 ##' @inheritParams foceiFit
 ##'
@@ -601,7 +601,7 @@ is.latex <- function() {
 ##'
 ##' @seealso \code{\link{optim}}
 ##' @seealso \code{\link[n1qn1]{n1qn1}}
-##' @seealso \code{\link[RxODE]{rxSolve}}
+##' @seealso \code{\link[rxode2]{rxSolve}}
 ##' @export
 foceiControl <- function(sigdig = 3, ...,
                          epsilon = NULL, # 1e-4,
@@ -620,7 +620,7 @@ foceiControl <- function(sigdig = 3, ...,
                          scaleTo = 1.0,
                          scaleObjective = 0,
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
-                         scaleType = c("nlmixr", "norm", "mult", "multAdd"),
+                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
                          scaleCmax = 1e5,
                          scaleCmin = 1e-5,
                          scaleC = NULL,
@@ -780,7 +780,7 @@ foceiControl <- function(sigdig = 3, ...,
     maxInnerIterations <- .xtra$max_iterations # nolint
   }
   if (!missing(stiff) && missing(method)) {
-    if (RxODE::rxIs(stiff, "logical")) {
+    if (rxode2::rxIs(stiff, "logical")) {
       if (stiff) {
         method <- "lsoda"
         warning("stiff=TRUE has been replaced with method = \"lsoda\".")
@@ -793,7 +793,7 @@ foceiControl <- function(sigdig = 3, ...,
     if (inherits(method, "numeric")) {
       method <- as.integer(method)
     }
-    if (!RxODE::rxIs(method, "integer")) {
+    if (!rxode2::rxIs(method, "integer")) {
       if (inherits(method, "character")) {
         method <- match.arg(method)
       } else {
@@ -804,15 +804,15 @@ foceiControl <- function(sigdig = 3, ...,
   }
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
-  if (RxODE::rxIs(scaleType, "character")) {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr" = 2L, "mult" = 3L, "multAdd" = 4L)
+  if (rxode2::rxIs(scaleType, "character")) {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
     scaleType <- as.integer(.scaleTypeIdx[match.arg(scaleType)])
   }
-  if (RxODE::rxIs(eventType, "character")) {
+  if (rxode2::rxIs(eventType, "character")) {
     .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
     eventType <- as.integer(.eventTypeIdx[match.arg(eventType)])
   }
-  if (RxODE::rxIs(normType, "character")) {
+  if (rxode2::rxIs(normType, "character")) {
     .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6)
     normType <- as.integer(.normTypeIdx[match.arg(normType)])
   }
@@ -821,7 +821,7 @@ foceiControl <- function(sigdig = 3, ...,
   derivMethod <- as.integer(.methodIdx[derivMethod])
   covDerivMethod <- .methodIdx[match.arg(covDerivMethod)]
   if (length(covsInterpolation) > 1) covsInterpolation <- covsInterpolation[1]
-  if (!RxODE::rxIs(covsInterpolation, "integer")) {
+  if (!rxode2::rxIs(covsInterpolation, "integer")) {
     covsInterpolation <- tolower(match.arg(
       covsInterpolation,
       c("linear", "locf", "LOCF", "constant", "nocb", "NOCB", "midpoint")
@@ -831,7 +831,7 @@ foceiControl <- function(sigdig = 3, ...,
   ## if (covsInterpolation == "constant") covsInterpolation <- "locf";
   ## covsInterpolation  <- as.integer(which(covsInterpolation == c("linear", "locf", "nocb", "midpoint")) - 1);
   if (missing(cores)) {
-    cores <- RxODE::rxCores()
+    cores <- rxode2::rxCores()
   }
   if (missing(n1qn1nsim)) {
     n1qn1nsim <- 10 * maxInnerIterations + 1
@@ -841,17 +841,17 @@ foceiControl <- function(sigdig = 3, ...,
       covMethod <- 0L
     }
   }
-  if (RxODE::rxIs(covMethod, "character")) {
+  if (rxode2::rxIs(covMethod, "character")) {
     covMethod <- match.arg(covMethod)
     .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
     covMethod <- .covMethodIdx[match.arg(covMethod)]
   }
   .outerOptTxt <- "custom"
-  if (RxODE::rxIs(outerOpt, "character")) {
+  if (rxode2::rxIs(outerOpt, "character")) {
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
-      RxODE::rxReq("minqa")
+      rxode2::rxReq("minqa")
       outerOptFun <- .bobyqa
       outerOpt <- -1L
     } else if (outerOpt == "nlminb") {
@@ -873,7 +873,7 @@ foceiControl <- function(sigdig = 3, ...,
       .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
       outerOpt <- .outerOptIdx[outerOpt]
       if (outerOpt == 1L) {
-        RxODE::rxReq("lbfgsb3c")
+        rxode2::rxReq("lbfgsb3c")
       }
       outerOptFun <- NULL
     }
@@ -881,7 +881,7 @@ foceiControl <- function(sigdig = 3, ...,
     outerOptFun <- outerOpt
     outerOpt <- -1L
   }
-  if (RxODE::rxIs(innerOpt, "character")) {
+  if (rxode2::rxIs(innerOpt, "character")) {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
@@ -1045,14 +1045,14 @@ foceiControl <- function(sigdig = 3, ...,
   }
   .tmp <- .ret
   .tmp$maxsteps <- maxstepsOde
-  .tmp <- do.call(RxODE::rxControl, .tmp)
+  .tmp <- do.call(rxode2::rxControl, .tmp)
   .ret$rxControl <- .tmp
   class(.ret) <- "foceiControl"
   return(.ret)
 }
 
 .ucminf <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  RxODE::rxReq("ucminf")
+  rxode2::rxReq("ucminf")
   .ctl <- control
   .ctl$stepmax <- control$rhobeg
   .ctl$maxeval <- control$maxOuterIterations
@@ -1134,7 +1134,7 @@ foceiControl <- function(sigdig = 3, ...,
 
 .Rvmmin <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   ## Also gives unreasonable estimates
-  RxODE::rxReq("Rvmmin")
+  rxode2::rxReq("Rvmmin")
   .masked <- rep_len(1, length(par))
   .ctl <- list(
     maxit = control$maxOuterIterations,
@@ -1149,7 +1149,7 @@ foceiControl <- function(sigdig = 3, ...,
 }
 
 .nloptr <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..., nloptrAlgoritm = "NLOPT_LD_MMA") {
-  RxODE::rxReq("nloptr")
+  rxode2::rxReq("nloptr")
   .ctl <- list(
     algorithm = nloptrAlgoritm,
     xtol_rel = control$reltol,
@@ -1273,11 +1273,11 @@ foceiControl <- function(sigdig = 3, ...,
 }
 ##' FOCEi fit
 ##'
-##' @param data Data to fit; Needs to be RxODE compatible and have
+##' @param data Data to fit; Needs to be rxode2 compatible and have
 ##'   \code{DV}, \code{AMT}, \code{EVID} in the dataset.
 ##' @param inits Initialization list
 ##' @param PKpars Pk Parameters function
-##' @param model The RxODE model to use
+##' @param model The rxode2 model to use
 ##' @param pred The Prediction function
 ##' @param err The Error function
 ##' @param lower Lower bounds
@@ -1294,13 +1294,13 @@ foceiControl <- function(sigdig = 3, ...,
 ##' @param etaMat Eta matrix for initial estimates or final estimates
 ##'   of the ETAs.
 ##' @param ... Ignored parameters
-##' @param env An environment used to build the FOCEi or nlmixr
+##' @param env An environment used to build the FOCEi or nlmixr2
 ##'   object.
 ##' @param keep Columns to keep from either the input dataset. For the
 ##'   input dataset, if any records are added to the data LOCF (Last
 ##'   Observation Carried forward) imputation is performed.
 ##' @param drop Columns to drop from the output
-##' @return A focei fit or nlmixr fit object
+##' @return A focei fit or nlmixr2 fit object
 ##' @author Matthew L. Fidler and Wenping Wang
 ##' @return FOCEi fit object
 ##' @export
@@ -1315,7 +1315,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     k = theta[1] * exp(eta[1]);
 ##' }
 ##'
-##' mod <- RxODE({
+##' mod <- rxode2({
 ##'     ipre = 10 * exp(-k * t)
 ##' })
 ##' pred <- function() ipre
@@ -1333,20 +1333,20 @@ foceiControl <- function(sigdig = 3, ...,
 ##' w7$EVID <- 0
 ##' w7$AMT <- 0
 ##'
-##' ## Wang2007 prop error OBF 39.458 for NONMEM FOCEi, nlmixr matches.
+##' ## Wang2007 prop error OBF 39.458 for NONMEM FOCEi, nlmixr2 matches.
 ##' fitPi <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
 ##'      control=foceiControl(maxOuterIterations=0,covMethod=""))
 ##'
 ##' print(fitPi$objective)
 ##'
-##' ## Wang2007 prop error OBF 39.207 for NONMEM FOCE; nlmixr matches.
+##' ## Wang2007 prop error OBF 39.207 for NONMEM FOCE; nlmixr2 matches.
 ##' fitP <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
 ##'      control=foceiControl(maxOuterIterations=0,covMethod="",
 ##'      interaction=FALSE))
 ##'
 ##' print(fitP$objective)
 ##'
-##' ## Wang 2007 prop error OBF 39.213 for NONMEM FO; nlmixr matches
+##' ## Wang 2007 prop error OBF 39.213 for NONMEM FO; nlmixr2 matches
 ##' fitPfo <- foceiFit(w7, inits, mypar2,mod,pred,errProp,
 ##'      control=foceiControl(maxOuterIterations=0,covMethod="",
 ##'      fo=TRUE))
@@ -1369,11 +1369,11 @@ foceiControl <- function(sigdig = 3, ...,
 ##' }
 ##'
 ##' ## Wang2007 add error of -2.059 for NONMEM FOCE=NONMEM FOCEi;
-##' ## nlmixr matches.
+##' ## nlmixr2 matches.
 ##' fitA <- foceiFit(w7, inits, mypar2,mod,pred,errAdd,
 ##'      control=foceiControl(maxOuterIterations=0,covMethod=""))
 ##'
-##' ## Wang2007 add error of 0.026 for NONMEM FO; nlmixr matches
+##' ## Wang2007 add error of 0.026 for NONMEM FO; nlmixr2 matches
 ##'
 ##' fitAfo <- foceiFit(w7, inits, mypar2,mod,pred,errAdd,
 ##'      control=foceiControl(maxOuterIterations=0,fo=TRUE,covMethod=""))
@@ -1392,7 +1392,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'    return(lnorm(0.1));
 ##' }
 ##'
-##' ## First run the fit with the nlmixr lnorm error
+##' ## First run the fit with the nlmixr2 lnorm error
 ##'
 ##' fitLN <- foceiFit(w7, inits, mypar2,mod,pred,errLogn,
 ##'      control=foceiControl(maxOuterIterations=0,covMethod=""))
@@ -1419,7 +1419,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     v  <- exp(THETA[3] + ETA[3])
 ##' }
 ##'
-##' mod <- RxODE({
+##' mod <- rxode2({
 ##'     d/dt(depot) <- -ka * depot
 ##'     d/dt(center) <- ka * depot - cl / v * center
 ##'     cp <- center / v
@@ -1448,7 +1448,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'
 ##' fit2 <- foceiFit(d, inits, mypar2,mod,pred,errl)
 ##'
-##' ## You can also use the standard nlmixr functions to run FOCEi
+##' ## You can also use the standard nlmixr2 functions to run FOCEi
 ##'
 ##' library(data.table);
 ##' datr <- Infusion_1CPT;
@@ -1477,7 +1477,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     # The model uses the ini-defined variable names
 ##'     Vc <- exp(lVc + eta.Vc)
 ##'     Cl <- exp(lCl + eta.Cl)
-##'     # RxODE-style differential equations are supported
+##'     # rxode2-style differential equations are supported
 ##'     d / dt(centr) = -(Cl / Vc) * centr;
 ##'     ## Concentration is calculated
 ##'     cp = centr / Vc;
@@ -1485,7 +1485,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     cp ~ prop(prop.sd)
 ##'    })}
 ##'
-##' fitIVp <- nlmixr(one.compartment.IV.model, datr, "focei");
+##' fitIVp <- nlmixr2(one.compartment.IV.model, datr, "focei");
 ##'
 ##' ## You can also use the Box-Cox Transform of both sides with
 ##' ## proportional error (Donse 2016)
@@ -1511,7 +1511,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     ## The model uses the ini-defined variable names
 ##'     Vc <- exp(lVc + eta.Vc)
 ##'     Cl <- exp(lCl + eta.Cl)
-##'     ## RxODE-style differential equations are supported
+##'     ## rxode2-style differential equations are supported
 ##'     d / dt(centr) = -(Cl / Vc) * centr;
 ##'     ## Concentration is calculated
 ##'     cp = centr / Vc;
@@ -1520,7 +1520,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     ## This is proportional to the untransformed f; You can use the transformed f by using powT()
 ##' })}
 ##'
-##' fitIVtbs <- nlmixr(one.compartment.IV.model, datr, "focei")
+##' fitIVtbs <- nlmixr2(one.compartment.IV.model, datr, "focei")
 ##'
 ##' ## If you want to use a variance normalizing distribution with
 ##' ## negative/positive data you can use the Yeo-Johnson transformation
@@ -1546,7 +1546,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     ## The model uses the ini-defined variable names
 ##'     Vc <- exp(lVc + eta.Vc)
 ##'     Cl <- exp(lCl + eta.Cl)
-##'     ## RxODE-style differential equations are supported
+##'     ## rxode2-style differential equations are supported
 ##'     d / dt(centr) = -(Cl / Vc) * centr;
 ##'     ## Concentration is calculated
 ##'     cp = centr / Vc;
@@ -1554,7 +1554,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'     cp ~ pow(prop.err, delta) + add(add.err) + yeoJohnson(lambda)
 ##' })}
 ##'
-##' fitIVyj <- nlmixr(one.compartment.IV.model, datr, "focei")
+##' fitIVyj <- nlmixr2(one.compartment.IV.model, datr, "focei")
 ##'
 ##' ## In addition to using L-BFGS-B for FOCEi (outer problem) you may
 ##' ## use other optimizers.  An example is below
@@ -1577,20 +1577,20 @@ foceiControl <- function(sigdig = 3, ...,
 ##'   })
 ##' }
 ##'
-##' fit <- nlmixr(one.cmt, theo_sd, "focei", foceiControl(outerOpt="bobyqa"))
+##' fit <- nlmixr2(one.cmt, theo_sd, "focei", foceiControl(outerOpt="bobyqa"))
 ##'
 ##' ## You may also make an arbitrary optimizer work by adding a wrapper function:
 ##'
 ##' newuoa0 <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...){
 ##'   ## The function requires par, fn, gr, lower, upper and control
 ##'   ##
-##'   ## The par, fn, gr, lower and upper and sent to the function from nlmixr's focei.
+##'   ## The par, fn, gr, lower and upper and sent to the function from nlmixr2's focei.
 ##'   ## The  control is the foceiControl list
 ##'   ##
 ##'   ##  The following code modifies the list control list for no warnings.
 ##'   .ctl <- control;
 ##'   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
-##'   ## nlmixr will print information this is to suppress the printing from the
+##'   ## nlmixr2 will print information this is to suppress the printing from the
 ##'   ## optimizer
 ##'   .ctl$iprint <- 0L;
 ##'   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")];
@@ -1607,7 +1607,7 @@ foceiControl <- function(sigdig = 3, ...,
 ##'   return(.ret);
 ##' }
 ##'
-##' fit <- nlmixr(one.cmt, theo_sd, "focei", foceiControl(outerOpt=newuoa0))
+##' fit <- nlmixr2(one.cmt, theo_sd, "focei", foceiControl(outerOpt=newuoa0))
 ##'
 ##' }
 foceiFit <- function(data, ...) {
@@ -1740,7 +1740,7 @@ foceiFit.data.frame <- function(data, ...) {
     .ret$parFixed <- .ret$popDfSig
     .ret$parFixedDf <- .ret$popDf
   }
-  class(.ret$parFixed) <- c("nlmixrParFixed", "data.frame")
+  class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
 
 .thetaReset <- new.env(parent = emptyenv())
@@ -1766,10 +1766,10 @@ foceiFit.data.frame0 <- function(data,
                                  drop=NULL) {
   set.seed(control$seed)
   .pt <- proc.time()
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   loadNamespace("n1qn1")
-  if (!RxODE::rxIs(control, "foceiControl")) {
+  if (!rxode2::rxIs(control, "foceiControl")) {
     control <- do.call(foceiControl, control)
   }
   if (is.null(env)) {
@@ -1782,7 +1782,7 @@ foceiFit.data.frame0 <- function(data,
   .ret$thetaFixed <- fixed
   .ret$control <- control
   .ret$control$focei.mu.ref <- integer(0)
-  if (is(model, "RxODE") || is(model, "character")) {
+  if (is(model, "rxode2") || is(model, "character")) {
     .ret$ODEmodel <- TRUE
     if (class(pred) != "function") {
       stop("pred must be a function specifying the prediction variables in this model.")
@@ -1790,7 +1790,7 @@ foceiFit.data.frame0 <- function(data,
   } else {
     ## Fixme
     .ret$ODEmodel <- TRUE
-    model <- RxODE::rxGetLin(PKpars)
+    model <- rxode2::rxGetLin(PKpars)
     pred <- eval(parse(text = "function(){return(Central);}"))
   }
   .square <- function(x) x * x
@@ -1802,11 +1802,11 @@ foceiFit.data.frame0 <- function(data,
   .ret$adjLik <- control$adjLik
   .mixed <- !is.null(inits$OMGA) && length(inits$OMGA) > 0
   if (!exists("noLik", envir = .ret)) {
-    .atol <- rep(control$atol, length(RxODE::rxModelVars(model)$state))
-    .rtol <- rep(control$rtol, length(RxODE::rxModelVars(model)$state))
-    .ssAtol <- rep(control$ssAtol, length(RxODE::rxModelVars(model)$state))
-    .ssRtol <- rep(control$ssRtol, length(RxODE::rxModelVars(model)$state))
-    .ret$model <- RxODE::rxSymPySetupPred(model, pred, PKpars, err,
+    .atol <- rep(control$atol, length(rxode2::rxModelVars(model)$state))
+    .rtol <- rep(control$rtol, length(rxode2::rxModelVars(model)$state))
+    .ssAtol <- rep(control$ssAtol, length(rxode2::rxModelVars(model)$state))
+    .ssRtol <- rep(control$ssRtol, length(rxode2::rxModelVars(model)$state))
+    .ret$model <- rxode2::rxSymPySetupPred(model, pred, PKpars, err,
       grad = (control$derivMethod == 2L),
       pred.minus.dv = TRUE, sum.prod = control$sumProd,
       theta.derivs = FALSE, optExpression = control$optExpression,
@@ -1816,30 +1816,30 @@ foceiFit.data.frame0 <- function(data,
     if (!is.null(.ret$model$inner)) {
       .atol <- c(.atol, rep(
         control$atolSens,
-        length(RxODE::rxModelVars(.ret$model$inner)$state) -
+        length(rxode2::rxModelVars(.ret$model$inner)$state) -
           length(.atol)
       ))
       .rtol <- c(.rtol, rep(
         control$rtolSens,
-        length(RxODE::rxModelVars(.ret$model$inner)$state) -
+        length(rxode2::rxModelVars(.ret$model$inner)$state) -
           length(.rtol)
       ))
       .ret$control$rxControl$atol <- .atol
       .ret$control$rxControl$rtol <- .rtol
       .ssAtol <- c(.ssAtol, rep(
         control$ssAtolSens,
-        length(RxODE::rxModelVars(.ret$model$inner)$state) -
+        length(rxode2::rxModelVars(.ret$model$inner)$state) -
           length(.ssAtol)
       ))
       .ssRtol <- c(.ssRtol, rep(
         control$ssRtolSens,
-        length(RxODE::rxModelVars(.ret$model$inner)$state) -
+        length(rxode2::rxModelVars(.ret$model$inner)$state) -
           length(.ssRtol)
       ))
       .ret$control$rxControl$ssAtol <- .ssAtol
       .ret$control$rxControl$ssRtol <- .ssRtol
     }
-    .covNames <- .parNames <- RxODE::rxParams(.ret$model$pred.only)
+    .covNames <- .parNames <- rxode2::rxParams(.ret$model$pred.only)
     .covNames <- .covNames[regexpr(rex::rex(start, or("THETA", "ETA"), "[", numbers, "]", end), .covNames) == -1]
     colnames(data) <- sapply(names(data), function(x) {
       if (any(x == .covNames)) {
@@ -1848,16 +1848,16 @@ foceiFit.data.frame0 <- function(data,
         return(toupper(x))
       }
     })
-    .lhs <- c(names(RxODE::rxInits(.ret$model$pred.only)), RxODE::rxLhs(.ret$model$pred.only))
+    .lhs <- c(names(rxode2::rxInits(.ret$model$pred.only)), rxode2::rxLhs(.ret$model$pred.only))
     if (length(.lhs) > 0) {
       .covNames <- .covNames[regexpr(rex::rex(start, or(.lhs), end), .covNames) == -1]
     }
     if (length(.covNames) > 0) {
       if (!all(.covNames %in% names(data))) {
         message("Model:")
-        RxODE::rxCat(.ret$model$pred.only)
+        rxode2::rxCat(.ret$model$pred.only)
         message("Needed Covariates:")
-        nlmixrPrint(.covNames)
+        nlmixr2Print(.covNames)
         stop("Not all the covariates are in the dataset.")
       }
       message("Needed Covariates:")
@@ -1866,9 +1866,9 @@ foceiFit.data.frame0 <- function(data,
     .extraPars <- .ret$model$extra.pars
   } else {
     if (.ret$noLik) {
-      .atol <- rep(control$atol, length(RxODE::rxModelVars(model)$state))
-      .rtol <- rep(control$rtol, length(RxODE::rxModelVars(model)$state))
-      .ret$model <- RxODE::rxSymPySetupPred(model, pred, PKpars, err,
+      .atol <- rep(control$atol, length(rxode2::rxModelVars(model)$state))
+      .rtol <- rep(control$rtol, length(rxode2::rxModelVars(model)$state))
+      .ret$model <- rxode2::rxSymPySetupPred(model, pred, PKpars, err,
         grad = FALSE, pred.minus.dv = TRUE, sum.prod = control$sumProd,
         theta.derivs = FALSE, optExpression = control$optExpression, run.internal = TRUE,
         only.numeric = TRUE, addProp = control$addProp
@@ -1876,18 +1876,18 @@ foceiFit.data.frame0 <- function(data,
       if (!is.null(.ret$model$inner)) {
         .atol <- c(.atol, rep(
           control$atolSens,
-          length(RxODE::rxModelVars(.ret$model$inner)$state) -
+          length(rxode2::rxModelVars(.ret$model$inner)$state) -
             length(.atol)
         ))
         .rtol <- c(.rtol, rep(
           control$rtolSens,
-          length(RxODE::rxModelVars(.ret$model$inner)$state) -
+          length(rxode2::rxModelVars(.ret$model$inner)$state) -
             length(.rtol)
         ))
         .ret$control$rxControl$atol <- .atol
         .ret$control$rxControl$rtol <- .rtol
       }
-      .covNames <- .parNames <- RxODE::rxParams(.ret$model$pred.only)
+      .covNames <- .parNames <- rxode2::rxParams(.ret$model$pred.only)
       .covNames <- .covNames[regexpr(rex::rex(start, or("THETA", "ETA"), "[", numbers, "]", end), .covNames) == -1]
       colnames(data) <- sapply(names(data), function(x) {
         if (any(x == .covNames)) {
@@ -1896,16 +1896,16 @@ foceiFit.data.frame0 <- function(data,
           return(toupper(x))
         }
       })
-      .lhs <- c(names(RxODE::rxInits(.ret$model$pred.only)), RxODE::rxLhs(.ret$model$pred.only))
+      .lhs <- c(names(rxode2::rxInits(.ret$model$pred.only)), rxode2::rxLhs(.ret$model$pred.only))
       if (length(.lhs) > 0) {
         .covNames <- .covNames[regexpr(rex::rex(start, or(.lhs), end), .covNames) == -1]
       }
       if (length(.covNames) > 0) {
         if (!all(.covNames %in% names(data))) {
           message("Model:")
-          RxODE::rxCat(.ret$model$pred.only)
+          rxode2::rxCat(.ret$model$pred.only)
           message("Needed Covariates:")
-          nlmixrPrint(.covNames)
+          nlmixr2Print(.covNames)
           stop("Not all the covariates are in the dataset.")
         }
         message("Needed Covariates:")
@@ -2021,14 +2021,14 @@ foceiFit.data.frame0 <- function(data,
     } else {
       .ret$etaNames <- sprintf("ETA[%d]", seq(1, dim(.om0)[1]))
     }
-    .ret$rxInv <- RxODE::rxSymInvCholCreate(mat = .om0, diag.xform = control$diagXform)
+    .ret$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0, diag.xform = control$diagXform)
     .ret$xType <- .ret$rxInv$xType
     .om0a <- .om0
     .om0a <- .om0a / control$diagOmegaBoundLower
     .om0b <- .om0
     .om0b <- .om0b * control$diagOmegaBoundUpper
-    .om0a <- RxODE::rxSymInvCholCreate(mat = .om0a, diag.xform = control$diagXform)
-    .om0b <- RxODE::rxSymInvCholCreate(mat = .om0b, diag.xform = control$diagXform)
+    .om0a <- rxode2::rxSymInvCholCreate(mat = .om0a, diag.xform = control$diagXform)
+    .om0b <- rxode2::rxSymInvCholCreate(mat = .om0b, diag.xform = control$diagXform)
     .omdf <- data.frame(a = .om0a$theta, m = .ret$rxInv$theta, b = .om0b$theta, diag = .om0a$theta.diag)
     .omdf$lower <- with(.omdf, ifelse(a > b, b, a))
     .omdf$lower <- with(.omdf, ifelse(lower == m, -Inf, lower))
@@ -2237,7 +2237,7 @@ foceiFit.data.frame0 <- function(data,
           .ret$control$maxOuterIterations <- 0L
         } else if (this.env$zeroGrad) {
           message("Theta reset (zero gradient values); Switch to bobyqa")
-          RxODE::rxReq("minqa")
+          rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
         } else {
@@ -2290,8 +2290,8 @@ foceiFit.data.frame0 <- function(data,
   if (.mixed) {
     .etas <- .ret$ranef
     .thetas <- .ret$fixef
-    .pars <- .Call(`_nlmixr_nlmixrParameters`, .thetas, .etas)
-    .ret$shrink <- .Call(`_nlmixr_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
+    .pars <- .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
+    .ret$shrink <- .Call(`_nlmixr2_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     .updateParFixed(.ret)
   } else {
     .updateParFixed(.ret)
@@ -2306,12 +2306,12 @@ foceiFit.data.frame0 <- function(data,
 }
 
 ##' @export
-`$.nlmixrFitCore` <- function(obj, arg, exact = FALSE) {
+`$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
   .env <- obj
   if (arg == "md5") {
-    return(.nlmixrMd5(obj))
+    return(.nlmixr2Md5(obj))
   } else if (arg == "posthoc") {
-    return(nlmixrPosthoc(obj))
+    return(nlmixr2Posthoc(obj))
   } else if (arg == "notes") {
     return(.notesFit(obj))
   } else if (any(arg == c(
@@ -2387,11 +2387,11 @@ foceiFit.data.frame0 <- function(data,
     .uif <- .env$uif
     if (arg == "modelName") arg <- "model.name"
     if (arg == "dataName") arg <- "data.name"
-    .ret <- `$.nlmixrUI`(.uif, arg)
+    .ret <- `$.nlmixr2UI`(.uif, arg)
     if (!is.null(.ret)) {
       return(.ret)
     }
-    .env2 <- `$.nlmixrUI`(.uif, "env")
+    .env2 <- `$.nlmixr2UI`(.uif, "env")
     if (exists(arg, envir = .env2)) {
       return(get(arg, envir = .env2))
     }
@@ -2402,20 +2402,20 @@ foceiFit.data.frame0 <- function(data,
 }
 
 ##' @export
-`$.nlmixrFitCoreSilent` <- `$.nlmixrFitCore`
+`$.nlmixr2FitCoreSilent` <- `$.nlmixr2FitCore`
 
 ##' @export
-`$.nlmixrFitData` <- function(obj, arg, exact = FALSE) {
+`$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
   .ret <- obj[[arg]]
   if (arg == "md5") {
-    return(.nlmixrMd5(obj))
+    return(.nlmixr2Md5(obj))
   } else if (is.null(.ret)) {
     if (arg == "posthoc") {
-      return(nlmixrPosthoc(obj))
+      return(nlmixr2Posthoc(obj))
     }
     .cls <- class(obj)
     .env <- attr(.cls, ".foceiEnv")
-    .ret <- `$.nlmixrFitCore`(.env, arg, exact)
+    .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
   }
   return(.ret)
 }
@@ -2447,7 +2447,7 @@ as.saem <- function(x) {
 
 ##' @importFrom nlme VarCorr
 ##' @export
-VarCorr.nlmixrFitCore <- function(x, sigma = NULL, ...) {
+VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   .ret <- x$nlme
   if (is.null(.ret)) {
     .var <- diag(x$omega)
@@ -2463,7 +2463,7 @@ VarCorr.nlmixrFitCore <- function(x, sigma = NULL, ...) {
 }
 
 ##' @export
-VarCorr.nlmixrFitCoreSilent <- VarCorr.nlmixrFitCore
+VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 
 .sigma <- function(x) {
   .ret <- x$nlme
@@ -2479,7 +2479,7 @@ VarCorr.nlmixrFitCoreSilent <- VarCorr.nlmixrFitCore
 }
 
 ##' @export
-str.nlmixrFitData <- function(object, ...) {
+str.nlmixr2FitData <- function(object, ...) {
   NextMethod(object)
   .env <- object$env
   ## cat(" $ par.hist         : Parameter history (if available)\n")
@@ -2496,7 +2496,7 @@ str.nlmixrFitData <- function(object, ...) {
     cat(" $ meta             : Model meta information environment\n")
     cat(" $ modelName        : Model name (from R function)\n")
     cat(" $ dataName         : Name of R data input\n")
-    cat(" $ simInfo          : RxODE list for simulation\n")
+    cat(" $ simInfo          : rxode2 list for simulation\n")
     cat(" $ sigma            : List of sigma components and their values\n")
   }
 }
@@ -2510,7 +2510,7 @@ str.nlmixrFitData <- function(object, ...) {
 ##' @return residuals
 ##' @author Matthew L. Fidler
 ##' @export
-residuals.nlmixrFitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
+residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
   return(object[, toupper(match.arg(type))])
 }
 
@@ -2556,13 +2556,13 @@ ofv <- function(x, type, ...) {
 }
 
 ##' @export
-ofv.nlmixrFitData <- function(x, type, ...) {
+ofv.nlmixr2FitData <- function(x, type, ...) {
   if (!missing(type)) setOfv(x, type)
   return(x$ofv)
 }
 
 ##' @export
-logLik.nlmixrFitData <- function(object, ...) {
+logLik.nlmixr2FitData <- function(object, ...) {
   .objName <- substitute(object)
   .lst <- list(...)
   if (!is.null(.lst$type)) {
@@ -2586,22 +2586,22 @@ logLik.nlmixrFitData <- function(object, ...) {
 }
 
 ##' @export
-logLik.nlmixrFitCore <- function(object, ...) {
+logLik.nlmixr2FitCore <- function(object, ...) {
   object$logLik
 }
 
 ##' @export
-nobs.nlmixrFitCore <- function(object, ...) {
+nobs.nlmixr2FitCore <- function(object, ...) {
   object$nobs
 }
 
 ##' @export
-vcov.nlmixrFitCore <- function(object, ...) {
+vcov.nlmixr2FitCore <- function(object, ...) {
   object$cov
 }
-##' This gets the parsed data in the lower-level manner that nlmixr expects.
+##' This gets the parsed data in the lower-level manner that nlmixr2 expects.
 ##'
-##' @param object nlmixr Object
+##' @param object nlmixr2 Object
 ##'
 ##' @return Gets the parsed data
 ##'
@@ -2614,47 +2614,47 @@ vcov.nlmixrFitCore <- function(object, ...) {
   .uif <- object$uif
   .tmp <- deparse(body(.uif$theta.pars))[-1]
   .tmp <- .tmp[-length(.tmp)]
-  return(RxODE::etTrans(object$origData, paste(paste(.tmp, collapse = "\n"), "\n", .uif$rxode), TRUE, TRUE, TRUE, keep=keep))
+  return(rxode2::etTrans(object$origData, paste(paste(.tmp, collapse = "\n"), "\n", .uif$rxode), TRUE, TRUE, TRUE, keep=keep))
 }
 
 ##' @export
-getData.nlmixrFitCore <- function(object) {
+getData.nlmixr2FitCore <- function(object) {
   object$origData
 }
 
 ##' @export
-ranef.nlmixrFitCore <- function(object, ...) {
+ranef.nlmixr2FitCore <- function(object, ...) {
   object$ranef
 }
 
 ##' @export
-fixef.nlmixrFitCore <- function(object, ...) {
+fixef.nlmixr2FitCore <- function(object, ...) {
   object$fixef
 }
 ##' @export
-fixef.nlmixrFitCoreSilent <- fixef.nlmixrFitCore
+fixef.nlmixr2FitCoreSilent <- fixef.nlmixr2FitCore
 
 ##' @export
-ranef.nlmixrFitCoreSilent <- ranef.nlmixrFitCore
+ranef.nlmixr2FitCoreSilent <- ranef.nlmixr2FitCore
 
 ##' @export
-getData.nlmixrFitCoreSilent <- getData.nlmixrFitCore
+getData.nlmixr2FitCoreSilent <- getData.nlmixr2FitCore
 
 ##' @export
-logLik.nlmixrFitCoreSilent <- logLik.nlmixrFitCore
+logLik.nlmixr2FitCoreSilent <- logLik.nlmixr2FitCore
 
 ##' @export
-nobs.nlmixrFitCoreSilent <- nobs.nlmixrFitCore
+nobs.nlmixr2FitCoreSilent <- nobs.nlmixr2FitCore
 
 ##' @export
-vcov.nlmixrFitCoreSilent <- vcov.nlmixrFitCore
+vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 
 ##' @export
-`$.nlmixrGill83` <- function(obj, arg, exact = FALSE) {
+`$.nlmixr2Gill83` <- function(obj, arg, exact = FALSE) {
   .ret <- obj[[arg]]
   if (is.null(.ret)) {
     .cls <- class(obj)
-    .lst <- attr(.cls, ".nlmixrGill")
+    .lst <- attr(.cls, ".nlmixr2Gill")
     return(.lst[[arg]])
   }
   return(.ret)
@@ -2662,22 +2662,22 @@ vcov.nlmixrFitCoreSilent <- vcov.nlmixrFitCore
 
 ##' Get a posthoc estimate of x
 ##'
-##' @param x nlmixr object
+##' @param x nlmixr2 object
 ##' @param ... other arguments
 ##'
-##' @return nlmixr fit object with possibly a new set of estimates
+##' @return nlmixr2 fit object with possibly a new set of estimates
 ##'
 ##' @export
 ##' @keywords internal
-nlmixrPosthoc <- function(x, ...) {
-  UseMethod("nlmixrPosthoc")
+nlmixr2Posthoc <- function(x, ...) {
+  UseMethod("nlmixr2Posthoc")
 }
 
 ##' @export
-nlmixrPosthoc.default <- function(x, ...) {
+nlmixr2Posthoc.default <- function(x, ...) {
   .posthoc <- (x$control$maxOuterIterations == 0L & x$control$maxInnerIterations > 0L)
   .posthoc <- ifelse(.posthoc, paste0(ifelse(x$method == "FO",
-    ifelse(RxODE::rxIs(x, "nlmixrFitData"),
+    ifelse(rxode2::rxIs(x, "nlmixr2FitData"),
       paste0(
         " estimation with ", crayon::bold$yellow("FOCE"),
         gsub(rex::rex(any_spaces, "(", anything, ")"), "", x$extra),
@@ -2746,7 +2746,7 @@ nlmixrPosthoc.default <- function(x, ...) {
         "  See https://tinyurl.com/yyrrwkce",
         "  It could also mean the convergence is poor, check results before accepting fit",
         "  You may also try a good derivative free optimization:",
-        "    nlmixr(...,control=list(outerOpt=\"bobyqa\"))"
+        "    nlmixr2(...,control=list(outerOpt=\"bobyqa\"))"
       )
     }
   }
@@ -2754,7 +2754,7 @@ nlmixrPosthoc.default <- function(x, ...) {
 }
 
 ## FIXME fitted?
-focei.eta.nlmixrFitCore <- function(object, ...) {
+focei.eta.nlmixr2FitCore <- function(object, ...) {
   .uif <- object$uif
   ## Reorder based on translation
   .df <- as.data.frame(.uif$ini)
@@ -2791,7 +2791,7 @@ focei.eta.nlmixrFitCore <- function(object, ...) {
 }
 
 ##' @export
-focei.eta.nlmixrFitCoreSilent <- focei.eta.nlmixrFitCore
+focei.eta.nlmixr2FitCoreSilent <- focei.eta.nlmixr2FitCore
 
 ##' Convert fit to FOCEi style fit
 ##'
@@ -2859,25 +2859,25 @@ focei.theta <- function(object, uif, ...) {
 ##' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
 ##' @export
 boxCox <- function(x, lambda = 1) {
-  .Call(`_nlmixr_boxCox_`, x, lambda, 0L)
+  .Call(`_nlmixr2_boxCox_`, x, lambda, 0L)
 }
 
 ##' @rdname boxCox
 ##' @export
 iBoxCox <- function(x, lambda = 1) {
-  .Call(`_nlmixr_iBoxCox_`, x, lambda, 0L)
+  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 0L)
 }
 
 ##' @rdname boxCox
 ##' @export
 yeoJohnson <- function(x, lambda = 1) {
-  .Call(`_nlmixr_boxCox_`, x, lambda, 1L)
+  .Call(`_nlmixr2_boxCox_`, x, lambda, 1L)
 }
 
 ##' @rdname boxCox
 ##' @export
 iYeoJohnson <- function(x, lambda = 1) {
-  .Call(`_nlmixr_iBoxCox_`, x, lambda, 1L)
+  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 1L)
 }
 
 .setSaemExtra <- function(.env, type) {

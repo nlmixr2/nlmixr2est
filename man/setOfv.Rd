@@ -3,14 +3,14 @@
 \name{setOfv}
 \alias{setOfv}
 \alias{getOfvType}
-\title{Set/get Objective function type for a nlmixr object}
+\title{Set/get Objective function type for a nlmixr2 object}
 \usage{
 setOfv(x, type)
 
 getOfvType(x)
 }
 \arguments{
-\item{x}{nlmixr fit object}
+\item{x}{nlmixr2 fit object}
 
 \item{type}{Type of objective function to use for AIC, BIC, and
 $objective}
@@ -19,7 +19,7 @@ $objective}
 Nothing
 }
 \description{
-Set/get Objective function type for a nlmixr object
+Set/get Objective function type for a nlmixr2 object
 }
 \author{
 Matthew L. Fidler

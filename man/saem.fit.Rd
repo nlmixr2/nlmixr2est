@@ -3,10 +3,10 @@
 \name{saem.fit}
 \alias{saem.fit}
 \alias{saem}
-\alias{saem.fit.nlmixr.ui.nlme}
+\alias{saem.fit.nlmixr2.ui.nlme}
 \alias{saem.fit.function}
-\alias{saem.fit.nlmixrUI}
-\alias{saem.fit.RxODE}
+\alias{saem.fit.nlmixr2UI}
+\alias{saem.fit.rxode2}
 \alias{saem.fit.default}
 \title{Fit an SAEM model}
 \usage{
@@ -36,7 +36,7 @@ saem(
   seed = 99
 )
 
-\method{saem}{fit.nlmixr.ui.nlme}(
+\method{saem}{fit.nlmixr2.ui.nlme}(
   model,
   data,
   inits,
@@ -62,7 +62,7 @@ saem(
   seed = 99
 )
 
-\method{saem}{fit.nlmixrUI}(
+\method{saem}{fit.nlmixr2UI}(
   model,
   data,
   inits,
@@ -75,7 +75,7 @@ saem(
   seed = 99
 )
 
-\method{saem}{fit.RxODE}(
+\method{saem}{fit.rxode2}(
   model,
   data,
   inits,
@@ -102,7 +102,7 @@ saem(
 )
 }
 \arguments{
-\item{model}{an RxODE model or lincmt()}
+\item{model}{an rxode2 model or lincmt()}
 
 \item{data}{input data}
 

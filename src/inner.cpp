@@ -6,7 +6,7 @@
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("nlmixr", String)
+#define _(String) dgettext ("nlmixr2", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)
@@ -19,14 +19,14 @@
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define innerOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
-#define getCholOmegaInv() (as<arma::mat>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
-#define getOmega() (as<NumericMatrix>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
-#define getOmegaMat() (as<arma::mat>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
-#define getOmegaInv() (as<arma::mat>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "omegaInv", R_NilValue)))
-#define getOmegaDet() (as<double>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "log.det.OMGAinv.5", R_NilValue)))
-#define getOmegaN() as<int>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "ntheta", R_NilValue))
-#define getOmegaTheta() as<NumericVector>(RxODE::rxSymInvCholEnvCalculate(_rxInv, "theta", R_NilValue));
-#define setOmegaTheta(x) RxODE::rxSymInvCholEnvCalculate(_rxInv, "theta", x)
+#define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
+#define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
+#define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
+#define getOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omegaInv", R_NilValue)))
+#define getOmegaDet() (as<double>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "log.det.OMGAinv.5", R_NilValue)))
+#define getOmegaN() as<int>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "ntheta", R_NilValue))
+#define getOmegaTheta() as<NumericVector>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "theta", R_NilValue));
+#define setOmegaTheta(x) rxode2::rxSymInvCholEnvCalculate(_rxInv, "theta", x)
 #define tbs(x) _powerD(x,    ind->lambda, (int)(ind->yj), ind->logitLow, ind->logitHi)
 #define tbsL(x) _powerL(x,   ind->lambda, (int)(ind->yj), ind->logitLow, ind->logitHi)
 #define tbsDL(x) _powerDL(x, ind->lambda, (int)(ind->yj), ind->logitLow, ind->logitHi)
@@ -844,7 +844,7 @@ double likInner0(double *eta, int id){
 	op_focei.reducedTol=1;
 	op_focei.reducedTol2=1;
 	// Not thread safe
-	RxODE::atolRtolFactor_(op_focei.odeRecalcFactor);
+	rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
 	ind->solved = -1;
 	innerOde(id);
 	j++;
@@ -852,7 +852,7 @@ double likInner0(double *eta, int id){
       if (j != 0) {
 	if (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN){
 	  // Not thread safe
-	  RxODE::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -j));
+	  rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -j));
 	} else {
 	  op_focei.stickyTol=1;
 	}
@@ -910,7 +910,7 @@ double likInner0(double *eta, int id){
 	  } else {
 	    rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
 	  }
-	  f = ind->lhs[0]; // TBS is performed in the RxODE rx_pred_ statement. This allows derivatives of TBS to be propagated
+	  f = ind->lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
 	  dv = tbs(dv0);
 	  if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
 	    return NA_REAL;
@@ -1651,8 +1651,8 @@ void parHistData(Environment e, bool focei);
 
 static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaTheta, arma::mat &etaMat) {
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Environment thetaReset = nlmixr[".thetaReset"];
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment thetaReset = nlmixr2[".thetaReset"];
   focei_options *fop = &op_focei;
   thetaReset["maxInnerIterations"]=fop->maxInnerIterations;
   thetaReset["etaMat"] = wrap(etaMat);
@@ -2005,7 +2005,7 @@ static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
     if (op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN){
-      RxODE::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN));
+      rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN));
     } else {
       op_focei.stickyTol=1;
     }
@@ -2015,7 +2015,7 @@ static inline double foceiOfv0(double *theta){
 	 (std::isnan(ret) || std::isinf(ret)) &&
 	 op_focei.objfRecalN < op_focei.maxOdeRecalc){
       op_focei.reducedTol=1;
-      RxODE::atolRtolFactor_(op_focei.odeRecalcFactor);
+      rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
       ret = -2*foceiLik0(theta);
       op_focei.objfRecalN++;
   }
@@ -2804,7 +2804,7 @@ static inline void foceiSetupTheta_(List mvi,
     rxUpdateFuns(as<SEXP>(mvi["trans"]), &rxInner);
     foceiSetupTrans_(as<CharacterVector>(mvi["params"]));
   } else if (!op_focei.alloc){
-    stop("FOCEi problem not allocated\nThis can happen when sympy<->nlmixr interaction is not working correctly.");
+    stop("FOCEi problem not allocated\nThis can happen when sympy<->nlmixr2 interaction is not working correctly.");
   }
   std::copy(theta.begin(), theta.end(), &op_focei.fullTheta[0]);
   if (op_focei.neta >= 0) {
@@ -2999,10 +2999,10 @@ NumericVector foceiSetup_(const RObject &obj,
   // This fills in op_focei.neta
   List mvi;
   if (!Rf_isNull(obj)){
-    if (!RxODE::rxDynLoad(obj)){
-      stop("Cannot load RxODE dlls for this model.");
+    if (!rxode2::rxDynLoad(obj)){
+      stop("Cannot load rxode2 dlls for this model.");
     }
-    mvi = RxODE::rxModelVars_(obj);
+    mvi = rxode2::rxModelVars_(obj);
   }
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
@@ -3033,7 +3033,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.stickyRecalcN=as<int>(odeO["stickyRecalcN"]);
   op_focei.neta = as<int>(odeO["neta"]);
   if (op_focei.neta != 0) {
-    if (!RxODE::rxIs(rxInv, "rxSymInvCholEnv")){
+    if (!rxode2::rxIs(rxInv, "rxSymInvCholEnv")){
       stop(_("Omega isn't in the proper format"));
     } else {
       _rxInv = as<List>(rxInv);
@@ -3135,7 +3135,7 @@ NumericVector foceiSetup_(const RObject &obj,
   if (!Rf_isNull(obj)) {
     List rxControl = odeO["rxControl"];
     rxControl[Rxc_cores] = IntegerVector::create(1); // #Force one core; parallelization needs to be taken care of here in inner.cpp
-    RxODE::rxSolve_(obj, rxControl,
+    rxode2::rxSolve_(obj, rxControl,
 		    R_NilValue,//const Nullable<CharacterVector> &specParams =
 		    R_NilValue,//const Nullable<List> &extraArgs =
 		    as<RObject>(params),//const RObject &params =
@@ -3175,7 +3175,7 @@ NumericVector foceiSetup_(const RObject &obj,
 
   IntegerVector muRef;
   if (odeO.containsElementNamed("focei.mu.ref")){
-    if (RxODE::rxIs(odeO["focei.mu.ref"], "numeric")) {
+    if (rxode2::rxIs(odeO["focei.mu.ref"], "numeric")) {
       muRef = as<IntegerVector>(odeO["focei.mu.ref"]);
     }
   }
@@ -3444,10 +3444,10 @@ NumericVector foceiSetup_(const RObject &obj,
   return ret;
 }
 
-LogicalVector nlmixrEnvSetup(Environment e, double fmin){
-  if (e.exists("theta") && RxODE::rxIs(e["theta"], "data.frame") &&
+LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
+  if (e.exists("theta") && rxode2::rxIs(e["theta"], "data.frame") &&
       e.exists("omega") && e.exists("etaObf")) {
-    bool mixed = RxODE::rxIs(e["omega"], "matrix") && RxODE::rxIs(e["etaObf"], "data.frame");
+    bool mixed = rxode2::rxIs(e["omega"], "matrix") && rxode2::rxIs(e["etaObf"], "data.frame");
     int nobs2=0;
     if (e.exists("nobs2")){
       nobs2=as<int>(e["nobs2"]);
@@ -3552,7 +3552,7 @@ void foceiOuterFinal(double *x, Environment e){
     e["omega"] = getOmega();
     e["etaObf"] = foceiEtas(e);
   }
-  nlmixrEnvSetup(e, fmin);
+  nlmixr2EnvSetup(e, fmin);
 }
 
 static inline void foceiPrintLine(int ncol){
@@ -3881,9 +3881,9 @@ void foceiCustomFun(Environment e){
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Function f = as<Function>(nlmixr["foceiOuterF"]);
-  Function g = as<Function>(nlmixr["foceiOuterG"]);
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Function f = as<Function>(nlmixr2["foceiOuterF"]);
+  Function g = as<Function>(nlmixr2["foceiOuterG"]);
   List ctl = e["control"];
   Function opt = as<Function>(ctl["outerOptFun"]);
   //.bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...)
@@ -3946,7 +3946,7 @@ Environment foceiOuter(Environment e){
 }
 
 //[[Rcpp::export]]
-List nlmixrGill83_(Function what, NumericVector args, Environment envir,
+List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
 		   LogicalVector which,
 		   double gillRtol, int gillK=10, double gillStep=2, double gillFtol=0, bool optGillF=true){
   if (args.size()!=which.size()) stop("'args' must have same size as 'which'");
@@ -4025,25 +4025,25 @@ List nlmixrGill83_(Function what, NumericVector args, Environment envir,
   } else {
     df.attr("row.names") = IntegerVector::create(NA_INTEGER, -args.size());
   }
-  CharacterVector cls = CharacterVector::create("nlmixrGill83", "data.frame");
+  CharacterVector cls = CharacterVector::create("nlmixr2Gill83", "data.frame");
   List info = List::create(_["which"]=which,
 			   _["gillRtol"]=gillRtol,
 			   _["gillK"]=gillK,
 			   _["gillStep"]=gillStep,
 			   _["gillFtol"]=gillFtol,
 			   _["optGillF"]=optGillF);
-  info.attr("class") = CharacterVector::create("nlmixrLstSilent");
-  cls.attr(".nlmixrGill") = info;
+  info.attr("class") = CharacterVector::create("nlmixr2LstSilent");
+  cls.attr(".nlmixr2Gill") = info;
   df.attr("class") = cls;
   return df;
 }
-//' @rdname nlmixrGradFun
+//' @rdname nlmixr2GradFun
 //' @export
 //[[Rcpp::export]]
-double nlmixrEval_(NumericVector theta, std::string md5){
+double nlmixr2Eval_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Environment gradInfo = nlmixr[".nlmixrGradInfo"];
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EF = md5 + ".f";
   std::string EE = md5 + ".e";
   std::string EW = md5 + ".w";
@@ -4227,7 +4227,7 @@ double nlmixrEval_(NumericVector theta, std::string md5){
   return f0;
 }
 
-void nlmixrGradPrint(NumericVector gr, int gradType, int cn, bool useColor,
+void nlmixr2GradPrint(NumericVector gr, int gradType, int cn, bool useColor,
 		     int printNcol, int printN, bool isRstudio){
   int n = gr.size(), finalize=0, i;
   if (printN != 0 && cn % printN == 0){
@@ -4296,26 +4296,26 @@ void nlmixrGradPrint(NumericVector gr, int gradType, int cn, bool useColor,
   }
 }
 
-//' @rdname nlmixrGradFun
+//' @rdname nlmixr2GradFun
 //' @export
 //[[Rcpp::export]]
-RObject nlmixrUnscaled_(NumericVector theta, std::string md5){
+RObject nlmixr2Unscaled_(NumericVector theta, std::string md5){
   // Unscaled
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Environment gradInfo = nlmixr[".nlmixrGradInfo"];
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string unscaledPar = md5 + ".uPar";
   gradInfo[unscaledPar] = theta;
   return R_NilValue;
 }
 
-//' @rdname nlmixrGradFun
+//' @rdname nlmixr2GradFun
 //' @export
 //[[Rcpp::export]]
-NumericVector nlmixrGrad_(NumericVector theta, std::string md5){
+NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Environment gradInfo = nlmixr[".nlmixrGradInfo"];
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
 
   std::string Egill = md5 + ".g";
   std::string EF = md5 + ".f";
@@ -4352,7 +4352,7 @@ NumericVector nlmixrGrad_(NumericVector theta, std::string md5){
     std::string EK = md5 + ".k";
     std::string Estep = md5 + ".s";
     std::string EFtol = md5 + ".ftol";
-    Lgill = nlmixrGill83_(cFun, theta, gradInfo[EE],
+    Lgill = nlmixr2Gill83_(cFun, theta, gradInfo[EE],
 			  lEW, gradInfo[Ertol],
 			  gradInfo[EK], gradInfo[Estep],
 			  gradInfo[EFtol]);
@@ -4367,7 +4367,7 @@ NumericVector nlmixrGrad_(NumericVector theta, std::string md5){
       }
       vGrad.push_back(gr[i]);
     }
-    nlmixrGradPrint(gr, gradType.back(), niter.back(), useColor,
+    nlmixr2GradPrint(gr, gradType.back(), niter.back(), useColor,
 		    printNcol, printN, isRstudio);
     return gr;
   }
@@ -4466,17 +4466,17 @@ NumericVector nlmixrGrad_(NumericVector theta, std::string md5){
   } else {
     gradType.push_back(4);
   }
-  nlmixrGradPrint(g, gradType.back(), niter.back(), useColor,
+  nlmixr2GradPrint(g, gradType.back(), niter.back(), useColor,
 		  printNcol, printN, isRstudio);
   return g;
 }
-//' @rdname nlmixrGradFun
+//' @rdname nlmixr2GradFun
 //' @export
 //[[Rcpp::export]]
-RObject nlmixrParHist_(std::string md5){
+RObject nlmixr2ParHist_(std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr = loadNamespace("nlmixr");
-  Environment gradInfo = nlmixr[".nlmixrGradInfo"];
+  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EW = md5 + ".w";
   LogicalVector lEW;
   if (!gradInfo.exists(EW)){
@@ -4511,9 +4511,9 @@ RObject nlmixrParHist_(std::string md5){
 }
 
 //[[Rcpp::export]]
-RObject nlmixrHess_(RObject thetaT, RObject fT, RObject e,
+RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
 		    RObject gillInfoT){
-  par_progress = (par_progress_t) R_GetCCallable("RxODE", "par_progress");
+  par_progress = (par_progress_t) R_GetCCallable("rxode2", "par_progress");
   List par(1);
   NumericVector theta = as<NumericVector>(thetaT);
   Function f = as<Function>(fT);
@@ -5413,14 +5413,14 @@ void parHistData(Environment e, bool focei){
     ret.attr("class") = "data.frame";
     ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
     Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr = loadNamespace("nlmixr");
-    Environment thetaReset = nlmixr[".thetaReset"];
+    Environment nlmixr2 = loadNamespace("nlmixr2");
+    Environment thetaReset = nlmixr2[".thetaReset"];
     if (thetaReset.exists("parHistData")) {
       // rbind  data.
       if (TYPEOF(thetaReset["parHistData"]) == VECSXP) {
 	Function loadNamespace("loadNamespace", R_BaseNamespace);
-	Environment nlmixr = loadNamespace("nlmixr");
-	Function rbind = nlmixr[".rbindParHistory"];
+	Environment nlmixr2 = loadNamespace("nlmixr2");
+	Function rbind = nlmixr2[".rbindParHistory"];
 	ret = rbind(thetaReset["parHistData"], ret);
       }
       thetaReset.remove("parHistData");
@@ -5434,7 +5434,7 @@ void foceiFinalizeTables(Environment e){
   arma::mat cov;
   bool covExists = e.exists("cov");
   if (covExists){
-    if (RxODE::rxIs(e["cov"], "matrix")){
+    if (rxode2::rxIs(e["cov"], "matrix")){
       cov= as<arma::mat>(e["cov"]);
     } else {
       covExists = false;
@@ -5729,7 +5729,7 @@ void foceiFinalizeTables(Environment e){
   std::string bt = "Back-transformed(" + std::to_string((int)(op_focei.ci*100)) + "%CI)";
 
   List popDfSig;
-  if (e.exists("cov") && RxODE::rxIs(e["cov"], "matrix")){
+  if (e.exists("cov") && rxode2::rxIs(e["cov"], "matrix")){
     popDfSig = List::create(_["Est."]=EstS,
                    _["SE"]=SeS,
                    _["%RSE"]=rseS,
@@ -5753,7 +5753,7 @@ void foceiFinalizeTables(Environment e){
   e["se"] = tmpNV;
 
   // Now get covariance names
-  if (e.exists("cov")  && RxODE::rxIs(e["cov"], "matrix")){
+  if (e.exists("cov")  && rxode2::rxIs(e["cov"], "matrix")){
     tmpNM = as<NumericMatrix>(e["cov"]);
     CharacterVector thetaCovN(tmpNM.nrow());
     LogicalVector skipCov = e["skipCov"];
@@ -5768,7 +5768,7 @@ void foceiFinalizeTables(Environment e){
     List thetaDim = List::create(thetaCovN,thetaCovN);
     tmpNM.attr("dimnames") = thetaDim;
     e["cov"]=tmpNM;
-    if (e.exists("cor") && RxODE::rxIs(e["cor"], "matrix")){
+    if (e.exists("cor") && rxode2::rxIs(e["cor"], "matrix")){
       tmpNM = as<NumericMatrix>(e["cor"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["cor"]=tmpNM;
@@ -5784,62 +5784,62 @@ void foceiFinalizeTables(Environment e){
       tmpNM.attr("dimnames") = thetaDim;
       e["cor"] = tmpNM;
     }
-    if (e.exists("Rinv") && RxODE::rxIs(e["Rinv"], "matrix")){
+    if (e.exists("Rinv") && rxode2::rxIs(e["Rinv"], "matrix")){
       tmpNM = as<NumericMatrix>(e["Rinv"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["Rinv"]=tmpNM;
     }
-    if (e.exists("Sinv") && RxODE::rxIs(e["Sinv"], "matrix")){
+    if (e.exists("Sinv") && rxode2::rxIs(e["Sinv"], "matrix")){
       tmpNM = as<NumericMatrix>(e["Sinv"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["Sinv"]=tmpNM;
     }
-    if (e.exists("S") && RxODE::rxIs(e["S"], "matrix")){
+    if (e.exists("S") && rxode2::rxIs(e["S"], "matrix")){
       tmpNM = as<NumericMatrix>(e["S"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["S"]=tmpNM;
     }
-    if (e.exists("R") && RxODE::rxIs(e["R"], "matrix")){
+    if (e.exists("R") && rxode2::rxIs(e["R"], "matrix")){
       tmpNM = as<NumericMatrix>(e["R"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["R"]=tmpNM;
     }
-    if (e.exists("covR") && RxODE::rxIs(e["covR"], "matrix")){
+    if (e.exists("covR") && rxode2::rxIs(e["covR"], "matrix")){
       tmpNM = as<NumericMatrix>(e["covR"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["covR"]=tmpNM;
     }
-    if (e.exists("covRS") && RxODE::rxIs(e["covRS"], "matrix")){
+    if (e.exists("covRS") && rxode2::rxIs(e["covRS"], "matrix")){
       tmpNM = as<NumericMatrix>(e["covRS"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["covRS"]=tmpNM;
     }
-    if (e.exists("covS") && RxODE::rxIs(e["covS"], "matrix")){
+    if (e.exists("covS") && rxode2::rxIs(e["covS"], "matrix")){
       tmpNM = as<NumericMatrix>(e["covS"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["covS"]=tmpNM;
     }
-    if (e.exists("R.1") && RxODE::rxIs(e["R.1"], "matrix")){
+    if (e.exists("R.1") && rxode2::rxIs(e["R.1"], "matrix")){
       tmpNM = as<NumericMatrix>(e["R.1"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["R.1"]=tmpNM;
     }
-    if (e.exists("R.2") && RxODE::rxIs(e["R.2"], "matrix")){
+    if (e.exists("R.2") && rxode2::rxIs(e["R.2"], "matrix")){
       tmpNM = as<NumericMatrix>(e["R.2"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["R.2"]=tmpNM;
     }
-    if (e.exists("cholR") && RxODE::rxIs(e["cholR"], "matrix")){
+    if (e.exists("cholR") && rxode2::rxIs(e["cholR"], "matrix")){
       tmpNM = as<NumericMatrix>(e["cholR"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["cholR"]=tmpNM;
     }
-    if (e.exists("cholR2") && RxODE::rxIs(e["cholR2"], "matrix")){
+    if (e.exists("cholR2") && rxode2::rxIs(e["cholR2"], "matrix")){
       tmpNM = as<NumericMatrix>(e["cholR2"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["cholR2"]=tmpNM;
     }
-    if (e.exists("cholS") && RxODE::rxIs(e["cholS"], "matrix")){
+    if (e.exists("cholS") && rxode2::rxIs(e["cholS"], "matrix")){
       tmpNM = as<NumericMatrix>(e["cholS"]);
       tmpNM.attr("dimnames") = thetaDim;
       e["cholS"]=tmpNM;
@@ -5897,8 +5897,8 @@ void foceiFinalizeTables(Environment e){
     List ctl = e["control"];
     e["extra"] = as<std::string>(e["extra"]) + " (outer: " + as<std::string>(ctl["outerOptTxt"]) +")";
   }
-  // RxODE::rxSolveFree();
-  e.attr("class") = "nlmixrFitCore";
+  // rxode2::rxSolveFree();
+  e.attr("class") = "nlmixr2FitCore";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -5918,14 +5918,14 @@ void foceiFinalizeTables(Environment e){
 Environment foceiFitCpp_(Environment e){
   if (!assignFn_){
     n1qn1_ = (n1qn1_fp) R_GetCCallable("n1qn1","n1qn1_");
-    par_progress = (par_progress_t) R_GetCCallable("RxODE", "par_progress");
-    getRx = (getRxSolve_t) R_GetCCallable("RxODE", "getRxSolve_");
-    isRstudio = (isRstudio_t) R_GetCCallable("RxODE", "isRstudio");
-    ind_solve=(ind_solve_t) R_GetCCallable("RxODE", "ind_solve");
-    rxGetId = (rxGetId_t) R_GetCCallable("RxODE", "rxGetId");
-    getTimeF = (getTime_t) R_GetCCallable("RxODE", "getTime");
-    iniSubjectI = (iniSubjectI_t) R_GetCCallable("RxODE","iniSubjectE");
-    sortIdsF = (sortIds_t) R_GetCCallable("RxODE", "sortIds");
+    par_progress = (par_progress_t) R_GetCCallable("rxode2", "par_progress");
+    getRx = (getRxSolve_t) R_GetCCallable("rxode2", "getRxSolve_");
+    isRstudio = (isRstudio_t) R_GetCCallable("rxode2", "isRstudio");
+    ind_solve=(ind_solve_t) R_GetCCallable("rxode2", "ind_solve");
+    rxGetId = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
+    getTimeF = (getTime_t) R_GetCCallable("rxode2", "getTime");
+    iniSubjectI = (iniSubjectI_t) R_GetCCallable("rxode2","iniSubjectE");
+    sortIdsF = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
     assignFn_=true;
   }
   clock_t t0 = clock();
@@ -5934,15 +5934,15 @@ Environment foceiFitCpp_(Environment e){
   op_focei.canDoFD = false;
   if (model.containsElementNamed("inner")) {
     RObject inner = model["inner"];
-    if (RxODE::rxIs(inner, "RxODE")) {
+    if (rxode2::rxIs(inner, "rxode2")) {
       foceiSetup_(inner, as<RObject>(e["dataSav"]),
 		  as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
 		  as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
 		  e["control"]);
       if (model.containsElementNamed("pred.nolhs")){
 	RObject noLhs = model["pred.nolhs"];
-	if (RxODE::rxIs(noLhs, "RxODE")) {
-	  List mvp = RxODE::rxModelVars_(noLhs);
+	if (rxode2::rxIs(noLhs, "rxode2")) {
+	  List mvp = rxode2::rxModelVars_(noLhs);
 	  rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
 	  op_focei.canDoFD = true;
 	}
@@ -5954,7 +5954,7 @@ Environment foceiFitCpp_(Environment e){
       }
     } else if (model.containsElementNamed("pred.only")){
       inner = model["pred.only"];
-      if (RxODE::rxIs(inner, "RxODE")){
+      if (rxode2::rxIs(inner, "rxode2")){
 	foceiSetup_(inner, as<RObject>(e["dataSav"]),
 		    as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
 		    as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
@@ -6000,7 +6000,7 @@ Environment foceiFitCpp_(Environment e){
   } else if (e.exists("model")){
     List model = e["model"];
     if (model.containsElementNamed("log.thetas")){
-      if (RxODE::rxIs(model["log.thetas"], "integer") || RxODE::rxIs(model["log.thetas"], "numeric")){
+      if (rxode2::rxIs(model["log.thetas"], "integer") || rxode2::rxIs(model["log.thetas"], "numeric")){
 	logTheta =  as<IntegerVector>(model["log.thetas"]);
       }
     }
@@ -6097,7 +6097,7 @@ Environment foceiFitCpp_(Environment e){
   }
   if (doPredOnly){
     if (e.exists("objective")){
-      nlmixrEnvSetup(e, as<double>(e["objective"]));
+      nlmixr2EnvSetup(e, as<double>(e["objective"]));
     } else {
       stop(_("not setup right"));
     }

@@ -1,5 +1,5 @@
 #define STRICT_R_HEADER
-#include "../inst/include/nlmixr_types.h"
+#include "../inst/include/nlmixr2_types.h"
 #include "evaluate.h"
 #include "lin_cmt.h"
 Rcpp::EvalBase *ev = NULL;                  // pointer to abstract base class
@@ -89,7 +89,7 @@ END_RCPP
 }
 
 
-RcppExport SEXP nlmixr_lin_cmt( SEXP obs_timeSEXP, SEXP dose_timeSEXP, SEXP doseSEXP, SEXP TinfSEXP,
+RcppExport SEXP nlmixr2_lin_cmt( SEXP obs_timeSEXP, SEXP dose_timeSEXP, SEXP doseSEXP, SEXP TinfSEXP,
 	SEXP paramsSEXP, SEXP oralSEXP, SEXP infusionSEXP, SEXP ncmtSEXP, SEXP parameterizationSEXP ) {
 BEGIN_RCPP
 

@@ -1,5 +1,5 @@
 vpc.nlme <- function(fit, nsim = 100, by = NULL, ...) {
-  if (class(fit) == "nlmixr.ui.nlme") fit <- as.nlme(fit)
+  if (class(fit) == "nlmixr2.ui.nlme") fit <- as.nlme(fit)
   dat <- getData(fit)
 
   if (!is.null(by)) {

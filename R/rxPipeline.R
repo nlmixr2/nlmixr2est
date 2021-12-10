@@ -1,9 +1,9 @@
 ##' @export
-et.nlmixrFitData <- function(x, ..., envir = parent.frame()) {
+et.nlmixr2FitData <- function(x, ..., envir = parent.frame()) {
   .si <- x$simInfo
-  RxODE::.clearPipe(
-    rx = RxODE::RxODE(.si$rx),
-    ## events=nlmixrData(getData(x)),
+  rxode2::.clearPipe(
+    rx = rxode2::rxode2(.si$rx),
+    ## events=nlmixr2Data(getData(x)),
     params = .si$params,
     thetaMat = .si$thetaMat,
     dfObs = .si$dfObs,
@@ -11,20 +11,20 @@ et.nlmixrFitData <- function(x, ..., envir = parent.frame()) {
     dfSub = .si$dfSub,
     sigma = .si$sigma
   )
-  do.call(RxODE::et, c(list(...), list(envir = envir)), envir = envir)
+  do.call(rxode2::et, c(list(...), list(envir = envir)), envir = envir)
 }
 
 ##' @export
-rxParams.nlmixrFitData <- function(obj, ...) {
+rxParams.nlmixr2FitData <- function(obj, ...) {
   .si <- obj$simInfo
-  RxODE::.clearPipe(
-    rx = RxODE::RxODE(.si$rx),
-    events = nlmixrData(getData(obj)),
+  rxode2::.clearPipe(
+    rx = rxode2::rxode2(.si$rx),
+    events = nlmixr2Data(getData(obj)),
     thetaMat = .si$thetaMat,
     dfObs = .si$dfObs,
     omega = .si$omega,
     dfSub = .si$dfSub,
     sigma = .si$sigma
   )
-  do.call(RxODE::rxParams, list(...))
+  do.call(rxode2::rxParams, list(...))
 }

@@ -25,7 +25,7 @@ estimation methods (Laplace FO, FOCE with and without
 interaction) are described.
 }
 \seealso{
-Other nlmixr datasets: 
+Other nlmixr2 datasets: 
 \code{\link{Bolus_1CPTMM}},
 \code{\link{Bolus_1CPT}},
 \code{\link{Bolus_2CPTMM}},
@@ -38,5 +38,5 @@ Other nlmixr datasets:
 \code{\link{theo_sd}},
 \code{\link{warfarin}}
 }
-\concept{nlmixr datasets}
+\concept{nlmixr2 datasets}
 \keyword{datasets}

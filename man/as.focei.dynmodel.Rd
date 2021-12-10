@@ -2,11 +2,11 @@
 % Please edit documentation in R/dynmodel.R
 \name{as.focei.dynmodel}
 \alias{as.focei.dynmodel}
-\title{Output nlmixr format for dynmodel}
+\title{Output nlmixr2 format for dynmodel}
 \usage{
 \method{as.focei}{dynmodel}(
   .dynmodelObject,
-  .nlmixrObject,
+  .nlmixr2Object,
   .data,
   .time,
   .theta,
@@ -18,15 +18,15 @@
   .dynmodelControl,
   .nobs2 = 0,
   .pt = proc.time(),
-  .rxControl = RxODE::rxControl()
+  .rxControl = rxode2::rxControl()
 )
 }
 \arguments{
 \item{.dynmodelObject}{dynmodel object}
 
-\item{.nlmixrObject}{nlmixr object}
+\item{.nlmixr2Object}{nlmixr2 object}
 
-\item{.data}{RxODE data set}
+\item{.data}{rxode2 data set}
 
 \item{.time}{proc.time object used in dynmodel timing}
 
@@ -48,13 +48,13 @@
 
 \item{.pt}{proc.time object used in dynmodel timing}
 
-\item{.rxControl}{control options for RxODE}
+\item{.rxControl}{control options for rxode2}
 }
 \value{
 A UI version of a dynmodel object
 }
 \description{
-Convert dynmodel output to nlmixr focei style output
+Convert dynmodel output to nlmixr2 focei style output
 }
 \author{
 Mason McComb and Matt Fidler

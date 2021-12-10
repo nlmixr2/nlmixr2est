@@ -18,12 +18,12 @@ void dfSetStateLhsOps(List& in, List& opt);
 
 extern "C" {
 #endif
-  SEXP _nlmixr_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
+  SEXP _nlmixr2_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 		       SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 		       SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
 		       SEXP resOpt);
 
-  SEXP _nlmixr_popResFinal(SEXP inList);
+  SEXP _nlmixr2_popResFinal(SEXP inList);
 #if defined(__cplusplus)
 }
 #endif

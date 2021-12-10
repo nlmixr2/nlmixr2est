@@ -7,7 +7,7 @@
 setCov(fit, method)
 }
 \arguments{
-\item{fit}{nlmixr fit}
+\item{fit}{nlmixr2 fit}
 
 \item{method}{covariance method}
 }

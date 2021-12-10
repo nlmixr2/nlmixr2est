@@ -7,7 +7,7 @@
 addCwres(fit, updateObject = TRUE, envir = parent.frame(1))
 }
 \arguments{
-\item{fit}{nlmixr fit without WRES/CWRES}
+\item{fit}{nlmixr2 fit without WRES/CWRES}
 
 \item{updateObject}{Boolean indicating if the original fit object
 should be updated. By default this is true.}
@@ -47,7 +47,7 @@ one.cmt <- function() {
   })
 }
 
-f <- try(nlmixr(one.cmt, theo_sd, "saem"))
+f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 
 print(f)
 

@@ -92,14 +92,14 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4) {
   } else {
     message(sprintf("Calculating -2LL by Gaussian quadrature (nnodes=%s,nsd=%s)", nnodes.gq, nsd.gq))
   }
-  RxODE::rxProgress(nx)
+  rxode2::rxProgress(nx)
   ysave <- yobs
-  yobs <- .Call(`_nlmixr_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
-  on.exit(RxODE::rxProgressAbort("Error calculating likelihood"))
+  yobs <- .Call(`_nlmixr2_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
+  on.exit(rxode2::rxProgressAbort("Error calculating likelihood"))
   for (j in 1:nx) {
     phi[, i1] <- a + b * matrix(rep(x[j, ], N), ncol = nphi1, byrow = TRUE)
     f <- fsave <- as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt))
-    f <- .Call(`_nlmixr_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
+    f <- .Call(`_nlmixr2_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
     g <- ares + bres * abs(fsave)
     g[g < 1.0e-200] <- 1.0e-200
     DYF[ind.io] <- -0.5 * ((yobs - f) / g)^2 - log(g)
@@ -109,12 +109,12 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4) {
     ltot <- ly + lphi1
     ltot[is.na(ltot)] <- -Inf
     Q <- Q + w[j] * exp(ltot)
-    RxODE::rxTick()
+    rxode2::rxTick()
   }
-  RxODE::rxProgressStop()
+  rxode2::rxProgressStop()
   # - 2 * saem.cfg$extraLL
   ll2 <- 2 * sum(log(Q) + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + ntotal) * log(2 * pi) -
-    2 * .Call(`_nlmixr_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
+    2 * .Call(`_nlmixr2_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
   -ll2
 }
 
@@ -377,8 +377,8 @@ calc.COV <- function(fit0) {
   nphi0 <- saem.cfg$nphi0
   nphi <- nphi0 + nphi1
   N <- saem.cfg$N
-  RxODE::rxProgress(N + nphi)
-  on.exit(RxODE::rxProgressAbort("Error calculating covariance via linearization"))
+  rxode2::rxProgress(N + nphi)
+  on.exit(rxode2::rxProgressAbort("Error calculating covariance via linearization"))
 
   ntotal <- saem.cfg$ntotal
   ix_endpnt <- saem.cfg$ix_endpnt[1:ntotal] + 1
@@ -406,14 +406,14 @@ calc.COV <- function(fit0) {
   f1 <- sapply(1:nphi, function(j) {
     phi[, j] <- hat.phi[, j] + dphi[, j]
     ret <- .Call(
-      `_nlmixr_powerD`, as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt)),
+      `_nlmixr2_powerD`, as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt)),
       lambda, as.integer(yj), as.double(low), as.double(hi)
     )
-    RxODE::rxTick()
+    rxode2::rxTick()
     return(ret)
   })
   f0 <- f0s <- as.vector(dopred(hat.phi, saem.cfg$evt, saem.cfg$opt))
-  f0 <- .Call(`_nlmixr_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
+  f0 <- .Call(`_nlmixr2_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
   DF <- (f1 - f0) / dphi[id, ]
   g <- ares + bres * abs(f0s)
 
@@ -438,13 +438,13 @@ calc.COV <- function(fit0) {
     Ai <- kronecker(diag(nphi), saem.cfg$Mcovariables[i, ])
     DFAi <- DFi %*% t(Ai[cov.est.ix, ]) # CHECK!
     ret <- invVi.5 %*% DFAi
-    RxODE::rxTick()
+    rxode2::rxTick()
     return(ret)
   })
   npar <- sum(cov.est.ix)
   X <- do.call("rbind", Xi)
   Ri <- backsolve(qr.R(qr(X)), diag(npar))
   ret <- crossprod(t(Ri))
-  RxODE::rxProgressStop()
+  rxode2::rxProgressStop()
   return(ret)
 }

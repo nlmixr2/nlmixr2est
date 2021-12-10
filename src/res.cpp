@@ -169,7 +169,7 @@ void dfSetStateLhsOps(List& in, List& opt) {
   }
 }
 
-extern "C" SEXP _nlmixr_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
+extern "C" SEXP _nlmixr2_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 				SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 				SEXP relevantLHSSEXP,  SEXP stateSXP, SEXP covSEXP, SEXP IDlabelSEXP,
 				SEXP resOpt) {
@@ -329,7 +329,7 @@ END_RCPP
 
 
 
-extern "C" SEXP _nlmixr_popResFinal(SEXP inList) {
+extern "C" SEXP _nlmixr2_popResFinal(SEXP inList) {
 BEGIN_RCPP
  List l = as<List>(inList);
  if (l.size() != 2) return R_NilValue;

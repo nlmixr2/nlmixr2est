@@ -2,7 +2,7 @@
 #'
 #' This returns a new fit object with CWRES attached
 #'
-#' @param fit nlmixr fit without WRES/CWRES
+#' @param fit nlmixr2 fit without WRES/CWRES
 #' @param updateObject Boolean indicating if the original fit object
 #'     should be updated. By default this is true.
 #' @param envir Environment that should be checked for object to
@@ -34,7 +34,7 @@
 #'   })
 #' }
 #'
-#' f <- try(nlmixr(one.cmt, theo_sd, "saem"))
+#' f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #'
 #' print(f)
 #'
@@ -50,8 +50,8 @@
 #' @author Matthew L. Fidler
 #' @export
 addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .oTime <- fit$env$time
   .objName <- substitute(fit)
@@ -63,7 +63,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
   .saem <- fit$saem
   .od <- fit$origData
   if (!is.null(.saem)) {
-    .calcResid <- inherits(fit, "nlmixrFitData")
+    .calcResid <- inherits(fit, "nlmixr2FitData")
     if (.calcResid) {
       assign("saem", NULL, fit$env)
       on.exit({
@@ -80,7 +80,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
       ## Add CWRES timing to fit.
       .new <- cbind(fit, .df)
     } else {
-      .newFit <- nlmixr(fit, getData(fit), "focei",
+      .newFit <- nlmixr2(fit, getData(fit), "focei",
         control = foceiControl(
           maxOuterIterations = 0L, maxInnerIterations = 0L,
           etaMat = as.matrix(fit$eta[, -1]), calcResid = FALSE,
@@ -144,8 +144,8 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
 }
 
 .setOfvFo <- function(fit, type = c("focei", "foce", "fo")) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .type <- match.arg(type)
   .oTime <- fit$env$time
@@ -167,7 +167,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
   if (any(rownames(.inObjDf) == .rn)) {
     return(fit)
   }
-  .newFit <- nlmixr(fit, getData(fit), "focei",
+  .newFit <- nlmixr2(fit, getData(fit), "focei",
     control = foceiControl(
       maxOuterIterations = 0L, maxInnerIterations = 0L,
       interaction = .interaction, fo = .fo,
@@ -196,16 +196,16 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
   return(invisible(fit))
 }
 
-##' Set/get Objective function type for a nlmixr object
+##' Set/get Objective function type for a nlmixr2 object
 ##'
-##' @param x nlmixr fit object
+##' @param x nlmixr2 fit object
 ##' @param type Type of objective function to use for AIC, BIC, and
 ##'     $objective
 ##' @return Nothing
 ##' @author Matthew L. Fidler
 ##' @export
 setOfv <- function(x, type) {
-  if (inherits(x, "nlmixrFitCore") || inherits(x, "nlmixrFitCoreSilent")) {
+  if (inherits(x, "nlmixr2FitCore") || inherits(x, "nlmixr2FitCoreSilent")) {
     .objDf <- x$objDf
     .w <- which(tolower(row.names(.objDf)) == tolower(type))
     if (length(.w) == 1) {

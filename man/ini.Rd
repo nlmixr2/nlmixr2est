@@ -2,14 +2,14 @@
 % Please edit documentation in R/ui.R
 \name{ini}
 \alias{ini}
-\title{nlmixr ini block handling}
+\title{nlmixr2 ini block handling}
 \usage{
 ini(ini, ...)
 }
 \arguments{
-\item{ini}{Ini block or nlmixr model object}
+\item{ini}{Ini block or nlmixr2 model object}
 
-\item{...}{Other arguments parsed by nlmixr}
+\item{...}{Other arguments parsed by nlmixr2}
 }
 \value{
 bounds expression or parsed ui object
@@ -77,7 +77,7 @@ estimation.  The typical way to set a label so that the parameter \code{tvCL}
 has a label of "Typical Value of Clearance (L/hr)" is \code{tvCL <- 1;
 label("Typical Value of Clearance (L/hr)")}.
 
-\code{nlmixr} will attempt to determine some back-transformations for the
+\code{nlmixr2} will attempt to determine some back-transformations for the
 user.  For example, \code{CL <- exp(tvCL)} will detect that \code{tvCL} must
 be back-transformed by \code{exp()} for easier interpretation.  When you want
 to control the back-transformation, you can specify the back-transformation

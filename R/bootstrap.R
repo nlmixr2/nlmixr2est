@@ -23,11 +23,11 @@ addConfboundsToVar <-
     unlist(res)
   }
 
-#' Bootstrap nlmixr fit
+#' Bootstrap nlmixr2 fit
 #'
 #' Bootstrap input dataset and rerun the model to get confidence bounds and aggregated parameters
 #'
-#' @param fit the nlmixr fit object
+#' @param fit the nlmixr2 fit object
 #' @param nboot an integer giving the number of bootstrapped models to
 #'   be fit; default value is 200
 #' @param nSampIndiv an integer specifying the number of samples in
@@ -101,9 +101,9 @@ addConfboundsToVar <-
 #'   })
 #' }
 #'
-#' fit <- nlmixr(one.cmt, theo_sd, "focei")
+#' fit <- nlmixr2(one.cmt, theo_sd, "focei")
 #'
-#' RxODE::.rxWithWd(tempdir(), { # Run example in temp dir
+#' rxode2::.rxWithWd(tempdir(), { # Run example in temp dir
 #'
 #' bootstrapFit(fit, nboot = 5, restart = TRUE) # overwrites any of the existing data or model files
 #' bootstrapFit(fit, nboot = 7) # resumes fitting using the stored data and model files
@@ -269,11 +269,11 @@ bootstrapFit <- function(fit,
     }
 
     # already exists
-    output_dir <- paste0("nlmixrBootstrapCache_", fitName, "_", fit$bootstrapMd5)
+    output_dir <- paste0("nlmixr2BootstrapCache_", fitName, "_", fit$bootstrapMd5)
 
     deltOBJFloaded <- NULL
     deltOBJF <- NULL
-    RxODE::rxProgress(length(fitList))
+    rxode2::rxProgress(length(fitList))
     cli::cli_h1("Loading/Calculating \u0394 Objective function")
     setOfv(fit, "focei") # Make sure we are using focei objective function
     deltOBJF <- lapply(seq_along(fitList), function(i) {
@@ -281,14 +281,14 @@ bootstrapFit <- function(fit,
       .path <- file.path(output_dir, paste0("posthoc_", i, ".rds"))
       if (file.exists(.path)) {
         xPosthoc <- readRDS(.path)
-        RxODE::rxTick()
+        rxode2::rxTick()
       } else {
-        RxODE::rxProgressStop()
-        ## RxODE::rxProgressAbort("Starting to posthoc estimates")
+        rxode2::rxProgressStop()
+        ## rxode2::rxProgressAbort("Starting to posthoc estimates")
         ## Don't calculate the tables
         .msg <- paste0(gettext("Running bootstrap estimates on original data for model index: "), i)
         cli::cli_h1(.msg)
-        xPosthoc <- nlmixr(x,
+        xPosthoc <- nlmixr2(x,
           data = origData, est = "posthoc",
           control = list(calcTables = FALSE, print = 1)
         )
@@ -296,7 +296,7 @@ bootstrapFit <- function(fit,
       }
       xPosthoc$objf - fit$objf
     })
-    RxODE::rxProgressStop()
+    rxode2::rxProgressStop()
 
     .deltaO <- sort(abs(unlist(deltOBJF)))
 
@@ -499,7 +499,7 @@ sampling <- function(data,
 
 #' Fitting multiple bootstrapped models without aggregaion; called by the function bootstrapFit()
 #'
-#' @param fit the nlmixr fit object
+#' @param fit the nlmixr2 fit object
 #' @param nboot an integer giving the number of bootstrapped models to be fit; default value is 100
 #' @param nSampIndiv an integer specifying the number of samples in each bootstrapped sample; default is the number of unique subjects in the original dataset
 #' @param pvalues a vector of pvalues indicating the probability of each subject to get selected; default value is NULL implying that probability of each subject is the same
@@ -519,8 +519,8 @@ modelBootstrap <- function(fit,
                            pvalues = NULL,
                            restart = FALSE,
                            fitName = "fit") {
-  if (!inherits(fit, "nlmixrFitCore")) {
-    stop("'fit' needs to be a nlmixr fit", call. = FALSE)
+  if (!inherits(fit, "nlmixr2FitCore")) {
+    stop("'fit' needs to be a nlmixr2 fit", call. = FALSE)
   }
 
   if (missing(stratVar)) {
@@ -575,7 +575,7 @@ modelBootstrap <- function(fit,
   }
 
   output_dir <-
-    paste0("nlmixrBootstrapCache_", fitName, "_", fit$bootstrapMd5) # a new directory with this name will be created
+    paste0("nlmixr2BootstrapCache_", fitName, "_", fit$bootstrapMd5) # a new directory with this name will be created
   if (!dir.exists(output_dir)) {
     dir.create(output_dir)
   }
@@ -746,11 +746,11 @@ modelBootstrap <- function(fit,
 
   modelsEnsemble <-
     lapply(bootData[.env$mod_idx:nboot], function(boot_data) {
-      cli::cli_h1("Running nlmixr for model index: {.env$mod_idx}")
+      cli::cli_h1("Running nlmixr2 for model index: {.env$mod_idx}")
 
       fit <- tryCatch(
         {
-          fit <- suppressWarnings(nlmixr(uif,
+          fit <- suppressWarnings(nlmixr2(uif,
             boot_data,
             est = fitMeth,
             control = .ctl
@@ -824,11 +824,11 @@ modelBootstrap <- function(fit,
   list(modelsEnsemble, fitEnsemble)
 }
 
-#' Get the nlmixr method used for fitting the model
+#' Get the nlmixr2 method used for fitting the model
 #'
-#' @param fit the nlmixr fit object
+#' @param fit the nlmixr2 fit object
 #'
-#' @return returns a string representing the method used by nlmixr for fitting the given model
+#' @return returns a string representing the method used by nlmixr2 for fitting the given model
 #'
 #' @author Vipul Mann, Matthew Fidler
 #'
@@ -838,17 +838,17 @@ modelBootstrap <- function(fit,
 getFitMethod <- function(fit) {
   methodsList <-
     c(
-      "nlmixrFOCEi" = "focei",
-      "nlmixrNlmeUI" = "nlme",
-      "nlmixrSaem" = "saem",
-      "nlmixrFOCE" = "foce",
-      "nlmixrFOi" = "foi",
-      "nlmixrFO" = "fo",
-      "nlmixrPosthoc" = "posthoc"
+      "nlmixr2FOCEi" = "focei",
+      "nlmixr2NlmeUI" = "nlme",
+      "nlmixr2Saem" = "saem",
+      "nlmixr2FOCE" = "foce",
+      "nlmixr2FOi" = "foi",
+      "nlmixr2FO" = "fo",
+      "nlmixr2Posthoc" = "posthoc"
     )
 
-  if (!(inherits(fit, "nlmixrFitCore"))) {
-    stop("'fit' needs to be a nlmixr fit", call. = FALSE)
+  if (!(inherits(fit, "nlmixr2FitCore"))) {
+    stop("'fit' needs to be a nlmixr2 fit", call. = FALSE)
   }
 
   res <- sapply(names(methodsList), function(met) {
@@ -856,7 +856,7 @@ getFitMethod <- function(fit) {
   })
   .w <- which(res == TRUE)
   if (length(.w) != 1) {
-    stop("cannot determine the method the nlmixr fit used, please submit a bug report",
+    stop("cannot determine the method the nlmixr2 fit used, please submit a bug report",
       call. = FALSE
     )
   }
@@ -1078,12 +1078,12 @@ getBootstrapSummary <-
 
     summaryList$message <- unique(summaryList$message)
 
-    class(summaryList) <- "nlmixrBoostrapSummary"
+    class(summaryList) <- "nlmixr2BoostrapSummary"
     summaryList
   }
 
 #' @export
-print.nlmixrBoostrapSummary <- function(x, ..., sigdig = NULL) {
+print.nlmixr2BoostrapSummary <- function(x, ..., sigdig = NULL) {
   if (is.null(sigdig)) {
     if (any(names(x) == "sigdig")) {
       sigdig <- x$sigdig
@@ -1146,15 +1146,15 @@ print.nlmixrBoostrapSummary <- function(x, ..., sigdig = NULL) {
 }
 
 
-#' Assign a set of variables to the nlmixr fit environment
+#' Assign a set of variables to the nlmixr2 fit environment
 #'
 #' @param namedVars a named list of variables that need to be assigned to the given environment
-#' @param fitobject the nlmixr fit object that contains its environment information
+#' @param fitobject the nlmixr2 fit object that contains its environment information
 #' @noRd
 #'
 assignToEnv <- function(namedVars, fitobject) {
-  if (!inherits(fitobject, "nlmixrFitCore")) {
-    stop("'fit' needs to be a nlmixr fit", call. = FALSE)
+  if (!inherits(fitobject, "nlmixr2FitCore")) {
+    stop("'fit' needs to be a nlmixr2 fit", call. = FALSE)
   }
 
   if (is.null(names(namedVars))) {

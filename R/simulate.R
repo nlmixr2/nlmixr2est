@@ -1,4 +1,4 @@
-## Add RxODE THETA/ETA replacement mini DSL
+## Add rxode2 THETA/ETA replacement mini DSL
 .repSim <- function(x, theta = c(), eta = c(), lhs = c()) {
   ret <- eval(parse(text = sprintf("quote({%s})", x)))
   f <- function(x) {
@@ -41,11 +41,11 @@
   ret <- deparse(f(ret))[-1]
   ret <- ret[regexpr("^ *NULL$", ret) == -1]
   ret <- paste(ret[-length(ret)], collapse = "\n")
-  return(RxODE::rxNorm(RxODE::rxGetModel(ret)))
+  return(rxode2::rxNorm(rxode2::rxGetModel(ret)))
 }
 
 .simInfo <- function(object) {
-  .mod <- RxODE::rxNorm(object$model$pred.only)
+  .mod <- rxode2::rxNorm(object$model$pred.only)
   ## .mod <- gsub(rex::rex("d/dt(", capture(except_any_of("\n;)")), ")", or("=", "~")), "d/dt(\\1)~", .mod);
   .lhs <- object$model$pred.only$lhs
   .lhs <- .lhs[.lhs != "rx_pred_"]
@@ -104,7 +104,7 @@
   }
   for (.i in .w) {
     .cur <- sub(";", "", sub("rx_r_~", "", .newMod[.i]))
-    .cur <- eval(parse(text = sprintf("RxODE::rxSplitPlusQ(quote(%s))", .cur)))
+    .cur <- eval(parse(text = sprintf("rxode2::rxSplitPlusQ(quote(%s))", .cur)))
     .cur <- paste(sapply(.cur, function(x) {
       .ret <- sprintf("sqrt(%s)", x)
       for (.what in .sigmaNames) {
@@ -127,8 +127,8 @@
   }
   .newMod <- paste(paste(.newMod, collapse = "\n"), "\n")
   .dfObs <- object$nobs
-  .nlmixrData <- nlmixr::nlmixrData(nlme::getData(object))
-  .dfSub <- length(unique(.nlmixrData$ID))
+  .nlmixr2Data <- nlmixr2::nlmixr2Data(nlme::getData(object))
+  .dfSub <- length(unique(.nlmixr2Data$ID))
   .env <- object$env
   if (exists("cov", .env)) {
     .thetaMat <- nlme::getVarCov(object)
@@ -144,13 +144,13 @@
     .dfSub <- 0
   }
   return(list(
-    rx = .newMod, params = .params, events = .nlmixrData,
+    rx = .newMod, params = .params, events = .nlmixr2Data,
     thetaMat = .thetaMat, omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub
   ))
 }
 
 
-##' Simulate a nlmixr solved system
+##' Simulate a nlmixr2 solved system
 ##'
 ##' This takes the uncertainty in the model parameter estimates and to
 ##' simulate a number of theoretical studies.  Each study simulates a
@@ -159,18 +159,18 @@
 ##' simulated from the uncertainty in the Omega/Sigma matrices based
 ##' on the number of subjects and observations the model was based on.
 ##'
-##' @param object nlmixr object
+##' @param object nlmixr2 object
 ##' @param ... Other arguments sent to \code{rxSolve}
-##' @return A RxODE solved object
-##' @inheritParams RxODE::rxSolve
+##' @return A rxode2 solved object
+##' @inheritParams rxode2::rxSolve
 ##' @export
-nlmixrSim <- function(object, ...) {
-  RxODE::rxSolveFree()
-  RxODE::.setWarnIdSort(FALSE)
+nlmixr2Sim <- function(object, ...) {
+  rxode2::rxSolveFree()
+  rxode2::.setWarnIdSort(FALSE)
   on.exit({
-    RxODE::.setWarnIdSort(TRUE)
+    rxode2::.setWarnIdSort(TRUE)
   })
-  save <- getOption("nlmixr.save", FALSE)
+  save <- getOption("nlmixr2.save", FALSE)
   .si <- .simInfo(object)
   .xtra <- list(...)
   if (any(names(.xtra) == "rx")) {
@@ -181,9 +181,9 @@ nlmixrSim <- function(object, ...) {
   } else {
     message("Compiling model...", appendLF = FALSE)
   }
-  .newobj <- RxODE::RxODE(.si$rx)
+  .newobj <- rxode2::rxode2(.si$rx)
   on.exit({
-    RxODE::rxUnload(.newobj)
+    rxode2::rxUnload(.newobj)
   })
   message("done")
   if ((any(names(.xtra) == "nStud") && .xtra$nStud <= 1) || !any(names(.xtra) == "nStud")) {
@@ -191,7 +191,7 @@ nlmixrSim <- function(object, ...) {
     .si$dfSub <- NULL
     .si$dfObs <- NULL
   } else {
-    if (RxODE::rxIs(.xtra$thetaMat, "matrix")) {
+    if (rxode2::rxIs(.xtra$thetaMat, "matrix")) {
       .si$thetaMat <- .xtra$thetaMat
     } else if (!is.null(.xtra$thetaMat)) {
       if (is.na(.xtra$thetaMat)) {
@@ -220,7 +220,7 @@ nlmixrSim <- function(object, ...) {
     }
   }
   if (any(names(.xtra) == "events") &&
-    RxODE::rxIs(.xtra$events, "rx.event")) {
+    rxode2::rxIs(.xtra$events, "rx.event")) {
     .si$events <- .xtra$events
   }
   if (any(names(.xtra) == "params")) {
@@ -229,7 +229,7 @@ nlmixrSim <- function(object, ...) {
   .xtra$object <- .newobj
   .xtra$params <- .si$params
   .xtra$events <- .si$events
-  if (RxODE::rxIs(.xtra$thetaMat, "matrix")) {
+  if (rxode2::rxIs(.xtra$thetaMat, "matrix")) {
     .xtra$thetaMat <- NULL
   } else {
     .xtra$thetaMat <- .si$thetaMat
@@ -247,22 +247,22 @@ nlmixrSim <- function(object, ...) {
       gsub("<-", "=", gsub(" +", "", object$uif$fun.txt)),
       as.data.frame(object$uif$ini),
       .xtra,
-      as.character(utils::packageVersion("nlmixr")),
-      as.character(utils::packageVersion("RxODE"))
+      as.character(utils::packageVersion("nlmixr2")),
+      as.character(utils::packageVersion("rxode2"))
     ))
     .saveFile <- file.path(
-      getOption("nlmixr.save.dir", getwd()),
-      paste0("nlmixr-nlmixrSim-", .modName, .dataName, "-", .digest, ".rds")
+      getOption("nlmixr2.save.dir", getwd()),
+      paste0("nlmixr2-nlmixr2Sim-", .modName, .dataName, "-", .digest, ".rds")
     )
     if (file.exists(.saveFile)) {
-      message(sprintf("Loading nlmixrSim already run (%s)", .saveFile))
+      message(sprintf("Loading nlmixr2Sim already run (%s)", .saveFile))
       .ret <- readRDS(.saveFile)
       return(.ret)
     }
   }
-  .ret <- do.call(getFromNamespace("rxSolve", "RxODE"), .xtra, envir = parent.frame(2))
+  .ret <- do.call(getFromNamespace("rxSolve", "rxode2"), .xtra, envir = parent.frame(2))
   if (inherits(.ret, "rxSolve")) {
-    .rxEnv <- attr(class(.ret), ".RxODE.env")
+    .rxEnv <- attr(class(.ret), ".rxode2.env")
     if (!is.null(.xtra$nsim)) {
       .rxEnv$nSub <- .xtra$nsim
     }
@@ -274,8 +274,8 @@ nlmixrSim <- function(object, ...) {
     } else {
       .rxEnv$nStud <- .xtra$nStud
     }
-    .cls <- c("nlmixrSim", class(.ret))
-    attr(.cls, ".RxODE.env") <- .rxEnv
+    .cls <- c("nlmixr2Sim", class(.ret))
+    attr(.cls, ".rxode2.env") <- .rxEnv
     if (any(names(.ret) == "CMT") && any(names(object) == "CMT")) {
       if (is(object$CMT, "factor")) {
         .ret$CMT <- as.integer(.ret$CMT)
@@ -292,12 +292,12 @@ nlmixrSim <- function(object, ...) {
 }
 
 ##' @export
-plot.nlmixrSim <- function(x, y, ...) {
+plot.nlmixr2Sim <- function(x, y, ...) {
   p1 <- eff <- Percentile <- sim.id <- id <- p2 <- p50 <- p05 <- p95 <- . <- NULL
   .args <- list(...)
-  save <- getOption("nlmixr.save", FALSE)
-  RxODE::rxReq("dplyr")
-  RxODE::rxReq("tidyr")
+  save <- getOption("nlmixr2.save", FALSE)
+  rxode2::rxReq("dplyr")
+  rxode2::rxReq("tidyr")
   if (is.null(.args$p)) {
     .p <- c(0.05, 0.5, 0.95)
   } else {
@@ -306,15 +306,15 @@ plot.nlmixrSim <- function(x, y, ...) {
   if (save) {
     .digest <- digest::digest(list(
       .args,
-      as.character(utils::packageVersion("nlmixr")),
-      as.character(utils::packageVersion("RxODE"))
+      as.character(utils::packageVersion("nlmixr2")),
+      as.character(utils::packageVersion("rxode2"))
     ))
     .saveFile <- file.path(
-      getOption("nlmixr.save.dir", getwd()),
-      paste0("nlmixrSimPlot-", .digest, ".rds")
+      getOption("nlmixr2.save.dir", getwd()),
+      paste0("nlmixr2SimPlot-", .digest, ".rds")
     )
     if (file.exists(.saveFile)) {
-      message(sprintf("Loading nlmixrSimPlot already summarized (%s)", .saveFile))
+      message(sprintf("Loading nlmixr2SimPlot already summarized (%s)", .saveFile))
       .ret <- readRDS(.saveFile)
       return(.ret)
     }
@@ -395,7 +395,7 @@ plot.nlmixrSim <- function(x, y, ...) {
 
 ## Mini DSL to fix pred-only models
 .predOnlyRx <- function(object) {
-  .ret <- eval(parse(text = sprintf("quote({%s})", RxODE::rxNorm(object$model$pred.only))))
+  .ret <- eval(parse(text = sprintf("quote({%s})", rxode2::rxNorm(object$model$pred.only))))
   .ret <- deparse(.predOnlyRxDsl(.ret))[-1]
   .ret <- .ret[regexpr("^ *NULL$", .ret) == -1]
   .ret <- .ret[-length(.ret)]
@@ -420,10 +420,10 @@ plot.nlmixrSim <- function(x, y, ...) {
     .ret <- c(.ret, "pred=rx_pred_")
   }
   .ret <- paste(.ret, collapse = "\n")
-  return(RxODE::RxODE(.ret))
+  return(rxode2::rxode2(.ret))
 }
 
-##' Predict a nlmixr solved system
+##' Predict a nlmixr2 solved system
 ##'
 ##' @param ipred Flag to calculate individual predictions. When
 ##'     \code{ipred} is \code{TRUE}, calculate individual predictions.
@@ -431,18 +431,18 @@ plot.nlmixrSim <- function(x, y, ...) {
 ##'     When \code{ipred} is \code{NA}, calculate both individual and
 ##'     population predictions.
 ##'
-##' @inheritParams RxODE::rxSolve
+##' @inheritParams rxode2::rxSolve
 ##'
-##' @return an RxODE solved data frame with the predictions
-##'
-##' @export
+##' @return an rxode2 solved data frame with the predictions
 ##'
 ##' @export
-nlmixrPred <- function(object, ..., ipred = FALSE) {
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
+##'
+##' @export
+nlmixr2Pred <- function(object, ..., ipred = FALSE) {
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   lst <- as.list(match.call()[-1])
-  if (RxODE::rxIs(lst$params, "rx.event")) {
+  if (rxode2::rxIs(lst$params, "rx.event")) {
     if (!is.null(lst$events)) {
       tmp <- lst$events
       lst$events <- lst$params
@@ -452,8 +452,8 @@ nlmixrPred <- function(object, ..., ipred = FALSE) {
       lst$params <- NULL
     }
   }
-  if (!RxODE::rxIs(lst$events, "rx.event")) {
-    lst$events <- nlmixrData(getData(object))
+  if (!rxode2::rxIs(lst$events, "rx.event")) {
+    lst$events <- nlmixr2Data(getData(object))
   }
   message("Compiling model...", appendLF = FALSE)
   lst$object <- .predOnlyRx(object)
@@ -498,7 +498,7 @@ nlmixrPred <- function(object, ..., ipred = FALSE) {
   }
   on.exit(
     {
-      RxODE::rxUnload(lst$object)
+      rxode2::rxUnload(lst$object)
     },
     add = TRUE
   )
@@ -508,43 +508,43 @@ nlmixrPred <- function(object, ..., ipred = FALSE) {
     } else {
       lst$params <- ipred.par
     }
-    ret <- suppressWarnings(do.call(getFromNamespace("rxSolve", "RxODE"), lst, envir = parent.frame(2)))
+    ret <- suppressWarnings(do.call(getFromNamespace("rxSolve", "rxode2"), lst, envir = parent.frame(2)))
     if (do.ipred) {
       names(ret) <- sub("pred", "ipred", names(ret))
     }
     return(ret)
   } else {
     lst$params <- pred.par
-    ret.pred <- suppressWarnings(do.call(getFromNamespace("rxSolve", "RxODE"), lst, envir = parent.frame(2)))
+    ret.pred <- suppressWarnings(do.call(getFromNamespace("rxSolve", "rxode2"), lst, envir = parent.frame(2)))
     lst$params <- ipred.par
-    ret.pred$ipred <- suppressWarnings(do.call(getFromNamespace("rxSolve", "RxODE"), lst, envir = parent.frame(2)))$pred
+    ret.pred$ipred <- suppressWarnings(do.call(getFromNamespace("rxSolve", "rxode2"), lst, envir = parent.frame(2)))$pred
     return(ret.pred)
   }
 }
-##' @rdname nlmixrPred
+##' @rdname nlmixr2Pred
 ##' @export
-predict.nlmixrFitData <- function(object, ...) {
-  nlmixrPred(object, ...)
+predict.nlmixr2FitData <- function(object, ...) {
+  nlmixr2Pred(object, ...)
 }
 
-##' Augmented Prediction for nlmixr fit
+##' Augmented Prediction for nlmixr2 fit
 ##'
 ##'
-##' @param object Nlmixr fit object
+##' @param object Nlmixr2 fit object
 ##' @inheritParams nlme::augPred
-##' @inheritParams RxODE::rxSolve
+##' @inheritParams rxode2::rxSolve
 ##' @return Stacked data.frame with observations, individual/population predictions.
 ##' @author Matthew L. Fidler
 ##' @export
-nlmixrAugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "nocb", "midpoint"),
+nlmixr2AugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "nocb", "midpoint"),
                           primary = NULL, minimum = NULL, maximum = NULL, length.out = 51L) {
   force(object)
-  if (!inherits(object, "nlmixrFitData")) {
-    stop("Need a nlmixr fit object")
+  if (!inherits(object, "nlmixr2FitData")) {
+    stop("Need a nlmixr2 fit object")
   }
-  RxODE::.setWarnIdSort(FALSE)
-  on.exit(RxODE::.setWarnIdSort(TRUE))
-  save <- getOption("nlmixr.save", FALSE)
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
+  save <- getOption("nlmixr2.save", FALSE)
   if (save) {
     .modName <- ifelse(is.null(object$uif$model.name), "", paste0(object$uif$model.name, "-"))
     if (.modName == ".-") .modName <- ""
@@ -555,12 +555,12 @@ nlmixrAugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "
       as.data.frame(object$uif$ini),
       covsInterpolation,
       primary, minimum, maximum, length.out,
-      as.character(utils::packageVersion("nlmixr")),
-      as.character(utils::packageVersion("RxODE"))
+      as.character(utils::packageVersion("nlmixr2")),
+      as.character(utils::packageVersion("rxode2"))
     ))
     .saveFile <- file.path(
-      getOption("nlmixr.save.dir", getwd()),
-      paste0("nlmixr-augPred-", .modName, .dataName, "-", .digest, ".rds")
+      getOption("nlmixr2.save.dir", getwd()),
+      paste0("nlmixr2-augPred-", .modName, .dataName, "-", .digest, ".rds")
     )
     if (file.exists(.saveFile)) {
       message(sprintf("Loading augPred already run (%s)", .saveFile))
@@ -570,7 +570,7 @@ nlmixrAugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "
   }
   uif <- object$uif
   ## Using the model will drop the subjects that were dropped by the fit
-  dat <- suppressWarnings(nlmixrData(getData(object), object$model$pred.only))
+  dat <- suppressWarnings(nlmixr2Data(getData(object), object$model$pred.only))
   dat <- as.data.frame(dat)
   names(dat) <- toupper(names(dat))
   attr(dat$ID, "levels") <- attr(object$ID, "levels")
@@ -671,9 +671,9 @@ nlmixrAugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "
     lst$keep <- .multiType
   }
   lst$returnType <- "data.frame.TBS"
-  dat.new <- do.call("nlmixrPred", lst, envir = parent.frame(2))
+  dat.new <- do.call("nlmixr2Pred", lst, envir = parent.frame(2))
   .Call(
-    `_nlmixr_augPredTrans`, dat.new$pred, dat.new$ipred,
+    `_nlmixr2_augPredTrans`, dat.new$pred, dat.new$ipred,
     dat.new$rxLambda, dat.new$rxYj, dat.new$rxLow, dat.new$rxHi
   )
   dat.new <- dat.new[, !(names(dat.new) %in% c("rxLambda", "rxYj", "rxLow", "rxHi"))]
@@ -745,25 +745,25 @@ nlmixrAugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "
   return(.ret)
 }
 
-##' @rdname nlmixrAugPred
+##' @rdname nlmixr2AugPred
 ##' @export
-augPred.nlmixrFitData <- memoise::memoise(function(object, primary = NULL, minimum = NULL, maximum = NULL,
+augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, minimum = NULL, maximum = NULL,
                                                    length.out = 51, ...) {
-  .ret <- nlmixrAugPred(
+  .ret <- nlmixr2AugPred(
     object = object, primary = primary,
     minimum = minimum, maximum = maximum,
     length.out = length.out, ...
   )
-  class(.ret) <- c("nlmixrAugPred", "data.frame")
+  class(.ret) <- c("nlmixr2AugPred", "data.frame")
   return(.ret)
 })
 
 ##' @export
-plot.nlmixrAugPred <- function(x, y, ...) {
+plot.nlmixr2AugPred <- function(x, y, ...) {
   if (any(names(x) == "Endpoint")) {
     for (.tmp in unique(x$Endpoint)) {
       .x <- x[x$Endpoint == .tmp, names(x) != "Endpoint"]
-      plot.nlmixrAugPred(.x)
+      plot.nlmixr2AugPred(.x)
     }
   } else {
     ids <- unique(x$id)
@@ -777,15 +777,15 @@ plot.nlmixrAugPred <- function(x, y, ...) {
       p3 <- ggplot(d1, aes(time, values, col = ind)) +
         geom_line(data = dpred, size = 1.2) +
         geom_point(data = dobs) +
-        facet_wrap(~id) + RxODE::rxTheme()
+        facet_wrap(~id) + rxode2::rxTheme()
       print(p3)
     }
   }
 }
 
-##' @rdname nlmixrSim
+##' @rdname nlmixr2Sim
 ##' @export
-rxSolve.nlmixrFitData <- function(object, params = NULL, events = NULL, inits = NULL,
+rxSolve.nlmixr2FitData <- function(object, params = NULL, events = NULL, inits = NULL,
                                   scale = NULL, method = c("liblsoda", "lsoda", "dop853", "indLin"),
                                   transitAbs = NULL, atol = 1.0e-8, rtol = 1.0e-6,
                                   maxsteps = 70000L, hmin = 0, hmax = NA_real_,
@@ -796,7 +796,7 @@ rxSolve.nlmixrFitData <- function(object, params = NULL, events = NULL, inits = 
                                   sigmaLower = -Inf, sigmaUpper = Inf,
                                   nCoresRV = 1L, sigmaIsChol = FALSE,
                                   sigmaSeparation = c("auto", "lkj", "separation"),
-                                  sigmaXform = c("identity", "variance", "log", "nlmixrSqrt", "nlmixrLog", "nlmixrIdentity"),
+                                  sigmaXform = c("identity", "variance", "log", "nlmixr2Sqrt", "nlmixr2Log", "nlmixr2Identity"),
                                   nDisplayProgress = 10000L,
                                   amountUnits = NA_character_, timeUnits = "hours", stiff,
                                   theta = NULL,
@@ -805,7 +805,7 @@ rxSolve.nlmixrFitData <- function(object, params = NULL, events = NULL, inits = 
                                   stateTrim = Inf, updateObject = FALSE,
                                   omega = NULL, omegaDf = NULL, omegaIsChol = FALSE,
                                   omegaSeparation = c("auto", "lkj", "separation"),
-                                  omegaXform = c("variance", "identity", "log", "nlmixrSqrt", "nlmixrLog", "nlmixrIdentity"),
+                                  omegaXform = c("variance", "identity", "log", "nlmixr2Sqrt", "nlmixr2Log", "nlmixr2Identity"),
                                   omegaLower = -Inf, omegaUpper = Inf,
                                   nSub = 1L, thetaMat = NULL, thetaDf = NULL, thetaIsChol = FALSE,
                                   nStud = 1L, dfSub = 0.0, dfObs = 0.0, returnType = c("rxSolve", "matrix", "data.frame", "data.frame.TBS", "data.table", "tbl", "tibble"),
@@ -842,18 +842,18 @@ rxSolve.nlmixrFitData <- function(object, params = NULL, events = NULL, inits = 
                                   linDiffCentral=c(tlag=TRUE, f=TRUE, rate=TRUE, dur=TRUE, tlag2=TRUE, f2=TRUE, rate2=TRUE, dur2=TRUE),
                                   resample=NULL,
                                   resampleID=TRUE) {
-  do.call("nlmixrSim", as.list(match.call()[-1]), envir = parent.frame(2))
+  do.call("nlmixr2Sim", as.list(match.call()[-1]), envir = parent.frame(2))
 }
 
-##' @rdname nlmixrSim
+##' @rdname nlmixr2Sim
 ##' @export
-simulate.nlmixrFitData <- function(object, nsim = 1, seed = NULL, ...) {
-  nlmixr::nlmixrSim(object, ..., nsim = nsim, seed = seed)
+simulate.nlmixr2FitData <- function(object, nsim = 1, seed = NULL, ...) {
+  nlmixr2::nlmixr2Sim(object, ..., nsim = nsim, seed = seed)
 }
 
-##' @rdname nlmixrSim
+##' @rdname nlmixr2Sim
 ##' @export
-solve.nlmixrFitData <- function(a, b, ...) {
+solve.nlmixr2FitData <- function(a, b, ...) {
   lst <- as.list(match.call()[-1])
   n <- names(lst)
   if (!missing(a)) {
@@ -863,9 +863,9 @@ solve.nlmixrFitData <- function(a, b, ...) {
     n[n == "b"] <- ""
   }
   names(lst) <- n
-  do.call("nlmixrSim", lst, envir = parent.frame(2))
+  do.call("nlmixr2Sim", lst, envir = parent.frame(2))
 }
 
-##' @importFrom RxODE rxSolve
+##' @importFrom rxode2 rxSolve
 ##' @export
-RxODE::rxSolve
+rxode2::rxSolve
