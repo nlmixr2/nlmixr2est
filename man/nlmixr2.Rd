@@ -602,7 +602,7 @@ function.
 
 f_ode <- function(){
     ini({
-        lCl <- 1.6      #log Cl (L/hr)
+        lCl <- 1.6      #log Cl (Lhr)
         lVc <- log(80)   #log Vc (L)
         lKA <- 0.3      #log Ka (1/hr)
         prop.err <- c(0, 0.2, 1)
@@ -672,5 +672,5 @@ if (!inherits(fit_ode_saem, "try-error")) print(fit_ode_saem)
 }
 }
 \author{
-Matthew L. Fidler, Rik Schoemaker
+Matthew L. Fidler
 }

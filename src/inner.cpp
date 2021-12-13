@@ -6028,16 +6028,16 @@ Environment foceiFitCpp_(Environment e){
       op_focei.xPar[k] = xType[j-op_focei.ntheta];
     } else {
       for (unsigned int m=logTheta.size(); m--;){
-	if (logTheta[m]-1 == j){
-	  op_focei.xPar[k] = 1;
-	  break;
-	}
+        if (logTheta[m]-1 == j){
+          op_focei.xPar[k] = 1;
+          break;
+        }
       }
       for (int m = logitTheta.size(); m--;) {
-	if (logitTheta[m]-1 == j){
-	  op_focei.xPar[k] = -m-1;
-	  break;
-	}
+        if (logitTheta[m]-1 == j){
+          op_focei.xPar[k] = -m-1;
+          break;
+        }
       }
     }
   }

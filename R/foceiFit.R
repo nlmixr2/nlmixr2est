@@ -2255,7 +2255,7 @@ foceiFit.data.frame0 <- function(data,
   .n <- 1
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
     ## Maybe change scale?
-    message(sprintf("Restart %s", .n))
+    message(sprintffo("Restart %s", .n))
     .ret$control$nF <- 0
     .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
     .estNew <- sapply(
