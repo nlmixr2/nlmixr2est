@@ -1,5 +1,3 @@
-
-
 #' Get the THETA/ETA lines from rxode2 UI
 #'
 #' @param rxui This is the rxode2 ui object
@@ -530,7 +528,7 @@ rxUiGet.foceiModel <- function(x, ...) {
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
 
 #' @export
-rxUiGet.foceiThetaFixed <- function(x, ...) {
+rxUiGet.foceiFixed <- function(x, ...) {
   .x <- x[[1]]
   .df <- get("iniDf", .x)
   .dft <- .df[!is.na(.df$ntheta), ]
@@ -538,7 +536,7 @@ rxUiGet.foceiThetaFixed <- function(x, ...) {
   .dft <- .df[is.na(.df$ntheta), ]
   c(.fix, .dft$fix)
 }
-#attr(rxUiGet.thetaFixed, "desc") <- "focei theta fixed vector"
+#attr(rxUiGet.foFixed, "desc") <- "focei theta fixed vector"
 
 #' @export
 rxUiGet.foceiEtaNames <- function(x, ...) {
@@ -747,12 +745,54 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   env$probitThetasHiF <- .transform[which(.transform$curEval == "probitInv"), "hi"]
 }
 
+# focei.mu.ref
+# eta# and the corresponding theta number
+
+#' @export
+rxUiGet.foceiMuRefVector <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .muRefDataFrame <- .ui$muRefDataFrame
+  .w <- which(!is.na(.iniDf$ntheta))
+  .i2 <- .iniDf[-.w, ]
+  if (length(.i2$name) > 0) {
+    .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
+    .i2 <- .i2[order(.i2$neta1), ]
+    vapply(seq_along(.i2$neta1), function(i){
+      if (.i2$fix[i]) return(-1L)
+      .name <- .i2$name[i]
+      .w <- which(.muRefDataFrame$eta == .name)
+      if (length(.w) != 1) return(-1L)
+      .name <- .muRefDataFrame$theta[.w]
+      .w <- which(.iniDf$name == .name)
+      if (length(.w) != 1) return(-1L)
+      if (.iniDf$fix[.w]) return(-1L)
+      .iniDf$ntheta[.w] - 1L
+    }, integer(1))
+  } else {
+    integer(0)
+  }
+}
+#attr(rxUiGet.foceiMuRefVector, "desc") <- "focei mu ref vector"
+
+
+.foceiSetupSkipCov <- function(ui, env) {
+  env$skipCov <- rxode2::rxGetControl("skipCov", NULL)
+  if (is.null(env$skipCov)) {
+    #.tmp <- fixed[1:length(inits$THTA)]
+    #.ret$control$focei.mu.ref <- .ret$uif$focei.mu.ref
+  }
+
+}
+
 .foceiOptEnvLik <- function(ui, env) {
   env$model <- rxUiGet.foceiModel(list(ui))
   .foceiOptEnvAssignTol(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
   .foceiOptEnvSetupTransformIndexs(ui, env)
+  .ret$control$nF <- 0
+  .ret$control$printTop <- TRUE
   env$control <- get("control", envir=ui)
   env
 }
@@ -767,7 +807,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .env <- new.env(parent=emptyenv())
   }
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
-  .env$thetaFixed <- rxUiGet.foceiThetaFixed(x, ...)
+  .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   .env$adjLik <- rxode2::rxGetControl(.x, "adjLik", TRUE)
   .env$diagXformInv <- c("sqrt" = ".square", "log" = "exp", "identity" = "identity")[rxode2::rxGetControl(.x, "diagXform", "sqrt")]
   # FIXME is ODEmodel needed?

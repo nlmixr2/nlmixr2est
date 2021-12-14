@@ -1726,16 +1726,16 @@ static inline bool thetaReset0() {
     if (op_focei.muRef[ii] != -1 && op_focei.muRef[ii] < (int)op_focei.ntheta) {
       ij = op_focei.muRef[ii];
       if (isFixedTheta(ij)) {
-	adjustEta[ii] = false;
+        adjustEta[ii] = false;
       }  else {
-	ref = thetaIni[ij] + op_focei.etaM(ii,0);
-	if (thetaDown[ij] < ref && thetaUp[ij] > ref) {
-	  thetaIni[ij] = ref;
-	  adjustEta[ii] = true;
-	  doAdjust = true;
-	} else {
-	  adjustEta[ii] = false;
-	}
+        ref = thetaIni[ij] + op_focei.etaM(ii,0);
+        if (thetaDown[ij] < ref && thetaUp[ij] > ref) {
+          thetaIni[ij] = ref;
+          adjustEta[ii] = true;
+          doAdjust = true;
+        } else {
+          adjustEta[ii] = false;
+        }
       }
     } else {
       adjustEta[ii] = false;
@@ -1748,10 +1748,10 @@ static inline bool thetaReset0() {
     focei_ind *fInd = &(inds_focei[ii]);
     for (int jj = op_focei.neta; jj--; ){
       if (op_focei.muRef[jj] != -1  && op_focei.muRef[jj] < (int)op_focei.ntheta &&
-	  adjustEta[jj]){
-	etaMat(ii, jj) = fInd->eta[jj]-op_focei.etaM(jj,0);
+          adjustEta[jj]){
+        etaMat(ii, jj) = fInd->eta[jj]-op_focei.etaM(jj,0);
       } else {
-	etaMat(ii, jj) = fInd->eta[jj];
+        etaMat(ii, jj) = fInd->eta[jj];
       }
     }
   }
@@ -1759,8 +1759,8 @@ static inline bool thetaReset0() {
   NumericVector omegaTheta(op_focei.omegan);
 
   std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
-	    &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
-	    omegaTheta.begin());
+            &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
+            omegaTheta.begin());
   thetaReset00(thetaIni, omegaTheta, etaMat);
   return true;
 }
