@@ -48,14 +48,14 @@ if (Sys.getenv("useCRAN") == "true"){
    }
 } else {
     if (Sys.getenv("rxodeRef") == ""){
-        devtools::install_github("nlmixrdevelopment/RxODE", dependencies=FALSE)
+        devtools::install_github("nlmixr2/rxode2", dependencies=FALSE)
     } else {
-        devtools::install_github("nlmixrdevelopment/RxODE", ref=Sys.getenv("rxodeRef"), dependencies=FALSE)
+        devtools::install_github("nlmixr2/rxode2", ref=Sys.getenv("rxodeRef"), dependencies=FALSE)
     }
     if (Sys.getenv("nlmixrRef") == ""){
-        devtools::install_github("nlmixrdevelopment/nlmixr", dependencies=FALSE)
+        devtools::install_github("nlmixr2/nlmixr2", dependencies=FALSE)
     } else {
-        devtools::install_github("nlmixrdevelopment/nlmixr", ref=Sys.getenv("nlmixrRef"), dependencies=FALSE)
+        devtools::install_github("nlmixr2/nlmixr2", ref=Sys.getenv("nlmixrRef"), dependencies=FALSE)
     }
 }
 
