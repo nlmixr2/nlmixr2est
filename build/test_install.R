@@ -9,7 +9,7 @@ test_install <- function(){
     }
     tmp <- try(library(RxODE), silent=TRUE);
     if (inherits(tmp, "try-error"))  {
-        cat("RxODE installed: No; check https://github.com/nlmixrdevelopment/nlmixr for instructions to do so\n")
+        cat("RxODE installed: No; check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     } else {
         cat(paste0("RxODE installed: Yes\n"))
@@ -22,7 +22,7 @@ test_install <- function(){
     }
     res1 <- readLines("pv.txt")
     if(any(grepl("not found|recognized",res1))){
-        cat("Python installed: No, check https://github.com/nlmixrdevelopment/nlmixr for instructions to do so\n")
+        cat("Python installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     }else{
         cat(paste0("Python installed: Yes, ",res1,"\n"))
@@ -38,7 +38,7 @@ test_install <- function(){
     if(length(res2)==0){
         cat("sympy installed: Yes\n")
     }else{
-        cat("sympy installed: No, check https://github.com/nlmixrdevelopment/nlmixr for instructions to do so\n")
+        cat("sympy installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     }
 
@@ -50,11 +50,11 @@ test_install <- function(){
         return("Installation not complete!")
     }
 
-                                        # Test 6: RxODE installed
+                                        # Test 6: rxode2 installed
     if("RxODE" %in% rownames(installed.packages())){
         cat("RxODE package installed: Yes\n")
     }else{
-        cat("RxODE package installed: No, use install_github('nlmixrdevelopment/RxODE') to do so\n")
+        cat("RxODE package installed: No, use install_github('nlmixr2/rxode2') to do so\n")
         return("Installation not complete!")
     }
 
@@ -62,7 +62,7 @@ test_install <- function(){
     if(RxODE:::.rxWinRtoolsPath()){
         cat("Rtools installed or not needed: Yes\n")
     }else{
-        cat("Rtools installed: No, check https://github.com/nlmixrdevelopment/nlmixr for instructions to do so\n")
+        cat("Rtools installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     }
 
@@ -73,7 +73,7 @@ test_install <- function(){
         cat("SnakeCharmR package installed: Yes\n")
     }else{
         cat("SnakeCharmR package installed: No\n")
-        cat("\tTo install, use install_github('nlmixrdevelopment/SnakeCharmR') to do so\n")
+        cat("\tTo install, use install_github('nlmixr2/SnakeCharmR') to do so\n")
         cat("\tNote SnakeCharmR seems to work better on windows than reticulate...\n");
         ## cat("\tYou will likely have to remove SnakeCharmR\n");
         if("reticulate" %in% rownames(installed.packages())){
@@ -95,7 +95,7 @@ test_install <- function(){
     if("nlmixr" %in% rownames(installed.packages())){
         cat("nlmixr package installed: Yes\n")
     }else{
-        cat("nlmixr package installed: No, use install_github('nlmixrdevelopment/nlmixr') to do so\n")
+        cat("nlmixr package installed: No, use install_github('nlmixr2/nlmixr2') to do so\n")
         return("Installation not complete!")
     }
 
@@ -103,7 +103,7 @@ test_install <- function(){
     if("xpose.nlmixr" %in% rownames(installed.packages())){
         cat("xpose.nlmixr package installed: Yes\n")
     }else{
-        cat("xpose.nlmixr package installed: No, use install_github('nlmixrdevelopment/xpose.nlmixr') to do so\n")
+        cat("xpose.nlmixr package installed: No, use install_github('nlmixr2/xpose.nlmixr') to do so\n")
         return("Installation not complete!")
     }
 

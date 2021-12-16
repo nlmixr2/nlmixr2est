@@ -21,23 +21,20 @@ install.packages(c("assertthat", "backports", "BH", "brew", "broom.mixed", "chec
                  #repos="https://cran.microsoft.com/snapshot/2020-02-29/"
                  )
 
-#devtools::install_github("nlmixrdevelopment/n1qn1c", dependencies = FALSE)
+#devtools::install_github("nlmixr2/n1qn1c", dependencies = FALSE)
 
-devtools::install_github("nlmixrdevelopment/RxODE")
+devtools::install_github("nlmixr2/RxODE")
 
-devtools::install_github("nlmixrdevelopment/nlmixr")
+devtools::install_github("nlmixr2/nlmixr")
 
-devtools::install_github("nlmixrdevelopment/rxModels")
+devtools::install_github("nlmixr2/rxModels")
 
 library(RxODE)
 devtools::install_github("richardhooijmaijers/R3port")
-devtools::install_github("nlmixrdevelopment/xpose.nlmixr")
+devtools::install_github("nlmixr2/xpose.nlmixr")
 
 devtools::install_github("AdeelK93/collapsibleTree")
 
 devtools::install_github("richardhooijmaijers/shinyMixR")
 
 devtools::install_github("ggPMXdevelopment/ggPMX")
-
-
-

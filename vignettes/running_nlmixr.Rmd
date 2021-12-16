@@ -204,7 +204,7 @@ library(xpose)
 Now install the extension for nlmixr:
 
 ```
- devtools::install_github("nlmixrdevelopment/xpose.nlmixr")
+ devtools::install_github("nlmixr2/xpose.nlmixr")
 ```
 
  ... and convert your nlmixr fit object into an xpose fit object.
