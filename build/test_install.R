@@ -7,39 +7,12 @@ test_install <- function(){
         cat("Correct R version: No, go to https://cloud.r-project.org/ and install latest version\n")
         return("Installation not complete!")
     }
-    tmp <- try(library(RxODE), silent=TRUE);
+    tmp <- try(library(rxode2), silent=TRUE);
     if (inherits(tmp, "try-error"))  {
-        cat("RxODE installed: No; check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
+        cat("rxode2 installed: No; check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     } else {
-        cat(paste0("RxODE installed: Yes\n"))
-    }
-                                        # Test 2: Python installation
-    if(Sys.info()['sysname']%in%c('Darwin','Linux')){
-        try(system("python -V > pv.txt 2>&1",intern=TRUE),silent=TRUE)
-    }else if(Sys.info()['sysname']=='Windows'){
-        try(shell("python -V > pv.txt 2>&1",intern=TRUE),silent=TRUE)
-    }
-    res1 <- readLines("pv.txt")
-    if(any(grepl("not found|recognized",res1))){
-        cat("Python installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
-        return("Installation not complete!")
-    }else{
-        cat(paste0("Python installed: Yes, ",res1,"\n"))
-    }
-
-                                        # Test 3: sympy installation
-    if(Sys.info()['sysname']%in%c('Darwin','Linux')){
-        try(system("python -c \"import sympy\" > pv.txt 2>&1",intern=TRUE),silent=TRUE)
-    }else if(Sys.info()['sysname']=='Windows'){
-        try(shell("python -c \"import sympy\" > pv.txt 2>&1",intern=TRUE),silent=TRUE)
-    }
-    res2 <- readLines("pv.txt")
-    if(length(res2)==0){
-        cat("sympy installed: Yes\n")
-    }else{
-        cat("sympy installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
-        return("Installation not complete!")
+        cat(paste0("rxode2 installed: Yes\n"))
     }
 
                                         # Test 4: devtools installed
@@ -51,38 +24,21 @@ test_install <- function(){
     }
 
                                         # Test 6: rxode2 installed
-    if("RxODE" %in% rownames(installed.packages())){
-        cat("RxODE package installed: Yes\n")
+    if("rxode2" %in% rownames(installed.packages())){
+        cat("rxode2 package installed: Yes\n")
     }else{
-        cat("RxODE package installed: No, use install_github('nlmixr2/rxode2') to do so\n")
+        cat("rxode2 package installed: No, use install_github('nlmixr2/rxode2') to do so\n")
         return("Installation not complete!")
     }
 
     ## Test 5: Rtools installed
-    if(RxODE:::.rxWinRtoolsPath()){
+    if(rxode2:::.rxWinRtoolsPath()){
         cat("Rtools installed or not needed: Yes\n")
     }else{
         cat("Rtools installed: No, check https://github.com/nlmixr2/nlmixr2 for instructions to do so\n")
         return("Installation not complete!")
     }
 
-
-
-                                        # Test 7: SnakeCharmR installed
-    if("SnakeCharmR" %in% rownames(installed.packages())){
-        cat("SnakeCharmR package installed: Yes\n")
-    }else{
-        cat("SnakeCharmR package installed: No\n")
-        cat("\tTo install, use install_github('nlmixr2/SnakeCharmR') to do so\n")
-        cat("\tNote SnakeCharmR seems to work better on windows than reticulate...\n");
-        ## cat("\tYou will likely have to remove SnakeCharmR\n");
-        if("reticulate" %in% rownames(installed.packages())){
-            cat("reticulate package installed: Yes\n")
-        } else {
-            cat("retuclate package installed: No\n")
-            return("Installation not complete!")
-        }
-    }
     if ("units" %in% rownames(installed.packages())){
         cat("units package installed: Yes\n")
     } else {
