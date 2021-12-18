@@ -1,4 +1,4 @@
-.getR <- function(x, sd = FALSE) {
+ma.getR <- function(x, sd = FALSE) {
   if (is.null(x)) {
     return(x)
   }
@@ -367,4 +367,69 @@ print.nlmixr2FitCore <- function(x, ...) {
   }
 
   return(invisible(x))
+}
+
+
+.notesFit <- function(x) {
+  .parent <- globalenv()
+  .bound2 <- do.call("c", lapply(ls(.parent), function(.cur) {
+    if (identical(.parent[[.cur]], x)) {
+      return(.cur)
+    }
+    return(NULL)
+  }))
+  if (length(.bound2) > 0) {
+    .bound <- .bound2[order(sapply(.bound2, nchar))]
+    .bound <- .bound[1]
+  } else {
+    .bound <- ""
+  }
+  .c <- c(paste0(
+    "  Covariance Type (", .bound, "$covMethod): ",
+    x$covMethod
+  ))
+  if (is.na(get("objective", x$env))) {
+    .c <- c(
+      .c,
+      "Missing Objective function; Can add by:",
+      sprintf(
+        " Gaussian/Laplacian Likelihoods: AIC(%s) or %s etc.",
+        .bound, .bound, "$objf"
+      ),
+      sprintf(
+        " FOCEi CWRES & Likelihoods: addCwres(%s)",
+        .bound
+      )
+    )
+  }
+  if (x$message != "") {
+    .c <- c(
+      .c, paste0("  Minimization message (", .bound, "$message): "),
+      paste0("    ", x$message)
+    )
+    if (x$message == "false convergence (8)") {
+      .c <- c(
+        .c, "  In an ODE system, false convergence may mean \"useless\" evaluations were performed.",
+        "  See https://tinyurl.com/yyrrwkce",
+        "  It could also mean the convergence is poor, check results before accepting fit",
+        "  You may also try a good derivative free optimization:",
+        "    nlmixr2(...,control=list(outerOpt=\"bobyqa\"))"
+      )
+    }
+  }
+  .c
+}
+
+
+.fmt3 <- function(name, bound, access, extra = "",
+                  on = c(TRUE, TRUE)) {
+  if (length(access) == 1) {
+    on <- on[1]
+  }
+  cat(cli::cli_format_method({
+    cli::cli_rule(paste0(
+      crayon::bold(name), " (", extra,
+      paste(crayon::bold$blue(paste0(ifelse(on, crayon::yellow(bound), ""), "$", access)), collapse = " or "), "):"
+    ))
+   }), sep = "\n")
 }

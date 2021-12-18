@@ -4,7 +4,7 @@
 \alias{as.focei.dynmodel}
 \title{Output nlmixr2 format for dynmodel}
 \usage{
-\method{as.focei}{dynmodel}(
+as.focei.dynmodel(
   .dynmodelObject,
   .nlmixr2Object,
   .data,

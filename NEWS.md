@@ -1,3 +1,13 @@
+# nlmixr2 1.0.0 -- new package
+
+## FOCEI family changes
+- Remove lower level `foceiFit` function.  Focei now directly takes rxode2 ui objects
+
+## nlmixr interface change
+
+- `nlmixr` interface changed to use `rxode2` UI
+- `keep` and `drop` are added to `tableControl` to influence the end data-frame
+
 # nlmixr 2.0.6
 
 - Fix `focei` subject initialization, see #566

@@ -86,130 +86,9 @@ nlmixr2Version <- function() {
 
 .nlmixr2Time <- NULL
 
-#' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
-#'
-#' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
-#' and pharmacokinetic-pharmacodynamic (PKPD) models.
-#'
-#' The nlmixr2 generalized function allows common access to the nlmixr2
-#' estimation routines.
-#'
-#' @template uif
-#'
-#' @param object Fitted object or function specifying the model.
-#' @inheritParams nlmixr2_fit
-#' @param ... Other parameters
-#' @param save Boolean to save a nlmixr2 object in a rds file in the
-#'     working directory.  If \code{NULL}, uses option "nlmixr2.save"
-#' @return Either a nlmixr2 model or a nlmixr2 fit object
-#' @author Matthew L. Fidler
-#' @examples
-#'
-#' \donttest{
-#'
-#' f_ode <- function(){
-#'     ini({
-#'         lCl <- 1.6      #log Cl (Lhr)
-#'         lVc <- log(80)   #log Vc (L)
-#'         lKA <- 0.3      #log Ka (1/hr)
-#'         prop.err <- c(0, 0.2, 1)
-#'         eta.Cl ~ 0.3 ## BSV Cl
-#'         eta.Vc ~ 0.2 ## BSV Vc
-#'         eta.KA ~ 0.1 ## BSV Ka
-#'     })
-#'     model({
-#'         ## First parameters are defined in terms of the initial estimates
-#'         ## parameter names.
-#'         Cl <- exp(lCl + eta.Cl)
-#'         Vc = exp(lVc + eta.Vc)
-#'         KA <- exp(lKA + eta.KA)
-#'         ## After the differential equations are defined
-#'         kel <- Cl / Vc;
-#'         d/dt(depot)    = -KA*depot;
-#'         d/dt(centr)  =  KA*depot-kel*centr;
-#'         ## And the concentration is then calculated
-#'         cp = centr / Vc;
-#'         ## Last, nlmixr2 is told that the plasma concentration follows
-#'         ## a proportional error (estimated by the parameter prop.err)
-#'         cp ~ prop(prop.err)
-#'     })
-#' }
-#' f_linCmt <- function(){
-#'     ini({
-#'         lCl <- 1.6      #log Cl (L/hr)
-#'         lVc <- log(90)   #log Vc (L)
-#'         lKA <- 0.1      #log Ka (1/hr)
-#'         prop.err <- c(0, 0.2, 1)
-#'         add.err <- c(0, 0.01)
-#'         eta.Cl ~ 0.1 ## BSV Cl
-#'         eta.Vc ~ 0.1 ## BSV Vc
-#'         eta.KA ~ 0.1 ## BSV Ka
-#'     })
-#'     model({
-#'         Cl <- exp(lCl + eta.Cl)
-#'         Vc = exp(lVc + eta.Vc)
-#'         KA <- exp(lKA + eta.KA)
-#'         ## Instead of specifying the ODEs, you can use
-#'         ## the linCmt() function to use the solved system.
-#'         ##
-#'         ## This function determines the type of PK solved system
-#'         ## to use by the parameters that are defined.  In this case
-#'         ## it knows that this is a one-compartment model with first-order
-#'         ## absorption.
-#'         linCmt() ~ add(add.err) + prop(prop.err)
-#'     })
-#' }
-#'
-#' # Use nlme algorithm
-#' fit_linCmt_nlme <- try(nlmixr2(f_ode, Oral_1CPT, est="nlme",
-#'                control=nlmeControl(maxstepsOde = 50000, pnlsTol=0.4)))
-#' if (!inherits(fit_linCmt_nlme, "try-error")) print(fit_linCmt_nlme)
-#'
-#' # Use Focei algorithm
-#' fit_linCmt_focei <- try(nlmixr2(f_linCmt, Oral_1CPT, est="focei"))
-#' if (!inherits(fit_linCmt_focei, "try-error")) print(fit_linCmt_focei)
-#'
-#' # The ODE model can be fitted using the saem algorithm, more
-#' # iterations should be used for real applications
-#'
-#' fit_ode_saem <- try(nlmixr2(f_ode, Oral_1CPT, est = "saem",
-#'         control = saemControl(n.burn = 50, n.em = 100, print = 50)))
-#' if (!inherits(fit_ode_saem, "try-error")) print(fit_ode_saem)
-#'
-#' }
-#' @export
-nlmixr2 <- function(object, data, est = NULL, control = list(),
-                   table = tableControl(), ..., save = NULL,
-                   envir = parent.frame()) {
-  assignInMyNamespace(".nlmixr2Time", proc.time())
-  rxode2::rxSolveFree()
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
-  force(est)
-  ## verbose?
-  ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
-  UseMethod("nlmixr2")
-}
-
-#' @export
-nlmixr <- nlmixr2
-
 ##' @rdname nlmixr2
 ##' @export
-nlmixr2.function <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
-                            save = NULL, envir = parent.frame()) {
-  .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modName <- deparse(substitute(object))
-  .uif <- rxode2::rxode(object)
-  if (missing(data) && missing(est)) {
-    return(.uif)
-  } else {
-  }
-}
-
-##' @rdname nlmixr2
-##' @export
-nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
+nlmixr2000.nlmixr2FitCore <- function(object, data, est = NULL, control = list(), table = tableControl(), ...,
                                  save = NULL, envir = parent.frame()) {
   .uif <- .getUif(object)
   if (missing(data)) {
@@ -224,7 +103,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = list(), t
 
 ##' @rdname nlmixr2
 ##' @export
-nlmixr2.nlmixr2UI <- function(object, data, est = NULL, control = list(), ...,
+nlmixr20000.nlmixr2UI <- function(object, data, est = NULL, control = list(), ...,
                             save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- object
@@ -431,8 +310,8 @@ nlmixr2_fit0 <- function(uif, data, est = NULL, control = list(), ...,
     }
   }
   .cur <- environment()
-  class(.cur) <- c(est, "nlmixr2Est")
-  .ret <- nlmixr2Est(.cur, ...)
+  class(.cur) <- c(est, "nlmixr2Est000")
+  .ret <- nlmixr2Est000(.cur, ...)
   return(.ret)
 }
 
@@ -718,27 +597,10 @@ saemControl <- function(seed = 99,
   .ret
 }
 
-##' Generic for nlmixr2 estimation methods
-##'
-##' @param env Environment for nlmixr2 estimation routines
-##'
-##' @param ... Extra arguments sent to estimation routine
-##'
-##' @return nlmixr2 estimation object
-##' @author Matthew Fidler
-##'
-##' @details
-##'
-##' This is a S3 generic that allows others to use the nlmixr2
-##'   environment to do their own estimation routines
-##' @export
-nlmixr2Est <- function(env, ...) {
-  UseMethod("nlmixr2Est")
-}
 
-##'@rdname  nlmixr2Est
+##'@rdname  nlmixr2Est000
 ##'@export
-nlmixr2Est.saem <- function(env, ...) {
+nlmixr2Est000.saem <- function(env, ...) {
   with(env, {
     if (.nid <= 1) stop("SAEM is for mixed effects models, try 'focei', which downgrades to nonlinear regression")
     pt <- proc.time()
@@ -855,9 +717,9 @@ nlmixr2Est.saem <- function(env, ...) {
 }
 
 
-##' @rdname nlmixr2Est
+##' @rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.nlme <- function(env, ...) {
+nlmixr2Est000.nlme <- function(env, ...) {
   with(env, {
     if (.nid <= 1) stop("nlme is for mixed effects models, try 'dynmodel' (need more than 1 individual)")
     if (.nTv != 0) stop("nlme does not support time-varying covariates (yet)")
@@ -955,21 +817,21 @@ nlmixr2Est.nlme <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.nlme.mu <- nlmixr2Est.nlme
+nlmixr2Est000.nlme.mu <- nlmixr2Est000.nlme
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.nlme.mu.cov <- nlmixr2Est.nlme
+nlmixr2Est000.nlme.mu.cov <- nlmixr2Est000.nlme
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.nlme.free <- nlmixr2Est.nlme
+nlmixr2Est000.nlme.free <- nlmixr2Est000.nlme
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.posthoc <- function(env, ...) {
+nlmixr2Est000.posthoc <- function(env, ...) {
   with(env, {
     if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
     if (any(est == c("foce", "fo"))) {
@@ -1109,9 +971,9 @@ nlmixr2Est.posthoc <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.focei <- function(env, ...) {
+nlmixr2Est000.focei <- function(env, ...) {
   with(env, {
     if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
     if (any(est == c("foce", "fo"))) {
@@ -1257,22 +1119,22 @@ nlmixr2Est.focei <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.foce <- nlmixr2Est.focei
+nlmixr2Est000.foce <- nlmixr2Est000.focei
 
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000000
 ##'@export
-nlmixr2Est.fo <- nlmixr2Est.focei
+nlmixr2Est000.fo <- nlmixr2Est000.focei
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.foi <- nlmixr2Est.focei
+nlmixr2Est000.foi <- nlmixr2Est000.focei
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.posthoc <- function(env, ...){
+nlmixr2Est000.posthoc <- function(env, ...){
   with(env, {
     if (.nid <= 1) stop("'posthoc' estimation is for mixed effects models, try 'dynmodel' (need more than 1 individual)")
     if (class(control) != "foceiControl") control <- do.call(nlmixr2::foceiControl, control)
@@ -1322,9 +1184,9 @@ nlmixr2Est.posthoc <- function(env, ...){
   })
 }
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.dynmodel <- function(env, ...) {
+nlmixr2Est000.dynmodel <- function(env, ...) {
   with(env, {
     if (class(control) != "dynmodelControl") control <- do.call(dynmodelControl, control)
     env <- new.env(parent = emptyenv())
@@ -1368,8 +1230,8 @@ nlmixr2Est.dynmodel <- function(env, ...) {
   })
 }
 
-##'@rdname nlmixr2Est
+##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est.nlmixr2Est <- function(env, ...){
+nlmixr2Est000.nlmixr2Est000 <- function(env, ...){
   with(env, stop("unknown estimation method est=\"", est, "\""))
 }

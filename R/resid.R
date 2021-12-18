@@ -542,6 +542,10 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
 ##'
 ##' @param covariates is a Boolean indicating if covariates will be included (default `TRUE`)
 ##'
+##' @param keep is the keep sent to the table
+##'
+##' @param drop is the dropped varaibles sent to the table
+##'
 ##' @inheritParams addNpde
 ##' @inheritParams rxode2::rxSolve
 ##'
@@ -565,14 +569,16 @@ tableControl <- function(npde = NULL,
                          eta=TRUE,
                          covariates=TRUE,
                          addDosing=FALSE, subsetNonmem = TRUE,
-                         cores=NULL) {
+                         cores=NULL,
+                         keep=NULL,
+                         drop=NULL) {
   if (is.null(cores)) {
     cores = rxode2::rxCores()
   }
   .ret <- list(
     npde = npde, cwres = cwres, nsim = nsim, ties = ties, seed = seed,
     censMethod=setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL),
-    cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores)
+    cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores, keep=keep, drop=drop)
   class(.ret) <- "tableControl"
   return(.ret)
 }

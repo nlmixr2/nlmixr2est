@@ -550,7 +550,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 
 #' This assigns the tolerances based on a different tolerance for the sensitivity equations
 #'
-#' It will update and modify the control inside of the UI
+#' It will update and modify the control inside of the UI.
+#'
+#' It also updates the predNeq that is needed for numeric derivatives
 #'
 #' @param ui rxode2 UI object
 #' @param env focei environment for solving
@@ -559,6 +561,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #' @noRd
 .foceiOptEnvAssignTol <- function(ui, env) {
   .len <- length(env$model$pred.nolhs$state)
+  rxode2::rxAssignControlValue(ui, "predNeq", .len)
   .atol <- rep(rxode2::rxGetControl(ui, "atol", 5e-06), .len)
   .rtol <- rep(rxode2::rxGetControl(ui, "rtol", 5e-06), .len)
   .ssAtol <- rep(rxode2::rxGetControl(ui, "ssAtol", 5e-06), .len)
@@ -775,14 +778,25 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 }
 #attr(rxUiGet.foceiMuRefVector, "desc") <- "focei mu ref vector"
 
-
+#'  Setup the skip covariate function
+#'
+#'
+#' @param ui rxode2 parsed function
+#' @param env environment
+#' @return Nothing called for side effects.
+#' @author Matthew L. Fidler
+#' @noRd
 .foceiSetupSkipCov <- function(ui, env) {
   env$skipCov <- rxode2::rxGetControl("skipCov", NULL)
+  .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
   if (is.null(env$skipCov)) {
-    #.tmp <- fixed[1:length(inits$THTA)]
-    #.ret$control$focei.mu.ref <- .ret$uif$focei.mu.ref
+    .skipCov <- rep(FALSE, .maxTheta)
+    .skipCov[ui$iniDf$ntheta[which(!is.na(ui$iniDf$err))]] <- TRUE
+    env$skipCov <- .skipCov
   }
-
+  if (length(env$skipCov) != .maxTheta) {
+    stop("'skipCov' improperly specified", call.=FALSE)
+  }
 }
 
 .foceiOptEnvLik <- function(ui, env) {
@@ -791,6 +805,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
   .foceiOptEnvSetupTransformIndexs(ui, env)
+  .foceiSetupSkipCov(ui, env)
   .ret$control$nF <- 0
   .ret$control$printTop <- TRUE
   env$control <- get("control", envir=ui)
@@ -808,14 +823,191 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   }
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
+  rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
   .env$adjLik <- rxode2::rxGetControl(.x, "adjLik", TRUE)
   .env$diagXformInv <- c("sqrt" = ".square", "log" = "exp", "identity" = "identity")[rxode2::rxGetControl(.x, "diagXform", "sqrt")]
+  .env$thetaNames <- .x$iniDf[!is.na(.x$iniDf$ntheta), "name"]
   # FIXME is ODEmodel needed?
   .env$ODEmodel <- TRUE
   if (!exists("noLik", envir = .env)) {
-    print("here")
     .foceiOptEnvLik(.x, .env)
   }
   .env
 }
 attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
+#' This function process the data for use in focei
+#'
+#' The $origData is the data that is fed into the focei before modification
+#' The $dataSav is the data saved for focei
+#'
+#' @param data Input dataset
+#' @param env focei environment where focei family is run
+#' @param ui rxode2 ui
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiPreProcessData <- function(data, env, ui) {
+  env$origData <- data
+  .covNames <- ui$covariates
+  colnames(data) <- vapply(names(data), function(x) {
+      if (any(x == .covNames)) {
+        return(x)
+      } else {
+        return(toupper(x))
+      }
+  }, character(1))
+  if (is.null(data$ID)) stop('"ID" not found in data')
+  if (is.null(data$DV)) stop('"DV" not found in data')
+  if (is.null(data$EVID)) data$EVID <- 0
+  if (is.null(data$AMT)) data$AMT <- 0
+  ## Make sure they are all double amounts.
+  for (.v in c("TIME", "AMT", "DV", .covNames)) {
+    data[[.v]] <- as.double(data[[.v]])
+  }
+  env$dataSav <- data
+}
+
+.thetaReset <- new.env(parent = emptyenv())
+#' Internal focei fit function in R
+#'
+#' @param .ret Internal focei environment
+#' @return Modified focei environment with fit information (from C++)
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiFitInternal <- function(.ret) {
+  this.env <- new.env(parent=emptyenv())
+  assign("err", "theta reset", this.env)
+  .thetaReset$thetaNames <- .ret$thetaNames
+  while (this.env$err == "theta reset") {
+    assign("err", "", this.env)
+    .ret0 <- tryCatch(
+    {
+      foceiFitCpp_(.ret)
+    },
+    error = function(e) {
+      if (regexpr("theta reset", e$message) != -1) {
+        assign("zeroOuter", FALSE, this.env)
+        assign("zeroGrad", FALSE, this.env)
+        if (regexpr("theta reset0", e$message) != -1) {
+          assign("zeroGrad", TRUE, this.env)
+        }  else if (regexpr("theta resetZ", e$message) != -1) {
+          assign("zeroOuter", TRUE, this.env)
+        }
+        assign("err", "theta reset", this.env)
+      } else {
+        assign("err", e$message, this.env)
+      }
+    })
+    if (this.env$err == "theta reset") {
+      .nm <- names(.ret$thetaIni)
+      .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
+      .ret$rxInv$theta <- .thetaReset$omegaTheta
+      .ret$control$printTop <- FALSE
+      .ret$etaMat <- .thetaReset$etaMat
+      .ret$control$etaMat <- .thetaReset$etaMat
+      .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
+      .ret$control$nF <- .thetaReset$nF
+      .ret$control$gillRetC <- .thetaReset$gillRetC
+      .ret$control$gillRet <- .thetaReset$gillRet
+      .ret$control$gillRet <- .thetaReset$gillRet
+      .ret$control$gillDf <- .thetaReset$gillDf
+      .ret$control$gillDf2 <- .thetaReset$gillDf2
+      .ret$control$gillErr <- .thetaReset$gillErr
+      .ret$control$rEps <- .thetaReset$rEps
+      .ret$control$aEps <- .thetaReset$aEps
+      .ret$control$rEpsC <- .thetaReset$rEpsC
+      .ret$control$aEpsC <- .thetaReset$aEpsC
+      .ret$control$c1 <- .thetaReset$c1
+      .ret$control$c2 <- .thetaReset$c2
+      if (this.env$zeroOuter) {
+        message("Posthoc reset")
+        .ret$control$maxOuterIterations <- 0L
+      } else if (this.env$zeroGrad) {
+        message("Theta reset (zero gradient values); Switch to bobyqa")
+        rxode2::rxReq("minqa")
+        .ret$control$outerOptFun <- .bobyqa
+        .ret$control$outerOpt <- -1L
+      } else {
+        message("Theta reset (ETA drift)")
+      }
+    }
+    if (this.env$err != "") {
+      stop(this.env$err)
+    } else {
+      return(.ret0)
+    }
+  }
+}
+#'  Restart the estimation if it wasn't successful by moving the parameters (randomly)
+#'
+#' @param .ret0 Fit
+#' @param .ret Input focei environment
+#' @param control Control represents the foceiControl to restart the fit
+#' @return final focei fit, may still not work
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmixrFoceiRestartIfNeeded <- function(.ret0, .ret, control) {
+  .n <- 1
+  while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
+    ## Maybe change scale?
+    message(sprintffo("Restart %s", .n))
+    .ret$control$nF <- 0
+    .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
+    .estNew <- sapply(
+      seq_along(.est0),
+      function(.i) {
+        if (.ret$thetaFixed[.i]) {
+          return(.est0[.i])
+        } else if (.estNew[.i] < lower[.i]) {
+          return(lower + (.Machine$double.eps)^(1 / 7))
+        } else if (.estNew[.i] > upper[.i]) {
+          return(upper - (.Machine$double.eps)^(1 / 7))
+        } else {
+          return(.estNew[.i])
+        }
+      }
+    )
+    .ret$thetaIni <- .estNew
+    .ret0 <- try(.foceiFitInternal(.ret))
+    .n <- .n + 1
+  }
+  .ret0
+}
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.focei <- function(env, ...) {
+  .ui <- env$ui
+  .data <- env$data
+  .control <- env$control
+  if (is.null(.control)) {
+    .control <- foceiControl()
+  }
+  if (!inherits(.control, "foceiControl")){
+    .control <- do.call(nlmixr2::foceiControl, control)
+  }
+  assign("control", .control, envir=.ui)
+  on.exit({rm("control", envir=.ui)})
+  .env <- .ui$foceiOptEnv
+  .foceiPreProcessData(.data, .env, .ui)
+  .ret0 <- try(.foceiFitInternal(.env))
+  .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, control)
+  if (inherits(.ret0, "try-error")) stop("Could not fit data.")
+  .ret <- .ret0
+  .nlmixr2setupParHistData(.ret)
+  if (!all(is.na(.ui$iniDf$neta1))) {
+    .etas <- .ret$ranef
+    .thetas <- .ret$fixef
+    .pars <- .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
+    .ret$shrink <- .Call(`_nlmixr2_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
+  }
+  .updateParFixed(.ret)
+  if (!exists("table", .ret)) {
+    .ret$table <- tableControl()
+  }
+  if (.control$calcTables) {
+    .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
+                     table=.ret$table)
+  }
+
+}

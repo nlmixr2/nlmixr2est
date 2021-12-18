@@ -19,6 +19,84 @@
 
 # Utilities for nlmixr2 ####################################################
 
+##' Cox Box, Yeo Johnson and inverse transformation
+##'
+##' @param x data to transform
+##' @param lambda Cox-box lambda parameter
+##' @return Cox-Box Transformed Data
+##' @author Matthew L. Fidler
+##' @examples
+##'
+##' boxCox(1:3,1) ## Normal
+##' iBoxCox(boxCox(1:3,1))
+##'
+##' boxCox(1:3,0) ## Log-Normal
+##' iBoxCox(boxCox(1:3,0),0)
+##'
+##' boxCox(1:3,0.5) ## lambda=0.5
+##' iBoxCox(boxCox(1:3,0.5),0.5)
+##'
+##' yeoJohnson(seq(-3,3),1) ## Normal
+##' iYeoJohnson(yeoJohnson(seq(-3,3),1))
+##'
+##' yeoJohnson(seq(-3,3),0)
+##' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
+##' @export
+boxCox <- function(x, lambda = 1) {
+  .Call(`_nlmixr2_boxCox_`, x, lambda, 0L)
+}
+
+##' @rdname boxCox
+##' @export
+iBoxCox <- function(x, lambda = 1) {
+  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 0L)
+}
+
+##' @rdname boxCox
+##' @export
+yeoJohnson <- function(x, lambda = 1) {
+  .Call(`_nlmixr2_boxCox_`, x, lambda, 1L)
+}
+
+##' @rdname boxCox
+##' @export
+iYeoJohnson <- function(x, lambda = 1) {
+  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 1L)
+}
+
+
+##' @importFrom utils capture.output
+.captureOutput <- function(expr, envir = parent.frame()) {
+  eval(
+    {
+      .file <- rawConnection(raw(0L), open = "w")
+      on.exit({
+        if (!is.null(.file)) close(.file)
+      })
+      capture.output(expr, file = .file)
+      .ret <- rawConnectionValue(.file)
+      close(.file)
+      .file <- NULL
+      .ret <- rawToChar(.ret)
+      return(.ret)
+    },
+    envir = envir,
+    enclos = envir
+  )
+}
+
+##' @export
+`$.nlmixr2Gill83` <- function(obj, arg, exact = FALSE) {
+  .ret <- obj[[arg]]
+  if (is.null(.ret)) {
+    .cls <- class(obj)
+    .lst <- attr(.cls, ".nlmixr2Gill")
+    return(.lst[[arg]])
+  }
+  return(.ret)
+}
+
+
 # ####################################################################### #
 #
 ## Utilities for building nlmixr2
