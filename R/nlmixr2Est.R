@@ -20,28 +20,24 @@
 ##'   environment to do their own estimation routines
 ##' @export
 nlmixr2Est <- function(env, ...) {
-  if (!exists(env, "ui")) {
+  if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
   } else if (!inherits(env$ui, "rxUi")) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
   }
-  if (!exists(env, "data")) {
+  if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)
   } else if (!inherits(env$data, "data.frame")) {
     stop("'data' is not a data.frame", call.=FALSE)
   }
   env$data <- as.data.frame(env$data)
-  if (!exists(env, "control")) {
+  if (!exists("control", envir=env)) {
     stop("need 'control' object", call.=FALSE)
   } else if (is.null(env$control)) {
-  } else if (!inherits(env$control, "list")) {
-    stop("'control' object should be a list-like object", call.=FALSE)
   }
-  if (!exists(env, "table")) {
+  if (!exists("table", envir=env)) {
     stop("need 'table' object", call.=FALSE)
   } else if (is.null(env$table)) {
-  } else if (!inherits(env$table, "list")) {
-    stop("'table' object should be a list-like object", call.=FALSE)
   }
   UseMethod("nlmixr2Est")
 }

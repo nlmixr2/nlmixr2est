@@ -787,7 +787,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiSetupSkipCov <- function(ui, env) {
-  env$skipCov <- rxode2::rxGetControl("skipCov", NULL)
+  env$skipCov <- rxode2::rxGetControl(ui, "skipCov", NULL)
   .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
   if (is.null(env$skipCov)) {
     .skipCov <- rep(FALSE, .maxTheta)
@@ -806,9 +806,9 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
   .foceiOptEnvSetupScaleC(ui, env)
   .foceiOptEnvSetupTransformIndexs(ui, env)
   .foceiSetupSkipCov(ui, env)
-  .ret$control$nF <- 0
-  .ret$control$printTop <- TRUE
   env$control <- get("control", envir=ui)
+  env$control$nF <- 0
+  env$control$printTop <- TRUE
   env
 }
 
@@ -948,9 +948,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @noRd
 .nlmixrFoceiRestartIfNeeded <- function(.ret0, .ret, control) {
   .n <- 1
+  .est0 <- .ret$thetaIni
+  lower <- .ret$lower
+  upper <- .ret$upper
+
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
     ## Maybe change scale?
-    message(sprintffo("Restart %s", .n))
+    message(sprintf("Restart %s", .n))
     .ret$control$nF <- 0
     .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
     .estNew <- sapply(
@@ -984,14 +988,14 @@ nlmixr2Est.focei <- function(env, ...) {
     .control <- foceiControl()
   }
   if (!inherits(.control, "foceiControl")){
-    .control <- do.call(nlmixr2::foceiControl, control)
+    .control <- do.call(nlmixr2::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
   on.exit({rm("control", envir=.ui)})
   .env <- .ui$foceiOptEnv
   .foceiPreProcessData(.data, .env, .ui)
   .ret0 <- try(.foceiFitInternal(.env))
-  .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, control)
+  .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) stop("Could not fit data.")
   .ret <- .ret0
   .nlmixr2setupParHistData(.ret)
