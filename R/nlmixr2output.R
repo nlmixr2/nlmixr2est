@@ -60,7 +60,7 @@
 #' @return Nothing, called for side effecs
 #' @author Matthew L. Fidler
 #' @examples
-.updateParFixedApplyManualBacktransformations <- function(.ret) {
+.updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-0.95)/2)
   .btName <- names(.ret$popDfSig)[4]
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
@@ -68,9 +68,9 @@
   .fmt2 <- paste0("%", .sigdig, "g")
   lapply(seq_along(.ret$popDf$Estimate), function(i) {
     theta <- row.names(.ret$popDf)[i]
-    .w <- which(ui$iniDf$name == theta)
+    .w <- which(.ui$iniDf$name == theta)
     if (length(.w) == 1L) {
-      .b <- ui$iniDf$backTransform[.w]
+      .b <- .ui$iniDf$backTransform[.w]
       if (!is.na(.b)) {
         .est <- .ret$popDf$Estimate[i]
         .se <- .ret$popDf$SE[i]
@@ -120,20 +120,20 @@
     assign(".sdOnly", FALSE, envir=.env)
     return(data.frame(
       ch = paste0(
-        ifelse(.omegaFix[.y], "fix(", ""),
+        ifelse(.omegaFix[.w], "fix(", ""),
         formatC(signif(sqrt(exp(.v) - 1) * 100, digits = .sigdig),
-                digits = .digs, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.y], ")", "")
+                digits = .sigdig, format = "fg", flag = "#"),
+        ifelse(.omegaFix[.w], ")", "")
       ),
       v = sqrt(exp(.v) - 1) * 100))
   } else {
     assign(".cvOnly", FALSE, envir=.env)
     return(data.frame(
       ch = paste0(
-        ifelse(.omegaFix[.y], "fix(", ""),
-        formatC(signif(sqrt(.v), digits = .sigdig),
-                digits = .digs, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.y], ")", "")),
+        ifelse(.omegaFix[.w], "fix(", ""),
+        formatC(signif(sqrt(.w), digits = .sigdig),
+                digits = .sigdig, format = "fg", flag = "#"),
+        ifelse(.omegaFix[.w], ")", "")),
       v = .v))
   }
 }
@@ -204,6 +204,7 @@
   .errs <- as.data.frame(.ui$ini)
   .errs <- paste(.errs[which(!is.na(.errs$err)), "name"])
   .muRefDataFrame <- .ui$muRefDataFrame
+  .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
   .sh <- lapply(row.names(.ret$popDfSig), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
@@ -219,7 +220,7 @@
     } else {
       .eta <- .muRefDataFrame$eta[.w]
     }
-    .v <- .shrink[7, .y]
+    .v <- .shrink[7, .w]
     if (length(.v) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
     }
@@ -234,8 +235,8 @@
       .t <- "="
     }
     return(data.frame(
-      ch = sprintf("%s%%%s", formatC(signif(.v, digits = .digs),
-                                     digits = .digs, format = "fg", flag = "#"
+      ch = sprintf("%s%%%s", formatC(signif(.v, digits = .sigdig),
+                                     digits = .sigdig, format = "fg", flag = "#"
                                      ), .t),
       v = .v
     ))
@@ -252,7 +253,7 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
-  .updateParFixedApplyManualBacktransformations(.ret)
+  .updateParFixedApplyManualBacktransformations(.ret, .ui)
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)

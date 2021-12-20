@@ -1,10 +1,10 @@
+
 #' Get the THETA/ETA lines from rxode2 UI
 #'
 #' @param rxui This is the rxode2 ui object
 #' @return The theta/eta lines
 #' @author Matthew L. Fidler
 #' @noRd
-
 .uiGetThetaEta <- function(rxui) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
@@ -593,6 +593,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   .lower <- .iniDf$lower[.w]
   .upper <- .iniDf$upper[.w]
   env$thetaIni <- ui$theta
+  env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
   rxode2::rxAssignControlValue(ui, "nfixed", sum(ui$iniDf$fix))
   if (is.null(env$etaNames)) {
     rxode2::rxAssignControlValue(ui, "nomega", 0)
@@ -998,6 +999,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) stop("Could not fit data.")
   .ret <- .ret0
+  .ret$ui <- .ui
   .nlmixr2setupParHistData(.ret)
   if (!all(is.na(.ui$iniDf$neta1))) {
     .etas <- .ret$ranef
