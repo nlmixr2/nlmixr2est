@@ -197,6 +197,7 @@ SEXP _nlmixr2_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
 SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   int type = TYPEOF(lhs);
   if (type != STRSXP) return R_NilValue;
+  if (Rf_length(lhs) == 0) return R_NilValue;
   int pro = 0;
   SEXP ipredNames = PROTECT(Rf_getAttrib(ipred, R_NamesSymbol)); pro++;
   int *keepVals = R_Calloc(Rf_length(ipredNames), int);

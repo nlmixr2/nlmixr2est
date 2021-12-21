@@ -1011,6 +1011,7 @@ nlmixr2Est.focei <- function(env, ...) {
   if (!exists("table", .ret)) {
     .ret$table <- tableControl()
   }
+  .ret$IDlabel <- rxode2::.getLastIdLvl()
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)

@@ -50,9 +50,10 @@ BEGIN_RCPP
   List ipredPredList = as<List>(ipredPredListSEXP);
   if (ipredPredList.size() != 4) return R_NilValue; //Rcpp::stop("malformed cwres calc");
   List ipredL = ipredPredList[0];
-  List predL = ipredPredList[1];
+  List predL  = ipredPredList[1];
   List etaLst = ipredPredList[2];
-  List ebeL = ipredPredList[3];
+  List ebeL   = ipredPredList[3];
+
   int ncalc = Rf_length(ipredL[0]);
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);

@@ -33,6 +33,8 @@
     ## For single subject ID is dropped.
     .ret <- data.frame(ID = 1L, .ret)
   }
+  .w <- which(tolower(names(.ret)) == "dv")
+  names(.ret)[.w] <- "dv"
   return(.ret)
 }
 #' Solve for pred/ipred types of calculations (including residuals)
@@ -55,8 +57,7 @@
                             hmin = fit$control$hmin, hmax = fit$control$hmax, hini = fit$control$hini,
                             transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
                             maxords = fit$control$maxords, method = fit$control$method,
-                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov
-                            )
+                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
   rxode2::rxSolveFree()
   if (any(is.na(.res$rx_pred_)) && fit$control$method == 2L) {
     .res <- .foceiSolveWithId(model, pars, fit$dataSav,
@@ -133,7 +134,7 @@
 }
 
 .getRelevantLhs <- function(fit, keep=NULL, ipred=NULL) {
-  .ret <- setdiff(fit$model$pred.only$lhs,fit$ini$name)
+  .ret <- setdiff(fit$model$pred.only$lhs,fit$ui$ini$name)
   .w <- which(regexpr("^rx", .ret) == -1)
   .ret <- unique(c(.ret[.w], keep))
   if (any(.ret == "tad")) {
