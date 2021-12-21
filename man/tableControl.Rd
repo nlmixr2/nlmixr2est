@@ -18,7 +18,9 @@ tableControl(
   covariates = TRUE,
   addDosing = FALSE,
   subsetNonmem = TRUE,
-  cores = NULL
+  cores = NULL,
+  keep = NULL,
+  drop = NULL
 )
 }
 \arguments{
@@ -83,6 +85,10 @@ default \code{TRUE}.}
 
 \item{cores}{Number of cores used in parallel ODE solving.  This
 is equivalent to calling \code{\link[rxode2:getRxThreads]{setRxThreads()}}}
+
+\item{keep}{is the keep sent to the table}
+
+\item{drop}{is the dropped varaibles sent to the table}
 }
 \value{
 A list of table options for nlmixr2

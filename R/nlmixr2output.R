@@ -261,3 +261,353 @@
   .ret$parFixedDf <- .ret$popDf
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
+
+##' @export
+`$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
+  .env <- obj
+  if (arg == "md5") {
+    return(.nlmixr2Md5(obj))
+  } else if (arg == "posthoc") {
+    return(nlmixr2Posthoc(obj))
+  } else if (arg == "notes") {
+    return(.notesFit(obj))
+  } else if (any(arg == c(
+    "logLik", "value", "obf", "ofv",
+    "objf", "OBJF", "objective", "AIC",
+    "BIC"
+  ))) {
+    if (!is.null(obj$saem)) {
+      .tmp <- obj$saem
+      .curObj <- get("objective", .env)
+      if (is.na(.curObj)) {
+        .nnodes <- 3
+        if (exists("nnodes.gq", .env)) {
+          .nnodes <- .env$nnodes.gq
+        }
+        .nsd <- 1.6
+        if (exists("nsd.gq", .env)) {
+          .nsd <- .env$nsd.gq
+        }
+        if (.nnodes == 1) {
+          .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)
+        } else {
+          .tmp <- try(setOfv(obj, paste0("gauss", .nnodes, "_", .nsd)), silent = TRUE)
+        }
+        if (inherits(.tmp, "try-error")) {
+          message("gaussian quadrature failed, changed to focei")
+          setOfv(obj, "focei")
+        }
+      }
+    }
+  }
+  if (any(arg == c("value", "obf", "ofv"))) arg <- "objf"
+  if (arg == "sigma") {
+    return(.sigma(obj))
+  }
+  if (arg == "coefficients") {
+    return(list(
+      fixed = fixef(obj),
+      random = ranef(obj)
+    ))
+  }
+  if (arg == "par.hist") arg <- "parHist"
+  if (arg == "par.hist.stacked") arg <- "parHistStacked"
+  if (arg == "omega.R") arg <- "omegaR"
+  if (arg == "par.fixed") arg <- "parFixed"
+  if (arg == "eta") arg <- "ranef"
+  if (arg == "theta") arg <- "fixef"
+  if (arg == "varFix") arg <- "cov"
+  if (arg == "thetaMat") arg <- "cov"
+  if (arg == "seed" && exists("saem", .env)) {
+    return(attr(.env$saem, "saem.cfg")$seed)
+  }
+  if (arg == "saem.cfg" && exists("saem", .env)) {
+    return(attr(.env$saem, "saem.cfg"))
+  }
+  if (exists(arg, envir = .env)) {
+    return(get(arg, envir = .env))
+  }
+  if (arg == "env") {
+    return(.env)
+  }
+  if (arg == "condition") {
+    .objDf <- .env$objDf
+    #$objDf[,"Condition Number"]
+    if (any(names(.objDf) == "Condition Number")) {
+      .cn <- .objDf[, "Condition Number"]
+      .cn <- .cn[!is.na(.cn)]
+      return(.cn)
+    }
+    return(NULL)
+  }
+  if (exists("uif", .env)) {
+    .uif <- .env$uif
+    if (arg == "modelName") arg <- "model.name"
+    if (arg == "dataName") arg <- "data.name"
+    .ret <- `$.nlmixr2UI`(.uif, arg)
+    if (!is.null(.ret)) {
+      return(.ret)
+    }
+    .env2 <- `$.nlmixr2UI`(.uif, "env")
+    if (exists(arg, envir = .env2)) {
+      return(get(arg, envir = .env2))
+    }
+  }
+  if (arg == "simInfo") {
+    return(.simInfo(obj))
+  }
+}
+
+ ##' @export
+`$.nlmixr2FitCoreSilent` <- `$.nlmixr2FitCore`
+
+##' @export
+`$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
+  .ret <- obj[[arg]]
+  if (arg == "md5") {
+    return(.nlmixr2Md5(obj))
+  } else if (is.null(.ret)) {
+    if (arg == "posthoc") {
+      return(nlmixr2Posthoc(obj))
+    }
+    .cls <- class(obj)
+    .env <- attr(.cls, ".foceiEnv")
+    .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
+  }
+  return(.ret)
+}
+
+
+##' @importFrom nlme VarCorr
+##' @export
+VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
+  .ret <- x$nlme
+  if (is.null(.ret)) {
+    .var <- diag(x$omega)
+    .ret <- data.frame(
+      Variance = .var, StdDev = sqrt(.var),
+      row.names = names(.var)
+    )
+    .ret <- .ret[!is.na(.ret[, 1]), ]
+    return(.ret)
+  } else {
+    VarCorr(.ret, ...)
+  }
+}
+
+##' @export
+VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
+
+.sigma <- function(x) {
+  .ret <- x$nlme
+  if (is.null(.ret)) {
+    if (exists("uif", envir = x$env)) {
+      .df <- as.data.frame(x$uif$ini)
+      .errs <- paste(.df[which(!is.na(.df$err)), "name"])
+      return(fixef(x)[.errs])
+    }
+  } else {
+    return(.ret$sigma)
+  }
+}
+
+##' @export
+str.nlmixr2FitData <- function(object, ...) {
+  NextMethod(object)
+  .env <- object$env
+  ## cat(" $ par.hist         : Parameter history (if available)\n")
+  ## cat(" $ par.hist.stacked : Parameter history in stacked form for easy plotting (if available)\n")
+  cat(" $ omega            : Omega matrix\n")
+  cat(" $ omegaR           : Omega Correlation matrix\n")
+  cat(" $ shrink           : Shrinkage table, includes skewness, kurtosis, and eta p-values\n")
+  cat(" $ parFixed         : Fixed Effect Parameter Table\n")
+  cat(" $ theta            : Fixed Parameter Estimates\n")
+  cat(" $ eta              : Individual Parameter Estimates\n")
+  cat(" $ seed             : Seed (if applicable)\n")
+  cat(" $ coefficients     : Fixed and random coefficients\n")
+  if (exists("uif", envir = object$env)) {
+    cat(" $ meta             : Model meta information environment\n")
+    cat(" $ modelName        : Model name (from R function)\n")
+    cat(" $ dataName         : Name of R data input\n")
+    cat(" $ simInfo          : rxode2 list for simulation\n")
+    cat(" $ sigma            : List of sigma components and their values\n")
+  }
+}
+
+
+##' Extract residuals from the FOCEI fit
+##'
+##' @param object focei.fit object
+##' @param ... Additional arguments
+##' @param type Residuals type fitted.
+##' @return residuals
+##' @author Matthew L. Fidler
+##' @export
+residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
+  return(object[, toupper(match.arg(type))])
+}
+
+##' Return the objective function
+##'
+##' @param x object to return objective function value
+##' @param type Objective function type value to retrieve or add.
+##'
+##' \itemize{
+##'
+##' \item{focei} For most models you can specify "focei" and it will
+##' add the focei objective function.
+##'
+##' \item{nlme} This switches/chooses the nlme objective function if
+##'    applicable.  This objective function cannot be added if it
+##'    isn't present.
+##'
+##' \item{fo} FO objective function value. Cannot be generated
+##'
+##' \item{foce} FOCE object function value. Cannot be generated
+##'
+##' \item{laplace#} This adds/retrieves  the Laplace objective function value.
+##' The \code{#} represents the number of standard deviations
+##' requested when expanding the Gaussian Quadrature.  This can
+##' currently only be used with saem fits.
+##'
+##' \item{gauss#.#} This adds/retrieves the Gaussian Quadrature
+##' approximation of the objective function.  The first number is the
+##' number of nodes to use in the approximation. The second number is
+##' the number of standard deviations to expand upon.
+##'
+##' }
+##'
+##' @param ... Other arguments sent to ofv for other methods.
+##'
+##' @return Objective function value
+##'
+##' @author Matthew Fidler
+##'
+##' @export
+ofv <- function(x, type, ...) {
+  UseMethod("ofv")
+}
+
+##' @export
+ofv.nlmixr2FitData <- function(x, type, ...) {
+  if (!missing(type)) setOfv(x, type)
+  return(x$ofv)
+}
+
+##' @export
+logLik.nlmixr2FitData <- function(object, ...) {
+  .objName <- substitute(object)
+  .lst <- list(...)
+  if (!is.null(.lst$type)) {
+    .new <- setOfv(object, .lst$type)
+    .parent <- globalenv()
+    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
+      if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
+        return(.cur)
+      }
+      return(NULL)
+    }))
+    if (length(.bound) == 1) {
+      if (exists(.bound, envir = .parent)) {
+        assign(.bound, .new, envir = .parent)
+      }
+    }
+    return(get("logLik", .new$env))
+  } else {
+    return(object$logLik)
+  }
+}
+
+##' @export
+logLik.nlmixr2FitCore <- function(object, ...) {
+  object$logLik
+}
+
+##' @export
+nobs.nlmixr2FitCore <- function(object, ...) {
+  object$nobs
+}
+
+##' @export
+vcov.nlmixr2FitCore <- function(object, ...) {
+  object$cov
+}
+##' This gets the parsed data in the lower-level manner that nlmixr2 expects.
+##'
+##' @param object nlmixr2 Object
+##'
+##' @return Gets the parsed data
+##'
+##' @export
+##'
+##' @author Matthew L. Fidler
+##' @keywords internal
+.nmGetData <- function(object, keep=NULL) {
+  if (is.null(keep)) keep <- character(0)
+  .uif <- object$uif
+  .tmp <- deparse(body(.uif$theta.pars))[-1]
+  .tmp <- .tmp[-length(.tmp)]
+  return(rxode2::etTrans(object$origData, paste(paste(.tmp, collapse = "\n"), "\n", .uif$rxode), TRUE, TRUE, TRUE, keep=keep))
+}
+
+##' @export
+getData.nlmixr2FitCore <- function(object) {
+  object$origData
+}
+
+##' @export
+ranef.nlmixr2FitCore <- function(object, ...) {
+  object$ranef
+}
+
+##' @export
+fixef.nlmixr2FitCore <- function(object, ...) {
+  object$fixef
+}
+##' @export
+fixef.nlmixr2FitCoreSilent <- fixef.nlmixr2FitCore
+
+##' @export
+ranef.nlmixr2FitCoreSilent <- ranef.nlmixr2FitCore
+
+##' @export
+getData.nlmixr2FitCoreSilent <- getData.nlmixr2FitCore
+
+##' @export
+logLik.nlmixr2FitCoreSilent <- logLik.nlmixr2FitCore
+
+##' @export
+nobs.nlmixr2FitCoreSilent <- nobs.nlmixr2FitCore
+
+##' @export
+vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
+
+##' Get a posthoc estimate of x
+##'
+##' @param x nlmixr2 object
+##' @param ... other arguments
+##'
+##' @return nlmixr2 fit object with possibly a new set of estimates
+##'
+##' @export
+##' @keywords internal
+nlmixr2Posthoc <- function(x, ...) {
+  UseMethod("nlmixr2Posthoc")
+}
+
+##' @export
+nlmixr2Posthoc.default <- function(x, ...) {
+  .posthoc <- (x$control$maxOuterIterations == 0L & x$control$maxInnerIterations > 0L)
+  .posthoc <- ifelse(.posthoc, paste0(ifelse(x$method == "FO",
+    ifelse(rxode2::rxIs(x, "nlmixr2FitData"),
+      paste0(
+        " estimation with ", crayon::bold$yellow("FOCE"),
+        gsub(rex::rex(any_spaces, "(", anything, ")"), "", x$extra),
+        crayon::bold(" posthoc")
+      ),
+      ""
+    ),
+    crayon::bold(" posthoc")
+  ), " estimation"), " fit")
+  return(.posthoc)
+}

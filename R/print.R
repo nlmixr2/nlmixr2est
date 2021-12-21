@@ -1,4 +1,4 @@
-ma.getR <- function(x, sd = FALSE) {
+.getR <- function(x, sd = FALSE) {
   if (is.null(x)) {
     return(x)
   }
