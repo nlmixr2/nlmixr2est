@@ -2,10 +2,13 @@
 % Please edit documentation in R/focei.R, R/nlmixr2Est.R
 \name{nlmixr2Est.focei}
 \alias{nlmixr2Est.focei}
+\alias{nlmixr2Est.foce}
 \alias{nlmixr2Est}
 \title{Generic for nlmixr2 estimation methods}
 \usage{
 \method{nlmixr2Est}{focei}(env, ...)
+
+\method{nlmixr2Est}{foce}(env, ...)
 
 nlmixr2Est(env, ...)
 }

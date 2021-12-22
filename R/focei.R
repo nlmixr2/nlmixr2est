@@ -1554,7 +1554,7 @@ rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
   ## Take etas from rx_r
-  eval(parse(text = rxRepR0_(.s$..maxEta)))
+  eval(parse(text = rxode2::rxRepR0_(.s$..maxEta)))
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .rxFinalizeInner(.s, .sumProd, .optExpression)
@@ -2220,11 +2220,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .ret0
 }
 
-#'@rdname nlmixr2Est
-#'@export
-nlmixr2Est.focei <- function(env, ...) {
+.foceiFamilyControl <- function(env, ...) {
   .ui <- env$ui
-  .data <- env$data
   .control <- env$control
   if (is.null(.control)) {
     .control <- foceiControl()
@@ -2233,8 +2230,12 @@ nlmixr2Est.focei <- function(env, ...) {
     .control <- do.call(nlmixr2::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
-  on.exit({rm("control", envir=.ui)})
+
+}
+
+.foceiFamilyReturn <- function(env, .ui, ...) {
   .env <- .ui$foceiOptEnv
+  .data <- env$data
   .foceiPreProcessData(.data, .env, .ui)
   .ret0 <- try(.foceiFitInternal(.env))
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
@@ -2257,5 +2258,27 @@ nlmixr2Est.focei <- function(env, ...) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
   }
-
+  .ret
 }
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.focei <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  on.exit({rm("control", envir=.ui)})
+  .foceiFamilyReturn(env, .ui, ...)
+}
+
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.foce <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  on.exit({rm("control", envir=.ui)})
+  .foceiFamilyReturn(env, .ui, ...)
+}
+
+
