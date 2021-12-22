@@ -482,10 +482,14 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   if (!any(names(.control) == "interaction")) {
     .control$interaction <- FALSE
   }
-  if (.control$interaction) {
-    .cls <- c(paste0("nlmixr2", .fit$method, "i"), "nlmixr2FitData", "nlmixr2FitCore", .cls)
+  if (.fit$method == "population only") {
+    .cls <- c("pop", "focei", "nlmixr2FitData", "nlmixr2FitCore", .cls)
   } else {
-    .cls <- c(paste0("nlmixr2", .fit$method), "nlmixr2FitData", "nlmixr2FitCore", .cls)
+    if (.control$interaction) {
+      .cls <- c(tolower(paste0(.fit$method, "i")), "nlmixr2FitData", "nlmixr2FitCore", .cls)
+    } else {
+      .cls <- c(tolower(paste0(.fit$method)), "nlmixr2FitData", "nlmixr2FitCore", .cls)
+    }
   }
   if (inherits(updateObject, "logical")) {
     if (!updateObject){

@@ -1383,7 +1383,7 @@ rxUiGet.loadPruneSens <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPrune <- function(x, ...) {
-  .loadSymengine(..foceiPrune(x), promoteLinSens = FALSE)
+  .loadSymengine(.foceiPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
 
@@ -1750,14 +1750,14 @@ rxUiGet.ebe <- function(x, ...) {
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
   .ui <- x[[1]]
-  if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
-    rxUiGet.focei(x, ...)
+  .iniDf <- get("iniDf", .ui)
+  if (all(is.na(.iniDf$neta1))) {
+    rxUiGet.ebe(x, ...)
   } else {
-    .iniDf <- get("iniDf", .ui)
-    if (all(is.na(.iniDf$neta1))) {
-      rxUiGet.foce(x, ...)
+    if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
+      rxUiGet.focei(x, ...)
     } else {
-      rxUiGet.ebe(x, ...)
+      rxUiGet.foce(x, ...)
     }
   }
 }
@@ -1831,7 +1831,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   env$thetaIni <- ui$theta
   env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
   rxode2::rxAssignControlValue(ui, "nfixed", sum(ui$iniDf$fix))
-  if (is.null(env$etaNames)) {
+  .mixed <- !is.null(env$etaNames)
+  if (.mixed && length(env$etaNames) == 0L) .mixed <- FALSE
+  if (!.mixed) {
     rxode2::rxAssignControlValue(ui, "nomega", 0)
     rxode2::rxAssignControlValue(ui, "neta", 0)
     env$xType <- -1
@@ -2099,6 +2101,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
   for (.v in c("TIME", "AMT", "DV", .covNames)) {
+    if (!any(names(data) == .v)) {
+      stop("missing '", .v, "' in data", call.=FALSE)
+    }
     data[[.v]] <- as.double(data[[.v]])
   }
   env$dataSav <- data
