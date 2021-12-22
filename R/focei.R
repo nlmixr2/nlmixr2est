@@ -1257,13 +1257,14 @@ foceiControl <- function(sigdig = 3, ...,
   }
   c(.thetas, .etas)
 }
+
 #' Get the THETA/ETA params from the rxode2 UI
 #'
 #' @param rxui This is the rxode2 ui object
 #' @return The params eirxode2 UI
 #' @author Matthew L. Fidler
 #' @noRd
-.uiGetThetaEtaParams <- function(rxui) {
+.uiGetThetaEtaParams <- function(rxui, str=FALSE) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
   .thetas <- vapply(.w, function(i) {
@@ -1277,7 +1278,12 @@ foceiControl <- function(sigdig = 3, ...,
       paste0("ETA[", .i2$neta1[i],"]")
     }, character(1), USE.NAMES=FALSE)
   }
-  eval(parse(text=paste0("quote(params(", paste(c(.thetas, .etas), collapse=", "), "))")))
+  .str <- paste(c(.thetas, .etas, rxui$covariates), collapse=", ")
+  if (str) {
+    paste0("params(", .str, ")")
+  } else {
+    eval(parse(text=paste0("quote(params(", .str, "))")))
+  }
 }
 
 # This handles the errors for focei
@@ -1342,7 +1348,6 @@ rxUiGet.foceiModel0 <- function(x, ...) {
 }
 #attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
 
-
 .foceiPrune <- function(x, fullModel=TRUE) {
   .x <- x[[1]]
   .x <- .x$foceiModel0[[-1]]
@@ -1380,13 +1385,11 @@ rxUiGet.loadPruneSens <- function(x, ...) {
 }
 #attr(rxUiGet.loadPruneSens, "desc") <- "load sensitivity with linCmt() promoted"
 
-
 #' @export
 rxUiGet.loadPrune <- function(x, ...) {
   .loadSymengine(.foceiPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
-
 
 .sensEtaOrTheta <- function(s, theta=FALSE) {
   .etaVars <- NULL
@@ -1577,12 +1580,14 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 }
 #attr(rxUiGet.foceiEnv, "desc") <- "Get the foce environment"
 
+.toRxParam <- ""
+
 .toRx <- function(x, msg) {
   if (is.null(x)) {
     return(NULL)
   }
   .malert(msg)
-  .ret <- rxode2::rxode2(x)
+  .ret <- rxode2::rxode2(paste(.toRxParam, x))
   .msuccess("done")
   return(.ret)
 }
@@ -2234,6 +2239,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 }
 
 .foceiFamilyReturn <- function(env, .ui, ...) {
+  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(.ui, TRUE), "\n"))
+  .control <- .ui$control
   .env <- .ui$foceiOptEnv
   .data <- env$data
   .foceiPreProcessData(.data, .env, .ui)
