@@ -4,6 +4,8 @@
 \alias{nlmixr2Est.focei}
 \alias{nlmixr2Est.foce}
 \alias{nlmixr2Est.posthoc}
+\alias{nlmixr2Est.foi}
+\alias{nlmixr2Est.fo}
 \alias{nlmixr2Est}
 \title{Generic for nlmixr2 estimation methods}
 \usage{
@@ -12,6 +14,10 @@
 \method{nlmixr2Est}{foce}(env, ...)
 
 \method{nlmixr2Est}{posthoc}(env, ...)
+
+\method{nlmixr2Est}{foi}(env, ...)
+
+\method{nlmixr2Est}{fo}(env, ...)
 
 nlmixr2Est(env, ...)
 }

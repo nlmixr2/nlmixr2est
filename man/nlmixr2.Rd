@@ -5,6 +5,7 @@
 \alias{nlmixr20000.nlmixr2UI}
 \alias{nlmixr2}
 \alias{nlmixr2.function}
+\alias{nlmixr2.rxUi}
 \title{nlmixr2 fits population PK and PKPD non-linear mixed effects models.}
 \usage{
 nlmixr2000.nlmixr2FitCore(
@@ -40,6 +41,17 @@ nlmixr2(
 )
 
 \method{nlmixr2}{`function`}(
+  object,
+  data,
+  est = NULL,
+  control = NULL,
+  table = tableControl(),
+  ...,
+  save = NULL,
+  envir = parent.frame()
+)
+
+\method{nlmixr2}{rxUi}(
   object,
   data,
   est = NULL,

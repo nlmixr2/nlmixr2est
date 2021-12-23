@@ -131,3 +131,24 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   nlmixr2Est(.env)
 }
 
+##' @rdname nlmixr2
+##' @export
+nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
+                         save = NULL, envir = parent.frame()) {
+  .args <- as.list(match.call(expand.dots = TRUE))[-1]
+  .modName <- deparse(substitute(object))
+  .uif <- object
+  if (missing(data) && missing(est)) {
+    return(.uif)
+  } else if (missing(data)) {
+    stop("need data", call.=FALSE)
+  }
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- .uif
+  .env$data <- data
+  .env$control <- control
+  .env$table <- table
+  class(.env) <- c(est, "nlmixr2Est")
+  nlmixr2Est(.env)
+}
+

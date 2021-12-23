@@ -2254,7 +2254,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         collapse="\n")
 }
 
-.foceiFamilyReturn <- function(env, ui, ...) {
+.foceiFamilyReturn <- function(env, ui, ..., method) {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
@@ -2265,6 +2265,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) stop("Could not fit data.")
   .ret <- .ret0
+  if (!missing(method))
+    .ret$method <- method
   .ret$ui <- ui
   .nlmixr2setupParHistData(.ret)
   if (!all(is.na(ui$iniDf$neta1))) {
@@ -2279,6 +2281,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   .nlmixr2FitUpdateParams(.ret)
   .ret$IDlabel <- rxode2::.getLastIdLvl()
+  if (exists("skipTable", envir=.ret)) {
+    if (.ret$skipTable) {
+      .control$calcTables <- FALSE
+    }
+  }
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
@@ -2316,4 +2323,47 @@ nlmixr2Est.posthoc <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   on.exit({rm("control", envir=.ui)})
   .foceiFamilyReturn(env, .ui, ...)
+}
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.foi <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  .control <- .ui$control
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
+  rxode2::rxAssignControlValue(.ui, "fo", TRUE)
+  rxode2::rxAssignControlValue(.ui, "boundTol", 0)
+  on.exit({rm("control", envir=.ui)})
+  env$skipTable <- TRUE
+  .ret <- .foceiFamilyReturn(env, .ui, ...)
+  .ui <- .ret$ui
+  .foceiFamilyControl(env, ...)
+  rxode2::rxAssignControlValue(.ui, "interaction", 1L)
+  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO")
+  .ret
+}
+
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.fo <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  .control <- .ui$control
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
+  rxode2::rxAssignControlValue(.ui, "fo", TRUE)
+  rxode2::rxAssignControlValue(.ui, "boundTol", 0)
+  on.exit({rm("control", envir=.ui)})
+  env$skipTable <- TRUE
+  .ret <- .foceiFamilyReturn(env, .ui, ...)
+  .ui <- .ret$ui
+  .foceiFamilyControl(env, ...)
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO")
+  .ret
 }
