@@ -19,53 +19,53 @@
 
 # Utilities for nlmixr2 ####################################################
 
-##' Cox Box, Yeo Johnson and inverse transformation
-##'
-##' @param x data to transform
-##' @param lambda Cox-box lambda parameter
-##' @return Cox-Box Transformed Data
-##' @author Matthew L. Fidler
-##' @examples
-##'
-##' boxCox(1:3,1) ## Normal
-##' iBoxCox(boxCox(1:3,1))
-##'
-##' boxCox(1:3,0) ## Log-Normal
-##' iBoxCox(boxCox(1:3,0),0)
-##'
-##' boxCox(1:3,0.5) ## lambda=0.5
-##' iBoxCox(boxCox(1:3,0.5),0.5)
-##'
-##' yeoJohnson(seq(-3,3),1) ## Normal
-##' iYeoJohnson(yeoJohnson(seq(-3,3),1))
-##'
-##' yeoJohnson(seq(-3,3),0)
-##' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
-##' @export
+#' Cox Box, Yeo Johnson and inverse transformation
+#'
+#' @param x data to transform
+#' @param lambda Cox-box lambda parameter
+#' @return Cox-Box Transformed Data
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' boxCox(1:3,1) ## Normal
+#' iBoxCox(boxCox(1:3,1))
+#'
+#' boxCox(1:3,0) ## Log-Normal
+#' iBoxCox(boxCox(1:3,0),0)
+#'
+#' boxCox(1:3,0.5) ## lambda=0.5
+#' iBoxCox(boxCox(1:3,0.5),0.5)
+#'
+#' yeoJohnson(seq(-3,3),1) ## Normal
+#' iYeoJohnson(yeoJohnson(seq(-3,3),1))
+#'
+#' yeoJohnson(seq(-3,3),0)
+#' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
+#' @export
 boxCox <- function(x, lambda = 1) {
   .Call(`_nlmixr2_boxCox_`, x, lambda, 0L)
 }
 
-##' @rdname boxCox
-##' @export
+#' @rdname boxCox
+#' @export
 iBoxCox <- function(x, lambda = 1) {
   .Call(`_nlmixr2_iBoxCox_`, x, lambda, 0L)
 }
 
-##' @rdname boxCox
-##' @export
+#' @rdname boxCox
+#' @export
 yeoJohnson <- function(x, lambda = 1) {
   .Call(`_nlmixr2_boxCox_`, x, lambda, 1L)
 }
 
-##' @rdname boxCox
-##' @export
+#' @rdname boxCox
+#' @export
 iYeoJohnson <- function(x, lambda = 1) {
   .Call(`_nlmixr2_iBoxCox_`, x, lambda, 1L)
 }
 
 
-##' @importFrom utils capture.output
+#' @importFrom utils capture.output
 .captureOutput <- function(expr, envir = parent.frame()) {
   eval(
     {
@@ -85,7 +85,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   )
 }
 
-##' @export
+#' @export
 `$.nlmixr2Gill83` <- function(obj, arg, exact = FALSE) {
   .ret <- obj[[arg]]
   if (is.null(.ret)) {
@@ -126,17 +126,17 @@ nsis <- function() { ## build installer...
 # ########################################################################
 
 # .collectWarnings --------------------------------------------------------
-##' Collect warnings and just warn once.
-##'
-##' @param expr R expression
-##' @param lst When \code{TRUE} return a list with
-##'     list(object,warnings) instead of issuing the warnings.
-##'     Otherwise, when \code{FALSE} issue the warnings and return the
-##'     object.
-##' @return The value of the expression or a list with the value of
-##'     the expression and a list of warning messages
-##' @author Matthew L. Fidler
-##' @noRd
+#' Collect warnings and just warn once.
+#'
+#' @param expr R expression
+#' @param lst When \code{TRUE} return a list with
+#'     list(object,warnings) instead of issuing the warnings.
+#'     Otherwise, when \code{FALSE} issue the warnings and return the
+#'     object.
+#' @return The value of the expression or a list with the value of
+#'     the expression and a list of warning messages
+#' @author Matthew L. Fidler
+#' @noRd
 .collectWarnings <- function(expr, lst = FALSE) {
   ws <- c()
   this.env <- environment()
@@ -159,19 +159,19 @@ nsis <- function() { ## build installer...
 # #########################################################################
 
 # nlmixr2Print() -----------------------------------------------------------
-##' Print x using the message facility
-##'
-##' This allows the suppressMessages to work on print functions.  This
-##' captures the output function sends it through the message routine.
-##'
-##' catpureOutput was used since it is much faster than the internal
-##' capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
-##' @param x object to print
-##' @return Nothing, called for its side effects
-##' @param ... Other things output
-##' @author Matthew L. Fidler
-##' @export
-##' @keywords internal
+#' Print x using the message facility
+#'
+#' This allows the suppressMessages to work on print functions.  This
+#' captures the output function sends it through the message routine.
+#'
+#' catpureOutput was used since it is much faster than the internal
+#' capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
+#' @param x object to print
+#' @return Nothing, called for its side effects
+#' @param ... Other things output
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
 nlmixr2Print <- function(x, ...) {
   this.env <- environment()
   message(invisible(paste(
@@ -191,37 +191,37 @@ nlmixr2Print <- function(x, ...) {
 }
 
 # cholSE() ----------------------------------------------------------------
-##' Generalized Cholesky Matrix Decomposition
-##'
-##'  Performs a (modified) Cholesky factorization of the form
-##'
-##'   t(P) \%*\% A \%*\% P  + E = t(R) \%*\% R
-##'
-##'  As detailed in Schnabel/Eskow (1990)
-##'
-##' @param matrix Matrix to be Factorized.
-##' @param tol Tolerance; Algorithm suggests (.Machine$double.eps) ^ (1 / 3), default
-##' @return Generalized Cholesky decomposed matrix.
-##' @author Matthew L. Fidler (translation), Johannes Pfeifer, Robert
-##'     B. Schnabel and Elizabeth Eskow
-##'
-##' @references
-##'
-##' matlab source: http://www.dynare.org/dynare-matlab-m2html/matlab/chol_SE.html; Slightly different return values
-##'
-##' Robert B. Schnabel and Elizabeth
-##' Eskow. 1990. "A New Modified Cholesky Factorization," SIAM Journal
-##' of Scientific Statistical Computing, 11, 6: 1136-58.
-##'
-##' Elizabeth Eskow and Robert B. Schnabel
-##' 1991. "Algorithm 695 - Software for a New Modified Cholesky Factorization,"
-##' ACM Transactions on Mathematical Software, Vol 17, No 3: 306-312
-##'
-##' @note
-##'
-##' This version does not pivot or return the E matrix
-##'
-##' @export
+#' Generalized Cholesky Matrix Decomposition
+#'
+#'  Performs a (modified) Cholesky factorization of the form
+#'
+#'   t(P) \%*\% A \%*\% P  + E = t(R) \%*\% R
+#'
+#'  As detailed in Schnabel/Eskow (1990)
+#'
+#' @param matrix Matrix to be Factorized.
+#' @param tol Tolerance; Algorithm suggests (.Machine$double.eps) ^ (1 / 3), default
+#' @return Generalized Cholesky decomposed matrix.
+#' @author Matthew L. Fidler (translation), Johannes Pfeifer, Robert
+#'     B. Schnabel and Elizabeth Eskow
+#'
+#' @references
+#'
+#' matlab source: http://www.dynare.org/dynare-matlab-m2html/matlab/chol_SE.html; Slightly different return values
+#'
+#' Robert B. Schnabel and Elizabeth
+#' Eskow. 1990. "A New Modified Cholesky Factorization," SIAM Journal
+#' of Scientific Statistical Computing, 11, 6: 1136-58.
+#'
+#' Elizabeth Eskow and Robert B. Schnabel
+#' 1991. "Algorithm 695 - Software for a New Modified Cholesky Factorization,"
+#' ACM Transactions on Mathematical Software, Vol 17, No 3: 306-312
+#'
+#' @note
+#'
+#' This version does not pivot or return the E matrix
+#'
+#' @export
 cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
   .Call(`_nlmixr2_cholSE_`, matrix, tol)
 }
@@ -251,14 +251,14 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
   return(regexpr("/tests/testthat/", getwd(), fixed = TRUE) != -1)
 }
 
-##' nlmixTest function for testing
-##'
-##' @param expr  Expression for testing
-##' @param silent Boolean for testing
-##' @param test this represents the test group of the test
-##' @author Matthew Fidler
-##' @return Nothing, called for its side effects
-##' @export
+#' nlmixTest function for testing
+#'
+#' @param expr  Expression for testing
+#' @param silent Boolean for testing
+#' @param test this represents the test group of the test
+#' @author Matthew Fidler
+#' @return Nothing, called for its side effects
+#' @export
 nlmixr2Test <- function(expr, silent = .isTestthat(), test = "cran") {
   .Call(`_nlmixr2_setSilentErr`, 1L, PACKAGE = "nlmixr2")
   rxode2::rxSetSilentErr(1L)
@@ -270,4 +270,31 @@ nlmixr2Test <- function(expr, silent = .isTestthat(), test = "cran") {
   if (.test == "true") {
     force(expr)
   }
+}
+
+
+#' Nelder-Mead simplex search
+#'
+#' @param start initials
+#' @param fr objective function
+#' @param rho evaluation environment
+#' @param control additional optimization options
+#' @return a list of ...
+#' @export
+nmsimplex <- function(start, fr, rho = NULL, control = list()) {
+  if (is.null(rho)) rho <- environment(fr)
+  step <- -.2 * start
+
+  con <- list(maxeval = 999, reltol = 1e-6, rcoeff = 1., ecoeff = 2., ccoeff = .5, trace = FALSE)
+  nmsC <- names(con)
+  con[(namc <- names(control))] <- control
+  if (length(noNms <- namc[!namc %in% nmsC])) {
+    warning("unknown names in control: ", paste(noNms, collapse = ", "))
+  }
+
+  .Call(neldermead_wrap, fr, rho, length(start), start, step,
+    as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
+    as.integer(con$trace),
+    PACKAGE = "nlmixr2"
+  )
 }
