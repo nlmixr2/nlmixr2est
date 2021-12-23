@@ -3499,6 +3499,9 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
       e["BIC"] = fmin + 2*adj + log((double)nobs2)*op_focei.npars;
       e["nobs"] = rx->nobs;
     }
+    if (!e.exists("nsub")) {
+      e["nsub"] = rx->nsub;
+    }
     logLik.attr("class") = "logLik";
     e["logLik"] = logLik;
 

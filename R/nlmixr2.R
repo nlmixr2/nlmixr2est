@@ -1,4 +1,3 @@
-
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)

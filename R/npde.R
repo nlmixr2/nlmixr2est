@@ -3,14 +3,7 @@
                      cholSEtol = (.Machine$double.eps)^(1 / 3), ..., addDosing=FALSE, subsetNonmem=TRUE) {
   set.seed(seed)
   .si <- object$simInfo
-  .rx <- .si$rx
-  .rx <- gsub(rex::rex(capture("ipred"), or("=", "~"), capture(except_any_of("\n;")), any_of("\n;")), "ipred~\\2;\n", .rx)
-  .rx <- gsub(rex::rex("d/dt(", capture(except_any_of("\n;)")), ")", or("=", "~")), "d/dt(\\1)~", .rx)
-  .rx <- gsub(
-    rex::rex("sim", or("=", "~"), "rxTBSi(", capture(except_any_of(",)")), ",", anything, any_of("\n;")),
-    "sim=\\1", .rx
-  )
-  .si$rx <- .rx
+  .si$rx <- .getSimModel(object, hideIpred=TRUE)
   .si$object <- object
   .si$returnType <- "data.frame.TBS"
   .si$nsim <- nsim

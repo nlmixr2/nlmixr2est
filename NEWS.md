@@ -1,12 +1,17 @@
 # nlmixr2 1.0.0 -- new package
 
 ## FOCEI family changes
+
 - Remove lower level `foceiFit` function.  Focei now directly takes rxode2 ui objects
 
 ## nlmixr interface change
 
 - `nlmixr` interface changed to use `rxode2` UI
 - `keep` and `drop` are added to `tableControl` to influence the end data-frame
+- `$simInfo` uses a quoted expression for `$rx` instead of a string
+- `$simInfo$sigma` is a diagonal matrix since now the normal
+  simulation is controlled by the variability modeled as a population
+  value.
 
 # nlmixr 2.0.6
 

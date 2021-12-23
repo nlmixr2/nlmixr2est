@@ -1,3 +1,32 @@
+.getSimModel <- function(obj, hideIpred=FALSE) {
+  .lines <- rxode2::rxCombineErrorLines(obj$ui)
+  .f <- function(x) {
+    if (is.atomic(x) || is.name(x) || is.pairlist(x)) {
+      return(x)
+    } else if (is.call(x)) {
+      if (identical(x[[1]], quote(`<-`)) ||
+            identical(x[[1]], quote(`=`))) {
+        if (identical(x[[2]], quote(`ipredSim`))) {
+          x[[2]] <- quote(`ipred`)
+          if (hideIpred) {
+            x[[1]] <- quote(`~`)
+          } else {
+            x[[1]] <- quote(`<-`)
+          }
+        } else if (identical(x[[2]], quote(`sim`))) {
+          x[[2]] <- quote(`sim`)
+          x[[1]] <- quote(`<-`)
+        } else {
+          x[[1]] <- quote(`~`)
+        }
+      }
+      return(as.call(lapply(x, .f)))
+    }
+  }
+  .f(.lines)
+}
+
+
 ## Add rxode2 THETA/ETA replacement mini DSL
 .repSim <- function(x, theta = c(), eta = c(), lhs = c()) {
   ret <- eval(parse(text = sprintf("quote({%s})", x)))
@@ -45,125 +74,46 @@
 }
 
 .simInfo <- function(object) {
-  .mod <- rxode2::rxNorm(object$model$pred.only)
-  ## .mod <- gsub(rex::rex("d/dt(", capture(except_any_of("\n;)")), ")", or("=", "~")), "d/dt(\\1)~", .mod);
-  .lhs <- object$model$pred.only$lhs
-  .lhs <- .lhs[.lhs != "rx_pred_"]
-  .lhs <- .lhs[.lhs != "rx_r_"]
+  .mod <- .getSimModel(object, hideIpred=FALSE)
   .omega <- object$omega
   .etaN <- dimnames(.omega)[[1]]
   .params <- nlme::fixed.effects(object)
-  .thetaN <- names(.params)
-  ## since PRED is calculated with tbs that is pred=rxTBS(...), to get individual use rxTBSi(...)
-  .newMod <- paste0(
-    .repSim(.mod, theta = .thetaN, eta = .etaN, c(.lhs, "rx_pred_", "rx_r_")),
-    "ipred=rxTBSi(rx_pred_, rx_lambda_, rx_yj_, rx_low_, rx_hi_);"
-  )
-  .sim <- "\nsim=rxTBSi(rx_pred_+rx_r_"
-  .err <- object$uif$err
-  .w <- which(!is.na(object$uif$err))
-  .mat <- diag(length(.w))
-  .dimn <- character(length(.w))
-  for (.i in seq_along(.w)) {
-    .ntheta <- object$uif$ini$ntheta[.w[.i]]
-    .cur <- .thetaN[.ntheta]
-    .dimn[.i] <- .cur
-    if (any(.err[.w[.i]] == c("add", "norm", "dnorm", "lnorm", "dlnorm", "logn"))) {
-      ## .sim <- paste0(.sim, "+", .cur);
-      .mat[.i, .i] <- .params[.ntheta]^2
-      .params[.ntheta] <- NA_real_
-    } else if (.err[.w[.i]] == "prop") {
-      ## .sim <- paste0(.sim, "+ipred*", .cur);
-      .mat[.i, .i] <- .params[.ntheta]^2
-      .params[.ntheta] <- NA_real_
-    } else if (.err[.w[.i]] == "pow") {
-      ## .sim <- paste0(.sim, "+", .cur, "*ipred^(", object$uif$ini$name[which(object$uif$ini$err == "pow2")], ")");
-      .mat[.i, .i] <- .params[.ntheta]^2
-      .params[.ntheta] <- NA_real_
-    }
-  }
-  .params <- .params[!is.na(.params)]
-  dimnames(.mat) <- list(.dimn, .dimn)
-  .w <- which(!(.dimn %in% names(.params)))
-  .mat <- .mat[.w, .w, drop = FALSE]
-  .sigma <- .mat
-  .sigmaNames <- dimnames(.mat)[[1]]
-  .newMod <- paste0(.newMod, .sim, ", rx_lambda_, rx_yj_, rx_low_, rx_hi_);\n")
-  .newMod <- strsplit(.newMod, "\n")[[1]]
-  .w <- which(regexpr("rx_r_~", .newMod) != -1)
-  .subs <- function(x, .what, .with) {
-    if (all(as.character(x) == .what)) {
-      return(eval(parse(text = sprintf("quote(%s)", .with))))
-    } else if (is.call(x)) {
-      as.call(lapply(x, .subs, .what = .what, .with = .with))
-    } else if (is.pairlist(x)) {
-      as.pairlist(lapply(x, .subs, .what = .what, .with = .with))
-    } else {
-      return(x)
-    }
-  }
-  for (.i in .w) {
-    .cur <- sub(";", "", sub("rx_r_~", "", .newMod[.i]))
-    .cur <- eval(parse(text = sprintf("rxode2::rxSplitPlusQ(quote(%s))", .cur)))
-    .cur <- paste(sapply(.cur, function(x) {
-      .ret <- sprintf("sqrt(%s)", x)
-      for (.what in .sigmaNames) {
-        .with <- "1"
-        .old <- paste(deparse(eval(parse(text = sprintf("quote(%s)", .ret)))), collapse = "")
-        .new <- paste(deparse(eval(parse(text = sprintf(
-          ".subs(quote(%s),.what=%s,.with=%s)", .ret,
-          deparse(.what), deparse(.with)
-        )))), collapse = "")
-        if (.old != .new) {
-          .ret <- sprintf("%s*%s", .what, .new)
-        }
-      }
-      return(.ret)
-    }), collapse = "+")
-    .cur <- gsub("  +", " ", .cur)
-    .cur <- gsub(rex::rex("*sqrt(Rx_pow_di(1, 2))"), "", .cur)
-    .cur <- gsub(rex::rex("Rx_pow_di(1, 2)", any_spaces, "*", any_spaces), "", .cur)
-    .newMod[.i] <- paste0("rx_r_~", .cur, ";")
-  }
-  .newMod <- paste(paste(.newMod, collapse = "\n"), "\n")
+  .params <- .params
   .dfObs <- object$nobs
-  .nlmixr2Data <- nlmixr2::nlmixr2Data(nlme::getData(object))
-  .dfSub <- length(unique(.nlmixr2Data$ID))
+  .nlmixr2Data <- nlme::getData(object)
+  .dfSub <- object$nsub
   .env <- object$env
   if (exists("cov", .env)) {
     .thetaMat <- nlme::getVarCov(object)
   } else {
-    ## warning("simulation assumes thetaMat has very little varaibility in it since there is no covariance")
-    ## .theta0 <- object$uif$ini$name[which(is.na(object$uif$ini$err) & !is.na(object$uif$ini$ntheta))]
-    ## .thetaMat <- diag(length(.theta0)) * 1e-10
-    ## dimnames(.thetaMat) <- list(.theta0, .theta0)
     .thetaMat <- NULL
   }
-  if (all(is.na(object$uif$ini$neta1))) {
+  if (all(is.na(object$ui$ini$neta1))) {
     .omega <- NULL
     .dfSub <- 0
   }
+  .sigma <- object$ui$simulationSigma
   return(list(
-    rx = .newMod, params = .params, events = .nlmixr2Data,
+    rx = .mod, params = .params, events = .nlmixr2Data,
     thetaMat = .thetaMat, omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub
   ))
 }
 
 
-##' Simulate a nlmixr2 solved system
-##'
-##' This takes the uncertainty in the model parameter estimates and to
-##' simulate a number of theoretical studies.  Each study simulates a
-##' realization of the parameters from the uncertainty in the fixed
-##' parameter estimates.  In addition the omega and sigma matrices are
-##' simulated from the uncertainty in the Omega/Sigma matrices based
-##' on the number of subjects and observations the model was based on.
-##'
-##' @param object nlmixr2 object
-##' @param ... Other arguments sent to \code{rxSolve}
-##' @return A rxode2 solved object
-##' @inheritParams rxode2::rxSolve
-##' @export
+#' Simulate a nlmixr2 solved system
+#'
+#' This takes the uncertainty in the model parameter estimates and to
+#' simulate a number of theoretical studies.  Each study simulates a
+#' realization of the parameters from the uncertainty in the fixed
+#' parameter estimates.  In addition the omega and sigma matrices are
+#' simulated from the uncertainty in the Omega/Sigma matrices based
+#' on the number of subjects and observations the model was based on.
+#'
+#' @param object nlmixr2 object
+#' @param ... Other arguments sent to \code{rxSolve}
+#' @return A rxode2 solved object
+#' @inheritParams rxode2::rxSolve
+#' @export
 nlmixr2Sim <- function(object, ...) {
   rxode2::rxSolveFree()
   rxode2::.setWarnIdSort(FALSE)
@@ -181,7 +131,7 @@ nlmixr2Sim <- function(object, ...) {
   } else {
     message("Compiling model...", appendLF = FALSE)
   }
-  .newobj <- rxode2::rxode2(.si$rx)
+  .newobj <- eval(.si$rx)
   on.exit({
     rxode2::rxUnload(.newobj)
   })
@@ -291,7 +241,7 @@ nlmixr2Sim <- function(object, ...) {
   return(.ret)
 }
 
-##' @export
+#' @export
 plot.nlmixr2Sim <- function(x, y, ...) {
   p1 <- eff <- Percentile <- sim.id <- id <- p2 <- p50 <- p05 <- p95 <- . <- NULL
   .args <- list(...)
@@ -423,21 +373,21 @@ plot.nlmixr2Sim <- function(x, y, ...) {
   return(rxode2::rxode2(.ret))
 }
 
-##' Predict a nlmixr2 solved system
-##'
-##' @param ipred Flag to calculate individual predictions. When
-##'     \code{ipred} is \code{TRUE}, calculate individual predictions.
-##'     When \code{ipred} is \code{FALSE}, set calculate typical population predations.
-##'     When \code{ipred} is \code{NA}, calculate both individual and
-##'     population predictions.
-##'
-##' @inheritParams rxode2::rxSolve
-##'
-##' @return an rxode2 solved data frame with the predictions
-##'
-##' @export
-##'
-##' @export
+#' Predict a nlmixr2 solved system
+#'
+#' @param ipred Flag to calculate individual predictions. When
+#'     \code{ipred} is \code{TRUE}, calculate individual predictions.
+#'     When \code{ipred} is \code{FALSE}, set calculate typical population predations.
+#'     When \code{ipred} is \code{NA}, calculate both individual and
+#'     population predictions.
+#'
+#' @inheritParams rxode2::rxSolve
+#'
+#' @return an rxode2 solved data frame with the predictions
+#'
+#' @export
+#'
+#' @export
 nlmixr2Pred <- function(object, ..., ipred = FALSE) {
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
@@ -521,21 +471,21 @@ nlmixr2Pred <- function(object, ..., ipred = FALSE) {
     return(ret.pred)
   }
 }
-##' @rdname nlmixr2Pred
-##' @export
+#' @rdname nlmixr2Pred
+#' @export
 predict.nlmixr2FitData <- function(object, ...) {
   nlmixr2Pred(object, ...)
 }
 
-##' Augmented Prediction for nlmixr2 fit
-##'
-##'
-##' @param object Nlmixr2 fit object
-##' @inheritParams nlme::augPred
-##' @inheritParams rxode2::rxSolve
-##' @return Stacked data.frame with observations, individual/population predictions.
-##' @author Matthew L. Fidler
-##' @export
+#' Augmented Prediction for nlmixr2 fit
+#'
+#'
+#' @param object Nlmixr2 fit object
+#' @inheritParams nlme::augPred
+#' @inheritParams rxode2::rxSolve
+#' @return Stacked data.frame with observations, individual/population predictions.
+#' @author Matthew L. Fidler
+#' @export
 nlmixr2AugPred <- function(object, ..., covsInterpolation = c("locf", "linear", "nocb", "midpoint"),
                           primary = NULL, minimum = NULL, maximum = NULL, length.out = 51L) {
   force(object)
@@ -745,8 +695,8 @@ nlmixr2AugPred <- function(object, ..., covsInterpolation = c("locf", "linear", 
   return(.ret)
 }
 
-##' @rdname nlmixr2AugPred
-##' @export
+#' @rdname nlmixr2AugPred
+#' @export
 augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, minimum = NULL, maximum = NULL,
                                                    length.out = 51, ...) {
   .ret <- nlmixr2AugPred(
@@ -758,7 +708,7 @@ augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, mini
   return(.ret)
 })
 
-##' @export
+#' @export
 plot.nlmixr2AugPred <- function(x, y, ...) {
   if (any(names(x) == "Endpoint")) {
     for (.tmp in unique(x$Endpoint)) {
@@ -783,8 +733,8 @@ plot.nlmixr2AugPred <- function(x, y, ...) {
   }
 }
 
-##' @rdname nlmixr2Sim
-##' @export
+#' @rdname nlmixr2Sim
+#' @export
 rxSolve.nlmixr2FitData <- function(object, params = NULL, events = NULL, inits = NULL,
                                   scale = NULL, method = c("liblsoda", "lsoda", "dop853", "indLin"),
                                   transitAbs = NULL, atol = 1.0e-8, rtol = 1.0e-6,
@@ -845,14 +795,14 @@ rxSolve.nlmixr2FitData <- function(object, params = NULL, events = NULL, inits =
   do.call("nlmixr2Sim", as.list(match.call()[-1]), envir = parent.frame(2))
 }
 
-##' @rdname nlmixr2Sim
-##' @export
+#' @rdname nlmixr2Sim
+#' @export
 simulate.nlmixr2FitData <- function(object, nsim = 1, seed = NULL, ...) {
   nlmixr2::nlmixr2Sim(object, ..., nsim = nsim, seed = seed)
 }
 
-##' @rdname nlmixr2Sim
-##' @export
+#' @rdname nlmixr2Sim
+#' @export
 solve.nlmixr2FitData <- function(a, b, ...) {
   lst <- as.list(match.call()[-1])
   n <- names(lst)
@@ -866,6 +816,6 @@ solve.nlmixr2FitData <- function(a, b, ...) {
   do.call("nlmixr2Sim", lst, envir = parent.frame(2))
 }
 
-##' @importFrom rxode2 rxSolve
-##' @export
+#' @importFrom rxode2 rxSolve
+#' @export
 rxode2::rxSolve
