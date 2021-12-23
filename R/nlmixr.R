@@ -1162,52 +1162,6 @@ nlmixr2Est000.posthoc <- function(env, ...){
 
 ##'@rdname nlmixr2Est000
 ##'@export
-nlmixr2Est000.dynmodel <- function(env, ...) {
-  with(env, {
-    if (class(control) != "dynmodelControl") control <- do.call(dynmodelControl, control)
-    env <- new.env(parent = emptyenv())
-    env$table <- table
-    env$IDlabel <- .lab
-    env$uif <- NULL
-
-    # update data to merge for origData and data. first add zeros or whatever is filled in for DV when there is no observations
-    # to match the lengths, then merge observed data for both origData and data, and send to rxode2.
-
-    # .dynmodelData <- data
-    # nlmixr2 Object ---
-    .nmf <- uif
-    # Conversion ---
-    .dynNlmixr2 <- nlmixr2DynmodelConvert(.nmf)
-    # Model ---
-    .system <- .dynNlmixr2$system
-    # Initial Estimates ---
-    .inits <- .dynNlmixr2$inits
-    # Error Model ---
-    .model <- .dynNlmixr2$model
-    # Optional Control ---
-    control$nlmixr2Output <- TRUE
-    control$fixPars <- if (!is.null(.dynNlmixr2$fixPars)) .dynNlmixr2$fixPars else NULL
-    control$lower <- if (!is.null(.dynNlmixr2$lower)) .dynNlmixr2$lower else NULL
-    control$upper <- if (!is.null(.dynNlmixr2$upper)) .dynNlmixr2$upper else NULL
-
-    fit <-
-      dynmodel(
-        system = .system,
-        model = .model,
-        inits = .inits,
-        data = .origData,
-        nlmixr2Object = .nmf,
-        control = control
-      )
-    .env <- fit$env
-    assign("origData", .origData, .env)
-    fit <- nlmixr2FitUpdateParams(fit, origData = .origData)
-    return(fit)
-  })
-}
-
-##'@rdname nlmixr2Est000
-##'@export
 nlmixr2Est000.nlmixr2Est000 <- function(env, ...){
   with(env, stop("unknown estimation method est=\"", est, "\""))
 }

@@ -2306,4 +2306,14 @@ nlmixr2Est.foce <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ...)
 }
 
-
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.posthoc <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
+  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  on.exit({rm("control", envir=.ui)})
+  .foceiFamilyReturn(env, .ui, ...)
+}

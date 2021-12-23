@@ -120,20 +120,20 @@
     assign(".sdOnly", FALSE, envir=.env)
     return(data.frame(
       ch = paste0(
-        ifelse(.omegaFix[.w], "fix(", ""),
+        ifelse(.omegaFix[.eta], "fix(", ""),
         formatC(signif(sqrt(exp(.v) - 1) * 100, digits = .sigdig),
                 digits = .sigdig, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.w], ")", "")
+        ifelse(.omegaFix[.eta], ")", "")
       ),
       v = sqrt(exp(.v) - 1) * 100))
   } else {
     assign(".cvOnly", FALSE, envir=.env)
     return(data.frame(
       ch = paste0(
-        ifelse(.omegaFix[.w], "fix(", ""),
+        ifelse(.omegaFix[.eta], "fix(", ""),
         formatC(signif(sqrt(.w), digits = .sigdig),
                 digits = .sigdig, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.w], ")", "")),
+        ifelse(.omegaFix[.eta], ")", "")),
       v = .v))
   }
 }
