@@ -262,7 +262,7 @@
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
 
-##' @export
+#' @export
 `$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
   .env <- obj
   if (arg == "md5") {
@@ -358,10 +358,10 @@
   }
 }
 
- ##' @export
+ #' @export
 `$.nlmixr2FitCoreSilent` <- `$.nlmixr2FitCore`
 
-##' @export
+#' @export
 `$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
   .ret <- obj[[arg]]
   if (arg == "md5") {
@@ -378,8 +378,8 @@
 }
 
 
-##' @importFrom nlme VarCorr
-##' @export
+#' @importFrom nlme VarCorr
+#' @export
 VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   .ret <- x$nlme
   if (is.null(.ret)) {
@@ -395,7 +395,7 @@ VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
   }
 }
 
-##' @export
+#' @export
 VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 
 .sigma <- function(x) {
@@ -411,7 +411,7 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
   }
 }
 
-##' @export
+#' @export
 str.nlmixr2FitData <- function(object, ...) {
   NextMethod(object)
   .env <- object$env
@@ -435,66 +435,66 @@ str.nlmixr2FitData <- function(object, ...) {
 }
 
 
-##' Extract residuals from the FOCEI fit
-##'
-##' @param object focei.fit object
-##' @param ... Additional arguments
-##' @param type Residuals type fitted.
-##' @return residuals
-##' @author Matthew L. Fidler
-##' @export
+#' Extract residuals from the FOCEI fit
+#'
+#' @param object focei.fit object
+#' @param ... Additional arguments
+#' @param type Residuals type fitted.
+#' @return residuals
+#' @author Matthew L. Fidler
+#' @export
 residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
   return(object[, toupper(match.arg(type))])
 }
 
-##' Return the objective function
-##'
-##' @param x object to return objective function value
-##' @param type Objective function type value to retrieve or add.
-##'
-##' \itemize{
-##'
-##' \item{focei} For most models you can specify "focei" and it will
-##' add the focei objective function.
-##'
-##' \item{nlme} This switches/chooses the nlme objective function if
-##'    applicable.  This objective function cannot be added if it
-##'    isn't present.
-##'
-##' \item{fo} FO objective function value. Cannot be generated
-##'
-##' \item{foce} FOCE object function value. Cannot be generated
-##'
-##' \item{laplace#} This adds/retrieves  the Laplace objective function value.
-##' The \code{#} represents the number of standard deviations
-##' requested when expanding the Gaussian Quadrature.  This can
-##' currently only be used with saem fits.
-##'
-##' \item{gauss#.#} This adds/retrieves the Gaussian Quadrature
-##' approximation of the objective function.  The first number is the
-##' number of nodes to use in the approximation. The second number is
-##' the number of standard deviations to expand upon.
-##'
-##' }
-##'
-##' @param ... Other arguments sent to ofv for other methods.
-##'
-##' @return Objective function value
-##'
-##' @author Matthew Fidler
-##'
-##' @export
+#' Return the objective function
+#'
+#' @param x object to return objective function value
+#' @param type Objective function type value to retrieve or add.
+#'
+#' \itemize{
+#'
+#' \item{focei} For most models you can specify "focei" and it will
+#' add the focei objective function.
+#'
+#' \item{nlme} This switches/chooses the nlme objective function if
+#'    applicable.  This objective function cannot be added if it
+#'    isn't present.
+#'
+#' \item{fo} FO objective function value. Cannot be generated
+#'
+#' \item{foce} FOCE object function value. Cannot be generated
+#'
+#' \item{laplace#} This adds/retrieves  the Laplace objective function value.
+#' The \code{#} represents the number of standard deviations
+#' requested when expanding the Gaussian Quadrature.  This can
+#' currently only be used with saem fits.
+#'
+#' \item{gauss#.#} This adds/retrieves the Gaussian Quadrature
+#' approximation of the objective function.  The first number is the
+#' number of nodes to use in the approximation. The second number is
+#' the number of standard deviations to expand upon.
+#'
+#' }
+#'
+#' @param ... Other arguments sent to ofv for other methods.
+#'
+#' @return Objective function value
+#'
+#' @author Matthew Fidler
+#'
+#' @export
 ofv <- function(x, type, ...) {
   UseMethod("ofv")
 }
 
-##' @export
+#' @export
 ofv.nlmixr2FitData <- function(x, type, ...) {
   if (!missing(type)) setOfv(x, type)
   return(x$ofv)
 }
 
-##' @export
+#' @export
 logLik.nlmixr2FitData <- function(object, ...) {
   .objName <- substitute(object)
   .lst <- list(...)
@@ -518,30 +518,30 @@ logLik.nlmixr2FitData <- function(object, ...) {
   }
 }
 
-##' @export
+#' @export
 logLik.nlmixr2FitCore <- function(object, ...) {
   object$logLik
 }
 
-##' @export
+#' @export
 nobs.nlmixr2FitCore <- function(object, ...) {
   object$nobs
 }
 
-##' @export
+#' @export
 vcov.nlmixr2FitCore <- function(object, ...) {
   object$cov
 }
-##' This gets the parsed data in the lower-level manner that nlmixr2 expects.
-##'
-##' @param object nlmixr2 Object
-##'
-##' @return Gets the parsed data
-##'
-##' @export
-##'
-##' @author Matthew L. Fidler
-##' @keywords internal
+#' This gets the parsed data in the lower-level manner that nlmixr2 expects.
+#'
+#' @param object nlmixr2 Object
+#'
+#' @return Gets the parsed data
+#'
+#' @export
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
 .nmGetData <- function(object, keep=NULL) {
   if (is.null(keep)) keep <- character(0)
   .uif <- object$uif
@@ -550,52 +550,52 @@ vcov.nlmixr2FitCore <- function(object, ...) {
   return(rxode2::etTrans(object$origData, paste(paste(.tmp, collapse = "\n"), "\n", .uif$rxode), TRUE, TRUE, TRUE, keep=keep))
 }
 
-##' @export
+#' @export
 getData.nlmixr2FitCore <- function(object) {
   object$origData
 }
 
-##' @export
+#' @export
 ranef.nlmixr2FitCore <- function(object, ...) {
   object$ranef
 }
 
-##' @export
+#' @export
 fixef.nlmixr2FitCore <- function(object, ...) {
   object$fixef
 }
-##' @export
+#' @export
 fixef.nlmixr2FitCoreSilent <- fixef.nlmixr2FitCore
 
-##' @export
+#' @export
 ranef.nlmixr2FitCoreSilent <- ranef.nlmixr2FitCore
 
-##' @export
+#' @export
 getData.nlmixr2FitCoreSilent <- getData.nlmixr2FitCore
 
-##' @export
+#' @export
 logLik.nlmixr2FitCoreSilent <- logLik.nlmixr2FitCore
 
-##' @export
+#' @export
 nobs.nlmixr2FitCoreSilent <- nobs.nlmixr2FitCore
 
-##' @export
+#' @export
 vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 
-##' Get a posthoc estimate of x
-##'
-##' @param x nlmixr2 object
-##' @param ... other arguments
-##'
-##' @return nlmixr2 fit object with possibly a new set of estimates
-##'
-##' @export
-##' @keywords internal
+#' Get a posthoc estimate of x
+#'
+#' @param x nlmixr2 object
+#' @param ... other arguments
+#'
+#' @return nlmixr2 fit object with possibly a new set of estimates
+#'
+#' @export
+#' @keywords internal
 nlmixr2Posthoc <- function(x, ...) {
   UseMethod("nlmixr2Posthoc")
 }
 
-##' @export
+#' @export
 nlmixr2Posthoc.default <- function(x, ...) {
   .posthoc <- (x$control$maxOuterIterations == 0L & x$control$maxInnerIterations > 0L)
   .posthoc <- ifelse(.posthoc, paste0(ifelse(x$method == "FO",
