@@ -611,3 +611,24 @@ nlmixr2Posthoc.default <- function(x, ...) {
   ), " estimation"), " fit")
   return(.posthoc)
 }
+
+#' Update model to have final parameter estimates for piping and save orig data
+#'
+#' @param x Data to fix
+#' @return Nothing, called for side effects
+#' @noRd
+.nlmixr2FitUpdateParams <- function(x) {
+  # Update initial estimates to match current initial estimates
+  .ui <- x$ui
+  .thetas <- x$theta
+  for (.n in names(.thetas)) {
+    .ui$iniDf$est[.ui$iniDf$name == .n] <- .thetas[.n]
+  }
+  .omega <- x$omega
+  for (.i in seq_along(.ui$iniDf$neta1)) {
+    if (!is.na(.ui$iniDf$neta1[.i])) {
+      .ui$iniDf$est[.i] <- .omega[.ui$iniDf$neta1[.i], .ui$iniDf$neta2[.i]]
+    }
+  }
+  assign("ui", .ui, envir=x)
+}

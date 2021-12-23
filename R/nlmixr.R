@@ -160,30 +160,6 @@ nlmixr2Data.default <- function(data, model = NULL) {
   return(dat)
 }
 
-#' Update model to have final parameter estimates for piping and save orig data
-#'
-#' @param x Data to fix
-#' @param IDLabel Original ID labels
-#' @return Updated model
-#' @noRd
-nlmixr2FitUpdateParams <- function(x, IDLabel, origData) {
-  # Update initial estimates to match current initial estimates
-  .uif <- x$uif
-  .thetas <- x$theta
-  for (.n in names(.thetas)) {
-    .uif$ini$est[.uif$ini$name == .n] <- .thetas[.n]
-  }
-  .omega <- x$omega
-  for (.i in seq_along(.uif$ini$neta1)) {
-    if (!is.na(.uif$ini$neta1[.i])) {
-      .uif$ini$est[.i] <- .omega[.uif$ini$neta1[.i], .uif$ini$neta2[.i]]
-    }
-  }
-  .env <- x$env
-  .env$origData <- origData
-  return(x)
-}
-
 nlmixr2_fit0 <- function(uif, data, est = NULL, control = list(), ...,
                         keep=NULL, drop=NULL,
                         sum.prod = FALSE, table = tableControl(),

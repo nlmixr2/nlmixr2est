@@ -1581,13 +1581,14 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.foceiEnv, "desc") <- "Get the foce environment"
 
 .toRxParam <- ""
+.toRxDvidCmt <- ""
 
 .toRx <- function(x, msg) {
   if (is.null(x)) {
     return(NULL)
   }
   .malert(msg)
-  .ret <- rxode2::rxode2(paste(.toRxParam, x))
+  .ret <- rxode2::rxode2(paste(.toRxParam, x, .toRxDvidCmt))
   .msuccess("done")
   return(.ret)
 }
@@ -2238,19 +2239,35 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 
 }
 
-.foceiFamilyReturn <- function(env, .ui, ...) {
-  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(.ui, TRUE), "\n"))
-  .control <- .ui$control
-  .env <- .ui$foceiOptEnv
+#' Get the cmt() and dvid() lines
+#'
+#' @param ui rxode UI
+#' @return cmt() and dvid() string
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiToCmtLinesAndDvid <- function(ui) {
+  .cmtLines <- ui$cmtLines
+  paste(c("", vapply(seq_along(.cmtLines),
+         function(i){deparse1(.cmtLines[[i]])},
+         character(1), USE.NAMES=FALSE),
+         deparse1(ui$dvidLine)),
+        collapse="\n")
+}
+
+.foceiFamilyReturn <- function(env, ui, ...) {
+  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n"))
+  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
+  .control <- ui$control
+  .env <- ui$foceiOptEnv
   .data <- env$data
-  .foceiPreProcessData(.data, .env, .ui)
+  .foceiPreProcessData(.data, .env, ui)
   .ret0 <- try(.foceiFitInternal(.env))
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) stop("Could not fit data.")
   .ret <- .ret0
-  .ret$ui <- .ui
+  .ret$ui <- ui
   .nlmixr2setupParHistData(.ret)
-  if (!all(is.na(.ui$iniDf$neta1))) {
+  if (!all(is.na(ui$iniDf$neta1))) {
     .etas <- .ret$ranef
     .thetas <- .ret$fixef
     .pars <- .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
@@ -2260,6 +2277,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!exists("table", .ret)) {
     .ret$table <- tableControl()
   }
+  .nlmixr2FitUpdateParams(.ret)
   .ret$IDlabel <- rxode2::.getLastIdLvl()
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
