@@ -36,7 +36,6 @@ Suggests:
     testthat,
     tidyr,
     ucminf,
-    vpc (>= 1.1.0),
     xgxr,
     yaml,
     xpose,
@@ -47,7 +46,8 @@ Suggests:
     qs,
     covr,
     forecast,
-    latticeExtra
+    latticeExtra,
+    vpc
 Version: 2.0.6
 Authors@R: c(person("Matthew","Fidler",
       role = c("aut", "cre"), email = "matthew.fidler@gmail.com",

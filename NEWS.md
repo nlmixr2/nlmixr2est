@@ -12,6 +12,18 @@
 - `$simInfo$sigma` is a diagonal matrix since now the normal
   simulation is controlled by the variability modeled as a population
   value.
+  
+## VPC changes
+
+- `vpc` function rewritten and split out to `vpcSim()` and
+  `vpcPlot()` (which is a replacement for `vpc()`).  
+  
+- There were too many mismatches between `vpc::vpc` and `nlmixr::vpc`
+  which caused inconsistencies in code based on load order of `vpc`
+  and `nlmixr`.  This way both coexist, and you can use the `vpc`
+  simulation for other packages more easily (like `ggPMX`) without
+  creating or summarizing data since `ggPMX` has its own methods for
+  summarizing and creating plots.m
 
 # nlmixr 2.0.6
 
