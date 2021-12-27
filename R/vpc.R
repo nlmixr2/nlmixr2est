@@ -1,3 +1,4 @@
+.lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
@@ -61,15 +62,16 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
     .si2$modelName <- "Pred (for pcVpc)"
     .si2$params <- c(
       .si$params, setNames(rep(0, dim(.si$omega)[1]), dimnames(.si$omega)[[2]]),
-      setNames(rep(0, dim(.si$sigma)[1]), dimnames(.si$sigma)[[2]])
-    )
+      setNames(rep(0, dim(.si$sigma)[1]), dimnames(.si$sigma)[[2]]))
     .si2$omega <- NA
     .si2$sigma <- NA
     .si2$returnType <- "data.frame"
     .si2$nStud <- 1
     .si2$nsim <- NULL
+    assignInMyNamespace(".lastPredSimulationInfo", .si2)
     .sim2 <- do.call("nlmixr2Sim", .si2)
     .sim$pred <- .sim2$sim
+
   }
   return(.sim)
 }
@@ -194,6 +196,21 @@ vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
     idv="time")
   if (pred_corr) {
     .simCols <- c(.simCols, list(pred="pred"))
+    .si <- .lastPredSimulationInfo
+    .si$keep <- unique(c(stratify, .obsCols$dv))
+    .si$addDosing <- FALSE
+    .si$subsetNonmem <- TRUE
+    .si$modelName <- "Pred (on original dataset for pcVpc)"
+    .obs <- do.call("nlmixr2Sim", .si)
+    .no <- names(.obs)
+    .w <- which(.no == "sim")
+    names(.obs)[.w] <- "pred"
+    .obsCols$pred <- "pred"
+    .obsCols$idv <- "time"
+    .obsCols$id <- "id"
+    if (any(names(.obs) == "dv")) {
+      .obsCols$dv <- "dv"
+    }
   }
 
   vpc::vpc_vpc(sim=.sim, sim_cols=.simCols,
