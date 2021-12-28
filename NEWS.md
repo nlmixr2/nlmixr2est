@@ -7,8 +7,11 @@
 ## nlmixr interface change
 
 - `nlmixr` interface changed to use `rxode2` UI
+
 - `keep` and `drop` are added to `tableControl` to influence the end data-frame
+
 - `$simInfo` uses a quoted expression for `$rx` instead of a string
+
 - `$simInfo$sigma` is a diagonal matrix since now the normal
   simulation is controlled by the variability modeled as a population
   value.
@@ -24,6 +27,15 @@
   simulation for other packages more easily (like `ggPMX`) without
   creating or summarizing data since `ggPMX` has its own methods for
   summarizing and creating plots.m
+  
+## augPred() changes
+
+- `augPred()` has been written to use the new fit object.
+
+- `nlmixr2AugPred` was changed to `nlmixr2AugPredSolve()`
+
+- `augPred` uses the new interface and supports multiple endpoints.
+  The endpoint name is now always on the `plot(augPred(fit))`.
 
 # nlmixr 2.0.6
 
