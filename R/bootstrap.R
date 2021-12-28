@@ -564,7 +564,7 @@ modelBootstrap <- function(fit,
     stop("cannot find the 'ID' column! aborting ...", call. = FALSE)
   }
 
-  uif <- fit$uif
+  ui <- fit$ui
   fitMeth <- getFitMethod(fit)
 
   bootData <- vector(mode = "list", length = nboot)
@@ -750,7 +750,7 @@ modelBootstrap <- function(fit,
 
       fit <- tryCatch(
         {
-          fit <- suppressWarnings(nlmixr2(uif,
+          fit <- suppressWarnings(nlmixr2(ui,
             boot_data,
             est = fitMeth,
             control = .ctl
