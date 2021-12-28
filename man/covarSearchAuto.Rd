@@ -70,7 +70,7 @@ one.cmt <- function() {
 fit <- nlmixr2(one.cmt, theo_sd,"focei")
 rxode2::.rxWithWd(tempdir(), {# with temporary directory
 
-covarSearchAuto(fit, varsVec = c("ka", "cl"),
+auto1 <- covarSearchAuto(fit, varsVec = c("ka", "cl"),
     covarsVec = c("WT", "SEX"), catCovariates = c("SEX"))
 
 })
@@ -87,10 +87,10 @@ fit <- nlmixr2(one.cmt, d, "focei")
 
 rxode2::.rxWithWd(tempdir(), {# with temporary directory
 
-covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
+auto2 <- covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
                 catCovariates = c("SEX"), restart = TRUE)
 
-covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
+auto3 <- covarSearchAuto(fit, varsVec = c("ka", "cl"), covarsVec = c("WT", "SEX"),
                 catCovariates = c("SEX"), restart = TRUE,
                 searchType = "forward")
 })
