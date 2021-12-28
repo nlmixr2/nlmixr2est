@@ -259,7 +259,7 @@
   .updateParFixedAddShrinkage(.ret, .ui)
   .ret$parFixed <- .ret$popDfSig
   .ret$parFixedDf <- .ret$popDf
-  rm(c("popDfSig", "popDf"), envir=.ret)
+  rm(list=c("popDfSig", "popDf"), envir=.ret)
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
 
