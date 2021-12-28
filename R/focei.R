@@ -2335,6 +2335,30 @@ nlmixr2Est.posthoc <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="posthoc")
 }
 
+#' Add objective function line to the return object
+#'
+#' @param ret Return object
+#' @param objDf Objective function data frame to add
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.addObjDfToReturn <- function(ret, objDf) {
+  if (inherits(ret, "nlmixr2FitData")) {
+    ret <- attr(class(ret), ".foceiEnv")
+  }
+  .objDf1 <- get("objDf", ret)
+  if (any(names(.objDf1) == "Condition Number")) {
+    if (!any(names(objDf) == "Condition Number")) {
+      objDf[["Condition Number"]] <- NA_real_
+    }
+  } else if (any(names(objDf) == "Condition Number")) {
+    if (!any(names(.objDf1) == "Condition Number")) {
+      .objDf1[["Condition Number"]] <- NA_real_
+    }
+  }
+  assign("objDf", rbind(.objDf1, objDf), envir=ret)
+}
+
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.foi <- function(env, ...) {
@@ -2348,11 +2372,13 @@ nlmixr2Est.foi <- function(env, ...) {
   on.exit({rm("control", envir=.ui)})
   env$skipTable <- TRUE
   .ret <- .foceiFamilyReturn(env, .ui, ...)
+  .objDf <- .ret$objDf
   .ui <- .ret$ui
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 1L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="foi")
+  .addObjDfToReturn(.ret, .objDf)
   .ret
 }
 
@@ -2370,12 +2396,13 @@ nlmixr2Est.fo <- function(env, ...) {
   on.exit({rm("control", envir=.ui)})
   env$skipTable <- TRUE
   .ret <- .foceiFamilyReturn(env, .ui, ...)
+  .objDf <- .ret$objDf
   .ui <- .ret$ui
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="fo")
-  .ret$est <- "fo"
+  .addObjDfToReturn(.ret, .objDf)
   .ret
 }
 #'@rdname nlmixr2Est
