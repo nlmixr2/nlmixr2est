@@ -1068,7 +1068,7 @@ nlmixr2Est000.fo <- nlmixr2Est000.focei
 ##'@export
 nlmixr2Est000.foi <- nlmixr2Est000.focei
 
-##'@rdname nlmixr2Est000
+ 'y'##'@rdname nlmixr2Est000
 ##'@export
 nlmixr2Est000.posthoc <- function(env, ...){
   with(env, {

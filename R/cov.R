@@ -86,12 +86,11 @@
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
   .fit2 <- nlmixrCreateOutputFromUi(.ui, data=.dat, control=.control, env=.env2, est="none")
-  print(.fit2)
   .env$cov <- .fit2$cov
-  .env$popDf <- .fit2$popDf
-  .env$popDfSig <- .fit2$popDfSig
+  .env$parFixedDf <- .fit2$parFixedDf
+  .env$parFixed <- .fit2$parFixed
   .env$covMethod <- .fit2$covMethod
-  .updateParFixed(.env)
+  #.updateParFixed(.env)
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
     if (identical(.parent[[.cur]], obj)) {
