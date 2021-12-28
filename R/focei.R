@@ -2254,7 +2254,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         collapse="\n")
 }
 
-.foceiFamilyReturn <- function(env, ui, ..., method) {
+.foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
@@ -2286,6 +2286,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .control$calcTables <- FALSE
     }
   }
+  assign("est", est, envir=.ret)
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
@@ -2299,7 +2300,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ui <- env$ui
   .foceiFamilyControl(env, ...)
   on.exit({rm("control", envir=.ui)})
-  .foceiFamilyReturn(env, .ui, ...)
+  .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 
 
@@ -2310,7 +2311,8 @@ nlmixr2Est.foce <- function(env, ...) {
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   on.exit({rm("control", envir=.ui)})
-  .foceiFamilyReturn(env, .ui, ...)
+  env$est <- "foce"
+  .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 
 #'@rdname nlmixr2Est
@@ -2322,7 +2324,8 @@ nlmixr2Est.posthoc <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   on.exit({rm("control", envir=.ui)})
-  .foceiFamilyReturn(env, .ui, ...)
+  env$est <- "posthoc"
+  .foceiFamilyReturn(env, .ui, ..., est="posthoc")
 }
 
 #'@rdname nlmixr2Est
@@ -2342,7 +2345,7 @@ nlmixr2Est.foi <- function(env, ...) {
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 1L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO")
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="foi")
   .ret
 }
 
@@ -2364,6 +2367,7 @@ nlmixr2Est.fo <- function(env, ...) {
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO")
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="fo")
+  .ret$est <- "fo"
   .ret
 }

@@ -836,31 +836,11 @@ modelBootstrap <- function(fit,
 #' getFitMethod(fit)
 #' @noRd
 getFitMethod <- function(fit) {
-  methodsList <-
-    c(
-      "nlmixr2FOCEi" = "focei",
-      "nlmixr2NlmeUI" = "nlme",
-      "nlmixr2Saem" = "saem",
-      "nlmixr2FOCE" = "foce",
-      "nlmixr2FOi" = "foi",
-      "nlmixr2FO" = "fo",
-      "nlmixr2Posthoc" = "posthoc"
-    )
-
   if (!(inherits(fit, "nlmixr2FitCore"))) {
     stop("'fit' needs to be a nlmixr2 fit", call. = FALSE)
   }
+  fit$est
 
-  res <- sapply(names(methodsList), function(met) {
-    inherits(fit, met)
-  })
-  .w <- which(res == TRUE)
-  if (length(.w) != 1) {
-    stop("cannot determine the method the nlmixr2 fit used, please submit a bug report",
-      call. = FALSE
-    )
-  }
-  setNames(methodsList[.w], NULL)
 }
 
 #' Extract all the relevant variables from a set of bootstrapped models

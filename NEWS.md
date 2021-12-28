@@ -36,6 +36,10 @@
 
 - `augPred` uses the new interface and supports multiple endpoints.
   The endpoint name is now always on the `plot(augPred(fit))`.
+  
+## getFitMethod() change 
+
+- Internally, fit estimation method is saved in `fit$est`, and now `getFitMethod(fit)` simply returns `fit$est`
 
 # nlmixr 2.0.6
 
