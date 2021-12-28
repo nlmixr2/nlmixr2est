@@ -1149,3 +1149,4 @@ assignToEnv <- function(namedVars, fitobject) {
     assign(x, namedVars[[x]], envir = env)
   })
 }
+

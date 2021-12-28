@@ -151,3 +151,34 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   nlmixr2Est(.env)
 }
 
+#' @rdname nlmixr2
+#' @export
+nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
+                                   save = NULL, envir = parent.frame()) {
+  .args <- as.list(match.call(expand.dots = TRUE))[-1]
+  .modName <- deparse(substitute(object))
+  .uif <- object
+  if (missing(data)) {
+    data <- object$origData
+  }
+  if (missing(est)) {
+    est <- object$est
+  }
+  if (missing(control)) {
+    control <- object$control
+  }
+  if (missing(table)) {
+    table <- object$table
+  }
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- object$ui
+  .env$data <- data
+  .env$control <- control
+  .env$table <- table
+  class(.env) <- c(est, "nlmixr2Est")
+  nlmixr2Est(.env)
+}
+
+#' @rdname nlmixr2
+#' @export
+nlmixr2.nlmixr2FitData <- nlmixr2.nlmixr2FitCore

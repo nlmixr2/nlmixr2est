@@ -2044,7 +2044,6 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
   if (length(env$skipCov) > .maxTheta) {
     if (all(env$skipCov[-seq_len(.maxTheta)])) {
       assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
-      print(env$skipCov)
     }
   }
   if (length(env$skipCov) != .maxTheta) {
