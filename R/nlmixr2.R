@@ -1,3 +1,50 @@
+
+
+##' @importFrom stats predict logLik na.fail pchisq approxfun cov cov2cor dlnorm median na.omit qchisq
+##' @importFrom n1qn1 n1qn1
+##' @importFrom brew brew
+##' @importFrom nlme nlme fixed.effects random.effects
+##' @importFrom nlme groupedData
+##' @importFrom nlme getData
+##' @importFrom nlme pdDiag
+##' @importFrom rxode2 rxode2
+##' @importFrom graphics abline lines matplot plot points title
+##' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
+##' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData
+##' @importFrom parallel mclapply
+##' @importFrom methods is
+##' @importFrom Rcpp evalCpp
+##' @importFrom lbfgsb3c lbfgsb3c
+##' @importFrom ggplot2 ggplot aes geom_point facet_wrap geom_line geom_abline xlab geom_smooth aes_string
+##' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
+##' @useDynLib nlmixr2, .registration=TRUE
+
+
+rex::register_shortcuts("nlmixr2")
+## GGplot use and other issues...
+utils::globalVariables(c("DV", "ID", "IPRED", "IRES", "PRED", "TIME", "grp", "initCondition", "values", "nlmixr2_pred", "iter", "val", "EVID"))
+
+nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n  _ __  | | _ __ ___   _ __  __ _ __\n | '_ \\ | || '_ ` _ \\ | |\\ \\/ /| '__|\n | | | || || | | | | || | >  < | |\n |_| |_||_||_| |_| |_||_|/_/\\_\\|_|\n"
+
+##' Messages the nlmixr2 logo...
+##'
+##' @param str String to print
+##' @param version Version information (by default use package version)
+##' @return nothing; Called to display version information
+##' @author Matthew L. Fidler
+nlmixr2Logo <- function(str = "", version = sessionInfo()$otherPkgs$nlmixr2$Version) {
+  message(sprintf(nlmixr2.logo, str, version))
+}
+##' Display nlmixr2's version
+##'
+##' @author Matthew L. Fidler
+##' @return Nothing, called for its side effects
+##' @export
+nlmixr2Version <- function() {
+  nlmixr2Logo()
+}
+
+
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -9,7 +56,6 @@
 #' @template uif
 #'
 #' @param object Fitted object or function specifying the model.
-#' @inheritParams nlmixr2_fit
 #' @param ... Other parameters
 #' @param save Boolean to save a nlmixr2 object in a rds file in the
 #'     working directory.  If \code{NULL}, uses option "nlmixr2.save"

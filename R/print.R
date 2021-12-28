@@ -258,14 +258,6 @@ print.nlmixr2FitCore <- function(x, ...) {
       .pf <- gsub(rex::rex(capture(.regNum), "="), "\\1 ", .pf, perl = TRUE)
     }
     cat(paste(.pf, collapse = "\n"), "\n")
-    if (!is.null(x$omega)) {
-      .mu <- dim(x$omega)[1] == length(x$mu.ref)
-      if (!.mu) {
-        .fmt3("BSV Covariance", .bound, "omega")
-        print(x$omega)
-        cat(paste0("\n  Not all variables are ", ifelse(use.utf(), "\u03bc", "mu"), "-referenced.\n  Can also see BSV Correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)\n"))
-      }
-    }
     ## Correlations
     cat(paste0(
       "  Covariance Type (", crayon::yellow(.bound), crayon::bold$blue("$covMethod"), "): ",

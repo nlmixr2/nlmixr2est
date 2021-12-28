@@ -2,7 +2,8 @@
 
 ## FOCEI family changes
 
-- Remove lower level `foceiFit` function.  Focei now directly takes rxode2 ui objects
+- Remove lower level `foceiFit` function.  Focei, foce, fo, foi, and
+  posthoc now directly takes rxode2 ui objects
 
 ## nlmixr interface change
 
@@ -40,6 +41,10 @@
 ## getFitMethod() change 
 
 - Internally, fit estimation method is saved in `fit$est`, and now `getFitMethod(fit)` simply returns `fit$est`
+
+## Delete methods
+
+- Many method's lower level utility functions have been deleted.
 
 # nlmixr 2.0.6
 

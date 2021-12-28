@@ -577,7 +577,6 @@ is.latex <- function() {
 #' @inheritParams configsaem
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
-#' @inheritParams foceiFit
 #'
 #' @details
 #'
