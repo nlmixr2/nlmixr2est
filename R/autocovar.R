@@ -248,7 +248,7 @@ addCovVar <- function(fitobject,
     )
   normOp <- norm_ops[[norm_type]]
 
-  funstring <- fitobject$uif$fun.txt
+  funstring <- fitobject$ui$fun.txt
   funstringSplit <-
     unlist(strsplit(funstring, split = "\\\n")) # split the string at \n
 
@@ -408,7 +408,7 @@ removeCovVar <- function(fitobject,
     stop("'fit' needs to be a nlmixr2 fit")
   }
 
-  funstring <- fitobject$uif$fun.txt
+  funstring <- fitobject$ui$fun.txt
   funstringSplit <-
     unlist(strsplit(funstring, split = "\\\n")) # split the string at \n
 
@@ -611,7 +611,7 @@ initializeCovars <- function(fitobject,
   updatedMod <- paste0("model(fitobject,{", fstring, "})")
   updatedMod <- eval(parse(text = updatedMod))
 
-  ini2 <- as.data.frame(updatedMod$ini)
+  ini2 <- updatedMod$iniDf
   for (covName in covNames) {
     ini2[ini2$name == covName, "est"] <- initialEst
     ini2[ini2$name == covName, "lower"] <- initialEstLB
@@ -1143,7 +1143,7 @@ forwardSearch <- function(covInfo, fit, pVal = 0.05, outputDir, restart = FALSE)
       # bck: if deltObjf >0: pchisq=1-pchisq(deltObjf, dof), else pchisq=1
 
       dObjf <- fit$objf - x$objf
-      dof <- length(x$uif$ini$est) - length(fit$uif$ini$est)
+      dof <- length(x$ui$ini$est) - length(fit$ui$ini$est)
       if (dObjf < 0) {
         pchisqr <- 1 - pchisq(-dObjf, df = dof)
       }
@@ -1151,7 +1151,7 @@ forwardSearch <- function(covInfo, fit, pVal = 0.05, outputDir, restart = FALSE)
         pchisqr <- 1
       }
 
-      l1 <- list(step = stepIdx, covar = nam_covar, var = nam_var, objf = x$objf, deltObjf = dObjf, AIC = x$AIC, BIC = x$BIC, numParams = length(x$uif$ini$est), qchisqr = qchisq(1 - pVal, dof), pchisqr = pchisqr, included = "", searchType = "forward")
+      l1 <- list(step = stepIdx, covar = nam_covar, var = nam_var, objf = x$objf, deltObjf = dObjf, AIC = x$AIC, BIC = x$BIC, numParams = length(x$ui$ini$est), qchisqr = qchisq(1 - pVal, dof), pchisqr = pchisqr, included = "", searchType = "forward")
       l2 <- list(covNames = covNames, covarEffect = x$parFixedDf[covNames, "Estimate"])
 
       c(l1, l2)
@@ -1316,7 +1316,7 @@ backwardSearch <- function(covInfo, fitorig, fitupdated, pVal = 0.01, reFitCovar
       # bck: if deltObjf >0: pchisq=1-pchisq(deltObjf, dof), else pchisq=1
 
       dObjf <- x$objf - fit$objf
-      dof <- length(fit$uif$ini$est) - length(x$uif$ini$est)
+      dof <- length(fit$ui$ini$est) - length(x$ui$ini$est)
 
       if (dObjf > 0) {
         pchisqr <- 1 - pchisq(dObjf, df = dof)
@@ -1325,7 +1325,7 @@ backwardSearch <- function(covInfo, fitorig, fitupdated, pVal = 0.01, reFitCovar
         pchisqr <- 1
       }
 
-      l1 <- list(step = stepIdx, covar = nam_covar, var = nam_var, objf = x$objf, deltObjf = dObjf, AIC = x$AIC, BIC = x$BIC, numParams = length(x$uif$ini$est), qchisqr = qchisq(1 - pVal, dof), pchisqr = pchisqr, included = "", searchType = "backward")
+      l1 <- list(step = stepIdx, covar = nam_covar, var = nam_var, objf = x$objf, deltObjf = dObjf, AIC = x$AIC, BIC = x$BIC, numParams = length(x$ui$ini$est), qchisqr = qchisq(1 - pVal, dof), pchisqr = pchisqr, included = "", searchType = "backward")
       l2 <- list(covNames = covNames, covarEffect = fit$parFixedDf[covNames, "Estimate"])
 
       c(l1, l2)
