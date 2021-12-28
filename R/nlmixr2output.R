@@ -340,19 +340,12 @@
     }
     return(NULL)
   }
-  if (exists("uif", .env)) {
-    .uif <- .env$uif
-    if (arg == "modelName") arg <- "model.name"
-    if (arg == "dataName") arg <- "data.name"
-    .ret <- `$.nlmixr2UI`(.uif, arg)
-    if (!is.null(.ret)) {
-      return(.ret)
-    }
-    .env2 <- `$.nlmixr2UI`(.uif, "env")
-    if (exists(arg, envir = .env2)) {
-      return(get(arg, envir = .env2))
-    }
-  }
+  if (arg == "modelName") arg <- "model.name"
+  if (arg == "dataName") arg <- "data.name"
+  .lst <- list(.env$ui, exact)
+  class(.lst) <- c(arg, "rxUiGet")
+  .ret <- rxUiGet(.lst)
+  if (!is.null(.ret)) return(.ret)
   if (arg == "simInfo") {
     return(.simInfo(obj))
   }

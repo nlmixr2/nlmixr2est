@@ -2,6 +2,7 @@
 % Please edit documentation in R/augPred.R
 \name{nlmixr2AugPredSolve}
 \alias{nlmixr2AugPredSolve}
+\alias{augPred.nlmixr2FitData}
 \title{Augmented Prediction for nlmixr2 fit}
 \usage{
 nlmixr2AugPredSolve(
@@ -10,6 +11,15 @@ nlmixr2AugPredSolve(
   minimum = NULL,
   maximum = NULL,
   length.out = 51L,
+  ...
+)
+
+\method{augPred}{nlmixr2FitData}(
+  object,
+  primary = NULL,
+  minimum = NULL,
+  maximum = NULL,
+  length.out = 51,
   ...
 )
 }
@@ -44,6 +54,15 @@ carried backward to midpoint.
 
 \item{...}{some methods for the generic may require additional
    arguments.}
+
+\item{object}{a fitted model object from which predictions can be
+   extracted, using a \code{predict} method.}
+
+\item{primary}{an optional one-sided formula specifying the primary
+   covariate to be used to generate the augmented predictions. By
+   default, if a  covariate can be extracted from the data used to generate
+   \code{object} (using \code{getCovariate}), it will be used as
+   \code{primary}.}
 }
 \value{
 Stacked data.frame with observations, individual/population predictions.

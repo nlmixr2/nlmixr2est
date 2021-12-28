@@ -1041,7 +1041,9 @@ foceiControl <- function(sigdig = 3, ...,
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying etaMat, assume you wish to evaluate at ETAs, so setting maxInnerIterations=0")
     .ret$maxInnerIterations <- 0L
-    .ret$etaMat
+    .ret$etaMat <- etaMat
+  } else if (!is.null(etaMat)) {
+    .ret$etaMat <- etaMat
   }
   .tmp <- .ret
   .tmp$maxsteps <- maxstepsOde
@@ -2039,6 +2041,12 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
     .skipCov[ui$iniDf$ntheta[which(!is.na(ui$iniDf$err))]] <- TRUE
     env$skipCov <- .skipCov
   }
+  if (length(env$skipCov) > .maxTheta) {
+    if (all(env$skipCov[-seq_len(.maxTheta)])) {
+      assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
+      print(env$skipCov)
+    }
+  }
   if (length(env$skipCov) != .maxTheta) {
     stop("'skipCov' improperly specified", call.=FALSE)
   }
@@ -2236,7 +2244,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- do.call(nlmixr2::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
-
 }
 
 #' Get the cmt() and dvid() lines
@@ -2287,6 +2294,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
   }
   assign("est", est, envir=.ret)
+  assign("skipCov", .env$skipCov, envir=.ret)
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
@@ -2370,4 +2378,41 @@ nlmixr2Est.fo <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="fo")
   .ret$est <- "fo"
   .ret
+}
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.output <- function(env, ...) {
+  .ui <- env$ui
+  .foceiFamilyControl(env, ...)
+  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
+  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
+  on.exit({rm("control", envir=.ui)})
+  env$est <- "posthoc"
+  .foceiFamilyReturn(env, .ui, ..., est=env$est)
+}
+
+
+nlmixrCreateOutputFromUi <- function(ui, data=NULL, control=NULL, env=NULL, est="none") {
+  if (inherits(ui, "function")) {
+    ui <- rxode2::rxode2(ui)
+  }
+  if (!inherits(ui, "rxUi")) {
+    stop("the first argument needs to be from rxode2 ui", call.=FALSE)
+  }
+  if (inherits(env, "environment")) {
+    assign("foceiEnv", env, envir=ui)
+  }
+  if (!inherits(data, "data.frame")) {
+    stop("the 'data' argument must be a data.frame", call.=FALSE)
+  }
+
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- ui
+  .env$data <- data
+  .env$control <- control
+  .env$table <- table
+  .env$est <- est
+  class(.env) <- c("output", "nlmixr2Est")
+  nlmixr2Est(.env)
 }

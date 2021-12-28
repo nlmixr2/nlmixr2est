@@ -37,7 +37,7 @@
       .control$covMethod <- .covMethodIdx[.lst$covMethod]
     } else if (inherits(.lst$covMethod, "matrix")) {
       .env2$cov <- as.matrix(.lst$covMethod)
-      .env2$uif <- obj$uif
+      .env2$ui <- obj$ui
       .control$covMethod <- 0L
     } else if (length(.lst$covMethod) == 1) {
       if (.lst$covMethod == "") {
@@ -81,32 +81,12 @@
     .lst$covSmall <- NULL
   }
   .dat <- getData(obj)
-  .uif <- obj$uif
+  .ui <- obj$ui
   .mat <- as.matrix(nlme::random.effects(obj)[, -1])
-  .skipCov <- obj$skipCov
-  .inits <- list(
-    THTA = as.vector(nlme::fixed.effects(obj)),
-    OMGA = focei.eta.nlmixr2FitCore(obj)
-  )
-  .fit2 <- foceiFit.data.frame0(
-    data = .dat,
-    inits = .inits,
-    PKpars = .uif$theta.pars,
-    ## par_trans=fun,
-    model = .uif$rxode.pred,
-    pred = function() {
-      return(nlmixr2_pred)
-    },
-    err = .uif$error,
-    lower = .uif$focei.lower,
-    upper = .uif$focei.upper,
-    thetaNames = .uif$focei.names,
-    etaNames = .uif$eta.names,
-    etaMat = .mat,
-    skipCov = .skipCov,
-    control = .control,
-    env = .env2
-  )
+  .control$skipCov <- obj$skipCov
+  .control$etaMat <- .mat
+  .fit2 <- nlmixrCreateOutputFromUi(.ui, data=.dat, control=.control, env=.env2, est="none")
+  print(.fit2)
   .env$cov <- .fit2$cov
   .env$popDf <- .fit2$popDf
   .env$popDfSig <- .fit2$popDfSig
