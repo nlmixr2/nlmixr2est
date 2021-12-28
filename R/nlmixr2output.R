@@ -262,93 +262,165 @@
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
 
-#' @export
-`$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
+.nmObjEnsureObjective <- function(obj) {
   .env <- obj
-  if (arg == "md5") {
-    return(.nlmixr2Md5(obj))
-  } else if (arg == "posthoc") {
-    return(nlmixr2Posthoc(obj))
-  } else if (arg == "notes") {
-    return(.notesFit(obj))
-  } else if (any(arg == c(
-    "logLik", "value", "obf", "ofv",
-    "objf", "OBJF", "objective", "AIC",
-    "BIC"
-  ))) {
-    if (!is.null(obj$saem)) {
-      .tmp <- obj$saem
-      .curObj <- get("objective", .env)
-      if (is.na(.curObj)) {
-        .nnodes <- 3
-        if (exists("nnodes.gq", .env)) {
-          .nnodes <- .env$nnodes.gq
-        }
-        .nsd <- 1.6
-        if (exists("nsd.gq", .env)) {
-          .nsd <- .env$nsd.gq
-        }
-        if (.nnodes == 1) {
-          .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)
-        } else {
-          .tmp <- try(setOfv(obj, paste0("gauss", .nnodes, "_", .nsd)), silent = TRUE)
-        }
-        if (inherits(.tmp, "try-error")) {
-          message("gaussian quadrature failed, changed to focei")
-          setOfv(obj, "focei")
-        }
+  if (!is.null(obj$saem)) {
+    .tmp <- obj$saem
+    .curObj <- get("objective", .env)
+    if (is.na(.curObj)) {
+      .nnodes <- 3
+      if (exists("nnodes.gq", .env)) {
+        .nnodes <- .env$nnodes.gq
+      }
+      .nsd <- 1.6
+      if (exists("nsd.gq", .env)) {
+        .nsd <- .env$nsd.gq
+      }
+      if (.nnodes == 1) {
+        .tmp <- try(setOfv(obj, paste0("laplace", .nsd)), silent = TRUE)
+      } else {
+        .tmp <- try(setOfv(obj, paste0("gauss", .nnodes, "_", .nsd)), silent = TRUE)
+      }
+      if (inherits(.tmp, "try-error")) {
+        message("gaussian quadrature failed, changed to focei")
+        setOfv(obj, "focei")
       }
     }
   }
-  if (any(arg == c("value", "obf", "ofv"))) arg <- "objf"
-  if (arg == "sigma") {
-    return(.sigma(obj))
+}
+
+#' Get an item from a nlmixr core object
+#'
+#' @param x A specialized list with:
+#' - First argument is a nlmixrFitCore environment
+#' - Second argument is if the exact argument is requeste
+#' - The class would be the requested argument name followed by the class "nmObjGet"
+#' @param ... Other arguments
+#' @return Value of argument or NULL
+#' @author Matthew L. Fidler
+#' @keywords internal
+nmObjGet <- function(x, ...) {
+  if (!inherits(x, "nmObjGet")) {
+    stop("'x' is wrong type for 'nmObjGet'", call.=FALSE)
   }
-  if (arg == "coefficients") {
-    return(list(
-      fixed = fixef(obj),
-      random = ranef(obj)
-    ))
+  .arg <- class(x)[1]
+  if (any(.arg == c(
+    "logLik", "value", "obf", "ofv",
+    "objf", "OBJF", "objective", "AIC",
+    "BIC"))) {
+    .nmObjEnsureObjective(x[[1]])
   }
-  if (arg == "par.hist") arg <- "parHist"
-  if (arg == "par.hist.stacked") arg <- "parHistStacked"
-  if (arg == "omega.R") arg <- "omegaR"
-  if (arg == "par.fixed") arg <- "parFixed"
-  if (arg == "eta") arg <- "ranef"
-  if (arg == "theta") arg <- "fixef"
-  if (arg == "varFix") arg <- "cov"
-  if (arg == "thetaMat") arg <- "cov"
-  if (arg == "seed" && exists("saem", .env)) {
-    return(attr(.env$saem, "saem.cfg")$seed)
+  UseMethod("nmObjGet")
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.default <- function(x, ...) {
+  .arg <- class(x)[1]
+  .env <- x[[1]]
+  if (exists(.arg, envir = .env)) {
+    return(get(.arg, envir = .env))
   }
-  if (arg == "saem.cfg" && exists("saem", .env)) {
-    return(attr(.env$saem, "saem.cfg"))
-  }
-  if (exists(arg, envir = .env)) {
-    return(get(arg, envir = .env))
-  }
-  if (arg == "env") {
-    return(.env)
-  }
-  if (arg == "condition") {
-    .objDf <- .env$objDf
-    #$objDf[,"Condition Number"]
-    if (any(names(.objDf) == "Condition Number")) {
-      .cn <- .objDf[, "Condition Number"]
-      .cn <- .cn[!is.na(.cn)]
-      return(.cn)
-    }
-    return(NULL)
-  }
-  if (arg == "modelName") arg <- "model.name"
-  if (arg == "dataName") arg <- "data.name"
-  .lst <- list(.env$ui, exact)
-  class(.lst) <- c(arg, "rxUiGet")
+  .lst <- list(get("ui", envir=.env), x[[2]])
+  class(.lst) <- c(.arg, "rxUiGet")
   .ret <- rxUiGet(.lst)
-  if (!is.null(.ret)) return(.ret)
-  if (arg == "simInfo") {
-    return(.simInfo(obj))
+  .ret
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.md5 <- function(x, ...) {
+  .nlmixr2Md5(x[[1]])
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.notes <- function(x, ...) {
+  .notesFit(x[[1]])
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.sigma <- function(x, ...) {
+  .sigma(x[[1]])
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.coefficients <- function(x, ...) {
+  list(fixed = fixef(x[[1]]),
+       random = ranef(x[[1]]))
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.env <- function(x, ...) {
+  x[[1]]
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.condition <- function(x, ...) {
+  .env <- x[[1]]
+  .objDf <- .env$objDf
+  if (any(names(.objDf) == "Condition Number")) {
+    .cn <- .objDf[, "Condition Number"]
+    .cn <- .cn[!is.na(.cn)]
+    return(.cn)
   }
+  return(NULL)
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.simInfo <- function(x, ...) {
+  .simInfo(x[[1]])
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.seed <- function(x, ...) {
+  .env <- x[[1]]
+  if (exists("saem", .env)) {
+    attr(get("saem", .env), "saem.cfg")$seed
+  }
+  NULL
+}
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemCfg <- function(x, ...) {
+  .env <- x[[1]]
+  if (exists("saem", .env)) {
+    return(attr(get("saem", .env), "saem.cfg"))
+  }
+}
+
+.nmObjBackward <- c(
+  "value"="objf",
+  "obf"="objf",
+  "ofv"="objf",
+  "par.hist"="parHist",
+  "par.hist.stacked"="parHistStacked",
+  "omega.R"="omegaR",
+  "par.fixed"="parFixed",
+  "eta"="ranef",
+  "theta"="fixef",
+  "varFix"="cov",
+  "thetaMat"="cov",
+  "modelName"="model.name",
+  "dataName"="data.name",
+  "saem.cfg"="saemCfg"
+)
+
+#' @export
+`$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
+  .env <- obj
+  .arg <- .nmObjBackward[arg]
+  if (is.na(.arg)) .arg <- arg
+  .lst <- list(obj, exact)
+  class(.lst) <- c(.arg, "nmObjGet")
+  .ret <- nmObjGet(.lst)
+  if (!is.null(.ret)) return(.ret)
 }
 
  #' @export
