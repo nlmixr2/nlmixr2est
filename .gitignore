@@ -4,7 +4,6 @@ doc
 *.a
 *.dll
 rx_*.*
-saem*.*
 *.Rhistory
 .*/.Rhistory
 inst/doc
