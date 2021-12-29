@@ -10,7 +10,7 @@ rxGetDistributionFoceiLines(line)
 \item{line}{Parsed rxode2 model environment}
 }
 \value{
-Lines for the simulation of `ipred` and `dv`. This is based
+Lines for the focei. This is based
   on the idea that the focei parameters are defined
 }
 \description{

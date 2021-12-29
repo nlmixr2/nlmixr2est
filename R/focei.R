@@ -1302,7 +1302,7 @@ foceiControl <- function(sigdig = 3, ...,
 #' This is a S3 method for getting the distribution lines for a base rxode2 focei problem
 #'
 #' @param line Parsed rxode2 model environment
-#' @return Lines for the simulation of `ipred` and `dv`. This is based
+#' @return Lines for the focei. This is based
 #'   on the idea that the focei parameters are defined
 #' @author Matthew Fidler
 #' @keywords internal
@@ -1341,11 +1341,11 @@ rxGetDistributionFoceiLines.rxUi <- function(line) {
 rxUiGet.foceiModel0 <- function(x, ...) {
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
-                      prefixLines=.uiGetThetaEta(.f),
-                      paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                      modelVars=TRUE,
-                      cmtLines=FALSE,
-                      dvidLine=FALSE)
+                              prefixLines=.uiGetThetaEta(.f),
+                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              modelVars=TRUE,
+                              cmtLines=FALSE,
+                              dvidLine=FALSE)
 }
 #attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
 
