@@ -513,71 +513,401 @@ rxUiGet.saemFunction <- function(x, ...) {
   .fn
 }
 
+#' @export
+rxUiGet.saemFixed <- function(x, ...) {
+  .ui <- x[[1]]
+  .df <- .ui$iniDf
+  .dft <- .df[!is.na(.df$ntheta), ]
+  .fixError <- .dft[!is.na(.dft$err), ]
+  if (any(.fixError$fix)) {
+    stop("Residuals cannot be fixed in SAEM.")
+  }
+  .dft <- .dft[is.na(.dft$err), ]
+  .dft <- setNames(.dft$fix, paste(.dft$name))
+  .extra <- .ui$nonMuEtas
+  .extra <- setNames(rep(TRUE, length(.extra)), .ui$nonMuEtas)
+  c(.dft, .extra)
+}
+#attr(rxUiGet.saemFixed, "desc") <- "Get the saem fixed parameters"
 
-## message(fit$saem.rx1)
-## ka=exp(tka);
-## cl=exp(tcl);
-## v=exp(tv);
-## nlmixr_lincmt_pred=linCmtA(rx__PTR__,t,0,1,1,cl,v,0.0,0.0,0.0,0.0,0.0,1.0,0.0,0.0,ka,0.0,1.0,0.0,0.0);
-## nlmixr_pred=nlmixr_lincmt_pred;
+#' @export
+rxUiGet.saemEtaTrans <- function(x, ...) {
+  .ui <- x[[1]]
+  .etas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .etas <- .etas$name[.etas$neta1 == .etas$neta2]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .muRefDataFrame <- .ui$muRefDataFrame
+  vapply(.etas, function(eta) {
+    .w <- which(eta == .muRefDataFrame$eta)
+    if (length(.w) == 1L) {
+      .muTheta <- .muRefDataFrame$theta[.w]
+      .w <- which(.muTheta == .thetas)
+      if (length(.w) == 1L) return(.w)
+    }
+    .w <- which(eta == .thetas)
+    if (length(.w) == 1L) return(.w)
+    return(NA_integer_)
+  }, integer(1), USE.NAMES=FALSE)
+}
+#attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
+
+#' @export
+rxUiGet.saemModelOmega <- function(x, ...) {
+  .ui <- x[[1]]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .dm <- length(.thetas)
+  .mat <- matrix(rep(0, .dm * .dm), .dm)
+  .iniDf <- .ui$iniDf
+  .etd <- .iniDf[which(!is.na(.iniDf$neta1)), ]
+  for (i in seq_along(.etd$neta1)) {
+    .mat[.etaTrans[.etd$neta1[i]], .etaTrans[.etd$neta2[i]]] <-
+      .mat[.etaTrans[.etd$neta2[i]], .etaTrans[.etd$neta1[i]]] <- 1
+  }
+  .mat
+}
+#attr(rxUiGet.saemModelOmega, "desc") <- "Get the saem model omega"
+
+#' @export
+rxUiGet.saemLow <- function(x, ...) {
+  .ui <- x[[1]]
+  .ui$predDf$trLow
+}
+#attr(rxUiGet.saemLow, "desc") <- "Get the saem error transformation lower boundary"
+
+#' @export
+rxUiGet.saemHi <- function(x, ...) {
+  .ui <- x[[1]]
+  .ui$predDf$trHi
+}
+#attr(rxUiGet.saemHi, "desc") <- "Get the saem error transformation higher boundary"
+
+#' @export
+rxUiGet.saemPropT <- function(x, ...) {
+  .ui <- x[[1]]
+  as.integer((.ui$predDf$errTypeF=="transformed")*1L)
+}
+#attr(rxUiGet.saemPropT, "desc") <- "Get the saem transformation type for the function"
+
+#' @export
+rxUiGet.saemYj <- function(x, ...) {
+  .ui <- x[[1]]
+  as.integer(.ui$predDf$transform) - 1
+}
+#attr(rxUiGet.saemYj, "desc") <- "Get the saem transformation type"
+
+#' @export
+rxUiGet.saemResMod <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  vapply(seq_along(.predDf$errType),
+         function(i) {
+           .errType <- as.integer(.predDf$errType[i])
+           .hasLambda <- !is.na(.predDf$lambda[i])
+           if (.hasLambda) {
+             return(.errType + 5L)
+           } else {
+             return(.errType)
+           }
+         }, integer(1), USE.NAMES=FALSE)
+}
+#attr(rxUiGet.saemResMod, "desc") <- "saem res.mod component"
+
+#' @export
+rxUiGet.saemResName <- function(x, ...) {
+  .ui <- x[[1]]
+  .err <- .ui$iniDf
+  .w <- which(sapply(.err$err, function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn"))))
+  .ret <- c()
+  if (length(.w) == 1) {
+    if (!is.na(.err$est[.w])) {
+      .ret[length(.ret) + 1] <- paste(.err$name[.w])
+    }
+  }
+  .w <- c(which(.err$err == "prop"), which(.err$err == "propT"))
+  if (length(.w) == 1) {
+    .ret[length(.ret) + 1] <- paste(.err$name[w])
+  }
+  return(.ret)
+}
+#attr(rxUiGet.saemResName, "desc") <- "Get error names for SAEM"
+
+#' @export
+rxUiGet.saemAres <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .ini <- .ui$iniDf
+  .ini <- .ini[!is.na(.ini$err), ]
+  return(vapply(.predDf$cond, function(x) {
+    .tmp <- .ini[which(.ini$condition == x), ]
+    .w <- which(vapply(.tmp$err, function(x) {
+      x %in% c(
+        "add", "norm", "dnorm", "dpois",
+        "pois", "dbinom", "binom", "dbern", "bern",
+        "lnorm", "dlnorm", "logn", "dlogn")
+    }, logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      return(.tmp$est[.w])
+    } else {
+      return(10)
+    }
+  }, numeric(1), USE.NAMES=FALSE))
+}
+#attr(rxUiGet.saemAres, "desc") <- "ares initial estimates for saem"
+
+#' @export
+rxUiGet.saemBres <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .ini <- .ui$iniDf
+  .ini <- .ini[!is.na(.ini$err), ]
+  return(vapply(.predDf$cond, function(x) {
+    .tmp <- .ini[which(.ini$condition == x), ]
+    .w <- which(vapply(.tmp$err,
+                       function(x) (any(x == "prop") || any(x == "propT")),
+                       logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      return(.tmp$est[.w])
+    } else {
+      .w <- which(vapply(.tmp$err,
+                         function(x) (any(x == "pow") || any(x == "powT")),
+                         logical(1), USE.NAMES=FALSE))
+      if (length(.w) == 1) {
+        return(.tmp$est[.w])
+      } else {
+        return(1)
+      }
+    }
+  }, numeric(1), USE.NAMES=FALSE))
+}
+#attr(rxUiGet.saemBres, "desc") <- "bres initial estimates for saem"
+
+#' @export
+rxUiGet.saemCres <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .ini <- .ui$iniDf
+  .ini <- .ini[!is.na(.ini$err), ]
+  return(vapply(.predDf$cond, function(x) {
+    .tmp <- .ini[which(.ini$condition == x), ]
+    .w <- which(vapply(.tmp$err, function(x) (any(x == "pow2") || any(x == "powT2")),
+                       logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      return(.tmp$est[.w])
+    } else {
+      return(1)
+    }
+  }, numeric(1), USE.NAMES=FALSE))
+}
+#attr(rxUiGet.saemCres, "desc") <- "cres initial estimates for saem"
+#' @export
+rxUiGet.saemLres <- function(x, ...) {
+  .ui <- x[[1]]
+ .predDf <- .ui$predDf
+  .ini <- .ui$iniDf
+  .ini <- .ini[!is.na(.ini$err), ]
+  return(vapply(.predDf$cond, function(x) {
+    .tmp <- .ini[which(.ini$condition == x), ]
+    .boxCox <- which(.tmp$err == "boxCox")
+    if (length(.boxCox) == 1L) {
+      return(.tmp$est[.boxCox])
+    }
+    .yeoJohnson <- which(.tmp$err == "yeoJohnson")
+    if (length(.yeoJohnson) == 1L) {
+      return(.tmp$est[.yeoJohnson])
+    }
+    return(1.0)
+  }, numeric(1), USE.NAMES=FALSE))
+}
+#attr(rxUiGet.saemLres, "desc") <- "lres (lambda) initial estimates for saem"
+
+#' @export
+rxUiGet.saemDistribution <- function(x, ...) {
+  .ui <- x[[1]]
+  .df <- .ui$iniDf$err
+  .df <- paste(.df[which(!is.na(.df))])
+  if (any(.df %in% c("dpois", "pois"))) {
+    return("poisson")
+  }
+  if (any(.df %in% c("dbern", "bern", "dbinom", "binom"))) {
+    if (.df %in% c("dbinom", "binom")) {
+      .df <- obj$ini
+      .w <- which(.df$err %in% c("dbinom", "binom"))
+      if (length(.w) != 1L) stop("Distribution unsupported by SAEM")
+      if (!is.na(.df$name[.w])) stop("Distribution unsupported by SAEM")
+    }
+    return("binomial")
+  }
+  if (any(.df %in% c("dlnorm", "lnorm", "logn", "dlogn", "logitNorm", "probitNorm"))) {
+    return("normal")
+  }
+  if (any(.df %in% c("dnorm", "norm", "prop", "propT", "add", "pow", "powT", "pow2", "powT2"))) {
+    return("normal")
+  }
+
+  stop("Distribution unsupported by SAEM")
+}
 
 
-## message(fit$saem.rx1)
-##     ka = exp(tka)
-##     cl = exp(tcl)
-##     v = exp(tv)
-##     d/dt(depot) = -ka * depot
-##     d/dt(center) = ka * depot - cl/v * center
-##     cp = center/v
-##     nlmixr_pred <- cp
-## cmt(cp);
+#' @export
+rxUiGet.saemLogEta <- function(x, ...) {
+  .ui <- x[[1]]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .ce <- .ui$muRefCurEval
+  vapply(.thetas, function(x) {
+    .w <- which(.ce$parameter == x)
+    if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
+    FALSE
+  }, logical(1))
+}
+#attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
 
+#' @export
+rxUiGet.saemModelList <- function(x, ...) {
+  .ui <- x[[1]]
+  .mod <- list(saem_mod = .ui$saemFunction)
+  .covars <- rxUiGet.saemCovars(x, ...)
+  if (length(.covars) > 0) {
+    .mod$covars <- .covars
+  }
+  .mod$res.mod <- rxUiGet.saemResMod(x, ...)
+  .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
+  .mod$ares    <- rxUiGet.saemAres(x, ...)
+  .mod$bres    <- rxUiGet.saemBres(x, ...)
+  .mod$omega   <- rxUiGet.saemModelOmega(x, ...)
+  .mod
+}
+#attr(rxUiGet.saemModelList "desc") <- "saem's log.eta for saem"
 
-## message(fit$saem.rx1)
-##     ktr = exp(tktr)
-##     ka = exp(tka)
-##     cl = exp(tcl)
-##     v = exp(tv)
-##     emax = expit(temax)
-##     ec50 = exp(tec50)
-##     kout = exp(tkout)
-##     e0 = exp(te0)
-##     DCP = center/v
-##     PD = 1 - emax * DCP/(ec50 + DCP)
-##     effect(0) = e0
-##     kin = e0 * kout
-##     d/dt(depot) = -ktr * depot
-##     d/dt(gut) = ktr * depot - ka * gut
-##     d/dt(center) = ka * gut - cl/v * center
-##     d/dt(effect) = kin * PD - kout * effect
-##     cp = center/v
-##     if (CMT == 5) {
-##         nlmixr_pred <- cp
-##     }
-##     if (CMT == 4) {
-##         nlmixr_pred <- effect
-##     }
-## cmt(cp);
+#' @export
+rxUiGet.saemInitTheta <- function(x, ...) {
+  .logEta <- rxUiGet.saemLogEta(x, ...)
+  .names <- names(.logEta)
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .est <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"]
+  .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
+  .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
+  setNames(vapply(seq_along(.logEta),
+                  function(i){
+                    .isEta <- any(.names[i] %in% .etaNames)
+                    if (.logEta[i]) {
+                      if (.isEta) {
+                        return(1)
+                      } else {
+                        return(exp(.est[i]))
+                      }
+                    } else {
+                      if (.isEta) {
+                        return(0)
+                      } else {
+                        return(.est[i])
+                      }
+                    }
+                  }, numeric(1), USE.NAMES=FALSE),
+           rxUiGet.saemParamsToEstimate(x, ...))
+}
+#attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
 
-## cmt(effect);
+#' @export
+rxUiGet.saemInitOmega <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .eta <- .iniDf[is.na(.iniDf$ntheta), ]
+  .eta <- .eta[.eta$neta1 == .eta$neta2, ]
+  .eta <- setNames(.eta$est, .eta$name)
+  .pars <- rxUiGet.saemParamsToEstimate(x, ...)
+  .ret <- rep(1.0, length(.pars))
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  for (i in seq_along(.etaTrans)) {
+    .ret[.etaTrans[i]] <- .eta[i]
+  }
+  setNames(.ret, .pars)
+}
+#attr(rxUiGet.saemInitOmega, "desc") <- "initialization for saem's omega"
 
+#' @export
+rxUiGet.saemInit <- function(x, ...) {
+  list(theta=rxUiGet.saemInitTheta(x, ...),
+       omega=rxUiGet.saemInitOmega(x, ...))
+}
+#attr(rxUiGet.saemInit, "desc") <- "initialization for saem's theta and omega"
 
-## predDf has var for the variable that the prediction is defined and cmt shows the compartment that is used for this model
-
-.saemGenModel <- function(ui, timeVaryingCovariates=character(0)) {
+.saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
   .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
   if (length(timeVaryingCovariates) > 0) {
     # Drop time-varying covariates
     .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
   }
   assign("muRefFinal", .muRefCovariateDataFrame, ui)
-  on.exit(rm(list="muRefFinal", ui))
+  print(.muRefCovariateDataFrame)
+  print(ui$muRefFinal)
+  on.exit(try(rm(list="muRefFinal", envir=ui)))
+  .model <- ui$saemModelList
+  .cfg <- .configsaem(model=.model,
+                      data=data,
+                      inits=ui$saemInit,
+                      mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
+                      ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
+                      distribution="normal",
+                      addProp="combined2",
+                      seed=rxode2::rxGetControl(ui, "seed", 99),
+                      fixed=ui$saemFixed,
+                      DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
+                      tol=rxode2::rxGetControl(ui, "tol", 1e-6),
+                      itmax=rxode2::rxGetControl(ui, "itmax", 30),
+                      type=rxode2::rxGetControl(ui, "type", "nelder-mead"),
+                      lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
+                      powRange=rxode2::rxGetControl(ui, "powRange", 10),
+                      odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
+                      maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5))
+  .print <- rxode2::rxGetControl(ui, "print", 1)
+  if (inherits(.print, "numeric")) {
+    .cfg$print <- as.integer(.print)
+  }
+  .cfg$cres <- ui$saemCres
+  .cfg$yj <- ui$saemYj
+  .cfg$lres <- ui$saemLres
+  .cfg$low <- ui$saemLow
+  .cfg$hi <- ui$saemHi
+  .cfg$propT <- ui$saemPropT
+  .model$saem_mod(.cfg)
+}
 
+.saemFamilyControl <- function(env, ...) {
+  .ui <- env$ui
+  .control <- env$control
+  if (is.null(.control)) {
+    .control <- saemControl()
+  }
+  if (!inherits(.control, "saemControl")){
+    .control <- do.call(nlmixr2::saemControl, .control)
+  }
+  assign("control", .control, envir=.ui)
+}
+
+.saemPreProcessData <- function(data, env, ui) {
+  .foceiPreProcessData(data, env, ui)
+}
+
+.saemFamilyFit <- function(env, ui, ...) {
+  .control <- ui$control
+  .data <- env$data
+  .foceiPreProcessData(.data, env, ui)
+  .et <- rxode2::etTrans(env$dataSav, rxode2::rxNorm(ui$mv0))
+  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+  if (is.null(.nTv)) .nTv <- 0
+  .tv <- character(0)
+  if (.nTv != 0) {
+    .tv <- names(.et)[-seq(1, 6)]
+  }
+  .saemFitModel(ui, env$dataSav, timeVaryingCovariates=.tv)
 }
 
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
-
+  .saemFamilyControl(env, ...)
+  .saemFamilyFit(env, env$ui, ...)
 }

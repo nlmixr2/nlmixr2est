@@ -1579,7 +1579,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   .rxFinalizePred(.s, .sumProd, .optExpression)
   .s
 }
-#attr(rxUiGet.foceiEnv, "desc") <- "Get the foce environment"
+#attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 
 .toRxParam <- ""
 .toRxDvidCmt <- ""

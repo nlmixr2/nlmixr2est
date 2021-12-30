@@ -193,8 +193,8 @@ gen_saem_user_fn <- genSaemUserFunction
 #' fit
 #'
 #' }
-#' @export
-configsaem <- function(model, data, inits,
+#' @noRd
+.configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
                        ODEopt = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", transitAbs = FALSE, maxeval = 100000),
                        distribution = c("normal", "poisson", "binomial"),
@@ -253,7 +253,6 @@ configsaem <- function(model, data, inits,
   model$cov.mod <- 1 - is.na(inits$theta)
   data$N.covar <- nrow(inits$theta) - 1
   inits$theta[is.na(inits$theta)] <- 0
-
 
   ###  FIXME
   mcmc$stepsize <- 0:1

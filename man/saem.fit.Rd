@@ -118,8 +118,6 @@ saem(
 
 \item{ODEopt}{optional ODE solving options}
 
-\item{distribution}{one of c("normal","poisson","binomial")}
-
 \item{seed}{seed for random number generator}
 }
 \value{

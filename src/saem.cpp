@@ -52,6 +52,18 @@ int _saemIncreasedTol2=0;
 double _saemOdeRecalcFactor = 1.0;
 int _saemMaxOdeRecalc = 0;
 
+// res_mod defines
+#define rmAdd 1
+#define rmProp 2
+#define rmPow 3
+#define rmAddProp 4
+#define rmAddPow 5
+#define rmAddLam 6
+#define rmPropLam 7
+#define rmPowLam 8
+#define rmAddPropLam 9
+#define rmAddPowLam 10
+
 static inline double handleF(int powt, double &ft, double &f, bool trunc, bool adjustF) {
   double xmin = 1.0e-200, xmax=1e300;
   double fa = powt ? ft : f;
@@ -533,11 +545,10 @@ public:
     veclres = lres(ix_endpnt);
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
-      if (res_mod(b)==1)
-	sigma2[b] = max(ares(b)*ares(b), 10.0);
-      if (res_mod(b)==2)
-	sigma2[b] = max(bres(b)*bres(b), 1.0);
-
+      if (res_mod(b) == rmAdd)
+        sigma2[b] = max(ares(b)*ares(b), 10.0);
+      if (res_mod(b) == rmProp)
+        sigma2[b] = max(bres(b)*bres(b), 1.0);
       statrese[b] = 0.0;
     }
 
@@ -713,7 +724,7 @@ public:
 	    }
 	    ft = _powerD(f_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
 	    resid(i) -=  ft;
-	    if (res_mod(b) == 2) {
+	    if (res_mod(b) == rmProp) {
 	      fa = handleF((int)propT(b), ft, f_cur[i], true, true);
 	      resid(i) = resid(i)/fa;
 	    }
@@ -724,7 +735,7 @@ public:
 	  Rcout << ys(iix) << fk(iix) << gk(iix);
 #endif
 
-	  if (res_mod(b)<=2)
+	  if (res_mod(b) <= rmProp)
 	    resk = dot(resid, resid);
 	  else
 	    resk = 1;                                              //FIXME
@@ -817,9 +828,9 @@ public:
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
 	double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
-	if (res_mod(b)==1) ares(b) = sqrt(sig2);
-	else if (res_mod(b)==2) bres(b) = sqrt(sig2);
-	else if (res_mod(b) == 3) {
+	if (res_mod(b) == rmAdd) ares(b) = sqrt(sig2);
+	else if (res_mod(b) == rmProp) bres(b) = sqrt(sig2);
+	else if (res_mod(b) == rmAddProp) {
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -855,7 +866,7 @@ public:
 	  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
 	  bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
 
-	} else if (res_mod(b) == 4) { // add + pow
+	} else if (res_mod(b) == rmAddPow) { // add + pow
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -889,7 +900,7 @@ public:
 	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
 	  bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
 	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
-	} else if (res_mod(b) == 5) { // power
+	} else if (res_mod(b) == rmPow) { // power
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -917,7 +928,7 @@ public:
 	  _saemOpt(n, pxmin);
 	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
 	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
-	} else if (res_mod(b) == 6) { // additive + lambda
+	} else if (res_mod(b) == rmAddLam) { // additive + lambda
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -945,7 +956,7 @@ public:
 	  _saemOpt(n, pxmin);
 	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
 	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-	} else if (res_mod(b) == 7) { // prop + lambda
+	} else if (res_mod(b) == rmPropLam) { // prop + lambda
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -973,7 +984,7 @@ public:
 	  _saemOpt(n, pxmin);
 	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
 	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-	} else if (res_mod(b) == 8) { // pow + lambda
+	} else if (res_mod(b) == rmPowLam) { // pow + lambda
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -1002,7 +1013,7 @@ public:
 	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
 	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
 	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-	} else if (res_mod(b) == 9) { // add + prop + lambda
+	} else if (res_mod(b) == rmAddPropLam) { // add + prop + lambda
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -1031,7 +1042,7 @@ public:
 	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
 	  bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
 	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-	} else if (res_mod(b) == 10) { // add + pow + lambda
+	} else if (res_mod(b) == rmAddPowLam) { // add + pow + lambda
 	  uvec idx;
 	  idx = find(ix_endpnt==b);
 	  vec ysb, fsb;
@@ -1088,44 +1099,44 @@ public:
       for (int b=0; b<nendpnt; ++b) {
 	int offset = res_offset[b];
 	switch ((int)(res_mod(b))) {
-	case 1:
+	case rmAdd:
 	  vcsig2[offset] = sigma2[b];
 	  break;
-	case 2:
+	case rmProp:
 	  vcsig2[offset] = bres(b);
 	  break;
-	case 3:
+	case rmAddProp:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = bres(b);
 	  break;
-	case 4:
+	case rmAddPow:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = bres(b);
 	  vcsig2[offset+2] = cres(b);
 	  break;
-	case 5:
+	case rmPow:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = cres(b);
 	  break;
-	case 6:
+	case rmAddLam:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = lres(b);
 	  break;
-	case 7:
+	case rmPropLam:
 	  vcsig2[offset]   = bres(b);
 	  vcsig2[offset+1] = lres(b);
 	  break;
-	case 8:
+	case rmPowLam:
 	  vcsig2[offset]   = bres(b);
 	  vcsig2[offset+1] = cres(b);
 	  vcsig2[offset+2] = lres(b);
 	  break;
-	case 9:
+	case rmAddPropLam:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = bres(b);
 	  vcsig2[offset+2] = lres(b);
 	  break;
-	case 10:
+	case rmAddPowLam:
 	  vcsig2[offset]   = ares(b);
 	  vcsig2[offset+1] = bres(b);
 	  vcsig2[offset+2] = cres(b);

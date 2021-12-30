@@ -164,12 +164,6 @@ for complex residual errors (ie add+prop etc)}
 regression models used for complex residual errors.  The number
 of iterations is itmax*number of parameters}
 
-\item{type}{indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")}
-
-\item{powRange}{This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)}
-
-\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)}
-
 \item{loadSymengine}{Boolean indicating if the model should be
 loaded into symengine.  This cause all the ODEs to be collapsed
 into one expression that is eventually optimized if
