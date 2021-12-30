@@ -833,6 +833,14 @@ rxUiGet.saemInit <- function(x, ...) {
 }
 #attr(rxUiGet.saemInit, "desc") <- "initialization for saem's theta and omega"
 
+#' Fit a UI model with saem
+#'
+#' @param ui rxode2 ui
+#' @param data nlmixr data
+#' @param timeVaryingCovariates Time varying covarites in the data
+#' @return lower level saem fit
+#' @author Matthew L. Fidler
+#' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
   .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
   if (length(timeVaryingCovariates) > 0) {
@@ -891,7 +899,219 @@ rxUiGet.saemInit <- function(x, ...) {
   }
   assign("control", .control, envir=.ui)
 }
+#' Get SAEM theta
+#'
+#' @param env Environment that has ui and saem in it
+#' @return Nothining, environment is assigned a theta
+#' @author Matthew L. Fidler
+#' @noRd
+.getSaemTheta <- function(env) {
+  .ui <- env$ui
+  .saem <- env$saem
+  .iniDf <- .ui$iniDf
+  .predDf <- .ui$predDf
+  .thetaNames <- .iniDf[!is.na(.iniDf$ntheta), "name"]
+  .theta <- setNames(rep(NA_real_, length(.thetaNames)), .thetaNames)
+  .saemThetaNames <- .ui$saemParamsToEstimate
+  .thetaSaem <- setNames(as.vector(fixed.effects(env$saem)), .saemThetaNames)
+  .resMat <- .saem$resMat
+  for (n in .thetaNames) {
+    if (n %in% .saemThetaNames) {
+      .theta[n] <- .thetaSaem[n]
+    }
+  }
+  for (i in seq_along(.predDf$cond)) {
+    .x <- paste(.predDf$cond[i])
+    .tmp <- .iniDf[which(.iniDf$condition == .x), ]
+    .w <- which(vapply(.tmp$err,
+                       function(x) any(x == c("prop", "propT", "pow", "powT")),
+                       logical(1),
+                       USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      .theta[paste(.tmp$name[.w])] <- .resMat[i, 2]
+    }
+    .w <- which(vapply(.tmp$err,
+                       function(x) any(x == c("pow2", "powT2")),
+                       logical(1),
+                       USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      .theta[paste(.tmp$name[.w])] <- .resMat[i, 3]
+    }
+    .w <- which(vapply(seq_along(.tmp$err),
+                       function(x) {
+                         .x <- .tmp$err[x]
+                         if (any(.x == c(
+                           "add", "norm", "dnorm", "lnorm", "dlnorm",
+                           "dlogn", "logn"))) {
+                           if (!is.na(.tmp$est[x])) {
+                             return(TRUE)
+                           }
+                         }
+                         return(FALSE)
+                       },
+                       logical(1),
+                       USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      .theta[paste(.tmp$name[.w])] <- .resMat[i, 1]
+    }
+    .w <- which(vapply(.tmp$err, function(x) {
+      any(x == c("boxCox", "yeoJohnson"))
+    }, logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1) {
+      .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
+    }
+  }
+  env$theta <- .theta
+  invisible()
+}
 
+#' Get SAEM omega
+#'
+#' @param env Environment that has ui and saem in it
+#' @return Nothing, environment is assigned the omega
+#' @author Matthew L. Fidler
+#' @noRd
+.getSaemOmega <- function(env) {
+  ## Reorder based on translation
+  .saem <- env$saem
+  .ui <- env$ui
+  .etaTrans <- .ui$saemEtaTrans
+  .maxEtaTrans <- max(.etaTrans)
+  ## orig eta ->  new eta
+  .df <- .ui$iniDf
+  .eta <- .df[!is.na(.df$neta1), ]
+  .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
+  .len <- length(.etaNames)
+  .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
+  .curOme <- .saem$Gamma2_phi1
+  for (i in seq_along(.eta$name)) {
+    .e1 <- .eta$neta1[i]
+    .e2 <- .eta$neta2[i]
+    .o1 <- .etaTrans[.e1]
+    .o2 <- .etaTrans[.e2]
+    .ome[.e1, .e2] <- .curOme[.o1, .o2]
+    .ome[.e2, .e1] <- .curOme[.o2, .o1]
+  }
+  env$omega <- .ome
+  invisible()
+}
+
+
+.saemCalcCov <- function(env) {
+  .ui <- env$ui
+  .saem <- env$saem
+  .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
+  .calcCov <- .covMethod == "linFim"
+  if (.covMethod == "") {
+    .cov <- NULL
+    .addCov <- FALSE
+  } else {
+    .tn <- f$saemParamsToEstimate[!f$saemFixed]
+    .nth <- length(.tn)
+
+    .ini <- .ui$iniDf
+    .ini <- .ini[is.na(.ini$err), ]
+    .ini <- .ini[!is.na(.ini$ntheta), ]
+    .ini <- .ini[!.ini$fix, ]
+    .ini <- paste(.ini$name)
+    .calcCovTime <- proc.time()
+    if (.calcCov) {
+      .covm <- .saem$Ha[1:.nth, 1:.nth]
+      .covm <- try(calc.COV(.saem))
+      .doIt <- !inherits(.covm, "try-error")
+      if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
+      if (.doIt) {
+        .tmp <- try(chol(.covm), silent = TRUE)
+        .addCov <- TRUE
+        .sqrtm <- FALSE
+        if (inherits(.tmp, "try-error")) {
+          .tmp <- .covm
+          .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+          if (inherits(.tmp, "try-error")) {
+            .calcCov <- FALSE
+            .covm <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- try(chol(.covm), silent = TRUE)
+            .addCov <- TRUE
+            .sqrtm <- FALSE
+            if (inherits(.tmp, "try-error")) {
+              .tmp <- .saem$Ha[1:.nth, 1:.nth]
+              .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+              if (inherits(.tmp, "try-error")) {
+                .addCov <- FALSE
+              } else {
+                .sqrtm <- TRUE
+              }
+            } else {
+              .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            }
+          } else {
+            .sqrtm <- TRUE
+          }
+        } else {
+          .tmp <- .covm
+        }
+      } else {
+        .tmp <- .saem$Ha[1:.nth, 1:.nth]
+        .tmp <- try(chol(.covm), silent = TRUE)
+        .calcCov <- FALSE
+        .addCov <- TRUE
+        .sqrtm <- FALSE
+        if (inherits(.tmp, "try-error")) {
+          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+          if (inherits(.tmp, "try-error")) {
+            .addCov <- FALSE
+          } else {
+            .sqrtm <- TRUE
+          }
+        } else {
+          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .calcCov <- FALSE
+        }
+      }
+    } else {
+      .tmp <- try(chol(.covm), silent = TRUE)
+      .addCov <- TRUE
+      .sqrtm <- FALSE
+      if (inherits(.tmp, "try-error")) {
+        .tmp <- .saem$Ha[1:.nth, 1:.nth]
+        .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+        if (inherits(.tmp, "try-error")) {
+          .addCov <- FALSE
+        } else {
+          .sqrtm <- TRUE
+        }
+      } else {
+        .tmp <- .saem$Ha[1:.nth, 1:.nth]
+        .calcCov <- FALSE
+      }
+    }
+    if (.addCov) {
+      if (!.calcCov) {
+        .cov <- RxODE::rxInv(.tmp)
+      } else {
+        .cov <- .tmp
+      }
+      attr(.cov, "dimnames") <- list(.tn, .tn)
+      .cov <- .cov[.ini, .ini, drop = FALSE]
+    }
+    .calcCovTime <- proc.time() - .calcCovTime
+    .calcCovTime <- .calcCovTime["elapsed"]
+  }
+  if (.addCov) {
+    env$cov <- .cov
+    env$.calcCovTime <- .calcCovTime
+  }
+}
+
+#' Fit the saem family of models
+#'
+#'
+#' @param env Environment from nlmixr2Est
+#' @param ... Other arguments
+#' @return fit environtment with $saem $saemControl $dataSav $origData $ui
+#' @author Matthew L. Fidler
+#' @examples
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
@@ -906,6 +1126,15 @@ rxUiGet.saemInit <- function(x, ...) {
     .tv <- names(.et)[-seq(1, 6)]
   }
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  .ret$saemControl <- .control
+  .ret$ui <- .ui
+  .saemCalcCov(.ret)
+  .getSaemTheta(.ret)
+  .getSaemOmega(.ret)
+  .nlmixr2FitUpdateParams(.ret)
+   if (exists("control", .ui)) {
+    rm(list="control", envir=.ui)
+  }
   .ret
 }
 
