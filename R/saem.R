@@ -842,15 +842,23 @@ rxUiGet.saemInit <- function(x, ...) {
   assign("muRefFinal", .muRefCovariateDataFrame, ui)
   on.exit(rm(list="muRefFinal", envir=ui))
   .model <- ui$saemModelList
+  .inits <- ui$saemInit
+  .fixed=ui$saemFixed
+  if (length(.fixed) > 0) {
+    .nphi <- attr(.model$saem_mod, "nrhs")
+    .m <- cumsum(!is.na(matrix(.inits$theta, byrow = TRUE, ncol = .nphi)))
+    .fixid <- match(.fixed, t(matrix(.m, ncol = .nphi)))
+    names(.inits$theta) <- rep("", length(.inits$theta))
+    names(.inits$theta)[.fixid] <- "FIXED"
+  }
   .cfg <- .configsaem(model=.model,
                       data=data,
-                      inits=ui$saemInit,
+                      inits=.inits,
                       mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
                       ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
                       distribution="normal",
                       addProp="combined2",
                       seed=rxode2::rxGetControl(ui, "seed", 99),
-                      fixed=ui$saemFixed,
                       DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                       tol=rxode2::rxGetControl(ui, "tol", 1e-6),
                       itmax=rxode2::rxGetControl(ui, "itmax", 30),
