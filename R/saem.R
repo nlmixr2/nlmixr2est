@@ -810,6 +810,10 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .est <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
+  .fixed <- rxUiGet.saemFixed(x, ...)
+  .n <- vapply(.fixed, function(x) ifelse(x, "FIXED", ""),
+               character(1), USE.NAMES=FALSE)
+
   setNames(vapply(seq_along(.logEta),
                   function(i){
                     .isEta <- any(.names[i] %in% .etaNames)
@@ -826,8 +830,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
                         return(.est[i])
                       }
                     }
-                  }, numeric(1), USE.NAMES=FALSE),
-           rxUiGet.saemParamsToEstimate(x, ...))
+                  }, numeric(1), USE.NAMES=FALSE), .n)
 }
 #attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
 
@@ -894,14 +897,6 @@ rxUiGet.saemResName <- function(x, ...) {
   on.exit(rm(list="muRefFinal", envir=ui))
   .model <- ui$saemModelList
   .inits <- ui$saemInit
-  .fixed=ui$saemFixed
-  if (length(.fixed) > 0) {
-    .nphi <- attr(.model$saem_mod, "nrhs")
-    .m <- cumsum(!is.na(matrix(.inits$theta, byrow = TRUE, ncol = .nphi)))
-    .fixid <- match(.fixed, t(matrix(.m, ncol = .nphi)))
-    names(.inits$theta) <- rep("", length(.inits$theta))
-    names(.inits$theta)[.fixid] <- "FIXED"
-  }
   .cfg <- .configsaem(model=.model,
                       data=data,
                       inits=.inits,
