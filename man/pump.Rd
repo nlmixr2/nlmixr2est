@@ -12,7 +12,7 @@ A data frame with 10 rows and 5 columns
   \item{t}{Failure Time}
   \item{group}{Continuous Operation (=1) or Intermittent Operation(=2)}
   \item{ID}{ID for group of 10 pumps}
-  \item{logtstd}{Centeredy operation times}
+  \item{logtstd}{Centered operation times}
 }
 }
 \source{

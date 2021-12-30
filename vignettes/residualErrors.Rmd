@@ -1,5 +1,5 @@
 ---
-title: "Unexplained variabiities in nlmixr"
+title: "Unexplained variabilities in nlmixr"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -7,7 +7,7 @@ output:
 ---
 
 
-The following residuals are available for the nlmixr unexplained varaibilities:
+The following residuals are available for the nlmixr unexplained variabilities:
 
 - **additive** or **constant** `y ~ add(add.sd)`
 - **proportional** `y ~ prop(prop.sd)` or `y ~ propT(prop.sd)`

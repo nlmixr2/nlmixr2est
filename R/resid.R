@@ -394,11 +394,11 @@ addNpde <- function(object, updateObject = TRUE,
 #' @param object nlmixr2 family of objects
 #' @param updateObject Update the object (default FALSE)
 #' @param data Saved data from
-#' @param thetaEtaParameters Intenral theta/eta parameters
+#' @param thetaEtaParameters Internal theta/eta parameters
 #' @param table a `tableControl()` list of options
 #' @param keep Character Vector of items to keep
 #' @param drop Character Vector of items to drop or NULL
-#' @param envir ENvironment to search for updating
+#' @param envir Environment to search for updating
 #' @return Fit with table information attached
 #' @author Matthew Fidler
 #' @export
@@ -549,7 +549,7 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
 ##'
 ##' @param keep is the keep sent to the table
 ##'
-##' @param drop is the dropped varaibles sent to the table
+##' @param drop is the dropped variables sent to the table
 ##'
 ##' @inheritParams addNpde
 ##' @inheritParams rxode2::rxSolve

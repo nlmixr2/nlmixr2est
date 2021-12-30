@@ -294,7 +294,7 @@
 #'
 #' @param x A specialized list with:
 #' - First argument is a nlmixrFitCore environment
-#' - Second argument is if the exact argument is requeste
+#' - Second argument is if the exact argument is requested
 #' - The class would be the requested argument name followed by the class "nmObjGet"
 #' @param ... Other arguments
 #' @return Value of argument or NULL

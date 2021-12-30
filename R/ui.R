@@ -1181,7 +1181,7 @@ nlmixr2UI.saem.init.omega <- function(obj, names = FALSE) {
   }
   return(ret)
 }
-##' Get saem initilization list
+##' Get saem initialization list
 ##'
 ##' @param obj nlmixr2 UI object
 ##' @return Return SAEM inits list.

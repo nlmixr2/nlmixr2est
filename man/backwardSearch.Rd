@@ -19,7 +19,7 @@ backwardSearch(
 
 \item{fitorig}{the original 'fit' object before forward search}
 
-\item{fitupdated}{the updatef 'fit' object, if any, after the forward search}
+\item{fitupdated}{the updated 'fit' object, if any, after the forward search}
 
 \item{pVal}{p-value that should be used for selecting covariates in the forward search}
 

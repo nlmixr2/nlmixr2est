@@ -1,7 +1,7 @@
 #' Linearly re-parameterize the model to be less sensitive to rounding errors
 #'
 #' @param fit A nlmixr2 fit to be preconditioned
-#' @param estType Once the fit has been linearly reparametrized,
+#' @param estType Once the fit has been linearly reparameterized,
 #'   should a "full" estimation, "posthoc" estimation or simply a
 #'   estimation of the covariance matrix "none" before the fit is
 #'   updated

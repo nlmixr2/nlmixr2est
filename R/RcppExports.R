@@ -102,11 +102,11 @@ foceiCalcCov <- function(e) {
     .Call(`_nlmixr2_foceiCalcCov`, e)
 }
 
-#' Fit/Evaulate FOCEi
+#' Fit/Evaluate FOCEi
 #'
 #' This shouldn't be called directly.
 #'
-#' @param e Enviornment
+#' @param e Environment
 #'
 #' @return A focei fit object
 #'

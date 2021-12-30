@@ -202,7 +202,7 @@ removeCovariate <- function(funstring, varName, covariate, theta) {
 #' @param initialEstLB a lower bound for the covariate parameters to be estimated; default is -Inf
 #' @param initialEstUB an upper bound for the covariate parameters to be estimated; default is Inf
 #'
-#' @return a list with the updated model expression and data with columns corresponding to normalized covaraite(s) appended
+#' @return a list with the updated model expression and data with columns corresponding to normalized covariate(s) appended
 #' @author Vipul Mann, Matthew Fidler
 #' @export
 #'
@@ -689,7 +689,7 @@ makeDummies <- function(data, covariate, varName) {
 #' @param covInfo a list containing information about each variable-covariate pair
 #' @param fitobject an nlmixr2 'fit' object
 #'
-#' @return a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covaraites removed
+#' @return a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covariates removed
 #' @export
 #'
 #' @author Vipul Mann, Matthew Fidler
@@ -1067,7 +1067,7 @@ covarSearchAuto <- # unsuccessful runs info store; check for covInformation befo
 #' @param outputDir the name of the output directory that stores the covariate search result
 #' @param restart a boolean that controls if the search should be restarted; default is FALSE
 #'
-#' @return returns the updated 'fit' object at the end of the forward search and a table of information for all the covaraites tested
+#' @return returns the updated 'fit' object at the end of the forward search and a table of information for all the covariates tested
 #' @export
 #' @author Vipul Mann, Matthew Fidler
 #'
@@ -1206,7 +1206,7 @@ forwardSearch <- function(covInfo, fit, pVal = 0.05, outputDir, restart = FALSE)
 #'
 #' @param covInfo a list containing information about each variable-covariate pair
 #' @param fitorig the original 'fit' object before forward search
-#' @param fitupdated the updatef 'fit' object, if any, after the forward search
+#' @param fitupdated the updated 'fit' object, if any, after the forward search
 #' @param pVal p-value that should be used for selecting covariates in the forward search
 #' @param reFitCovars if the covariates should be added before performing backward search - useful for directly performing backward search without forward search; default is FALSE
 #' @param outputDir the name of the output directory that stores the covariate search result
@@ -1295,7 +1295,7 @@ backwardSearch <- function(covInfo, fitorig, fitupdated, pVal = 0.01, reFitCovar
   cli::cli_h2(cli::col_blue("initial function text to remove from:"))
   cli::cli_text(cli::col_red("{fit$fun.txt}"))
 
-  # check if covInfo vars in fit; abort if nonoe of the covaraites added in the forward search step
+  # check if covInfo vars in fit; abort if none of the covariates added in the forward search step
 
 
 

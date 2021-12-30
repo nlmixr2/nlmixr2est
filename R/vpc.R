@@ -5,7 +5,7 @@
 #' @param ... Other arguments sent to `nlmixr2Sim()`
 #' @param keep Keep character vector
 #' @param n Number of simulations
-#' @param pred Should predicitions be added to the simulation
+#' @param pred Should predictions be added to the simulation
 #' @param seed Seed to set for the VPC simulation
 #' @return data frame of the VPC simulation
 #' @author Matthew L. Fidler

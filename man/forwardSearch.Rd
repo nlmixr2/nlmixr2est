@@ -18,7 +18,7 @@ forwardSearch(covInfo, fit, pVal = 0.05, outputDir, restart = FALSE)
 \item{restart}{a boolean that controls if the search should be restarted; default is FALSE}
 }
 \value{
-returns the updated 'fit' object at the end of the forward search and a table of information for all the covaraites tested
+returns the updated 'fit' object at the end of the forward search and a table of information for all the covariates tested
 }
 \description{
 Forward covariate search

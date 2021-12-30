@@ -39,7 +39,7 @@ addCovVar(
 \item{initialEstUB}{an upper bound for the covariate parameters to be estimated; default is Inf}
 }
 \value{
-a list with the updated model expression and data with columns corresponding to normalized covaraite(s) appended
+a list with the updated model expression and data with columns corresponding to normalized covariate(s) appended
 }
 \description{
 Adding covariate to a given variable in an nlmixr2 model expression

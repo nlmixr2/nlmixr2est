@@ -18,7 +18,7 @@ nmTest(type = NULL, check = FALSE)
 Nothing, called for its side effects
 }
 \description{
-This allows easy vaildation/qualification of nlmixr2 by running the
+This allows easy validation/qualification of nlmixr2 by running the
 testing suite on your system.
 }
 \author{

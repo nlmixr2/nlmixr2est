@@ -1,4 +1,4 @@
-## FIXME: g by endpint
+## FIXME: g by endpoint
 
 ##' Log-likelihood using Gaussian Quadrature
 ##'

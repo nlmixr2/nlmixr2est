@@ -1162,7 +1162,7 @@ rxUiGet.saemResName <- function(x, ...) {
 #'
 #' @param env Environment from nlmixr2Est
 #' @param ... Other arguments
-#' @return fit environtment with $saem $saemControl $dataSav $origData $ui
+#' @return fit environment with $saem, $saemControl, $dataSav, $origData, $ui
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFamilyFit <- function(env, ...) {
