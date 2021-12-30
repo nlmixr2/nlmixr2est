@@ -650,8 +650,17 @@ rxUiGet.saemResNames <- function(x, ...) {
 }
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
 
+#' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
+  .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
+  .ui <- x[[1]]
+  .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, "name"]
+  .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
+  c(.plambda, vapply(.etaTrans, function(i){
+    paste0("V(", .etaNames[i], ")")
+  }, character(1), USE.NAMES=FALSE), rxUiGet.saemResNames(x, ...))
 }
 
 #' @export
