@@ -840,9 +840,7 @@ rxUiGet.saemInit <- function(x, ...) {
     .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
   }
   assign("muRefFinal", .muRefCovariateDataFrame, ui)
-  print(.muRefCovariateDataFrame)
-  print(ui$muRefFinal)
-  on.exit(try(rm(list="muRefFinal", envir=ui)))
+  on.exit(rm(list="muRefFinal", envir=ui))
   .model <- ui$saemModelList
   .cfg <- .configsaem(model=.model,
                       data=data,
@@ -886,22 +884,21 @@ rxUiGet.saemInit <- function(x, ...) {
   assign("control", .control, envir=.ui)
 }
 
-.saemPreProcessData <- function(data, env, ui) {
-  .foceiPreProcessData(data, env, ui)
-}
-
-.saemFamilyFit <- function(env, ui, ...) {
-  .control <- ui$control
+.saemFamilyFit <- function(env, ...) {
+  .ui <- env$ui
+  .control <- .ui$control
   .data <- env$data
-  .foceiPreProcessData(.data, env, ui)
-  .et <- rxode2::etTrans(env$dataSav, rxode2::rxNorm(ui$mv0))
+  .ret <- new.env(parent=emptyenv())
+  .foceiPreProcessData(.data, .ret, .ui)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0)
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) .nTv <- 0
   .tv <- character(0)
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .saemFitModel(ui, env$dataSav, timeVaryingCovariates=.tv)
+  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  .ret
 }
 
 
@@ -909,5 +906,5 @@ rxUiGet.saemInit <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .saemFamilyControl(env, ...)
-  .saemFamilyFit(env, env$ui, ...)
+  .saemFamilyFit(env,  ...)
 }
