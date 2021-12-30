@@ -1,6 +1,6 @@
 ##' Validate nlmixr2
 ##'
-##' This allows easy vaildation/qualification of nlmixr2 by running the
+##' This allows easy validation/qualification of nlmixr2 by running the
 ##' testing suite on your system.
 ##' @param type of test to be run
 ##' @param check Use devtools::check to run checks

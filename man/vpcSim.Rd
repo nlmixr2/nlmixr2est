@@ -15,7 +15,7 @@ vpcSim(object, ..., keep = NULL, n = 300, pred = FALSE, seed = 1009)
 
 \item{n}{Number of simulations}
 
-\item{pred}{Should predicitions be added to the simulation}
+\item{pred}{Should predictions be added to the simulation}
 
 \item{seed}{Seed to set for the VPC simulation}
 }

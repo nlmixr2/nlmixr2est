@@ -1,5 +1,5 @@
 ---
-title: "xgxr nlmixr and ggPmx integration"
+title: "xgxr nlmixr and ggPMX integration"
 output:
   html_document:
     self_contained: no
@@ -66,7 +66,7 @@ can be cumbersome and lack some nice features that `xgxr` can help
 with.  Note the following helper functions:
 
 - `xgx_theme_set()` this sets the theme to black and white color theme
-  and other best pratices in `xgxr`.
+  and other best practices in `xgxr`.
   
 - `xgx_geom_ci()` which creates the Confidence Interval and mean plots
   in a simple interface. 

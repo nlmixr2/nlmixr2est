@@ -21,7 +21,7 @@ like NONMEM.}
 
 \item{ipred}{Flag to calculate individual predictions. When
 \code{ipred} is \code{TRUE}, calculate individual predictions.
-When \code{ipred} is \code{FALSE}, set calculate typical population predations.
+When \code{ipred} is \code{FALSE}, set calculate typical population predictions.
 When \code{ipred} is \code{NA}, calculate both individual and
 population predictions.}
 }

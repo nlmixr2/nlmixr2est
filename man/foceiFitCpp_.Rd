@@ -2,12 +2,12 @@
 % Please edit documentation in R/RcppExports.R
 \name{foceiFitCpp_}
 \alias{foceiFitCpp_}
-\title{Fit/Evaulate FOCEi}
+\title{Fit/Evaluate FOCEi}
 \usage{
 foceiFitCpp_(e)
 }
 \arguments{
-\item{e}{Enviornment}
+\item{e}{Environment}
 }
 \value{
 A focei fit object

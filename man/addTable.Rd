@@ -22,7 +22,7 @@ addTable(
 
 \item{data}{Saved data from}
 
-\item{thetaEtaParameters}{Intenral theta/eta parameters}
+\item{thetaEtaParameters}{Internal theta/eta parameters}
 
 \item{table}{a `tableControl()` list of options}
 
@@ -30,7 +30,7 @@ addTable(
 
 \item{drop}{Character Vector of items to drop or NULL}
 
-\item{envir}{ENvironment to search for updating}
+\item{envir}{Environment to search for updating}
 }
 \value{
 Fit with table information attached

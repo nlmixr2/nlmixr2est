@@ -262,7 +262,7 @@ fit.addProp.F <- fit.addProp.S %>%
 gofs(fit.addProp.F);
 ```
 
-## Lognoral
+## Log-normal
 ```{r}
 fit.lnorm.F <- fit.addProp.F %>%
     model({C15 ~ lnorm(lnorm.err)}) %>%

@@ -88,7 +88,7 @@ is equivalent to calling \code{\link[rxode2:getRxThreads]{setRxThreads()}}}
 
 \item{keep}{is the keep sent to the table}
 
-\item{drop}{is the dropped varaibles sent to the table}
+\item{drop}{is the dropped variables sent to the table}
 }
 \value{
 A list of table options for nlmixr2

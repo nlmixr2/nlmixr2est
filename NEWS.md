@@ -16,19 +16,19 @@
 - `$simInfo$sigma` is a diagonal matrix since now the normal
   simulation is controlled by the variability modeled as a population
   value.
-  
+
 ## VPC changes
 
 - `vpc` function rewritten and split out to `vpcSim()` and
-  `vpcPlot()` (which is a replacement for `vpc()`).  
-  
+  `vpcPlot()` (which is a replacement for `vpc()`).
+
 - There were too many mismatches between `vpc::vpc` and `nlmixr::vpc`
   which caused inconsistencies in code based on load order of `vpc`
   and `nlmixr`.  This way both coexist, and you can use the `vpc`
   simulation for other packages more easily (like `ggPMX`) without
   creating or summarizing data since `ggPMX` has its own methods for
-  summarizing and creating plots.m
-  
+  summarizing and creating plots.
+
 ## augPred() changes
 
 - `augPred()` has been written to use the new fit object.
@@ -37,14 +37,15 @@
 
 - `augPred` uses the new interface and supports multiple endpoints.
   The endpoint name is now always on the `plot(augPred(fit))`.
-  
-## getFitMethod() change 
 
-- Internally, fit estimation method is saved in `fit$est`, and now `getFitMethod(fit)` simply returns `fit$est`
+## getFitMethod() change
+
+- Internally, fit estimation method is saved in `fit$est`, and now
+  `getFitMethod(fit)` simply returns `fit$est`
 
 ## Delete methods
 
-- Many method's lower level utility functions have been deleted.
+- Many methods lower level utility functions have been deleted.
 
 # nlmixr 2.0.6
 
@@ -54,17 +55,17 @@
 
 - Fix for `nlmixrSim` CMT to have a factor that matches the `RxODE`
   definition (issue #501)
-  
+
 - Give instructions on how to reinstall nlmixr if it is linked to a
   different version of `RxODE`. (#555)
-  
+
 - Now inform which parameters are near the boundary (#544)
 
 - The `saem` estimation routine will now increase the tolerance when
   ODE solving is difficult; This can be controlled with
   `odeRecalcFactors` and `maxOdeRecalc`.  This is similar to the
   handling that `focei` already uses.
-  
+
 - For `focei` family estimation methods:
 
   - If the inner problem couldn't solve the ODE using the forward
@@ -74,7 +75,7 @@
     generates the finite difference prediction model. If RxODE is an
     earlier version, only apply this when the finite differences are
     supplied to nlmixr.  This occurs when there are ETAs on the dose
-    based events like duration, lag time, bioavaibility etc.
+    based events like duration, lag time, bioavailability etc.
 
   - If eta nudge is non-zero, when resetting an ETA estimate, try the
     zero estimate first, and then the nudged locations.
@@ -109,12 +110,12 @@
 
 - `gnlmm` no longer imports the data.frame to an RxODE event table.
   This should speed up the routine slightly and (more importantly)
-  make it easier to specify time varying covariates. 
+  make it easier to specify time varying covariates.
 
 
 # nlmixr 2.0.4
 
-- Now can use the following for combinde error models:
+- Now can use the following for combined error models:
   `foceiControl(addProp=1)` `foceiControl(addProp=2)`
   `saemControl(addProp=1)` `saemControl(addProp=2)`
 

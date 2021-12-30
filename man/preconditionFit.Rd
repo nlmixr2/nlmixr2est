@@ -9,7 +9,7 @@ preconditionFit(fit, estType = c("full", "posthoc", "none"), ntry = 10L)
 \arguments{
 \item{fit}{A nlmixr2 fit to be preconditioned}
 
-\item{estType}{Once the fit has been linearly reparametrized,
+\item{estType}{Once the fit has been linearly reparameterized,
 should a "full" estimation, "posthoc" estimation or simply a
 estimation of the covariance matrix "none" before the fit is
 updated}

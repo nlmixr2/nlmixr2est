@@ -2,7 +2,7 @@
 % Please edit documentation in R/ui.R
 \name{nlmixr2UI.saem.init}
 \alias{nlmixr2UI.saem.init}
-\title{Get saem initilization list}
+\title{Get saem initialization list}
 \usage{
 nlmixr2UI.saem.init(obj)
 }
@@ -13,7 +13,7 @@ nlmixr2UI.saem.init(obj)
 Return SAEM inits list.
 }
 \description{
-Get saem initilization list
+Get saem initialization list
 }
 \author{
 Matthew L. Fidler

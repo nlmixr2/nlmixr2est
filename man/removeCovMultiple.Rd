@@ -12,7 +12,7 @@ removeCovMultiple(covInfo, fitobject)
 \item{fitobject}{an nlmixr2 'fit' object}
 }
 \value{
-a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covaraites removed
+a list with the updated fit object, the variable-covariate pair string, and the parameter names for the corresponding covariates removed
 }
 \description{
 Removing multiple covariates
