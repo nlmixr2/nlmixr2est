@@ -380,7 +380,11 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .iniDf <- .ui$iniDf
   c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)], .ui$nonMuEtas)
 }
-attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
+#attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
+
+#' @export
+rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
+#attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
 
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
@@ -550,6 +554,20 @@ rxUiGet.saemEtaTrans <- function(x, ...) {
   }, integer(1), USE.NAMES=FALSE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
+#' @export
+rxUiGet.saemOmegaTrans <- function(x, ...) {
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .o <- order(.etaTrans)
+  .etaTrans2 <- .etaTrans
+  .c <- 1
+  for (i in .o) {
+    .etaTrans2[i] <- .c
+    .c <- .c + 1
+  }
+  .etaTrans2
+}
+#attr(rxUiGet.saemOmegaTrans, "desc") <- "Get the saem omega to UI omega translation"
+
 
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
@@ -614,7 +632,7 @@ rxUiGet.saemResMod <- function(x, ...) {
 #attr(rxUiGet.saemResMod, "desc") <- "saem res.mod component"
 
 #' @export
-rxUiGet.saemResName <- function(x, ...) {
+rxUiGet.saemResNames <- function(x, ...) {
   .ui <- x[[1]]
   .err <- .ui$iniDf
   .w <- which(sapply(.err$err, function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn"))))
@@ -630,7 +648,11 @@ rxUiGet.saemResName <- function(x, ...) {
   }
   return(.ret)
 }
-#attr(rxUiGet.saemResName, "desc") <- "Get error names for SAEM"
+#attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
+
+rxUiGet.saemParHistNames <- function(x, ...) {
+  #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
+}
 
 #' @export
 rxUiGet.saemAres <- function(x, ...) {
@@ -833,6 +855,27 @@ rxUiGet.saemInit <- function(x, ...) {
 }
 #attr(rxUiGet.saemInit, "desc") <- "initialization for saem's theta and omega"
 
+#' @export
+rxUiGet.saemResName <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(vapply(.ui$iniDf$err,
+                     function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn")),
+                     logical(1),
+                     USE.NAMES=FALSE))
+  .ret <- NULL
+  if (length(.w) == 1) {
+    if (!is.na(.ui$iniDf$est[.w])) {
+      .ret[length(.ret) + 1] <- paste(.ui$iniDf$name[.w])
+    }
+  }
+  .w <- c(which(.ui$iniDf$err == "prop"), which(.ui$iniDf$err == "propT"))
+  if (length(.w) == 1) {
+    .ret[length(.ret) + 1] <- paste(obj$name[.w])
+  }
+  .ret
+}
+#attr(rxUiGet.saemResName, "desc") <- "Residual Names for saem"
+
 #' Fit a UI model with saem
 #'
 #' @param ui rxode2 ui
@@ -866,6 +909,7 @@ rxUiGet.saemInit <- function(x, ...) {
                       ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
                       distribution="normal",
                       addProp="combined2",
+                      fixed=.fixed,
                       seed=rxode2::rxGetControl(ui, "seed", 99),
                       DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                       tol=rxode2::rxGetControl(ui, "tol", 1e-6),
@@ -975,12 +1019,12 @@ rxUiGet.saemInit <- function(x, ...) {
   ## Reorder based on translation
   .saem <- env$saem
   .ui <- env$ui
-  .etaTrans <- .ui$saemEtaTrans
-  .maxEtaTrans <- max(.etaTrans)
-  ## orig eta ->  new eta
+  .etaTrans <- .ui$saemOmegaTrans
+  ## saem eta ->  ui eta
   .df <- .ui$iniDf
   .eta <- .df[!is.na(.df$neta1), ]
   .etaNames <- .eta[.eta$neta1 == .eta$neta2, "name"]
+  .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
   .curOme <- .saem$Gamma2_phi1
@@ -996,6 +1040,21 @@ rxUiGet.saemInit <- function(x, ...) {
   invisible()
 }
 
+.saemAddParHist <- function(env) {
+  .saem <- env$saem
+  .ui <- env$ui
+
+  .m <- .saem$par_hist
+  if (ncol(.m) > length(.allThetaNames)) {
+    .m <- .m[, seq_along(.allThetaNames)]
+  }
+  env$parHistStacked <- data.frame(
+    val = as.vector(.m),
+    par = rep(.allThetaNames, each = nrow(.m)),
+    iter = rep(1:nrow(.m), ncol(.m))
+  )
+  env$parHist <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
+}
 
 .saemCalcCov <- function(env) {
   .ui <- env$ui
@@ -1006,7 +1065,7 @@ rxUiGet.saemInit <- function(x, ...) {
     .cov <- NULL
     .addCov <- FALSE
   } else {
-    .tn <- f$saemParamsToEstimate[!f$saemFixed]
+    .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
     .nth <- length(.tn)
 
     .ini <- .ui$iniDf
@@ -1088,7 +1147,7 @@ rxUiGet.saemInit <- function(x, ...) {
     }
     if (.addCov) {
       if (!.calcCov) {
-        .cov <- RxODE::rxInv(.tmp)
+        .cov <- rxode2::rxInv(.tmp)
       } else {
         .cov <- .tmp
       }
@@ -1106,12 +1165,11 @@ rxUiGet.saemInit <- function(x, ...) {
 
 #' Fit the saem family of models
 #'
-#'
 #' @param env Environment from nlmixr2Est
 #' @param ... Other arguments
 #' @return fit environtment with $saem $saemControl $dataSav $origData $ui
 #' @author Matthew L. Fidler
-#' @examples
+#' @noRd
 .saemFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
