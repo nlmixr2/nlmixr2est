@@ -85,7 +85,8 @@
   .mat <- as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
-  .fit2 <- nlmixrCreateOutputFromUi(.ui, data=.dat, control=.control, env=.env2, est="none")
+  .fit2 <- nlmixrCreateOutputFromUi(.ui, data=.dat, control=.control,
+                                    table=.env$table,env=.env2, est="none")
   .env$cov <- .fit2$cov
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed

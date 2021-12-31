@@ -2418,7 +2418,7 @@ nlmixr2Est.output <- function(env, ...) {
 }
 
 
-nlmixrCreateOutputFromUi <- function(ui, data=NULL, control=NULL, env=NULL, est="none") {
+nlmixrCreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, env=NULL, est="none") {
   if (inherits(ui, "function")) {
     ui <- rxode2::rxode2(ui)
   }
