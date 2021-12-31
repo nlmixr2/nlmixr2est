@@ -178,6 +178,30 @@ saemControl <- function(seed = 99,
   class(.ret) <- "saemControl"
   .ret
 }
+
+# Methods for newuoa residual optimization
+.saemResidF <- function(x) {
+  # Exports the C residual functions in saem
+  .Call(`_saemResidF`, x)
+}
+
+.newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  .ctl <- control
+  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
+  if (is.null(.ctl$rhobeg)) .ctl$rhobeg <- 0.2
+  if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
+  .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ret <- minqa::newuoa(par, fn,
+    control = .ctl
+  )
+  .ret$x <- .ret$par
+  .ret$message <- .ret$msg
+  .ret$convergence <- .ret$ierr
+  .ret$value <- .ret$fval
+  return(.ret)
+}
+
 #'  Determine if the parameter is a mu-referenced covariate
 #'
 #' @param expr Expression to check
@@ -1326,9 +1350,44 @@ rxUiGet.saemResName <- function(x, ...) {
   }
   .ctl$method <- .saemControl$method
   .ctl$skipCov <- .ui$foceiSkipCov
+  .ctl$interaction <- 1L
   rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }
+
+.setSaemExtra <- function(.env, type) {
+  if (inherits(.env, "nlmixr2FitData")) {
+    .env <- .env$env
+  }
+  .ui <- .env$ui
+  #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ")
+  .txt <- ""
+  if (tolower(type) == "focei") {
+    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FOCEi approximation"))
+  } else if (tolower(type) == "foce") {
+    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FOCE approximation"))
+  } else if (tolower(type) == "fo") {
+    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FO approximation"))
+  } else if (type == "") {
+    .txt <- paste0(.txt, crayon::blurred$italic("OBJF not calculated"))
+  } else {
+    .reg <- rex::rex(start, "laplace", capture(.regNum), end)
+    .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
+    if (regexpr(.reg, type, perl = TRUE) != -1) {
+      .nnode <- 1
+      .nsd <- as.numeric(sub(.reg, "\\1", type, perl = TRUE))
+    } else if (regexpr(.regG, type, perl = TRUE) != -1) {
+      .nnode <- as.numeric(sub(.regG, "\\1", type, perl = TRUE))
+      .nsd <- as.numeric(sub(.regG, "\\2", type, perl = TRUE))
+    } else {
+      stop("unknown error")
+    }
+    .txt <- paste0(.txt, crayon::blurred$italic(sprintf("OBJF by %s", paste0(ifelse(.nnode == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .nnode)), .nsd, ")"))))
+  }
+  .env$extra <- .txt
+  return(invisible(.txt))
+}
+
 
 #' Fit the saem family of models
 #'
@@ -1364,7 +1423,12 @@ rxUiGet.saemResName <- function(x, ...) {
     rm(list="control", envir=.ui)
    }
   .saemControlToFoceiControl(.ret)
-  nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+  .setSaemExtra(.ret, "FOCEi")
+  .env <- .ret$env
+  .env$est <- "saem"
+  .env$method <- "SAEM"
+  .ret
 }
 
 #' @rdname nlmixr2Est

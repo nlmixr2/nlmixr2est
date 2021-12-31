@@ -5,9 +5,21 @@
 - Remove lower level `foceiFit` function.  Focei, foce, fo, foi, and
   posthoc now directly takes rxode2 ui objects
 
-## nlmixr interface change
+- New error types are supported in focei including mixing theta and
+  etas in residual errors and different types of proportional errors
 
-- `nlmixr` interface changed to use `rxode2` UI
+## SAEM changes
+
+- mu referencing is no longer required for `saem`; Internally non
+  mu-referenced values are converted to mu referenced values and the
+  converted back when calculating the nlmixr2 object.
+
+- Lower level `saem` functions are not exported because they are
+  increasingly difficult to use and convert to something standard.
+
+## nlmixr2 interface change
+
+- `nlmixr2` interface changed to use `rxode2` UI
 
 - `keep` and `drop` are added to `tableControl` to influence the end data-frame
 
