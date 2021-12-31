@@ -1360,6 +1360,7 @@ rxUiGet.saemResName <- function(x, ...) {
     .env <- .env$env
   }
   .ui <- .env$ui
+  .txt <- gsub("rxode2 +", "", .ui$modelDesc)
   #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ")
   .txt <- ""
   if (tolower(type) == "focei") {
@@ -1427,7 +1428,7 @@ rxUiGet.saemResName <- function(x, ...) {
   .setSaemExtra(.ret, "FOCEi")
   .env <- .ret$env
   .env$est <- "saem"
-  .env$method <- "SAEM"
+  .env$method <- "SAEM "
   .ret
 }
 
