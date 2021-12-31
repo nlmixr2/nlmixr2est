@@ -1048,6 +1048,7 @@ rxUiGet.saemResName <- function(x, ...) {
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
   }
   env$omega <- .ome
+  env$.etaMat <- .mat2
   env$etaObf <- data.frame(ID = seq_along(.mat2[, 1]),
                            setNames(as.data.frame(.mat2), .etaNames),
                            OBJI = NA)
@@ -1306,12 +1307,14 @@ rxUiGet.saemResName <- function(x, ...) {
 #' @noRd
 .saemControlToFoceiControl <- function(env) {
   .saemControl <- env$saemControl
+  .ui <- env$ui
   .ctl <- env$saemControl$ODEopt
   names(.ctl) <- sub("maxsteps", "maxstepsOde", names(.ctl))
   .ctl <- .ctl[names(.ctl) != "scale"]
   .ctl$maxOuterIterations <- 0
   .ctl$maxInnerIterations <- 0
   .ctl$covMethod <- "" #.covMethod
+  .ctl$etaMat <- env$.etaMat
   .ctl$sumProd <- .saemControl$sumProd
   .ctl$optExpression <- .saemControl$optExpression
   .ctl$scaleTo <- 0
@@ -1322,6 +1325,8 @@ rxUiGet.saemResName <- function(x, ...) {
     .ctl$addProp <- "combined2"
   }
   .ctl$method <- .saemControl$method
+  .ctl$skipCov <- .ui$foceiSkipCov
+  rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }
 

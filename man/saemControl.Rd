@@ -24,7 +24,7 @@ saemControl(
   optExpression = FALSE,
   maxsteps = 100000L,
   adjObf = TRUE,
-  sum.prod = FALSE,
+  sumProd = FALSE,
   addProp = c("combined2", "combined1"),
   singleOde = TRUE,
   tol = 1e-06,
@@ -142,8 +142,10 @@ during one call to the solver. (5000 by default)}
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
 
-\item{sum.prod}{A boolean determining if rxode2 should use more
-numerically stable sums/products.}
+\item{sumProd}{Is a boolean indicating if the model should change
+multiplication to high precision multiplication and sums to
+high precision sums using the PreciseSums package.  By default
+this is \code{FALSE}.}
 
 \item{addProp}{one of "combined1" and "combined2"; These are the
 two forms of additive+proportional errors supported by

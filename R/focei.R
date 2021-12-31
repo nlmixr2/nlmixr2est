@@ -2024,6 +2024,18 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 }
 #attr(rxUiGet.foceiMuRefVector, "desc") <- "focei mu ref vector"
 
+#' @export
+rxUiGet.foceiSkipCov <- function(x, ...) {
+  .ui <- x[[1]]
+  .maxTheta <- max(.ui$iniDf$ntheta, na.rm=TRUE)
+  .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+  .skipCov <- rep(FALSE, .maxTheta)
+  .skipCov[which(!is.na(.theta$err))] <- TRUE
+  .skipCov[.theta$fix] <- TRUE
+  .skipCov
+}
+#attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
+
 #'  Setup the skip covariate function
 #'
 #'
@@ -2034,12 +2046,10 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 #' @noRd
 .foceiSetupSkipCov <- function(ui, env) {
   env$skipCov <- rxode2::rxGetControl(ui, "skipCov", NULL)
-  .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
   if (is.null(env$skipCov)) {
-    .skipCov <- rep(FALSE, .maxTheta)
-    .skipCov[ui$iniDf$ntheta[which(!is.na(ui$iniDf$err))]] <- TRUE
-    env$skipCov <- .skipCov
+    env$skipCov <- ui$foceiSkipCov
   }
+  .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
   if (length(env$skipCov) > .maxTheta) {
     if (all(env$skipCov[-seq_len(.maxTheta)])) {
       assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
