@@ -171,8 +171,10 @@
   .cvp <- do.call("rbind", .cvp)
   .nonMuRef <- setdiff(dimnames(.ome)[[1]], .env$.muRefVars)
   if (length(.nonMuRef) > 0) {
-    .ret$popDfSig2 <- as.data.frame(lapply(names(.ret$popDfSig), function(x) { rep("", length(.noMuRef))}))
-    .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.noMuRef))}))
+    .ret$popDfSig2 <- as.data.frame(lapply(names(.ret$popDfSig), function(x) { rep("", length(.nonMuRef))}))
+    names(.ret$popDfSig2) <- names(.ret$popDfSig)
+    .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
+    names(.ret$popDf2) <- names(.ret$popDf)
     row.names(.ret$popDfSig2) <- .nonMuRef
     row.names(.ret$popDf2) <- .nonMuRef
   }
@@ -187,7 +189,7 @@
     .ret$popDf2 <- data.frame(.ret$popDf2, "BSD" = .cvp$v, check.names = FALSE)
     .ret$popDfSig <- rbind(.ret$popDfSig, .ret$popDfSig2)
     .ret$popDf <- rbind(.ret$popDf, .ret$popDf2)
-    rm(c("popDf2", "popDfSig2"), envir=.ret)
+    rm(list=c("popDf2", "popDfSig2"), envir=.ret)
   }
   .w <- which(names(.ret$popDfSig) == "BSD")
   if (length(.w) == 1) {

@@ -282,7 +282,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     .tmp <- x$omega
     if (!is.null(.tmp)) {
       diag(.tmp) <- 0
-      if (.mu & !.noEta) {
+      if (!.noEta) {
         if (all(.tmp == 0)) {
           cat("  No correlations in between subject variability (BSV) matrix\n")
         } else {

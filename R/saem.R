@@ -105,7 +105,7 @@ saemControl <- function(seed = 99,
                         optExpression = FALSE,
                         maxsteps = 100000L,
                         adjObf = TRUE,
-                        sum.prod = FALSE,
+                        sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
                         singleOde = TRUE,
                         tol = 1e-6,
@@ -153,7 +153,7 @@ saemControl <- function(seed = 99,
     print = print,
     DEBUG = trace,
     optExpression = optExpression,
-    sum.prod = sum.prod,
+    sumProd = sumProd,
     nnodes.gq = nnodes.gq,
     nsd.gq = nsd.gq,
     adjObf = adjObf,
@@ -1284,6 +1284,46 @@ rxUiGet.saemResName <- function(x, ...) {
   env$.saemObf <- .saemObf
   env$.likTime <- .likTime
 }
+#' Get the calculate residual parameter for saem
+#'
+#' @param env saem environment
+#' @return Calculate resid environment
+#' @author Matthew L. Fidler
+#' @noRd
+.saemGetCalcResid <- function(env) {
+  .table <- .ui$table
+  .calcResid <- .table$cwres
+  if (is.null(calc.resid)) {
+    .calcResid <- .table$saemCWRES
+  }
+  .calcResid
+}
+
+#' Convert the saem options to focei options
+#' @param env saem environment that has `$saemControl` assigns focei control to `$control`
+#' @return Nothing called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.saemControlToFoceiControl <- function(env) {
+  .saemControl <- env$saemControl
+  .ctl <- env$saemControl$ODEopt
+  names(.ctl) <- sub("maxsteps", "maxstepsOde", names(.ctl))
+  .ctl <- .ctl[names(.ctl) != "scale"]
+  .ctl$maxOuterIterations <- 0
+  .ctl$maxInnerIterations <- 0
+  .ctl$covMethod <- "" #.covMethod
+  .ctl$sumProd <- .saemControl$sumProd
+  .ctl$optExpression <- .saemControl$optExpression
+  .ctl$scaleTo <- 0
+  .ctl$calcTables <- .saemControl$calcTables
+  if (.saemControl$addProp == 1L) {
+    .ctl$addProp <- "combined1"
+  } else {
+    .ctl$addProp <- "combined2"
+  }
+  .ctl$method <- .saemControl$method
+  env$control <- do.call(foceiControl, .ctl)
+}
 
 #' Fit the saem family of models
 #'
@@ -1297,6 +1337,7 @@ rxUiGet.saemResName <- function(x, ...) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
+  .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui)
   .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0)
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
@@ -1316,8 +1357,9 @@ rxUiGet.saemResName <- function(x, ...) {
   .saemCalcLikelihood(.ret)
    if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
-  }
-  .ret
+   }
+  .saemControlToFoceiControl(.ret)
+  nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
 }
 
 #' @rdname nlmixr2Est
