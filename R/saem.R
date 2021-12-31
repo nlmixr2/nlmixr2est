@@ -1037,6 +1037,8 @@ rxUiGet.saemResName <- function(x, ...) {
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
   .curOme <- .saem$Gamma2_phi1
+  .mat <- nlme::random.effects(.saem)
+  .mat2 <- .mat[, .etaTrans, drop = FALSE]
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]
@@ -1046,6 +1048,9 @@ rxUiGet.saemResName <- function(x, ...) {
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
   }
   env$omega <- .ome
+  env$etaObf <- data.frame(ID = seq_along(.mat2[, 1]),
+                           setNames(as.data.frame(.mat2), .etaNames),
+                           OBJI = NA)
   invisible()
 }
 #' Add Parameter History
