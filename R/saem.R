@@ -935,7 +935,13 @@ rxUiGet.saemResName <- function(x, ...) {
   .cfg$propT <- ui$saemPropT
   .model$saem_mod(.cfg)
 }
-
+#' Get the saem control statement and install it into the ui
+#'
+#' @param env Environment with ui in it
+#' @param ... Other arguments
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
 .saemFamilyControl <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
@@ -1012,7 +1018,6 @@ rxUiGet.saemResName <- function(x, ...) {
   env$theta <- .theta
   invisible()
 }
-
 #' Get SAEM omega
 #'
 #' @param env Environment that has ui and saem in it
@@ -1043,14 +1048,26 @@ rxUiGet.saemResName <- function(x, ...) {
   env$omega <- .ome
   invisible()
 }
-
+#' Add Parameter History
+#'
+#' @param env saem fit environment
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
 .saemAddParHist <- function(env) {
   .saem <- env$saem
   .ui <- env$ui
 
+  .allThetaNames <- .ui$saemParHistNames
+
   .m <- .saem$par_hist
   if (ncol(.m) > length(.allThetaNames)) {
     .m <- .m[, seq_along(.allThetaNames)]
+  }
+  .w <- which(.ui$saemFixed)
+  if (length(.w) > 1) {
+    .m <- .m[, -.w]
+    .allThetaNames <- .allThetaNames[-.w]
   }
   env$parHistStacked <- data.frame(
     val = as.vector(.m),
@@ -1058,8 +1075,14 @@ rxUiGet.saemResName <- function(x, ...) {
     iter = rep(1:nrow(.m), ncol(.m))
   )
   env$parHist <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
+  names(env$parHist) <- c("iter", .allThetaNames)
 }
-
+#' Calculate the covariance term
+#'
+#' @param env saem environment
+#' @return nothing, adds $cov to environment if calculated
+#' @author Matthew L. Fidler
+#' @noRd
 .saemCalcCov <- function(env) {
   .ui <- env$ui
   .saem <- env$saem
@@ -1164,7 +1187,97 @@ rxUiGet.saemResName <- function(x, ...) {
   if (.addCov) {
     env$cov <- .cov
     env$.calcCovTime <- .calcCovTime
+    if (.calcCov) {
+      env$covMethod <- "linFim"
+      if (.addCov & .sqrtm) {
+        env$covMethod <- "|linFim|"
+        warning("covariance matrix non-positive definite, corrected by sqrtm(linFim %*% linFim)",
+                call.=FALSE)
+      }
+    } else {
+      if (.calcCov) {
+        warning("linearization of FIM could not be used to calculate covariance",
+                call.=FALSE)
+      }
+      if (.addCov & .sqrtm) {
+        .env$covMethod <- "|fim|"
+        warning("covariance matrix non-positive definite, corrected by sqrtm(fim %*% fim)",
+                call.=FALSE)
+      } else if (!.addCov) {
+        warning("FIM non-positive definite and cannot be used to calculate the covariance",
+                call.=FALSE)
+      }
+    }
   }
+}
+#' Get the likelihood name for SAEM
+#'
+#' @param nnodesGq Number of nodes for Gaussian Quadrature
+#' @param nsdGq Number of standard deviations to expand around for
+#'   Guassian Quadrature
+#' @return Name of the likelihood function
+#' @author Matthew L. Fidler
+#' @noRd
+.saemGetLikName <- function(nnodesGq, nsdGq) {
+  if (nnodesGq == 1) {
+    paste0("laplace", nsdGq)
+  } else {
+    paste0("gauss", nnodesGq, "_", nsdGq)
+  }
+}
+#' Calculate the likelihood and the time
+#'
+#' @param saem saem object
+#' @param nnodesGq Number of nodes for Gaussian Quadrature
+#' @param nsdGq Number of standard deviations for Gaussian Quadrature
+#' @return List of likelihood cauclation time and named objective function value
+#' @author Matthew L. Fidler
+#' @noRd
+.saemCalcLikelihoodTime <- function(saem, nnodesGq, nsdGq) {
+  .likTime <- proc.time()
+  .saemObf <- calc.2LL(saem, nnodes.gq = nnodesGq, nsd.gq = nsdGq)
+  .rn <- .saemGetLikName(nnodesGq, nsdGq)
+  .likTime <- proc.time() - .likTime
+  .likTime <- .likTime["elapsed"]
+  list(.likTime, setNames(.saemObf, .rn))
+}
+#' Calculate the likelihood if requested
+#'
+#' @param env saem environment
+#' @param ...  Other arguments
+#' @return Nothing, assigns .saemObf and .likTime in environment
+#' @author Matthew L. Fidler
+#' @noRd
+.saemCalcLikelihood <- function(env, ...) {
+  .ui <- env$ui
+  .saem <- env$saem
+  .objf <-
+  .rn <- ""
+  .likTime <- 0
+  .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
+  .nnodesGq <- rxode2::rxGetControl(.ui, "nnodes.gq", 3)
+  .nsdGq <- rxode2::rxGetControl(.ui, "nsd.gq", 1.6)
+  if (is.na(.obf)) {
+    .saemObf <- NA
+  } else if (is.null(.obf)) {
+    .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq)
+    .likTime <- .tmp[[1]]
+    .saemObf <- .tmp[[2]]
+  } else if (is(.obf, "logical")) {
+    if (is.na(.obf)) {
+      .saemObf <- NA
+    } else if (.obf) {
+      .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq)
+      .likTime <- .tmp[[1]]
+      .saemObf <- .tmp[[2]]
+    } else {
+      .saemObf <- NA
+    }
+  } else if (is(object, "numeric")) {
+    .saemObf <- obf
+  }
+  env$.saemObf <- .saemObf
+  env$.likTime <- .likTime
 }
 
 #' Fit the saem family of models
@@ -1194,12 +1307,13 @@ rxUiGet.saemResName <- function(x, ...) {
   .getSaemTheta(.ret)
   .getSaemOmega(.ret)
   .nlmixr2FitUpdateParams(.ret)
+  .saemAddParHist(.ret)
+  .saemCalcLikelihood(.ret)
    if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
   }
   .ret
 }
-
 
 #' @rdname nlmixr2Est
 #' @export
