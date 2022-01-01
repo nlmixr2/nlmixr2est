@@ -48,7 +48,7 @@ dataset. We write the model as follows:
 one.cmt <- function() {
   ini({
     ## You may label each parameter with a comment
-    tka <- 0.45 # Log Ka
+    tka <- exp(0.45) # Ka
     tcl <- log(c(0, 2.7, 100)) # Log Cl
     ## This works with interactive models
     ## You may also label the preceding line with label("label text")
@@ -60,7 +60,7 @@ one.cmt <- function() {
     add.sd <- 0.7
   })
   model({
-    ka <- exp(tka + eta.ka)
+    ka <- tka * exp(eta.ka)
     cl <- exp(tcl + eta.cl)
     v <- exp(tv + eta.v)
     linCmt() ~ add(add.sd)
@@ -72,7 +72,7 @@ f <- nlmixr(one.cmt)
 We can now run the model...
 
 ```{r}
-fit <- nlmixr(one.cmt, theo_sd, list(print=0), est="focei")
+fit <- nlmixr(one.cmt, theo_sd, list(print=0), est="saem")
 print(fit)
 ```
 
@@ -83,7 +83,7 @@ equations (ODEs):
 one.compartment <- function() {
   ini({
     tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
+    tcl <- fix(1) # Log Cl
     tv <- 3.45    # Log V
     eta.ka ~ 0.6
     eta.cl ~ 0.3
@@ -91,7 +91,7 @@ one.compartment <- function() {
     add.sd <- 0.7
   })
   model({
-    ka <- exp(tka + eta.ka)
+    ka <- tka * exp(eta.ka)
     cl <- exp(tcl + eta.cl)
     v <- exp(tv + eta.v)
     d/dt(depot) = -ka * depot
@@ -105,7 +105,7 @@ one.compartment <- function() {
 We can try the Stochastic Approximation EM (SAEM) method to this model:
 
 ```{r}
-fit2 <- nlmixr(one.compartment, theo_sd, list(print=0), est="saem")
+fit2 <- nlmixr(one.compartment, theo_sd,  est="saem")
 print(fit2)
 ```
 

@@ -29,9 +29,9 @@ int addProp;
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
-                          int itmax, double ftol_rel, double rcoef, double ecoef, double ccoef,
-                          int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
-                          int *iprint);
+			  int itmax, double ftol_rel, double rcoef, double ecoef, double ccoef,
+			  int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
+			  int *iprint);
 
 double *_saemYptr;
 double *_saemFptr;
@@ -288,7 +288,7 @@ static inline void _saemOpt(int n, double *pxmin) {
     int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
     double ynewlo;
     nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
-              &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
+	      &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
   } else if (_saemType == 2) {
     // Try Newoua
     Function loadNamespace("loadNamespace", R_BaseNamespace);
@@ -299,8 +299,8 @@ static inline void _saemOpt(int n, double *pxmin) {
       par0[i] = pxmin[i];
     }
     List ret = newuoa(_["par"] = par0, _["fn"] = nlmixr2[".saemResidF"],
-                      _["control"]=List::create(_["rhoend"]=_saemTol,
-                                                _["maxfun"]=_saemItmax*n*n));
+		      _["control"]=List::create(_["rhoend"]=_saemTol,
+						_["maxfun"]=_saemItmax*n*n));
     NumericVector x = ret["x"];
     for (int i = n; i--;) {
       pxmin[i] = x[i];
@@ -411,11 +411,11 @@ public:
     vec sig2(bres.size());
     std::copy(sigma2, sigma2+bres.size(), &sig2[0]);
     return List::create(_["sigma2"]  = wrap(sig2),
-                        _["ares"]    = wrap(ares),
-                        _["bres"]    = wrap(bres),
-                        _["cres"]    = wrap(cres),
-                        _["lres"]    = wrap(lres),
-                        _["res_mod"] = wrap(res_mod));
+			_["ares"]    = wrap(ares),
+			_["bres"]    = wrap(bres),
+			_["cres"]    = wrap(cres),
+			_["lres"]    = wrap(lres),
+			_["res_mod"] = wrap(res_mod));
   }
 
   mat get_par_hist() {
@@ -611,61 +611,61 @@ public:
       // CHG hard coded 20
       int nu1, nu2, nu3;
       if (kiter==0) {
-        nu1=20*nu(0); nu2=20*nu(1); nu3=20*nu(2);
+	nu1=20*nu(0); nu2=20*nu(1); nu3=20*nu(2);
       } else {
-        nu1=nu(0); nu2=nu(1); nu3=nu(2);
+	nu1=nu(0); nu2=nu(1); nu3=nu(2);
       }
 
       vec f = fsave;
       fsave = f;
       if (distribution == 1){
-        // REprintf("dist=1\n");
-        vec ft = f;
-        vec ftT(ft.size());
-        vec yt = yM;
-        for (int i = ft.size(); i--;) {
-          int cur = ix_endpnt(i);
-          ft(i) = _powerD(f(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          yt(i) = _powerD(yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          ftT(i) = handleF((int)propT(cur), ft(i), f(i), false, true);
-        }
-        // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-        // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
-        // This does not match focei's definition of add+prop
-        vec g;
-        g = vecares + vecbres % abs(ftT); //make sure g > 0
-        g.elem( find( g == 0.0) ).fill(1.0); // like Uppusla IWRES allows prop when f=0
-        g.elem( find( g < double_xmin) ).fill(double_xmin);
-        g.elem( find(g > xmax)).fill(xmax);
+	// REprintf("dist=1\n");
+	vec ft = f;
+	vec ftT(ft.size());
+	vec yt = yM;
+	for (int i = ft.size(); i--;) {
+	  int cur = ix_endpnt(i);
+	  ft(i) = _powerD(f(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
+	  yt(i) = _powerD(yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
+	  ftT(i) = handleF((int)propT(cur), ft(i), f(i), false, true);
+	}
+	// focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
+	// focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
+	// This does not match focei's definition of add+prop
+	vec g;
+	g = vecares + vecbres % abs(ftT); //make sure g > 0
+	g.elem( find( g == 0.0) ).fill(1.0); // like Uppusla IWRES allows prop when f=0
+	g.elem( find( g < double_xmin) ).fill(double_xmin);
+	g.elem( find(g > xmax)).fill(xmax);
 
-        DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
+	DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
       } else if (distribution == 2){
-        DYF(indioM)=-yM%log(f)+f;
+	DYF(indioM)=-yM%log(f)+f;
       } else if (distribution == 3) {
-        DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
+	DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
       }
       else {
-        Rcout << "unknown distribution (id=" <<  distribution << ")\n";
-        return;
+	Rcout << "unknown distribution (id=" <<  distribution << ")\n";
+	return;
       }
       //U_y is a vec of subject llik; summed over obs for each subject
       vec U_y=sum(DYF,0).t();
 
       if(nphi1>0) {
-        vec U_phi;
-        do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi);
-        mat dphi=phiM.cols(i1)-mphi1.mprior_phiM;
-        U_phi=0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-        do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi);
-        do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi);
+	vec U_phi;
+	do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi);
+	mat dphi=phiM.cols(i1)-mphi1.mprior_phiM;
+	U_phi=0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+	do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi);
+	do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi);
       }
       if(nphi0>0) {
-        vec U_phi;
-        do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi);
-        mat dphi=phiM.cols(i0)-mphi0.mprior_phiM;
-        U_phi=0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-        do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi);
-        do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi);
+	vec U_phi;
+	do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi);
+	mat dphi=phiM.cols(i0)-mphi0.mprior_phiM;
+	U_phi=0.5*sum(dphi%(dphi*IGamma2_phi0),1);
+	do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi);
+	do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi);
       }
       if (DEBUG>0) Rcout << "mcmc successful\n";
       phiFile << phiM;
@@ -688,89 +688,89 @@ public:
 
       d2logk(span(0,nlambda1-1),span(0,nlambda1-1))=-CGamma21;
       if (nphi0>0) {
-        d2logk(span(nlambda1,nlambda-1),span(nlambda1,nlambda-1))=-CGamma20;
+	d2logk(span(nlambda1,nlambda-1),span(nlambda1,nlambda-1))=-CGamma20;
       }
 
       vec fsM;
       fsM.set_size(0);
       //integration
       for(int k=0; k<nmc; k++) {
-        phi.slice(k)=phiM.rows(span(k*N,(k+1)*N-1));
+	phi.slice(k)=phiM.rows(span(k*N,(k+1)*N-1));
 
-        Statphi11 += phi.slice(k).cols(i1);
-        Statphi01 += phi.slice(k).cols(i0);
-        mat phik=phi.slice(k);
-        mat phi1k=phik.cols(i1);
-        mat phi0k=phik.cols(i0);
-        Statphi12=Statphi12+phi1k.t()*phi1k;
-        Statphi02=Statphi02+phi0k.t()*phi0k;
+	Statphi11 += phi.slice(k).cols(i1);
+	Statphi01 += phi.slice(k).cols(i0);
+	mat phik=phi.slice(k);
+	mat phi1k=phik.cols(i1);
+	mat phi0k=phik.cols(i0);
+	Statphi12=Statphi12+phi1k.t()*phi1k;
+	Statphi02=Statphi02+phi0k.t()*phi0k;
 
-        vec fk = fsave(span(k*ntotal, (k+1)*ntotal-1));
-        fk = fk(ix_sorting);    //sorted by endpnt
-        fsM = join_cols(fsM, fk);
-        // vec resid_all(ys.size());// = ys - fk;
-        vec gk, y_cur, f_cur;
-        double ft, fa;
-        //loop thru endpoints here
-        for(int b=0; b<nendpnt; ++b) {
-          y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
-          f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
-          vec resid(y_cur.size());
-          for (int i = y_cur.size(); i--;){
-            // lambda(cur), yj(cur), low(cur), hi(cur)
-            resid(i) = _powerD(y_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
-            if (std::isnan(resid(i))) {
-              Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
-            }
-            ft = _powerD(f_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
-            resid(i) -=  ft;
-            if (res_mod(b) == rmProp) {
-              fa = handleF((int)propT(b), ft, f_cur[i], true, true);
-              resid(i) = resid(i)/fa;
-            }
-          }
+	vec fk = fsave(span(k*ntotal, (k+1)*ntotal-1));
+	fk = fk(ix_sorting);    //sorted by endpnt
+	fsM = join_cols(fsM, fk);
+	// vec resid_all(ys.size());// = ys - fk;
+	vec gk, y_cur, f_cur;
+	double ft, fa;
+	//loop thru endpoints here
+	for(int b=0; b<nendpnt; ++b) {
+	  y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+	  f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+	  vec resid(y_cur.size());
+	  for (int i = y_cur.size(); i--;){
+	    // lambda(cur), yj(cur), low(cur), hi(cur)
+	    resid(i) = _powerD(y_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
+	    if (std::isnan(resid(i))) {
+	      Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
+	    }
+	    ft = _powerD(f_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
+	    resid(i) -=  ft;
+	    if (res_mod(b) == rmProp) {
+	      fa = handleF((int)propT(b), ft, f_cur[i], true, true);
+	      resid(i) = resid(i)/fa;
+	    }
+	  }
 #if 0
-          uvec iix = find(resid>1e9);
-          Rcout << b << " " <<iix;
-          Rcout << ys(iix) << fk(iix) << gk(iix);
+	  uvec iix = find(resid>1e9);
+	  Rcout << b << " " <<iix;
+	  Rcout << ys(iix) << fk(iix) << gk(iix);
 #endif
 
-          if (res_mod(b) <= rmProp)
-            resk = dot(resid, resid);
-          else
-            resk = 1;                                              //FIXME
+	  if (res_mod(b) <= rmProp)
+	    resk = dot(resid, resid);
+	  else
+	    resk = 1;                                              //FIXME
 
-          statr[b]=statr[b]+resk;
-          resy(k) = resk;                                          //FIXME: resy(b,k)?
-        }
-        if (DEBUG>1) Rcout << "star[] successful\n";
+	  statr[b]=statr[b]+resk;
+	  resy(k) = resk;                                          //FIXME: resy(b,k)?
+	}
+	if (DEBUG>1) Rcout << "star[] successful\n";
 
-        mat dphi1k=phi1k-mprior_phi1;
-        mat dphi0k=phi0k-mprior_phi0;
-        vec sdg1=sum(dphi1k%dphi1k,0).t()/gamma2_phi1;
-        mat Md1=(IGamma2_phi1*(dphi1k.t()*Mcovariables)).t();
-        mat Md0=(IGamma2_phi0*(dphi0k.t()*Mcovariables)).t();
-        vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
-        vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
-        vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
-        vec d1_logsigma2;
-        d1_logsigma2 << 0.5*resy(k)/sigma2[0]-0.5*ntotal;          //FIXME: sigma2[0], sigma2[b] instead?
-        vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
-        D1 = D1+d1logk;
-        D11= D11+d1logk*d1logk.t();
+	mat dphi1k=phi1k-mprior_phi1;
+	mat dphi0k=phi0k-mprior_phi0;
+	vec sdg1=sum(dphi1k%dphi1k,0).t()/gamma2_phi1;
+	mat Md1=(IGamma2_phi1*(dphi1k.t()*Mcovariables)).t();
+	mat Md0=(IGamma2_phi0*(dphi0k.t()*Mcovariables)).t();
+	vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
+	vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
+	vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
+	vec d1_logsigma2;
+	d1_logsigma2 << 0.5*resy(k)/sigma2[0]-0.5*ntotal;          //FIXME: sigma2[0], sigma2[b] instead?
+	vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
+	D1 = D1+d1logk;
+	D11= D11+d1logk*d1logk.t();
 
-        vec w2phi=-0.5*sdg1;                                       //CHK!!!
-        for(int j=0, l=0; j<nphi1; j++) {
-          for(unsigned int jj=0; jj<pc1(j); jj++) {
-            double temp=-dot(COV1.col(l),dphi1k.col(j))/gamma2_phi1(j);
-            d2logk(l,nlambda+j)=temp;
-            d2logk(nlambda+j,l)=temp;
-            l=l+1;
-          }
-          d2logk(nlambda+j,nlambda+j)=w2phi(j);
-        }
-        d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
-        D2=D2+d2logk;
+	vec w2phi=-0.5*sdg1;                                       //CHK!!!
+	for(int j=0, l=0; j<nphi1; j++) {
+	  for(unsigned int jj=0; jj<pc1(j); jj++) {
+	    double temp=-dot(COV1.col(l),dphi1k.col(j))/gamma2_phi1(j);
+	    d2logk(l,nlambda+j)=temp;
+	    d2logk(nlambda+j,l)=temp;
+	    l=l+1;
+	  }
+	  d2logk(nlambda+j,nlambda+j)=w2phi(j);
+	}
+	d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
+	D2=D2+d2logk;
       }//k
       if (DEBUG>0) Rcout << "integration successful\n";
 
@@ -779,21 +779,21 @@ public:
       statphi01=statphi01+pas(kiter)*(Statphi01/nmc-statphi01);
       statphi02=statphi02+pas(kiter)*(Statphi02/nmc-statphi02);
       for(int b=0; b<nendpnt; ++b)
-        statrese[b]=statrese[b]+pas(kiter)*(statr[b]/nmc-statrese[b]);
+	statrese[b]=statrese[b]+pas(kiter)*(statr[b]/nmc-statrese[b]);
 
       // update parameters
       vec Plambda1, Plambda0;
       Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
       if (fixedIx1.n_elem>0) {
-        Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
+	Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
       MCOV1(jcov1)=Plambda1;
       if (nphi0>0) {
-        Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
-        if (fixedIx0.n_elem>0) {
-          Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
-        }
-        MCOV0(jcov0)=Plambda0;
+	Plambda0=inv_sympd(CGamma20)*sum((D1Gamma20%(COV0.t()*statphi01)),1);
+	if (fixedIx0.n_elem>0) {
+	  Plambda0(fixedIx0) = MCOV0(jcov0(fixedIx0));
+	}
+	MCOV0(jcov0)=Plambda0;
       }
       mprior_phi1=COV1*MCOV1;
       mprior_phi0=COV0*MCOV0;
@@ -801,281 +801,281 @@ public:
 
       mat G1=statphi12/N+mprior_phi1.t()*mprior_phi1/N - statphi11.t()*mprior_phi1/N - mprior_phi1.t()*statphi11/N;
       if (kiter<=(unsigned int)(nb_sa))
-        Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
+	Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       else
-        Gamma2_phi1=G1;
+	Gamma2_phi1=G1;
       Gamma2_phi1=Gamma2_phi1%covstruct1;
       vec Gmin=minv(i1);
       uvec jDmin=find(Gamma2_phi1.diag()<Gmin);
       for(unsigned int jm=0; jm<jDmin.n_elem; jm++)
-        Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
+	Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
       if (kiter<=(unsigned int)(nb_correl))
-        Gamma2_phi1 = diagmat(Gamma2_phi1);
+	Gamma2_phi1 = diagmat(Gamma2_phi1);
 
       if (nphi0>0) {
-        if (kiter<=(unsigned int)(niter_phi0)) {
-          Gamma2_phi0=statphi02/N+mprior_phi0.t()*mprior_phi0/N - statphi01.t()*mprior_phi0/N - mprior_phi0.t()*statphi01/N;
-          Gmin=minv(i0);
-          jDmin=find(Gamma2_phi0.diag()<Gmin);
-          for(unsigned int jm=0; jm<jDmin.n_elem; jm++)
-            Gamma2_phi0(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
-          dGamma2_phi0=Gamma2_phi0.diag();
-        } else
-          dGamma2_phi0=dGamma2_phi0*coef_phi0;
-        Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
+	if (kiter<=(unsigned int)(niter_phi0)) {
+	  Gamma2_phi0=statphi02/N+mprior_phi0.t()*mprior_phi0/N - statphi01.t()*mprior_phi0/N - mprior_phi0.t()*statphi01/N;
+	  Gmin=minv(i0);
+	  jDmin=find(Gamma2_phi0.diag()<Gmin);
+	  for(unsigned int jm=0; jm<jDmin.n_elem; jm++)
+	    Gamma2_phi0(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
+	  dGamma2_phi0=Gamma2_phi0.diag();
+	} else
+	  dGamma2_phi0=dGamma2_phi0*coef_phi0;
+	Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
 
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
-        double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
-        if (res_mod(b) == rmAdd) ares(b) = sqrt(sig2);
-        else if (res_mod(b) == rmProp) bres(b) = sqrt(sig2);
-        else if (res_mod(b) == rmAddProp) {
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
+	if (res_mod(b) == rmAdd) ares(b) = sqrt(sig2);
+	else if (res_mod(b) == rmProp) bres(b) = sqrt(sig2);
+	else if (res_mod(b) == rmAddProp) {
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          // yptr = ysb.memptr();
-          // fptr = fsb.memptr();
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
-          double step[2]={-.2, -.2};
+	  // yptr = ysb.memptr();
+	  // fptr = fsb.memptr();
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=2;
+	  double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
+	  double step[2]={-.2, -.2};
 
-          // f = sum((ytr-ft)/g);
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemFn = obj;
-          _saemStep = step;
-          _saemStart=start;
-          _saemOpt(n, pxmin);
-          // Adjust back
-          double ab02 = pxmin[0];
-          double ab12 = pxmin[1];
-          ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+	  // f = sum((ytr-ft)/g);
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemFn = obj;
+	  _saemStep = step;
+	  _saemStart=start;
+	  _saemOpt(n, pxmin);
+	  // Adjust back
+	  double ab02 = pxmin[0];
+	  double ab12 = pxmin[1];
+	  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+	  bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
 
-        } else if (res_mod(b) == rmAddPow) { // add + pow
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	} else if (res_mod(b) == rmAddPow) { // add + pow
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          // yptr = ysb.memptr();
-          // fptr = fsb.memptr();
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
+	  // yptr = ysb.memptr();
+	  // fptr = fsb.memptr();
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=3;
 
-          // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
-          double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
-          double step[3]={-.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objC;
-          _saemOpt(n, pxmin);
-          // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
-        } else if (res_mod(b) == rmPow) { // power
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
+	  double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
+	  double step[3]={-.2, -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objC;
+	  _saemOpt(n, pxmin);
+	  // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
+	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
+	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
+	} else if (res_mod(b) == rmPow) { // power
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objD;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddLam) { // additive + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=2;
+	  double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
+	  double step[2]={ -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objD;
+	  _saemOpt(n, pxmin);
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
+	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
+	} else if (res_mod(b) == rmAddLam) { // additive + lambda
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objE;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmPropLam) { // prop + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=2;
+	  double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+	  double step[2]={ -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objE;
+	  _saemOpt(n, pxmin);
+	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+	} else if (res_mod(b) == rmPropLam) { // prop + lambda
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objF;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmPowLam) { // pow + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=2;
+	  double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+	  double step[2]={ -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objF;
+	  _saemOpt(n, pxmin);
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+	} else if (res_mod(b) == rmPowLam) { // pow + lambda
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
-          double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[3]={ -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objG;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddPropLam) { // add + prop + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=3;
+	  double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+	  double step[3]={ -.2, -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objG;
+	  _saemOpt(n, pxmin);
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
+	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+	} else if (res_mod(b) == rmAddPropLam) { // add + prop + lambda
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
-          double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[3]={ -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objH;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddPowLam) { // add + pow + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=3;
+	  double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+	  double step[3]={ -.2, -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objH;
+	  _saemOpt(n, pxmin);
+	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+	} else if (res_mod(b) == rmAddPowLam) { // add + pow + lambda
+	  uvec idx;
+	  idx = find(ix_endpnt==b);
+	  vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+	  ysb = ysM(idx);
+	  fsb = fsM(idx);
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=4;
-          double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[4]={ -.2, -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objI;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
-        }
-        sigma2[b] = sig2;                                          //CHK: sigma2[] use
-        if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
-        if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
+	  //len = ysb.n_elem;                                        //CHK: needed by nelder
+	  vec xmin(2);
+	  double *pxmin = xmin.memptr();
+	  int n=4;
+	  double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+	  double step[4]={ -.2, -.2, -.2, -.2};
+	  _saemYptr = ysb.memptr();
+	  _saemFptr = fsb.memptr();
+	  _saemLen  = ysb.n_elem;
+	  _saemYj   = (int)yj(b);
+	  _saemPropT = (int)propT(b);
+	  _saemLambda = lambda(b);
+	  _saemLow = low(b);
+	  _saemHi = hi(b);
+	  _saemStep = step;
+	  _saemStart = start;
+	  _saemFn = objI;
+	  _saemOpt(n, pxmin);
+	  ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+	  bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+	  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
+	  lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
+	}
+	sigma2[b] = sig2;                                          //CHK: sigma2[] use
+	if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
+	if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
       }
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
@@ -1097,52 +1097,52 @@ public:
 
       //FIXME: chg according to multiple endpnts; need to chg dim(par_hist)
       for (int b=0; b<nendpnt; ++b) {
-        int offset = res_offset[b];
-        switch ((int)(res_mod(b))) {
-        case rmAdd:
-          vcsig2[offset] = sigma2[b];
-          break;
-        case rmProp:
-          vcsig2[offset] = bres(b);
-          break;
-        case rmAddProp:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          break;
-        case rmAddPow:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = cres(b);
-          break;
-        case rmPow:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = cres(b);
-          break;
-        case rmAddLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = lres(b);
-          break;
-        case rmPropLam:
-          vcsig2[offset]   = bres(b);
-          vcsig2[offset+1] = lres(b);
-          break;
-        case rmPowLam:
-          vcsig2[offset]   = bres(b);
-          vcsig2[offset+1] = cres(b);
-          vcsig2[offset+2] = lres(b);
-          break;
-        case rmAddPropLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = lres(b);
-          break;
-        case rmAddPowLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = cres(b);
-          vcsig2[offset+3] = lres(b);
-          break;
-        }
+	int offset = res_offset[b];
+	switch ((int)(res_mod(b))) {
+	case rmAdd:
+	  vcsig2[offset] = sigma2[b];
+	  break;
+	case rmProp:
+	  vcsig2[offset] = bres(b);
+	  break;
+	case rmAddProp:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = bres(b);
+	  break;
+	case rmAddPow:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = bres(b);
+	  vcsig2[offset+2] = cres(b);
+	  break;
+	case rmPow:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = cres(b);
+	  break;
+	case rmAddLam:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = lres(b);
+	  break;
+	case rmPropLam:
+	  vcsig2[offset]   = bres(b);
+	  vcsig2[offset+1] = lres(b);
+	  break;
+	case rmPowLam:
+	  vcsig2[offset]   = bres(b);
+	  vcsig2[offset+1] = cres(b);
+	  vcsig2[offset+2] = lres(b);
+	  break;
+	case rmAddPropLam:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = bres(b);
+	  vcsig2[offset+2] = lres(b);
+	  break;
+	case rmAddPowLam:
+	  vcsig2[offset]   = ares(b);
+	  vcsig2[offset+1] = bres(b);
+	  vcsig2[offset+2] = cres(b);
+	  vcsig2[offset+3] = lres(b);
+	  break;
+	}
       }
 
       Plambda(ilambda1) = Plambda1;
@@ -1150,9 +1150,9 @@ public:
 
       par_hist.row(kiter) = join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
       if (print != 0 && (kiter==0 || (kiter+1)%print==0))
-        Rcout << kiter+1
-              << ": "
-              << par_hist.row(kiter);
+	Rcout << kiter+1
+	      << ": "
+	      << par_hist.row(kiter);
       Rcpp::checkUserInterrupt();
     }//kiter
     phiFile.close();
@@ -1239,11 +1239,11 @@ private:
   std::vector< std::string > phiMFile;
 
   void set_mcmcphi(mcmcphi &mphi1,
-                   const uvec i1,
-                   const int nphi1,
-                   const mat Gamma2_phi1,
-                   const mat IGamma2_phi1,
-                   const mat mprior_phi1) {
+		   const uvec i1,
+		   const int nphi1,
+		   const mat Gamma2_phi1,
+		   const mat IGamma2_phi1,
+		   const mat mprior_phi1) {
     mphi1.i = i1;
     mphi1.nphi = nphi1;
     mphi1.Gamma_phi=chol(Gamma2_phi1);
@@ -1258,27 +1258,27 @@ private:
       double lim = limit[j];
       if (distribution == 4) lim = log(lim);
       if (cens[j] == 0.0) {
-        // M2 adds likelihood even when the observation is defined
-        if (R_FINITE(lim) && !ISNA(lim)) {
-          DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf(((lim<fc[j])*2.0 - 1.0)*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
-        }
+	// M2 adds likelihood even when the observation is defined
+	if (R_FINITE(lim) && !ISNA(lim)) {
+	  DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf(((lim<fc[j])*2.0 - 1.0)*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
+	}
       } else if (cens[j] == 1.0 || cens[j] == -1.0) {
-        DYF(j) = log(0.5*(1+erf(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j])/M_SQRT2)));
-        if (R_FINITE(lim) && !ISNA(lim)) {
-          DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf((double)(cens[j])*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
-        }
+	DYF(j) = log(0.5*(1+erf(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j])/M_SQRT2)));
+	if (R_FINITE(lim) && !ISNA(lim)) {
+	  DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf((double)(cens[j])*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
+	}
       }
     }
   }
 
   void do_mcmc(const int method,
-               const int nu,
-               const mcmcaux &mx,
-               const mcmcphi &mphi,
-               mat &DYF,
-               mat &phiM,
-               vec &U_y,
-               vec &U_phi) {
+	       const int nu,
+	       const mcmcaux &mx,
+	       const mcmcphi &mphi,
+	       mat &DYF,
+	       mat &phiM,
+	       vec &U_y,
+	       vec &U_phi) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
@@ -1288,64 +1288,64 @@ private:
     double xmax = 1e300;
     for (int u=0; u<nu; u++)
       for (int k1=0; k1<mphi.nphi; k1++) {
-        mat phiMc=phiM;
+	mat phiMc=phiM;
 
-        switch (method) {
-        case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi+mphi.mprior_phiM;
-          break;
-        case 2:
-          phiMc.cols(i)=phiM.cols(i)+randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi;
-          break;
-        case 3:
-          phiMc.col(i(k1))=phiM.col(i(k1))+randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1);
-          break;
-        }
+	switch (method) {
+	case 1:
+	  phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi+mphi.mprior_phiM;
+	  break;
+	case 2:
+	  phiMc.cols(i)=phiM.cols(i)+randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi;
+	  break;
+	case 3:
+	  phiMc.col(i(k1))=phiM.col(i(k1))+randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1);
+	  break;
+	}
 
-        fcMat = user_fn(phiMc, mx.evtM, mx.optM);
-        fc = fcMat.col(0);
-        vec fcT(fc.size());
-        fs = fc;
-        vec yt(fc.size());
-        for (int i = fc.size(); i--;) {
-          int cur = ix_endpnt(i);
-          fc(i)  = _powerD(fc(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          yt(i)  = _powerD(mx.yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          fcT(i) = handleF(propT(cur), fs(i), fc(i), false, true);
-        }
-        gc = vecares + vecbres % abs(fcT); //make sure gc > 0
-        gc.elem( find( gc == 0.0) ).fill(1);
-        gc.elem( find( gc < double_xmin) ).fill(double_xmin);
-        gc.elem( find( gc > xmax) ).fill(xmax);
+	fcMat = user_fn(phiMc, mx.evtM, mx.optM);
+	fc = fcMat.col(0);
+	vec fcT(fc.size());
+	fs = fc;
+	vec yt(fc.size());
+	for (int i = fc.size(); i--;) {
+	  int cur = ix_endpnt(i);
+	  fc(i)  = _powerD(fc(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
+	  yt(i)  = _powerD(mx.yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
+	  fcT(i) = handleF(propT(cur), fs(i), fc(i), false, true);
+	}
+	gc = vecares + vecbres % abs(fcT); //make sure gc > 0
+	gc.elem( find( gc == 0.0) ).fill(1);
+	gc.elem( find( gc < double_xmin) ).fill(double_xmin);
+	gc.elem( find( gc > xmax) ).fill(xmax);
 
-        switch (distribution) {
-        case 1:
-          DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
-          break;
-        case 2:
-          DYF(mx.indioM)=-mx.yM%log(fc)+fc;
-          break;
-        case 3:
-          DYF(indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
-          break;
-        }
-        doCens(DYF, cens, limit, fc, gc, mx.yM, distribution);
+	switch (distribution) {
+	case 1:
+	  DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
+	  break;
+	case 2:
+	  DYF(mx.indioM)=-mx.yM%log(fc)+fc;
+	  break;
+	case 3:
+	  DYF(indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
+	  break;
+	}
+	doCens(DYF, cens, limit, fc, gc, mx.yM, distribution);
 
-        Uc_y=sum(DYF,0).t();
-        if (method==1) deltu=Uc_y-U_y;
-        else {
-          mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
-          Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
-          deltu=Uc_y-U_y+Uc_phi-U_phi;
-        }
+	Uc_y=sum(DYF,0).t();
+	if (method==1) deltu=Uc_y-U_y;
+	else {
+	  mat dphic=phiMc.cols(i)-mphi.mprior_phiM;
+	  Uc_phi=0.5*sum(dphic%(dphic*mphi.IGamma2_phi),1);
+	  deltu=Uc_y-U_y+Uc_phi-U_phi;
+	}
 
-        ind=find( deltu < -log(randu<vec>(mx.nM)) );
-        phiM(ind,i)=phiMc(ind,i);
-        U_y(ind)=Uc_y(ind);
-        if (method>1) U_phi(ind)=Uc_phi(ind);
-        ind = getObsIdx(ix_idM.rows(ind));
-        fsave(ind)=fs(ind);
-        if (method<3) break;
+	ind=find( deltu < -log(randu<vec>(mx.nM)) );
+	phiM(ind,i)=phiMc(ind,i);
+	U_y(ind)=Uc_y(ind);
+	if (method>1) U_phi(ind)=Uc_phi(ind);
+	ind = getObsIdx(ix_idM.rows(ind));
+	fsave(ind)=fs(ind);
+	if (method<3) break;
       }
   }
 };
@@ -1381,7 +1381,7 @@ typedef void (*par_solve_t)(rx_solve *rx);
 par_solve_t saem_solve;
 
 typedef int (*iniSubjectE_t)(int solveid, int inLhs, rx_solving_options_ind *ind, rx_solving_options *op, rx_solve *rx,
-                             t_update_inis u_inis);
+			     t_update_inis u_inis);
 
 iniSubjectE_t iniSubjectE;
 
@@ -1415,7 +1415,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
-        ind->par_ptr[_j] = _phi(_i, k++);
+	ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
   }
@@ -1444,35 +1444,35 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       ind->idx=j;
       double curT = getTimeS(ind->ix[ind->idx], ind);
       if (isDose(ind->evid[ind->ix[ind->idx]])){
-        // Need to calculate for advan sensitivities
-        saem_lhs((int)id, curT,
-                 getSolve(j), ind->lhs);
+	// Need to calculate for advan sensitivities
+	saem_lhs((int)id, curT,
+		 getSolve(j), ind->lhs);
       } else if (ind->evid[ind->ix[ind->idx]] == 0) {
-        saem_lhs((int)id, curT,
-                 getSolve(j), ind->lhs);
-        double cur = ind->lhs[0];
-        if (std::isnan(cur)) {
-          cur = 1.0e99;
-          hasNan = true;
-          // NumericVector par(nPar);
-          // for (int _j = 0; _j < nPar; _j++){
-          //   par[_j] = ind->par_ptr[_j];
-          // }
-          // par.names() = parNames;
-          // Rcpp::print(par);
-        }
-        g(elt, 0) = cur;
-        if (_rx->cens) {
-          g(elt, 1) = ind->cens[ind->ix[ind->idx]];
-        } else {
-          g(elt, 1) = 0;
-        }
-        if (_rx->limit) {
-          g(elt, 2) = ind->limit[ind->ix[ind->idx]];
-        } else {
-          g(elt, 2) = R_NegInf;
-        }
-        elt++;
+	saem_lhs((int)id, curT,
+		 getSolve(j), ind->lhs);
+	double cur = ind->lhs[0];
+	if (std::isnan(cur)) {
+	  cur = 1.0e99;
+	  hasNan = true;
+	  // NumericVector par(nPar);
+	  // for (int _j = 0; _j < nPar; _j++){
+	  //   par[_j] = ind->par_ptr[_j];
+	  // }
+	  // par.names() = parNames;
+	  // Rcpp::print(par);
+	}
+	g(elt, 0) = cur;
+	if (_rx->cens) {
+	  g(elt, 1) = ind->cens[ind->ix[ind->idx]];
+	} else {
+	  g(elt, 1) = 0;
+	}
+	if (_rx->limit) {
+	  g(elt, 2) = ind->limit[ind->ix[ind->idx]];
+	} else {
+	  g(elt, 2) = R_NegInf;
+	}
+	elt++;
       } // evid=2 does not need to be calculated
     }
   }
@@ -1515,12 +1515,12 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
       stop("params must be non-nil");
     }
     rxode2::rxSolve_(obj, odeO,
-                     R_NilValue,//const Nullable<CharacterVector> &specParams =
-                     R_NilValue,//const Nullable<List> &extraArgs =
-                     pars,//const RObject &params =
-                     ev,//const RObject &events =
-                     R_NilValue, // inits
-                     1);//const int setupOnly = 0
+     		    R_NilValue,//const Nullable<CharacterVector> &specParams =
+     		    R_NilValue,//const Nullable<List> &extraArgs =
+     		    pars,//const RObject &params =
+     		    ev,//const RObject &events =
+     		    R_NilValue, // inits
+     		    1);//const int setupOnly = 0
   } else {
     stop("cannot find rxode2 model");
   }
@@ -1567,18 +1567,18 @@ SEXP saem_fit(SEXP xSEXP) {
   saem.saem_fit();
 
   List out = List::create(
-                          Named("resMat") = saem.get_resMat(),
-                          Named("transMat") = saem.get_trans(),
-                          Named("mprior_phi") = saem.get_mprior_phi(),
-                          Named("mpost_phi") = saem.get_mpost_phi(),
-                          Named("Gamma2_phi1") = saem.get_Gamma2_phi1(),
-                          Named("Plambda") = saem.get_Plambda(),
-                          Named("Ha") = saem.get_Ha(),
-                          Named("sig2") = saem.get_sig2(),
-                          Named("eta") = saem.get_eta(),
-                          Named("par_hist") = saem.get_par_hist(),
-                          Named("res_info") = saem.get_resInfo()
-                          );
+    Named("resMat") = saem.get_resMat(),
+    Named("transMat") = saem.get_trans(),
+    Named("mprior_phi") = saem.get_mprior_phi(),
+    Named("mpost_phi") = saem.get_mpost_phi(),
+    Named("Gamma2_phi1") = saem.get_Gamma2_phi1(),
+    Named("Plambda") = saem.get_Plambda(),
+    Named("Ha") = saem.get_Ha(),
+    Named("sig2") = saem.get_sig2(),
+    Named("eta") = saem.get_eta(),
+    Named("par_hist") = saem.get_par_hist(),
+    Named("res_info") = saem.get_resInfo()
+  );
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;

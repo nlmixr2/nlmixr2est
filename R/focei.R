@@ -2309,6 +2309,32 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
   }
+  .env <- .ret$env
+  for (.item in c("origData", "saem", "phiM")) {
+    if (exists(.item, .env)) {
+      .obj <- get(.item, envir=.env)
+      .size <- object.size(.obj)
+      .objC <- qs::qserialize(.obj)
+      .size2 <- object.size(.objC)
+      if (.size2 < .size) {
+        message("compress ", .item, " in nlmixr2 object, save ", (.size - .size2))
+        assign(.item, .objC, envir=.env)
+      }
+    }
+  }
+  for (.item in c("dataSav", "adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
+                  "fullTheta", "scaleC", "gillRet", "gillRetC",
+                  "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
+                  "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                  "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
+                  "xType", "IDlabel", "ODEmodel",
+                  # times
+                  "optimTime", "setupTime", "covTime")) {
+    if (exists(.item, .env)) {
+      rm(list=.item, envir=.env)
+    }
+  }
+
   .ret
 }
 
@@ -2453,3 +2479,4 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
   class(.env) <- c("output", "nlmixr2Est")
   nlmixr2Est(.env)
 }
+

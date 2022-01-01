@@ -3454,17 +3454,6 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     } else {
       nobs2 = rx->nobs2;
     }
-    if (mixed){
-      arma::mat omega = as<arma::mat>(e["omega"]);
-      arma::mat D(omega.n_rows,omega.n_rows,fill::zeros);
-      arma::mat cor(omega.n_rows,omega.n_rows);
-      D.diag() = (sqrt(omega.diag()));
-      arma::vec sd=D.diag();
-      D = inv_sympd(D);
-      cor = D * omega * D;
-      cor.diag()= sd;
-      e["omegaR"] = wrap(cor);
-    }
     if (op_focei.scaleObjective){
       fmin = fmin * op_focei.initObjective / op_focei.scaleObjectiveTo;
     }
@@ -5246,14 +5235,6 @@ NumericMatrix foceiCalcCov(Environment e){
             warning(_("The variance of all elements are unreasonably small, <1e-7"));
             op_focei.covMethod=0;
             e.remove("cov");
-          } else {
-            arma::mat Dcov(cov.n_rows,cov.n_rows,fill::zeros);
-            Dcov.diag() = (sqrt(cov.diag()));
-            arma::vec sd2=Dcov.diag();
-            Dcov = inv_sympd(Dcov);
-            arma::mat cor2 = Dcov * cov * Dcov;
-            cor2.diag()= sd2;
-            e["cor"] = cor2;
           }
         }
         if (op_focei.covMethod==0){
@@ -5515,10 +5496,6 @@ void foceiFinalizeTables(Environment e){
     tmpNM.attr("dimnames") = List::create(etaNames, etaNames);
     e["omega"] = tmpNM;
 
-    tmpNM = as<NumericMatrix>(e["omegaR"]);
-    tmpNM.attr("dimnames") = List::create(etaNames, etaNames);
-    e["omegaR"] = tmpNM;
-
     tmpL  = as<List>(e["ranef"]);
     List tmpL2 = as<List>(e["etaObf"]);
     CharacterVector tmpN  = tmpL.attr("names");
@@ -5532,19 +5509,8 @@ void foceiFinalizeTables(Environment e){
     tmpL2.attr("names") = tmpN2;
     e["ranef"] = tmpL;
     e["etaObf"] = tmpL2;
-
-    // omegaR
-    arma::mat omega = as<arma::mat>(e["omega"]);
-    arma::mat D(omega.n_rows,omega.n_rows,fill::zeros);
-    arma::mat cor(omega.n_rows,omega.n_rows);
-    D.diag() = (sqrt(omega.diag()));
-    arma::vec sd=D.diag();
-    D = inv_sympd(D);
-    cor = D * omega * D;
-    cor.diag()= sd;
   } else {
     e["ranef"] = R_NilValue;
-    e["omegaR"] = R_NilValue;
   }
 
   ////////////////////////////////////////////////////////////////////////////////
@@ -5771,22 +5737,6 @@ void foceiFinalizeTables(Environment e){
     List thetaDim = List::create(thetaCovN,thetaCovN);
     tmpNM.attr("dimnames") = thetaDim;
     e["cov"]=tmpNM;
-    if (e.exists("cor") && rxode2::rxIs(e["cor"], "matrix")){
-      tmpNM = as<NumericMatrix>(e["cor"]);
-      tmpNM.attr("dimnames") = thetaDim;
-      e["cor"]=tmpNM;
-    } else {
-      arma::mat cov0 = as<arma::mat>(e["cov"]);
-      arma::mat Dcov(cov0.n_rows,cov0.n_rows,fill::zeros);
-      Dcov.diag() = (sqrt(cov0.diag()));
-      arma::vec sd2=Dcov.diag();
-      Dcov = inv_sympd(Dcov);
-      arma::mat cor2 = Dcov * cov0 * Dcov;
-      cor2.diag()= sd2;
-      tmpNM = wrap(cor2);
-      tmpNM.attr("dimnames") = thetaDim;
-      e["cor"] = tmpNM;
-    }
     if (e.exists("Rinv") && rxode2::rxIs(e["Rinv"], "matrix")){
       tmpNM = as<NumericMatrix>(e["Rinv"]);
       tmpNM.attr("dimnames") = thetaDim;

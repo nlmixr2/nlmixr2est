@@ -1273,7 +1273,7 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
 #' @noRd
 .saemCalcLikelihoodTime <- function(saem, nnodesGq, nsdGq, phiM) {
   .likTime <- proc.time()
-  .saemObf <- calc.2LL(saem, nnodes.gq = nnodesGq, nsd.gq = nsdGq, qs::qdeserialize(phiM))
+  .saemObf <- calc.2LL(saem, nnodes.gq = nnodesGq, nsd.gq = nsdGq, phiM)
   .rn <- .saemGetLikName(nnodesGq, nsdGq)
   .likTime <- proc.time() - .likTime
   .likTime <- .likTime["elapsed"]
@@ -1298,7 +1298,7 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
   .N <- .saemCfg$N
   dim(.phiM) <- c(.N, .saemCfg$nmc, .saemCfg$niter, .nphi)
   # compresses large object
-  env$phiM <- qs::qserialize(.phiM)
+  env$phiM <- .phiM
   try(unlink(.saemCfg$phiMFile), silent=TRUE)
   .rn <- ""
   .likTime <- 0

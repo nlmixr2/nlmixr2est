@@ -60,7 +60,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
     return(fit)
   }
   .uif <- fit$uif
-  .saem <- fit$saem
+  .saem <- get("saem", fit$env)#$saem, get this way to preserve possible compression
   .od <- fit$origData
   if (!is.null(.saem)) {
     .calcResid <- inherits(fit, "nlmixr2FitData")
@@ -245,7 +245,7 @@ setOfv <- function(x, type) {
           stop("cannot switch objective function to '", type, "' type", call. = FALSE)
         }
         .likTime <- proc.time()
-        .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, qs::qdeserialize(x$phiM))
+        .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, x$phiM)
         .likTime <- proc.time() - .likTime
         .likTime <- .likTime["elapsed"]
         .env <- x$env

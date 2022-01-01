@@ -3,6 +3,8 @@
 \name{nmObjGet}
 \alias{nmObjGet}
 \alias{nmObjGet.default}
+\alias{nmObjGet.cor}
+\alias{nmObjGet.omegaR}
 \alias{nmObjGet.md5}
 \alias{nmObjGet.notes}
 \alias{nmObjGet.sigma}
@@ -17,6 +19,10 @@
 nmObjGet(x, ...)
 
 \method{nmObjGet}{default}(x, ...)
+
+\method{nmObjGet}{cor}(x, ...)
+
+\method{nmObjGet}{omegaR}(x, ...)
 
 \method{nmObjGet}{md5}(x, ...)
 

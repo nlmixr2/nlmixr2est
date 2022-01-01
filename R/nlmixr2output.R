@@ -222,7 +222,7 @@
     } else {
       .eta <- .muRefDataFrame$eta[.w]
     }
-    .v <- .shrink[7, .w]
+    .v <- .shrink[7, .eta]
     if (length(.v) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
     }
@@ -316,19 +316,50 @@ nmObjGet <- function(x, ...) {
   UseMethod("nmObjGet")
 }
 
+
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.default <- function(x, ...) {
   .arg <- class(x)[1]
   .env <- x[[1]]
   if (exists(.arg, envir = .env)) {
-    return(get(.arg, envir = .env))
+    .ret <- get(.arg, envir = .env)
+    if (inherits(.ret, "raw")) .ret <- qs::qdeserialize(.ret)
+    return(.ret)
   }
   .lst <- list(get("ui", envir=.env), x[[2]])
   class(.lst) <- c(.arg, "rxUiGet")
   .ret <- rxUiGet(.lst)
   .ret
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.cor <- function(x, ...) {
+  .obj <- x[[1]]
+  .cov <- .obj$cov
+  .sd2 <- sqrt(diag(.cov))
+  .cor <- stats::cov2cor(.cov)
+  dimnames(.cor) <- dimnames(.cov)
+  diag(.cor) <- .sd2
+  .cor
+}
+attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.omegaR <- function(x, ...) {
+  .obj <- x[[1]]
+  .cov <- .obj$omega
+  .sd2 <- sqrt(diag(.cov))
+  .cor <- stats::cov2cor(.cov)
+  dimnames(.cor) <- dimnames(.cov)
+  diag(.cor) <- .sd2
+  .cor
+}
+attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
+
 
 #' @rdname nmObjGet
 #' @export
@@ -412,7 +443,9 @@ nmObjGet.saemCfg <- function(x, ...) {
   "thetaMat"="cov",
   "modelName"="model.name",
   "dataName"="data.name",
-  "saem.cfg"="saemCfg"
+  "saem.cfg"="saemCfg",
+  "objf"="objective",
+  "OBJF"="objective"
 )
 
 #' @export
@@ -435,9 +468,6 @@ nmObjGet.saemCfg <- function(x, ...) {
   if (arg == "md5") {
     return(.nlmixr2Md5(obj))
   } else if (is.null(.ret)) {
-    if (arg == "posthoc") {
-      return(nlmixr2Posthoc(obj))
-    }
     .cls <- class(obj)
     .env <- attr(.cls, ".foceiEnv")
     .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
@@ -649,36 +679,6 @@ nobs.nlmixr2FitCoreSilent <- nobs.nlmixr2FitCore
 
 #' @export
 vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
-
-#' Get a posthoc estimate of x
-#'
-#' @param x nlmixr2 object
-#' @param ... other arguments
-#'
-#' @return nlmixr2 fit object with possibly a new set of estimates
-#'
-#' @export
-#' @keywords internal
-nlmixr2Posthoc <- function(x, ...) {
-  UseMethod("nlmixr2Posthoc")
-}
-
-#' @export
-nlmixr2Posthoc.default <- function(x, ...) {
-  .posthoc <- (x$control$maxOuterIterations == 0L & x$control$maxInnerIterations > 0L)
-  .posthoc <- ifelse(.posthoc, paste0(ifelse(x$method == "FO",
-    ifelse(rxode2::rxIs(x, "nlmixr2FitData"),
-      paste0(
-        " estimation with ", crayon::bold$yellow("FOCE"),
-        gsub(rex::rex(any_spaces, "(", anything, ")"), "", x$extra),
-        crayon::bold(" posthoc")
-      ),
-      ""
-    ),
-    crayon::bold(" posthoc")
-  ), " estimation"), " fit")
-  return(.posthoc)
-}
 
 #' Update model to have final parameter estimates for piping and save orig data
 #'
