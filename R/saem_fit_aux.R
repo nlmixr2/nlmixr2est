@@ -20,8 +20,8 @@
 ##' 20th meeting of the Population Approach Group in Europe, Athens, Greece
 ##' (2011), Abstr 2173.
 ##'
-##' @export
-calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4) {
+##' @noRd
+calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   ## nnodes.gq=8, nsd.gq=4
   saem.cfg <- attr(fit, "saem.cfg")
   .evtM <- saem.cfg$evtM
@@ -60,11 +60,6 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4) {
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
   ind.io <- grep(1, t(io))
   DYF <- matrix(0, mlen, N)
-
-  phiM <- matrix(scan(saem.cfg$phiMFile, quiet = TRUE), byrow = TRUE, ncol = nphi)
-  dim(phiM) <- c(N, saem.cfg$nmc, saem.cfg$niter, nphi)
-  ## print(head(phiM))
-  ## print(dim(phiM))
   cond.mean.phi <- apply(phiM, c(1, 4), mean)
   var.all <- lapply(1:N, function(k) {
     x <- phiM[k, , , ]
@@ -117,90 +112,6 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4) {
     2 * .Call(`_nlmixr2_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
   -ll2
 }
-
-#' Plot an SAEM model fit
-#'
-#' Plot an SAEM model fit
-#'
-#' @param x a saemFit object
-#' @param ... others
-#' @return a list
-#' @export
-plot.saemFit <- function(x, ...) {
-  CMT <- RES <- NULL
-  fit <- x
-  saem.cfg <- attr(fit, "saem.cfg")
-  ## .env$model$assignPtr()
-  .evtM <- saem.cfg$evtM
-  dat <- .as.data.frame(saem.cfg$evt)
-  dat <- cbind(dat[dat$EVID == 0, ], DV = saem.cfg$y)
-  df <- rbind(cbind(dat, grp = 1), cbind(dat, grp = 2), cbind(dat, grp = 3))
-  dopred <- attr(fit, "dopred")
-  yp <- dopred(fit$mprior_phi, saem.cfg$evt, saem.cfg$opt)
-  yi <- dopred(fit$mpost_phi, saem.cfg$evt, saem.cfg$opt)
-  df$DV[df$grp == 2] <- yp
-  df$DV[df$grp == 3] <- yi
-  df0 <- df
-
-  m <- fit$par_hist
-  df <- .data.frame(val = as.vector(m), par = rep(1:ncol(m),
-    each = nrow(m)
-  ), iter = rep(1:nrow(m), ncol(m)))
-  p1 <- ggplot2::ggplot(df, aes(iter, val)) +
-    ggplot2::geom_line() +
-    ggplot2::facet_wrap(~par, scales = "free_y")
-  print(p1)
-
-  for (cmt in sort(unique(df0$CMT))) {
-    df <- subset(df0, CMT == cmt)
-    p6 <- ggplot(subset(df, grp == 1), aes(TIME, DV)) +
-      geom_point() +
-      facet_wrap(~ID) +
-      geom_line(aes(TIME, DV), subset(df, grp == 2), col = "blue") +
-      geom_line(aes(TIME, DV), subset(df, grp == 3), col = "red")
-
-    df <- cbind(subset(df, grp == 1), PRED = subset(df, grp == 2)[, "DV"])
-    df$RES <- df$DV - df$PRED
-    p2 <- ggplot(df, aes(PRED, DV)) +
-      geom_point() +
-      geom_abline(
-        intercept = 0,
-        slope = 1, col = "red"
-      )
-    p3 <- ggplot(df, aes(PRED, RES)) +
-      geom_point() +
-      geom_abline(
-        intercept = 0,
-        slope = 0, col = "red"
-      )
-
-    df <- subset(df0, CMT == cmt)
-    df <- cbind(subset(df, grp == 1), IPRED = subset(df, grp == 3)[, "DV"])
-    df$IRES <- df$DV - df$IPRED
-    p4 <- ggplot(df, aes(IPRED, DV)) +
-      geom_point() +
-      geom_abline(
-        intercept = 0,
-        slope = 1, col = "red"
-      )
-    p5 <- ggplot(df, aes(IPRED, IRES)) +
-      geom_point() +
-      geom_abline(
-        intercept = 0,
-        slope = 0, col = "red"
-      )
-
-    print(p2)
-    print(p4)
-    print(p3)
-    print(p5)
-    print(p6)
-  }
-  invisible(NULL)
-}
-
-# this fn is from saemix
-# import it once saem is back on CRAN
 gqg.mlx <- function(dim, nnodes.gq) {
   # GQG.MLX Nodes and weights for numerical integration on grids
   # (multidimensional Gaussian Quadrature)
@@ -348,6 +259,7 @@ cutoff <- function(x, cut = .Machine$double.xmin) {
 ##' 20th meeting of the Population Approach Group in Europe, Athens, Greece
 ##' (2011), Abstr 2173.
 ##'
+##' @noRd
 calc.COV <- function(fit0) {
   message("Calculating covariance matrix")
   if (is(fit0, "saemFit")) {

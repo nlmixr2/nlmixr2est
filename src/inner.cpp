@@ -5977,7 +5977,37 @@ Environment foceiFitCpp_(Environment e){
     }
   } else {
     doPredOnly=true;
+    if (!e.exists(".params")) {
+      stop(_("without focei inner setup, to create a nlmixr2 object you need a character vector .params in the environment"));
+    }
     foceiSetupTrans_(as<CharacterVector>(e[".params"]));
+    if (!e.exists("dataSav")) {
+      stop(_("without focei inner setup, this needs a data frame 'dataSav' in the environment"));
+    }
+    if (!e.exists("thetaFixed")) {
+      stop(_("without focei inner setup, this needs a logical vector 'thetaFixed' in the environment"));
+    }
+    if (!e.exists("skipCov")) {
+      stop(_("without focei inner setup, this needs a logical vector 'skipCov' in the environment"));
+    }
+    if (!e.exists("rxInv")) {
+      stop(_("without focei inner setup, this needs a data frame 'rxInv' in the environment"));
+    }
+    if (!e.exists("lower")) {
+      stop(_("without focei inner setup, this needs a numeric vector 'lower' in the environment"));
+    }
+    if (!e.exists("upper")) {
+      stop(_("without focei inner setup, this needs a numeric vector 'upper' in the environment"));
+    }
+    if (!e.exists("upper")) {
+      stop(_("without focei inner setup, this needs a numeric vector 'etaMat' in the environment"));
+    }
+    if (!e.exists("control")) {
+      stop(_("without focei inner setup, this needs a foceiControl in the 'control' in the environment"));
+    }
+    if (!e.exists("thetaNames")) {
+      stop(_("without focei inner setup, this needs a character vector in the 'thetaNames' in the environment"));
+    }
     foceiSetup_(R_NilValue, as<RObject>(e["dataSav"]),
                 as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
                 as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
@@ -6102,7 +6132,7 @@ Environment foceiFitCpp_(Environment e){
     if (e.exists("objective")){
       nlmixr2EnvSetup(e, as<double>(e["objective"]));
     } else {
-      stop(_("not setup right"));
+      stop(_("not setup right, needs objective in the environment"));
     }
   } else {
     op_focei.didHessianReset=0;

@@ -2061,7 +2061,11 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 }
 
 .foceiOptEnvLik <- function(ui, env) {
-  env$model <- rxUiGet.foceiModel(list(ui))
+  if (!exists("noLik", envir = env)){
+    env$model <- rxUiGet.foceiModel(list(ui))
+  } else {
+    env$model <- rxUiGet.ebe(list(ui))
+  }
   .foceiOptEnvAssignTol(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
@@ -2090,9 +2094,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env$thetaNames <- .x$iniDf[!is.na(.x$iniDf$ntheta), "name"]
   # FIXME is ODEmodel needed?
   .env$ODEmodel <- TRUE
-  if (!exists("noLik", envir = .env)) {
-    .foceiOptEnvLik(.x, .env)
-  }
+  .foceiOptEnvLik(.x, .env)
   .env
 }
 attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"

@@ -911,6 +911,14 @@ rxUiGet.saemResName <- function(x, ...) {
   .ret
 }
 #attr(rxUiGet.saemResName, "desc") <- "Residual Names for saem"
+#' @export
+rxUiGet.saemThetaDataFrame <- function(x, ...) {
+  .ui <- x[[1]]
+  .theta <- .ui$theta
+  .fixed <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "fix"]
+  data.frame(lower= -Inf, theta=.theta, fixed=.fixed, upper=Inf, row.names=names(.theta))
+}
+#attr(rxUiGet.saemThetaDataFrame, "desc") <- "Get theta data frame"
 
 #' Fit a UI model with saem
 #'
@@ -1039,7 +1047,7 @@ rxUiGet.saemResName <- function(x, ...) {
       .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
     }
   }
-  env$theta <- .theta
+  env$fullTheta <- .theta
   invisible()
 }
 #' Get SAEM omega
@@ -1263,9 +1271,9 @@ rxUiGet.saemResName <- function(x, ...) {
 #' @return List of likelihood cauclation time and named objective function value
 #' @author Matthew L. Fidler
 #' @noRd
-.saemCalcLikelihoodTime <- function(saem, nnodesGq, nsdGq) {
+.saemCalcLikelihoodTime <- function(saem, nnodesGq, nsdGq, phiM) {
   .likTime <- proc.time()
-  .saemObf <- calc.2LL(saem, nnodes.gq = nnodesGq, nsd.gq = nsdGq)
+  .saemObf <- calc.2LL(saem, nnodes.gq = nnodesGq, nsd.gq = nsdGq, qs::qdeserialize(phiM))
   .rn <- .saemGetLikName(nnodesGq, nsdGq)
   .likTime <- proc.time() - .likTime
   .likTime <- .likTime["elapsed"]
@@ -1281,6 +1289,16 @@ rxUiGet.saemResName <- function(x, ...) {
 .saemCalcLikelihood <- function(env, ...) {
   .ui <- env$ui
   .saem <- env$saem
+  .saemCfg <- attr(.saem, "saem.cfg")
+  .nphi1 <- .saemCfg$nphi1
+  .nphi0 <- .saemCfg$nphi0
+  .nphi <- .nphi0 + .nphi1
+  .phiM <- matrix(scan(.saemCfg$phiMFile, quiet = TRUE), byrow = TRUE, ncol = .nphi)
+  .N <- .saemCfg$N
+  dim(.phiM) <- c(.N, .saemCfg$nmc, .saemCfg$niter, .nphi)
+  # compresses large object
+  env$phiM <- qs::qserialize(.phiM)
+  try(unlink(.saemCfg$phiMFile), silent=TRUE)
   .objf <-
   .rn <- ""
   .likTime <- 0
@@ -1288,39 +1306,41 @@ rxUiGet.saemResName <- function(x, ...) {
   .nnodesGq <- rxode2::rxGetControl(.ui, "nnodes.gq", 3)
   .nsdGq <- rxode2::rxGetControl(.ui, "nsd.gq", 1.6)
   if (is.na(.obf)) {
-    .saemObf <- NA
+    .saemObf <- NA_real_
   } else if (is.null(.obf)) {
-    .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq)
+    .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq, env$phiM)
     .likTime <- .tmp[[1]]
     .saemObf <- .tmp[[2]]
   } else if (is(.obf, "logical")) {
     if (is.na(.obf)) {
-      .saemObf <- NA
+      .saemObf <- NA_real_
     } else if (.obf) {
-      .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq)
+      .tmp <- .saemCalcLikelihoodTime(.saem, .nnodesGq, .nsdGq, env$phiM)
       .likTime <- .tmp[[1]]
       .saemObf <- .tmp[[2]]
     } else {
-      .saemObf <- NA
+      .saemObf <- NA_real_
     }
   } else if (is(object, "numeric")) {
     .saemObf <- obf
   }
-  env$.saemObf <- .saemObf
+  env$objective <- .saemObf
   env$.likTime <- .likTime
 }
-#' Get the calculate residual parameter for saem
+#' Get the calculate cwres residual parameter for saem
 #'
 #' @param env saem environment
 #' @return Calculate resid environment
 #' @author Matthew L. Fidler
 #' @noRd
-.saemGetCalcResid <- function(env) {
+.saemGetCalcCwres <- function(env) {
+  .ui <- env$ui
   .table <- .ui$table
   .calcResid <- .table$cwres
-  if (is.null(calc.resid)) {
+  if (is.null(.calcResid)) {
     .calcResid <- .table$saemCWRES
   }
+  if (!inherits(.calcResid, "logical")) return(FALSE)
   .calcResid
 }
 
@@ -1354,7 +1374,13 @@ rxUiGet.saemResName <- function(x, ...) {
   rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }
-
+#' Set the extra text for saem
+#'
+#' @param .env saem environment
+#' @param type objective function type
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
 .setSaemExtra <- function(.env, type) {
   if (inherits(.env, "nlmixr2FitData")) {
     .env <- .env$env
@@ -1386,7 +1412,7 @@ rxUiGet.saemResName <- function(x, ...) {
     .txt <- paste0(.txt, crayon::blurred$italic(sprintf("OBJF by %s", paste0(ifelse(.nnode == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .nnode)), .nsd, ")"))))
   }
   .env$extra <- .txt
-  return(invisible(.txt))
+  invisible()
 }
 
 
@@ -1423,7 +1449,12 @@ rxUiGet.saemResName <- function(x, ...) {
    if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
    }
+  .ret$theta <- .ui$saemThetaDataFrame
+  if (!.saemGetCalcCwres(env)) {
+    .ret$noLik <- TRUE
+  }
   .saemControlToFoceiControl(.ret)
+  .ret$message <- "" # no message for now
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
   .setSaemExtra(.ret, "FOCEi")
   .env <- .ret$env
