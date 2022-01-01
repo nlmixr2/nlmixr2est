@@ -1103,7 +1103,7 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
   .w <- which(.ui$saemFixed)
-  if (length(.w) > 1) {
+  if (length(.w) > 0) {
     .m <- .m[, -.w]
     .allThetaNames <- .allThetaNames[-.w]
   }
