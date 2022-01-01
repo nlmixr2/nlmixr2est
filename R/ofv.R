@@ -245,7 +245,7 @@ setOfv <- function(x, type) {
           stop("cannot switch objective function to '", type, "' type", call. = FALSE)
         }
         .likTime <- proc.time()
-        .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd)
+        .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, qs::qdeserialize(x$phiM))
         .likTime <- proc.time() - .likTime
         .likTime <- .likTime["elapsed"]
         .env <- x$env
@@ -259,7 +259,8 @@ setOfv <- function(x, type) {
         .llik <- -.saemObf / 2
         .nobs <- .env$nobs
         attr(.llik, "df") <- attr(get("logLik", .env), "df")
-        .objf <- ifelse(.env$adjObj, .saemObf - .nobs * log(2 * pi), .saemObf)
+        .objf <- ifelse(.env$adjObf, .saemObf - .nobs * log(2 * pi), .saemObf)
+
         .tmp <- data.frame(
           OBJF = .objf, AIC = .saemObf + 2 * attr(get("logLik", .env), "df"),
           BIC = .saemObf + log(.env$nobs) * attr(get("logLik", .env), "df"),

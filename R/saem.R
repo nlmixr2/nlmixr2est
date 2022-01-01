@@ -1288,6 +1288,7 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
 #' @noRd
 .saemCalcLikelihood <- function(env, ...) {
   .ui <- env$ui
+  env$adjObf <- rxode2::rxGetControl(.ui, "adjObf", FALSE)
   .saem <- env$saem
   .saemCfg <- attr(.saem, "saem.cfg")
   .nphi1 <- .saemCfg$nphi1
@@ -1299,7 +1300,6 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
   # compresses large object
   env$phiM <- qs::qserialize(.phiM)
   try(unlink(.saemCfg$phiMFile), silent=TRUE)
-  .objf <-
   .rn <- ""
   .likTime <- 0
   .obf <- rxode2::rxGetControl(.ui, "logLik", FALSE)
