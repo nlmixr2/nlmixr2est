@@ -16,6 +16,17 @@
 
 - Lower level `saem` functions are not exported because they are
   increasingly difficult to use and convert to something standard.
+  
+## nlmixr2 object change
+
+- The nlmixr2 object compresses infrequently used and removes many unneeded objects
+
+- With `saem`, the nlmixr2 function now saves/compresses the `phiM`
+  information.  This means the gaussian and laplacian likelihoods can
+  be calculated when you save the nlmixr object and then restore it
+  later.
+  
+- `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed` and `fit$parFixedDf`
 
 ## nlmixr2 interface change
 

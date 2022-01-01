@@ -1335,12 +1335,13 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
 #' @noRd
 .saemGetCalcCwres <- function(env) {
   .ui <- env$ui
-  .table <- .ui$table
+  .table <- env$table
   .calcResid <- .table$cwres
   if (is.null(.calcResid)) {
     .calcResid <- .table$saemCWRES
   }
   if (!inherits(.calcResid, "logical")) return(FALSE)
+  print(.calcResid)
   .calcResid
 }
 
