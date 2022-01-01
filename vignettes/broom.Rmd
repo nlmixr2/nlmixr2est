@@ -37,7 +37,7 @@ output that is used in the tidy functions.
 To explore this, first we run the model:
 
 ```{r}
-library(nlmixr)
+library(nlmixr2)
 library(broom.mixed)
 
 pheno <- function() {

@@ -688,7 +688,11 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 .nlmixr2FitUpdateParams <- function(x) {
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
-  .thetas <- x$theta
+  if (exists("fullTheta", x)) {
+    .thetas <- x$fullTheta
+  } else {
+    .thetas <- x$theta
+  }
   for (.n in names(.thetas)) {
     .ui$iniDf$est[.ui$iniDf$name == .n] <- .thetas[.n]
   }

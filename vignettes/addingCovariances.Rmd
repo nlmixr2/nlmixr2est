@@ -35,14 +35,14 @@ An example of this is the phenobarbitol data:
 
 ```{r}
 ## Load phenobarbitol data
-library(nlmixr)
+library(nlmixr2)
 
 ```
 
 ## Model Specification
 ```{r}
 
-pheno <- function() {
+ pheno <- function() {
   ini({
     tcl <- log(0.008) # typical value of clearance
     tv <-  log(0.6)   # typical value of volume
