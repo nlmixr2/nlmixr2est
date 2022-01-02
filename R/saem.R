@@ -1519,8 +1519,8 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .ret$dataSav <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
-  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  .dataSav <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
+  .ret$saem <- .saemFitModel(.ui, .dataSav, timeVaryingCovariates=.tv)
   .ret$saemControl <- .control
   .ret$ui <- .ui
   .saemCalcCov(.ret)

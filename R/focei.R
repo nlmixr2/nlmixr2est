@@ -2322,14 +2322,15 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       }
     }
   }
-  for (.item in c("dataSav", "adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
+  for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                   "fullTheta", "scaleC", "gillRet", "gillRetC",
                   "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
                   "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
                   "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                   "xType", "IDlabel", "ODEmodel",
                   # times
-                  "optimTime", "setupTime", "covTime")) {
+                  "optimTime", "setupTime", "covTime",
+                  "parHistData", "dataSav")) {
     if (exists(.item, .env)) {
       rm(list=.item, envir=.env)
     }

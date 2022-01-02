@@ -359,6 +359,15 @@ nmObjGet.omegaR <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
+#' @rdname nmObjGet
+#' @export
+nmObjGet.dataSav <- function(x, ...){
+  .obj <- x[[1]]
+  .data <- .obj$origData
+  .env <- new.env(emptyenv())
+  .foceiPreProcessData(.data, .env, x$ui)
+  .env$dataSav
+}
 
 
 #' @rdname nmObjGet

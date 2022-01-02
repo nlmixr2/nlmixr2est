@@ -82,7 +82,7 @@
   .params <- nlme::fixed.effects(object)
   .params <- .params
   .dfObs <- object$nobs
-  .nlmixr2Data <- nlme::getData(object)
+  .nlmixr2Data <- object$origData
   .dfSub <- object$nsub
   .env <- object$env
   if (exists("cov", .env)) {
