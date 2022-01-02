@@ -748,6 +748,7 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
   .ui <- x[[1]]
   .names <- rxUiGet.saemParHistOmegaKeep(x, ...)
   .names <- .names[.names == 1L]
+  if (length(.names) == 0) return(NULL)
   paste0("V(", names(.names), ")")
 }
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
@@ -1047,6 +1048,9 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   .cfg$low <- ui$saemLow
   .cfg$hi <- ui$saemHi
   .cfg$propT <- ui$saemPropT
+  if (.cfg$print > 0) {
+    message("params:\t", paste(ui$saemParHistNames,collapse="\t"))
+  }
   .model$saem_mod(.cfg)
 }
 #' Get the saem control statement and install it into the ui
@@ -1419,7 +1423,6 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
     .calcResid <- .table$saemCWRES
   }
   if (!inherits(.calcResid, "logical")) return(FALSE)
-  print(.calcResid)
   .calcResid
 }
 
