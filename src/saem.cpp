@@ -473,6 +473,12 @@ public:
     nphi1 = as<int>(x["nphi1"]);
     i1 = as<uvec>(x["i1"]);
     Gamma2_phi1 = as<mat>(x["Gamma2_phi1"]);
+    Gamma2_phi1fixedIxIn = as<umat>(x["Gamma2_phi1fixedIx"]);
+    Gamma2_phi1fixedIx = find(Gamma2_phi1fixedIxIn);
+    Gamma2_phi1fixed = as<int>(x["Gamma2_phi1fixed"]);
+    if (Gamma2_phi1fixed==1) {
+      Gamma2_phi1fixedValues = as<mat>(x["Gamma2_phi1fixedValues"]);
+    }
     mprior_phi1 = as<mat>(x["mprior_phi1"]);
     COV1 = as<mat>(x["COV1"]);
     LCOV1 = as<mat>(x["LCOV1"]);
@@ -487,6 +493,7 @@ public:
     if (nphi0>0) {
       i0 = as<uvec>(x["i0"]);
       Gamma2_phi0 = as<mat>(x["Gamma2_phi0"]);
+      // C_i mu_{k+1} = mprior_phi0
       mprior_phi0 = as<mat>(x["mprior_phi0"]);
       COV0 = as<mat>(x["COV0"]);
       LCOV0 = as<mat>(x["LCOV0"]);
@@ -554,6 +561,8 @@ public:
 
     print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
+    parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
+    parHistThetaKeep = find(parHistThetaKeep);
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -739,10 +748,13 @@ public:
           Rcout << ys(iix) << fk(iix) << gk(iix);
 #endif
 
-          if (res_mod(b) <= rmProp)
+          if (res_mod(b) <= rmProp) {
+            
             resk = dot(resid, resid);
-          else
+          }
+          else {
             resk = 1;                                              //FIXME
+          }
 
           statr[b]=statr[b]+resk;
           resy(k) = resk;                                          //FIXME: resy(b,k)?
@@ -781,6 +793,7 @@ public:
       statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
       statphi12=statphi12+pas(kiter)*(Statphi12/nmc-statphi12);
       statphi01=statphi01+pas(kiter)*(Statphi01/nmc-statphi01);
+      // s_{2, k} = statphi02
       statphi02=statphi02+pas(kiter)*(Statphi02/nmc-statphi02);
       for(int b=0; b<nendpnt; ++b) {
         statrese[b]=statrese[b]+pas(kiter)*(statr[b]/nmc-statrese[b]);
@@ -804,7 +817,7 @@ public:
       mprior_phi0=COV0*MCOV0;
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
 
-      mat G1=statphi12/N+mprior_phi1.t()*mprior_phi1/N - statphi11.t()*mprior_phi1/N - mprior_phi1.t()*statphi11/N;
+      mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
       if (kiter<=(unsigned int)(nb_sa)) { 
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       } else {
@@ -816,13 +829,19 @@ public:
       for(unsigned int jm=0; jm<jDmin.n_elem; jm++) {
         Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
       }
+      // fix before diagonals are enforced
+      if (Gamma2_phi1fixed==1) {
+        Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
+      }
+
       if (kiter<=(unsigned int)(nb_correl)) {
         Gamma2_phi1 = diagmat(Gamma2_phi1);
       }
 
+
       if (nphi0>0) {
         if (kiter<=(unsigned int)(niter_phi0)) {
-          Gamma2_phi0=statphi02/N+mprior_phi0.t()*mprior_phi0/N - statphi01.t()*mprior_phi0/N - mprior_phi0.t()*statphi01/N;
+          Gamma2_phi0=(statphi02 + mprior_phi0.t()*mprior_phi0 - statphi01.t()*mprior_phi0 - mprior_phi0.t()*statphi01)/N;
           Gmin=minv(i0);
           jDmin=find(Gamma2_phi0.diag()<Gmin);
           for(unsigned int jm=0; jm<jDmin.n_elem; jm++) {
@@ -1156,8 +1175,11 @@ public:
 
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
-
-      par_hist.row(kiter) = join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
+      vec pl = Plambda.elem(parHistThetaKeep);
+      vec g2 = Gamma2_phi1.diag();
+      pl = join_cols(pl, g2);
+      pl = join_cols(pl, vcsig2);
+      par_hist.row(kiter) = pl.t();
       if (print != 0 && (kiter==0 || (kiter+1)%print==0))
         Rcout << kiter+1
               << ": "
@@ -1196,6 +1218,10 @@ private:
   int nphi0, nphi1, nphi;
   mat covstruct1;
   uvec i1, i0, fixedIx1, fixedIx0;
+  umat Gamma2_phi1fixedIxIn;
+  uvec Gamma2_phi1fixedIx;
+  int Gamma2_phi1fixed;
+  mat Gamma2_phi1fixedValues;
   uvec pc1;
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
@@ -1228,6 +1254,8 @@ private:
 
   int print;
   mat par_hist;
+  uvec parHistThetaKeep;
+  
   int distribution;
 
   int nendpnt;

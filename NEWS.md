@@ -13,13 +13,18 @@
 - mu referencing is no longer required for `saem`; Internally non
   mu-referenced values are converted to mu referenced values and the
   converted back when calculating the nlmixr2 object.
+  
+- Components of `omega` are now fixed.
 
-- Lower level `saem` functions are not exported because they are
-  increasingly difficult to use and convert to something standard.
+- Lower level `saem` creation functions are not exported because they
+  are increasingly difficult to use and convert to something standard;
+  a few methods (like `print`, `summary` etc) are maintained to view
+  the lower level object and for debugging it.
   
 ## nlmixr2 object change
 
-- The nlmixr2 object compresses infrequently used and removes many unneeded objects
+- The nlmixr2 object compresses infrequently used and removes many
+  unneeded objects.
 
 - With `saem`, the nlmixr2 function now saves/compresses the `phiM`
   information.  This means the gaussian and laplacian likelihoods can

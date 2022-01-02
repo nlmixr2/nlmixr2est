@@ -109,11 +109,16 @@
                        ODEopt = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", transitAbs = FALSE, maxeval = 100000),
                        distribution = c("normal", "poisson", "binomial"),
                        addProp = c("combined2", "combined1"),
-                       seed = 99, fixed = NULL, DEBUG = 0,
+                       seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
+                       parHistThetaKeep=NULL,
+                       DEBUG = 0,
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
                        maxOdeRecalc=5L) {
+  if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
+  if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
+  if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
   type.idx <- c("nelder-mead" = 1L, "newuoa" = 2L)
   type <- match.arg(type)
   type <- type.idx[type]
@@ -280,6 +285,7 @@
   evtM <- evt[rep(1:dim(evt)[1], nmc), ]
   evtM$ID <- cumsum(c(FALSE, diff(evtM$ID) != 0))
 
+  # i1:
   i1 <- grep(1, diag(covstruct))
   i0 <- grep(0, diag(covstruct))
   nphi1 <- sum(diag(covstruct))
@@ -369,6 +375,10 @@
   diag(Gamma2_phi1) <- inits$omega[i1]
   Gamma2_phi0 <- diag(nphi0)
   diag(Gamma2_phi0) <- inits$omega[i0]
+
+  Gamma2_phi1fixedIx <- fixedOmega[i1, i1]
+  Gamma2_phi1fixedValues <- fixedOmegaValues[i1, i1]
+  Gamma2_phi1fixed <- as.integer(any(Gamma2_phi1fixedIx))
 
   phiM <- matrix(0, N, nphi)
   phiM[, i1] <- mprior_phi1
@@ -469,6 +479,9 @@
     MCOV1 = MCOV1,
     Gamma2_phi0 = Gamma2_phi0,
     Gamma2_phi1 = Gamma2_phi1,
+    Gamma2_phi1fixed=Gamma2_phi1fixed,
+    Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
+    Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,
@@ -488,14 +501,13 @@
     optM = optM,
     print = mcmc$print,
     distribution = distribution,
-    par.hist = matrix(0, sum(niter), nlambda1 + nlambda0 + nphi1 + 1 + (model$res.mod == 2) + 2 * (model$res.mod == 4)),
+    parHistThetaKeep=parHistThetaKeep,
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs)
-
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]
@@ -528,7 +540,7 @@
   cfg$bres[cfg$res.mod == 1] <- 0
   nres <- (1:4)[(cfg$res.mod == 10L) * 3 + (cfg$res.mod %in% c(4L, 8L, 9L)) * 2 + (cfg$res.mod %in% c(3L, 5L, 6L, 7L)) + 1]
   cfg$res_offset <- cumsum(c(0, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, nlambda1 + nlambda0 + nphi1 + sum(nres))
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + nphi1 + sum(nres))
   cfg$addProp <- c("combined1" = 1L, "combined2" = 2L)[match.arg(addProp)]
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG

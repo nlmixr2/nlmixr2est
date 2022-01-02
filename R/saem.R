@@ -611,6 +611,41 @@ rxUiGet.saemModelOmega <- function(x, ...) {
 #attr(rxUiGet.saemModelOmega, "desc") <- "Get the saem model omega"
 
 #' @export
+rxUiGet.saemModelOmegaFixed <- function(x, ...) {
+  .ui <- x[[1]]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .dm <- length(.thetas)
+  .mat <- matrix(rep(0, .dm * .dm), .dm)
+  .iniDf <- .ui$iniDf
+  .etd <- .iniDf[which(!is.na(.iniDf$neta1)), ]
+  for (i in seq_along(.etd$neta1)) {
+    .mat[.etaTrans[.etd$neta1[i]], .etaTrans[.etd$neta2[i]]] <-
+      .mat[.etaTrans[.etd$neta2[i]], .etaTrans[.etd$neta1[i]]] <- as.integer(.etd$fix[i])
+  }
+  .mat
+}
+#attr(rxUiGet.saemModelOmegaFixed, "desc") <- "Get the indicator for saem model omega fixed components"
+
+#' @export
+rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
+  .ui <- x[[1]]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .dm <- length(.thetas)
+  .mat <- matrix(rep(0, .dm * .dm), .dm)
+  .iniDf <- .ui$iniDf
+  .etd <- .iniDf[which(!is.na(.iniDf$neta1)), ]
+  for (i in seq_along(.etd$neta1)) {
+    .mat[.etaTrans[.etd$neta1[i]], .etaTrans[.etd$neta2[i]]] <-
+      .mat[.etaTrans[.etd$neta2[i]], .etaTrans[.etd$neta1[i]]] <- .etd$est[i]
+  }
+  .mat
+}
+#attr(rxUiGet.saemModelOmegaFixedValues, "desc") <- "Get the omega values may be fixed"
+
+
+#' @export
 rxUiGet.saemLow <- function(x, ...) {
   .ui <- x[[1]]
   .ui$predDf$trLow
@@ -675,16 +710,28 @@ rxUiGet.saemResNames <- function(x, ...) {
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
 
 #' @export
-rxUiGet.saemParHistNames <- function(x, ...) {
-  #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
-  .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
+rxUiGet.saemEtaNames <- function(x, ...) {
   .ui <- x[[1]]
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, "name"]
-  .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
-  c(.plambda, vapply(.etaTrans, function(i){
-    paste0("V(", .etaNames[i], ")")
-  }, character(1), USE.NAMES=FALSE), rxUiGet.saemResNames(x, ...))
+  ## .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
+  .etaTrans <- .ui$saemEtaTrans
+  .names <- .ui$saemParamsToEstimate
+  .names <- rep("", length(.names))
+  for (.i in seq_along(.etaTrans)) {
+    .names[.etaTrans[.i]] <- .etaNames[.i]
+  }
+  .names <- .names[.names != ""]
+  .names
+}
+#attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get ETA names for SAEM based on theta order"
+
+#' @export
+rxUiGet.saemParHistNames <- function(x, ...) {
+  #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
+  .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
+  .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
+  c(.plambda, paste0("V(", rxUiGet.saemEtaNames(x, ...), ")"), rxUiGet.saemResNames(x, ...))
 }
 
 #' @export
@@ -920,6 +967,12 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
 }
 #attr(rxUiGet.saemThetaDataFrame, "desc") <- "Get theta data frame"
 
+#' @export
+rxUiGet.saemParHistThetaKeep <- function(x, ...) {
+  1L-as.integer(rxUiGet.saemFixed(x, ...))
+}
+#attr(rxUiGet.saemParHistThetaKeep, "desc") <- "The thetas that are kept in the parameter history"
+
 #' Fit a UI model with saem
 #'
 #' @param ui rxode2 ui
@@ -945,7 +998,9 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
                       ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
                       distribution="normal",
                       addProp="combined2",
-                      fixed=.fixed,
+                      fixedOmega=ui$saemModelOmegaFixed,
+                      fixedOmegaValues=ui$saemModelOmegaFixedValues,
+                      parHistThetaKeep=ui$saemParHistThetaKeep,
                       seed=rxode2::rxGetControl(ui, "seed", 99),
                       DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                       tol=rxode2::rxGetControl(ui, "tol", 1e-6),
@@ -1103,10 +1158,6 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
   .w <- which(.ui$saemFixed)
-  if (length(.w) > 0) {
-    .m <- .m[, -.w]
-    .allThetaNames <- .allThetaNames[-.w]
-  }
   env$parHistStacked <- data.frame(
     val = as.vector(.m),
     par = rep(.allThetaNames, each = nrow(.m)),
