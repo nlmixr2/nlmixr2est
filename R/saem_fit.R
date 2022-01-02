@@ -111,6 +111,7 @@
                        addProp = c("combined2", "combined1"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
+                       parHistOmegaKeep=NULL,
                        DEBUG = 0,
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
@@ -119,6 +120,7 @@
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
+  if (is.null(parHistOmegaKeep)) stop("requires parHistOmegaKeep", call.=FALSE)
   type.idx <- c("nelder-mead" = 1L, "newuoa" = 2L)
   type <- match.arg(type)
   type <- type.idx[type]
@@ -502,6 +504,7 @@
     print = mcmc$print,
     distribution = distribution,
     parHistThetaKeep=parHistThetaKeep,
+    parHistOmegaKeep=parHistOmegaKeep,
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
@@ -540,7 +543,7 @@
   cfg$bres[cfg$res.mod == 1] <- 0
   nres <- (1:4)[(cfg$res.mod == 10L) * 3 + (cfg$res.mod %in% c(4L, 8L, 9L)) * 2 + (cfg$res.mod %in% c(3L, 5L, 6L, 7L)) + 1]
   cfg$res_offset <- cumsum(c(0, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + nphi1 + sum(nres))
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(nres))
   cfg$addProp <- c("combined1" = 1L, "combined2" = 2L)[match.arg(addProp)]
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG

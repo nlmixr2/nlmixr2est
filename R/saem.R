@@ -715,8 +715,8 @@ rxUiGet.saemEtaNames <- function(x, ...) {
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, "name"]
   ## .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
-  .etaTrans <- .ui$saemEtaTrans
-  .names <- .ui$saemParamsToEstimate
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .names <- rxUiGet.saemParamsToEstimate(x, ...)
   .names <- rep("", length(.names))
   for (.i in seq_along(.etaTrans)) {
     .names[.etaTrans[.i]] <- .etaNames[.i]
@@ -727,11 +727,37 @@ rxUiGet.saemEtaNames <- function(x, ...) {
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get ETA names for SAEM based on theta order"
 
 #' @export
+rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
+  .ui <- x[[1]]
+  .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2,]
+  .names <- rxUiGet.saemEtaNames(x, ...)
+  vapply(.names, function(etaName){
+    .w <- which(.etaNames$name == etaName)
+    if (length(.w) == 1) {
+      return(1L - as.integer(.etaNames$fix[.w]))
+    } else {
+      stop("cannot figure out saemEtaKeep", call.=FALSE)
+    }
+  }, integer(1))
+}
+#attr(rxUiGet.saemOmegaKeep, "desc") <- "Get the etas that are kept for SAEM based on theta order"
+
+#' @export
+rxUiGet.saemParHistEtaNames <- function(x, ...) {
+  .ui <- x[[1]]
+  .names <- rxUiGet.saemParHistOmegaKeep(x, ...)
+  .names <- .names[.names == 1L]
+  paste0("V(", names(.names), ")")
+}
+#attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
+
+#' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
-  c(.plambda, paste0("V(", rxUiGet.saemEtaNames(x, ...), ")"), rxUiGet.saemResNames(x, ...))
+  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemResNames(x, ...))
 }
 
 #' @export
@@ -1001,6 +1027,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
                       fixedOmega=ui$saemModelOmegaFixed,
                       fixedOmegaValues=ui$saemModelOmegaFixedValues,
                       parHistThetaKeep=ui$saemParHistThetaKeep,
+                      parHistOmegaKeep=ui$saemParHistOmegaKeep,
                       seed=rxode2::rxGetControl(ui, "seed", 99),
                       DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                       tol=rxode2::rxGetControl(ui, "tol", 1e-6),

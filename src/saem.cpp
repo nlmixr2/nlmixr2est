@@ -563,6 +563,8 @@ public:
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
     parHistThetaKeep = find(parHistThetaKeep);
+    parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
+    parHistOmegaKeep = find(parHistOmegaKeep);
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -1177,6 +1179,7 @@ public:
       Plambda(ilambda0) = Plambda0;
       vec pl = Plambda.elem(parHistThetaKeep);
       vec g2 = Gamma2_phi1.diag();
+      g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
       pl = join_cols(pl, vcsig2);
       par_hist.row(kiter) = pl.t();
@@ -1255,6 +1258,7 @@ private:
   int print;
   mat par_hist;
   uvec parHistThetaKeep;
+  uvec parHistOmegaKeep;
   
   int distribution;
 
