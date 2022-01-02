@@ -703,7 +703,7 @@ rxUiGet.saemResNames <- function(x, ...) {
   }
   .w <- c(which(.err$err == "prop"), which(.err$err == "propT"))
   if (length(.w) == 1) {
-    .ret[length(.ret) + 1] <- paste(.err$name[w])
+    .ret[length(.ret) + 1] <- paste(.err$name[.w])
   }
   return(.ret)
 }
@@ -1512,13 +1512,14 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) .nTv <- 0
   .tv <- character(0)
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
+  .ret$dataSav <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
   .ret$saemControl <- .control
   .ret$ui <- .ui

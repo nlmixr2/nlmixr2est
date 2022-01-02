@@ -32,7 +32,7 @@ are common in pharmacometrics.  A classic example, (provided by Tomoo
 Funaki and Nick Holford) is Warfarin.
 
 ```{r}
-library(nlmixr)
+library(nlmixr2)
 library(ggplot2)
 ```
 
@@ -227,7 +227,7 @@ If you do not wish to use `dvid` items to define multiple endpoints in
 nlmixr, you can set the following option:
 
 ```{r}
-options(RxODE.combine.dvid=FALSE)
+options(rxode2.combine.dvid=FALSE)
 ui2$multipleEndpoint
 ```
 
@@ -235,7 +235,7 @@ Then only `cmt` items are used for the multiple endpoint models.  Of
 course you can turn it on or off for different models if you wish:
 
 ```{r}
-options(RxODE.combine.dvid=TRUE)
+options(rxode2.combine.dvid=TRUE)
 ui2$multipleEndpoint
 ```
 

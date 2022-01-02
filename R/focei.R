@@ -2310,7 +2310,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                      table=.ret$table)
   }
   .env <- .ret$env
-  for (.item in c("origData", "saem", "phiM")) {
+  for (.item in c("origData", "saem", "phiM", "parHist")) {
     if (exists(.item, .env)) {
       .obj <- get(.item, envir=.env)
       .size <- object.size(.obj)

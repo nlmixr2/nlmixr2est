@@ -16,8 +16,10 @@
         } else if (identical(x[[2]], quote(`sim`))) {
           x[[2]] <- quote(`sim`)
           x[[1]] <- quote(`<-`)
-        } else {
+        } else if (length(x[[2]]) == 1L) {
           x[[1]] <- quote(`~`)
+        } else {
+          x[[1]] <- quote(`<-`)
         }
       }
       return(as.call(lapply(x, .f)))
