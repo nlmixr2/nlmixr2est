@@ -21,6 +21,8 @@
   a few methods (like `print`, `summary` etc) are maintained to view
   the lower level object and for debugging it.
   
+- Parameter history and print-out no longer includes fixed parameters
+  
 ## nlmixr2 object change
 
 - The nlmixr2 object compresses infrequently used and removes many
