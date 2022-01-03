@@ -60,7 +60,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
     return(fit)
   }
   .uif <- fit$uif
-  .saem <- get("saem", fit$env)#$saem, get this way to preserve possible compression
+  .saem <- fit$saem #$saem, get this way to preserve possible compression
   .od <- fit$origData
   if (!is.null(.saem)) {
     .calcResid <- inherits(fit, "nlmixr2FitData")
