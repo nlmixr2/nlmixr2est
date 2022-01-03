@@ -48,7 +48,7 @@ dataset. We write the model as follows:
 one.cmt <- function() {
   ini({
     ## You may label each parameter with a comment
-    tka <- exp(0.45) # Ka
+    tka <- 0.45 # Ka
     tcl <- log(c(0, 2.7, 100)) # Log Cl
     ## This works with interactive models
     ## You may also label the preceding line with label("label text")
@@ -60,7 +60,7 @@ one.cmt <- function() {
     add.sd <- 0.7
   })
   model({
-    ka <- tka * exp(eta.ka)
+    ka <- exp(tka + eta.ka)
     cl <- exp(tcl + eta.cl)
     v <- exp(tv + eta.v)
     linCmt() ~ add(add.sd)
