@@ -349,7 +349,7 @@
 #' f <- addNpde(f)
 #'
 #' }
-##' @export
+#' @export
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
@@ -520,49 +520,49 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   .df
 }
 
-##' Output table/data.frame options
-##'
-##' @param npde When TRUE, request npde regardless of the algorithm used.
-##'
-##' @param cwres When TRUE, request CWRES and FOCEi likelihood
-##'     regardless of the algorithm used.
-##'
-##' @param censMethod Handle censoring method:
-##'
-##'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
-##'
-##'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
-##'
-##'  - `"omit"` omit the residuals for censoring
-##'
-##' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
-##'
-##' @param cholSEtol The tolerance for the `rxode2::choleSE` function
-##'
-##' @param eta is a Boolean indicating if `eta` values will be included (default `TRUE`)
-##'
-##' @param state is a Boolean indicating if `state` values will be included (default `TRUE`)
-##'
-##' @param lhs is a Boolean indicating if remaining `lhs` values will be included (default `TRUE`)
-##'
-##' @param covariates is a Boolean indicating if covariates will be included (default `TRUE`)
-##'
-##' @param keep is the keep sent to the table
-##'
-##' @param drop is the dropped variables sent to the table
-##'
-##' @inheritParams addNpde
-##' @inheritParams rxode2::rxSolve
-##'
-##' @details
-##'
-##' If you ever want to add CWRES/FOCEi objective function you can use the \code{\link{addCwres}}
-##'
-##' If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
-##'
-##' @return A list of table options for nlmixr2
-##' @author Matthew L. Fidler
-##' @export
+#' Output table/data.frame options
+#'
+#' @param npde When TRUE, request npde regardless of the algorithm used.
+#'
+#' @param cwres When TRUE, request CWRES and FOCEi likelihood
+#'     regardless of the algorithm used.
+#'
+#' @param censMethod Handle censoring method:
+#'
+#'  - `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.
+#'
+#'  - `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)
+#'
+#'  - `"omit"` omit the residuals for censoring
+#'
+#' @param ties When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.
+#'
+#' @param cholSEtol The tolerance for the `rxode2::choleSE` function
+#'
+#' @param eta is a Boolean indicating if `eta` values will be included (default `TRUE`)
+#'
+#' @param state is a Boolean indicating if `state` values will be included (default `TRUE`)
+#'
+#' @param lhs is a Boolean indicating if remaining `lhs` values will be included (default `TRUE`)
+#'
+#' @param covariates is a Boolean indicating if covariates will be included (default `TRUE`)
+#'
+#' @param keep is the keep sent to the table
+#'
+#' @param drop is the dropped variables sent to the table
+#'
+#' @inheritParams addNpde
+#' @inheritParams rxode2::rxSolve
+#'
+#' @details
+#'
+#' If you ever want to add CWRES/FOCEi objective function you can use the \code{\link{addCwres}}
+#'
+#' If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
+#'
+#' @return A list of table options for nlmixr2
+#' @author Matthew L. Fidler
+#' @export
 tableControl <- function(npde = NULL,
                          cwres = NULL,
                          nsim = 300, ties = TRUE,
