@@ -91,7 +91,7 @@ one.compartment <- function() {
     add.sd <- 0.7
   })
   model({
-    ka <- tka * exp(eta.ka)
+    ka <- exp(tka + eta.ka)
     cl <- exp(tcl + eta.cl)
     v <- exp(tv + eta.v)
     d/dt(depot) = -ka * depot
