@@ -349,6 +349,18 @@ nmObjGet.dataSav <- function(x, ...){
   .foceiPreProcessData(.data, .env, x$ui)
   .env$dataSav
 }
+#attr(nmObjGet.datSav, "desc") <- "data that focei sees for optimization"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemTransformedData <- function(x, ...) {
+  .dataSav <- nmObjGet.dataSav(x, ...)
+  .obj <- x[[1]]
+  .ui <- .obj$ui
+  .saemGetDataForFit(.dataSav, .ui)
+}
+#attr(nmObjGet.saemTransformedData, "desc") <- "data that saem sees for optimization"
+
 
 #' @rdname nmObjGet
 #' @export
@@ -367,6 +379,7 @@ nmObjGet.parHistStacked <- function(x, ...) {
   }
 }
 attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
+
 
 
 #' @rdname nmObjGet

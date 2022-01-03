@@ -362,6 +362,9 @@ addNpde <- function(object, updateObject = TRUE,
     return(object)
   }
   message("add npde")
+  if(missing(table)) {
+    table <- object$table
+  }
   table$npde <- TRUE
   .npde <- .calcNpde(object, dv=object$DV)
   .cls <- class(object)
