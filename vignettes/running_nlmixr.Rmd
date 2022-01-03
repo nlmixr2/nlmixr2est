@@ -83,7 +83,7 @@ equations (ODEs):
 one.compartment <- function() {
   ini({
     tka <- 0.45 # Log Ka
-    tcl <- fix(1) # Log Cl
+    tcl <- 1 # Log Cl
     tv <- 3.45    # Log V
     eta.ka ~ 0.6
     eta.cl ~ 0.3
