@@ -6,6 +6,7 @@
 \alias{nmObjGet.cor}
 \alias{nmObjGet.omegaR}
 \alias{nmObjGet.dataSav}
+\alias{nmObjGet.parHistStacked}
 \alias{nmObjGet.md5}
 \alias{nmObjGet.notes}
 \alias{nmObjGet.sigma}
@@ -26,6 +27,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{omegaR}(x, ...)
 
 \method{nmObjGet}{dataSav}(x, ...)
+
+\method{nmObjGet}{parHistStacked}(x, ...)
 
 \method{nmObjGet}{md5}(x, ...)
 

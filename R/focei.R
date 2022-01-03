@@ -2271,6 +2271,26 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         collapse="\n")
 }
 
+#' Setup the par history information
+#'
+#' @param .ret Return data
+#' @return Nothing called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiSetupParHistData <- function(.ret) {
+  if (exists("parHistData", envir=.ret)) {
+    .tmp <- .ret$parHistData
+    .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
+    .iter <- .tmp$iter
+    .tmp <- .tmp[, names(.tmp) != "iter"]
+    ## .ret$parHistStacked <- data.frame(stack(.tmp), iter = .iter)
+    ## names(.ret$parHistStacked) <- c("val", "par", "iter")
+    .ret$parHist <- data.frame(iter = .iter, .tmp)
+  }
+}
+
+
+
 .foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
@@ -2285,7 +2305,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!missing(method))
     .ret$method <- method
   .ret$ui <- ui
-  .nlmixr2setupParHistData(.ret)
+  .foceiSetupParHistData(.ret)
   if (!all(is.na(ui$iniDf$neta1))) {
     .etas <- .ret$ranef
     .thetas <- .ret$fixef

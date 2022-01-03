@@ -1188,14 +1188,9 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   if (ncol(.m) > length(.allThetaNames)) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
-  .w <- which(.ui$saemFixed)
-  env$parHistStacked <- data.frame(
-    val = as.vector(.m),
-    par = rep(.allThetaNames, each = nrow(.m)),
-    iter = rep(1:nrow(.m), ncol(.m))
-  )
-  env$parHist <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
-  names(env$parHist) <- c("iter", .allThetaNames)
+  .ph <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
+  names(.ph) <- c("iter", .allThetaNames)
+  assign("parHist", .ph, envir=env)
 }
 #' Calculate the covariance term
 #'

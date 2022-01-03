@@ -1,21 +1,3 @@
-#' Setup the par history information
-#'
-#' @param .ret Return data
-#' @return Nothing called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.nlmixr2setupParHistData <- function(.ret) {
-  if (exists("parHistData", .ret)) {
-    .tmp <- .ret$parHistData
-    .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
-    .iter <- .tmp$iter
-    .tmp <- .tmp[, names(.tmp) != "iter"]
-    .ret$parHistStacked <- data.frame(stack(.tmp), iter = .iter)
-    names(.ret$parHistStacked) <- c("val", "par", "iter")
-    .ret$parHist <- data.frame(iter = .iter, .tmp)
-  }
-}
-
 .getBackTransformationFunction <- function(par, ui) {
   # This has a specified back-transformation
   .w <- which(ui$iniDf$name == par)
@@ -316,8 +298,6 @@ nmObjGet <- function(x, ...) {
   UseMethod("nmObjGet")
 }
 
-
-
 #' @rdname nmObjGet
 #' @export
 nmObjGet.default <- function(x, ...) {
@@ -359,6 +339,7 @@ nmObjGet.omegaR <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.dataSav <- function(x, ...){
@@ -368,6 +349,24 @@ nmObjGet.dataSav <- function(x, ...){
   .foceiPreProcessData(.data, .env, x$ui)
   .env$dataSav
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.parHistStacked <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("parHist", envir=.env)) {
+    .parHist <- .env$parHist
+    .iter <- .parHist$iter
+    .ret <- data.frame(iter=.iter, stack(.parHist[, -1]))
+    names(.ret) <- sub("values", "val",
+                       sub("ind", "par", names(.ret)))
+    .ret
+  } else {
+    NULL
+  }
+}
+attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
 
 
 #' @rdname nmObjGet
