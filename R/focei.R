@@ -2355,7 +2355,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       rm(list=.item, envir=.env)
     }
   }
-
   .ret
 }
 

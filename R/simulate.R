@@ -28,53 +28,6 @@
   .f(.lines)
 }
 
-
-## Add rxode2 THETA/ETA replacement mini DSL
-.repSim <- function(x, theta = c(), eta = c(), lhs = c()) {
-  ret <- eval(parse(text = sprintf("quote({%s})", x)))
-  f <- function(x) {
-    if (is.atomic(x)) {
-      return(x)
-    } else if (is.name(x)) {
-      return(x)
-    } else if (is.pairlist(x)) {
-      return(x)
-    } else if (is.call(x)) {
-      if (identical(x[[1]], quote(`[`))) {
-        type <- tolower(as.character(x[[2]]))
-        if (type == "theta") {
-          return(eval(parse(text = sprintf("quote(%s)", theta[as.numeric(x[[3]])]))))
-        } else if (type == "eta") {
-          return(eval(parse(text = sprintf("quote(%s)", eta[as.numeric(x[[3]])]))))
-        }
-        stop("Only theta/eta translation supported.")
-      } else if (length(x[[2]]) == 1 &&
-        ((identical(x[[1]], quote(`=`))) ||
-          (identical(x[[1]], quote(`~`))))) {
-        if (any(as.character(x[[2]]) == lhs)) {
-          if (any(as.character(x[[2]]) == c("rx_pred_", "rx_r_"))) {
-            x[[1]] <- quote(`~`)
-            return(as.call(lapply(x, f)))
-          } else {
-            return(NULL)
-          }
-        }
-        return(as.call(lapply(x, f)))
-      } else {
-        return(as.call(lapply(x, f)))
-      }
-    } else {
-      stop("Don't know how to handle type ", typeof(x),
-        call. = FALSE
-      )
-    }
-  }
-  ret <- deparse(f(ret))[-1]
-  ret <- ret[regexpr("^ *NULL$", ret) == -1]
-  ret <- paste(ret[-length(ret)], collapse = "\n")
-  return(rxode2::rxNorm(rxode2::rxGetModel(ret)))
-}
-
 .simInfo <- function(object) {
   .mod <- .getSimModel(object, hideIpred=FALSE)
   .omega <- object$omega
@@ -157,7 +110,6 @@ nlmixr2Sim <- function(object, ...) {
       .si$dfObs <- .xtra$dfObs
     }
   }
-
 
   if (any(names(.xtra) == "omega")) {
     .si$omega <- .xtra$omega
