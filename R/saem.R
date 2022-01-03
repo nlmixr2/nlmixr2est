@@ -1518,7 +1518,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .dataSav <- .saemGetDataForFit(.ret$dataSav, ui)
+  .dataSav <- .saemGetDataForFit(.ret$dataSav, .ui)
   .ret$saem <- .saemFitModel(.ui, .dataSav, timeVaryingCovariates=.tv)
   .ret$saemControl <- .control
   .ret$ui <- .ui
