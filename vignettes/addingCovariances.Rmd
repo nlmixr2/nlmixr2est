@@ -86,11 +86,11 @@ plot(augPred(fit))
 
 ```{r}
 library(ggplot2)
-p1 <- nlmixr::vpc(fit, show=list(obs_dv=TRUE));
+p1 <- vpcPlot(fit, show=list(obs_dv=TRUE));
 p1 <- p1+ ylab("Concentrations")
 
 ## A prediction-corrected VPC
-p2 <- nlmixr::vpc(fit, pred_corr = TRUE, show=list(obs_dv=TRUE))
+p2 <- vpcPlot(fit, pred_corr = TRUE, show=list(obs_dv=TRUE))
 p2 <- p2+ ylab("Prediction-Corrected Concentrations")
 
 library(patchwork)
