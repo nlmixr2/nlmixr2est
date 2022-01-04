@@ -2347,7 +2347,17 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                      table=.ret$table)
   }
   .env <- .ret$env
-  for (.item in c("origData", "saem", "phiM", "parHist")) {
+  if (exists("saem", .env)) {
+    .saem <- get("saem", envir=.env)
+    .saemCfg <- attr(.saem, "saem.cfg")
+    .saemCfg$phiMFile <- NULL
+    .saemCfg$evtM <- NULL
+    .saemCfg$evt <- NULL
+    attr(.saem, "saem.cfg") <- .saemCfg
+    rm(list="saem", envir=.env)
+    .env$saem0 <- .saem
+  }
+  for (.item in c("origData", "phiM", "parHist", "saem0")) {
     if (exists(.item, .env)) {
       .obj <- get(.item, envir=.env)
       .size <- object.size(.obj)

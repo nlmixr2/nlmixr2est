@@ -452,6 +452,66 @@ rxUiGet.saemModel <- function(x, ...) {
 }
 
 
+
+
+#' @export
+nmObjGet.saemNmc <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("saemControl", envir=.env)) {
+    .saemControl <- get("saemControl", envir=.env)
+    return(.saemControl$mcmc$nmc)
+  } else if (exists("control", envir=.env)) {
+    .saemControl <- get("control", envir=.env)
+    if (any(names(.saemControl) == "mcmc")) return(.saemControl$mcmc$nmc)
+  }
+  NA_integer_
+}
+
+
+#' @export
+nmObjGet.saemEvtDf <- function(x, ...) {
+  .obj <- x[[1]]
+  .evt <- nmObjGet.dataSav(x, ...)
+  .evt$ID <- .evt$ID - 1
+  .evt
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
+
+#' @export
+nmObjGet.saemEvt <- function(x, ...) {
+  as.matrix(nmObjGet.saemEvtDf(x, ...))
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "event matrix as seen by saem; stored in saem.cfg"
+
+#' @export
+nmObjGet.saemEvtMDf <- function(x, ...) {
+  .nmc <- nmObjGet.saemNmc(x, ...)
+  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call.=FALSE)
+  .evt <- nmObjGet.saemEvtDf(x, ...)
+  .evtM <- .evt[rep(1:dim(.evt)[1], .nmc), ]
+  .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
+  .evtM
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "saem event data frame evtM for mcmc"
+
+#' @export
+nmObjGet.saemEvtM <- function(x, ...) {
+  as.matrix(nmObjGet.saemEvtMDf(x, ...))
+}
+#attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
+
+#' @export
+nmObjGet.saem <- function(x, ...) {
+  .obj <- x[[1]]
+  .saem <- .obj$saem0
+  .saemCfg <- attr(.saem, "saem.cfg")
+  .saemCfg$evtM <- .obj$saemEvtM
+  .saemCfg$evt <- .obj$saemEvt
+  attr(.saem, "saem.cfg") <- .saemCfg
+  .saem
+}
+
 #' @export
 rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   .ui <- x[[1]]
