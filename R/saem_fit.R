@@ -380,7 +380,7 @@
 
   Gamma2_phi1fixedIx <- fixedOmega[i1, i1]
   Gamma2_phi1fixedValues <- fixedOmegaValues[i1, i1]
-  Gamma2_phi1fixed <- as.integer(any(Gamma2_phi1fixedIx))
+  Gamma2_phi1fixed <- as.integer(any(Gamma2_phi1fixedIx == 1L))
 
   phiM <- matrix(0, N, nphi)
   phiM[, i1] <- mprior_phi1

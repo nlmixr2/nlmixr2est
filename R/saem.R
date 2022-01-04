@@ -437,7 +437,7 @@ rxUiGet.saemModel <- function(x, ...) {
     ""
   ), collapse = "\n")
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", FALSE)
   if (.sumProd) {
     .malert("stabilizing round off errors in saem model...")
     .ret <- rxode2::rxSumProdModel(.ret)
