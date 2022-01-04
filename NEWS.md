@@ -33,7 +33,15 @@
   be calculated when you save the nlmixr object and then restore it
   later.
   
-- `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed` and `fit$parFixedDf`
+- `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed`
+  and `fit$parFixedDf`
+
+- `nlmixr2` forced the parameter ordering to (1) population effects,
+  (2) non mu-referenced between subject effects (3) omega estimates
+  and (4) residual effects. This changes the order that `nlmixr2` sees
+  the parameters. Since this is based on a random number generator,
+  the optimization trajectory will be different and have different
+  results than `nlmixr`
 
 ## nlmixr2 interface change
 
