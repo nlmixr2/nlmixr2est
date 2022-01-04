@@ -1287,6 +1287,20 @@ foceiControl <- function(sigdig = 3, ...,
   }
 }
 
+#' @export
+rxUiGet.foceiParams <- function(x, ...) {
+  .ui <- x[[1]]
+  .uiGetThetaEtaParams(.ui, str=TRUE)
+}
+
+#' @export
+rxUiGet.foceiCmtPreModel <- function(x, ...) {
+  .ui <- x[[1]]
+  .state <- rxode2::rxState(.ui$mv0)
+  if (length(.state) == 0) return("")
+  paste(paste0("cmt(", .state, ")"), collapse="\n")
+}
+
 # This handles the errors for focei
 .createFoceiLineObject <- function(x, line) {
   .predDf <- get("predDf", x)
@@ -2130,7 +2144,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
     data[[.v]] <- as.double(data[[.v]])
   }
-  env$dataSav <- data
+  env$dataSav <- as.data.frame(rxode2::etTrans(inData=data, obj=ui$mv0,
+                                               addCmt=TRUE, dropUnits=TRUE,
+                                               allTimeVar=TRUE, keepDosingOnly=FALSE))
 }
 
 .thetaReset <- new.env(parent = emptyenv())
@@ -2292,7 +2308,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 
 
 .foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
-  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n"))
+  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
+                                           ui$foceiCmtPreModel, "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
   .env <- ui$foceiOptEnv

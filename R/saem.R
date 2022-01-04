@@ -447,7 +447,7 @@ rxUiGet.saemModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "saem model")
      .msuccess("done")
   }
-  paste(c(rxUiGet.saemParams(x, ...),
+  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
@@ -1470,8 +1470,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .dataSav <- .saemGetDataForFit(.ret$dataSav, .ui)
-  .ret$saem <- .saemFitModel(.ui, .dataSav, timeVaryingCovariates=.tv)
+  .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
   .ret$saemControl <- .control
   .ret$ui <- .ui
   .saemCalcCov(.ret)

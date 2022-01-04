@@ -344,9 +344,11 @@ attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
 #' @export
 nmObjGet.dataSav <- function(x, ...){
   .obj <- x[[1]]
+  .objEnv <- .obj$env
+  if (exists("dataSav", .objEnv)) return(get("dataSav", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, x$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui)
   .env$dataSav
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
