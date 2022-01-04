@@ -2075,11 +2075,11 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 }
 
 .foceiOptEnvLik <- function(ui, env) {
-  if (!exists("noLik", envir = env)){
-    env$model <- rxUiGet.foceiModel(list(ui))
-  } else {
-    env$model <- rxUiGet.ebe(list(ui))
-  }
+  #if (!exists("noLik", envir = env)){
+  env$model <- rxUiGet.foceiModel(list(ui))
+  #} else {
+    #env$model <- rxUiGet.ebe(list(ui))
+  #}
   .foceiOptEnvAssignTol(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
