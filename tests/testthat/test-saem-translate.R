@@ -165,7 +165,7 @@ nlmixr2Test({
 
     expect_equal(f$saemModelOmegaFixedValues,
                  structure(c(0.6, 0, 0, 0, 0.3, 0, 0, 0, 0.1), .Dim = c(3L, 3L)))
-e
+
     expect_equal(f$saemLow, -Inf)
 
     expect_equal(f$saemHi, -Inf)
