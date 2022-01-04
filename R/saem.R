@@ -737,7 +737,7 @@ rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
     if (length(.w) == 1) {
       return(1L - as.integer(.etaNames$fix[.w]))
     } else {
-      stop("cannot figure out saemEtaKeep", call.=FALSE)
+      stop("cannot figure out saemParHistOmegaKeep", call.=FALSE)
     }
   }, integer(1))
 }
@@ -851,34 +851,6 @@ rxUiGet.saemLres <- function(x, ...) {
 #attr(rxUiGet.saemLres, "desc") <- "lres (lambda) initial estimates for saem"
 
 #' @export
-rxUiGet.saemDistribution <- function(x, ...) {
-  .ui <- x[[1]]
-  .df <- .ui$iniDf$err
-  .df <- paste(.df[which(!is.na(.df))])
-  if (any(.df %in% c("dpois", "pois"))) {
-    return("poisson")
-  }
-  if (any(.df %in% c("dbern", "bern", "dbinom", "binom"))) {
-    if (.df %in% c("dbinom", "binom")) {
-      .df <- obj$ini
-      .w <- which(.df$err %in% c("dbinom", "binom"))
-      if (length(.w) != 1L) stop("Distribution unsupported by SAEM")
-      if (!is.na(.df$name[.w])) stop("Distribution unsupported by SAEM")
-    }
-    return("binomial")
-  }
-  if (any(.df %in% c("dlnorm", "lnorm", "logn", "dlogn", "logitNorm", "probitNorm"))) {
-    return("normal")
-  }
-  if (any(.df %in% c("dnorm", "norm", "prop", "propT", "add", "pow", "powT", "pow2", "powT2"))) {
-    return("normal")
-  }
-
-  stop("Distribution unsupported by SAEM")
-}
-
-
-#' @export
 rxUiGet.saemLogEta <- function(x, ...) {
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
@@ -965,26 +937,6 @@ rxUiGet.saemInit <- function(x, ...) {
 }
 #attr(rxUiGet.saemInit, "desc") <- "initialization for saem's theta and omega"
 
-#' @export
-rxUiGet.saemResName <- function(x, ...) {
-  .ui <- x[[1]]
-  .w <- which(vapply(.ui$iniDf$err,
-                     function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn")),
-                     logical(1),
-                     USE.NAMES=FALSE))
-  .ret <- NULL
-  if (length(.w) == 1) {
-    if (!is.na(.ui$iniDf$est[.w])) {
-      .ret[length(.ret) + 1] <- paste(.ui$iniDf$name[.w])
-    }
-  }
-  .w <- c(which(.ui$iniDf$err == "prop"), which(.ui$iniDf$err == "propT"))
-  if (length(.w) == 1) {
-    .ret[length(.ret) + 1] <- paste(obj$name[.w])
-  }
-  .ret
-}
-#attr(rxUiGet.saemResName, "desc") <- "Residual Names for saem"
 #' @export
 rxUiGet.saemThetaDataFrame <- function(x, ...) {
   .ui <- x[[1]]

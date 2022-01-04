@@ -34,7 +34,7 @@ nimotuzumab is illustrated (Rodríguez-Vera et al. 2015).
 # nlmixr model
 
 ```{r}
-library(nlmixr)
+library(nlmixr2)
 library(xpose)
 library(xpose.nlmixr)
 library(ggplot2)
@@ -150,11 +150,11 @@ print(res_distrib(xpdb) +
 ################################################################################
 ##Visual Predictive Checks
 ################################################################################
-vpc.ui(fit,n=500,stratify=c("dos"), show=list(obs_dv=T),
+vpcPlot(fit,n=500,stratify=c("DOS"), show=list(obs_dv=T),
        bins = c(-0.5,0,25,75,100,200,400,600,750,900,1100,1200,1400,1600,1900,2150,2300),
        ylab = "Nimotuzumab Concentrations (ug/mL)", xlab = "Time (h)")
 
-vpc.ui(fit,n=500, show=list(obs_dv=T),
+vpcPlot(fit,n=500, show=list(obs_dv=T),
        bins = c(-0.5,0,25,75,100,200,400,600,750,900,1100,1200,1400,1600,1900,2150,2300),
        ylab = "Nimotuzumab Concentrations (ug/mL)", xlab = "Time (h)")
 

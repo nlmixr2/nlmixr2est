@@ -349,7 +349,7 @@ nmObjGet.dataSav <- function(x, ...){
   .foceiPreProcessData(.data, .env, x$ui)
   .env$dataSav
 }
-#attr(nmObjGet.datSav, "desc") <- "data that focei sees for optimization"
+#attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
 #' @rdname nmObjGet
 #' @export
