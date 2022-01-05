@@ -21,7 +21,7 @@ saemControl(
   logLik = FALSE,
   nnodes.gq = 3,
   nsd.gq = 1.6,
-  optExpression = FALSE,
+  optExpression = TRUE,
   maxsteps = 100000L,
   adjObf = TRUE,
   sumProd = FALSE,

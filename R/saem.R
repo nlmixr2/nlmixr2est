@@ -102,7 +102,7 @@ saemControl <- function(seed = 99,
                         logLik = FALSE,
                         nnodes.gq = 3,
                         nsd.gq = 1.6,
-                        optExpression = FALSE,
+                        optExpression = TRUE,
                         maxsteps = 100000L,
                         adjObf = TRUE,
                         sumProd = FALSE,
@@ -368,6 +368,20 @@ rxUiGet.saemModel0 <- function(x, ...) {
 }
 #attr(rxUiGet.saemModel0, "desc") <- "saem initial model"
 
+#'@export
+rxUiGet.saemModelPred0 <- function(x, ...) {
+  .f <- x[[1]]
+  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
+                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              modelVars=TRUE,
+                              cmtLines=FALSE,
+                              dvidLine=FALSE,
+                              lstExpr=.saemDropMuRefFromModel(.f))
+}
+# attr(rxUiGet.saemModel0, "desc") <- "saem pred.only for use in calculating residuals with focei engine"
+
+
+
 #' Load the saem model into symengine
 #'
 #' @param x rxode2 UI object
@@ -380,7 +394,7 @@ rxUiGet.saemModel0 <- function(x, ...) {
   .env <- new.env(parent = emptyenv())
   .env$.if <- NULL
   .env$.def1 <- NULL
-    .malert("pruning branches ({.code if}/{.code else}) of saem model...")
+  .malert("pruning branches ({.code if}/{.code else}) of saem model...")
   .ret <- rxode2::.rxPrune(.x, envir = .env)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
@@ -392,11 +406,43 @@ rxUiGet.saemModel0 <- function(x, ...) {
   rxode2::rxNorm(.mv)
 }
 
+#' Load the saem pred.only model into symengine
+#'
+#' @param x rxode2 UI object
+#' @return String for loading into symengine
+#' @author Matthew L. Fidler
+#' @noRd
+.saemPrunePred <- function(x) {
+  .x <- x[[1]]
+  .x <- .x$saemModelPred0[[-1]]
+  .env <- new.env(parent = emptyenv())
+  .env$.if <- NULL
+  .env$.def1 <- NULL
+  .malert("pruning branches ({.code if}/{.code else}) of saem model...")
+  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .mv <- rxode2::rxModelVars(.ret)
+  ## Need to convert to a function
+  if (rxode2::.rxIsLinCmt() == 1L) {
+    .vars <- c(.mv$params, .mv$lhs, .mv$slhs)
+    .mv <- rxode2::.rxLinCmtGen(length(.mv$state), .vars)
+  }
+  .msuccess("done")
+  rxode2::rxNorm(.mv)
+}
+
+
 #' @export
 rxUiGet.loadPruneSaem <- function(x, ...) {
   .loadSymengine(.saemPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
+
+#' @export
+rxUiGet.loadPruneSaemPred <- function(x, ...) {
+  .loadSymengine(.saemPrunePred(x), promoteLinSens = FALSE)
+}
+#attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
+
 
 #' @export
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
@@ -437,7 +483,7 @@ rxUiGet.saemModel <- function(x, ...) {
     ""
   ), collapse = "\n")
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
     .malert("stabilizing round off errors in saem model...")
     .ret <- rxode2::rxSumProdModel(.ret)
@@ -451,8 +497,217 @@ rxUiGet.saemModel <- function(x, ...) {
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
+#'@export
+rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
+  .thetaValue <- setNames(paste0("THETA[", .thetaNames$ntheta, "]"), .thetaNames$name)
+  if (length(.ui$nonMuEtas) > 0) {
+    .nonMuThetas <- setNames(rep("", length(.ui$nonMuEtas)), .ui$nonMuEtas)
+    .thetaValue <- c(.thetaValue, .nonMuThetas)
+  }
+  .thetaErrNames <- .iniDf[!is.na(.iniDf$ntheta) & !is.na(.iniDf$err), ]
 
+  .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
+  .thetaValue <- c(.thetaValue, .thetaValueErr)
 
+  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  for (.e in seq_along(.etaTrans)) {
+    .eta <- paste0("ETA[", .e, "]")
+    .tn <- .etaTrans[.e]
+    if (.thetaValue[.tn] == "") {
+      .thetaValue[.tn] <- .eta
+    } else {
+      .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
+    }
+  }
+  if (exists("muRefFinal", .ui)) {
+    .muRefFinal <- .ui$muRefFinal
+  } else {
+    .muRefFinal <- .ui$muRefCovariateDataFrame
+  }
+  for (.c in seq_along(.muRefFinal$theta)) {
+    .tv <- .muRefFinal$theta[.c]
+    .w <- which(.thetaNames$name == .muRefFinal$covariateParameter[.c])
+    if (length(.w) == 1L) {
+      .tcov <- paste0("THETA[", .thetaNames$ntheta[.w], "]")
+      .tcov <- paste0(.muRefFinal$covariate[.c], " * ", .tcov)
+      .cur <- c(.thetaValue[.tv], .tcov)
+      .cur <- .cur[.cur != ""]
+      .thetaValue[.tv] <- paste(.cur, collapse=" + ")
+    }
+  }
+  .thetaValue
+}
+#attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
+
+.saemReplaceMuToThetaDslTranslate <- function(x, replaceLst) {
+  if (is.name(x) || is.atomic(x)) {
+    .c <- as.character(x)
+    .w <- which(names(replaceLst) == .c)
+    if (length(.w) == 1) {
+      return(paste0("(", replaceLst[.w], ")"))
+    } else {
+      return(.c)
+    }
+  } else if (is.call(x)) {
+    if (identical(x[[1]], quote(`(`))) {
+      return(paste0("(", .saemReplaceMuToThetaDslTranslate(x[[2]], replaceLst=replaceLst), ")"))
+    } else if (identical(x[[1]], quote(`*`)) ||
+                 identical(x[[1]], quote(`^`)) ||
+                 identical(x[[1]], quote(`+`)) ||
+                 identical(x[[1]], quote(`-`)) ||
+                 identical(x[[1]], quote(`/`)) ||
+                 identical(x[[1]], quote(`<-`)) ||
+                 identical(x[[1]], quote(`=`)) ||
+                 identical(x[[1]], quote(`~`))) {
+      if (length(x) == 3) {
+        .x1 <- as.character(x[[1]])
+        .x2 <- x[[2]]
+        .x2 <- .saemReplaceMuToThetaDslTranslate(.x2, replaceLst=replaceLst)
+        .x3 <- x[[3]]
+        .x3 <- .saemReplaceMuToThetaDslTranslate(.x3, replaceLst=replaceLst)
+        return(paste0(.x2, .x1, .x3))
+      } else {
+        .x1 <- as.character(x[[1]])
+        .x2 <- x[[2]]
+        .x2 <- .saemReplaceMuToThetaDslTranslate(.x2, replaceLst=replaceLst)
+        return(paste0(.x1, .x2))
+      }
+    }
+    paste0(as.character(x[[1]]), "(",
+           paste(vapply(x[-1], .saemReplaceMuToThetaDslTranslate, character(1),
+                        replaceLst=replaceLst,
+                        USE.NAMES=FALSE), collapse=", "), ")")
+  } else {
+    stop("unsupported expression", call. = FALSE)
+  }
+}
+#' Replace mu referencing with theta and eta
+#'
+#' @param ui rxode2 user interface function
+#' @param model model text
+#' @return rxode model where the mu referencing is replaced with THETA and ETAs
+#' @author Matthew L. Fidler
+#' @noRd
+.saemReplaceMuToTheta <- function(ui, model) {
+  .replaceLst <- ui$saemModelPredReplaceLst
+  .model <- eval(parse(text=paste0("quote({", model, "})")))
+  .model <- .model[-1]
+  .ret <- paste(vapply(.model, .saemReplaceMuToThetaDslTranslate, replaceLst=.replaceLst,
+                       character(1), USE.NAMES=FALSE),
+                collapse = "\n")
+  .ret
+}
+
+.saemModelPredSymengineEnvironment <- NULL
+
+#' @export
+rxUiGet.saemModelPred <- function(x, ...) {
+  .s <- rxUiGet.loadPruneSaemPred(x, ...)
+  assignInMyNamespace(".saemModelPredSymengineEnvironment", .s)
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  .r <- get("rx_r_", envir = .s)
+  .r <- paste("rx_r_=", rxode2::rxFromSE(.r))
+  ## if (is.null(.lhs0)) .lhs0 <- ""
+  .ui <- x[[1]]
+  .lhsIn <- .ui$mv0$lhs
+  .lhsOut <- vapply(.lhsIn,
+                    function(lhs){
+                      .lhs <- get(lhs, envir=.s)
+                      if (tolower(lhs) %in% c("ipred", "ires", "iwres", "wres", "npde",
+                                              "npd", "pred", "cwres", "epred", "cpred", "limit",
+                                              "cens")) {
+                        warning(paste0("'", lhs, "' is a reserved variable, replaced with '", lhs, ".model'"),
+                                call.=FALSE)
+                        paste0(lhs, ".model=", rxode2::rxFromSE(.lhs))
+                      } else {
+                        paste0(lhs, "=", rxode2::rxFromSE(.lhs))
+                      }
+                    }, character(1), USE.NAMES=FALSE)
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- ""
+  .ret <- paste(c(
+    .ddt,
+    .prd,
+    .r,
+    .lhsOut,
+    "tad=tad()",
+    "dosenum=dosenum()"
+  ), collapse = "\n")
+  .ret2 <- paste(c(
+    .ddt,
+    .prd,
+    .r
+  ), collapse = "\n")
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  if (.sumProd) {
+    .malert("stabilizing round off errors in saem pred.only model...")
+    .ret <- rxode2::rxSumProdModel(.ret)
+    .ret2 <- rxode2::rxSumProdModel(.ret2)
+    .msuccess("done")
+  }
+  if (.optExpression) {
+    .ret <- rxode2::rxOptExpr(.ret, "saem pred.only model")
+    .ret2 <- rxode2::rxOptExpr(.ret2, "saem pred.only model")
+    .msuccess("done")
+  }
+  .ret <- c(rxUiGet.foceiParams(x, ...),
+            rxUiGet.foceiCmtPreModel(x, ...),
+            .uiGetThetaEta(x[[1]]),
+            .saemReplaceMuToTheta(x[[1]], .ret),
+            .foceiToCmtLinesAndDvid(x[[1]]))
+  .ret <- .ret[.ret != ""]
+
+  .ret2 <- c(rxUiGet.foceiParams(x, ...),
+             rxUiGet.foceiCmtPreModel(x, ...),
+             .uiGetThetaEta(x[[1]]),
+             .saemReplaceMuToTheta(x[[1]], .ret2),
+             .foceiToCmtLinesAndDvid(x[[1]]))
+  .ret <- paste(.ret, collapse="\n")
+  .ret2 <- paste(.ret2, collapse="\n")
+
+  .ret <- list(pred.only=rxode2::rxode2(.ret),
+               pred.nolhs=rxode2::rxode2(.ret2))
+  class(.ret) <- "saemModelList"
+  .ret
+}
+
+#' @export
+rxUiGet.saemModel <- function(x, ...) {
+  .s <- rxUiGet.loadPruneSaem(x, ...)
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  ## .lhs0 <- .s$..lhs0
+  ## if (is.null(.lhs0)) .lhs0 <- ""
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- ""
+  .ret <- paste(c(
+    #.s$..stateInfo["state"],
+    #.lhs0,
+    .ddt,
+    .prd,
+    #.s$..stateInfo["statef"],
+    #.s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  if (.sumProd) {
+    .malert("stabilizing round off errors in saem model...")
+    .ret <- rxode2::rxSumProdModel(.ret)
+    .msuccess("done")
+  }
+  if (.optExpression) {
+    .ret <- rxode2::rxOptExpr(.ret, "saem model")
+     .msuccess("done")
+  }
+  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+}
 
 #' @export
 nmObjGet.saemNmc <- function(x, ...) {
@@ -1543,10 +1798,8 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
     rm(list="control", envir=.ui)
    }
   .ret$theta <- .ui$saemThetaDataFrame
-  if (!.saemGetCalcCwres(env)) {
-    .ret$noLik <- TRUE
-  }
   .saemControlToFoceiControl(.ret)
+  .ret$saemModel <- .ui$saemModelPred
   .ret$message <- "" # no message for now
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
   .setSaemExtra(.ret, "FOCEi")

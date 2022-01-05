@@ -2076,7 +2076,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 
 .foceiOptEnvLik <- function(ui, env) {
   #if (!exists("noLik", envir = env)){
-  env$model <- rxUiGet.foceiModel(list(ui))
+  if (!exists("saemModel", envir=env)) {
+    env$model <- rxUiGet.foceiModel(list(ui))
+  }
   #} else {
     #env$model <- rxUiGet.ebe(list(ui))
   #}

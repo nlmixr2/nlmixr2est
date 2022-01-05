@@ -448,10 +448,11 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
                      table=tableControl(), keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
   .pt <- proc.time()
-  message("Calculating residuals/tables")
+  .malert("Calculating residuals/tables")
   .objName <- substitute(object)
   if (!inherits(object, "nlmixr2FitCore")) {
-    stop("requires a nlmixr2 fit object")
+    stop("requires a nlmixr2 fit object",
+         call.=FALSE)
   }
   .fit <- object$env
   if (exists("origControl", .fit)) {
@@ -518,7 +519,7 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
       }
     }
   }
-  message("done")
+  .msuccess("done")
   .fit$time <- .data.frame(.fit$time, table = (proc.time() - .pt)["elapsed"], check.names = FALSE)
   .df
 }
