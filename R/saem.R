@@ -378,7 +378,7 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
                               dvidLine=FALSE,
                               lstExpr=.saemDropMuRefFromModel(.f))
 }
-# attr(rxUiGet.saemModel0, "desc") <- "saem pred.only for use in calculating residuals with focei engine"
+# attr(rxUiGet.saemModel0, "desc") <- "saem predOnly for use in calculating residuals with focei engine"
 
 
 
@@ -406,7 +406,7 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
   rxode2::rxNorm(.mv)
 }
 
-#' Load the saem pred.only model into symengine
+#' Load the saem predOnly model into symengine
 #'
 #' @param x rxode2 UI object
 #' @return String for loading into symengine
@@ -617,15 +617,8 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .lhsOut <- vapply(.lhsIn,
                     function(lhs){
                       .lhs <- get(lhs, envir=.s)
-                      if (tolower(lhs) %in% c("ipred", "ires", "iwres", "wres", "npde",
-                                              "npd", "pred", "cwres", "epred", "cpred", "limit",
-                                              "cens")) {
-                        warning(paste0("'", lhs, "' is a reserved variable, replaced with '", lhs, ".model'"),
-                                call.=FALSE)
-                        paste0(lhs, ".model=", rxode2::rxFromSE(.lhs))
-                      } else {
-                        paste0(lhs, "=", rxode2::rxFromSE(.lhs))
-                      }
+                      # exceptions should be handled in the residual state.
+                      paste0(lhs, "=", rxode2::rxFromSE(.lhs))
                     }, character(1), USE.NAMES=FALSE)
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
@@ -645,33 +638,34 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
-    .malert("stabilizing round off errors in saem pred.only model...")
+    .malert("stabilizing round off errors in saem predOnly model...")
     .ret <- rxode2::rxSumProdModel(.ret)
     .ret2 <- rxode2::rxSumProdModel(.ret2)
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "saem pred.only model")
-    .ret2 <- rxode2::rxOptExpr(.ret2, "saem pred.only model")
+    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model")
+    .ret2 <- rxode2::rxOptExpr(.ret2, "saem predOnly model")
     .msuccess("done")
   }
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
-            .uiGetThetaEta(x[[1]]),
             .saemReplaceMuToTheta(x[[1]], .ret),
+            .uiGetThetaEta(x[[1]]),
             .foceiToCmtLinesAndDvid(x[[1]]))
   .ret <- .ret[.ret != ""]
 
   .ret2 <- c(rxUiGet.foceiParams(x, ...),
              rxUiGet.foceiCmtPreModel(x, ...),
-             .uiGetThetaEta(x[[1]]),
              .saemReplaceMuToTheta(x[[1]], .ret2),
+             .uiGetThetaEta(x[[1]]),
              .foceiToCmtLinesAndDvid(x[[1]]))
   .ret <- paste(.ret, collapse="\n")
   .ret2 <- paste(.ret2, collapse="\n")
 
-  .ret <- list(pred.only=rxode2::rxode2(.ret),
-               pred.nolhs=rxode2::rxode2(.ret2))
+  .ret <- list(predOnly=rxode2::rxode2(.ret),
+               predNoLhs=rxode2::rxode2(.ret2))
+
   class(.ret) <- "saemModelList"
   .ret
 }
@@ -707,64 +701,6 @@ rxUiGet.saemModel <- function(x, ...) {
   }
   paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
-}
-
-#' @export
-nmObjGet.saemNmc <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  if (exists("saemControl", envir=.env)) {
-    .saemControl <- get("saemControl", envir=.env)
-    return(.saemControl$mcmc$nmc)
-  } else if (exists("control", envir=.env)) {
-    .saemControl <- get("control", envir=.env)
-    if (any(names(.saemControl) == "mcmc")) return(.saemControl$mcmc$nmc)
-  }
-  NA_integer_
-}
-
-
-#' @export
-nmObjGet.saemEvtDf <- function(x, ...) {
-  .obj <- x[[1]]
-  .evt <- nmObjGet.dataSav(x, ...)
-  .evt$ID <- .evt$ID - 1
-  .evt
-}
-#attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
-
-#' @export
-nmObjGet.saemEvt <- function(x, ...) {
-  as.matrix(nmObjGet.saemEvtDf(x, ...))
-}
-#attr(nmObjGet.saemEvtDf, "desc") <- "event matrix as seen by saem; stored in saem.cfg"
-
-#' @export
-nmObjGet.saemEvtMDf <- function(x, ...) {
-  .nmc <- nmObjGet.saemNmc(x, ...)
-  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call.=FALSE)
-  .evt <- nmObjGet.saemEvtDf(x, ...)
-  .evtM <- .evt[rep(1:dim(.evt)[1], .nmc), ]
-  .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
-  .evtM
-}
-#attr(nmObjGet.saemEvtDf, "desc") <- "saem event data frame evtM for mcmc"
-
-#' @export
-nmObjGet.saemEvtM <- function(x, ...) {
-  as.matrix(nmObjGet.saemEvtMDf(x, ...))
-}
-#attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
-
-#' @export
-nmObjGet.saem <- function(x, ...) {
-  .obj <- x[[1]]
-  .saem <- .obj$saem0
-  .saemCfg <- attr(.saem, "saem.cfg")
-  .saemCfg$evtM <- .obj$saemEvtM
-  .saemCfg$evt <- .obj$saemEvt
-  attr(.saem, "saem.cfg") <- .saemCfg
-  .saem
 }
 
 #' @export
@@ -1799,12 +1735,12 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
    }
   .ret$theta <- .ui$saemThetaDataFrame
   .saemControlToFoceiControl(.ret)
-  .ret$saemModel <- .ui$saemModelPred
+  .ret$model <- .ui$saemModelPred
   .ret$message <- "" # no message for now
+  .ret$est <- "saem"
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
   .setSaemExtra(.ret, "FOCEi")
   .env <- .ret$env
-  .env$est <- "saem"
   .env$method <- "SAEM "
   .ret
 }

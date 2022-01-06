@@ -299,7 +299,7 @@ plot.nlmixr2Sim <- function(x, y, ...) {
 
 ## Mini DSL to fix pred-only models
 .predOnlyRx <- function(object) {
-  .ret <- eval(parse(text = sprintf("quote({%s})", rxode2::rxNorm(object$model$pred.only))))
+  .ret <- eval(parse(text = sprintf("quote({%s})", rxode2::rxNorm(object$model$predOnly))))
   .ret <- deparse(.predOnlyRxDsl(.ret))[-1]
   .ret <- .ret[regexpr("^ *NULL$", .ret) == -1]
   .ret <- .ret[-length(.ret)]

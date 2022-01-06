@@ -5892,8 +5892,8 @@ Environment foceiFitCpp_(Environment e){
                   as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
                   as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
                   e["control"]);
-      if (model.containsElementNamed("pred.nolhs")){
-        RObject noLhs = model["pred.nolhs"];
+      if (model.containsElementNamed("predNoLhs")){
+        RObject noLhs = model["predNoLhs"];
         if (rxode2::rxIs(noLhs, "rxode2")) {
           List mvp = rxode2::rxModelVars_(noLhs);
           rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
@@ -5905,8 +5905,8 @@ Environment foceiFitCpp_(Environment e){
         IntegerVector eventEta = model["eventEta"];
         std::copy(eventEta.begin(), eventEta.end(),&op_focei.etaFD[0]);
       }
-    } else if (model.containsElementNamed("pred.only")){
-      inner = model["pred.only"];
+    } else if (model.containsElementNamed("predOnly")){
+      inner = model["predOnly"];
       if (rxode2::rxIs(inner, "rxode2")){
         foceiSetup_(inner, as<RObject>(e["dataSav"]),
                     as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
@@ -5927,10 +5927,11 @@ Environment foceiFitCpp_(Environment e){
     }
   } else {
     doPredOnly=true;
-    if (!e.exists(".params")) {
-      stop(_("without focei inner setup, to create a nlmixr2 object you need a character vector .params in the environment"));
+    if (!model.containsElementNamed("predOnly")) {
+      stop(_("with focei inner, 'model$predOnly' needs to be present in the environment"));
     }
-    foceiSetupTrans_(as<CharacterVector>(e[".params"]));
+    RObject inner = model["predOnly"];
+    // foceiSetupTrans_(as<CharacterVector>(e[".params"]));
     if (!e.exists("dataSav")) {
       stop(_("without focei inner setup, this needs a data frame 'dataSav' in the environment"));
     }
@@ -5958,10 +5959,17 @@ Environment foceiFitCpp_(Environment e){
     if (!e.exists("thetaNames")) {
       stop(_("without focei inner setup, this needs a character vector in the 'thetaNames' in the environment"));
     }
-    foceiSetup_(R_NilValue, as<RObject>(e["dataSav"]),
-                as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
-                as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
-                e["control"]);
+
+    if (rxode2::rxIs(inner, "rxode2")){
+      foceiSetup_(inner, as<RObject>(e["dataSav"]),
+                  as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
+                  as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
+                  e["control"]);
+      doPredOnly = true;
+      if (op_focei.neta == 0) doPredOnly = false;
+    } else {
+      stop(_("model$predOnly needs to be an rxode2 object"));
+    }
   }
   if (e.exists("setupTime")){
     e["setupTime"] = as<double>(e["setupTime"])+(((double)(clock() - t0))/CLOCKS_PER_SEC);

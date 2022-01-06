@@ -1,7 +1,7 @@
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
 
-  .origData <- rxode2::etTrans(fit$origData, fit$model$pred.only, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
+  .origData <- rxode2::etTrans(fit$origData, fit$model$predOnly, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs
@@ -89,7 +89,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .stk$id <- .sim$id
   .stk$time <- .sim$time
   .stk$cmt <- as.integer(.sim$CMT)
-  levels(.stk$cmt) <- c(fit$model$pred.only$state, fit$model$pred.only$stateExtra)
+  levels(.stk$cmt) <- c(fit$model$predOnly$state, fit$model$predOnly$stateExtra)
   class(.stk$cmt) <- "factor"
   .stk <- .stk[!is.na(.stk$values), ]
   class(.stk) <- c("nlmixr2AugPred", "data.frame")

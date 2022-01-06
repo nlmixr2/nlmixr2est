@@ -452,6 +452,142 @@ nmObjGet.saemCfg <- function(x, ...) {
   }
 }
 
+#' @export
+nmObjGet.saemNmc <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("saemControl", envir=.env)) {
+    .saemControl <- get("saemControl", envir=.env)
+    return(.saemControl$mcmc$nmc)
+  } else if (exists("control", envir=.env)) {
+    .saemControl <- get("control", envir=.env)
+    if (any(names(.saemControl) == "mcmc")) return(.saemControl$mcmc$nmc)
+  }
+  NA_integer_
+}
+
+#' @export
+nmObjGet.saemEvtDf <- function(x, ...) {
+  .obj <- x[[1]]
+  .evt <- nmObjGet.dataSav(x, ...)
+  .evt$ID <- .evt$ID - 1
+  .evt
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "event data frame as seen by saem"
+
+#' @export
+nmObjGet.saemEvt <- function(x, ...) {
+  as.matrix(nmObjGet.saemEvtDf(x, ...))
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "event matrix as seen by saem; stored in saem.cfg"
+
+#' @export
+nmObjGet.saemEvtMDf <- function(x, ...) {
+  .nmc <- nmObjGet.saemNmc(x, ...)
+  if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call.=FALSE)
+  .evt <- nmObjGet.saemEvtDf(x, ...)
+  .evtM <- .evt[rep(1:dim(.evt)[1], .nmc), ]
+  .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
+  .evtM
+}
+#attr(nmObjGet.saemEvtDf, "desc") <- "saem event data frame evtM for mcmc"
+
+#' @export
+nmObjGet.saemEvtM <- function(x, ...) {
+  as.matrix(nmObjGet.saemEvtMDf(x, ...))
+}
+#attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
+
+#' @export
+nmObjGet.saem <- function(x, ...) {
+  .obj <- x[[1]]
+  if (!exists("saem0", .obj)) return(NULL)
+  .saem <- .obj$saem0
+  .saemCfg <- attr(.saem, "saem.cfg")
+  .saemCfg$evtM <- .obj$saemEvtM
+  .saemCfg$evt <- .obj$saemEvt
+  attr(.saem, "saem.cfg") <- .saemCfg
+  .saem
+}
+
+#' @export
+nmObjGet.ipredModel <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  .est <- .env$est
+  .env <- list(.env)
+  class(.env) <- .est
+  nmObjGetIpredModel(.env)
+}
+
+#' @export
+nmObjGet.innerModel <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("foceiModel", envir=.env)) {
+    .model <- get("foceiModel", envir=.env)
+  } else if (exists("model", envir=.env)) {
+    .model <- get("model", envir=.env)
+  } else {
+    return(NULL)
+  }
+  .model$inner
+}
+
+#' @export
+nmObjGet.innerModelForce <- function(x, ...) {
+  .inner <- nmObjGet.innerModel(x, ...)
+  if (is.null(.inner)) {
+    .obj <- x[[1]]
+    .env <- .obj$env
+    .env$model <- .obj$ui$focei
+    .inner <- .env$model$inner
+    nmObjHandleModelObject(.env$model, .env)
+  }
+  .inner
+}
+
+#' Get the ipred model for a fit object depending on the object type
+#'
+#' By default it gets the focei models if availble.
+#'
+#' @param x nlmixr fit object
+#' @export
+nmObjGetIpredModel <- function(x) {
+  UseMethod("nmObjGetIpredModel")
+}
+
+#' @rdname nmObjGetIpredModel
+#' @export
+nmObjGetIpredModel.saem <- function(x) {
+  .env <- x[[1]]
+  .model <- NULL
+  if (exists("saemModel", envir=.env)) {
+    .model <- get("saemModel", envir=.env)
+  } else if (exists("model", envir=.env)) {
+    .model <- get("model", envir=.env)
+  } else {
+    stop("cannot find saem model components", call.=FALSE)
+  }
+  .model$predOnly
+}
+
+#' @rdname nmObjGetIpredModel
+#' @export
+nmObjGetIpredModel.default <- function(x) {
+  .env <- x[[1]]
+  .model <- NULL
+  if (exists("foceiModel", envir=.env)) {
+    .model <- get("foceiModel", envir=.env)
+  } else if (exists("model", envir=.env)) {
+    .model <- get("model", envir=.env)
+  }
+  .inner <- .model$inner
+  if (is.null(.inner)) return(.model$predOnly)
+  .inner
+}
+
+
 .nmObjBackward <- c(
   "value"="objf",
   "obf"="objf",

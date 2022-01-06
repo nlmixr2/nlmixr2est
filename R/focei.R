@@ -58,7 +58,7 @@ is.latex <- function() {
 #' @param ssAtolSens Sensitivity absolute tolerance (atol) for
 #'     calculating if steady state has been achieved for sensitivity compartments.
 #'
-#' @param ssRtolSens Sensitivity relative tolerance (rtol) for
+#' @param RtolSens Sensitivity relative tolerance (rtol) for
 #'     calculating if steady state has been achieved for sensitivity compartments.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
@@ -1727,10 +1727,10 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   }
   .ret <- list(
     inner = inner,
-    pred.only = .toRx(s$..pred, "compiling EBE model..."),
+    predOnly = .toRx(s$..pred, "compiling EBE model..."),
     extra.pars = s$..extraPars,
     outer = .toRx(s$..outer),
-    pred.nolhs = .toRx(pred.opt, "compiling events FD model..."),
+    predNoLhs = .toRx(pred.opt, "compiling events FD model..."),
     theta = NULL,
     ## warn=.zeroSens,
     pred.minus.dv = .predMinusDv,
@@ -1742,7 +1742,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
     ## ,
     ## cache.file=cache.file
   )
-  class(.ret) <- "rxFocei"
+  class(.ret) <- "foceiModelList"
   .ret
 }
 
@@ -1751,14 +1751,14 @@ rxUiGet.focei <- function(x, ...) {
   .s <- rxUiGet.foceiEnv(x, ...)
   .innerInternal(x[[1]], .s)
 }
-#attr(rxUiGet.focei, "desc") <- "Get the FOCEi rxFocei object"
+#attr(rxUiGet.focei, "desc") <- "Get the FOCEi foceiModelList object"
 
 #' @export
 rxUiGet.foce <- function(x, ...) {
   .s <- rxUiGet.foceEnv(x, ...)
   .innerInternal(x[[1]], .s)
 }
-#attr(rxUiGet.foce, "desc") <- "Get the FOCE rxFocei object"
+#attr(rxUiGet.foce, "desc") <- "Get the FOCE foceiModelList object"
 
 
 #' @export
@@ -1766,7 +1766,7 @@ rxUiGet.ebe <- function(x, ...) {
   .s <- rxUiGet.getEBEEnv(x, ...)
   .innerInternal(x[[1]], .s)
 }
-#attr(rxUiGet.ebe, "desc") <- "Get the EBE rxFocei object"
+#attr(rxUiGet.ebe, "desc") <- "Get the EBE foceiModelList object"
 
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
@@ -2076,7 +2076,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 
 .foceiOptEnvLik <- function(ui, env) {
   #if (!exists("noLik", envir = env)){
-  if (!exists("saemModel", envir=env)) {
+  if (!exists("model", envir=env)) {
     env$model <- rxUiGet.foceiModel(list(ui))
   }
   #} else {
@@ -2307,7 +2307,45 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
 }
 
+#' Handle Model Object
+#'
+#' @param model model list should have at least:
+#'
+#' - `predOnly` -- this is the prediction model with all the left
+#'    handed equations added so they will be added the table.  The
+#'    model should have `rx_pred_`, the model based prediction, as the
+#'    first defined lhs component.  The second component should be
+#'    `rx_r_`, the variance of the prediction.  These variables may
+#'    change based on distribution type.  In additional all
+#'    interesting calculated variables should be included.
+#'
+#' - `predNoLhs` -- This is the prediction model.  It only has the
+#'    prediction and no left handed equations.
+#'
+#' @param env Environment for the fit information
+nmObjHandleModelObject <- function(model, env) {
+  on.exit(rm("model", envir=env))
+  UseMethod("nmObjHandleModelObject")
+}
 
+#' @rdname nmObjHandleModelObject
+#' @export
+nmObjHandleModelObject.saemModelList <- function(model, env) {
+  assign("saemModel", model, envir=env)
+}
+
+#' @rdname nmObjHandleModelObject
+#' @export
+nmObjHandleModelObject.foceiModelList <- function(model, env) {
+  assign("foceiModel", model, envir=env)
+}
+
+#' @rdname nmObjHandleModelObject
+#' @export
+nmObjHandleModelObject.default <- function(model, env) {
+  stop("cannot figure out how to handle the model, add method for `nmObjHandleModelObject.", class(model), "`",
+       call.=FALSE)
+}
 
 .foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
@@ -2344,18 +2382,20 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   assign("est", est, envir=.ret)
   assign("skipCov", .env$skipCov, envir=.ret)
+  nmObjHandleModelObject(.ret$model, .ret)
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
   }
-  .env <- .ret$env
   if (exists("saem", .env)) {
     .saem <- get("saem", envir=.env)
     .saemCfg <- attr(.saem, "saem.cfg")
-    .saemCfg$phiMFile <- NULL
-    .saemCfg$evtM <- NULL
-    .saemCfg$evt <- NULL
-    attr(.saem, "saem.cfg") <- .saemCfg
+    # Delete unneeded variables
+    .saemCfg2 <- list()
+    for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables")) {
+      .saemCfg2[[.v]] <- .saemCfg[[.v]]
+    }
+    attr(.saem, "saem.cfg") <- .saemCfg2
     rm(list="saem", envir=.env)
     .env$saem0 <- .saem
   }
@@ -2500,7 +2540,7 @@ nlmixr2Est.output <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({rm("control", envir=.ui)})
-  env$est <- "posthoc"
+  if (!exists("est", envir=env)) env$est <- "posthoc"
   .foceiFamilyReturn(env, .ui, ..., est=env$est)
 }
 

@@ -3,6 +3,15 @@
 #include <boost/algorithm/string.hpp>
 #include <string>
 
+#ifdef ENABLE_NLS
+#include <libintl.h>
+#define _(String) dgettext ("rxode2", String)
+/* replace pkg as appropriate */
+#else
+#define _(String) (String)
+#endif
+
+
 void calculateDfFull(arma::ivec& ID, arma::mat &etas,
 		     List &etasDfFull, int &nid, unsigned int &neta) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
@@ -183,7 +192,9 @@ BEGIN_RCPP
   List etasDf = as<List>(etasDfSEXP);
   int nid = Rf_length(etasDf[0]);
   int npred = getPredIndex(ipredL);
-  if (npred == -1) stop("malformed dataframes");
+  if (npred == -1) {
+    stop(_("malformed dataframes, no time present in ipred data.frame"));
+  }
 
   arma::vec ipredt(REAL(ipredL[npred]), ncalc, false, true);
   arma::vec ipred(ipredt.size());
