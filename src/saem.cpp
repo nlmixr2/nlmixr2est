@@ -857,258 +857,286 @@ public:
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
         double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
-        if (res_mod(b) == rmAdd) ares(b) = sqrt(sig2);
-        else if (res_mod(b) == rmProp) bres(b) = sqrt(sig2);
-        else if (res_mod(b) == rmAddProp) {
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+        switch (res_mod(b)) {
+        case rmAdd:
+          ares(b) = sqrt(sig2);
+          break;
+        case rmProp:
+          bres(b) = sqrt(sig2);
+          break;
+        case rmAddProp:
+          {
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          // yptr = ysb.memptr();
-          // fptr = fsb.memptr();
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
-          double step[2]={-.2, -.2};
+            // yptr = ysb.memptr();
+            // fptr = fsb.memptr();
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=2;
+            double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
+            double step[2]={-.2, -.2};
 
-          // f = sum((ytr-ft)/g);
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp=addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemFn = obj;
-          _saemStep = step;
-          _saemStart=start;
-          _saemOpt(n, pxmin);
-          // Adjust back
-          double ab02 = pxmin[0];
-          double ab12 = pxmin[1];
-          ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+            // f = sum((ytr-ft)/g);
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp=addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemFn = obj;
+            _saemStep = step;
+            _saemStart=start;
+            _saemOpt(n, pxmin);
+            // Adjust back
+            double ab02 = pxmin[0];
+            double ab12 = pxmin[1];
+            ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+            bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+          }
+          break;
+        case rmAddPow:
+          { // add + pow
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-        } else if (res_mod(b) == rmAddPow) { // add + pow
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            // yptr = ysb.memptr();
+            // fptr = fsb.memptr();
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=3;
 
-          // yptr = ysb.memptr();
-          // fptr = fsb.memptr();
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
+            // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
+            double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
+            double step[3]={-.2, -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objC;
+            _saemOpt(n, pxmin);
+            // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
+            ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
+            bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
+            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
+          }
+          break;
+        case rmPow:
+          { // power
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
-          double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
-          double step[3]={-.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objC;
-          _saemOpt(n, pxmin);
-          // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
-        } else if (res_mod(b) == rmPow) { // power
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=2;
+            double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
+            double step[2]={ -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp =addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objD;
+            _saemOpt(n, pxmin);
+            bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
+            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
+          }
+          break;
+        case rmAddLam:
+          { // additive + lambda
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp =addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objD;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddLam) { // additive + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=2;
+            double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+            double step[2]={ -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objE;
+            _saemOpt(n, pxmin);
+            ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+            lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+          }
+          break;
+        case rmPropLam:
+          { // prop + lambda
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objE;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmPropLam) { // prop + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=2;
+            double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+            double step[2]={ -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objF;
+            _saemOpt(n, pxmin);
+            bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+            lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+          }
+          break;
+        case rmPowLam:
+          { // pow + lambda
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=2;
-          double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[2]={ -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objF;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmPowLam) { // pow + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=3;
+            double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+            double step[3]={ -.2, -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objG;
+            _saemOpt(n, pxmin);
+            bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
+            lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+          }
+          break;
+        case rmAddPropLam:
+          { // add + prop + lambda
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
-          double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[3]={ -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objG;
-          _saemOpt(n, pxmin);
-          bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddPropLam) { // add + prop + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=3;
+            double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+            double step[3]={ -.2, -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objH;
+            _saemOpt(n, pxmin);
+            ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+            bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+            lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+          }
+          break;
+        case rmAddPowLam:
+          { // add + pow + lambda
+            uvec idx;
+            idx = find(ix_endpnt==b);
+            vec ysb, fsb;
 
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=3;
-          double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[3]={ -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objH;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-        } else if (res_mod(b) == rmAddPowLam) { // add + pow + lambda
-          uvec idx;
-          idx = find(ix_endpnt==b);
-          vec ysb, fsb;
+            ysb = ysM(idx);
+            fsb = fsM(idx);
 
-          ysb = ysM(idx);
-          fsb = fsM(idx);
-
-          //len = ysb.n_elem;                                        //CHK: needed by nelder
-          vec xmin(2);
-          double *pxmin = xmin.memptr();
-          int n=4;
-          double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-          double step[4]={ -.2, -.2, -.2, -.2};
-          _saemYptr = ysb.memptr();
-          _saemFptr = fsb.memptr();
-          _saemLen  = ysb.n_elem;
-          _saemYj   = yj(b);
-          _saemPropT = propT(b);
-          _saemAddProp = addProp(b);
-          _saemLambda = lambda(b);
-          _saemLow = low(b);
-          _saemHi = hi(b);
-          _saemStep = step;
-          _saemStart = start;
-          _saemFn = objI;
-          _saemOpt(n, pxmin);
-          ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-          bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-          cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
-          lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
+            //len = ysb.n_elem;                                        //CHK: needed by nelder
+            vec xmin(2);
+            double *pxmin = xmin.memptr();
+            int n=4;
+            double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+            double step[4]={ -.2, -.2, -.2, -.2};
+            _saemYptr = ysb.memptr();
+            _saemFptr = fsb.memptr();
+            _saemLen  = ysb.n_elem;
+            _saemYj   = yj(b);
+            _saemPropT = propT(b);
+            _saemAddProp = addProp(b);
+            _saemLambda = lambda(b);
+            _saemLow = low(b);
+            _saemHi = hi(b);
+            _saemStep = step;
+            _saemStart = start;
+            _saemFn = objI;
+            _saemOpt(n, pxmin);
+            ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+            bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
+            lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
+          }
+          break;
         }
         sigma2[b] = sig2;                                          //CHK: sigma2[] use
         if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
