@@ -606,37 +606,45 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaemPred(x, ...)
+  .replaceLst <- rxUiGet.saemModelPredReplaceLst(x, ...)
   assignInMyNamespace(".saemModelPredSymengineEnvironment", .s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
   .r <- paste("rx_r_=", rxode2::rxFromSE(.r))
+  .yj <- paste(get("rx_yj_", envir = .s))
+  .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
+  .lambda <- paste(get("rx_lambda_", envir = .s))
+  .lambda <- paste0("rx_lambda_~", rxode2::rxFromSE(.lambda))
+  .hi <- paste(get("rx_hi_", envir = .s))
+  .hi <- paste0("rx_hi_~", rxode2::rxFromSE(.hi))
+  .low <- paste(get("rx_low_", envir = .s))
+  .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ui <- x[[1]]
   .lhsIn <- .ui$mv0$lhs
-  .lhsOut <- vapply(.lhsIn,
-                    function(lhs){
-                      .lhs <- get(lhs, envir=.s)
-                      # exceptions should be handled in the residual state.
-                      paste0(lhs, "=", rxode2::rxFromSE(.lhs))
-                    }, character(1), USE.NAMES=FALSE)
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+
   .ret <- paste(c(
     .ddt,
-    .prd,
-    .r,
-    .lhsOut,
-    "tad=tad()",
-    "dosenum=dosenum()"
-  ), collapse = "\n")
-  .ret2 <- paste(c(
-    .ddt,
-    .prd,
-    .r
+    #.yj,
+    #.lambda,
+    #.hi,
+    #.low,
+    .prd#,
+    #.r,
+    #.s$..lhs,
+    #"tad=tad()",
+    #"dosenum=dosenum()"
   ), collapse = "\n")
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  .ret2 <- c(.r,
+             .s$..lhs,
+             "tad=tad()",
+             "dosenum=dosenum()")
+
   if (.sumProd) {
     .malert("stabilizing round off errors in saem predOnly model...")
     .ret <- rxode2::rxSumProdModel(.ret)
@@ -648,59 +656,25 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ret2 <- rxode2::rxOptExpr(.ret2, "saem predOnly model")
     .msuccess("done")
   }
+  .ret <- paste(c(
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .ret,
+    .ret2
+  ), collapse = "\n")
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
-            .saemReplaceMuToTheta(x[[1]], .ret),
-            .uiGetThetaEta(x[[1]]),
+            "rx_pred_=NA\nrx_r_=NA\n",
+            paste(names(.replaceLst), "<-", .replaceLst),
+            .ret,
+            vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE),
             .foceiToCmtLinesAndDvid(x[[1]]))
   .ret <- .ret[.ret != ""]
-
-  .ret2 <- c(rxUiGet.foceiParams(x, ...),
-             rxUiGet.foceiCmtPreModel(x, ...),
-             .saemReplaceMuToTheta(x[[1]], .ret2),
-             .uiGetThetaEta(x[[1]]),
-             .foceiToCmtLinesAndDvid(x[[1]]))
-  .ret <- paste(.ret, collapse="\n")
-  .ret2 <- paste(.ret2, collapse="\n")
-
-  .ret <- list(predOnly=rxode2::rxode2(.ret),
-               predNoLhs=rxode2::rxode2(.ret2))
-
+  .ret <- list(predOnly=rxode2::rxode2(paste(.ret, collapse="\n")))
   class(.ret) <- "saemModelList"
   .ret
-}
-
-#' @export
-rxUiGet.saemModel <- function(x, ...) {
-  .s <- rxUiGet.loadPruneSaem(x, ...)
-  .prd <- get("rx_pred_", envir = .s)
-  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
-  ## .lhs0 <- .s$..lhs0
-  ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- ""
-  .ret <- paste(c(
-    #.s$..stateInfo["state"],
-    #.lhs0,
-    .ddt,
-    .prd,
-    #.s$..stateInfo["statef"],
-    #.s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
-  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  if (.sumProd) {
-    .malert("stabilizing round off errors in saem model...")
-    .ret <- rxode2::rxSumProdModel(.ret)
-    .msuccess("done")
-  }
-  if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "saem model")
-     .msuccess("done")
-  }
-  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
 #' @export
@@ -1528,6 +1502,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
     }
   }
 }
+
 #' Get the likelihood name for SAEM
 #'
 #' @param nnodesGq Number of nodes for Gaussian Quadrature
@@ -1543,6 +1518,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
     paste0("gauss", nnodesGq, "_", nsdGq)
   }
 }
+
 #' Calculate the likelihood and the time
 #'
 #' @param saem saem object
@@ -1559,6 +1535,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   .likTime <- .likTime["elapsed"]
   list(.likTime, setNames(.saemObf, .rn))
 }
+
 #' Calculate the likelihood if requested
 #'
 #' @param env saem environment
@@ -1607,6 +1584,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   env$objective <- .saemObf
   env$.likTime <- .likTime
 }
+
 #' Get the calculate cwres residual parameter for saem
 #'
 #' @param env saem environment
@@ -1654,6 +1632,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }
+
 #' Set the extra text for saem
 #'
 #' @param .env saem environment
@@ -1698,7 +1677,6 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
 .saemGetDataForFit <- function(dataSav, ui) {
   rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
 }
-
 
 #' Fit the saem family of models
 #'
@@ -1751,3 +1729,34 @@ nlmixr2Est.saem <- function(env, ...) {
   .saemFamilyControl(env, ...)
   .saemFamilyFit(env,  ...)
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemDopredIpred <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("saem0", envir=.env)) {
+    .saem <- .env$saem
+    .saemCfg <- attr(.saem, "saem.cfg")
+    .dopred <- attr(.saem, "dopred")
+    .dopred(.saem$mpost_phi, .saemCfg$evt, .saemCfg$opt)
+  } else {
+    return(NULL)
+  }
+}
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.saemDopredPred <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("saem0", envir=.env)) {
+    .saem <- .env$saem
+    .saemCfg <- attr(.saem, "saem.cfg")
+    .dopred <- attr(.saem, "dopred")
+    .dopred(.saem$mprior_phi, .saemCfg$evt, .saemCfg$opt)
+  } else {
+    return(NULL)
+  }
+}
+#attr(nmObjGet.saemDopredIpred, "desc") <- "Get ipred from low level saem"

@@ -8,7 +8,7 @@ addTable(
   object,
   updateObject = FALSE,
   data = object$dataSav,
-  thetaEtaParameters = .foceiThetaEtaParameters(object),
+  thetaEtaParameters = object$foceiThetaEtaParameters,
   table = tableControl(),
   keep = NULL,
   drop = NULL,

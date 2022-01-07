@@ -14,14 +14,18 @@
   mu-referenced values are converted to mu referenced values and the
   converted back when calculating the nlmixr2 object.
   
-- Components of `omega` are now fixed.
+- Components of `omega` can now be fixed.
 
-- Lower level `saem` creation functions are not exported because they
-  are increasingly difficult to use and convert to something standard;
-  a few methods (like `print`, `summary` etc) are maintained to view
-  the lower level object and for debugging it.
+- Lower level `saem` functions (like `configsaem()`) are not exported
+  because they are increasingly difficult to use and convert to
+  something standard; a few methods (like `print`, `summary` etc) are
+  maintained to view the lower level object and for debugging it.
   
-- Parameter history and print-out no longer includes fixed parameters
+- Parameter history and print-out no longer includes fixed parameters.
+
+- The model to calculate the residuals more closely matches the model
+  used for estimation to remove small rounding differences that may
+  occur in the models.
   
 ## nlmixr2 object change
 

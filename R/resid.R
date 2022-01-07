@@ -1,4 +1,4 @@
-#' Combines theta/eta parameters needed for residuals/shrinkage calculations
+#'  theta/eta parameters needed for residuals/shrinkage calculations
 #'
 #' @param fit focei style fit
 #'
@@ -64,31 +64,31 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                             returnType = returnType,
-                            atol = fit$control$atol[1], rtol = fit$control$rtol[1],
-                            maxsteps = fit$control$maxstepsOde,
-                            hmin = fit$control$hmin, hmax = fit$control$hmax, hini = fit$control$hini,
-                            transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
-                            maxords = fit$control$maxords, method = fit$control$method,
+                            atol = fit$atol[1], rtol = fit$rtol[1],
+                            maxsteps = fit$maxstepsOde,
+                            hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                            transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                            maxords = fit$maxords, method = fit$methodOde,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
   rxode2::rxSolveFree()
-  if (any(is.na(.res$rx_pred_)) && fit$control$method == 2L) {
+  if (any(is.na(.res$rx_pred_)) && fit$methodOde == 2L) {
     .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                               returnType = returnType,
-                              atol = fit$control$atol[1], rtol = fit$control$rtol[1],
-                              maxsteps = fit$control$maxstepsOde * 2,
-                              hmin = fit$control$hmin, hmax = fit$control$hmax / 2, hini = fit$control$hini,
-                              transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
-                              maxords = fit$control$maxords, method = "lsoda",
+                              atol = fit$atol[1], rtol = fit$rtol[1],
+                              maxsteps = fit$maxstepsOde * 2,
+                              hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
+                              transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                              maxords = fit$maxords, method = "lsoda",
                               keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
     rxode2::rxSolveFree()
     if (any(is.na(.res$rx_pred_))) {
       .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
-                                atol = fit$control$atol[1], rtol = fit$control$rtol[1],
-                                maxsteps = fit$control$maxstepsOde * 2,
-                                hmin = fit$control$hmin, hmax = fit$control$hmax / 2, hini = fit$control$hini,
-                                transitAbs = fit$control$transitAbs, maxordn = fit$control$maxordn,
-                                maxords = fit$control$maxords, method = "dop853",
+                                atol = fit$atol[1], rtol = fit$rtol[1],
+                                maxsteps = fit$maxstepsOde * 2,
+                                hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
+                                transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                                maxords = fit$maxords, method = "dop853",
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
       if (any(is.na(.res$rx_pred_))) {
