@@ -7,6 +7,12 @@
 
 - New error types are supported in focei including mixing theta and
   etas in residual errors and different types of proportional errors
+  
+- Different types of additive and proportional errors can be used for
+  each endpoint using ` + combined1()` or `+ combined2()` otherwise it
+  takes the supplied `addProp` option to figure out which type of
+  combined model is run (by default `combined2()`)
+
 
 ## SAEM changes
 
@@ -26,6 +32,11 @@
 - The model to calculate the residuals more closely matches the model
   used for estimation to remove small rounding differences that may
   occur in the models.
+  
+- Different types of additive and proportional errors can be used for
+  each endpoint using ` + combined1()` or `+ combined2()` otherwise it
+  takes the supplied `addProp` option to figure out which type of
+  combined model is run (by default `combined2()`)
   
 ## nlmixr2 object change
 

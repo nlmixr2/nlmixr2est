@@ -24,8 +24,6 @@ using namespace std;
 using namespace arma;
 using namespace Rcpp;
 
-int addProp;
-
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
@@ -37,6 +35,7 @@ double *_saemYptr;
 double *_saemFptr;
 int _saemLen;
 int _saemYj;
+int _saemAddProp;
 double _saemLambda;
 double _saemLow;
 double _saemHi;
@@ -99,7 +98,7 @@ void obj(double *ab, double *fx) {
     // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
     // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
     fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
-    if (addProp == 1) {
+    if (_saemAddProp == 1) {
       g = ab02 + ab12*fa;
     } else {
       g = sqrt(ab02*ab02 + ab12*ab12*fa*fa);
@@ -125,7 +124,7 @@ void objC(double *ab, double *fx) {
     // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
     // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
     fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
-    if (addProp == 1){
+    if (_saemAddProp == 1){
       g = ab[0]*ab[0] + ab[1]*ab[1]*pow(fa, pw);
     } else {
       double ab02 = ab[0]*ab[0];
@@ -236,7 +235,7 @@ void objH(double *ab, double *fx) {
     // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
     // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
     fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
-    if (addProp == 1) {
+    if (_saemAddProp == 1) {
       g = ab[0]*ab[0] + ab[1]*ab[1]*fa;
     } else {
       double ab02 = ab[0]*ab[0];
@@ -263,7 +262,7 @@ void objI(double *ab, double *fx) {
     ft = _powerD(_saemFptr[i],  lambda, _saemYj, _saemLow, _saemHi);
     ytr = _powerD(_saemYptr[i], lambda, _saemYj, _saemLow, _saemHi);
     fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
-    if (addProp == 1) {
+    if (_saemAddProp == 1) {
       g = ab[0]*ab[0] + ab[1]*ab[1]*pow(fa, pw);
     } else {
       double ab02 = ab[0]*ab[0];
@@ -375,7 +374,7 @@ public:
   mat get_trans() {
     mat m(nendpnt, 4);
     m.col(0) = lambda;
-    m.col(1) = yj;
+    m.col(1) = conv_to<vec>::from(yj); // convert uvec to double mat
     m.col(2) = low;
     m.col(3) = hi;
     return m;
@@ -525,15 +524,15 @@ public:
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
     ysM=as<vec>(x["ysM"]);
     y_offset=as<uvec>(x["y_offset"]);
-    res_mod = as<vec>(x["res.mod"]);
+    res_mod = as<uvec>(x["res.mod"]);
     // REprintf("res.mod\n");
     // Rcpp::print(Rcpp::wrap(res_mod));
     ares = as<vec>(x["ares"]);
     bres = as<vec>(x["bres"]);
     cres = as<vec>(x["cres"]);
     lres = as<vec>(x["lres"]);
-    yj = as<vec>(x["yj"]);
-    propT=as<vec>(x["propT"]);
+    yj = as<uvec>(x["yj"]);
+    propT=as<uvec>(x["propT"]);
     // REprintf("yj\n");
     // Rcpp::print(Rcpp::wrap(yj));
     lambda = as<vec>(x["lambda"]);
@@ -543,7 +542,7 @@ public:
     ix_endpnt=as<uvec>(x["ix_endpnt"]);
     ix_idM=as<umat>(x["ix_idM"]);
     res_offset=as<uvec>(x["res_offset"]);
-    addProp=as<int>(x["addProp"]);
+    addProp=as<uvec>(x["addProp"]);
     nres = res_offset.max();
     vcsig2.set_size(nres);
     vecares = ares(ix_endpnt);
@@ -640,9 +639,9 @@ public:
         vec yt = yM;
         for (int i = ft.size(); i--;) {
           int cur = ix_endpnt(i);
-          ft(i) = _powerD(f(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          yt(i) = _powerD(yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          ftT(i) = handleF((int)propT(cur), ft(i), f(i), false, true);
+          ft(i) = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          yt(i) = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          ftT(i) = handleF(propT(cur), ft(i), f(i), false, true);
         }
         // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
         // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
@@ -733,14 +732,14 @@ public:
           vec resid(y_cur.size());
           for (int i = y_cur.size(); i--;){
             // lambda(cur), yj(cur), low(cur), hi(cur)
-            resid(i) = _powerD(y_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
+            resid(i) = _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
             if (std::isnan(resid(i))) {
               Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
             }
-            ft = _powerD(f_cur[i], lambda(b), (int)yj(b), low(b), hi(b));
+            ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
             resid(i) -=  ft;
             if (res_mod(b) == rmProp) {
-              fa = handleF((int)propT(b), ft, f_cur[i], true, true);
+              fa = handleF(propT(b), ft, f_cur[i], true, true);
               resid(i) = resid(i)/fa;
             }
           }
@@ -881,8 +880,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp=addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -917,8 +917,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -947,8 +948,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp =addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -975,8 +977,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -1003,8 +1006,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -1031,8 +1035,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -1060,8 +1065,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -1089,8 +1095,9 @@ public:
           _saemYptr = ysb.memptr();
           _saemFptr = fsb.memptr();
           _saemLen  = ysb.n_elem;
-          _saemYj   = (int)yj(b);
-          _saemPropT = (int)propT(b);
+          _saemYj   = yj(b);
+          _saemPropT = propT(b);
+          _saemAddProp = addProp(b);
           _saemLambda = lambda(b);
           _saemLow = low(b);
           _saemHi = hi(b);
@@ -1242,9 +1249,9 @@ private:
   mat statphi01, statphi02, statphi11, statphi12;
   double statrese[MAXENDPNT];
   double sigma2[MAXENDPNT];
-  vec ares, bres, cres, lres, yj, lambda, low, hi, propT;
+  vec ares, bres, cres, lres, lambda, low, hi;
   vec vecares, vecbres, veccres, veclres;
-  vec res_mod;
+  uvec res_mod, yj, propT, addProp;
 
   mat DYF;
   cube phi;
@@ -1352,8 +1359,8 @@ private:
         vec yt(fc.size());
         for (int i = fc.size(); i--;) {
           int cur = ix_endpnt(i);
-          fc(i)  = _powerD(fc(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
-          yt(i)  = _powerD(mx.yM(i), lambda(cur), (int)yj(cur), low(cur), hi(cur));
+          fc(i)  = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          yt(i)  = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
           fcT(i) = handleF(propT(cur), fs(i), fc(i), false, true);
         }
         gc = vecares + vecbres % abs(fcT); //make sure gc > 0
@@ -1369,7 +1376,7 @@ private:
           DYF(mx.indioM)=-mx.yM%log(fc)+fc;
           break;
         case 3:
-          DYF(indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
+          DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
           break;
         }
         doCens(DYF, cens, limit, fc, gc, mx.yM, distribution);

@@ -91,8 +91,7 @@ nimo <- function() {
 # Fit
 ```{r}
 load("nimoData.rda")
-fit <- nlmixr(nimo, nimoData, est="saem", control=list(print=0),
-              table=list(cwres=TRUE, npde=TRUE))
+fit <- nlmixr(nimo, nimoData, est="saem")
 ```
 
 #  Goodness of fit Plots

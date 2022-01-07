@@ -370,16 +370,16 @@
   }
   jcov0 <- grep(1, LCOV0) - 1
 
-  mprior_phi1 <- Mcovariables %*% inits$theta[, i1]
-  mprior_phi0 <- Mcovariables %*% inits$theta[, i0]
+  mprior_phi1 <- Mcovariables %*% inits$theta[, i1, drop = FALSE]
+  mprior_phi0 <- Mcovariables %*% inits$theta[, i0, drop = FALSE]
 
   Gamma2_phi1 <- diag(nphi1)
   diag(Gamma2_phi1) <- inits$omega[i1]
   Gamma2_phi0 <- diag(nphi0)
   diag(Gamma2_phi0) <- inits$omega[i0]
 
-  Gamma2_phi1fixedIx <- fixedOmega[i1, i1]
-  Gamma2_phi1fixedValues <- fixedOmegaValues[i1, i1]
+  Gamma2_phi1fixedIx <- fixedOmega[i1, i1, drop = FALSE]
+  Gamma2_phi1fixedValues <- fixedOmegaValues[i1, i1, drop = FALSE]
   Gamma2_phi1fixed <- as.integer(any(Gamma2_phi1fixedIx == 1L))
 
   phiM <- matrix(0, N, nphi)

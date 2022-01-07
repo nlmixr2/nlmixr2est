@@ -298,3 +298,13 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
     PACKAGE = "nlmixr2"
   )
 }
+
+#' Change a character expression into a quoted name
+#'
+#' @param chr Character expression
+#' @return Quote name
+#' @author Matthew L. Fidler
+#' @noRd
+.enQuote <- function(chr) {
+  eval(parse(text = paste0("quote(", chr, ")")))
+}

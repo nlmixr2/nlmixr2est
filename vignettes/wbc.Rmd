@@ -24,14 +24,14 @@ knitr::opts_chunk$set(
 
 ```{r setup}
 
-library(nlmixr)
+library(nlmixr2)
+
 library(xpose)
 library(xpose.nlmixr)
 
 ```
 
 ```{r model}
-
 wbc <- function() {
   ini({
     ## Note that the UI can take expressions
