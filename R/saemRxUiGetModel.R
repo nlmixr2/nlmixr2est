@@ -369,6 +369,10 @@ rxUiGet.saemModelPred <- function(x, ...) {
   ), collapse = "\n")
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  .ret0 <- c(.yj,
+             .lambda,
+             .hi,
+             .low)
   .ret2 <- c(.r,
              .s$..lhs,
              "tad=tad()",
@@ -376,20 +380,19 @@ rxUiGet.saemModelPred <- function(x, ...) {
 
   if (.sumProd) {
     .malert("stabilizing round off errors in saem predOnly model...")
+    .ret0 <- rxode2::rxSumProdModel(.ret0)
     .ret <- rxode2::rxSumProdModel(.ret)
     .ret2 <- rxode2::rxSumProdModel(.ret2)
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model")
-    .ret2 <- rxode2::rxOptExpr(.ret2, "saem predOnly model")
+    .ret0 <- gsub("rx_expr_", "rx_expr", rxode2::rxOptExpr(.ret0, "saem predOnly model 0"))
+    .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1")
+    .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2"))
     .msuccess("done")
   }
   .ret <- paste(c(
-    .yj,
-    .lambda,
-    .hi,
-    .low,
+    .ret0,
     .ret,
     .ret2
   ), collapse = "\n")
