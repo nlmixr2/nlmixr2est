@@ -268,22 +268,82 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
 }
 #attr(rxUiGet.saemModResTotalResiduals, "desc") <- "saem total number of residuals"
 
+#' Get the ares name based on the condition
+#'
+#' @param iniDf Ini data frame
+#' @param cond Condition of the parameter
+#' @param types The types of errors that support this distribution
+#' @return Name of the ares for saem
+#' @author Matthew L. Fidler
+#' @noRd
+.saemGetIniDfResNameFromType <- function(iniDf, cond, types) {
+  .ini <- iniDf[iniDf$condition == cond, ]
+  .ini[.ini$err %in% types, "name"]
+}
+
+.saemGetIniDfAResName <- function(iniDf, cond) {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm"))
+}
+
+.saemGetIniDfBResName <- function(iniDf, cond) {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "pow"))
+}
+
+.saemGetIniDfCResName <- function(iniDf, cond) {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2"))
+}
+
+.saemGetIniDfLambaResName <- function(iniDf, cond) {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"))
+}
+
 #' @export
 rxUiGet.saemResNames <- function(x, ...) {
   .ui <- x[[1]]
-  .err <- .ui$iniDf
-  .w <- which(sapply(.err$err, function(x) any(x == c("add", "norm", "dnorm", "dlnorm", "lnorm", "logn", "dlogn"))))
-  .ret <- c()
-  if (length(.w) == 1) {
-    if (!is.na(.err$est[.w])) {
-      .ret[length(.ret) + 1] <- paste(.err$name[.w])
-    }
-  }
-  .w <- c(which(.err$err == "prop"), which(.err$err == "propT"))
-  if (length(.w) == 1) {
-    .ret[length(.ret) + 1] <- paste(.err$name[.w])
-  }
-  return(.ret)
+  .predDf <- .ui$predDf
+  .iniDf <- .ui$iniDf
+  .numEst <- rxUiGet.saemModNumEst(x, ...)
+  .resMod <- rxUiGet.saemResMod(x, ...)
+  do.call("c", lapply(seq_along(.numEst),
+         function(i) {
+           .num <- .numEst[i]
+           .cond <- .predDf$cond[i]
+           .ret <- switch(.resMod[i],
+                          .saemGetIniDfAResName(.iniDf, .cond), # add = 1
+                          .saemGetIniDfBResName(.iniDf, .cond), # prop = 2
+
+                          c(.saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfCResName(.iniDf, .cond)), # pow = 3
+
+                          c(.saemGetIniDfAResName(.iniDf, .cond),
+                            .saemGetIniDfBResName(.iniDf, .cond)), # add + prop = 4
+
+                          c(.saemGetIniDfAResName(.iniDf, .cond),
+                            .saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfCResName(.iniDf, .cond)), # add + pow = 5
+
+                          c(.saemGetIniDfAResName(.iniDf, .cond),
+                            .saemGetIniDfLResName(.iniDf, .cond)), # add + lambda = 6
+
+                          c(.saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfLResName(.iniDf, .cond)), # prop + lambda = 7
+
+                          c(.saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfCResName(.iniDf, .cond),
+                            .saemGetIniDfLResName(.iniDf, .cond)), # pow + lambda = 8
+
+                          c(.saemGetIniDfAResName(.iniDf, .cond),
+                            .saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfLResName(.iniDf, .cond)), # add + prop + lambda = 9
+
+                          c(.saemGetIniDfAResName(.iniDf, .cond),
+                            .saemGetIniDfBResName(.iniDf, .cond),
+                            .saemGetIniDfCResName(.iniDf, .cond),
+                            .saemGetIniDfLResName(.iniDf, .cond)) # add + pow + lambda = 10
+                          )
+           if (.num != length(.ret)) stop("'", .cond, "' has the incorrect number of residuals")
+           .ret
+         }))
 }
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
 
