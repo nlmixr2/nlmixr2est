@@ -295,15 +295,25 @@ static inline void _saemOpt(int n, double *pxmin) {
     Function newuoa = nlmixr2[".newuoa"];
     NumericVector par0(n);
     for (int i = n; i--;) {
-      par0[i] = pxmin[i];
+      par0[i] = _saemStart[i];
     }
     List ret = newuoa(_["par"] = par0, _["fn"] = nlmixr2[".saemResidF"],
 		      _["control"]=List::create(_["rhoend"]=_saemTol,
 						_["maxfun"]=_saemItmax*n*n));
-    NumericVector x = ret["x"];
-    for (int i = n; i--;) {
-      pxmin[i] = x[i];
+    double f = as<double>(ret["value"]);
+    if (ISNA(f)) {
+      REprintf("newoua failed, switch to nelder-mead\n");
+      int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
+      double ynewlo;
+      nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
+                &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
+    } else {
+      NumericVector x = ret["x"];
+      for (int i = n; i--;) {
+        pxmin[i] = x[i];
+      }
     }
+
   }
 }
 
