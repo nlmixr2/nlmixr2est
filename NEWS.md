@@ -20,6 +20,14 @@
   mu-referenced values are converted to mu referenced values and the
   converted back when calculating the nlmixr2 object.
   
+- `nlmixr2` forced the parameter ordering to (1) population effects,
+  (2) non mu-referenced between subject effects (3) omega estimates
+  and (4) residual effects. This changes the order that `nlmixr2` sees
+  the parameters. Since this is based on a random number generator,
+  the optimization trajectory will be different and have different
+  results than `nlmixr`
+
+  
 - Components of `omega` can now be fixed.
 
 - Lower level `saem` functions (like `configsaem()`) are not exported
@@ -51,12 +59,6 @@
 - `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed`
   and `fit$parFixedDf`
 
-- `nlmixr2` forced the parameter ordering to (1) population effects,
-  (2) non mu-referenced between subject effects (3) omega estimates
-  and (4) residual effects. This changes the order that `nlmixr2` sees
-  the parameters. Since this is based on a random number generator,
-  the optimization trajectory will be different and have different
-  results than `nlmixr`
 
 ## nlmixr2 interface change
 
