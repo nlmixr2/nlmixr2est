@@ -93,9 +93,6 @@ rxUiGet.saemFixed <- function(x, ...) {
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
   .fixError <- .dft[!is.na(.dft$err), ]
-  if (any(.fixError$fix)) {
-    stop("Residuals cannot be fixed in SAEM.")
-  }
   .dft <- .dft[is.na(.dft$err), ]
   .dft <- setNames(.dft$fix, paste(.dft$name))
   .extra <- .ui$nonMuEtas
@@ -226,7 +223,11 @@ rxUiGet.saemResMod <- function(x, ...) {
   vapply(seq_along(.predDf$errType),
          function(i) {
            .errType <- as.integer(.predDf$errType[i])
-           .hasLambda <- !is.na(.predDf$lambda[i])
+           .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
+                                                     "logit + yeoJohnson",
+                                                     "probit + yeoJohnson",
+                                                     "logit + boxCox",
+                                                     "probit + boxCox")
            if (.hasLambda) {
              return(.errType + 5L)
            } else {
@@ -276,76 +277,86 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
 #' @return Name of the ares for saem
 #' @author Matthew L. Fidler
 #' @noRd
-.saemGetIniDfResNameFromType <- function(iniDf, cond, types) {
+.saemGetIniDfResNameFromType <- function(iniDf, cond, types, column="name") {
   .ini <- iniDf[iniDf$condition == cond, ]
-  .ini[.ini$err %in% types, "name"]
+  .ini[.ini$err %in% types, column]
 }
 
-.saemGetIniDfAResName <- function(iniDf, cond) {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm"))
+.saemGetIniDfAResName <- function(iniDf, cond, column="name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm"), column=column)
 }
 
-.saemGetIniDfBResName <- function(iniDf, cond) {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "pow"))
+.saemGetIniDfBResName <- function(iniDf, cond, column="name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "pow"), column=column)
 }
 
-.saemGetIniDfCResName <- function(iniDf, cond) {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2"))
+.saemGetIniDfCResName <- function(iniDf, cond, column="name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2"), column=column)
 }
 
-.saemGetIniDfLambaResName <- function(iniDf, cond) {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"))
+.saemGetIniDfLResName <- function(iniDf, cond, column="name") {
+  .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column=column)
 }
 
-#' @export
-rxUiGet.saemResNames <- function(x, ...) {
-  .ui <- x[[1]]
-  .predDf <- .ui$predDf
-  .iniDf <- .ui$iniDf
-  .numEst <- rxUiGet.saemModNumEst(x, ...)
-  .resMod <- rxUiGet.saemResMod(x, ...)
+.saemGetResItem <- function(ui, column="name") {
+  .predDf <- ui$predDf
+  .iniDf <- ui$iniDf
+  .numEst <- ui$saemModNumEst
+  .resMod <- ui$saemResMod
   do.call("c", lapply(seq_along(.numEst),
          function(i) {
            .num <- .numEst[i]
            .cond <- .predDf$cond[i]
            .ret <- switch(.resMod[i],
-                          .saemGetIniDfAResName(.iniDf, .cond), # add = 1
-                          .saemGetIniDfBResName(.iniDf, .cond), # prop = 2
+                          .saemGetIniDfAResName(.iniDf, .cond, column), # add = 1
+                          .saemGetIniDfBResName(.iniDf, .cond, column), # prop = 2
 
-                          c(.saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfCResName(.iniDf, .cond)), # pow = 3
+                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfCResName(.iniDf, .cond, column)), # pow = 3
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond),
-                            .saemGetIniDfBResName(.iniDf, .cond)), # add + prop = 4
+                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
+                            .saemGetIniDfBResName(.iniDf, .cond, column)), # add + prop = 4
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond),
-                            .saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfCResName(.iniDf, .cond)), # add + pow = 5
+                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
+                            .saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfCResName(.iniDf, .cond, column)), # add + pow = 5
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond),
-                            .saemGetIniDfLResName(.iniDf, .cond)), # add + lambda = 6
+                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
+                            .saemGetIniDfLResName(.iniDf, .cond, column)), # add + lambda = 6
 
-                          c(.saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfLResName(.iniDf, .cond)), # prop + lambda = 7
+                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfLResName(.iniDf, .cond, column)), # prop + lambda = 7
 
-                          c(.saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfCResName(.iniDf, .cond),
-                            .saemGetIniDfLResName(.iniDf, .cond)), # pow + lambda = 8
+                          c(.saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfCResName(.iniDf, .cond, column),
+                            .saemGetIniDfLResName(.iniDf, .cond, column)), # pow + lambda = 8
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond),
-                            .saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfLResName(.iniDf, .cond)), # add + prop + lambda = 9
+                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
+                            .saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfLResName(.iniDf, .cond, column)), # add + prop + lambda = 9
 
-                          c(.saemGetIniDfAResName(.iniDf, .cond),
-                            .saemGetIniDfBResName(.iniDf, .cond),
-                            .saemGetIniDfCResName(.iniDf, .cond),
-                            .saemGetIniDfLResName(.iniDf, .cond)) # add + pow + lambda = 10
+                          c(.saemGetIniDfAResName(.iniDf, .cond, column),
+                            .saemGetIniDfBResName(.iniDf, .cond, column),
+                            .saemGetIniDfCResName(.iniDf, .cond, column),
+                            .saemGetIniDfLResName(.iniDf, .cond, column)) # add + pow + lambda = 10
                           )
            if (.num != length(.ret)) stop("'", .cond, "' has the incorrect number of residuals")
            .ret
          }))
 }
+
+#' @export
+rxUiGet.saemResNames <- function(x, ...) {
+  .ui <- x[[1]]
+  .saemGetResItem(.ui, column="name")
+}
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
+
+#' @export
+rxUiGet.saemResFixed <- function(x, ...) {
+  .ui <- x[[1]]
+  as.integer(.saemGetResItem(.ui, column="fix"))
+}
 
 #' @export
 rxUiGet.saemEtaNames <- function(x, ...) {

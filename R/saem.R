@@ -192,9 +192,18 @@ saemControl <- function(seed = 99,
   if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- minqa::newuoa(par, fn,
+  .ret <- try(minqa::newuoa(par, fn,
     control = .ctl
-  )
+    ))
+  if (inherits(.ret, "try-error")) {
+    print(par)
+    .ret <- list()
+    .ret$x <- rep(NA_real_, length(.ret$par))
+    .ret$message <- "try-error"
+    .ret$convergence <- -42L
+    .ret$value <- NA_real_
+    return(.ret)
+  }
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -321,7 +330,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(cfg$bres, len=.nendpnt, .var.name="saem.cfg$bres")
   checkmate::assertNumeric(cfg$cres, len=.nendpnt, .var.name="saem.cfg$cres")
   checkmate::assertNumeric(cfg$lres, len=.nendpnt, .var.name="saem.cfg$lres")
-  checkmate::assertIntegerish(cfg$yj, lower=1, len=.nendpnt, .var.name="saem.cfg$yj")
+  checkmate::assertIntegerish(cfg$yj, lower=0, len=.nendpnt, .var.name="saem.cfg$yj")
   checkmate::assertIntegerish(cfg$propT, lower=0, upper=1, len=.nendpnt, .var.name="saem.cfg$yj")
   checkmate::assertNumeric(cfg$lambda, len=.nendpnt, .var.name="cfg$lambda")
   checkmate::assertNumeric(cfg$low, len=.nendpnt, .var.name="cfg$low")
