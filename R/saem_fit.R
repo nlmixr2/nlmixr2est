@@ -116,7 +116,7 @@
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
-                       maxOdeRecalc=5L) {
+                       maxOdeRecalc=5L, nres) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -541,8 +541,7 @@
   cfg$hi <- rep(1.0, cfg$nendpnt)
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
-  nres <- (1:4)[(cfg$res.mod == 10L) * 3 + (cfg$res.mod %in% c(4L, 8L, 9L)) * 2 + (cfg$res.mod %in% c(3L, 5L, 6L, 7L)) + 1]
-  cfg$res_offset <- cumsum(c(0, nres))
+  cfg$res_offset <- cumsum(c(0L, nres))
   cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(nres))
   cfg$addProp <- c("combined1" = 1L, "combined2" = 2L)[match.arg(addProp)]
 

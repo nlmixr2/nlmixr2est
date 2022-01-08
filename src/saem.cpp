@@ -1164,11 +1164,15 @@ public:
       for (int b=0; b<nendpnt; ++b) {
         int offset = res_offset[b];
         switch ((int)(res_mod(b))) {
-        case rmAdd:
+        case rmAdd: 
           vcsig2[offset] = sigma2[b];
           break;
         case rmProp:
           vcsig2[offset] = bres(b);
+          break;
+        case rmPow:
+          vcsig2[offset]     = bres(b);
+          vcsig2[offset + 1] = cres(b);
           break;
         case rmAddProp:
           vcsig2[offset]   = ares(b);
@@ -1178,10 +1182,6 @@ public:
           vcsig2[offset]   = ares(b);
           vcsig2[offset+1] = bres(b);
           vcsig2[offset+2] = cres(b);
-          break;
-        case rmPow:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = cres(b);
           break;
         case rmAddLam:
           vcsig2[offset]   = ares(b);
@@ -1209,7 +1209,6 @@ public:
           break;
         }
       }
-
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
       vec pl = Plambda.elem(parHistThetaKeep);

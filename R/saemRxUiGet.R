@@ -237,6 +237,38 @@ rxUiGet.saemResMod <- function(x, ...) {
 #attr(rxUiGet.saemResMod, "desc") <- "saem res.mod component"
 
 #' @export
+rxUiGet.saemModNumEst <- function(x, ...) {
+  .resMod <- rxUiGet.saemResMod(x, ...)
+  vapply(.resMod, function(i) {
+    switch(i,
+           1L, # add = 1
+           1L, # prop = 2
+           2L, # pow = 3
+           2L, # add + prop = 4
+           3L, # add + pow = 5
+           2L, # add + lambda = 6
+           2L, # prop + lambda = 7
+           3L, # pow + lambda = 8
+           3L, # add + prop + lambda = 9
+           4L # add + pow + lambda = 10
+           )
+  }, integer(1), USE.NAMES=TRUE)
+}
+#attr(rxUiGet.saemModNumEst, "desc") <- "saem number of parameters that can be estimated for each component"
+
+#' @export
+rxUiGet.saemModResOffset <- function(x, ...) { # res_offset
+  cumsum(c(0, rxUiGet.saemModNumEst(x, ...)))
+}
+#attr(rxUiGet.saemModResOffset, "desc") <- "saem residual parameters offset"
+
+#' @export
+rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
+  sum(rxUiGet.saemModNumEst(x, ...))
+}
+#attr(rxUiGet.saemModResTotalResiduals, "desc") <- "saem total number of residuals"
+
+#' @export
 rxUiGet.saemResNames <- function(x, ...) {
   .ui <- x[[1]]
   .err <- .ui$iniDf

@@ -369,7 +369,8 @@ saemControl <- function(seed = 99,
                       lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
                       powRange=rxode2::rxGetControl(ui, "powRange", 10),
                       odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
-                      maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5))
+                      maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
+                      nres=ui$saemModNumEst)
   .print <- rxode2::rxGetControl(ui, "print", 1)
   if (inherits(.print, "numeric")) {
     .cfg$print <- as.integer(.print)
