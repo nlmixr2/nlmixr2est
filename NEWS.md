@@ -46,6 +46,9 @@
   takes the supplied `addProp` option to figure out which type of
   combined model is run (by default `combined2()`)
   
+- Parameter history and printout now uses standard deviation for
+  additive only components, matching the estimation of the components
+  
 ## nlmixr2 object change
 
 - The nlmixr2 object compresses infrequently used and removes many

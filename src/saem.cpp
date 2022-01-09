@@ -1111,13 +1111,41 @@ public:
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
             //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
+            vec xmin(3);
             double *pxmin = xmin.memptr();
             int n=3;
 
             // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
             double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
             double step[3]={-.2, -.2, -.2};
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              n = 0;
+              int curi=0;
+              if (resFixed[offsetR] == 1) {
+                ares(b) = resValue[offsetR];
+                _saemFixedIdx[0] = 1;
+                _saemFixedValue[0] = sqrt(fabs(ares(b)));
+              } else {
+                start[curi++] = sqrt(fabs(ares(b)));
+                n++;
+              }
+              if (resFixed[offsetR + 1] == 1) {
+                bres(b) = resValue[offsetR + 1];
+                _saemFixedIdx[1] = 1;
+                _saemFixedValue[1] = sqrt(fabs(bres(b)));
+              } else {
+                start[curi++] = sqrt(fabs(bres(b)));
+                n++;
+              }
+              if (resFixed[offsetR + 2] == 1) {
+                cres(b) = resValue[offsetR + 2];
+                _saemFixedIdx[2] = 1;
+                _saemFixedValue[2] = toPowEst(cres(b));
+              } else {
+                start[curi++] = toPowEst(cres(b));
+                n++;
+              }
+            }
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
@@ -1132,9 +1160,24 @@ public:
             _saemFn = objC;
             _saemOpt(n, pxmin);
             // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
-            ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
-            bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
-            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              int curi = 0;
+              if (resFixed[offsetR] == 0) {
+                double ab02 = pxmin[curi++];
+                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+              }
+              if (resFixed[offsetR + 1] == 0) {
+                double ab12 = pxmin[curi++];
+                bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+              }
+              if (resFixed[offsetR + 2] == 0) {
+                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[curi++]) - cres(b));    //force are & bres to be positive
+              }
+            } else {
+              ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
+              bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
+              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
+            }
           }
           break;
         case rmPow:
@@ -1152,6 +1195,27 @@ public:
             int n=2;
             double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
             double step[2]={ -.2, -.2};
+
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              n = 0;
+              int curi=0;
+              if (resFixed[offsetR] == 1) {
+                bres(b) = resValue[offsetR];
+                _saemFixedIdx[0] = 1;
+                _saemFixedValue[0] = sqrt(fabs(bres(b)));
+              } else {
+                start[curi++] = sqrt(fabs(bres(b)));
+                n++;
+              }
+              if (resFixed[offsetR + 1] == 1) {
+                cres(b) = resValue[offsetR + 1];
+                _saemFixedIdx[1] = 1;
+                _saemFixedValue[1] = toPowEst(cres(b));
+              } else {
+                start[curi++] = toPowEst(cres(b));
+                n++;
+              }
+            }
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
             _saemLen  = ysb.n_elem;
@@ -1165,8 +1229,20 @@ public:
             _saemStart = start;
             _saemFn = objD;
             _saemOpt(n, pxmin);
-            bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
-            cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              int curi = 0;
+              if (resFixed[offsetR] == 0) {
+                double ab02 = pxmin[curi++];
+                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+              }
+              if (resFixed[offsetR + 1] == 0) {
+                double ab12 = pxmin[curi++];
+                cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
+              }
+            } else {
+              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
+              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
+            }
           }
           break;
         case rmAddLam:
