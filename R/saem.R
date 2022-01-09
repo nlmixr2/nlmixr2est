@@ -339,7 +339,8 @@ saemControl <- function(seed = 99,
   checkmate::assertMatrix(cfg$ix_idM, mode="integerish", .var.name="cfg$ix_idM")
   checkmate::assertIntegerish(cfg$res_offset, .var.name="cfg$res_offset")
 
-  checkmate::assertIntegerish(cfg$nb_fixOmega, len=1, lower=0, .var.name="cfp$nb_fixOmega")
+  checkmate::assertIntegerish(cfg$nb_fixOmega, len=1, lower=0, .var.name="cfg$nb_fixOmega")
+  checkmate::assertIntegerish(cfg$nb_fixResid, len=1, lower=0, .var.names="cfg$nb_fixResid")
 }
 
 #' Fit a UI model with saem

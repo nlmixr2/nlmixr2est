@@ -409,6 +409,7 @@
   nb_sa <- round(mcmc$niter[1] * .75)
   nb_correl <- round(mcmc$niter[1] * .75)
   nb_fixOmega <- round(mcmc$niter[1] * 0.25)
+  nb_fixResid <- round(mcmc$niter[1] * 0.25)
   va <- mcmc$stepsize
   vna <- mcmc$niter
   na <- length(va)
