@@ -185,6 +185,11 @@ saemControl <- function(seed = 99,
   .Call(`_saemResidF`, x)
 }
 
+.saemOpt1 <- function(p1) {
+  .opt <- stats::nlm(.saemResidF, p1)
+  .opt$estimate
+}
+
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
@@ -340,7 +345,10 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(cfg$res_offset, .var.name="cfg$res_offset")
 
   checkmate::assertIntegerish(cfg$nb_fixOmega, len=1, lower=0, .var.name="cfg$nb_fixOmega")
-  checkmate::assertIntegerish(cfg$nb_fixResid, len=1, lower=0, .var.names="cfg$nb_fixResid")
+  checkmate::assertIntegerish(cfg$nb_fixResid, len=1, lower=0, .var.name="cfg$nb_fixResid")
+
+  checkmate::assertNumeric(cfg$resValue, .var.name="cfg$resValue")
+  checkmate::assertIntegerish(cfg$resFixed, lower=0, upper=1, .var.name="cfg$resFixed")
 }
 
 #' Fit a UI model with saem
@@ -392,6 +400,8 @@ saemControl <- function(seed = 99,
   .cfg$hi <- ui$saemHi
   .cfg$propT <- ui$saemPropT
   .cfg$addProp <- ui$saemAddProp
+  .cfg$resValue <- ui$saemResValue
+  .cfg$resFixed <- ui$saemResFixed
   if (.cfg$print > 0) {
     message("params:\t", paste(ui$saemParHistNames,collapse="\t"))
   }

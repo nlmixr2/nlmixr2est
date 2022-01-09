@@ -296,7 +296,7 @@ void objG(double *ab, double *fx) {
     ft = _powerD(_saemFptr[i],  lambda, _saemYj, _saemLow, _saemHi);
     ytr = _powerD(_saemYptr[i], lambda, _saemYj, _saemLow, _saemHi);
     fa = handleF(_saemPropT, ft, _saemFptr[i], false, true);
-    g = ab01*ab01*pow(fa, pw);
+    g = ab02*ab02*pow(fa, pw);
     if (g == 0) g = 1.0;
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
@@ -407,37 +407,48 @@ double _saemTol = 1e-4;
 int _saemType = 1;
 
 static inline void _saemOpt(int n, double *pxmin) {
-  if (_saemType == 1) {
-    int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
-    double ynewlo;
-    nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
-	      &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
-  } else if (_saemType == 2) {
-    // Try Newoua
+  if (n == 0) return;
+  if (n == 1) {
+    // Use R's optimize for unidimensional optimization
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2");
-    Function newuoa = nlmixr2[".newuoa"];
-    NumericVector par0(n);
-    for (int i = n; i--;) {
-      par0[i] = _saemStart[i];
-    }
-    List ret = newuoa(_["par"] = par0, _["fn"] = nlmixr2[".saemResidF"],
-		      _["control"]=List::create(_["rhoend"]=_saemTol,
-						_["maxfun"]=_saemItmax*n*n));
-    double f = as<double>(ret["value"]);
-    if (ISNA(f)) {
-      REprintf("newoua failed, switch to nelder-mead\n");
+    Function optimize1 = nlmixr2[".saemOpt1"];
+    NumericVector par0(1);
+    par0[0] = _saemStart[0];
+    double x0 = as<double>(optimize1(par0));
+    pxmin[0] = x0;
+  } else {
+    if (_saemType == 1) {
       int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
       double ynewlo;
       nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
                 &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
-    } else {
-      NumericVector x = ret["x"];
+    } else if (_saemType == 2) {
+      // Try Newoua
+      Function loadNamespace("loadNamespace", R_BaseNamespace);
+      Environment nlmixr2 = loadNamespace("nlmixr2");
+      Function newuoa = nlmixr2[".newuoa"];
+      NumericVector par0(n);
       for (int i = n; i--;) {
-        pxmin[i] = x[i];
+        par0[i] = _saemStart[i];
+      }
+      List ret = newuoa(_["par"] = par0, _["fn"] = nlmixr2[".saemResidF"],
+                        _["control"]=List::create(_["rhoend"]=_saemTol,
+                                                  _["maxfun"]=_saemItmax*n*n));
+      double f = as<double>(ret["value"]);
+      if (ISNA(f)) {
+        REprintf("newoua failed, switch to nelder-mead\n");
+        int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
+        double ynewlo;
+        nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
+                  &iconv, &it, &nfcall, &ynewlo, pxmin, &iprint);
+      } else {
+        NumericVector x = ret["x"];
+        for (int i = n; i--;) {
+          pxmin[i] = x[i];
+        }
       }
     }
-
   }
 }
 
@@ -578,6 +589,8 @@ public:
     nb_correl = as<int>(x["nb_correl"]);
     nb_fixOmega = as<int>(x["nb_fixOmega"]);
     nb_fixResid = as<int>(x["nb_fixResid"]);
+    resValue = as<vec>(x["resValue"]);
+    resFixed = as<uvec>(x["resFixed"]);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
     nb_sa = as<int>(x["nb_sa"]);
@@ -993,12 +1006,26 @@ public:
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
         double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
+        int offsetR = res_offset[b];
+        _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
         switch (res_mod(b)) {
         case rmAdd:
-          ares(b) = sqrt(sig2);
+          {
+            if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
+              ares(b) = resValue[offsetR];
+            } else {
+              ares(b) = sqrt(sig2);
+            }
+          }
           break;
         case rmProp:
-          bres(b) = sqrt(sig2);
+          {
+            if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
+              bres(b) = resValue[offsetR];
+            } else {
+              bres(b) = sqrt(sig2);
+            }
+          }
           break;
         case rmAddProp:
           {
@@ -1018,6 +1045,27 @@ public:
             double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
             double step[2]={-.2, -.2};
 
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              n = 0;
+              int curi=0;
+              if (resFixed[offsetR] == 1) {
+                ares(b) = resValue[offsetR];
+                _saemFixedIdx[0] = 1;
+                _saemFixedValue[0] = sqrt(fabs(ares(b)));
+              } else {
+                start[curi++] = sqrt(fabs(ares(b)));
+                n++;
+              }
+              if (resFixed[offsetR + 1] == 1) {
+                bres(b) = resValue[offsetR + 1];
+                _saemFixedIdx[1] = 1;
+                _saemFixedValue[1] = sqrt(fabs(bres(b)));
+              } else {
+                start[curi++] = sqrt(fabs(bres(b)));
+                n++;
+              }
+            }
+
             // f = sum((ytr-ft)/g);
             _saemYptr = ysb.memptr();
             _saemFptr = fsb.memptr();
@@ -1033,10 +1081,22 @@ public:
             _saemStart=start;
             _saemOpt(n, pxmin);
             // Adjust back
-            double ab02 = pxmin[0];
-            double ab12 = pxmin[1];
-            ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-            bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+            if (kiter > (unsigned int)(nb_fixResid)) {
+              int curi = 0;
+              if (resFixed[offsetR] == 0) {
+                double ab02 = pxmin[curi++];
+                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+              }
+              if (resFixed[offsetR + 1] == 0) {
+                double ab12 = pxmin[curi++];
+                bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+              }
+            } else {
+              double ab02 = pxmin[0];
+              double ab12 = pxmin[1];
+              ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+              bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+            }
           }
           break;
         case rmAddPow:
@@ -1301,7 +1361,7 @@ public:
         int offset = res_offset[b];
         switch ((int)(res_mod(b))) {
         case rmAdd: 
-          vcsig2[offset] = sigma2[b];
+          vcsig2[offset] = ares(b)*ares(b);//sigma2[b];
           break;
         case rmProp:
           vcsig2[offset] = bres(b);
@@ -1424,6 +1484,9 @@ private:
   vec L;
   mat Ha, Hb, DDa, DDb;
   mat mpost_phi, cpost_phi;
+
+  vec resValue;
+  uvec resFixed;
 
   mcmcaux mx;
 

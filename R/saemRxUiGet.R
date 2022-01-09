@@ -359,6 +359,12 @@ rxUiGet.saemResFixed <- function(x, ...) {
 }
 
 #' @export
+rxUiGet.saemResValue <- function(x, ...) {
+  .ui <- x[[1]]
+  .saemGetResItem(.ui, column="est")
+}
+
+#' @export
 rxUiGet.saemEtaNames <- function(x, ...) {
   .ui <- x[[1]]
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]

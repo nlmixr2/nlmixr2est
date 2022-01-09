@@ -409,7 +409,7 @@
   nb_sa <- round(mcmc$niter[1] * .75)
   nb_correl <- round(mcmc$niter[1] * .75)
   nb_fixOmega <- round(mcmc$niter[1] * 0.25)
-  nb_fixResid <- round(mcmc$niter[1] * 0.25)
+  nb_fixResid <- round(mcmc$niter[1] * 0.3)
   va <- mcmc$stepsize
   vna <- mcmc$niter
   na <- length(va)
@@ -444,6 +444,7 @@
     nb_sa = nb_sa,
     nb_correl = nb_correl,
     nb_fixOmega=nb_fixOmega,
+    nb_fixResid=nb_fixResid,
     niter_phi0 = niter_phi0,
     nmc = nmc,
     coef_phi0 = .9638, # FIXME
