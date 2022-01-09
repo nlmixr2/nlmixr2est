@@ -452,6 +452,7 @@ public:
     nu = as<uvec>(x["nu"]);
     niter = as<int>(x["niter"]);
     nb_correl = as<int>(x["nb_correl"]);
+    nb_fixOmega = as<int>(x["nb_fixOmega"]);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
     nb_sa = as<int>(x["nb_sa"]);
@@ -841,7 +842,7 @@ public:
         Gamma2_phi1(jDmin(jm),jDmin(jm))=Gmin(jDmin(jm));
       }
       // fix before diagonals are enforced
-      if (Gamma2_phi1fixed==1) {
+      if (Gamma2_phi1fixed==1 && kiter > (unsigned int)(nb_fixOmega)) {
         Gamma2_phi1.elem(Gamma2_phi1fixedIx) = Gamma2_phi1fixedValues(Gamma2_phi1fixedIx);
       }
 
@@ -1245,6 +1246,7 @@ private:
   int niter;
   int nb_sa;
   int nb_correl;
+  int nb_fixOmega;
   int niter_phi0;
   double coef_phi0;
   double rmcmc;

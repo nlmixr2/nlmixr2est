@@ -405,9 +405,10 @@
   # indiphi = order(x1[x1>0])	#FINDME
 
   niter <- sum(mcmc$niter)
-  niter_phi0 <- niter * .5
-  nb_sa <- mcmc$niter[1] * .75
-  nb_correl <- mcmc$niter[1] * .75
+  niter_phi0 <- round(niter * .5)
+  nb_sa <- round(mcmc$niter[1] * .75)
+  nb_correl <- round(mcmc$niter[1] * .75)
+  nb_fixOmega <- round(mcmc$niter[1] * 0.25)
   va <- mcmc$stepsize
   vna <- mcmc$niter
   na <- length(va)
@@ -441,6 +442,7 @@
     niter = niter,
     nb_sa = nb_sa,
     nb_correl = nb_correl,
+    nb_fixOmega=nb_fixOmega,
     niter_phi0 = niter_phi0,
     nmc = nmc,
     coef_phi0 = .9638, # FIXME

@@ -196,7 +196,6 @@ saemControl <- function(seed = 99,
     control = .ctl
     ))
   if (inherits(.ret, "try-error")) {
-    print(par)
     .ret <- list()
     .ret$x <- rep(NA_real_, length(.ret$par))
     .ret$message <- "try-error"
@@ -286,7 +285,7 @@ saemControl <- function(seed = 99,
   # phi1fixed indicator
   checkmate::assertIntegerish(cfg$Gamma2_phi1fixed,lower=0, upper=1, len=1, .var.name="saem.cfg$Gamma2_phi1fixed")
   if (.Gamma2_phi1fixed == 1) {
-    checkmate::assertMatrix(cfg$Gamma2_phi1fixedValues, mode="numeric", lower=0, .var.name="saem.cfg$Gamma2_phi1fixedValues")
+    checkmate::assertMatrix(cfg$Gamma2_phi1fixedValues, mode="numeric", .var.name="saem.cfg$Gamma2_phi1fixedValues")
   }
   checkmate::assertMatrix(cfg$mprior_phi1, mode="numeric", .var.name="saem.cfg$mprior_phi1")
 
@@ -339,6 +338,8 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(cfg$ix_endpnt, .var.name="cfg$ix_endpnt")
   checkmate::assertMatrix(cfg$ix_idM, mode="integerish", .var.name="cfg$ix_idM")
   checkmate::assertIntegerish(cfg$res_offset, .var.name="cfg$res_offset")
+
+  checkmate::assertIntegerish(cfg$nb_fixOmega, len=1, lower=0, .var.name="cfp$nb_fixOmega")
 }
 
 #' Fit a UI model with saem
