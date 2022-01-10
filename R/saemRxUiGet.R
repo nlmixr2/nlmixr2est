@@ -357,6 +357,14 @@ rxUiGet.saemResFixed <- function(x, ...) {
   .ui <- x[[1]]
   as.integer(.saemGetResItem(.ui, column="fix"))
 }
+#attr(rxUiGet.saemResFixed, "desc") <- "Integer vector of residual fixed components"
+
+#' @export
+rxUiGet.saemParHistResNames <- function(x, ...) {
+  .fix <- (rxUiGet.saemResFixed(x, ...) == 0L)
+  rxUiGet.saemResNames(x, ...)[.fix]
+}
+#attr(rxUiGet.saemParHistResNames, "desc") <-"Get the SAEM parameter history residual names"
 
 #' @export
 rxUiGet.saemResValue <- function(x, ...) {
@@ -413,7 +421,7 @@ rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemResNames(x, ...))
+  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...))
 }
 
 #' @export

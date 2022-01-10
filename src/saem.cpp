@@ -591,6 +591,7 @@ public:
     nb_fixResid = as<int>(x["nb_fixResid"]);
     resValue = as<vec>(x["resValue"]);
     resFixed = as<uvec>(x["resFixed"]);
+    resKeep = find(resFixed==0);
     niter_phi0 = as<int>(x["niter_phi0"]);
     coef_phi0 = as<double>(x["coef_phi0"]);
     nb_sa = as<int>(x["nb_sa"]);
@@ -991,6 +992,7 @@ public:
 
       if (nphi0>0) {
         if (kiter<=(unsigned int)(niter_phi0)) {
+          // omega estimation
           Gamma2_phi0=(statphi02 + mprior_phi0.t()*mprior_phi0 - statphi01.t()*mprior_phi0 - mprior_phi0.t()*statphi01)/N;
           Gmin=minv(i0);
           jDmin=find(Gamma2_phi0.diag()<Gmin);
@@ -1643,8 +1645,9 @@ public:
       for (int b=0; b<nendpnt; ++b) {
         int offset = res_offset[b];
         switch ((int)(res_mod(b))) {
-        case rmAdd: 
-          vcsig2[offset] = ares(b)*ares(b);//sigma2[b];
+        case rmAdd:
+          vcsig2[offset] = ares(b);//sigma2[b];
+          // because of old translation use variance
           break;
         case rmProp:
           vcsig2[offset] = bres(b);
@@ -1694,7 +1697,8 @@ public:
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
-      pl = join_cols(pl, vcsig2);
+      g2 = vcsig2.elem(resKeep);
+      pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
       if (print != 0 && (kiter==0 || (kiter+1)%print==0))
         Rcout << kiter+1
@@ -1770,6 +1774,7 @@ private:
 
   vec resValue;
   uvec resFixed;
+  uvec resKeep;
 
   mcmcaux mx;
 
@@ -2150,3 +2155,4 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("class") = "saemFit";
   return out;
 }
+

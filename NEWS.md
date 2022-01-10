@@ -27,8 +27,12 @@
   the optimization trajectory will be different and have different
   results than `nlmixr`
 
-  
 - Components of `omega` can now be fixed.
+
+- Residual error components can also be fixed.
+
+- When optimizing only one residual value, nlmixr2's saem uses `nlm`
+  from R, which is more efficient than the nealder-meade method.
 
 - Lower level `saem` functions (like `configsaem()`) are not exported
   because they are increasingly difficult to use and convert to

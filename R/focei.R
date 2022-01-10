@@ -602,6 +602,8 @@ is.latex <- function() {
 #' @seealso \code{\link[n1qn1]{n1qn1}}
 #' @seealso \code{\link[rxode2]{rxSolve}}
 #' @export
+##' @param odeRecalcFactor
+##' @param maxOdeRecalc
 foceiControl <- function(sigdig = 3, ...,
                          epsilon = NULL, # 1e-4,
                          maxInnerIterations = 1000,

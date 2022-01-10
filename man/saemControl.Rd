@@ -32,9 +32,12 @@ saemControl(
   type = c("nelder-mead", "newuoa"),
   powRange = 10,
   lambdaRange = 3,
-  loadSymengine = FALSE,
   odeRecalcFactor = 10^(0.5),
   maxOdeRecalc = 5L,
+  perSa = 0.75,
+  perNoCor = 0.75,
+  perFixOmega = 0.1,
+  perFixResid = 0.1,
   ...
 )
 }
@@ -42,8 +45,8 @@ saemControl(
 \item{seed}{Random Seed for SAEM step.  (Needs to be set for
 reproducibility.)  By default this is 99.}
 
-\item{nBurn}{Number of iterations in the Stochastic Approximation
-(SA), or burn-in step. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
+\item{nBurn}{Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
+steps. This is equivalent to Monolix's \code{K_0} or \code{K_b}.}
 
 \item{nEm}{Number of iterations in the Expectation-Maximization
 (EM) Step. This is equivalent to Monolix's \code{K_1}.}
@@ -51,7 +54,7 @@ reproducibility.)  By default this is 99.}
 \item{nmc}{Number of Markov Chains. By default this is 3.  When
 you increase the number of chains the numerical integration by
 MC method will be more accurate at the cost of more
-computation.  In Monolix this is equivalent to \code{L}}
+computation.  In Monolix this is equivalent to \code{L}.}
 
 \item{nu}{This is a vector of 3 integers. They represent the
     numbers of transitions of the three different kernels used in
@@ -166,10 +169,11 @@ for complex residual errors (ie add+prop etc)}
 regression models used for complex residual errors.  The number
 of iterations is itmax*number of parameters}
 
-\item{loadSymengine}{Boolean indicating if the model should be
-loaded into symengine.  This cause all the ODEs to be collapsed
-into one expression that is eventually optimized if
-\code{optExpression} is \code{TRUE}.}
+\item{type}{indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")}
+
+\item{powRange}{This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)}
+
+\item{lambdaRange}{This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)}
 
 \item{odeRecalcFactor}{The factor to increase the rtol/atol with
 bad ODE solving.}
@@ -177,6 +181,23 @@ bad ODE solving.}
 \item{maxOdeRecalc}{Maximum number of times to reduce the ODE
 tolerances and try to resolve the system if there was a bad
 ODE solve.}
+
+\item{perSa}{This is the percent of the time the `nBurn`
+iterations in phase runs runs a simulated annealing.}
+
+\item{perNoCor}{This is the percentage of the MCMC phase of the SAEM
+algorithm where the variance/covariance matrix has no
+correlations.  Byt defualt this is 0.75 or 75% of the
+Monte-carlo iteration}
+
+\item{perFixOmega}{This is the percentage of the `nBurn` phase
+where the omega values are unfixed to allow better exploration
+of the likelihood surface.  After this time, the omegas are
+fixed during optimization.}
+
+\item{perFixResid}{This is the percentage of the `nBurn` phase
+where the residual components are unfixed to allow better
+exploration of the likelihood surface.}
 
 \item{...}{Other arguments to control SAEM.}
 }

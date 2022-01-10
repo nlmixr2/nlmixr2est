@@ -115,7 +115,12 @@
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
-                       maxOdeRecalc=5L, nres) {
+                       maxOdeRecalc=5L, nres,
+                       perSa=0.75,
+                       perNoCor=0.75,
+                       perFixOmega=0.5,
+                       perFixResid=0.75,
+                       resFixed) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -406,10 +411,10 @@
 
   niter <- sum(mcmc$niter)
   niter_phi0 <- round(niter * .5)
-  nb_sa <- round(mcmc$niter[1] * .75)
-  nb_correl <- round(mcmc$niter[1] * .75)
-  nb_fixOmega <- round(mcmc$niter[1] * 0.25)
-  nb_fixResid <- round(mcmc$niter[1] * 0.3)
+  nb_sa <- round(mcmc$niter[1] * perSa)
+  nb_correl <- round(mcmc$niter[1] * perNoCor)
+  nb_fixOmega <- round(mcmc$niter[1] * perFixOmega)
+  nb_fixResid <- round(mcmc$niter[1] * perFixResid)
   va <- mcmc$stepsize
   vna <- mcmc$niter
   na <- length(va)
@@ -513,7 +518,8 @@
     fixed.i0 = fixed.i0,
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
-    nobs = .nobs)
+    nobs = .nobs,
+    resFixed=resFixed)
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]
@@ -545,7 +551,7 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(nres))
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")
