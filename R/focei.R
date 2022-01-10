@@ -2309,45 +2309,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
 }
 
-#' Handle Model Object
-#'
-#' @param model model list should have at least:
-#'
-#' - `predOnly` -- this is the prediction model with all the left
-#'    handed equations added so they will be added the table.  The
-#'    model should have `rx_pred_`, the model based prediction, as the
-#'    first defined lhs component.  The second component should be
-#'    `rx_r_`, the variance of the prediction.  These variables may
-#'    change based on distribution type.  In additional all
-#'    interesting calculated variables should be included.
-#'
-#' - `predNoLhs` -- This is the prediction model.  It only has the
-#'    prediction and no left handed equations.
-#'
-#' @param env Environment for the fit information
-nmObjHandleModelObject <- function(model, env) {
-  on.exit(rm("model", envir=env))
-  UseMethod("nmObjHandleModelObject")
-}
-
-#' @rdname nmObjHandleModelObject
-#' @export
-nmObjHandleModelObject.saemModelList <- function(model, env) {
-  assign("saemModel", model, envir=env)
-}
-
-#' @rdname nmObjHandleModelObject
-#' @export
-nmObjHandleModelObject.foceiModelList <- function(model, env) {
-  assign("foceiModel", model, envir=env)
-}
-
-#' @rdname nmObjHandleModelObject
-#' @export
-nmObjHandleModelObject.default <- function(model, env) {
-  stop("cannot figure out how to handle the model, add method for `nmObjHandleModelObject.", class(model), "`",
-       call.=FALSE)
-}
 
 .foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
@@ -2385,6 +2346,7 @@ nmObjHandleModelObject.default <- function(model, env) {
   assign("est", est, envir=.ret)
   assign("skipCov", .env$skipCov, envir=.ret)
   nmObjHandleModelObject(.ret$model, .ret)
+  nmObjHandleControlObject(.ret$control, .ret)
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)

@@ -910,7 +910,8 @@ saemControl <- function(seed = 99,
     .tv <- names(.et)[-seq(1, 6)]
   }
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
-  .ret$saemControl <- .control
+  .ret$control <- .control
+  nmObjHandleControlObject(.ret$control, .ret)
   .ret$ui <- .ui
   .saemCalcCov(.ret)
   .getSaemTheta(.ret)

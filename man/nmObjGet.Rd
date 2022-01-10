@@ -29,6 +29,7 @@
 \alias{nmObjGet.maxords}
 \alias{nmObjGet.methodOde}
 \alias{nmObjGet.covsInterpolation}
+\alias{nmObjGet.control}
 \alias{nmObjGet.saemDopredIpred}
 \alias{nmObjGet.saemDopredPred}
 \title{Get an item from a nlmixr core object}
@@ -88,6 +89,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{methodOde}(x, ...)
 
 \method{nmObjGet}{covsInterpolation}(x, ...)
+
+\method{nmObjGet}{control}(x, ...)
 
 \method{nmObjGet}{saemDopredIpred}(x, ...)
 

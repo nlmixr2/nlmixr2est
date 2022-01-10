@@ -481,12 +481,18 @@ nmObjGet.covsInterpolation <- function(x, ...) {
   nmObjGetRxSolve(.env, "covsInterpolation")
 }
 
+#' @rdname nmObjGet
+#' @export
+nmObjGet.control <- function(x, ...) {
+  nmObjGetControl(x, ...)
+}
+
 #' Get an option for the estimation method
 #'
 #' By default it gets the focei models if availble.
 #'
 #' @param x nlmixr fit object encapulated in a list.  The class is the estimation method used.
-#' @param what
+#' @param what What part of the rx solve are you attempting to get?
 #' @export
 nmObjGetRxSolve <- function(x, what) {
   UseMethod("nmObjGetRxSolve")
@@ -496,11 +502,7 @@ nmObjGetRxSolve <- function(x, what) {
 #' @export
 nmObjGetRxSolve.saem <- function(x, what) {
   .env <- x[[1]]
-  if (exists("saemControl", envir=.env)) {
-    .control <- get("saemControl", envir=.env)
-  } else if (exists("control", envir=.env)) {
-    .control <- get("control", envir=.env)
-  }
+  .control <- .env$control
   if (any(names(.control) == "ODEopt")) {
     .lst <- .control$ODEopt
     if (is.null(what)) return(.lst)
@@ -514,11 +516,7 @@ nmObjGetRxSolve.saem <- function(x, what) {
 #' @export
 nmObjGetRxSolve.default <- function(x, what) {
   .env <- x[[1]]
-  if (exists("foceiControl", envir=.env)) {
-    .model <- get("foceiControl", envir=.env)
-  } else if (exists("control", envir=.env)) {
-    .model <- get("control", envir=.env)
-  }
+  .control <- .env$control
   .lst <- .model$rxControl
   if (is.null(what)) return(.lst)
   .lst[[what]]

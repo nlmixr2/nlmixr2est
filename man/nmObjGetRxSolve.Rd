@@ -8,6 +8,8 @@ nmObjGetRxSolve(x, what)
 }
 \arguments{
 \item{x}{nlmixr fit object encapulated in a list.  The class is the estimation method used.}
+
+\item{what}{What part of the rx solve are you attempting to get?}
 }
 \description{
 By default it gets the focei models if availble.
