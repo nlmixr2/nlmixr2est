@@ -1240,7 +1240,7 @@ public:
               }
             } else {
               bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
-              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));            //force are & bres to be positive
+              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));      //force are & bres to be positive
             }
           }
           break;
@@ -1271,7 +1271,7 @@ public:
                 n++;
               }
               if (resFixed[offsetR + 1] == 1) {
-                cres(b) = resValue[offsetR + 1];
+                lres(b) = resValue[offsetR + 1];
                 _saemFixedIdx[1] = 1;
                 _saemFixedValue[1] = toLambdaEst(lres(b));
               } else {
@@ -1304,7 +1304,7 @@ public:
               }
             } else {
               ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
             }
           }
           break;
@@ -1335,7 +1335,7 @@ public:
                 n++;
               }
               if (resFixed[offsetR + 1] == 1) {
-                cres(b) = resValue[offsetR + 1];
+                lres(b) = resValue[offsetR + 1];
                 _saemFixedIdx[1] = 1;
                 _saemFixedValue[1] = toLambdaEst(lres(b));
               } else {
