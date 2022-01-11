@@ -162,13 +162,13 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
 #'
 #' @export
 vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
-                  n_bins = "auto", bin_mid = "mean",
-                  show = NULL, stratify = NULL, pred_corr = FALSE,
-                  pred_corr_lower_bnd = 0, pi = c(0.05, 0.95), ci = c(0.05, 0.95),
-                  uloq = NULL, lloq = NULL, log_y = FALSE, log_y_min = 0.001,
-                  xlab = NULL, ylab = NULL, title = NULL, smooth = TRUE, vpc_theme = NULL,
-                  facet = "wrap", labeller = NULL, vpcdb = FALSE, verbose = FALSE, ...,
-                  seed=1009) {
+                    n_bins = "auto", bin_mid = "mean",
+                    show = NULL, stratify = NULL, pred_corr = FALSE,
+                    pred_corr_lower_bnd = 0, pi = c(0.05, 0.95), ci = c(0.05, 0.95),
+                    uloq = NULL, lloq = NULL, log_y = FALSE, log_y_min = 0.001,
+                    xlab = NULL, ylab = NULL, title = NULL, smooth = TRUE, vpc_theme = NULL,
+                    facet = "wrap", labeller = NULL, vpcdb = FALSE, verbose = FALSE, ...,
+                    seed=1009) {
   rxode2::rxReq("vpc")
   .ui <- fit$ui
   .obsLst <- .vpcUiSetupObservationData(fit, data)
@@ -201,7 +201,19 @@ vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
     .si$addDosing <- FALSE
     .si$subsetNonmem <- TRUE
     .si$modelName <- "Pred (on original dataset for pcVpc)"
+    .obs1 <- .obs
     .obs <- do.call("nlmixr2Sim", .si)
+    .both <- intersect(names(.obs1), names(.obs))
+    print(.both)
+    for (.n in .both) {
+      if (inherits(.obs1[[.n]], "factor") && !inherits(.obs[[.n]], "factor")) {
+        print(.n)
+        .tmp <- as.integer(.obs[[.n]])
+        attr(.tmp, "levels") <- attr(.obs1[[.n]], "levels")
+        class(.tmp) <- "factor"
+        .obs[[.n]] <- .tmp
+      }
+    }
     .no <- names(.obs)
     .w <- which(.no == "sim")
     names(.obs)[.w] <- "pred"
@@ -212,7 +224,15 @@ vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
       .obsCols$dv <- "dv"
     }
   }
-
+  .both <- intersect(names(.sim), names(.obs))
+  for (.n in .both) {
+    if (inherits(.obs[[.n]], "factor") && !inherits(.sim[[.n]], "factor")) {
+      .tmp <- as.integer(.sim[[.n]])
+      attr(.tmp, "levels") <- attr(.obs[[.n]], "levels")
+      class(.tmp) <- "factor"
+      .sim[[.n]] <- .tmp
+    }
+  }
   vpc::vpc_vpc(sim=.sim, sim_cols=.simCols,
                obs=.obs, obs_cols=.obsCols,
                bins=bins, n_bins=n_bins, bin_mid=bin_mid,
