@@ -1,7 +1,7 @@
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
 
-  .origData <- rxode2::etTrans(fit$origData, fit$ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
+  .origData <- rxode2::etTrans(fit$dataSav, fit$ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs
