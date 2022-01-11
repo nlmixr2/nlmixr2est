@@ -204,10 +204,8 @@ vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
     .obs1 <- .obs
     .obs <- do.call("nlmixr2Sim", .si)
     .both <- intersect(names(.obs1), names(.obs))
-    print(.both)
     for (.n in .both) {
       if (inherits(.obs1[[.n]], "factor") && !inherits(.obs[[.n]], "factor")) {
-        print(.n)
         .tmp <- as.integer(.obs[[.n]])
         attr(.tmp, "levels") <- attr(.obs1[[.n]], "levels")
         class(.tmp) <- "factor"
