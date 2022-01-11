@@ -82,9 +82,11 @@ nmObjGetControl <- function(x, ...) {
   UseMethod("nmObjGetControl")
 }
 
+
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.focei <- function(x, ...) {
+  .obj <- x[[1]]
   .env <- x$env
   if (exists("foceiControl", .env)) {
     .control <- get("foceiControl", .env)
@@ -112,7 +114,8 @@ nmObjGetControl.fo <- nmObjGetControl.focei
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.saem <- function(x, ...) {
-  .env <- x$env
+  .obj <- x[[1]]
+  .env <- .obj$env
   if (exists("saemControl", .env)) {
     .control <- get("saemControl", .env)
     if (inherits(.control, "saemControl")) return(.control)
@@ -127,6 +130,6 @@ nmObjGetControl.saem <- function(x, ...) {
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.default <- function(x, ...) {
-    stop("cannot figure out get the control, add method for `nmObjHandleControlObject.", class(control)[1], "`",
+  stop("cannot figure out get the control, add method for `nmObjHandleControlObject.", class(x)[1], "`",
        call.=FALSE)
 }

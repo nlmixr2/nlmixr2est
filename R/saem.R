@@ -923,10 +923,10 @@ saemControl <- function(seed = 99,
     rm(list="control", envir=.ui)
    }
   .ret$theta <- .ui$saemThetaDataFrame
-  .saemControlToFoceiControl(.ret)
   .ret$model <- .ui$saemModelPred
   .ret$message <- "" # no message for now
   .ret$est <- "saem"
+  .saemControlToFoceiControl(.ret)
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
   .setSaemExtra(.ret, "FOCEi")
   .env <- .ret$env

@@ -484,7 +484,11 @@ nmObjGet.covsInterpolation <- function(x, ...) {
 #' @rdname nmObjGet
 #' @export
 nmObjGet.control <- function(x, ...) {
-  nmObjGetControl(x, ...)
+  .obj <- x[[1]]
+  .est <- .obj$est
+  .obj <- list(.obj)
+  class(.obj) <- .est
+  nmObjGetControl(.obj, ...)
 }
 
 #' Get an option for the estimation method
@@ -509,7 +513,7 @@ nmObjGetRxSolve.saem <- function(x, what) {
     return(.lst[[what]])
   } else {
     NextMethod()
-   }
+  }
 }
 
 #' @rdname nmObjGetAtol
