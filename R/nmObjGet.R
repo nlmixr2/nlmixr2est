@@ -1,4 +1,3 @@
-
 #' Get an item from a nlmixr core object
 #'
 #' @param x A specialized list with:
