@@ -80,11 +80,11 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
       return decorrelateNpdeEigenMat(varsim, warn);
     } catch (...){
       try {
-	ch = cholSE__(varsim, tolChol);
-	warn = NPDE_CHOLSE;
+        ch = cholSE__(varsim, tolChol);
+        warn = NPDE_CHOLSE;
       } catch (...) {
-	warn = NPDE_NPD;
-	return varNpdMat(varsim);
+        warn = NPDE_NPD;
+        return varNpdMat(varsim);
       }
     }
   }
@@ -97,9 +97,9 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
     try {
       vYi = trans(pinv(trimatu(ch)));
       if (warn != NPDE_CHOLSE) {
-	warn = NPDE_CHOL_PINV;
+        warn = NPDE_CHOL_PINV;
       } else {
-	warn = NPDE_CHOLSE_PINV;
+        warn = NPDE_CHOLSE_PINV;
       }
     } catch (...){
       warn = NPDE_NPD;
@@ -115,7 +115,7 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
 // so instead of updating the DV based on cdf method, simply use the truncated normal
 // we also don't need to back-calculate the simulated DV value
 static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit, int &censMethod, bool &doLimit,
-				     unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
+                                     unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
   if (censMethod != CENS_CDF) return;
   // For left censoring NPDE the probability is already calculated with the current pd
   // 1. Replace value with lloq
@@ -162,7 +162,7 @@ static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned i
   ret.namat = umat(ret.matsim.n_rows, ret.matsim.n_cols);
   // Replace NA with zeros
   for (unsigned int j = ret.namat.size(); j--;) {
-    ret.namat[j] = ISNA(ret.matsim[j]);
+    ret.namat[j] = ISNA(ret.matsim[j]) || std::isnan(ret.matsim[j]);
     if (ret.namat[j]) ret.matsim[j] = 0.0;
   }
   // mean = X/K * K/(K-sum(isNa))
@@ -171,7 +171,7 @@ static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned i
   for (unsigned int i =ret.namat.n_rows; i--;) {
     for (unsigned int j = ret.namat.n_cols; j--;) {
       if (ret.namat(i,j)) {
-	ret.matsim(i,j) = ret.epredt[i];
+        ret.matsim(i,j) = ret.epredt[i];
       }
     }
   }
@@ -180,6 +180,7 @@ static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned i
 static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned int &K, double &tolChol) {
   ret.ydsim = ret.matsim.rows(ret.obs);
   ret.varsim = cov(trans(ret.ydsim));
+  Rcpp::wrap(wrap(ret.varsim));
   ret.ymat = decorrelateNpdeMat(ret.varsim, ret.warn, id, tolChol);
   ret.ymat2 = varNpdMat(ret.varsim);
   arma::mat ymatt = trans(ret.ymat);
@@ -207,7 +208,7 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
 }
 
 static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit, int &censMethod, bool &doLimit,
-				       unsigned int &K, bool &ties, arma::vec &ru, arma::vec &ru2, arma::vec& ru3) {
+                                       unsigned int &K, bool &ties, arma::vec &ru, arma::vec &ru2, arma::vec& ru3) {
   ret.npde = arma::mat(ret.pd.n_rows, 1);
   ret.npd = arma::mat(ret.pd.n_rows, 1);
   if (ties){
@@ -215,15 +216,15 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, ar
     for (unsigned int j = ret.pd.n_rows; j--;) {
       handleCensNpdeCdf(ret, cens, limit, censMethod, doLimit, j, ru2, ru3, K, ties);
       if (fabs(ret.pd[j]) < DBL_EPSILON){
-	ret.pd[j] = 1 / (2.0 * K);
+        ret.pd[j] = 1 / (2.0 * K);
       } else if (fabs(1-ret.pd[j]) < DBL_EPSILON){
-	ret.pd[j] = 1 - 1 / (2.0 * K);
+        ret.pd[j] = 1 - 1 / (2.0 * K);
       }
       ret.npde[j] = Rf_qnorm5(ret.pd[j], 0.0, 1.0, 1, 0);
       if (fabs(ret.pd2[j]) < DBL_EPSILON){
-	ret.pd2[j] = 1 / (2.0 * K);
+        ret.pd2[j] = 1 / (2.0 * K);
       } else if (fabs(1-ret.pd2[j]) < DBL_EPSILON){
-	ret.pd2[j] = 1 - 1 / (2.0 * K);
+        ret.pd2[j] = 1 - 1 / (2.0 * K);
       }
       ret.npd[j] = Rf_qnorm5(ret.pd2[j], 0.0, 1.0, 1, 0);
     }
@@ -232,19 +233,19 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, ar
     for (unsigned int j = ret.pd.n_rows; j--;) {
       handleCensNpdeCdf(ret, cens, limit, censMethod, doLimit, j, ru2, ru3, K, ties);
       if (fabs(ret.pd[j]) < DBL_EPSILON){
-	ret.pd[j] = ru[j] / K;
+        ret.pd[j] = ru[j] / K;
       } else if (fabs(1-ret.pd[j]) < DBL_EPSILON){
-	ret.pd[j] = 1.0 - ru[j] / K;
+        ret.pd[j] = 1.0 - ru[j] / K;
       } else  {
-	ret.pd[j] += ru[j]/K;
+        ret.pd[j] += ru[j]/K;
       }
       ret.npde[j] = Rf_qnorm5(ret.pd[j], 0.0, 1.0, 1, 0);
       if (fabs(ret.pd2[j]) < DBL_EPSILON){
-	ret.pd2[j] = ru[j] / K;
+        ret.pd2[j] = ru[j] / K;
       } else if (fabs(1-ret.pd2[j]) < DBL_EPSILON){
-	ret.pd2[j] = 1.0 - ru[j] / K;
+        ret.pd2[j] = 1.0 - ru[j] / K;
       } else  {
-	ret.pd2[j] += ru2[j]/K;
+        ret.pd2[j] += ru2[j]/K;
       }
       ret.npd[j] = Rf_qnorm5(ret.pd2[j], 0.0, 1.0, 1, 0);
     }
@@ -252,12 +253,12 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, ar
 }
 
 calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
-			  arma::vec &dvt, arma::ivec &evidIn, arma::ivec &censIn, arma::vec &limitIn,
-			  int &censMethod, bool &doLimit,
-			  unsigned int& id,
-			  unsigned int& K, double &tolChol, bool &ties,
-			  arma::vec &ruIn, arma::vec &ru2In, arma::vec &ru3In,
-			  arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low) {
+                          arma::vec &dvt, arma::ivec &evidIn, arma::ivec &censIn, arma::vec &limitIn,
+                          int &censMethod, bool &doLimit,
+                          unsigned int& id,
+                          unsigned int& K, double &tolChol, bool &ties,
+                          arma::vec &ruIn, arma::vec &ru2In, arma::vec &ru3In,
+                          arma::vec &lambda, arma::vec &yj, arma::vec &hi, arma::vec &low) {
   calcNpdeInfoId ret;
   ret.matsim = getSimMatById(idLoc, sim, id, K);
   // transformed y observations
@@ -301,7 +302,7 @@ rxGetId2_t rxGetId2;
 
 extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
-  rxGetId2 = (rxGetId2_t) R_GetCCallable("rxode2", "rxGetId");
+    rxGetId2 = (rxGetId2_t) R_GetCCallable("rxode2", "rxGetId");
   if (TYPEOF(npdeSim) != VECSXP) {
     Rf_errorcall(R_NilValue, "npdeSim needs to be a data.frame");
   }
@@ -324,7 +325,7 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
   if (opt.containsElementNamed("censMethod")) {
     RObject tmp = opt["censMethod"];
     if (TYPEOF(tmp) == INTSXP) {
-       censMethod = as<unsigned int>(tmp);
+      censMethod = as<unsigned int>(tmp);
     }
   }
 
@@ -378,19 +379,19 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
     for (unsigned int i = 0; i < cens.size(); ++i) {
       switch(cens[i]){
       case 1:
-	if (R_FINITE(limit[i])) {
-	  warning("limits are ignored for npde back-transformation with 'cdf' method");
-	  i= cens.size();
-	}
-	break;
+        if (R_FINITE(limit[i])) {
+          warning("limits are ignored for npde back-transformation with 'cdf' method");
+          i= cens.size();
+        }
+        break;
       case -1:
-	if (R_FINITE(limit[i])) {
-	  warning("limits are ignored for npde back-transformation with 'cdf' method");
-	  i= cens.size();
-	}
-	break;
+        if (R_FINITE(limit[i])) {
+          warning("limits are ignored for npde back-transformation with 'cdf' method");
+          i= cens.size();
+        }
+        break;
       case 0:
-	break;
+        break;
       }
     }
   }
@@ -413,10 +414,10 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
 
   int cores = as<int>(opt["cores"]);
   
-#pragma omp parallel for num_threads(cores)
+  //#pragma omp parallel for num_threads(cores)
   for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
     calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-				       lambda, yj, hi, low);
+                                       lambda, yj, hi, low);
     npde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.npde;
     npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
     epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
@@ -441,48 +442,48 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
     case NPDE_CHOL_PINV:
       if (sCholPinv == "") sCholPinv = rxGetId2(curid);
       else {
-	sCholPinv += ", ";
-	sCholPinv += rxGetId2(curid);
+        sCholPinv += ", ";
+        sCholPinv += rxGetId2(curid);
       }
       nCholPinv++;
       break;
     case NPDE_DECORRELATE_EIGEN:
       if (sEigen == "") sEigen = rxGetId2(curid);
       else {
-	sEigen += ", ";
-	sEigen += rxGetId2(curid);
+        sEigen += ", ";
+        sEigen += rxGetId2(curid);
       }
       nEigen++;
       break;
     case NPDE_DECORRELATE_EIGEN_PINV:
       if (sEigenPinv == "")  sEigenPinv =  rxGetId2(curid);
       else {
-	sEigenPinv += ", ";
-	sEigenPinv += rxGetId2(curid);
+        sEigenPinv += ", ";
+        sEigenPinv += rxGetId2(curid);
       }
       nEigenPinv++;
       break;
     case NPDE_CHOLSE:
       if (sCholSE == "") sCholSE = rxGetId2(curid);
       else {
-	sCholSE += ", ";
-	sCholSE += rxGetId2(curid);
+        sCholSE += ", ";
+        sCholSE += rxGetId2(curid);
       }
       nCholSE++;
       break;
     case NPDE_CHOLSE_PINV:
       if (sCholSEPinv == "") sCholSEPinv = rxGetId2(curid);
       else {
-	sCholSEPinv += ", ";
-	sCholSEPinv += rxGetId2(curid);
+        sCholSEPinv += ", ";
+        sCholSEPinv += rxGetId2(curid);
       }
       nCholSEPinv++;
       break;
     case NPDE_NPD:
       if (sPD == "") sPD = rxGetId2(curid);
       else {
-	sPD += ", ";
-	sPD += rxGetId2(curid);
+        sPD += ", ";
+        sPD += rxGetId2(curid);
       }
       nPD++;
       break;
@@ -523,4 +524,4 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
   UNPROTECT(pro);
   return List::create(dvf, ret2);
   END_RCPP
-}
+ }
