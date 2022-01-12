@@ -2,7 +2,7 @@
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
-#' @param ... Other arguments sent to `nlmixr2Sim()`
+#' @param ... Other arguments sent to `rxSolve()`
 #' @param keep Keep character vector
 #' @param n Number of simulations
 #' @param pred Should predictions be added to the simulation
@@ -43,35 +43,35 @@
 vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   set.seed(seed)
   .si <- object$simInfo
-  .si$object <- object
+  .si$object <- eval(.si$rx)
   .si$nsim <- n
   .si <- c(.si, list(...))
-  .si$modelName <- "VPC"
   .pt <- proc.time()
   .si$dfObs <- 0
   .si$dfSub <- 0
   .si$thetaMat <- NA
   .si$keep <- keep
+  .si$thetaMat <- NULL
+  .si$dfSub <- NULL
+  .si$dfObs <- NULL
   .si$returnType <- "data.frame"
 
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
-  .sim <- do.call("nlmixr2Sim", .si)
+  .sim <- do.call(rxode2::rxSolve, .si)
   if (pred) {
     .si2 <- .si
-    .si2$modelName <- "Pred (for pcVpc)"
     .si2$params <- c(
       .si$params, setNames(rep(0, dim(.si$omega)[1]), dimnames(.si$omega)[[2]]),
       setNames(rep(0, dim(.si$sigma)[1]), dimnames(.si$sigma)[[2]]))
-    .si2$omega <- NA
-    .si2$sigma <- NA
+    .si2$omega <- NULL
+    .si2$sigma <- NULL
     .si2$returnType <- "data.frame"
     .si2$nStud <- 1
     .si2$nsim <- NULL
     assignInMyNamespace(".lastPredSimulationInfo", .si2)
-    .sim2 <- do.call("nlmixr2Sim", .si2)
+    .sim2 <- do.call(rxode2::rxSolve, .si2)
     .sim$pred <- .sim2$sim
-
   }
   return(.sim)
 }
@@ -200,9 +200,8 @@ vpcPlot <- function(fit, data = NULL, n = 300, bins = "jenks",
     .si$keep <- unique(c(stratify, .obsCols$dv))
     .si$addDosing <- FALSE
     .si$subsetNonmem <- TRUE
-    .si$modelName <- "Pred (on original dataset for pcVpc)"
     .obs1 <- .obs
-    .obs <- do.call("nlmixr2Sim", .si)
+    .obs <- do.call(rxode2::rxSolve, .si)
     .both <- intersect(names(.obs1), names(.obs))
     for (.n in .both) {
       if (inherits(.obs1[[.n]], "factor") && !inherits(.obs[[.n]], "factor")) {
