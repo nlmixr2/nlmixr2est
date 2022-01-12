@@ -14,6 +14,5 @@
   .si$thetaMat <- NA
   .si$addDosing <- addDosing
   .si$subsetNonmem <- subsetNonmem
-  .si$nsim <- nsim
   do.call(rxode2::rxSolve, .si)
 }

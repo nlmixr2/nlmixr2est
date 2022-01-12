@@ -58,7 +58,7 @@ is.latex <- function() {
 #' @param ssAtolSens Sensitivity absolute tolerance (atol) for
 #'     calculating if steady state has been achieved for sensitivity compartments.
 #'
-#' @param RtolSens Sensitivity relative tolerance (rtol) for
+#' @param ssRtolSens Sensitivity relative tolerance (rtol) for
 #'     calculating if steady state has been achieved for sensitivity compartments.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.

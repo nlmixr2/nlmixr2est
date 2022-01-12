@@ -359,136 +359,98 @@ nmObjGetEstimationModel.default <- function(x) {
   if (is.null(.inner)) return(.model$predOnly)
   .inner
 }
+#' Create an estimation object
+#'
+#' @param x nlmixr2 object
+#' @return  list(nlmixr2 environment) with class of the estimation procedure ran.
+#' @author Matthew L. Fidler
+#' @noRd
+.createEstObject <- function(x) {
+  if (inherits(x, "nlmixr2FitData")) {
+    .env <- x$env
+  } else {
+    .env <- x
+  }
+  if (exists("est", envir=.env)) {
+    .est <- get("est", envir=.env)
+    .ret <- list(.env)
+    class(.ret) <- .est
+    return(.ret)
+  } else {
+    stop("Cannot figure out the estimation method", call.=FALSE)
+  }
+}
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.atol <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "atol")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "atol")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.rtol <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "rtol")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "rtol")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.maxstepsOde <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "maxsteps")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "maxsteps")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.hmin <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "hmin")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "hmin")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.hmax <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "hmax")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "hmax")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.hini <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "hini")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "hini")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.transitAbs <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "transitAbs")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "transitAbs")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.maxordn <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "maxordn")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "maxordn")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.maxords <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "maxords")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "maxords")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.methodOde <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "method")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "method")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.covsInterpolation <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .est <- .env$est
-  .env <- list(.env)
-  class(.env) <- .est
-  nmObjGetRxSolve(.env, "covsInterpolation")
+  nmObjGetRxSolve(.createEstObject(x[[1]]), "covsInterpolation")
 }
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.control <- function(x, ...) {
-  .obj <- x[[1]]
-  .est <- .obj$est
-  .obj <- list(.obj)
-  class(.obj) <- .est
-  nmObjGetControl(.obj, ...)
+  nmObjGetControl(.createEstObject(x[[1]]), ...)
 }
 
 #' Get an option for the estimation method
@@ -506,7 +468,7 @@ nmObjGetRxSolve <- function(x, what) {
 #' @export
 nmObjGetRxSolve.saem <- function(x, what) {
   .env <- x[[1]]
-  .control <- .env$control
+  .control <- nmObjGetControl(x)
   if (any(names(.control) == "ODEopt")) {
     .lst <- .control$ODEopt
     if (is.null(what)) return(.lst)
@@ -520,8 +482,9 @@ nmObjGetRxSolve.saem <- function(x, what) {
 #' @export
 nmObjGetRxSolve.default <- function(x, what) {
   .env <- x[[1]]
-  .control <- .env$control
-  .lst <- .model$rxControl
+  .control <- nmObjGetControl(x)
+  if (!any(names(.control) == "rxControl")) return(NULL)
+  .lst <- .control$rxControl
   if (is.null(what)) return(.lst)
   .lst[[what]]
 }

@@ -86,8 +86,7 @@ nmObjGetControl <- function(x, ...) {
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.focei <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- x$env
+  .env <- x[[1]]
   if (exists("foceiControl", .env)) {
     .control <- get("foceiControl", .env)
     if (inherits(.control, "foceiControl")) return(.control)
@@ -114,8 +113,7 @@ nmObjGetControl.fo <- nmObjGetControl.focei
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.saem <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
+  .env <- x[[1]]
   if (exists("saemControl", .env)) {
     .control <- get("saemControl", .env)
     if (inherits(.control, "saemControl")) return(.control)
