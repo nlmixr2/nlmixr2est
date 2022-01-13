@@ -72,6 +72,7 @@ addNpde <- function(object, updateObject = TRUE,
   .objName <- substitute(object)
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
+  if (missing(table)) table <- object$table
   if (any(names(object) == "NPDE")) {
     warning("already contains NPDE")
     return(object)
