@@ -30,7 +30,6 @@ nlmixr2Test(
     dat2$DV <- dat2$DV * dat2$f0
 
     testIt <- function(meth) {
-      context(sprintf("test finite difference sensitivities in %s", meth))
       test_that(sprintf("finite difference %s", meth), {
         suppressWarnings({
           fit <- nlmixr(f, dat2, "focei",

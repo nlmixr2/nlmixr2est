@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Back Transformation tests")
 
     test_that("PK106 mixed mu-referenced and non mu-referenced covariates", {
       PK106 <- function() {

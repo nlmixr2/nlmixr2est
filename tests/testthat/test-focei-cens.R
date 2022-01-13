@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("M2 -- all observations")
 
     .nlmixr <- function(...) {
       try(suppressWarnings(nlmixr(...)))
@@ -57,7 +56,6 @@ nlmixr2Test(
     expect_false(isTRUE(all.equal(f.foce2$objf, f.foce3$objf)))
 
     test_that("M3/M4 -- Missing, assume LLOQ=3 at t=1.5", {
-      context("M3/M4 -- Missing, assume LLOQ=3 at t=1.5")
       skip_if(Sys.getenv("R_ARCH") == "/i386", "windows32")
       datL <- rbind(dat[, names(dat) != "Y"], data.frame(ID = 1:10, Time = 1.5, DV = 3))
       datL$cens <- ifelse(datL$Time == 1.5, 1, 0)

@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("SAEM covariate parsing")
 
     run1 <- function() {
       ini({

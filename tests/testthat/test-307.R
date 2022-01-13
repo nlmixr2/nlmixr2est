@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("test 307")
     test_that("saem issue #307", {
       model_onecmt <- function() {
         ini({

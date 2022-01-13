@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("mixed pk/ode")
     ## good
     one1 <- function() {
       ini({

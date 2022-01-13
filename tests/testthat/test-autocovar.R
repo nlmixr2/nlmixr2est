@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("autocovar")
     RxODE::.rxWithWd(tempdir(), {
 
       # === addCovariate

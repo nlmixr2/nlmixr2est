@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Issue #172")
 
     M2 <- function() {
       ini({

@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Multiple endpoint parsing")
     test_that("multiple-endpoint", {
       tmp <- theo_sd
       tmp$EVID <- ifelse(tmp$EVID == 0, 0, 1)

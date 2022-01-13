@@ -219,7 +219,6 @@ nlmixr2Test(
       linCmt() ~ prop(par1) + add(par2) + pois(par3)
     }
 
-    context("Improperly specified residuals distributions throw errors")
 
     test_that("Improper distribution functions throw errors", {
       ## expect_error(nlmixr:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
@@ -251,7 +250,6 @@ nlmixr2Test(
       expect_error(nlmixr:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
     })
 
-    context("Proper Variances")
 
     fn1 <- function() {
       ini({

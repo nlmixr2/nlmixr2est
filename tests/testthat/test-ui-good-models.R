@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Good UI models should not raise errors")
 
     one.compartment.saem <- function() {
       ini({

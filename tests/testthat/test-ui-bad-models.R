@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Bad UI models should raise errors")
 
     test_that("Duplicate parameters raise errors", {
       uif <- function() {

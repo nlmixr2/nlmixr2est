@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Focei Inner")
 
     test_that("Inner test", {
       ev <- eventTable() %>%

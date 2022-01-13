@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("bootstrap")
 
     samp_dat <- theo_sd
 

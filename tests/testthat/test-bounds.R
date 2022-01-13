@@ -1,6 +1,5 @@
 nlmixr2Test(
   {
-    context("Test bounds extraction")
 
     test_that("as.nlmixrBounds, data.frame to bounds creation works", {
       expect_error(

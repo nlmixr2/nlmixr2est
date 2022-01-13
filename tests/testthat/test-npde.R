@@ -1,6 +1,5 @@
 nlmixr2Test(
 {
-  context("npde runs successfully")
 
   one.compartment <- function() {
     ini({

@@ -43,13 +43,11 @@ nlmixr2Test(
     }
 
     test_that("UI updates work correctly", {
-      context("update: Test Base model")
       testUi(
         f, c("tka", "tcl", "tv", "eta.ka", "eta.cl", "eta.v", "add.err"),
         "matt", c(tka = 0.45, tcl = 1, tv = 3.45, eta.ka = 0.6, eta.cl = 0.3, eta.v = 0.1, add.err = 0.7)
       )
 
-      context("update: Multiple component change with c()")
       testUi(
         f %>% update(tka = 4, cl = exp(tcl), ka = exp(tka), c(tcl = 3, tv = 4)),
         c("tka", "tcl", "tv", "eta.v", "add.err"),
@@ -57,7 +55,6 @@ nlmixr2Test(
         c(tka = 4, tcl = 3, tv = 4, eta.v = 0.1, add.err = 0.7)
       )
 
-      context("update: Multiple component change with list()")
 
       testUi(
         f %>% update(tka = 4, cl = exp(tcl), ka = exp(tka), list(tcl = 3, tv = 4)),
@@ -66,7 +63,6 @@ nlmixr2Test(
         c(tka = 4, tcl = 3, tv = 4, eta.v = 0.1, add.err = 0.7)
       )
 
-      context("update: Multiple component change with assigned .tmp=list()")
 
       .tmp <- list(tcl = 3, tv = 4)
       .ui <- f %>% update(tka = 4, cl = exp(tcl), ka = exp(tka), .tmp)
@@ -78,7 +74,6 @@ nlmixr2Test(
         c(tka = 4, tcl = 3, tv = 4, eta.v = 0.1, add.err = 0.7)
       )
 
-      context("update: Multiple component change with assigned .tmp=c()")
 
       .tmp <- c(tcl = 3, tv = 4)
       .ui <- f %>% update(tka = 4, cl = exp(tcl), ka = exp(tka), .tmp)
@@ -90,7 +85,6 @@ nlmixr2Test(
         c(tka = 4, tcl = 3, tv = 4, eta.v = 0.1, add.err = 0.7)
       )
 
-      context("update: Multiple component change with assigned .tmp={}")
 
       .tmp <- quote({
         ka <- exp(tka)
@@ -150,7 +144,6 @@ nlmixr2Test(
       expect_true(inherits(.ui, "nlmixrUI"))
     })
 
-    context("piping looks through parent environments")
 
     test_that("Looks through prior frames for the correct object", {
       fit <- nlmixr(one.compartment)
