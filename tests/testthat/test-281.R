@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Covs in SAEM covs and model, Issue #281")
     test_that("saem building works with ", {

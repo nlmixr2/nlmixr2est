@@ -1,5 +1,6 @@
-nlmixrTest(
-  {
+nlmixr2Test(
+{
+
     context("M2 -- all observations")
 
     .nlmixr <- function(...) {
