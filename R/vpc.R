@@ -43,7 +43,7 @@
 vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   set.seed(seed)
   .si <- object$simInfo
-  .si$object <- eval(.si$rx)
+  .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
   .si$nsim <- n
   .si <- c(.si, list(...))
   .pt <- proc.time()

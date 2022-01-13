@@ -19,7 +19,11 @@
         } else if (length(x[[2]]) == 1L) {
           x[[1]] <- quote(`~`)
         } else {
-          x[[1]] <- quote(`<-`)
+          if (identical(x[[2]][[1]], quote(`/`))) {
+            x[[1]] <- quote(`~`)
+          } else {
+            x[[1]] <- quote(`<-`)
+          }
         }
       }
       return(as.call(lapply(x, .f)))
