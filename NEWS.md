@@ -66,7 +66,6 @@
 - `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed`
   and `fit$parFixedDf`
 
-
 ## nlmixr2 interface change
 
 - `nlmixr2` interface changed to use `rxode2` UI
@@ -78,6 +77,11 @@
 - `$simInfo$sigma` is a diagonal matrix since now the normal
   simulation is controlled by the variability modeled as a population
   value.
+  
+## NPDE changes 
+
+- Fixed a bug where the number of simulations for a NPDE calculation
+  are correctly passed by `addNpde(fit, table=tableControl(nsim=500))`
 
 ## VPC changes
 
@@ -90,6 +94,8 @@
   simulation for other packages more easily (like `ggPMX`) without
   creating or summarizing data since `ggPMX` has its own methods for
   summarizing and creating plots.
+  
+- VPC now directly uses `rxode2::rxSolve`
 
 ## augPred() changes
 
