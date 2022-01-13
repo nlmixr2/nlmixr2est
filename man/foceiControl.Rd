@@ -192,6 +192,9 @@ calculating if steady-state has been achieved.}
 \item{ssAtolSens}{Sensitivity absolute tolerance (atol) for
 calculating if steady state has been achieved for sensitivity compartments.}
 
+\item{ssRtolSens}{Sensitivity relative tolerance (rtol) for
+calculating if steady state has been achieved for sensitivity compartments.}
+
 \item{minSS}{Minimum number of iterations for a steady-state dose}
 
 \item{maxSS}{Maximum number of iterations for a steady-state dose}
@@ -754,9 +757,6 @@ function and a rxode2 model}
 \item{badSolveObjfAdj}{The objective function adjustment when the
 ODE system cannot be solved.  It is based on each individual bad
 solve.}
-
-\item{RtolSens}{Sensitivity relative tolerance (rtol) for
-calculating if steady state has been achieved for sensitivity compartments.}
 }
 \value{
 The control object that changes the options for the FOCEi
