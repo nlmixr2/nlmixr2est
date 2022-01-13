@@ -47,14 +47,11 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   .si$nsim <- n
   .si <- c(.si, list(...))
   .pt <- proc.time()
-  .si$dfObs <- 0
-  .si$dfSub <- 0
-  .si$thetaMat <- NA
   .si$keep <- keep
   .si$thetaMat <- NULL
   .si$dfSub <- NULL
   .si$dfObs <- NULL
-  .si$returnType <- "data.frame"
+  .si$returnType <- "data.frame.TBS"
 
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))

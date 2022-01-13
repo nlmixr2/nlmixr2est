@@ -169,8 +169,13 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     table$doSim <- FALSE
   }
   if (npde) {
-    .sim <- .npdeSim(fit, nsim = table$nsim, ties = table$ties, seed = table$seed,
-                     cholSEtol = table$cholSEtol, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=table$cores)
+    .sim <- vpcSim(fit, n = table$nsim, seed = table$seed,
+                   addDosing=addDosing, subsetNonmem=subsetNonmem)
+    .w <- which(names(.sim) == "ipred")
+    if (length(.w) == 1) .sim <- .sim[, -.w]
+    .w <- which(names(.sim) == "sim")
+    .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
+    .sim <- .sim[, .n0]
     .Call(`_nlmixr2_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
           .prdLst$ipred$cens, .prdLst$ipred$limit, table)
   } else {

@@ -34,7 +34,7 @@ arma::ivec getSimIdLoc(arma::ivec& id, arma::ivec& simId,
 }
 
 arma::mat getSimMatById(arma::ivec& idLoc, arma::vec &sim, unsigned int& id,
-			unsigned int& K) {
+                        unsigned int& K) {
   int nobs = idLoc[id+1]-idLoc[id];
   int totNobs = idLoc[idLoc.size()-1];
   arma::mat ret(nobs, K);
@@ -414,7 +414,7 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
 
   int cores = as<int>(opt["cores"]);
   
-  //#pragma omp parallel for num_threads(cores)
+ #pragma omp parallel for num_threads(cores)
   for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
     calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
                                        lambda, yj, hi, low);
