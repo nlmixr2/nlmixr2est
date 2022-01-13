@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Test bounds extraction")
 
@@ -2798,11 +2798,11 @@ nlmixrTest(
     # nlmixrBoundsPrepareFunComments ####
     ## if (getOption("keep.source", interactive())) ## {
     ##   test_that("Extraction of comments to labels with nlmixrBoundsPrepareFunComments", {
-    ##     nlmixrTestFunToChar <- function(x) {
+    ##     nlmixr2TestFunToChar <- function(x) {
     ##       as.character(attr(x, "srcref"), useSource = TRUE)
     ##     }
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixrTestFunToChar(
+    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 # hello
     ##         }
@@ -2816,7 +2816,7 @@ nlmixrTest(
     ##       info = "comment lines with other information are converted to label()"
     ##     )
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixrTestFunToChar(
+    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 | STUDY # hello
     ##         }
@@ -2830,7 +2830,7 @@ nlmixrTest(
     ##       info = "comment lines with other information are converted to label() (even if they are on a line with a condition)"
     ##     )
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixrTestFunToChar(
+    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 # label 1
     ##           label("# hash in a quote may try to be detected as a label, but that is wrong")

@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Issue #172")
 

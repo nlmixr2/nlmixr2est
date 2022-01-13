@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Make sure Nimo has a correct parsing for nlmixr")
     test_that("Nimo", {

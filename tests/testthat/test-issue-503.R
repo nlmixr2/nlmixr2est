@@ -1,4 +1,4 @@
-nlmixrTest({
+nlmixr2Test({
 
   test_that("issue 503, add+prop saem", {
 

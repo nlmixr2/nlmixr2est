@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Test SAEM functions")
 

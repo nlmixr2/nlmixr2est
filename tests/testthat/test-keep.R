@@ -1,4 +1,4 @@
-nlmixrTest({
+nlmixr2Test({
 
   one.compartment <- function() {
     ini({

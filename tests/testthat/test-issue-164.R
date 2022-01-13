@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Make sure there are lower bounds for appropriate errors")
     test_that("add/prop have appropriate errors", {

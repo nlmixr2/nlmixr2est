@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("mixed pk/ode")
     ## good

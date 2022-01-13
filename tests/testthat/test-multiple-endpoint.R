@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     context("Multiple endpoint parsing")
     test_that("multiple-endpoint", {
