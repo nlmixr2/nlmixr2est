@@ -2383,7 +2383,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                   "xType", "IDlabel", "ODEmodel",
                   # times
                   "optimTime", "setupTime", "covTime",
-                  "parHistData", "dataSav")) {
+                  "parHistData", "dataSav", "theta")) {
     if (exists(.item, .env)) {
       rm(list=.item, envir=.env)
     }

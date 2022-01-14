@@ -290,7 +290,8 @@
   "dataName"="data.name",
   "saem.cfg"="saemCfg",
   "objf"="objective",
-  "OBJF"="objective"
+  "OBJF"="objective",
+  "theta"="fixef"
 )
 
 #' @export
