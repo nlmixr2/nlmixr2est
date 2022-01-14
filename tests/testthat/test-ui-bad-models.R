@@ -1,6 +1,6 @@
 nlmixr2Test(
   {
-
+    # Bad UI models should raise errors
     test_that("Duplicate parameters raise errors", {
       uif <- function() {
         ini({

@@ -1,5 +1,6 @@
 nlmixr2Test(
   {
+    # Make sure there are lower bounds for appropriate errors
     test_that("add/prop have appropriate errors", {
       rxode2::rxClean()
 

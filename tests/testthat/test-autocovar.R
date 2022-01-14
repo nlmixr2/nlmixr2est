@@ -1,11 +1,6 @@
 nlmixr2Test(
   {
-<<<<<<< HEAD
     rxode2::.rxWithWd(tempdir(), {
-=======
-    context("autocovar")
-    rxode2::.rxWithWd(tempdir(), {
->>>>>>> origin/main
 
       # === addCovariate
       testthat::test_that("adding non-categorical covariate to funstring with log-transformation", {

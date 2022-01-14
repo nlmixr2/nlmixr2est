@@ -220,7 +220,7 @@ nlmixr2Test(
     }
 
 
-    test_that("Improper distribution functions throw errors", {
+    test_that("Improperly-specified residual distribution functions throw errors", {
       ## expect_error(nlmixr2:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
       expect_error(nlmixr2:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
       expect_error(nlmixr2:::nlmixrUIModel(fn3), "the prop distribution requires 1 argument")
@@ -251,6 +251,7 @@ nlmixr2Test(
     })
 
 
+    # Proper Variances
     fn1 <- function() {
       ini({
         KA <- c(0, 1)

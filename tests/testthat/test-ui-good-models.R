@@ -1,6 +1,6 @@
 nlmixr2Test(
   {
-
+    # Good UI models should not raise errors
     one.compartment.saem <- function() {
       ini({
         tka <- .5 # Log Ka

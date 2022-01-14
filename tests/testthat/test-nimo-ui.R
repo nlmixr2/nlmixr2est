@@ -1,6 +1,6 @@
 nlmixr2Test(
   {
-    test_that("Nimo", {
+    test_that("Make sure Nimo has a correct parsing for nlmixr", {
       nimo <- function() {
         ini({
           ## Note that the UI can take expressions

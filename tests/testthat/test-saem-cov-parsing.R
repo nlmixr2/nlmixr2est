@@ -1,6 +1,6 @@
 nlmixr2Test(
   {
-
+    # SAEM covariate parsing
     run1 <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance

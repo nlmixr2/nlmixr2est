@@ -1,5 +1,6 @@
 nlmixr2Test(
   {
+    # Make sure nlme throws an error with time varying covariates, but SAEM/FOCEi run
     test_that("Error w/time-varying covariates", {
       d <- theo_sd
       ## Make this time-varying
