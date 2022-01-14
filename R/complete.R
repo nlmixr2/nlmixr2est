@@ -1,61 +1,47 @@
-##' @importFrom utils .DollarNames
-##' @export
-.DollarNames.nlmixr2Bounds <- function(x, pattern) {
-  grep(pattern,
-    c(
-      names(x),
-      "theta", "theta.full", "omega", "random", "fixed.form",
-      "focei.upper", "focei.lower", "theta.names", "focei.names",
-      "focei.err.type", "eta.names"
-    ),
-    value = TRUE
-  )
+
+.nmObjGetEnvInfo <- list(
+  ui="rxode2 user interface",
+  conditionNumber="Condition Number",
+  cov="Covariance of fixed effects",
+  covMethod="Covariance Method for fixed effects",
+  etaObf="ETAs and their individual objective function contribution (if applicable)",
+  objDf="Objective Function DF",
+  omega="Omega Matrix",
+  origData="Original Data",
+  parFixed="Formatted Parameter Values for Fixed effects",
+  parFixedDf="Parameter Values for Fixed Effects (data frame)",
+  parHist="Parameter History",
+  scaleInfo="Scaling Information",
+  shrink="Shrinkage data frame",
+  table="Table Control Value",
+  fixef="Fixed effects",
+  time="Timing data frame"
+)
+
+.nmObjGetSupportedDollars <- function() {
+  .v <- as.character(utils::methods("nmObjGet"))
+  .v <- .v[.v != "nmObjGet.default"]
+  .cls <- vapply(.v, function(methodStr){
+    substr(methodStr,10,nchar(methodStr))
+  }, character(1), USE.NAMES=FALSE)
+  .v <- vapply(.cls, function(cls){
+    .desc <- attr(utils::getS3method("nmObjGet", cls), "desc")
+    if (is.null(.desc)) .desc <- ""
+    .desc
+  }, character(1), USE.NAMES=TRUE)
+  # Take out any "hidden methods"
+  .w <- which(.v != "")
+  .v <- c(.v[.w], .nmObjGetEnvInfo)
+  .v
 }
-##' @export
-.DollarNames.nlmixr2UI <- function(x, pattern) {
-  ## ui
-  ## uiCompletions
-  .cmp <- c(
-    "ini", "nmodel", "model", "nlme.fun.mu", "dynmodel.fun", "nlme.fun",
-    "nlme.fun.mu.cov", "nlme.specs", "nlme.specs.mu", "nlme.specs.mu.cov",
-    "nlme.var", "rxode.pred", "theta.pars", "focei.inits", "focei.fixed",
-    "focei.mu.ref", "saem.fixed", "saem.theta.name", "saem.eta.trans",
-    "saem.model.omega", "saem.res.mod", "saem.ares", "saem.bres", "saem.log.eta",
-    "saem.fit", "saem.model", "saem.init.theta", "saem.init.omega", "saem.init",
-    "saem.omega.name", "saem.res.name", "model.desc", "meta", "saem.distribution",
-    "lincmt.dvdx", "notfixed_bpop", "poped.notfixed_bpop",
-    "poped.ff_fun", "poped.d", "poped.sigma", "logThetasList", "random.mu",
-    "bpop", "multipleEndpoint", "muRefTable", "single.inner.1", "single.inner.2",
-    "inner", "inner.par0", "single.saem", "single.saem.params", "pars.saem",
-    ## bounds
-    .DollarNames.nlmixr2Bounds(x$ini, ""),
-    names(x$nmodel),
-    ls(x$meta)
-  )
-  grep(pattern, .cmp, value = TRUE)
-}
+
 ##' @export
 .DollarNames.nlmixr2FitCore <- function(x, pattern) {
+  ##FIXME
   .env <- x$env
   .cmp <- c(
     names(x),
-    "md5", "condition",
-    "posthoc", "notes",
-    "logLik", "value", "obf", "ofv", "objf", "OBJF", "objective", "AIC", "BIC",
-    "value", "obf", "ofv", "objf", "sigma", "coefficients", "parHist", "par.hist",
-    "parHistStacked", "par.hist.stacked", "omegaR", "omega.R", "par.fixed", "eta",
-    "ranef", "theta", "fixef", "varFix", "thetaMat", "cov",
-    "env", ls(.env)
-  )
-  if (exists("saem", .env)) {
-    .cmp <- c(.cmp, "seed", "saem.cfg")
-  }
-  if (exists("uif", .env)) {
-    .cmp <- c(
-      .cmp, "model.name", "modelName", "dataName", "data.name",
-      .DollarNames.nlmixr2UI(.env$uif, "")
-    )
-  }
+    names(.nmObjGetSupportedDollars()))
   .cmp <- c(.cmp, "env")
   grep(pattern, .cmp, value = TRUE)
 }
