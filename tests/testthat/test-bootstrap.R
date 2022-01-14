@@ -4,8 +4,8 @@ nlmixr2Test(
     samp_dat <- theo_sd
 
     test_that("sampling should return different datasets at each call", {
-      a <- digest::digest(nlmixr:::sampling(samp_dat))
-      b <- digest::digest(nlmixr:::sampling(samp_dat))
+      a <- digest::digest(nlmixr2:::sampling(samp_dat))
+      b <- digest::digest(nlmixr2:::sampling(samp_dat))
       testthat::expect_false(isTRUE(all.equal(a, b)))
     })
 
@@ -43,8 +43,8 @@ nlmixr2Test(
       ))
 
 
-      fit1 <- nlmixr:::bootstrapFit(fit, nboot = 2, restart = TRUE)
-      fit2 <- nlmixr:::bootstrapFit(fit, nboot = 4, restart = FALSE)
+      fit1 <- nlmixr2:::bootstrapFit(fit, nboot = 2, restart = TRUE)
+      fit2 <- nlmixr2:::bootstrapFit(fit, nboot = 4, restart = FALSE)
 
       output_dir <-
         paste0("nlmixrBootstrapCache_", "fit", "_", fit$bootstrapMd5)
@@ -104,9 +104,9 @@ nlmixr2Test(
         table = list(npde = TRUE, cwres = TRUE)
       ))
 
-      fitlist <- nlmixr:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
-      bootSummary1 <- nlmixr:::getBootstrapSummary(fitlist, ci = 0.95)
-      bootSummary2 <- nlmixr:::getBootstrapSummary(fitlist, ci = 0.75)
+      fitlist <- nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
+      bootSummary1 <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.95)
+      bootSummary2 <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.75)
 
       a <- digest::digest(bootSummary1$parFixedDf$confLower)
       b <- digest::digest(bootSummary2$parFixedDf$confLower)
@@ -151,9 +151,9 @@ nlmixr2Test(
       ))
 
       colsBefore <- colnames(fit$parFixedDf)
-      fitlist <- nlmixr:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
+      fitlist <- nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
 
-      bootSummary <- nlmixr:::getBootstrapSummary(fitlist, ci = 0.95)
+      bootSummary <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.95)
 
       colsAfter <- colnames(fit$parFixedDf)
 

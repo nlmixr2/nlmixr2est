@@ -43,7 +43,7 @@ XPStyle on
 Section Main sec_main
 WriteRegStr HKCU \"Software\\nlmixr<%=archext%>\" \"\" \"$EXEDIR\"
 WriteRegStr HKCU \"Software\\R-core\\R\\<%=rver%>nlmixr<%=archext%>\" \"InstallPath\" \"$EXEDIR\\R\"
-Exec '$EXEDIR\\R\\bin\\<%=Rdir%>\\R.exe -e options(keep.source=TRUE);library(shinyMixR);nlmixr:::.setRoot();run_shinymixr(launch.browser=TRUE)'
+Exec '$EXEDIR\\R\\bin\\<%=Rdir%>\\R.exe -e options(keep.source=TRUE);library(shinyMixR);nlmixr2:::.setRoot();run_shinymixr(launch.browser=TRUE)'
 SectionEnd"
 
 

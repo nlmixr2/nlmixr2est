@@ -3,24 +3,24 @@ nlmixr2Test(
 
     test_that("as.nlmixrBounds, data.frame to bounds creation works", {
       expect_error(
-        nlmixr:::as.nlmixrBounds(data.frame()),
+        nlmixr2:::as.nlmixrBounds(data.frame()),
         regexp = "no parameter information"
       )
       expect_error(
-        nlmixr:::as.nlmixrBounds(data.frame(ntheta = 1)),
+        nlmixr2:::as.nlmixrBounds(data.frame(ntheta = 1)),
         regexp =
           paste(
             "columns missing:",
-            paste0("'", setdiff(names(nlmixr:::nlmixrBoundsTemplate), "ntheta"), "'", collapse = ", ")
+            paste0("'", setdiff(names(nlmixr2:::nlmixrBoundsTemplate), "ntheta"), "'", collapse = ", ")
           )
       )
-      ref <- nlmixr:::nlmixrBoundsTemplate
+      ref <- nlmixr2:::nlmixrBoundsTemplate
       ref$ntheta <- 1
       ref$lower <- 0
       ref$est <- 1
       ref$upper <- 2
       expect_equal(
-        as.data.frame(nlmixr:::as.nlmixrBounds(
+        as.data.frame(nlmixr2:::as.nlmixrBounds(
           data.frame(ntheta = 1, est = 1, lower = 0, upper = 2),
           addMissingCols = TRUE
         )),
@@ -28,13 +28,13 @@ nlmixr2Test(
         info = "Missing column addition works"
       )
       {
-        zero_bound <- nlmixr:::nlmixrBoundsTemplate[1:2, ]
+        zero_bound <- nlmixr2:::nlmixrBoundsTemplate[1:2, ]
         zero_bound$ntheta <- 1:2
         zero_bound$lower <- c(-Inf, 0)
         zero_bound$est <- c(-5, 5)
         zero_bound$upper <- c(0, Inf)
         expect_equal(
-          as.data.frame(nlmixr:::as.nlmixrBounds(zero_bound)[, c("lower", "upper")]),
+          as.data.frame(nlmixr2:::as.nlmixrBounds(zero_bound)[, c("lower", "upper")]),
           data.frame(
             lower = c(-Inf, sqrt(.Machine$double.eps)),
             upper = c(-sqrt(.Machine$double.eps), Inf)
@@ -47,7 +47,7 @@ nlmixr2Test(
 
     test_that("bounds are extracted correctly", {
       ref <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = c(1, 2, 3, 4, 5, 6, 7, 8, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, 9, 10, 11, 12, 13, 14),
             neta1 = c(NA, NA, NA, NA, NA, NA, NA, NA, 1, 2, 3, 4, 5, 6, 6, 7, 8, 8, 9, 9, 9, 10, 11, 11, 12, 12, 12, NA, NA, NA, NA, NA, NA),
@@ -143,7 +143,7 @@ nlmixr2Test(
         ~ c(1)
       }
       ref1 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = 1,
@@ -173,7 +173,7 @@ nlmixr2Test(
       }
 
       ref3 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2),
@@ -216,7 +216,7 @@ nlmixr2Test(
       }
 
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -268,7 +268,7 @@ nlmixr2Test(
       }
 
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3, 4, 4, 4, 4),
@@ -304,7 +304,7 @@ nlmixr2Test(
       }
 
       ref1 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = 1,
@@ -334,7 +334,7 @@ nlmixr2Test(
       }
 
       ref3 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2),
@@ -377,7 +377,7 @@ nlmixr2Test(
       }
 
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -429,7 +429,7 @@ nlmixr2Test(
       }
 
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3, 4, 4, 4, 4),
@@ -506,7 +506,7 @@ nlmixr2Test(
       }
 
       ref <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = as.numeric(c(NA, NA, NA, NA, NA, NA, NA)),
             neta1 = c(1, 2, 3, 3, 4, 5, 5),
@@ -528,7 +528,7 @@ nlmixr2Test(
 
     test_that("Theta fix fixed are reasonable", {
       ref1 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1:4,
             neta1 = NA_real_,
@@ -611,7 +611,7 @@ nlmixr2Test(
       expect_equal(nlmixrBounds(bnd8), ref1)
 
       ref2 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             neta1 = NA_real_,
@@ -640,7 +640,7 @@ nlmixr2Test(
 
     test_that("Total ETA fixed (unnamed)", {
       ref1 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -667,7 +667,7 @@ nlmixr2Test(
       }
 
       ref2 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -725,7 +725,7 @@ nlmixr2Test(
 
     test_that("Total ETA fixed (unnamed)", {
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -752,7 +752,7 @@ nlmixr2Test(
       }
 
       ref7 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -779,7 +779,7 @@ nlmixr2Test(
       }
 
       ref8 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -806,7 +806,7 @@ nlmixr2Test(
       }
 
       ref9 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -833,7 +833,7 @@ nlmixr2Test(
       }
 
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -860,7 +860,7 @@ nlmixr2Test(
       }
 
       ref11 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -896,7 +896,7 @@ nlmixr2Test(
       }
 
       ref7 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -923,7 +923,7 @@ nlmixr2Test(
       }
 
       ref8 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -950,7 +950,7 @@ nlmixr2Test(
       }
 
       ref9 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -977,7 +977,7 @@ nlmixr2Test(
       }
 
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1004,7 +1004,7 @@ nlmixr2Test(
       }
 
       ref11 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1040,7 +1040,7 @@ nlmixr2Test(
 
     test_that("Total ETA fixed (unnamed) #a", {
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1058,7 +1058,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref7 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1076,7 +1076,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref8 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1094,7 +1094,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref9 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1112,7 +1112,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1130,7 +1130,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref11 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1253,7 +1253,7 @@ nlmixr2Test(
 
     test_that("Total ETA fixed (unnamed) #b", {
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1271,7 +1271,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref7 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1289,7 +1289,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref8 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1307,7 +1307,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref9 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1325,7 +1325,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1343,7 +1343,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref11 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1466,7 +1466,7 @@ nlmixr2Test(
 
     test_that("Total ETA fixed (unnamed) #c", {
       ref6 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1484,7 +1484,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref7 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1502,7 +1502,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref8 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1520,7 +1520,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref9 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1538,7 +1538,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref10 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1556,7 +1556,7 @@ nlmixr2Test(
           addMissingCols = TRUE
         )
       ref11 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1680,7 +1680,7 @@ nlmixr2Test(
 
     test_that("Total ETA FIXED (named)", {
       ref12 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1707,7 +1707,7 @@ nlmixr2Test(
       }
 
       ref13 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1766,7 +1766,7 @@ nlmixr2Test(
       })
 
       ref17 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1794,7 +1794,7 @@ nlmixr2Test(
 
 
       ref18 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1821,7 +1821,7 @@ nlmixr2Test(
       }
 
       ref19 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1848,7 +1848,7 @@ nlmixr2Test(
       }
 
       ref20 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1875,7 +1875,7 @@ nlmixr2Test(
       }
 
       ref21 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -1902,7 +1902,7 @@ nlmixr2Test(
       }
 
       ref22 <-
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = NA_real_,
             neta1 = c(1, 2, 2, 3, 3, 3),
@@ -2240,7 +2240,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           ~1
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = 1,
             neta2 = 1,
@@ -2260,7 +2260,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           a ~ 1
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = 1,
             neta2 = 1,
@@ -2284,7 +2284,7 @@ nlmixr2Test(
           regexp = "'cor(...)' with a single value is ignored: ~cor(1)",
           fixed = TRUE
         ),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = 1,
             neta2 = 1,
@@ -2304,7 +2304,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           a + b ~ cor(2, -0.5, 3)
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = c(1, 2, 2),
             neta2 = c(1, 1, 2),
@@ -2324,7 +2324,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           a + b ~ fixed(cor(2, -0.5, 3))
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = c(1, 2, 2),
             neta2 = c(1, 1, 2),
@@ -2344,7 +2344,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           a + b ~ cor(fixed(2, -0.5, 3))
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = c(1, 2, 2),
             neta2 = c(1, 1, 2),
@@ -2364,7 +2364,7 @@ nlmixr2Test(
         nlmixrBounds(function() {
           a + b ~ cor(fixed(2), fixed(-0.5), fixed(3))
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             neta1 = c(1, 2, 2),
             neta2 = c(1, 1, 2),
@@ -2398,7 +2398,7 @@ nlmixr2Test(
           0.1
           backTransform(exp())
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             lower = -Inf,
@@ -2417,7 +2417,7 @@ nlmixr2Test(
           0.1
           backTransform(exp)
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             lower = -Inf,
@@ -2436,7 +2436,7 @@ nlmixr2Test(
           0.1
           backTransform("exp")
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             lower = -Inf,
@@ -2460,7 +2460,7 @@ nlmixr2Test(
           regexp = 'only last backTransform used: backTransform("log")',
           fixed = TRUE
         ),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             lower = -Inf,
@@ -2479,7 +2479,7 @@ nlmixr2Test(
           0.1
           backTransform(function(x) x^2)
         }),
-        nlmixr:::as.nlmixrBounds(
+        nlmixr2:::as.nlmixrBounds(
           data.frame(
             ntheta = 1,
             lower = -Inf,
@@ -2508,73 +2508,73 @@ nlmixr2Test(
 
     test_that("nlmixrBoundsValueFixed", {
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~1)[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~1)[[2]]),
         list(value = 1, fixed = FALSE)
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1))[[2]]),
         list(value = 1, fixed = FALSE)
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, 2))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, 2))[[2]]),
         list(value = c(1, 2), fixed = rep(FALSE, 2))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, 2, 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, 2, 3))[[2]]),
         list(value = c(1, 2, 3), fixed = rep(FALSE, 3))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, fixed))[[2]]),
         list(value = 1, fixed = TRUE)
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, 2, fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, 2, fixed))[[2]]),
         list(value = c(1, 2), fixed = rep(TRUE, 2))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, 2, 3, fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, 2, 3, fixed))[[2]]),
         list(value = c(1, 2, 3), fixed = rep(TRUE, 3))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, fixed(2), 3, fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, fixed(2), 3, fixed))[[2]]),
         list(value = c(1, 2, 3), fixed = rep(TRUE, 3)),
         info = "Fixed is specified two ways, but they are not in conflict"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(1, fixed(2), 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(1, fixed(2), 3))[[2]]),
         list(value = c(1, 2, 3), fixed = c(FALSE, TRUE, FALSE))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(fixed(1), 2, 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(fixed(1), 2, 3))[[2]]),
         list(value = c(1, 2, 3), fixed = c(TRUE, FALSE, FALSE))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(fixed(1), 2, 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(fixed(1), 2, 3))[[2]]),
         list(value = c(1, 2, 3), fixed = c(TRUE, FALSE, FALSE))
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(fixed(1), log(2), 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(fixed(1), log(2), 3))[[2]]),
         list(value = c(1, log(2), 3), fixed = c(TRUE, FALSE, FALSE)),
         info = "Function evaluation works (though it may have issues related to environment precedence). (Fix #253)"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(log(0), log(1.5), log(20)))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(log(0), log(1.5), log(20)))[[2]]),
         list(value = log(c(0, 1.5, 20)), fixed = rep(FALSE, 3)),
         info = "Function evaluation works (though it may have issues related to environment precedence). (Fix #253)"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ FIX(log(0), log(1.5), log(20)))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ FIX(log(0), log(1.5), log(20)))[[2]]),
         list(value = log(c(0, 1.5, 20)), fixed = rep(TRUE, 3)),
         info = "Function evaluation works (though it may have issues related to environment precedence). (Fix #253)"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueFixed((~ c(FIX(log(0), 1 / log(1.5)), 1 / log(20)))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ c(FIX(log(0), 1 / log(1.5)), 1 / log(20)))[[2]]),
         list(value = c(log(0), 1 / log(1.5), 1 / log(20)), fixed = c(TRUE, TRUE, FALSE)),
         info = "Function evaluation works and arbitrary complexity may be within the fixed() call (or outside of it). (Fix #253)"
       )
       expect_error(
         expect_warning(
-          nlmixr:::nlmixrBoundsValueFixed((~ FIX(sqrt(-1)))[[2]]),
+          nlmixr2:::nlmixrBoundsValueFixed((~ FIX(sqrt(-1)))[[2]]),
           regexp = "NaNs produced"
         ),
         regexp = "NaN values in initial condition: FIX(sqrt(-1))",
@@ -2582,13 +2582,13 @@ nlmixr2Test(
         info = "Invalid math stops execution"
       )
       expect_error(
-        nlmixr:::nlmixrBoundsValueFixed((~ FIX("A"))[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~ FIX("A"))[[2]]),
         regexp = 'non-numeric values in initial condition: FIX("A")',
         fixed = TRUE,
         info = "Values must be numbers"
       )
       expect_error(
-        nlmixr:::nlmixrBoundsValueFixed((~a)[[2]]),
+        nlmixr2:::nlmixrBoundsValueFixed((~a)[[2]]),
         regexp = "error parsing initial condition 'a': object 'a' not found",
         fixed = TRUE,
         info = "No variable substitutions are performed for parsing."
@@ -2599,42 +2599,42 @@ nlmixr2Test(
 
     test_that("nlmixrBoundsReplaceFixed, testing replacement of fixed names within calls", {
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~a)[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~a)[[2]]),
         list(
           call = (~a)[[2]],
           fixed = FALSE
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ c(1, fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ c(1, fixed))[[2]]),
         list(
           call = (~ c(1))[[2]],
           fixed = TRUE
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ c(1, c(1, fixed)))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ c(1, c(1, fixed)))[[2]]),
         list(
           call = (~ c(1, c(1)))[[2]],
           fixed = TRUE
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~1)[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~1)[[2]]),
         list(
           call = 1,
           fixed = FALSE
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ fixed(1))[[2]], replacementFun = "c"),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ fixed(1))[[2]], replacementFun = "c"),
         list(
           call = (~ c(1))[[2]],
           fixed = FALSE
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ fixed(1))[[2]], replacementFun = "c"),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ fixed(1))[[2]], replacementFun = "c"),
         list(
           call = (~ c(1))[[2]],
           fixed = FALSE
@@ -2642,7 +2642,7 @@ nlmixr2Test(
       )
       # This is weird syntax to use, but it is logically okay
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ c(1, 1, c(fixed)))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ c(1, 1, c(fixed)))[[2]]),
         list(
           call = (~ c(1, 1, c()))[[2]],
           fixed = TRUE
@@ -2650,13 +2650,13 @@ nlmixr2Test(
         info = "Fixed can only be at the end of a vector of values, and detection of that works even when it is in a sub-expression."
       )
       expect_error(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ c(fixed, 1))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ c(fixed, 1))[[2]]),
         regexp = "'fixed' may only be the last item in a list: c(fixed, 1)",
         fixed = TRUE,
         info = "Fixed can only be at the end of a vector of values"
       )
       expect_error(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ c(1, c(fixed), 1))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ c(1, c(fixed), 1))[[2]]),
         regexp = "'fixed' may only be the last item in a list: c(1, c(fixed), 1)",
         fixed = TRUE,
         info = "Fixed can only be at the end of a vector of values, and detection of that works even when it is at the end of its sub-expression, but it is not at the overall-end of the expression."
@@ -2665,7 +2665,7 @@ nlmixr2Test(
 
     test_that("nlmixrBoundsReplaceFixed, testing replacement of fixed function calls within calls", {
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ fixed(a))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ fixed(a))[[2]]),
         list(
           call = (~ fixed(a))[[2]],
           fixed = FALSE
@@ -2673,7 +2673,7 @@ nlmixr2Test(
         info = "`fixed()` is returned unchanged"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ fix(a))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ fix(a))[[2]]),
         list(
           call = (~ fixed(a))[[2]],
           fixed = FALSE
@@ -2681,7 +2681,7 @@ nlmixr2Test(
         info = "`fix()` is changed to `fixed()`"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ FIX(a))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ FIX(a))[[2]]),
         list(
           call = (~ fixed(a))[[2]],
           fixed = FALSE
@@ -2689,7 +2689,7 @@ nlmixr2Test(
         info = "`FIX()` is changed to `fixed()`"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ FIXED(a))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ FIXED(a))[[2]]),
         list(
           call = (~ fixed(a))[[2]],
           fixed = FALSE
@@ -2697,7 +2697,7 @@ nlmixr2Test(
         info = "`FIXED()` is changed to `fixed()`"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ 1 / FIX(a))[[2]]),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ 1 / FIX(a))[[2]]),
         list(
           call = (~ 1 / fixed(a))[[2]],
           fixed = FALSE
@@ -2705,7 +2705,7 @@ nlmixr2Test(
         info = "`FIX()` is changed to `fixed()` inside another expression"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsReplaceFixed((~ 1 / FIX(a))[[2]], replacementFun = "c"),
+        nlmixr2:::nlmixrBoundsReplaceFixed((~ 1 / FIX(a))[[2]], replacementFun = "c"),
         list(
           call = (~ 1 / c(a))[[2]],
           fixed = FALSE
@@ -2719,7 +2719,7 @@ nlmixr2Test(
     test_that("", {
       skip_if(Sys.getenv("R_ARCH") == "/i386", "windows32")
       expect_equal(
-        nlmixr:::nlmixrBoundsValueCor(x = (~ cor(1, 2, 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueCor(x = (~ cor(1, 2, 3))[[2]]),
         list(
           value = 1:3,
           fixed = rep(FALSE, 3),
@@ -2727,7 +2727,7 @@ nlmixr2Test(
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueCor(x = (~ cor(1, fixed(2), 3))[[2]]),
+        nlmixr2:::nlmixrBoundsValueCor(x = (~ cor(1, fixed(2), 3))[[2]]),
         list(
           value = 1:3,
           fixed = c(FALSE, TRUE, FALSE),
@@ -2735,7 +2735,7 @@ nlmixr2Test(
         )
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueCor(x = (~ fixed(cor(1, fixed(2), 3)))[[2]]),
+        nlmixr2:::nlmixrBoundsValueCor(x = (~ fixed(cor(1, fixed(2), 3)))[[2]]),
         list(
           value = 1:3,
           fixed = rep(TRUE, 3),
@@ -2744,7 +2744,7 @@ nlmixr2Test(
         info = "Unusual syntax works"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueCor(x = (~ c(1, fixed(2), cor(3)))[[2]]),
+        nlmixr2:::nlmixrBoundsValueCor(x = (~ c(1, fixed(2), cor(3)))[[2]]),
         list(
           value = 1:3,
           fixed = c(FALSE, TRUE, FALSE),
@@ -2753,7 +2753,7 @@ nlmixr2Test(
         info = "Legitimacy of syntax checking will be confirmed elsewhere"
       )
       expect_equal(
-        nlmixr:::nlmixrBoundsValueCor(x = (~ c(1, 2, cor(3), fixed))[[2]]),
+        nlmixr2:::nlmixrBoundsValueCor(x = (~ c(1, 2, cor(3), fixed))[[2]]),
         list(
           value = 1:3,
           fixed = c(TRUE, TRUE, TRUE),
@@ -2767,7 +2767,7 @@ nlmixr2Test(
 
     test_that("preparation of the function for bound extraction", {
       expect_equal(
-        nlmixr:::nlmixrBoundsPrepareFun(function() {
+        nlmixr2:::nlmixrBoundsPrepareFun(function() {
           1
         }),
         function() {
@@ -2776,7 +2776,7 @@ nlmixr2Test(
       )
       expect_equal(
         expect_message(
-          nlmixr:::nlmixrBoundsPrepareFun(
+          nlmixr2:::nlmixrBoundsPrepareFun(
             function() {
               1 # foo
             }
@@ -2801,7 +2801,7 @@ nlmixr2Test(
     ##       as.character(attr(x, "srcref"), useSource = TRUE)
     ##     }
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
+    ##       nlmixr2:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 # hello
     ##         }
@@ -2815,7 +2815,7 @@ nlmixr2Test(
     ##       info = "comment lines with other information are converted to label()"
     ##     )
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
+    ##       nlmixr2:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 | STUDY # hello
     ##         }
@@ -2829,7 +2829,7 @@ nlmixr2Test(
     ##       info = "comment lines with other information are converted to label() (even if they are on a line with a condition)"
     ##     )
     ##     expect_equal(
-    ##       nlmixr:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
+    ##       nlmixr2:::nlmixrBoundsPrepareFunComments(nlmixr2TestFunToChar(
     ##         function() {
     ##           1 # label 1
     ##           label("# hash in a quote may try to be detected as a label, but that is wrong")
@@ -2850,31 +2850,31 @@ nlmixr2Test(
     # Test call and name replacement ####
     test_that("call replacement", {
       expect_equal(
-        nlmixr:::replaceCallName(x = a ~ b(), replacementFun = "c", sourceNames = "b"),
+        nlmixr2:::replaceCallName(x = a ~ b(), replacementFun = "c", sourceNames = "b"),
         a ~ c(),
         check.attributes = FALSE,
         info = "Simple replacement works"
       )
       expect_equal(
-        nlmixr:::replaceCallName(x = a ~ b(c + d * b(e)), replacementFun = "c", sourceNames = "b"),
+        nlmixr2:::replaceCallName(x = a ~ b(c + d * b(e)), replacementFun = "c", sourceNames = "b"),
         a ~ c(c + d * c(e)),
         check.attributes = FALSE,
         info = "Nested replacement works"
       )
       expect_equal(
-        nlmixr:::replaceCallName(x = a ~ b, replacementFun = "c", sourceNames = "b"),
+        nlmixr2:::replaceCallName(x = a ~ b, replacementFun = "c", sourceNames = "b"),
         a ~ b,
         check.attributes = FALSE,
         info = "Names that are not calls are not replaced"
       )
       expect_equal(
-        nlmixr:::replaceCallName(x = a ~ b(b), replacementFun = "c", sourceNames = "b"),
+        nlmixr2:::replaceCallName(x = a ~ b(b), replacementFun = "c", sourceNames = "b"),
         a ~ c(b),
         check.attributes = FALSE,
         info = "Nested names that are not calls are not replaced"
       )
       expect_equal(
-        nlmixr:::replaceCallName(x = a ~ b(1 + "A"), replacementFun = "c", sourceNames = "b"),
+        nlmixr2:::replaceCallName(x = a ~ b(1 + "A"), replacementFun = "c", sourceNames = "b"),
         a ~ c(1 + "A"),
         check.attributes = FALSE,
         info = "Non-name values are permitted"
@@ -2883,43 +2883,43 @@ nlmixr2Test(
 
     test_that("name replacement", {
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b, replacementName = "c", sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b, replacementName = "c", sourceNames = "b"),
         a ~ c,
         check.attributes = FALSE,
         info = "Names that are not calls are replaced"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b(), replacementName = "c", sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b(), replacementName = "c", sourceNames = "b"),
         a ~ b(),
         check.attributes = FALSE,
         info = "Function calls are skipped"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b(c + d * b(e)), replacementName = "c", sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b(c + d * b(e)), replacementName = "c", sourceNames = "b"),
         a ~ b(c + d * b(e)),
         check.attributes = FALSE,
         info = "Nested replacement still ignores function calls"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b(b), replacementName = "c", sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b(b), replacementName = "c", sourceNames = "b"),
         a ~ b(c),
         check.attributes = FALSE,
         info = "Nested names that are not calls are replaced"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b(1 + "A"), replacementName = "c", sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b(1 + "A"), replacementName = "c", sourceNames = "b"),
         a ~ b(1 + "A"),
         check.attributes = FALSE,
         info = "Non-name values are permitted"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b(b), replacementName = NULL, sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b(b), replacementName = NULL, sourceNames = "b"),
         a ~ b(),
         check.attributes = FALSE,
         info = "Null removes the name"
       )
       expect_equal(
-        nlmixr:::replaceNameName(x = a ~ b * c, replacementName = NULL, sourceNames = "b"),
+        nlmixr2:::replaceNameName(x = a ~ b * c, replacementName = NULL, sourceNames = "b"),
         {
           comparison <- a ~ b * c
           comparison[[3]][[2]] <- NULL
