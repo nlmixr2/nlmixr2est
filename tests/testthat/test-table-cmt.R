@@ -95,22 +95,22 @@ nlmixr2Test({
     tab1 <- addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
     expect_true(all(!is.na(tab1$CMT)))
-    expect_true(inherits(tab1$CMT, "factor"))
+    expect_type(tab1$CMT, "factor")
 
     tab2 <- addTable(fit.s, table=tableControl(cwres=TRUE, npde=FALSE))
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab2)))
     expect_true(all(!is.na(tab2$CMT)))
-    expect_true(inherits(tab2$CMT, "factor"))
+    expect_type(tab2$CMT, "factor")
 
     tab3 <- addTable(fit.s, table=tableControl(cwres=FALSE, npde=TRUE))
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab3)))
     expect_true(all(!is.na(tab3$CMT)))
-    expect_true(inherits(tab3$CMT, "factor"))
+    expect_type(tab3$CMT, "factor")
 
     tab4 <- addTable(fit.s, table=tableControl(cwres=TRUE, npde=TRUE))
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab4)))
     expect_true(all(!is.na(tab4$CMT)))
-    expect_true(inherits(tab4$CMT, "factor"))
+    expect_type(tab4$CMT, "factor")
 
     df <- data.frame(
       ID = 123,

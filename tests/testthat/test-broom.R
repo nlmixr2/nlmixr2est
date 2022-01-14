@@ -8,7 +8,7 @@ nlmixr2Test(
 
     ##' test the basics of tidy/augment/glance output: is a data frame, no row names
     check_tidiness <- function(o) {
-      testthat::expect_is(o, "tbl_df")
+      testthat::expect_s3_class(o, "tbl_df")
       testthat::expect_equal(rownames(o), as.character(seq_len(nrow(o))))
     }
 
@@ -60,7 +60,7 @@ nlmixr2Test(
 
 
 
-    fitS <- .nlmixr(one.compartment, theo_sd, est = "saem")
+    fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0))
 
     test_that("tidy works on nlmixr fit SAEM fits", {
       td <- tidy(fitS, exponentiate = NA)

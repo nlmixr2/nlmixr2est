@@ -143,7 +143,7 @@ nlmixr2Test(
       .ui <- one.cmt %>% update({
         linCmt() ~ add(add.err) + prop(prop.err)
       })
-      expect_true(inherits(.ui, "nlmixrUI"))
+      expect_s3_class(.ui, "nlmixrUI")
     })
 
     # piping looks through parent environments
@@ -153,7 +153,7 @@ nlmixr2Test(
         nlmixr(update(fit, tka = kainit))
       })
 
-      expect_true(inherits(fits, "list"))
+      expect_type(fits, "list")
 
       expect_error(lapply(seq(-1, -0.1, 0.1), function(kainit) {
         nlmixr(update(fit, tka = matt))

@@ -26,7 +26,7 @@ nlmixr2Test(
 
     fit <- nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
 
-    expect_true(inherits(fit, "nlmixrFitCore"))
+    expect_s3_class(fit, "nlmixr2FitCore")
     expect_false(inherits(fit, "data.frame"))
     expect_false(inherits(fit, "nlmixrFitData"))
 
