@@ -48,7 +48,7 @@ nlmixr2Test(
 
 
     f <- suppressWarnings(nlmixr(One.SD.ODE, dat, "posthoc"))
-    expect_true(inherits(f, "nlmixrPosthoc"))
+    expect_s3_class(f, "nlmixrPosthoc")
   },
   test = "focei"
 )

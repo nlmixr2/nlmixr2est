@@ -70,7 +70,7 @@ nlmixr2Test(
       }
 
       tmp <- nlmixr(one.compartment.saem)
-      expect_true(inherits(tmp, "nlmixrUI"))
+      expect_s3_class(tmp, "nlmixrUI")
 
 
 
@@ -100,7 +100,7 @@ nlmixr2Test(
       }
 
       d <- nlmixr(one.compartment.saem)
-      expect_true(inherits(d, "nlmixrUI"))
+      expect_s3_class(d, "nlmixrUI")
 
       one.compartment.saem <- function() {
         ini({
@@ -128,7 +128,7 @@ nlmixr2Test(
       }
 
       d <- nlmixr(one.compartment.saem)
-      expect_true(inherits(d, "nlmixrUI"))
+      expect_s3_class(d, "nlmixrUI")
 
       pk.turnover.emax <- function() {
         ini({
@@ -306,7 +306,7 @@ nlmixr2Test(
         })
       }
 
-      expect_true(inherits(nlmixr(pk.turnover.emax4), "nlmixrUI"))
+      expect_s3_class(nlmixr(pk.turnover.emax4), "nlmixrUI")
 
       pk.turnover.emax4 <- function() {
         ini({
