@@ -357,24 +357,17 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 #' @export
 str.nlmixr2FitData <- function(object, ...) {
   NextMethod(object)
-  .env <- object$env
-  ## cat(" $ par.hist         : Parameter history (if available)\n")
-  ## cat(" $ par.hist.stacked : Parameter history in stacked form for easy plotting (if available)\n")
-  cat(" $ omega            : Omega matrix\n")
-  cat(" $ omegaR           : Omega Correlation matrix\n")
-  cat(" $ shrink           : Shrinkage table, includes skewness, kurtosis, and eta p-values\n")
-  cat(" $ parFixed         : Fixed Effect Parameter Table\n")
-  cat(" $ theta            : Fixed Parameter Estimates\n")
-  cat(" $ eta              : Individual Parameter Estimates\n")
-  cat(" $ seed             : Seed (if applicable)\n")
-  cat(" $ coefficients     : Fixed and random coefficients\n")
-  if (exists("uif", envir = object$env)) {
-    cat(" $ meta             : Model meta information environment\n")
-    cat(" $ modelName        : Model name (from R function)\n")
-    cat(" $ dataName         : Name of R data input\n")
-    cat(" $ simInfo          : rxode2 list for simulation\n")
-    cat(" $ sigma            : List of sigma components and their values\n")
-  }
+  .s <- .nmObjGetSupportedDollars()
+  cat(paste(strtrim(paste(vapply(names(.s), function(x){
+    .nchar <- nchar(x)
+    if (.nchar >= 10) {
+      return(paste0(" $ ", x, ": "))
+    } else {
+      return(paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": "))
+    }
+  }, character(1), USE.NAMES=FALSE), .s), 128), collapse="\n"))
+  cat("\n")
+  invisible()
 }
 
 
