@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     rxClean()
 
@@ -219,40 +219,39 @@ nlmixrTest(
       linCmt() ~ prop(par1) + add(par2) + pois(par3)
     }
 
-    context("Improperly specified residuals distributions throw errors")
 
-    test_that("Improper distribution functions throw errors", {
-      ## expect_error(nlmixr:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
-      expect_error(nlmixr:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn3), "the prop distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn10), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn11), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn12), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn13), "the dt distribution requires 1-2 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn14), "the dt distribution requires 1-2 arguments")
-      ## expect_error(nlmixr:::nlmixrUIModel(fn15), "The binom distribution requires 2 arguments.")
-      ## expect_error(nlmixr:::nlmixrUIModel(fn16), "The binom distribution requires 2 arguments.")
-      ## expect_error(nlmixr:::nlmixrUIModel(fn17), "The binom distribution requires 2 arguments.")
-      expect_error(nlmixr:::nlmixrUIModel(fn18), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn19), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn20), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn21), "the t distribution requires 1-2 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn22), "the t distribution requires 1-2 arguments")
-      expect_error(nlmixr:::nlmixrUIModel(fn23), "the add distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn24), "the add distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn25), "the prop distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn26), "the prop distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn27), "the norm distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn28), "the norm distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn29), "the dnorm distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn30), "the dnorm distribution requires 1 argument")
-      expect_error(nlmixr:::nlmixrUIModel(fn31), "the nlmixrDist distribution is currently unsupported")
-      expect_error(nlmixr:::nlmixr(fn32))
-      expect_error(nlmixr:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
+    test_that("Improperly-specified residual distribution functions throw errors", {
+      ## expect_error(nlmixr2:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
+      expect_error(nlmixr2:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn3), "the prop distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn10), "the dbeta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn11), "the dbeta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn12), "the dbeta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn13), "the dt distribution requires 1-2 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn14), "the dt distribution requires 1-2 arguments")
+      ## expect_error(nlmixr2:::nlmixrUIModel(fn15), "The binom distribution requires 2 arguments.")
+      ## expect_error(nlmixr2:::nlmixrUIModel(fn16), "The binom distribution requires 2 arguments.")
+      ## expect_error(nlmixr2:::nlmixrUIModel(fn17), "The binom distribution requires 2 arguments.")
+      expect_error(nlmixr2:::nlmixrUIModel(fn18), "the beta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn19), "the beta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn20), "the beta distribution requires 2-3 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn21), "the t distribution requires 1-2 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn22), "the t distribution requires 1-2 arguments")
+      expect_error(nlmixr2:::nlmixrUIModel(fn23), "the add distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn24), "the add distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn25), "the prop distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn26), "the prop distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn27), "the norm distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn28), "the norm distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn29), "the dnorm distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn30), "the dnorm distribution requires 1 argument")
+      expect_error(nlmixr2:::nlmixrUIModel(fn31), "the nlmixrDist distribution is currently unsupported")
+      expect_error(nlmixr2:::nlmixr(fn32))
+      expect_error(nlmixr2:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
     })
 
-    context("Proper Variances")
 
+    # Proper Variances
     fn1 <- function() {
       ini({
         KA <- c(0, 1)

@@ -1,7 +1,6 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Good UI models should not raise errors")
-
+    # Good UI models should not raise errors
     one.compartment.saem <- function() {
       ini({
         tka <- .5 # Log Ka

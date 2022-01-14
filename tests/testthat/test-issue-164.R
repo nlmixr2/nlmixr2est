@@ -1,8 +1,8 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Make sure there are lower bounds for appropriate errors")
+    # Make sure there are lower bounds for appropriate errors
     test_that("add/prop have appropriate errors", {
-      RxODE::rxClean()
+      rxode2::rxClean()
 
       run7.mod <- function() {
         ini({

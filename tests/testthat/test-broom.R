@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
 {
 
   library(broom.mixed)
@@ -59,7 +59,6 @@ nlmixrTest(
     }
 
 
-    context("broom tidy nlmixr SAEM")
 
     fitS <- .nlmixr(one.compartment, theo_sd, est = "saem")
 
@@ -157,7 +156,6 @@ nlmixrTest(
     })
 
     for (f in c("focei", "foce")) {
-      context(sprintf("broom tidy nlmixr %s", f))
       fitF <- .nlmixr(one.compartment, theo_sd, est = f)
 
       test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
@@ -252,7 +250,6 @@ nlmixrTest(
     }
 
     for (f in c("foi", "fo")) {
-      context(sprintf("broom tidy nlmixr %s", f))
       fitF <- .nlmixr(one.compartment, theo_sd, est = f)
       test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
         td <- tidy(fitF, exponentiate = NA)
@@ -346,7 +343,6 @@ nlmixrTest(
     }
 
 
-    context("broom tidy nlmixr nlme")
     fitN <- .nlmixr(one.compartment, theo_sd, est = "nlme", control = nlmeControl(pnlsTol = 0.6))
     test_that("tidy works on nlmixr fit nlme fits", {
       td <- tidy(fitN, exponentiate = NA)
@@ -440,7 +436,6 @@ nlmixrTest(
     })
 
 
-    context("broom tidy nlmixr posthoc")
     fitP <- .nlmixr(one.compartment, theo_sd, est = "posthoc")
 
     test_that("tidy works on posthoc fit fits", {

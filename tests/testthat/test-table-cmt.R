@@ -1,4 +1,4 @@
-nlmixrTest({
+nlmixr2Test({
   test_that("proper table outputs", {
 
     df <- data.frame(

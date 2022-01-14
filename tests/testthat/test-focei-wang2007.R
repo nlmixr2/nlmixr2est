@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Test FO, FOCE, and FOCEi objective functions")
 
     ## For some reason the ODE and solved FOCE proportional models
     ## give quite different results.  However, FOCE doesn't work as

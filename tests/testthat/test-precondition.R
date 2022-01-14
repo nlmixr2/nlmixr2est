@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("precondition tests")
 
     test_that("precondition tests", {
       one.compartment <- function() {

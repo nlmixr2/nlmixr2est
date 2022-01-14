@@ -1,7 +1,6 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("testing saem without table can add focei objf")
-
+    # testing saem without table can add focei objf
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment

@@ -1,5 +1,5 @@
 #
-nlmixrTest({
+nlmixr2Test({
 
   test_that("Issue #502", {
 

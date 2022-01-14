@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Multiple endpoint parsing")
     test_that("multiple-endpoint", {
       tmp <- theo_sd
       tmp$EVID <- ifelse(tmp$EVID == 0, 0, 1)
@@ -43,7 +42,7 @@ nlmixrTest(
       expect_equal(tmp$predDf$cond, c("center", "c20"))
       expect_equal(tmp$predDf$var, c("cp", "cp2"))
 
-      ## tmp2 <- RxODE::etTrans(df,tmp$rxode,TRUE)
+      ## tmp2 <- rxode2::etTrans(df,tmp$rxode,TRUE)
 
       one.compartment.saem <- function() {
         ini({
