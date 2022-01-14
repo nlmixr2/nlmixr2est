@@ -9,7 +9,7 @@ vpcSim(object, ..., keep = NULL, n = 300, pred = FALSE, seed = 1009)
 \arguments{
 \item{object}{This is the nlmixr2 fit object}
 
-\item{...}{Other arguments sent to `nlmixr2Sim()`}
+\item{...}{Other arguments sent to `rxSolve()`}
 
 \item{keep}{Keep character vector}
 

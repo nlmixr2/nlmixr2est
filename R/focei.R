@@ -2346,7 +2346,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   assign("est", est, envir=.ret)
   assign("skipCov", .env$skipCov, envir=.ret)
   nmObjHandleModelObject(.ret$model, .ret)
-  nmObjHandleControlObject(.ret$control, .ret)
+  nmObjHandleControlObject(get("control", envir=.ret), .ret)
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)

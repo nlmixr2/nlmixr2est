@@ -86,9 +86,17 @@ When on CRAN, you can install the released version of nlmixr from
 install.packages("nlmixr2")
 ```
 
-And the development version from [GitHub](https://github.com/) with:
+### Installing the Development Version
+
+First, install [rxode2](https://github.com/nlmixr2/rxode2#installation).
+If not on Windows, you will also need to follow the instructions to
+install
+[symengine](https://github.com/symengine/symengine.R#installation).
+
+And then install the development version of nlmixr2 from
+[GitHub](https://github.com/) with:
 
 ``` r
-# install.packages("devtools")
+if (!requireNamespace("devtools")) install.packages("devtools")
 devtools::install_github("nlmixr2/nlmixr2")
 ```

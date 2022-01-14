@@ -1,7 +1,7 @@
 nlmixr2Test(
   {
     test_that("add/prop have appropriate errors", {
-      RxODE::rxClean()
+      rxode2::rxClean()
 
       run7.mod <- function() {
         ini({

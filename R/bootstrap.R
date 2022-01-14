@@ -346,7 +346,7 @@ bootstrapFit <- function(fit,
     assign(".bootPlotData", .dataList, envir = fit$env)
   }
   ## Update covariance estimate
-  .nm <- names(fit$theta)[!fit$skipCov[seq_along(fit$theta)]]
+  .nm <- names(fit$theta)[!fit$foceiSkipCov[seq_along(fit$theta)]]
   .cov <- fit$bootSummary$omega$covMatrixCombined[.nm, .nm]
   .setCov(fit, covMethod = .cov)
   assign("covMethod", paste0("boot", fit$bootSummary$nboot), fit$env)

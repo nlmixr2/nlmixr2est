@@ -210,8 +210,8 @@ DeleteRegKey HKCU \"Software\\R-core\\Rtools\\<%=rtoolsver%>\"
 SectionEnd"
 
 buildInstaller <- function(name="nlmixr"){
-    rtools <- gsub("/", "\\", RxODE:::.rxRtoolsBaseWin(), fixed=TRUE);
-    python <- gsub("/", "\\", RxODE:::.rxPythonBaseWin(), fixed=TRUE);
+    rtools <- gsub("/", "\\", rxode2:::.rxRtoolsBaseWin(), fixed=TRUE);
+    python <- gsub("/", "\\", rxode2:::.rxPythonBaseWin(), fixed=TRUE);
     R <- gsub("/", "\\", Sys.getenv("R_HOME"), fixed=TRUE);
     lic <- gsub("/", "\\", devtools::package_file("LICENSE"), fixed=TRUE);
     readme <- gsub("/", "\\", devtools::package_file("build/installation-notes.rtf"), fixed=TRUE);
@@ -220,7 +220,7 @@ buildInstaller <- function(name="nlmixr"){
     icon <- gsub("/", "\\", devtools::package_file("build/icon_red.ico"), fixed=TRUE)
     rver <- paste(R.version$major,R.version$minor,sep=".");
     ## rtools.curr <- utils::readRegistry("SOFTWARE\\R-core\\Rtools", hive = "HLM", view = "32-bit", maxdepth = 2);
-    full.ver <- gsub("Rtools version ", "", readLines(file.path(RxODE:::.rxRtoolsBaseWin(), "VERSION.txt")))
+    full.ver <- gsub("Rtools version ", "", readLines(file.path(rxode2:::.rxRtoolsBaseWin(), "VERSION.txt")))
     min.rver <- gsub("([0-9]+[.][0-9]+).*", "\\1", full.ver);
     rtools.curr <- min.rver;
     rtools.cur.ver <- rtools.curr

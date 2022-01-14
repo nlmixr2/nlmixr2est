@@ -1,5 +1,11 @@
 nlmixr2Test(
+<<<<<<< HEAD
   {
+=======
+{
+
+    context("M2 -- all observations")
+>>>>>>> origin/main
 
     .nlmixr <- function(...) {
       try(suppressWarnings(nlmixr(...)))

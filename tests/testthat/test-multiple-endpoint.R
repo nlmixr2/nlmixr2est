@@ -42,7 +42,7 @@ nlmixr2Test(
       expect_equal(tmp$predDf$cond, c("center", "c20"))
       expect_equal(tmp$predDf$var, c("cp", "cp2"))
 
-      ## tmp2 <- RxODE::etTrans(df,tmp$rxode,TRUE)
+      ## tmp2 <- rxode2::etTrans(df,tmp$rxode,TRUE)
 
       one.compartment.saem <- function() {
         ini({

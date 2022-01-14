@@ -11,6 +11,7 @@ nlmixr2Test(
 
 
     test_that("resuming the fit should not return the same datasets as before", {
+
       one.cmt <- function() {
         ini({
           ## You may label each parameter with a comment
@@ -47,7 +48,7 @@ nlmixr2Test(
       fit2 <- nlmixr2:::bootstrapFit(fit, nboot = 4, restart = FALSE)
 
       output_dir <-
-        paste0("nlmixrBootstrapCache_", "fit", "_", fit$bootstrapMd5)
+        paste0("nlmixr2BootstrapCache_", "fit", "_", fit$bootstrapMd5)
 
       fnameBootDataPattern <- paste0("boot_data",
         "_", "[0-9]+", ".rds",
@@ -73,6 +74,7 @@ nlmixr2Test(
     })
 
     testthat::test_that("different confidence levels should result in different bands", {
+
       one.cmt <- function() {
         ini({
           ## You may label each parameter with a comment
@@ -96,7 +98,7 @@ nlmixr2Test(
         })
       }
 
-      fit <- suppressWarnings(nlmixr(
+      fit <- suppressWarnings(nlmixr2(
         one.cmt,
         samp_dat,
         est = "focei",
@@ -119,6 +121,7 @@ nlmixr2Test(
     })
 
     testthat::test_that("expected columns in fit$parFixedDf object should match", {
+
       one.cmt <- function() {
         ini({
           ## You may label each parameter with a comment
@@ -142,7 +145,7 @@ nlmixr2Test(
         })
       }
 
-      fit <- suppressWarnings(nlmixr(
+      fit <- suppressWarnings(nlmixr2(
         one.cmt,
         samp_dat,
         est = "focei",
@@ -160,7 +163,7 @@ nlmixr2Test(
       testthat::expect_equal(colsAfter, colsBefore)
 
       lapply(
-        list.files("./", pattern = "nlmixrBootstrapCache_.*"),
+        list.files("./", pattern = "nlmixr2BootstrapCache_.*"),
         function(x) {
           unlink(x, recursive = TRUE, force = TRUE)
         }

@@ -112,6 +112,10 @@ nmObjGetControl.fo <- nmObjGetControl.focei
 
 #' @rdname nmObjGetControl
 #' @export
+nmObjGetControl.posthoc <- nmObjGetControl.focei
+
+#' @rdname nmObjGetControl
+#' @export
 nmObjGetControl.saem <- function(x, ...) {
   .env <- x[[1]]
   if (exists("saemControl", .env)) {

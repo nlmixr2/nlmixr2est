@@ -6,6 +6,7 @@
 \alias{nmObjGetControl.foce}
 \alias{nmObjGetControl.foi}
 \alias{nmObjGetControl.fo}
+\alias{nmObjGetControl.posthoc}
 \alias{nmObjGetControl.saem}
 \alias{nmObjGetControl.default}
 \title{Get control object from fit}
@@ -19,6 +20,8 @@ nmObjGetControl(x, ...)
 \method{nmObjGetControl}{foi}(x, ...)
 
 \method{nmObjGetControl}{fo}(x, ...)
+
+\method{nmObjGetControl}{posthoc}(x, ...)
 
 \method{nmObjGetControl}{saem}(x, ...)
 
