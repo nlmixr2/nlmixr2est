@@ -79,16 +79,16 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (!.shrink) {
     .df <- .df[, names(.df) != "shrink"]
   }
-  .ini <- x$uif$ini$err[!is.na(x$uif$ini$ntheta)]
+  .ini <- x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]
   ## effect   group   term            estimate std.error statistic
   .df <- data.frame(
     effect = "fixed",
     term = row.names(.df), .df, stringsAsFactors = FALSE
   )
   if (!.ranpar) {
-    .df <- .df[is.na(x$uif$ini$err[!is.na(x$uif$ini$ntheta)]), ]
+    .df <- .df[is.na(x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]), ]
   } else {
-    .tmp <- x$uif$ini$err[!is.na(x$uif$ini$ntheta)]
+    .tmp <- x$ui$iniDf$err[!is.na(x$ui$iniDf$ntheta)]
     .df <- .df[!is.na(.tmp), ]
     .tmp <- .tmp[!is.na(.tmp)]
     .df$group <- paste0("Residual(", .tmp, ")")
