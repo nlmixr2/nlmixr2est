@@ -161,7 +161,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     return(NULL)
   }
   .muRef <- x$ui$muRefDataFrame
-  .curEval <- fit$ui$muRefCurEval
+  .curEval <- x$ui$muRefCurEval
   .theta <- x$theta
   .df <- .fixNames(x$parFixedDf)
   if (is.na(exponentiate)) {

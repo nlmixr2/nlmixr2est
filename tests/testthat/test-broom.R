@@ -342,100 +342,6 @@ nlmixr2Test(
       })
     }
 
-
-    fitN <- .nlmixr(one.compartment, theo_sd, est = "nlme", control = nlmeControl(pnlsTol = 0.6))
-    test_that("tidy works on nlmixr fit nlme fits", {
-      td <- tidy(fitN, exponentiate = NA)
-      check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
-      expect_equal(
-        td$term,
-        c(
-          "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
-        )
-      )
-      td <- tidy(fitN, conf.level = 0.9, exponentiate = NA)
-      check_tidy(td, 7, 9, c(
-        "effect", "group", "term", "estimate", "std.error", "statistic", "p.value",
-        "conf.low", "conf.high"
-      ))
-      expect_equal(
-        td$term,
-        c(
-          "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
-        )
-      )
-      .est <- td$estimate
-      .stdErr <- td$std.error
-      .confLow <- td$conf.low
-
-      td <- tidy(fitN, conf.level = 0.9, exponentiate = FALSE)
-      check_tidy(td)
-      expect_equal(td$estimate[1:3], log(.est)[1:3],
-        tolerance = tol
-      )
-      expect_equal(td$estimate[-(1:3)], .est[-(1:3)],
-        tolerance = tol
-      )
-      ## exp(.df$model.est[.exp])*.df$std.error[.exp]
-      expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL),
-        .stdErr[1:3],
-        tolerance = tol
-      )
-      expect_equal(exp(td$conf.low), .confLow,
-        tolerance = tol
-      )
-
-      for (ef in c("ran_vals", "random")) {
-        td <- tidy(fitN, effects = ef, exponentiate = NA)
-        td1 <- td$estimate
-        check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-        td <- tidy(fitN, effects = ef, exponentiate = FALSE)
-        td2 <- td$estimate
-        check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-        td <- tidy(fitN, effects = ef, exponentiate = TRUE)
-        td3 <- td$estimate
-        check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-        expect_equal(td1, td2)
-        expect_equal(td2, td3)
-      }
-
-      td <- tidy(fitN, effects = "ran_coef", exponentiate = NA)
-      td1 <- td$estimate
-      check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-      td <- tidy(fitN, effects = "ran_coef", exponentiate = FALSE)
-      td2 <- td$estimate
-      check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-      td <- tidy(fitN, effects = "ran_coef", exponentiate = TRUE)
-      td3 <- td$estimate
-      check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-
-      expect_equal(log(td1), td2, tolerance = tol)
-      expect_equal(td2, log(td3), tolerance = tol)
-
-      td <- tidy(fitN, effects = "ran_pars", exponentiate = NA)
-      td1 <- td$estimate
-      check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-
-      td <- tidy(fitN, effects = "ran_pars", exponentiate = FALSE)
-      td2 <- td$estimate
-      check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-
-      td <- tidy(fitN, effects = "ran_pars", exponentiate = TRUE)
-      td3 <- td$estimate
-      check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-
-      expect_equal(td1, td2, tolerance = tol)
-      expect_equal(td2, td3, tolerance = tol)
-    })
-
-
     fitP <- .nlmixr(one.compartment, theo_sd, est = "posthoc")
 
     test_that("tidy works on posthoc fit fits", {
@@ -546,6 +452,7 @@ nlmixr2Test(
       expect_equal(td1, td2, tolerance = tol)
       expect_equal(td2, td3, tolerance = tol)
     })
-  },
+}
+,
   test = "broom"
 )
