@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("full cov FOCEi (posthoc surrogate)")
 
     library(dplyr)
 
@@ -49,7 +48,7 @@ nlmixrTest(
 
 
     f <- suppressWarnings(nlmixr(One.SD.ODE, dat, "posthoc"))
-    expect_true(inherits(f, "nlmixrPosthoc"))
+    expect_s3_class(f, "nlmixrPosthoc")
   },
   test = "focei"
 )

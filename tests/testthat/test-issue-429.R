@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
 {
   test_that("focei 429", {
 
@@ -62,7 +62,7 @@ nlmixrTest(
 
     fit.TOF <- expect_error(nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0)), NA)
 
-    expect_true(inherits(fit.TOF, "nlmixrFitCore"))
+    expect_s3_class(fit.TOF, "nlmixr2FitCore")
 
   })
 }, test="focei")

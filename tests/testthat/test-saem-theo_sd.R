@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Test SAEM functions")
 
     mod <- function() {
       ini({
@@ -132,7 +131,7 @@ nlmixrTest(
         .doIt <- FALSE
       }
       if (.doIt) {
-        ctl1 <- saemControl(nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
+        ctl1 <- saemControl(print=0, nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
         mod2 <- eval(parse(text = paste0(
           "mod %>% model(ipre~", paste(.mod, collapse = "+"), ") %>% ",
           gsub("c[(]", "ini(", deparse1(.est))

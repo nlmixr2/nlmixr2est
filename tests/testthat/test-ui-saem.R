@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("UI SAEM tests")
 
     m1 <- function() {
       ini({ # Where initial conditions/variables are specified

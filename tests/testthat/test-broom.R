@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
 {
 
   library(broom.mixed)
@@ -8,7 +8,7 @@ nlmixrTest(
 
     ##' test the basics of tidy/augment/glance output: is a data frame, no row names
     check_tidiness <- function(o) {
-      testthat::expect_is(o, "tbl_df")
+      testthat::expect_s3_class(o, "tbl_df")
       testthat::expect_equal(rownames(o), as.character(seq_len(nrow(o))))
     }
 
@@ -59,9 +59,8 @@ nlmixrTest(
     }
 
 
-    context("broom tidy nlmixr SAEM")
 
-    fitS <- .nlmixr(one.compartment, theo_sd, est = "saem")
+    fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0))
 
     test_that("tidy works on nlmixr fit SAEM fits", {
       td <- tidy(fitS, exponentiate = NA)
@@ -157,7 +156,6 @@ nlmixrTest(
     })
 
     for (f in c("focei", "foce")) {
-      context(sprintf("broom tidy nlmixr %s", f))
       fitF <- .nlmixr(one.compartment, theo_sd, est = f)
 
       test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
@@ -252,7 +250,6 @@ nlmixrTest(
     }
 
     for (f in c("foi", "fo")) {
-      context(sprintf("broom tidy nlmixr %s", f))
       fitF <- .nlmixr(one.compartment, theo_sd, est = f)
       test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
         td <- tidy(fitF, exponentiate = NA)
@@ -346,7 +343,6 @@ nlmixrTest(
     }
 
 
-    context("broom tidy nlmixr nlme")
     fitN <- .nlmixr(one.compartment, theo_sd, est = "nlme", control = nlmeControl(pnlsTol = 0.6))
     test_that("tidy works on nlmixr fit nlme fits", {
       td <- tidy(fitN, exponentiate = NA)
@@ -440,7 +436,6 @@ nlmixrTest(
     })
 
 
-    context("broom tidy nlmixr posthoc")
     fitP <- .nlmixr(one.compartment, theo_sd, est = "posthoc")
 
     test_that("tidy works on posthoc fit fits", {

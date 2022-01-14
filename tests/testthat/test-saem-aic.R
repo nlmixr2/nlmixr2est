@@ -1,7 +1,6 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("testing saem without table can add focei objf")
-
+    # testing saem without table can add focei objf
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -27,7 +26,7 @@ nlmixrTest(
 
     fit <- nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
 
-    expect_true(inherits(fit, "nlmixrFitCore"))
+    expect_s3_class(fit, "nlmixr2FitCore")
     expect_false(inherits(fit, "data.frame"))
     expect_false(inherits(fit, "nlmixrFitData"))
 

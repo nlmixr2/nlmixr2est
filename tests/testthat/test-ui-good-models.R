@@ -1,7 +1,6 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Good UI models should not raise errors")
-
+    # Good UI models should not raise errors
     one.compartment.saem <- function() {
       ini({
         tka <- .5 # Log Ka
@@ -67,7 +66,7 @@ nlmixrTest(
       })
     }
 
-    expect_equal("nlmixrUI", class(nlmixr(two.cmt.pd)))
+    expect_s3_class(nlmixr(two.cmt.pd), "nlmixrUI")
 
 
     one.compartment.IV.model <- function() {
@@ -97,7 +96,7 @@ nlmixrTest(
       })
     }
 
-    expect_equal("nlmixrUI", class(nlmixr(one.compartment.IV.model)))
+    expect_s3_class(nlmixr(one.compartment.IV.model), "nlmixrUI")
 
 
     model1 <- function() {

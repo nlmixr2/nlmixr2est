@@ -1,4 +1,4 @@
-nlmixrTest({
+nlmixr2Test({
   test_that("issue 501", {
     nlmixr_threecmt_mm_no_add_wtcl_pdtg_kout_delay <- function() {
       ini({

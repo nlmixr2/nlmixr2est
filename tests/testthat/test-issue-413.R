@@ -1,4 +1,4 @@
-nlmixrTest(
+nlmixr2Test(
   {
     pk.turnover.emax3 <- function() {
       ini({

@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Back-transform vs scaling checks (#161)")
     test_that("Log-scaled vs Back-transformed parameters", {
       run7.mod <- function() {
         ini({

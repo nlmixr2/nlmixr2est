@@ -1,6 +1,5 @@
-nlmixrTest(
+nlmixr2Test(
   {
-    context("Multiple endpoint parsing")
     test_that("multiple-endpoint", {
       tmp <- theo_sd
       tmp$EVID <- ifelse(tmp$EVID == 0, 0, 1)
@@ -43,7 +42,7 @@ nlmixrTest(
       expect_equal(tmp$predDf$cond, c("center", "c20"))
       expect_equal(tmp$predDf$var, c("cp", "cp2"))
 
-      ## tmp2 <- RxODE::etTrans(df,tmp$rxode,TRUE)
+      ## tmp2 <- rxode2::etTrans(df,tmp$rxode,TRUE)
 
       one.compartment.saem <- function() {
         ini({
@@ -71,7 +70,7 @@ nlmixrTest(
       }
 
       tmp <- nlmixr(one.compartment.saem)
-      expect_true(inherits(tmp, "nlmixrUI"))
+      expect_s3_class(tmp, "nlmixrUI")
 
 
 
@@ -101,7 +100,7 @@ nlmixrTest(
       }
 
       d <- nlmixr(one.compartment.saem)
-      expect_true(inherits(d, "nlmixrUI"))
+      expect_s3_class(d, "nlmixrUI")
 
       one.compartment.saem <- function() {
         ini({
@@ -129,7 +128,7 @@ nlmixrTest(
       }
 
       d <- nlmixr(one.compartment.saem)
-      expect_true(inherits(d, "nlmixrUI"))
+      expect_s3_class(d, "nlmixrUI")
 
       pk.turnover.emax <- function() {
         ini({
@@ -307,7 +306,7 @@ nlmixrTest(
         })
       }
 
-      expect_true(inherits(nlmixr(pk.turnover.emax4), "nlmixrUI"))
+      expect_s3_class(nlmixr(pk.turnover.emax4), "nlmixrUI")
 
       pk.turnover.emax4 <- function() {
         ini({
