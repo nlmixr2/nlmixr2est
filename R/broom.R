@@ -160,7 +160,8 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   if (.d[1] == 0) {
     return(NULL)
   }
-  .muRef <- x$mu.ref
+  .muRef <- x$ui$muRefDataFrame
+  .curEval <- fit$ui$muRefCurEval
   .theta <- x$theta
   .df <- .fixNames(x$parFixedDf)
   if (is.na(exponentiate)) {
@@ -173,29 +174,31 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
   .eta <- x$eta
   .noMuRef <- c()
   .x <- setNames(
-    data.frame(lapply(names(.eta), function(n) {
-      if (any(n == names(.muRef))) {
-        .n <- .muRef[[n]]
-        .ret <- .eta[[n]] + .theta[.n]
-        if (any(.n == names(.exp))) {
-          if (.exp[.n]) {
+    data.frame(lapply(names(.eta), function(eta) {
+      .w <- which(.muRef$eta == eta)
+      if (length(.w) == 1L) {
+        .thetaName <- .muRef$theta[.w]
+        .ret <- .eta[[eta]] + .theta[.thetaName]
+        if (any(.thetaName == names(.exp))) {
+          if (.exp[.thetaName]) {
             .ret <- exp(.ret)
           }
         }
       } else {
-        .ret <- .eta[[n]]
-        if (n != "ID") {
-          warning(sprintf("The parameter '%s' is not mu-referenced and the coef will not be returned", n))
-          .noMuRef <<- c(.noMuRef, n)
+        if (eta != "ID") {
+          warning(sprintf("the parameter '%s' is not mu-referenced and the coef will not be returned", eta), call.=FALSE)
+          .noMuRef <<- c(.noMuRef, eta)
         }
+        .ret <- .eta[[eta]]
       }
       return(.ret)
-    })), sapply(names(.eta), function(n) {
-      if (any(n == names(.muRef))) {
-        .n <- .muRef[[n]]
-        return(.n)
+    })), sapply(names(.eta), function(eta) {
+      .w <- which(.muRef$eta == eta)
+      if (length(.w) == 1L) {
+        .thetaName <- .muRef$theta[.w]
+        return(.thetaName)
       }
-      return(n)
+      return(eta)
     })
   )
   .tmp <- stack(.x[, -1])
@@ -257,7 +260,8 @@ glance.nlmixr2FitCore <- function(x, ...) {
 glance.nlmixr2FitCoreSilent <- glance.nlmixr2FitCore
 
 augment.nlmixr2FitCore <- function(x, ...) {
-  stop("augment is not yet implemented for nlmixr2 models")
+  stop("augment is not yet implemented for nlmixr2 models",
+       call.=FALSE)
 }
 
 augment.nlmixr2FitCoreSilent <- augment.nlmixr2FitCore
