@@ -10,44 +10,53 @@ nlmixr2Test(
     dat <- Wang2007
     dat$DV <- dat$Y
 
+    ## Enhance data frame to include dosing records.
+    dat2 <- dat[dat$Time == 0, ]
+    dat2$EVID <- 101
+    dat2$AMT <- 10
+    dat2 <- rbind(dat2, data.frame(dat, EVID = 0, AMT = 0))
+    dat2 <- dat2[(order(dat2$ID, -dat2$EVID, dat2$Time)), ]
+
+
     f <- function() {
       ini({
-        ke <- 0.5
+        tke <- 0.5
         eta.ke ~ 0.04
         prop.sd <- sqrt(0.1)
       })
       model({
-        ke <- ke * exp(eta.ke)
+        ke <- tke * exp(eta.ke)
         ipre <- 10 * exp(-ke * t)
         ipre ~ prop(prop.sd)
       })
     }
-    f <- rxode2::rxode2(f)
+
+    f <- nlmixr(f)
 
     fit.prop <- .nlmixr(f, dat, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
 
     fo <- function() {
       ini({
-        ke <- 0.5
+        tke <- 0.5
         eta.ke ~ 0.04
         prop.sd <- sqrt(0.1)
       })
       model({
-        ke <- ke * exp(eta.ke)
+        ke <- tke * exp(eta.ke)
         d/dt(ipre) <- -ke * ipre
         ipre ~ prop(prop.sd)
       })
     }
 
-    fo <- rxode2::rxode2(fo)
+    fo <- nlmixr(fo)
 
-    fit.prop2 <- .nlmixr(f, dat, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
+    fit.prop2 <- .nlmixr(fo, dat2, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
 
     out.focei.prop <- qs::qread("out.focei.prop.qs")
 
     test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
       expect_equal(fit.prop$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop$`ETA[1]`, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
       ## Individual properties
       expect_equal(fit.prop$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
       expect_equal(fit.prop$IRES, out.focei.prop$IRES, tolerance=1e-3)
@@ -71,66 +80,63 @@ nlmixr2Test(
 
     test_that("Matches NONMEM objective proportional function; (Based on Wang2007; unoptimized)", {
       # Check unoptimized expression
-      expect_equal(fit.prop2$objective, 39.458, tol=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop2$`ETA[1]`, out.focei.prop$ETA1, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
+      expect_equal(fit.prop2$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
       ## Individual properties
-      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tol=1e-3)
-      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tol=1e-3)
-      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tol=1e-3)
+      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
+      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tolerance=1e-3)
+      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
       ## WRES variants
-      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$RES, out.focei.prop$RES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
       ## FOI equivalents
-      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tol=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
       ## CWRES variants
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
       ## Note that E[x] for CPRED and CPREDI are equal
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
     })
 
-
     testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2) {
-      fit1 <- .nlmixr(fo, dat2, "focei",
+      .f <- fun(f)
+      .fo <- fun(fo)
+      fit1 <- .nlmixr(.fo, dat2, "focei",
                       control = foceiControl(
                         maxOuterIterations = 0, covMethod = "",
                         addProp = paste0("combined", addProp)))
-      fit2 <- .nlmixr(f, dat, "focei", control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp)))
 
-      fit3 <- .foceiFit(dat2, inits, mypar1, m1, pred, fun,
-        control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp),
-          interaction = FALSE
-        )
-      )
-      fit4 <- .foceiFit(dat, inits, mypar1, mod, pred, fun,
-        control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp), interaction = FALSE
-        ),
-        interaction = FALSE
-      )
-      fit5 <- .foceiFit(dat2, inits, mypar1, m1, pred, fun,
-        control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp),
-          interaction = FALSE, fo = TRUE
-        )
-      )
-      fit6 <- .foceiFit(dat, inits, mypar1, mod, pred, fun,
-        control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp), interaction = FALSE
-        ),
-        interaction = FALSE, fo = TRUE
-      )
+      fit2 <- .nlmixr(.f, dat, "focei",
+                      control = foceiControl(
+                        maxOuterIterations = 0, covMethod = "",
+                        addProp = paste0("combined", addProp)))
+
+      fit3 <- .nlmixr(.fo, dat2, "foce",
+                      control = foceiControl(
+                        maxOuterIterations = 0, covMethod = "",
+                        addProp = paste0("combined", addProp)))
+
+      fit4 <- .nlmixr(.f, dat, "foce",
+                      control = foceiControl(
+                        maxOuterIterations = 0, covMethod = "",
+                        addProp = paste0("combined", addProp)))
+
+      fit5 <- .nlmixr(.fo, dat2, "fo",
+                      control = foceiControl(
+                        maxOuterIterations = 0, covMethod = "",
+                        addProp = paste0("combined", addProp)))
+      setOfv(fit5, "fo")
+
+      fit6 <- .nlmixr(.f, dat, "fo", control = foceiControl(
+        maxOuterIterations = 0, covMethod = "",
+        addProp = paste0("combined", addProp)))
+      setOfv(fit6, "fo")
+
+
       .n <- paste(type, c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo"), paste0("combined", addProp))
       ret <- c(fit1$objective, fit2$objective, fit3$objective, fit4$objective, fit5$objective, fit6$objective)
       ret <- setNames(ret, .n)
@@ -138,69 +144,105 @@ nlmixr2Test(
       ## Now test
       if (!all(is.na(val))) {
         test_that(
-          type,
-          expect_equal(ret, val, tol=1e-3)
-        )
+          type,{
+            expect_equal(setNames(ret, NULL), setNames(val, NULL), tolerance=1e-3)
+          })
       }
       return(ret)
     }
 
-    fit.prop <- .foceiFit(dat, inits, mypar1, mod, pred, function() {
-      return(prop(.1))
-    },
-    control = foceiControl(maxOuterIterations = 0, covMethod = "")
-    )
-
-    fit.prop2 <- .foceiFit(dat, inits, mypar1, mod, pred, function() {
-      return(prop(.1))
-    },
-    control = foceiControl(maxOuterIterations = 0, covMethod = "")
-    )
-
-
-
-    testErr("prop", function() {
-      prop(.1)
+    testErr("prop", function(f) {
+      f %>% model(ipre ~ prop(prop.sd)) %>% ini(prop.sd=sqrt(0.1))
     }, c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207))
 
-    testErr("add", function() {
-      add(.1)
-    }, c(-2.059, -2.059, -2.059, -2.059, 0.026, -2.059))
+    testErr("add", function(f) {
+      f %>% model(ipre ~ add(add.sd)) %>% ini(add.sd=sqrt(0.1))
+    }, c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026))
 
-    testErr("add+prop", function() {
-      add(.1) + prop(.1)
+    testErr("pow1", function(f) {
+      f %>% model(ipre ~ pow(pow.sd, pw)) %>% ini(pow.sd=sqrt(0.1), pw=1)
+    }, c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207))
+
+    testErr("pow", function(f) {
+      f %>% model(ipre ~ pow(pow.sd, pw)) %>% ini(pow.sd=sqrt(0.1), pw=0.5)
+    }, c(9.966, 9.966, 9.948, 9.331, 9.651, 9.651))
+
+    testErr("add+prop, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=sqrt(0.1), prop.sd=0)
+    }, c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026), addProp = 2)
+
+    testErr("add+prop, combined 2->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=0, prop.sd=sqrt(0.1))
+    }, c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207), addProp = 2)
+
+    testErr("add+prop, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1))
     }, c(39.735, 39.735, 39.562, 39.499, 39.505, 39.499), addProp = 2)
 
-    testErr("add+prop", function() {
-      add(.1) + prop(.1)
+    testErr("add+prop, combined 1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1))
     }, c(43.554, 43.554, 43.416, 43.394, 43.398, 43.394), addProp = 1)
 
-    testErr("add+pow", function() {
-      add(.1) + pow(.1, 0.5)
-    }, c(21.108, 21.108, 21.065, 20.725, 20.788, 20.725), addProp = 2)
+    testErr("add+prop, combined 1->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=sqrt(0.1), prop.sd=0)
+    }, c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026), addProp = 1)
 
-    testErr("add+pow", function() {
-      add(.1) + pow(.1, 0.5)
-    }, c(26.065, 26.065, 26.011, 25.873, 25.897, 25.873), addProp = 1)
+    testErr("add+prop, combined 1->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd)) %>% ini(add.sd=0, prop.sd=sqrt(0.1))
+    }, c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207), addProp = 1)
 
-    testErr("lnorm", function() {
-      lnorm(0.1)
+    testErr("add+prop, combined 1 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + combined1()) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, c(43.554, 43.554, 43.416, 43.394, 43.398, 43.394), addProp = 2)
+
+    testErr("add+prop, combined 2 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + combined2()) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, c(39.735, 39.735, 39.562, 39.499, 39.505, 39.499), addProp = 1)
+
+    testErr("add+pow combined 2 -> add+prop combined2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, c(39.735, 39.735, 39.562, 39.499, 39.505, 39.499), addProp = 2)
+
+    testErr("add+pow combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662), addProp = 2)
+
+    testErr("add+pow combined 1->add+prop combined1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, c(43.554, 43.554, 43.416, 43.394, 43.398, 43.394), addProp = 1)
+
+    testErr("add+pow combined 1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093), addProp = 1)
+
+    testErr("add+pow combined 2 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + combined2()) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662), addProp = 1)
+
+    testErr("add+pow combined 1 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + combined1()) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093), addProp = 2)
+
+    ## start looking at transformations
+
+    testErr("lnorm", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd)) %>% ini(lnorm.sd=sqrt(0.1))
     }, c(40.039, 40.039, 40.039, 40.039, 40.055, 40.039), addProp = 1)
 
-    testErr("lnorm(NA)+prop", function() {
-      lnorm(NA) + prop(0.1)
+    testErr("lnorm(NA)+prop", function(f) {
+      f %>% model(ipre ~ lnorm(NA) + prop(prop.sd)) %>% ini(prop.sd=sqrt(0.1))
     }, c(118.419, 118.419, 118.279, 118.311, 118.311, 118.311), addProp = 1)
 
-    testErr("lnorm(NA)+pow", function() {
-      lnorm(NA) + pow(0.1, 0.5)
+    testErr("lnorm(NA)+pow", function(f) {
+      f %>% model(ipre ~ lnorm(NA) + pow(prop.sd, pw)) %>% ini(prop.sd=sqrt(0.1), pw=0.5)
     }, c(94.535, 94.535, 94.461, 94.478, 94.478, 94.478), addProp = 1)
 
-    testErr("lnorm+prop", function() {
-      lnorm(0.1) + prop(0.1)
+    testErr("lnorm+prop combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=0.5)
     }, c(123.318, 123.318, 123.219, 123.24, 123.24, 123.24), addProp = 1)
 
-    testErr("lnorm+prop", function() {
-      lnorm(0.1) + prop(0.1)
+    testErr("lnorm+prop combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=0.5)
     }, c(118.777, 118.777, 118.646, 118.676, 118.676, 118.676), addProp = 2)
 
     testErr("lnorm+pow", function() {
