@@ -180,10 +180,6 @@ nlme::groupedData
 ##' @export
 nlme::getData
 
-##' @importFrom rxode2 rxSymPySetupPred
-##' @export
-rxode2::rxSymPySetupPred
-
 ##' @importFrom rxode2 et
 ##' @export
 rxode2::et

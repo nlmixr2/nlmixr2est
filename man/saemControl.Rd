@@ -150,14 +150,6 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
-\item{addProp}{one of "combined1" and "combined2"; These are the
-two forms of additive+proportional errors supported by
-monolix/nonmem:
-
-combined1: transform(y)=transform(f)+(a+b*f^c)*eps
-
-combined2: transform(y)=transform(f)+(a^2+b^2*f^(2c))*eps}
-
 \item{singleOde}{This option allows a single ode model to include
 the PK parameter information instead of splitting it into a
 function and a rxode2 model}
