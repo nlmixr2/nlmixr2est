@@ -1,7 +1,7 @@
 nlmixr2Test(
   {
-
     test_that("Inner test", {
+
       ev <- eventTable() %>%
         add.sampling(c(
           95.99, 119.99, 143.99, 144.25, 144.5, 144.75,
@@ -19,27 +19,23 @@ nlmixr2Test(
         268.2, 134.2, 42.6, 25.9, 14.6
       )
 
-      m1 <- RxODE({
-        C2 <- centr / V
-        d / dt(centr) <- -CL * C2
-      })
-
-
-      pred <- function() C2
-
-
-      mypar1 <- function() {
-        CL <- exp(THETA[1] + ETA[1])
-        V <- exp(THETA[2] + ETA[2])
+      m1 <- function() {
+        ini({
+          tcl <- 1.6
+          tv <- 4.5
+          eta.cl ~ 0.1
+          eta.v ~ 0.1
+          prop.sd <- sqrt(0.1)
+        })
+        model({
+          CL <- exp(tcl + eta.cl)
+          V <- exp(tv + eta.v)
+          C2 <- centr / V
+          d/dt(centr) <- -CL * C2
+          C2 ~ prop(prop.sd)
+        })
       }
 
-      inits <- list(
-        THTA = c(1.6, 4.5),
-        OMGA = list(
-          ETA[1] ~ 0.1,
-          ETA[2] ~ 0.1
-        )
-      )
 
       w7 <- data.frame(ev$get.EventTable())
       w7$DV <- NA
@@ -48,17 +44,14 @@ nlmixr2Test(
 
       ETA <- matrix(c(-0.147736086922763, -0.294637022436797), ncol = 2)
 
-      fitPi <- foceiFit(w7, inits, mypar1, m1, pred, function() {
-        return(prop(0.1))
-      },
-      etaMat = ETA,
-      control = foceiControl(
-        maxOuterIterations = 0, maxInnerIterations = 0,
-        covMethod = ""
-      )
-      )
+      fitPi <- nlmixr(m1, w7, est="focei",
+                      foceiControl(etaMat = ETA,
+                                   maxOuterIterations = 0, maxInnerIterations = 0,
+                                   covMethod = ""))
 
-      expect_equal(418.9354, round(fitPi$objective, 4))
+
+      expect_equal(418.935, round(fitPi$objective, 3))
+
     })
   },
   test = "focei"

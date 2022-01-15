@@ -1,5 +1,6 @@
 nlmixr2Test(
-  {
+{
+
     # M2 all observations
     .nlmixr <- function(...) {
       try(suppressWarnings(nlmixr(...)))
