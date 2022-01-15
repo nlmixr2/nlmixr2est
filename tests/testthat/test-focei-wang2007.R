@@ -4,57 +4,105 @@ nlmixr2Test(
     ## For some reason the ODE and solved FOCE proportional models
     ## give quite different results.  However, FOCE doesn't work as
     ## well with prop models.
-    .foceiFit <- function(...) {
-      suppressWarnings(foceiFit(...))
-    }
 
-    mypar1 <- function() {
-      ke <- theta[1] * exp(eta[1])
-    }
-
-    mypar2 <- function() {
-      k <- theta[1] * exp(eta[1])
-      v <- 1
-    }
-
-    mod <- RxODE({
-      ipre <- 10 * exp(-ke * t)
-    })
-
-    out.focei.prop <- readRDS(test_path("out.focei.prop.rds"))
-
-    pred <- function() ipre
-
-    inits <- list(THTA = c(0.5))
-    inits$OMGA <- list(ETA[1] ~ .04)
+    .nlmixr <- function(...) suppressWarnings(nlmixr(...))
 
     dat <- Wang2007
     dat$DV <- dat$Y
 
-    m1 <- RxODE({
-      d / dt(ipre) <- -ke * ipre
+    f <- function() {
+      ini({
+        ke <- 0.5
+        eta.ke ~ 0.04
+        prop.sd <- sqrt(0.1)
+      })
+      model({
+        ke <- ke * exp(eta.ke)
+        ipre <- 10 * exp(-ke * t)
+        ipre ~ prop(prop.sd)
+      })
+    }
+    f <- rxode2::rxode2(f)
+
+    fit.prop <- .nlmixr(f, dat, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
+
+    fo <- function() {
+      ini({
+        ke <- 0.5
+        eta.ke ~ 0.04
+        prop.sd <- sqrt(0.1)
+      })
+      model({
+        ke <- ke * exp(eta.ke)
+        d/dt(ipre) <- -ke * ipre
+        ipre ~ prop(prop.sd)
+      })
+    }
+
+    fo <- rxode2::rxode2(fo)
+
+    fit.prop2 <- .nlmixr(f, dat, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
+
+    out.focei.prop <- qs::qread("out.focei.prop.qs")
+
+    test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
+      expect_equal(fit.prop$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
+      expect_equal(fit.prop$`ETA[1]`, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
+      ## Individual properties
+      expect_equal(fit.prop$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
+      expect_equal(fit.prop$IRES, out.focei.prop$IRES, tolerance=1e-3)
+      expect_equal(fit.prop$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
+      ## WRES variants
+      expect_equal(fit.prop$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
+      ## FOI equivalents
+      expect_equal(fit.prop$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
+      ## CWRES variants
+      expect_equal(fit.prop$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
+      ## Note that E[x] for CPRED and CPREDI are equal
+      expect_equal(fit.prop$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
     })
 
-    ## Enhance data frame to include dosing records.
-    dat2 <- dat[dat$Time == 0, ]
-    dat2$EVID <- 101
-    dat2$AMT <- 10
-    dat2 <- rbind(dat2, data.frame(dat, EVID = 0, AMT = 0))
-    dat2 <- dat2[(order(dat2$ID, -dat2$EVID, dat2$Time)), ]
+
+    test_that("Matches NONMEM objective proportional function; (Based on Wang2007; unoptimized)", {
+      # Check unoptimized expression
+      expect_equal(fit.prop2$objective, 39.458, tol=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
+      expect_equal(fit.prop2$`ETA[1]`, out.focei.prop$ETA1, tol=1e-3) # match NONMEM output
+      ## Individual properties
+      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tol=1e-3)
+      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tol=1e-3)
+      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tol=1e-3)
+      ## WRES variants
+      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tol=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tol=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$RES, out.focei.prop$RES, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tol=1e-3) # match NONMEM output
+      ## FOI equivalents
+      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tol=1e-3) # matches output of PRED from NONMEM
+      ## CWRES variants
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tol=1e-3) # match NONMEM output
+      ## Note that E[x] for CPRED and CPREDI are equal
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tol=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tol=1e-3) # match NONMEM output
+    })
+
 
     testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2) {
-      fit1 <- .foceiFit(dat2, inits, mypar1, m1, pred, fun,
-        control = foceiControl(
+      fit1 <- .nlmixr(fo, dat2, "focei",
+                      control = foceiControl(
+                        maxOuterIterations = 0, covMethod = "",
+                        addProp = paste0("combined", addProp)))
+      fit2 <- .nlmixr(f, dat, "focei", control = foceiControl(
           maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp)
-        )
-      )
-      fit2 <- .foceiFit(dat, inits, mypar1, mod, pred, fun,
-        control = foceiControl(
-          maxOuterIterations = 0, covMethod = "",
-          addProp = paste0("combined", addProp)
-        )
-      )
+          addProp = paste0("combined", addProp)))
+
       fit3 <- .foceiFit(dat2, inits, mypar1, m1, pred, fun,
         control = foceiControl(
           maxOuterIterations = 0, covMethod = "",
@@ -110,51 +158,6 @@ nlmixr2Test(
     )
 
 
-    test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
-      expect_equal(fit.prop$objective, 39.458, tol=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop$`ETA[1]`, out.focei.prop$ETA1, tol=1e-3) # match NONMEM output
-      ## Individual properties
-      expect_equal(fit.prop$IPRED, out.focei.prop$IPRE, tol=1e-3)
-      expect_equal(fit.prop$IRES, out.focei.prop$IRES, tol=1e-3)
-      expect_equal(fit.prop$IWRES, out.focei.prop$IWRES, tol=1e-3)
-      ## WRES variants
-      expect_equal(fit.prop$PRED, out.focei.prop$NPRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop$PRED, out.focei.prop$PRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop$RES, out.focei.prop$RES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop$RES, out.focei.prop$NRES, tol=1e-3) # match NONMEM output
-      ## FOI equivalents
-      expect_equal(fit.prop$PRED, out.focei.prop$PREDI, tol=1e-3) # matches output of PRED from NONMEM
-      ## CWRES variants
-      expect_equal(fit.prop$CRES, out.focei.prop$CRES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CPRED, out.focei.prop$CPRED, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CWRES, out.focei.prop$CWRES, tol=1e-3) # match NONMEM output
-      ## Note that E[x] for CPRED and CPREDI are equal
-      expect_equal(fit.prop$CRES, out.focei.prop$CRESI, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CPRED, out.focei.prop$CPREDI, tol=1e-3) # match NONMEM output
-    })
-    test_that("Matches NONMEM objective proportional function; (Based on Wang2007; unoptimized)", {
-      # Check unoptimized expression
-      expect_equal(fit.prop2$objective, 39.458, tol=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop2$`ETA[1]`, out.focei.prop$ETA1, tol=1e-3) # match NONMEM output
-      ## Individual properties
-      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tol=1e-3)
-      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tol=1e-3)
-      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tol=1e-3)
-      ## WRES variants
-      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tol=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$RES, out.focei.prop$RES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tol=1e-3) # match NONMEM output
-      ## FOI equivalents
-      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tol=1e-3) # matches output of PRED from NONMEM
-      ## CWRES variants
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tol=1e-3) # match NONMEM output
-      ## Note that E[x] for CPRED and CPREDI are equal
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tol=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tol=1e-3) # match NONMEM output
-    })
 
     testErr("prop", function() {
       prop(.1)

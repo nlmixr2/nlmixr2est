@@ -1,14 +1,14 @@
 #' @importFrom rxode2 ini
 #' @export
-ini <- rxode2::ini
+rxode2::ini
 
 #' @importFrom rxode2 model
 #' @export
-model <- rxode2::model
+rxode2::model
 
 #' @importFrom rxode2 lotri
 #' @export
-lotri <- rxode2::lotri
+rxode2::lotri
 
 
 nlmixr2findRhs <- function(x) {
