@@ -2370,7 +2370,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .objC <- qs::qserialize(.obj)
       .size2 <- object.size(.objC)
       if (.size2 < .size) {
-        message("compress ", .item, " in nlmixr2 object, save ", (.size - .size2))
+        .size0 <- (.size - .size2)
+        .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
         assign(.item, .objC, envir=.env)
       }
     }
