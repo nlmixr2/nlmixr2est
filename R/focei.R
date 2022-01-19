@@ -2347,7 +2347,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .foceiPreProcessData(.data, .env, ui)
   .ret0 <- try(.foceiFitInternal(.env))
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
-  if (inherits(.ret0, "try-error")) stop("Could not fit data.")
+  if (inherits(.ret0, "try-error")) {
+    stop("Could not fit dat.", call.=FALSE)
+  }
   .ret <- .ret0
   if (!missing(method))
     .ret$method <- method
