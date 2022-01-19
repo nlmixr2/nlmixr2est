@@ -13,6 +13,8 @@
   takes the supplied `addProp` option to figure out which type of
   combined model is run (by default `combined2()`)
 
+- Focei model cache is now named `focei-md5Digest.qs` and uses `qs`
+  compression/saving/loading.
 
 ## SAEM changes
 
