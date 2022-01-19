@@ -1711,7 +1711,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   inner <- .toRx(s$..inner, "compiling inner model...")
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
-    .predMinusDv <- rxode2::rxGetControl(ui, "predMinusDv", TRUE)
+  .predMinusDv <- rxode2::rxGetControl(ui, "predMinusDv", TRUE)
   if (!is.null(inner)) {
     if (.sumProd) {
       .malert("stabilizing round off errors in FD model...")
@@ -1771,18 +1771,45 @@ rxUiGet.ebe <- function(x, ...) {
 #attr(rxUiGet.ebe, "desc") <- "Get the EBE foceiModelList object"
 
 #' @export
+rxUiGet.foceiModelDigest <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- get("iniDf", .ui)
+  .sumProd <- rxode2::rxGetControl(.ui, "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(.ui, "optExpression", TRUE)
+  .predMinusDv   <- rxode2::rxGetControl(.ui, "predMinusDv", TRUE)
+  digest::digest(c(all(is.na(.iniDf$neta1)),
+                   rxode2::rxGetControl(.ui, "interaction", 1L),
+                   .sumProd, .optExpression, .predMinusDv,
+                   rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
+                   .ui$lstExpr))
+}
+#attr(rxUiGet.foceiModelDigest, "desc") <- "Get the md5 digest for the focei model"
+#' @export
+rxUiGet.foceiModelCache <- function(x, ...) {
+  file.path(rxode2::rxTempDir(),
+            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs"))
+}
+#attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
+
+#' @export
 rxUiGet.foceiModel <- function(x, ...) {
+  .cacheFile <- rxUiGet.foceiModelCache(x, ...)
+  if (file.exists(.cacheFile)) {
+    return(qs::qread(.cacheFile))
+  }
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
   if (all(is.na(.iniDf$neta1))) {
-    rxUiGet.ebe(x, ...)
+    .ret <- rxUiGet.ebe(x, ...)
   } else {
     if (rxode2::rxGetControl(.ui, "interaction", 1L)) {
-      rxUiGet.focei(x, ...)
+      .ret <- rxUiGet.focei(x, ...)
     } else {
-      rxUiGet.foce(x, ...)
+      .ret <- rxUiGet.foce(x, ...)
     }
   }
+  qs::qsave(.ret, .cacheFile)
+  .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
 
