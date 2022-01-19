@@ -32,7 +32,12 @@ nmObjGet.default <- function(x, ...) {
     if (inherits(.ret, "raw")) .ret <- qs::qdeserialize(.ret)
     return(.ret)
   }
-  .lst <- list(get("ui", envir=.env), x[[2]])
+  # Now get the ui, install the control object temporarily and use `rxUiGet`
+  .ui <- get("ui", envir=.env)
+  .ctl <- nmObjGetControl(.createEstObject(.ui), ...)
+  assign("control", .ctl, envir=.ui)
+  on.exit(rm(list="control", envir=.ui))
+  .lst <- list(.ui, x[[2]])
   class(.lst) <- c(.arg, "rxUiGet")
   .ret <- rxUiGet(.lst)
   .ret
