@@ -241,7 +241,9 @@ ui2$multipleEndpoint
 
 
 ## Running a multiple endpoint model
-With this information, we can use the built-in warfarin dataset in nlmixr:
+
+With this information, we can use the built-in warfarin dataset in
+`nlmixr2`:
 
 ```{r}
 summary(warfarin)
