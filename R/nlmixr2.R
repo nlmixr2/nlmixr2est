@@ -172,7 +172,7 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   .env$control <- control
   .env$table <- table
   class(.env) <- c(est, "nlmixr2Est")
-  nlmixr2Est(.env)
+  nlmixr2Est0(.env)
 }
 
 ##' @rdname nlmixr2
@@ -193,7 +193,7 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   .env$control <- control
   .env$table <- table
   class(.env) <- c(est, "nlmixr2Est")
-  nlmixr2Est(.env)
+  nlmixr2Est0(.env)
 }
 
 #' @rdname nlmixr2
@@ -221,7 +221,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, tab
   .env$control <- control
   .env$table <- table
   class(.env) <- c(est, "nlmixr2Est")
-  nlmixr2Est(.env)
+  nlmixr2Est0(.env)
 }
 
 #' @rdname nlmixr2

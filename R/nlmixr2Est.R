@@ -42,3 +42,18 @@ nlmixr2Est <- function(env, ...) {
   }
   UseMethod("nlmixr2Est")
 }
+#' Call nlmixr2Est wrapped to collect the warnings
+#'
+#'
+#' @param env nlmixr2 estimate call
+#' @param ... Other parameters
+#' @return nlmixr2 object
+#' @author Matthew L. Fidler
+#' @noRd
+nlmixr2Est0 <- function(env, ...) {
+  .lst <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
+  .ret <- .lst[[1]]
+  assign("warnings", .lst[[2]], .ret$env)
+  lapply(.lst[[2]], warning, call.=FALSE)
+  .ret
+}
