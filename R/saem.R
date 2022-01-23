@@ -702,7 +702,7 @@ saemControl <- function(seed = 99,
                 call.=FALSE)
       }
       if (.addCov & .sqrtm) {
-        .env$covMethod <- "|fim|"
+        env$covMethod <- "|fim|"
         warning("covariance matrix non-positive definite, corrected by sqrtm(fim %*% fim)",
                 call.=FALSE)
       } else if (!.addCov) {

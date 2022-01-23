@@ -2440,7 +2440,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     error=function(e) {
       if (regexpr("not provided by package", e$message) != -1) {
         if (.envReset$cacheReset) {
-          .malert("try manual reset with 'rxode2::rxClean()'")
+          .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
           stop(e)
         } else {
           # reset
@@ -2453,7 +2453,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
           rxode2::rxClean()
           .envReset$cacheReset <- TRUE
           .envReset$reset <- TRUE
-          .minfo("done")
+          .msuccess("done")
         }
       } else {
         stop(e)
