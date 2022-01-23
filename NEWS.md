@@ -57,13 +57,15 @@
   
 ## nlmixr2 object change
 
-- The nlmixr2 object compresses infrequently used and removes many
-  unneeded objects.
 
 - With `saem`, the nlmixr2 function now saves/compresses the `phiM`
   information.  This means the gaussian and laplacian likelihoods can
   be calculated when you save the nlmixr object and then restore it
   later.
+  
+- The nlmixr2 object compresses infrequently used and removes many
+  unneeded objects. Even with compression, the `saem` objects are
+  often a bit bigger since they include the large `phiM` object.
   
 - `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed`
   and `fit$parFixedDf`
@@ -116,6 +118,14 @@
 ## Delete methods
 
 - Many methods lower level utility functions have been deleted.
+
+## Bug fixes
+
+- Now will reset the cache when items cannot be loaded. In the past
+  error messages like `function
+  'rx_0ba247452048de33b1ffb8af516714fc__calc_lhs' not provided by
+  package 'rx_0ba247452048de33b1ffb8af516714fc_'` would cause the
+  estimation to stop.  Now `rxode2::rxClean()` is run when this occurs.
 
 # nlmixr 2.0.6
 
