@@ -2337,7 +2337,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 }
 
 
-.foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
+.foceiFamilyReturn0 <- function(env, ui, ..., method, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
                                            ui$foceiCmtPreModel, "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
@@ -2348,7 +2348,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .ret0 <- try(.foceiFitInternal(.env))
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) {
-    stop("Could not fit dat.", call.=FALSE)
+    stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }
   .ret <- .ret0
   if (!missing(method))
@@ -2419,6 +2419,42 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
   }
   .ret
+}
+
+.foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
+  .envReset <- new.env(parent=emptyenv())
+  .envReset$reset <- TRUE
+  .envReset$env <- new.env(parent=emptyenv())
+  lapply(ls(envir = env, all.names = TRUE), function(item) {
+    assign(item, get(item, envir = env), envir = .envReset$env)
+  })
+  .envReset$cacheReset <- FALSE
+  while (.envReset$reset) {
+    .envReset$reset <- FALSE
+    tryCatch(.foceiFamilyReturn0(env=env, ui=ui, ..., method=method, est=est),
+             error=function(e) {
+               if (regexpr("not provided by package", e$message) != -1) {
+                 if (.envReset$cacheReset) {
+                   .malert("try manual reset with 'rxode2::rxClean()'")
+                   stop(e)
+                 } else {
+                   # reset
+                   rm(list=ls(envir = env, all.names = TRUE), envir=env)
+                   lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+                     assign(item, get(item, envir = .envReset$env), envir = env)
+                   })
+                   gc()
+                   .minfo("try resetting cache")
+                   rxode2::rxClean()
+                   .envReset$cacheReset <- TRUE
+                   .envReset$reset <- TRUE
+                   .minfo("done")
+                 }
+               } else {
+                 stop(e)
+               }
+             })
+  }
 }
 
 #'@rdname nlmixr2Est
