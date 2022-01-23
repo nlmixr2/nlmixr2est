@@ -937,8 +937,43 @@ saemControl <- function(seed = 99,
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
-  .saemFamilyControl(env, ...)
-  .saemFamilyFit(env,  ...)
+  .envReset <- new.env(parent=emptyenv())
+  .envReset$reset <- TRUE
+  .envReset$env <- new.env(parent=emptyenv())
+  lapply(ls(envir = env, all.names = TRUE), function(item) {
+    assign(item, get(item, envir = env), envir = .envReset$env)
+  })
+  .envReset$cacheReset <- FALSE
+  while (.envReset$reset) {
+    .envReset$reset <- FALSE
+    tryCatch({
+      .saemFamilyControl(env, ...)
+      .envReset$ret <- .saemFamilyFit(env,  ...)
+    },
+    error=function(e) {
+      if (regexpr("not provided by package", e$message) != -1) {
+        if (.envReset$cacheReset) {
+          .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
+          stop(e)
+        } else {
+          # reset
+          rm(list=ls(envir = env, all.names = TRUE), envir=env)
+          lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+            assign(item, get(item, envir = .envReset$env), envir = env)
+          })
+          gc()
+          .minfo("try resetting cache")
+          rxode2::rxClean()
+          .envReset$cacheReset <- TRUE
+          .envReset$reset <- TRUE
+          .msuccess("done")
+        }
+      } else {
+        stop(e)
+      }
+    })
+  }
+  .envReset$ret
 }
 
 #' @rdname nmObjGet
