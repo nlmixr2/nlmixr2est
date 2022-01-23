@@ -34,7 +34,7 @@ nmObjGet.default <- function(x, ...) {
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
   .ui <- get("ui", envir=.env)
-  .ctl <- nmObjGetControl(.createEstObject(.ui), ...)
+  .ctl <- nmObjGetControl(.createEstObject(x[[1]]), ...)
   assign("control", .ctl, envir=.ui)
   on.exit(rm(list="control", envir=.ui))
   .lst <- list(.ui, x[[2]])
