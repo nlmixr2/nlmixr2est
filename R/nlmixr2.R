@@ -1,5 +1,4 @@
 
-
 ##' @importFrom stats predict logLik na.fail pchisq approxfun cov cov2cor dlnorm median na.omit qchisq
 ##' @importFrom n1qn1 n1qn1
 ##' @importFrom brew brew

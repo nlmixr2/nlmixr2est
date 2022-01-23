@@ -18,6 +18,7 @@
 ##'
 ##' This is a S3 generic that allows others to use the nlmixr2
 ##'   environment to do their own estimation routines
+##'
 ##' @export
 nlmixr2Est <- function(env, ...) {
   if (!exists("ui", envir=env)) {

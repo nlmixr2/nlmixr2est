@@ -2337,7 +2337,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 }
 
 
-.foceiFamilyReturn0 <- function(env, ui, ..., method, est="none") {
+.foceiFamilyReturn0 <- function(env, ui, ..., method=NULL, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
                                            ui$foceiCmtPreModel, "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
@@ -2351,7 +2351,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }
   .ret <- .ret0
-  if (!missing(method))
+  if (!is.null(method))
     .ret$method <- method
   .ret$ui <- ui
   .foceiSetupParHistData(.ret)
@@ -2421,40 +2421,46 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .ret
 }
 
-.foceiFamilyReturn <- function(env, ui, ..., method, est="none") {
+.foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .envReset <- new.env(parent=emptyenv())
   .envReset$reset <- TRUE
   .envReset$env <- new.env(parent=emptyenv())
+  .envReset$ui <- ui
+  .envReset$method <- method
+  .envReset$est <- est
   lapply(ls(envir = env, all.names = TRUE), function(item) {
     assign(item, get(item, envir = env), envir = .envReset$env)
   })
   .envReset$cacheReset <- FALSE
   while (.envReset$reset) {
     .envReset$reset <- FALSE
-    tryCatch(.foceiFamilyReturn0(env=env, ui=ui, ..., method=method, est=est),
-             error=function(e) {
-               if (regexpr("not provided by package", e$message) != -1) {
-                 if (.envReset$cacheReset) {
-                   .malert("try manual reset with 'rxode2::rxClean()'")
-                   stop(e)
-                 } else {
-                   # reset
-                   rm(list=ls(envir = env, all.names = TRUE), envir=env)
-                   lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
-                     assign(item, get(item, envir = .envReset$env), envir = env)
-                   })
-                   gc()
-                   .minfo("try resetting cache")
-                   rxode2::rxClean()
-                   .envReset$cacheReset <- TRUE
-                   .envReset$reset <- TRUE
-                   .minfo("done")
-                 }
-               } else {
-                 stop(e)
-               }
-             })
+    tryCatch({
+      .envReset$ret <- .foceiFamilyReturn0(env=env, ui=.envReset$ui, method=.envReset$method, est=.envReset$est)
+    },
+    error=function(e) {
+      if (regexpr("not provided by package", e$message) != -1) {
+        if (.envReset$cacheReset) {
+          .malert("try manual reset with 'rxode2::rxClean()'")
+          stop(e)
+        } else {
+          # reset
+          rm(list=ls(envir = env, all.names = TRUE), envir=env)
+          lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+            assign(item, get(item, envir = .envReset$env), envir = env)
+          })
+          gc()
+          .minfo("try resetting cache")
+          rxode2::rxClean()
+          .envReset$cacheReset <- TRUE
+          .envReset$reset <- TRUE
+          .minfo("done")
+        }
+      } else {
+        stop(e)
+      }
+    })
   }
+  .envReset$ret
 }
 
 #'@rdname nlmixr2Est
