@@ -563,11 +563,13 @@ nlmixr2Test(
     .lnormPowF1 <- c(60.494, 60.494, 60.492, 60.489, 60.49, 60.49)
     .lnormPow1 <- c(89.824, 89.824, 89.803, 89.809, 89.809, 89.809)
 
-
-
-
     .lnormProp2 <- c(118.777, 118.777, 118.646, 118.676, 118.676, 118.676)
+    .lnormPropT2 <- c(69.981, 69.981, 69.947, 69.951, 69.951, 69.951)
+    .lnormPropF2 <- c(45.498, 45.498, 45.495, 45.482, 45.49, 45.49)
 
+    .lnormPow2 <- c(80.244, 80.244, 80.212, 80.219, 80.219, 80.219)
+    .lnormPowF2 <- c(48.202, 48.202, 48.2, 48.193, 48.198, 48.198)
+    .lnormPowT2 <- c(59.837, 59.837, 59.831, 59.826, 59.827, 59.827)
 
     testErr("lnorm", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd)) %>% ini(lnorm.sd=sqrt(0.1))
@@ -582,7 +584,7 @@ nlmixr2Test(
 
 
     ################################################################################
-    ## lnorm combined1
+    ## lnorm(NA) tests
     ################################################################################
 
     testErr("lnorm(NA)+prop", function(f) {
@@ -620,6 +622,11 @@ nlmixr2Test(
     testErr("lnorm(NA)+powF", function(f) {
       f %>% model(ipre ~ lnorm(NA) + powF(prop.sd, pw, f2)) %>% ini(prop.sd=sqrt(0.1), pw=0.5)
     }, .lnormPowF, addProp = 1)
+
+
+    ################################################################################
+    ## lnorm combined1
+    ################################################################################
 
     testErr("lnorm+prop combined1->lnorm(NA)+prop", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=0, prop.sd=sqrt(0.1))
@@ -681,20 +688,70 @@ nlmixr2Test(
       f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
     }, .lnormPowT1, addProp = 1)
 
-
-
     ################################################################################
     ## lnorm combined2
     ################################################################################
 
+    testErr("lnorm+propT combined2->lnorm(NA)+propT", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propT(prop.sd)) %>% ini(lnorm.sd=0, prop.sd=sqrt(0.1))
+    }, .lnormPropT, addProp = 2)
+
+    testErr("lnorm+propF combined2->lnorm(NA)+propF", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propF(prop.sd, f2)) %>% ini(lnorm.sd=0, prop.sd=sqrt(0.1))
+    }, .lnormPropF, addProp = 2)
+
+    testErr("lnorm+prop combined2->lnorm(NA)", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=0)
+    }, .lnorm, addProp = 2)
+
+    testErr("lnorm+propT combined2->lnorm(NA)", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propT(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=0)
+    }, .lnorm, addProp = 2)
+
+    testErr("lnorm+propF combined2->lnorm(NA)", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propF(prop.sd, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=0)
+    }, .lnorm, addProp = 2)
+
+    testErr("lnorm+pow->lnorm+prop combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + pow(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, .lnormProp2, addProp = 2)
 
     testErr("lnorm+prop combined2", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
     }, .lnormProp2 ,addProp = 2)
 
+    testErr("lnorm+propT combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propT(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, .lnormPropT2, addProp = 2)
+
+    testErr("lnorm+propF combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propF(prop.sd, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, .lnormPropF2, addProp = 2)
+
+    testErr("lnorm+powF->lnorm+propF combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powF(prop.sd, pw, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, .lnormPropF2, addProp = 2)
+
     testErr("lnorm+pow->lnorm+prop combined2", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd) + pow(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
     }, .lnormProp2, addProp = 2)
+
+    testErr("lnorm+powT->lnorm+propT combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, .lnormPropT2, addProp = 2)
+
+    testErr("lnorm+powF combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powF(prop.sd, pw, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPowF2, addProp = 2)
+
+    testErr("lnorm+pow combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + pow(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPow2, addProp = 2)
+
+    testErr("lnorm+powT combined2", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPowT2, addProp = 2)
+
 
     stop()
 
