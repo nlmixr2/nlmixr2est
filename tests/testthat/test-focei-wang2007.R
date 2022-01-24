@@ -2,6 +2,7 @@ nlmixr2Test(
   {
 
     .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+    #.nlmixr <- function(...) nlmixr(...)
 
     dat <- Wang2007
     dat$DV <- dat$Y
@@ -555,7 +556,18 @@ nlmixr2Test(
     .lnormPowF <- c(32.834, 32.834, 32.834, 32.697, 32.784, 32.784)
 
     .lnormProp1 <- c(123.318, 123.318, 123.219, 123.24, 123.24, 123.24)
+    .lnormPropT1 <- c(81.152, 81.152, 81.13, 81.135, 81.135, 81.135)
+    .lnormPropF1 <- c(56.785, 56.785, 56.78, 56.774, 56.775, 56.775)
+
+    .lnormPowT1 <- c(72.356, 72.356, 72.351, 72.351, 72.351, 72.351)
+    .lnormPowF1 <- c(60.494, 60.494, 60.492, 60.489, 60.49, 60.49)
+    .lnormPow1 <- c(89.824, 89.824, 89.803, 89.809, 89.809, 89.809)
+
+
+
+
     .lnormProp2 <- c(118.777, 118.777, 118.646, 118.676, 118.676, 118.676)
+
 
     testErr("lnorm", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd)) %>% ini(lnorm.sd=sqrt(0.1))
@@ -583,7 +595,7 @@ nlmixr2Test(
 
     testErr("lnorm(NA)+propF", function(f) {
       f %>% model(ipre ~ lnorm(NA) + propF(prop.sd, f2)) %>% ini(prop.sd=sqrt(0.1))
-    }, , addProp = 1)
+    }, .lnormPropF, addProp = 1)
 
     testErr("lnorm(NA)+pow->lnorm(NA)+prop", function(f) {
       f %>% model(ipre ~ lnorm(NA) + pow(prop.sd, pw)) %>% ini(prop.sd=sqrt(0.1), pw=1)
@@ -591,11 +603,11 @@ nlmixr2Test(
 
     testErr("lnorm(NA)+powT->lnorm(NA)+propT", function(f) {
       f %>% model(ipre ~ lnorm(NA) + powT(prop.sd, pw)) %>% ini(prop.sd=sqrt(0.1), pw=1)
-    }, .lnormPropT1, addProp = 1)
+    }, .lnormPropT, addProp = 1)
 
     testErr("lnorm(NA)+powF->lnorm(NA)+propF", function(f) {
       f %>% model(ipre ~ lnorm(NA) + powF(prop.sd, pw, f2)) %>% ini(prop.sd=sqrt(0.1), pw=1)
-    }, .lnormPropF1, addProp = 1)
+    }, .lnormPropF, addProp = 1)
 
     testErr("lnorm(NA)+pow", function(f) {
       f %>% model(ipre ~ lnorm(NA) + pow(prop.sd, pw)) %>% ini(prop.sd=sqrt(0.1), pw=0.5)
@@ -637,17 +649,39 @@ nlmixr2Test(
       f %>% model(ipre ~ lnorm(lnorm.sd) + prop(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
     }, .lnormProp1, addProp = 1)
 
+    testErr("lnorm+propT combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propT(prop.sd)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, .lnormPropT1, addProp = 1)
+
+    testErr("lnorm+propF combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + propF(prop.sd, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+    }, .lnormPropF1, addProp = 1)
+
+    testErr("lnorm+powF->lnorm+propF combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powF(prop.sd, pw, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+    }, .lnormPropF1, addProp = 1)
+
     testErr("lnorm+pow->lnorm+prop combined1", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd) + pow(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
     }, .lnormProp1, addProp = 1)
 
     testErr("lnorm+powT->lnorm+propT combined1", function(f) {
       f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
-    }, .lnormPropT, addProp = 1)
+    }, .lnormPropT1, addProp = 1)
 
-    testErr("lnorm+powF->lnorm+propF combined1", function(f) {
-      f %>% model(ipre ~ lnorm(lnorm.sd) + powF(prop.sd, pw, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
-    }, .lnormPropF, addProp = 1)
+    testErr("lnorm+powF combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powF(prop.sd, pw, f2)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPowF1, addProp = 1)
+
+    testErr("lnorm+pow combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + pow(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPow1, addProp = 1)
+
+    testErr("lnorm+powT combined1", function(f) {
+      f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+    }, .lnormPowT1, addProp = 1)
+
+
 
     ################################################################################
     ## lnorm combined2
