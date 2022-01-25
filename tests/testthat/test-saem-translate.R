@@ -1,13 +1,9 @@
 test_that("Standard theo linCmt()", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Ka
-      tcl <- log(c(0, 2.7, 100)) # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
+      tka <- 0.45 ; label("Ka")
+      tcl <- log(c(0, 2.7, 100)) ; label("Log Cl")
       tv <- 3.45; label("log V")
-      ## the label("Label name") works with all models
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -108,13 +104,9 @@ test_that("Standard theo linCmt()", {
 test_that("non mu-ref theo linCmt() with fixed components", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- exp(0.45) # Ka
-      tcl <- log(c(0, 2.7, 100)) # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
+      tka <- exp(0.45) ; label("Ka")
+      tcl <- log(c(0, 2.7, 100)) ; label("Log Cl")
       tv <- fix(3.45); label("log V")
-      ## the label("Label name") works with all models
       eta.ka ~ 0.6
       eta.cl ~ fix(0.3)
       eta.v ~ 0.1
@@ -221,14 +213,10 @@ test_that("non mu-ref theo linCmt() with fixed components", {
 test_that("theo wt cov parsing", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Ka
-      tcl <- log(c(0, 2.7, 100)) # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
+      tka <- 0.45 ; label("Ka")
+      tcl <- log(c(0, 2.7, 100)) ; label("Log Cl")
       tv <- 3.45; label("log V")
       cl.wt <- 0
-      ## the label("Label name") works with all models
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -252,8 +240,6 @@ test_that("nimo parsing", {
   
   nimo <- function() {
     ini({
-      ## Note that the UI can take expressions
-      ## Also note that these initial estimates should be provided on the log-scale
       tcl <- log(0.001)
       tv1 <- log(1.45)
       tQ <- log(0.004)
@@ -262,11 +248,9 @@ test_that("nimo parsing", {
       tkint <- log(0.3)
       tksyn <- log(1)
       tkdeg <- log(7)
-      ## Initial estimates should be high for SAEM ETAs
       eta.cl  ~ 2
       eta.v1  ~ 2
       eta.kss ~ 2
-      ##  Also true for additive error (also ignored in SAEM)
       add.err <- 10
     })
     model({
@@ -300,52 +284,64 @@ test_that("nimo parsing", {
   
   f <- nlmixr(nimo)
   
-  expect_equal(f$saemModel0,
-               quote(rxModelVars({
-                 cl <- exp(tcl)
-                 v1 <- exp(tv1)
-                 Q <- exp(tQ)
-                 v2 <- exp(tv2)
-                 kss <- exp(tkss)
-                 kint <- exp(tkint)
-                 ksyn <- exp(tksyn)
-                 kdeg <- exp(tkdeg)
-                 k <- cl/v1
-                 k12 <- Q/v1
-                 k21 <- Q/v2
-                 eff(0) <- ksyn/kdeg
-                 conc = 0.5 * (central/v1 - eff - kss) + 0.5 * sqrt((central/v1 -
-                                                                       eff - kss)^2 + 4 * kss * central/v1)
-                 d/dt(central) = -(k + k12) * conc * v1 + k21 * peripheral -
-                   kint * eff * conc * v1/(kss + conc)
-                 d/dt(peripheral) = k12 * conc * v1 - k21 * peripheral
-                 d/dt(eff) = ksyn - kdeg * eff - (kint - kdeg) * conc * eff/(kss +
-                                                                               conc)
-                 IPRED = log(conc)
-                 rx_pred_ <- IPRED
-               })))
+  expect_equal(
+    f$saemModel0,
+    quote(rxModelVars({
+      cl <- exp(tcl)
+      v1 <- exp(tv1)
+      Q <- exp(tQ)
+      v2 <- exp(tv2)
+      kss <- exp(tkss)
+      kint <- exp(tkint)
+      ksyn <- exp(tksyn)
+      kdeg <- exp(tkdeg)
+      k <- cl/v1
+      k12 <- Q/v1
+      k21 <- Q/v2
+      eff(0) <- ksyn/kdeg
+      conc = 0.5 * (central/v1 - eff - kss) + 0.5 * sqrt((central/v1 -
+                                                            eff - kss)^2 + 4 * kss * central/v1)
+      d/dt(central) = -(k + k12) * conc * v1 + k21 * peripheral -
+        kint * eff * conc * v1/(kss + conc)
+      d/dt(peripheral) = k12 * conc * v1 - k21 * peripheral
+      d/dt(eff) = ksyn - kdeg * eff - (kint - kdeg) * conc * eff/(kss + conc)
+      IPRED = log(conc)
+      rx_pred_ <- IPRED
+    })))
   
-  expect_equal(f$saemParamsToEstimate,
-               c("tcl", "tv1", "tQ", "tv2", "tkss", "tkint", "tksyn", "tkdeg"))
+  expect_equal(
+    f$saemParamsToEstimate,
+    c("tcl", "tv1", "tQ", "tv2", "tkss", "tkint", "tksyn", "tkdeg")
+  )
   
-  expect_equal(f$saemParams,
-               "params(tcl,tv1,tQ,tv2,tkss,tkint,tksyn,tkdeg)")
+  expect_equal(
+    f$saemParams,
+    "params(tcl,tv1,tQ,tv2,tkss,tkint,tksyn,tkdeg)"
+  )
   
-  expect_equal(f$saemInParsAndMuRefCovariates,
-               list(inPars = character(0), covars = character(0)))
+  expect_equal(
+    f$saemInParsAndMuRefCovariates,
+    list(inPars = character(0), covars = character(0))
+  )
   
-  expect_equal(f$saemFixed,
-               c(tcl = FALSE, tv1 = FALSE, tQ = FALSE, tv2 = FALSE, tkss = FALSE, tkint = FALSE, tksyn = FALSE, tkdeg = FALSE))
+  expect_equal(
+    f$saemFixed,
+    c(tcl = FALSE, tv1 = FALSE, tQ = FALSE, tv2 = FALSE, tkss = FALSE, tkint = FALSE, tksyn = FALSE, tkdeg = FALSE)
+  )
   
   # eta.cl, eta.v1, eta.kss
-  expect_equal(f$saemEtaTrans,
-               c(1L, 2L, 5L))
+  expect_equal(
+    f$saemEtaTrans,
+    c(1L, 2L, 5L)
+  )
   
   expect_equal(f$saemOmegaTrans, 1:3)
   
-  expect_equal(f$saemModelOmegaFixedValues,
-               structure(c(2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), .Dim = c(8L, 8L)))
-  
+  expect_equal(
+    f$saemModelOmegaFixedValues,
+    structure(c(2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0), .Dim = c(8L, 8L))
+  )
+
   expect_equal(f$saemLow, -Inf)
   
   expect_equal(f$saemHi, Inf)
@@ -380,20 +376,30 @@ test_that("nimo parsing", {
   # lambda for boxCox or yeoJohnson
   expect_equal(f$saemLres, 1)
   
-  expect_equal(f$saemLogEta,
-               c(tcl = TRUE, tv1 = TRUE, tQ = TRUE, tv2 = TRUE, tkss = TRUE, tkint = TRUE, tksyn = TRUE, tkdeg = TRUE))
+  expect_equal(
+    f$saemLogEta,
+    c(tcl = TRUE, tv1 = TRUE, tQ = TRUE, tv2 = TRUE, tkss = TRUE, tkint = TRUE, tksyn = TRUE, tkdeg = TRUE)
+  )
   
-  expect_equal(f$saemInitTheta,
-               structure(c(0.001, 1.45, 0.004, 44, 12, 0.3, 1, 7), .Names = c("", "", "", "", "", "", "", "")))
+  expect_equal(
+    f$saemInitTheta,
+    structure(c(0.001, 1.45, 0.004, 44, 12, 0.3, 1, 7), .Names = c("", "", "", "", "", "", "", ""))
+  )
   
-  expect_equal(f$saemInitOmega,
-               c(tcl = 2, tv1 = 2, tQ = 1, tv2 = 1, tkss = 2, tkint = 1, tksyn = 1, tkdeg = 1))
+  expect_equal(
+    f$saemInitOmega,
+    c(tcl = 2, tv1 = 2, tQ = 1, tv2 = 1, tkss = 2, tkint = 1, tksyn = 1, tkdeg = 1)
+  )
   
-  expect_equal(f$saemThetaDataFrame,
-               structure(list(lower = c(-Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf),
-                              theta = c(-6.90775527898214, 0.371563556432483, -5.52146091786225, 3.78418963391826, 2.484906649788, -1.20397280432594, 0, 1.94591014905531, 10),
-                              fixed = c(FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
-                              upper = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf)),
-                         class = "data.frame",
-                         row.names = c("tcl", "tv1", "tQ", "tv2", "tkss", "tkint", "tksyn", "tkdeg", "add.err")))
+  expect_equal(
+    f$saemThetaDataFrame,
+    structure(
+      list(
+        lower = c(-Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf, -Inf),
+        theta = c(-6.90775527898214, 0.371563556432483, -5.52146091786225, 3.78418963391826, 2.484906649788, -1.20397280432594, 0, 1.94591014905531, 10),
+        fixed = c(FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE),
+        upper = c(Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf, Inf)),
+      class = "data.frame",
+      row.names = c("tcl", "tv1", "tQ", "tv2", "tkss", "tkint", "tksyn", "tkdeg", "add.err"))
+  )
 })
