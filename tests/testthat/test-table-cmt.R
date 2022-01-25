@@ -76,16 +76,18 @@ test_that("proper table outputs", {
     })
   }
   
-  fit.s <- nlmixr(
-    object = f,
-    data = df,
-    est='focei',
-    control = foceiControl(
-      covMethod="r,s",
-      interaction = TRUE,
-      maxOuterIterations = 0,
-      iter.max=0, calcTables=FALSE)
-  )
+  fit.s <-
+    suppressMessages(nlmixr(
+      object = f,
+      data = df,
+      est='focei',
+      control = foceiControl(
+        covMethod="r,s",
+        interaction = TRUE,
+        maxOuterIterations = 0,
+        iter.max=0, calcTables=FALSE
+      )
+    ))
   
   tab1 <- addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
@@ -122,10 +124,15 @@ test_that("proper table outputs", {
     CRPZERO = 5
   )
   
-  expect_error(nlmixr( object = f, data = df, est='focei',
-                       control = foceiControl(
-                         covMethod="r,s",
-                         interaction = TRUE,
-                         maxOuterIterations = 0,
-                         iter.max=0, calcTables=FALSE)))
+  expect_error(suppressMessages(
+    nlmixr(
+      object = f, data = df, est='focei',
+      control = foceiControl(
+        covMethod="r,s",
+        interaction = TRUE,
+        maxOuterIterations = 0,
+        iter.max=0, calcTables=FALSE
+      )
+    )
+  ))
 })
