@@ -1,6 +1,4 @@
-nlmixr2Test(
-{
-
+test_that("npde", {
   one.compartment <- function() {
     ini({
       tka <- 0.45 # Log Ka
@@ -21,17 +19,15 @@ nlmixr2Test(
       cp ~ add(add.sd)
     })
   }
-
+  
   expect_error(suppressWarnings(nlmixr(one.compartment, theo_sd,
                                        est = "focei",
                                        control = list(print = 0),
                                        table=tableControl(npde=TRUE)
-                                       )), NA)
-
+  )), NA)
+  
   expect_error(suppressWarnings(nlmixr(one.compartment, theo_sd,
                                        est="focei",
                                        control = list(print = 0)
-                                       )) %>% addNpde(), NA)
-},
-test = "lvl2"
-)
+  )) %>% addNpde(), NA)
+})
