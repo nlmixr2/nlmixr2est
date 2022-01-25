@@ -1,9 +1,9 @@
 test_that("Good UI models should not raise errors", {
   one.compartment.saem <- function() {
     ini({
-      tka <- .5 # Log Ka
-      tcl <- -3.2 # Log Cl
-      tv <- -1 # Log V
+      tka <- .5 ; label("Log Ka")
+      tcl <- -3.2 ; label("Log Cl")
+      tv <- -1 ; label("Log V")
       eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
@@ -30,18 +30,18 @@ test_that("Good UI models should not raise errors", {
       tV3 <- log(115)
       tQ <- log(11.96)
       BWef <- log(1.87)
-      tSlope <- log(10) ## add for PD estimation
-      tIntercept <- log(1) ## add for PD estimation
+      tSlope <- log(10) ; label("add for PD estimation")
+      tIntercept <- log(1) ; label("add for PD estimation")
       eta.Ka ~ 1.18
       eta.Cl ~ 0.09
       eta.V2 ~ 0.2
       eta.V3 ~ 0.12
       eta.Q ~ 0.12
-      eta.Slope ~ 0.1 ## add for PD estimation
-      eta.Intercept ~ 0.1 ## add for PD estimation
+      eta.Slope ~ 0.1 ; label("add for PD estimation")
+      eta.Intercept ~ 0.1 ; label("add for PD estimation")
       
-      prop.err1 <- 0.1 ## Cp
-      prop.err2 <- 0.3 ## Ef
+      prop.err1 <- 0.1 ; label("Cp")
+      prop.err2 <- 0.3 ; label("Ef")
     })
     model({
       Ka <- exp(tKa + eta.Ka)
@@ -64,7 +64,7 @@ test_that("Good UI models should not raise errors", {
     })
   }
   
-  expect_s3_class(nlmixr(two.cmt.pd), "nlmixrUI")
+  expect_s3_class(nlmixr(two.cmt.pd), "rxUi")
   
   one.compartment.IV.model <- function() {
     ini({ # Where initial conditions/variables are specified
@@ -93,7 +93,7 @@ test_that("Good UI models should not raise errors", {
     })
   }
   
-  expect_s3_class(nlmixr(one.compartment.IV.model), "nlmixrUI")
+  expect_s3_class(suppressMessages(nlmixr(one.compartment.IV.model)), "rxUi")
   
   model1 <- function() {
     ini({
