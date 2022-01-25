@@ -44,8 +44,7 @@ test_that("cov-focei", {
     })
   }
   
-  
-  f <- suppressWarnings(nlmixr(One.SD.ODE, dat, "posthoc"))
+  f <- suppressMessages(suppressWarnings(nlmixr(One.SD.ODE, dat, "posthoc")))
   
   expect_s3_class(f, "posthoc")
 })
