@@ -7,14 +7,9 @@ test_that("sampling should return different datasets at each call", {
 test_that("resuming the fit should not return the same datasets as before", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
-      tv <- 3.45
-      label("log V")
-      ## the label("Label name") works with all models
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -28,16 +23,16 @@ test_that("resuming the fit should not return the same datasets as before", {
     })
   }
   
-  fit <- suppressWarnings(nlmixr(
+  fit <- suppressMessages(suppressWarnings(nlmixr(
     one.cmt,
     theo_sd,
     est = "focei",
     control = list(print = 0),
     table = list(npde = TRUE, cwres = TRUE)
-  ))
+  )))
   
-  fit1 <- nlmixr2:::bootstrapFit(fit, nboot = 2, restart = TRUE)
-  fit2 <- nlmixr2:::bootstrapFit(fit, nboot = 4, restart = FALSE)
+  fit1 <- suppressMessages(nlmixr2:::bootstrapFit(fit, nboot = 2, restart = TRUE))
+  fit2 <- suppressMessages(nlmixr2:::bootstrapFit(fit, nboot = 4, restart = FALSE))
   
   output_dir <-
     paste0("nlmixr2BootstrapCache_", "fit", "_", fit$bootstrapMd5)
@@ -68,14 +63,9 @@ test_that("resuming the fit should not return the same datasets as before", {
 test_that("different confidence levels should result in different bands", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
-      tv <- 3.45
-      label("log V")
-      ## the label("Label name") works with all models
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -89,15 +79,15 @@ test_that("different confidence levels should result in different bands", {
     })
   }
   
-  fit <- suppressWarnings(nlmixr2(
+  fit <- suppressMessages(suppressWarnings(nlmixr2(
     one.cmt,
     theo_sd,
     est = "focei",
     control = list(print = 0),
     table = list(npde = TRUE, cwres = TRUE)
-  ))
+  )))
   
-  fitlist <- nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
+  fitlist <- suppressMessages(nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]])
   bootSummary1 <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.95)
   bootSummary2 <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.75)
   
@@ -114,14 +104,9 @@ test_that("different confidence levels should result in different bands", {
 test_that("expected columns in fit$parFixedDf object should match", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
-      tv <- 3.45
-      label("log V")
-      ## the label("Label name") works with all models
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -135,16 +120,16 @@ test_that("expected columns in fit$parFixedDf object should match", {
     })
   }
   
-  fit <- suppressWarnings(nlmixr2(
+  fit <- suppressMessages(suppressWarnings(nlmixr2(
     one.cmt,
     theo_sd,
     est = "focei",
     control = list(print = 0),
     table = list(npde = TRUE, cwres = TRUE)
-  ))
+  )))
   
   colsBefore <- colnames(fit$parFixedDf)
-  fitlist <- nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]]
+  fitlist <- suppressMessages(nlmixr2:::modelBootstrap(fit, nboot = 4, restart = TRUE)[[1]])
   
   bootSummary <- nlmixr2:::getBootstrapSummary(fitlist, ci = 0.95)
   
