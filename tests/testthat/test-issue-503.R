@@ -25,7 +25,7 @@ test_that("add+prop saem; issue nlmixr#503", {
   }
   
   fitOne.comp.KA.solved_S2 <-
-    nlmixr(
+    suppressMessages(nlmixr(
       One.comp.KA.solved,    #the model definition
       PKdata,                #the data set
       est = "saem",          #the estimation algorithm (SAEM)
@@ -35,7 +35,7 @@ test_that("add+prop saem; issue nlmixr#503", {
                   #type="newuoa",
                   addProp="combined1"),
       tableControl(npde=TRUE, cwres=TRUE)
-    )
+    ))
   
   expect_true(fitOne.comp.KA.solved_S2$theta["add.err"] > 0.4)
 })

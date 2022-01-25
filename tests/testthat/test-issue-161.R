@@ -1,12 +1,11 @@
 test_that("Log-scaled vs Back-transformed parameters", {
   run7.mod <- function() {
     ini({
-      tcl <- log(0.008) # typical value of clearance
-      tv <- log(0.6) # typical value of volume
-      all.cl <- 1 # allometric exponent on CL
-      eta.cl ~ 1
-      # interindividual variability on clearance and volume
-      add.err <- 0.1 # residual variability
+      tcl <- log(0.008) ; label("typical value of clearance")
+      tv <- log(0.6) ; label("typical value of volume")
+      all.cl <- 1 ; label("allometric exponent on CL")
+      eta.cl ~ 1 ; label("interindividual variability on clearance")
+      add.err <- 0.1 ; label("residual variability")
     })
     model({
       cl <- exp(tcl + all.cl * log_allo_wt + eta.cl) # individual value of clearance

@@ -5,9 +5,9 @@ test_that("Error w/time-varying covariates", {
   d$WT[d$TIME > 12] <- d$WT[d$TIME > 12] + 0.01
   one.cmt <- function() {
     ini({
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      tv <- 3.45 # Log V
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("Log V")
       all.cl <- 0
       eta.ka ~ 0.6
       eta.cl ~ 0.3
@@ -16,20 +16,20 @@ test_that("Error w/time-varying covariates", {
     })
     model({
       ka <- exp(tka + eta.ka)
-      cl <- exp(tcl + eta.cl + all.cl * wt)
+      cl <- exp(tcl + eta.cl + all.cl * WT)
       v <- exp(tv + eta.v)
       linCmt() ~ add(add.err)
     })
   }
   
-  expect_error({
+  expect_error(
     f <- nlmixr(one.cmt, d, "nlme")
-  })
+  )
   
-  f <- suppressWarnings(nlmixr(one.cmt, d, "saem", control = list(print = 0, nEm = 4, nBurn = 4)))
+  f <- suppressMessages(suppressWarnings(nlmixr(one.cmt, d, "saem", control = list(print = 0, nEm = 4, nBurn = 4))))
   expect_s3_class(f, "nlmixrSaem")
   
-  f <- suppressWarnings(nlmixr(one.cmt, d, "focei", control = list(sigdig = 2, print = 0)))
+  f <- suppressMessages(suppressWarnings(nlmixr(one.cmt, d, "focei", control = list(sigdig = 2, print = 0))))
   
   expect_s3_class(f, "nlmixrFOCEi")
 })

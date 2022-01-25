@@ -1,5 +1,4 @@
 test_that("saem building works; Issue nlmixr#281", {
-  
   Lesion7 <- function() {
     ini({
       temaxD <- -0.05 ; label("typical value of drug emax")
