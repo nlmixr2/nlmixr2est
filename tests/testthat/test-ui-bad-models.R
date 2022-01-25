@@ -26,7 +26,7 @@ test_that("Duplicate parameters raise errors", {
     })
   }
   
-  expect_error(nlmixr(uif), rex::rex("duplicated parameter names: 'eta.Cl'"))
+  expect_error(nlmixr(uif), rex::rex("duplicated parameter(s): 'eta.Cl'"))
 })
 
 test_that("Un-estimated paramteres raise errors", {
@@ -107,7 +107,7 @@ test_that("Residuals are population parameters", {
     })
   }
   
-  expect_error(nlmixr(uif), rex::rex("residual error component(s) need to be defined with assignment ('=' or '<-') in ini block (not '~'): add.err"))
+  expect_error(nlmixr(uif), rex::rex("the parameter(s) 'add.err' cannot be an error and between subject variability"))
 })
 
 test_that("Parameters need to be named", {
@@ -133,7 +133,13 @@ test_that("Parameters need to be named", {
   }
   ## , rex::rex("The following THETAs are unnamed: THETA[4]")
   
-  expect_error(nlmixr(uif))
+  expect_error(
+    expect_message(
+      nlmixr(uif),
+      regexp="bad matrix specification"
+    ),
+    regexp="lotri syntax errors above"
+  )
   
   uif <- function() {
     ini({
@@ -157,7 +163,13 @@ test_that("Parameters need to be named", {
   }
   
   ## rex::rex("The following ETAs are unnamed: ETA[2]")
-  expect_error(nlmixr(uif))
+  expect_error(
+    expect_message(
+      nlmixr(uif),
+      rex::rex("matrix expression should be 'name ~ c(lower-tri)'")
+    ),
+    regexp="lotri syntax errors above"
+  )
 })
 
 test_that("Parameters cannot be missing or Infinite", {
@@ -202,7 +214,13 @@ test_that("Parameters cannot be missing or Infinite", {
     })
   }
   
-  expect_error(nlmixr(uif), rex::rex("non-numeric values in initial condition for 'tka': NA"))
+  expect_error(
+    expect_message(
+      nlmixr(uif),
+      regexp=rex::rex("estimate syntax unsupported: tka <- NA")
+    ),
+    regexp="lotri syntax errors above"
+  )
   
   uif <- function() {
     ini({
@@ -247,5 +265,8 @@ test_that("There must be at least one prediction", {
       cp <- add(add.err)
     })
   }
-  expect_error(nlmixr(uif), "There must be at least one prediction")
+  expect_error(
+    nlmixr(uif),
+    regexp="there must be at least one prediction"
+  )
 })
