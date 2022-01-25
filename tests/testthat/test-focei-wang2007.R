@@ -748,7 +748,7 @@ testErr("lnorm+powT combined2", function(f) {
   f %>% model(ipre ~ lnorm(lnorm.sd) + powT(prop.sd, pw)) %>% ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
 }, .lnormPowT2, addProp = 2)
 
-stop()
+skip("Tests after this have not been updated to nlmixr2")
 
 testErr("lnorm+pow", function() {
   lnorm(0.1) + pow(0.1, 0.5)
