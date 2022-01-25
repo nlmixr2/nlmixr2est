@@ -1,9 +1,7 @@
-library(dplyr)
-
 test_that("cov-focei", {
-  warfarin %>%
-    filter(dvid == "cp") ->
-    dat
+  dat <-
+    warfarin %>%
+    dplyr::filter(dvid == "cp")
   
   #### doesn't work with FOCEI ### doesn't work with SAEM with CRWES=True but does iwth CWRES=FALSE
   One.SD.ODE <- function() {
