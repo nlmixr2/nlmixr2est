@@ -26,21 +26,21 @@ dat3$limit <- 3
 dat4 <- dat
 dat4$limit <- 12
 
-f.focei <- nlmixr(f, dat, "posthoc")
+f.foce <- suppressMessages(suppressWarnings(nlmixr(f, dat, "posthoc", control = list(interaction = FALSE))))
+f.focei <- suppressWarnings(suppressMessages(nlmixr(f, dat, "posthoc")))
 
-f.focei2 <- suppressWarnings(nlmixr(f, dat2, "posthoc"))
+f.focei2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))
 test_that("censoring changes results", {
   expect_false(isTRUE(all.equal(f.focei$objf, f.focei2$objf)))
 })
 
 test_that("Limit affects values", {
-  f.focei3 <- suppressWarnings(nlmixr(f, dat3, "posthoc"))
+  f.focei3 <- suppressMessages(suppressWarnings(nlmixr(f, dat3, "posthoc")))
   expect_false(isTRUE(all.equal(f.focei2$objf, f.focei3$objf)))
-  f.focei4 <- suppressWarnings(nlmixr(f, dat4, "posthoc"))
-  f.foce <- suppressWarnings(nlmixr(f, dat, "posthoc", control = list(interaction = FALSE)))
-  f.foce2 <- suppressWarnings(nlmixr(f, dat2, "posthoc", control = list(interaction = FALSE)))
+  f.focei4 <- suppressMessages(suppressWarnings(nlmixr(f, dat4, "posthoc")))
+  f.foce2 <- suppressMessages(suppressWarnings(nlmixr(f, dat2, "posthoc", control = list(interaction = FALSE))))
   expect_false(isTRUE(all.equal(f.foce$objf, f.foce2$objf)))
-  f.foce3 <- suppressWarnings(nlmixr(f, dat3, "posthoc", control = list(interaction = FALSE)))
+  f.foce3 <- suppressMessages(suppressWarnings(nlmixr(f, dat3, "posthoc", control = list(interaction = FALSE))))
   expect_false(isTRUE(all.equal(f.foce2$objf, f.foce3$objf)))
 })
 
@@ -53,10 +53,10 @@ test_that("M3/M4 -- Missing, assume LLOQ=3 at t=1.5", {
   datL4 <- datL
   datL4$limit <- 0
   
-  f.foceiL <- suppressWarnings(nlmixr(f, datL, "posthoc"))
+  f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "posthoc")))
   expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL$objf)))
   
-  f.foceiL4 <- suppressWarnings(nlmixr(f, datL4, "posthoc"))
+  f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc")))
   expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL4$objf)))
   expect_false(isTRUE(all.equal(f.foceiL$objf, f.foceiL4$objf)))
   
@@ -67,10 +67,10 @@ test_that("M3/M4 -- Missing, assume LLOQ=3 at t=1.5", {
   datL4 <- datL
   datL4$limit <- 0
   
-  f.foceiL <- suppressWarnings(nlmixr(f, datL, "posthoc"))
+  f.foceiL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "posthoc")))
   expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL$objf)))
   
-  f.foceiL4 <- suppressWarnings(nlmixr(f, datL4, "posthoc"))
+  f.foceiL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc")))
   expect_false(isTRUE(all.equal(f.focei$objf, f.foceiL4$objf)))
   expect_false(isTRUE(all.equal(f.foceiL$objf, f.foceiL4$objf)))
   
@@ -83,10 +83,10 @@ test_that("M3/M4 -- Missing, assume LLOQ=3 at t=1.5", {
   datL4 <- datL
   datL4$limit <- 0
   
-  f.foceL <- suppressWarnings(nlmixr(f, datL, "posthoc", control = list(interaction = FALSE)))
+  f.foceL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "posthoc", control = list(interaction = FALSE))))
   expect_false(isTRUE(all.equal(f.foce$objf, f.foceL$objf)))
   
-  f.foceL4 <- suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE)))
+  f.foceL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE))))
   expect_false(isTRUE(all.equal(f.foce$objf, f.foceL4$objf)))
   expect_false(isTRUE(all.equal(f.foceL$objf, f.foceL4$objf)))
 })
