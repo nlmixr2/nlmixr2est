@@ -246,33 +246,6 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
   base::as.data.frame(..., stringsAsFactors = FALSE)
 }
 
-
-.isTestthat <- function() {
-  return(regexpr("/tests/testthat/", getwd(), fixed = TRUE) != -1)
-}
-
-#' nlmixTest function for testing
-#'
-#' @param expr  Expression for testing
-#' @param silent Boolean for testing
-#' @param test this represents the test group of the test
-#' @author Matthew Fidler
-#' @return Nothing, called for its side effects
-#' @export
-nlmixr2Test <- function(expr, silent = .isTestthat(), test = "cran") {
-  .Call(`_nlmixr2_setSilentErr`, 1L, PACKAGE = "nlmixr2")
-  rxode2::rxSetSilentErr(1L)
-  .test <- .test0 <- Sys.getenv("NOT_CRAN")
-  on.exit({
-    .Call(`_nlmixr2_setSilentErr`, 0L, PACKAGE = "nlmixr2")
-    rxode2::rxSetSilentErr(0L)
-  })
-  if (.test == "true") {
-    force(expr)
-  }
-}
-
-
 #' Nelder-Mead simplex search
 #'
 #' @param start initials

@@ -1,305 +1,295 @@
-nlmixr2Test(
-  {
-    rxClean()
+rxClean()
 
-    fn1 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ pois()
-    }
+fn1 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ pois()
+}
 
+fn2 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ prop(Prop.Err, Prop.Err2)
+}
 
-    fn2 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ prop(Prop.Err, Prop.Err2)
-    }
+fn3 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ prop()
+}
 
-    fn3 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ prop()
-    }
+fn4 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ pois(p1, p2)
+}
 
-    fn4 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ pois(p1, p2)
-    }
+fn5 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dpois()
+}
 
+fn6 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dpois(1, 2)
+}
 
-    fn5 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dpois()
-    }
+fn7 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbinom()
+}
 
-    fn6 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dpois(1, 2)
-    }
+fn8 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbinom(13)
+}
 
-    fn7 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbinom()
-    }
+fn9 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbinom(13, 0.5, 32)
+}
 
-    fn8 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbinom(13)
-    }
+fn10 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbeta()
+}
 
-    fn9 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbinom(13, 0.5, 32)
-    }
+fn11 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbeta(par1)
+}
 
-    fn10 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbeta()
-    }
+fn12 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dbeta(par1, par2, par3, par4)
+}
 
-    fn11 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbeta(par1)
-    }
+fn13 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dt()
+}
 
-    fn12 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dbeta(par1, par2, par3, par4)
-    }
+fn14 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dt(par1, par2, par3)
+}
 
-    fn13 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dt()
-    }
+fn15 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ binom()
+}
 
-    fn14 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dt(par1, par2, par3)
-    }
+fn16 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ binom(par1)
+}
 
+fn17 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ binom(par1, par2, par3)
+}
 
-    fn15 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ binom()
-    }
+fn18 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ beta()
+}
 
-    fn16 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ binom(par1)
-    }
+fn19 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ beta(par1)
+}
 
-    fn17 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ binom(par1, par2, par3)
-    }
+fn20 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ beta(par1, par2, par3, par4)
+}
 
-    fn18 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ beta()
-    }
+## Should ~ t() be supported?
+## Currently t() is also transpose in R.
 
-    fn19 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ beta(par1)
-    }
+fn21 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ t()
+}
 
-    fn20 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ beta(par1, par2, par3, par4)
-    }
+fn22 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ t(par1, par2, par3)
+}
 
-    ## Should ~ t() be supported?
-    ## Currently t() is also transpose in R.
+fn23 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ add()
+}
 
-    fn21 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ t()
-    }
+fn24 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ add(par1, par2)
+}
 
-    fn22 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ t(par1, par2, par3)
-    }
+fn25 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ prop()
+}
 
-    fn23 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ add()
-    }
+fn26 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ prop(par1, par2)
+}
 
-    fn24 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ add(par1, par2)
-    }
+fn27 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ norm()
+}
 
-    fn25 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ prop()
-    }
+fn28 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ norm(par1, par2)
+}
 
-    fn26 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ prop(par1, par2)
-    }
+fn29 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dnorm()
+}
 
-    fn27 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ norm()
-    }
+fn30 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ dnorm(par1, par2)
+}
 
-    fn28 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ norm(par1, par2)
-    }
+fn31 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ nlmixrDist(par1, par2)
+}
 
-    fn29 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dnorm()
-    }
+fn32 <- function() {
+  ini({
+    KA <- c(0, 1)
+    CL <- c(0, 0.5)
+  })
+  model({
+    KA <- KA + eta.KA
+    CL <- CL + eta.CL + add(par1)
+    v1 <- 1
+    linCmt() ~ pois()
+  })
+}
 
-    fn30 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ dnorm(par1, par2)
-    }
+fn33 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ add(par1) + pois(par2)
+}
 
-    fn31 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ nlmixrDist(par1, par2)
-    }
+fn36 <- function() {
+  KA <- KA + eta.KA
+  CL <- CL + eta.CL
+  linCmt() ~ prop(par1) + add(par2) + pois(par3)
+}
 
-    fn32 <- function() {
-      ini({
-        KA <- c(0, 1)
-        CL <- c(0, 0.5)
-      })
-      model({
-        KA <- KA + eta.KA
-        CL <- CL + eta.CL + add(par1)
-        v1 <- 1
-        linCmt() ~ pois()
-      })
-    }
+test_that("Improperly-specified residual distribution functions throw errors", {
+  ## expect_error(nlmixr2:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
+  expect_error(nlmixr2:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn3), "the prop distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn10), "the dbeta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn11), "the dbeta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn12), "the dbeta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn13), "the dt distribution requires 1-2 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn14), "the dt distribution requires 1-2 arguments")
+  ## expect_error(nlmixr2:::nlmixrUIModel(fn15), "The binom distribution requires 2 arguments.")
+  ## expect_error(nlmixr2:::nlmixrUIModel(fn16), "The binom distribution requires 2 arguments.")
+  ## expect_error(nlmixr2:::nlmixrUIModel(fn17), "The binom distribution requires 2 arguments.")
+  expect_error(nlmixr2:::nlmixrUIModel(fn18), "the beta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn19), "the beta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn20), "the beta distribution requires 2-3 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn21), "the t distribution requires 1-2 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn22), "the t distribution requires 1-2 arguments")
+  expect_error(nlmixr2:::nlmixrUIModel(fn23), "the add distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn24), "the add distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn25), "the prop distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn26), "the prop distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn27), "the norm distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn28), "the norm distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn29), "the dnorm distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn30), "the dnorm distribution requires 1 argument")
+  expect_error(nlmixr2:::nlmixrUIModel(fn31), "the nlmixrDist distribution is currently unsupported")
+  expect_error(nlmixr2:::nlmixr(fn32))
+  expect_error(nlmixr2:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
+})
 
-    fn33 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ add(par1) + pois(par2)
-    }
+# Proper Variances
+fn1 <- function() {
+  ini({
+    KA <- c(0, 1)
+    CL <- c(0, 0.5)
+  })
+  model({
+    KA <- KA + eta.KA
+    CL <- CL + eta.CL
+    v1 <- 1
+    linCmt() ~ pois()
+  })
+}
 
-    fn36 <- function() {
-      KA <- KA + eta.KA
-      CL <- CL + eta.CL
-      linCmt() ~ prop(par1) + add(par2) + pois(par3)
-    }
+fn34 <- function() {
+  ini({
+    KA <- c(0, 1)
+    CL <- c(0, 0.5)
+    par1 <- 1
+    par2 <- 2
+  })
+  model({
+    KA <- KA + eta.KA
+    CL <- CL + eta.CL
+    v1 <- 1
+    linCmt() ~ add(par1) + prop(par2)
+  })
+}
 
+fn35 <- function() {
+  ini({
+    KA <- c(0, 1)
+    CL <- c(0, 0.5)
+    par1 <- 1
+    par2 <- 2
+  })
+  model({
+    KA <- KA + eta.KA
+    CL <- CL + eta.CL
+    v1 <- 1
+    linCmt() ~ prop(par1) + add(par2)
+  })
+}
 
-    test_that("Improperly-specified residual distribution functions throw errors", {
-      ## expect_error(nlmixr2:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
-      expect_error(nlmixr2:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn3), "the prop distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn10), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn11), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn12), "the dbeta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn13), "the dt distribution requires 1-2 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn14), "the dt distribution requires 1-2 arguments")
-      ## expect_error(nlmixr2:::nlmixrUIModel(fn15), "The binom distribution requires 2 arguments.")
-      ## expect_error(nlmixr2:::nlmixrUIModel(fn16), "The binom distribution requires 2 arguments.")
-      ## expect_error(nlmixr2:::nlmixrUIModel(fn17), "The binom distribution requires 2 arguments.")
-      expect_error(nlmixr2:::nlmixrUIModel(fn18), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn19), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn20), "the beta distribution requires 2-3 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn21), "the t distribution requires 1-2 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn22), "the t distribution requires 1-2 arguments")
-      expect_error(nlmixr2:::nlmixrUIModel(fn23), "the add distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn24), "the add distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn25), "the prop distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn26), "the prop distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn27), "the norm distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn28), "the norm distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn29), "the dnorm distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn30), "the dnorm distribution requires 1 argument")
-      expect_error(nlmixr2:::nlmixrUIModel(fn31), "the nlmixrDist distribution is currently unsupported")
-      expect_error(nlmixr2:::nlmixr(fn32))
-      expect_error(nlmixr2:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
-    })
-
-
-    # Proper Variances
-    fn1 <- function() {
-      ini({
-        KA <- c(0, 1)
-        CL <- c(0, 0.5)
-      })
-      model({
-        KA <- KA + eta.KA
-        CL <- CL + eta.CL
-        v1 <- 1
-        linCmt() ~ pois()
-      })
-    }
-
-    fn34 <- function() {
-      ini({
-        KA <- c(0, 1)
-        CL <- c(0, 0.5)
-        par1 <- 1
-        par2 <- 2
-      })
-      model({
-        KA <- KA + eta.KA
-        CL <- CL + eta.CL
-        v1 <- 1
-        linCmt() ~ add(par1) + prop(par2)
-      })
-    }
-
-    fn35 <- function() {
-      ini({
-        KA <- c(0, 1)
-        CL <- c(0, 0.5)
-        par1 <- 1
-        par2 <- 2
-      })
-      model({
-        KA <- KA + eta.KA
-        CL <- CL + eta.CL
-        v1 <- 1
-        linCmt() ~ prop(par1) + add(par2)
-      })
-    }
-
-    test_that("Good Parsing of proper variance specifications", {
-      expect_s3_class(nlmixr(fn1), "nlmixrUI")
-      expect_s3_class(nlmixr(fn34), "nlmixrUI")
-      expect_s3_class(nlmixr(fn35), "nlmixrUI")
-    })
-  },
-  test = "cran"
-)
+test_that("Good Parsing of proper variance specifications", {
+  expect_s3_class(nlmixr(fn1), "nlmixrUI")
+  expect_s3_class(nlmixr(fn34), "nlmixrUI")
+  expect_s3_class(nlmixr(fn35), "nlmixrUI")
+})
