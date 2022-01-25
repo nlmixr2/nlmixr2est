@@ -50,7 +50,7 @@ one.compartment <- function() {
   })
 }
 
-fitS <- suppressWarnings(nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0)))
+fitS <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0))))
 
 test_that("tidy works on nlmixr fit SAEM fits", {
   td <- tidy(fitS, exponentiate = NA)
@@ -83,15 +83,21 @@ test_that("tidy works on nlmixr fit SAEM fits", {
   
   td <- tidy(fitS, conf.level = 0.9, exponentiate = FALSE)
   check_tidy(td)
-  expect_equal(td$estimate[1:3], log(.est)[1:3],
-               tolerance = tol
+  expect_equal(
+    td$estimate[1:3],
+    log(.est)[1:3],
+    tolerance = tol
   )
-  expect_equal(td$estimate[-(1:3)], .est[-(1:3)],
-               tolerance = tol
+  expect_equal(
+    td$estimate[-(1:3)],
+    .est[-(1:3)],
+    tolerance = tol
   )
   ## exp(.df$model.est[.exp])*.df$std.error[.exp]
-  expect_equal(setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL), .stdErr[1:3],
-               tolerance = tol
+  expect_equal(
+    setNames(exp(td$estimate[1:3]) * td$std.error[1:3], NULL),
+    .stdErr[1:3],
+    tolerance = tol
   )
   expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
   
@@ -146,7 +152,7 @@ test_that("tidy works on nlmixr fit SAEM fits", {
 })
 
 for (f in c("focei", "foce")) {
-  fitF <- suppressWarnings(nlmixr(one.compartment, theo_sd, est = f))
+  fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f)))
   
   test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
     td <- tidy(fitF, exponentiate = NA)
@@ -240,7 +246,7 @@ for (f in c("focei", "foce")) {
 }
 
 for (f in c("foi", "fo")) {
-  fitF <- suppressWarnings(nlmixr(one.compartment, theo_sd, est = f))
+  fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
   test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
     td <- tidy(fitF, exponentiate = NA)
     check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
@@ -332,7 +338,7 @@ for (f in c("foi", "fo")) {
   })
 }
 
-fitP <- suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc"))
+fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc")))
 
 test_that("tidy works on posthoc fit fits", {
   td <- tidy(fitP, exponentiate = NA)
