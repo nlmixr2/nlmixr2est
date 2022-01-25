@@ -10,9 +10,9 @@ test_that("multiple-endpoint", {
   
   one.compartment.saem <- function() {
     ini({
-      tka <- .5 # Log Ka
-      tcl <- -3.2 # Log Cl
-      tv <- -1 # Log V
+      tka <- .5 ; label("Log Ka")
+      tcl <- -3.2 ; label("Log Cl")
+      tv <- -1 ; label("Log V")
       extra <- 20
       eta.ka ~ 1
       eta.cl ~ 2
@@ -44,9 +44,9 @@ test_that("multiple-endpoint", {
   
   one.compartment.saem <- function() {
     ini({
-      tka <- .5 # Log Ka
-      tcl <- -3.2 # Log Cl
-      tv <- -1 # Log V
+      tka <- .5 ; label("Log Ka")
+      tcl <- -3.2 ; label("Log Cl")
+      tv <- -1 ; label("Log V")
       extra <- 20
       eta.ka ~ 1
       eta.cl ~ 2
@@ -72,9 +72,9 @@ test_that("multiple-endpoint", {
 
   one.compartment.saem <- function() {
     ini({
-      tka <- .5 # Log Ka
-      tcl <- -3.2 # Log Cl
-      tv <- -1 # Log V
+      tka <- .5 ; label("Log Ka")
+      tcl <- -3.2 ; label("Log Cl")
+      tv <- -1 ; label("Log V")
       extra <- 20
       eta.ka ~ 1
       eta.cl ~ 2
@@ -100,9 +100,9 @@ test_that("multiple-endpoint", {
   
   one.compartment.saem <- function() {
     ini({
-      tka <- .5 # Log Ka
-      tcl <- -3.2 # Log Cl
-      tv <- -1 # Log V
+      tka <- .5 ; label("Log Ka")
+      tcl <- -3.2 ; label("Log Cl")
+      tv <- -1 ; label("Log V")
       extra <- 20
       eta.ka ~ 1
       eta.cl ~ 2
@@ -198,18 +198,14 @@ test_that("multiple-endpoint", {
       eta.v ~ 1
       prop.err <- 0.1
       pkadd.err <- 0.1
-      ##
       poplogit <- 2
-      # temax <- 7.5
       tec50 <- log(0.5)
       tkout <- log(0.05)
       te0 <- log(100)
-      ##
       eta.emax ~ .5
       eta.ec50 ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
-      ##
       pdadd.err <- 10
     })
     model({
@@ -249,25 +245,20 @@ test_that("multiple-endpoint", {
       tka <- log(1)
       tcl <- log(0.1)
       tv <- log(10)
-      ##
       eta.ktr ~ 1
       eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
       prop.err <- 0.1
       pkadd.err <- 0.1
-      ##
       poplogit <- 2
-      # temax <- 7.5
       tec50 <- log(0.5)
       tkout <- log(0.05)
       te0 <- log(100)
-      ##
       eta.emax ~ .5
       eta.ec50 ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
-      ##
       pdadd.err <- 10
     })
     model({
@@ -310,25 +301,20 @@ test_that("multiple-endpoint", {
       tka <- log(1)
       tcl <- log(0.1)
       tv <- log(10)
-      ##
       eta.ktr ~ 1
       eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
       prop.err <- 0.1
       pkadd.err <- 0.1
-      ##
       poplogit <- 2
-      # temax <- 7.5
       tec50 <- log(0.5)
       tkout <- log(0.05)
       te0 <- log(100)
-      ##
       eta.emax ~ .5
       eta.ec50 ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
-      ##
       pdadd.err <- 10
     })
     model({
@@ -371,25 +357,20 @@ test_that("multiple-endpoint", {
       tka <- log(1)
       tcl <- log(0.1)
       tv <- log(10)
-      ##
       eta.ktr ~ 1
       eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
       prop.err <- 0.1
       pkadd.err <- 0.1
-      ##
       poplogit <- 2
-      # temax <- 7.5
       tec50 <- log(0.5)
       tkout <- log(0.05)
       te0 <- log(100)
-      ##
       eta.emax ~ .5
       eta.ec50 ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
-      ##
       pdadd.err <- 10
     })
     model({
