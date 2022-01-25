@@ -6,7 +6,6 @@ fn1 <- function() {
   linCmt() ~ pois()
 }
 
-
 fn2 <- function() {
   KA <- KA + eta.KA
   CL <- CL + eta.CL
@@ -24,7 +23,6 @@ fn4 <- function() {
   CL <- CL + eta.CL
   linCmt() ~ pois(p1, p2)
 }
-
 
 fn5 <- function() {
   KA <- KA + eta.KA
@@ -85,7 +83,6 @@ fn14 <- function() {
   CL <- CL + eta.CL
   linCmt() ~ dt(par1, par2, par3)
 }
-
 
 fn15 <- function() {
   KA <- KA + eta.KA
@@ -217,7 +214,6 @@ fn36 <- function() {
   linCmt() ~ prop(par1) + add(par2) + pois(par3)
 }
 
-
 test_that("Improperly-specified residual distribution functions throw errors", {
   ## expect_error(nlmixr2:::nlmixrUIModel(fn1), "The pois distribution requires 1 arguments.")
   expect_error(nlmixr2:::nlmixrUIModel(fn2), "the prop distribution requires 1 argument")
@@ -247,7 +243,6 @@ test_that("Improperly-specified residual distribution functions throw errors", {
   expect_error(nlmixr2:::nlmixr(fn32))
   expect_error(nlmixr2:::nlmixrUIModel(fn33), "the add and pois distributions cannot be combined")
 })
-
 
 # Proper Variances
 fn1 <- function() {
