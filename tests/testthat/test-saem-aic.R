@@ -1,14 +1,9 @@
 test_that("testing saem without table can add focei objf", {
   one.cmt <- function() {
     ini({
-      ## You may label each parameter with a comment
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      ## This works with interactive models
-      ## You may also label the preceding line with label("label text")
-      tv <- 3.45
-      label("log V")
-      ## the label("Label name") works with all models
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -22,17 +17,19 @@ test_that("testing saem without table can add focei objf", {
     })
   }
   
-  fit <- nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
+  fit <- 
+    suppressMessages(
+      nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
+    )
   
   expect_s3_class(fit, "nlmixr2FitCore")
   expect_false(inherits(fit, "data.frame"))
   expect_false(inherits(fit, "nlmixrFitData"))
   
-  expect_error(setOfv(fit, "focei"), NA)
-  expect_error(setOfv(fit, "foce"), NA)
-  expect_error(setOfv(fit, "fo"), NA)
-  expect_error(setOfv(fit, "gauss3_1.6"), NA)
-  expect_error(setOfv(fit, "laplace2"), NA)
-  
-  setOfv(fit, "laplace3")
+  expect_error(suppressMessages(setOfv(fit, "focei")), NA)
+  expect_error(suppressMessages(setOfv(fit, "foce")), NA)
+  expect_error(suppressMessages(setOfv(fit, "fo")), NA)
+  expect_error(suppressMessages(setOfv(fit, "gauss3_1.6")), NA)
+  expect_error(suppressMessages(setOfv(fit, "laplace2")), NA)
+  expect_error(suppressMessages(setOfv(fit, "laplace3")), NA)
 })
