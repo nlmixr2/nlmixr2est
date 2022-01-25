@@ -2,12 +2,12 @@ test_that("saem building works; Issue nlmixr#281", {
   
   Lesion7 <- function() {
     ini({
-      temaxD <- -0.05 # typical value of drug emax
-      tec50 <- -0.04 # typical value of ec50
-      temaxT <- -0.9 # typical value of emax for placebo effect as a function of time
-      tet50 <- 6.64 # typical value of et50
+      temaxD <- -0.05 ; label("typical value of drug emax")
+      tec50 <- -0.04 ; label("typical value of ec50")
+      temaxT <- -0.9 ; label("typical value of emax for placebo effect as a function of time")
+      tet50 <- 6.64 ; label("typical value of et50")
       tkin <- -7.8
-      tslope <- -1 # typical value of growth parameter
+      tslope <- -1 ; label("typical value of growth parameter")
       TRXslope <- -0.1
       tdelay <- 7.15
       
@@ -15,7 +15,7 @@ test_that("saem building works; Issue nlmixr#281", {
       eta.emaxT ~ 0.3
       eta.slope ~ 0.3
       eta.delay ~ 0.3
-      add.err <- .1 # add. residual variability
+      add.err <- .1 ; label("add. residual variability")
     })
     model({
       Resp(0) <- 1 # default Resp(0) = 0
