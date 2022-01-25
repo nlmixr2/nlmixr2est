@@ -1,8 +1,8 @@
 mod <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45 # Log V
+    tka <- 0.45 ; label("Log Ka")
+    tcl <- 1 ; label("Log Cl")
+    tv <- 3.45 ; label("Log V")
     eta.ka ~ 0.6
     eta.cl ~ 0.3
     eta.v ~ 0.1
@@ -21,9 +21,9 @@ mod <- function() {
 
 mod2 <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45 # Log V
+    tka <- 0.45 ; label("Log Ka")
+    tcl <- 1 ; label("Log Cl")
+    tv <- 3.45 ; label("Log V")
     eta.ka ~ 0.6
     eta.cl ~ 0.3
     eta.v ~ 0.1
@@ -167,7 +167,7 @@ ops$id <- seq_along(ops$add)
 
 ## estVal(117)
 
-v <- suppressWarnings(lapply(seq_along(ops$add), estVal))
+v <- suppressMessages(suppressWarnings(lapply(seq_along(ops$add), estVal)))
 
 m <- t(matrix(unlist(v), length(.nm), length(v)))
 dimnames(m) <- list(NULL, .nm)
