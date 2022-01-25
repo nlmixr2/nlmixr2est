@@ -1,8 +1,8 @@
 one.compartment <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45 # Log V
+    tka <- 0.45 ; label("Log Ka")
+    tcl <- 1 ; label("Log Cl")
+    tv <- 3.45 ; label("Log V")
     eta.ka ~ 0.6
     eta.cl ~ 0.3
     eta.v ~ 0.1
@@ -120,9 +120,9 @@ test_that("UI updates work correctly", {
   ## Now test linCmt() issue #166
   one.cmt <- function() {
     ini({
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      tv <- 3.45 # Log V
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("Log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
