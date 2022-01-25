@@ -1,9 +1,9 @@
 test_that("npde", {
   one.compartment <- function() {
     ini({
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      tv <- 3.45 # Log V
+      tka <- 0.45 ; label("Log Ka")
+      tcl <- 1 ; label("Log Cl")
+      tv <- 3.45 ; label("Log V")
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -20,14 +20,26 @@ test_that("npde", {
     })
   }
   
-  expect_error(suppressWarnings(nlmixr(one.compartment, theo_sd,
-                                       est = "focei",
-                                       control = list(print = 0),
-                                       table=tableControl(npde=TRUE)
-  )), NA)
+  expect_error(
+    suppressMessages(suppressWarnings(
+      nlmixr(
+        one.compartment, theo_sd,
+        est = "focei",
+        control = list(print = 0),
+        table=tableControl(npde=TRUE)
+      )
+    )),
+    NA
+  )
   
-  expect_error(suppressWarnings(nlmixr(one.compartment, theo_sd,
-                                       est="focei",
-                                       control = list(print = 0)
-  )) %>% addNpde(), NA)
+  expect_error(
+    suppressMessages(suppressWarnings(
+      nlmixr(
+        one.compartment, theo_sd,
+        est="focei",
+        control = list(print = 0)
+      ) %>% addNpde()
+    )),
+    NA
+  )
 })
