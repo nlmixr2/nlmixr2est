@@ -40,11 +40,15 @@ test_that("Inner test", {
   
   ETA <- matrix(c(-0.147736086922763, -0.294637022436797), ncol = 2)
   
-  fitPi <- nlmixr(m1, w7, est="focei",
-                  foceiControl(etaMat = ETA,
-                               maxOuterIterations = 0, maxInnerIterations = 0,
-                               covMethod = ""))
-  
+  fitPi <- suppressMessages(nlmixr(
+    m1, w7,
+    est="focei",
+    foceiControl(
+      etaMat = ETA,
+      maxOuterIterations = 0, maxInnerIterations = 0,
+      covMethod = ""
+    )
+  ))
   
   expect_equal(418.935, round(fitPi$objective, 3))
 })
