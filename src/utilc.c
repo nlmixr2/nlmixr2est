@@ -32,40 +32,40 @@ SEXP _nlmixr2_setSilentErr(SEXP in) {
   if (Rf_length(in) > 0) {
     if (t == INTSXP) {
       if (INTEGER(in)[0] > 0) {
-	_setSilentErr = 1;
-	INTEGER(ret)[0] = 1;
-	UNPROTECT(1);
-	return ret;
+        _setSilentErr = 1;
+        INTEGER(ret)[0] = 1;
+        UNPROTECT(1);
+        return ret;
       } else {
-	_setSilentErr = 0;
-	INTEGER(ret)[0] = 0;
-	UNPROTECT(1);
-	return ret;
+        _setSilentErr = 0;
+        INTEGER(ret)[0] = 0;
+        UNPROTECT(1);
+        return ret;
       }
     } else if (t == LGLSXP) {
       if (INTEGER(in)[0] > 0) {
-	_setSilentErr = 1;
-	INTEGER(ret)[0] = 1;
-	UNPROTECT(1);
-	return ret;
+        _setSilentErr = 1;
+        INTEGER(ret)[0] = 1;
+        UNPROTECT(1);
+        return ret;
       } else {
-	_setSilentErr = 0;
-	INTEGER(ret)[0] = 0;
-	UNPROTECT(1);
-	return ret;
+        _setSilentErr = 0;
+        INTEGER(ret)[0] = 0;
+        UNPROTECT(1);
+        return ret;
       }
     } else if (t == REALSXP) {
       if (REAL(in)[0] > 0) {
-	_setSilentErr = 1;
-	INTEGER(ret)[0] = 1;
-	UNPROTECT(1);
-	return ret;
+        _setSilentErr = 1;
+        INTEGER(ret)[0] = 1;
+        UNPROTECT(1);
+        return ret;
       } else {
-	_setSilentErr = 0;
-	INTEGER(ret)[0] = 0;
-	UNPROTECT(1);
-	return ret;
-	return R_NilValue;
+        _setSilentErr = 0;
+        INTEGER(ret)[0] = 0;
+        UNPROTECT(1);
+        return ret;
+        return R_NilValue;
       }
     }
   }
@@ -205,8 +205,8 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   for (int i = 0; i < Rf_length(ipredNames); ++i) {
     for (int j = 0; j < Rf_length(lhs); ++j) {
       if (!strcmp(CHAR(STRING_ELT(ipredNames, i)), CHAR(STRING_ELT(lhs, j)))) {
-	keepVals[k++] = i;
-	break;
+        keepVals[k++] = i;
+        break;
       }
     }
   }
@@ -262,10 +262,10 @@ SEXP dfCbindList(SEXP lst) {
     if (TYPEOF(curS) == VECSXP) {
       curN = PROTECT(Rf_getAttrib(curS, R_NamesSymbol)); pro++;
       for (int j = 0; j < Rf_length(curN); ++j) {
-	curElt = VECTOR_ELT(curS, j);
-	Rf_setAttrib(curElt, R_DimSymbol, R_NilValue);
-	SET_VECTOR_ELT(ret, k, curElt);
-	SET_STRING_ELT(nm, k++, STRING_ELT(curN, j));
+        curElt = VECTOR_ELT(curS, j);
+        Rf_setAttrib(curElt, R_DimSymbol, R_NilValue);
+        SET_VECTOR_ELT(ret, k, curElt);
+        SET_STRING_ELT(nm, k++, STRING_ELT(curN, j));
       }
     }
   }
