@@ -308,3 +308,39 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 .enQuote <- function(chr) {
   eval(parse(text = paste0("quote(", chr, ")")))
 }
+
+#' Respect suppress messages for nlmixr2 C functions
+#'
+#' This turns on the silent REprintf in C when `suppressMessages()` is
+#' turned on. This makes the `REprintf` act like `messages` in R,
+#' they can be suppressed with `suppressMessages()`
+#'
+#' @return Nothing
+#' @keywords internal
+#' @author Matthew Fidler
+#' @export
+#' @examples
+#'
+#' # nmSupressMsg() is called with nlmixr2()
+#'
+#' # In nlmixr2, we use REprintf so that interrupted threads do not crash R
+#' # if there is a user interrupt. This isn't captured by R's messages, but
+#' # This interface allows the `suppressMessages()` to suppress the C printing
+#' # as well
+#'
+#' # If you  want to suppress messages from nlmixr2 in other packages, you can use
+#' # this function
+nmSuppressMsg <- function() {
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
+      return(invisible(NULL))
+    } else {
+      .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+            PACKAGE="nlmixr2")
+    }
+  } else {
+    .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+          PACKAGE="nlmixr2")
+  }
+  invisible(NULL)
+}

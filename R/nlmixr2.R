@@ -139,6 +139,8 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                    table = tableControl(), ..., save = NULL,
                    envir = parent.frame()) {
   assignInMyNamespace(".nlmixr2Time", proc.time())
+  nmSuppressMsg()
+  rxode2::rxSuppressMsg()
   rxode2::rxSolveFree()
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
