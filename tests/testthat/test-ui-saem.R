@@ -28,7 +28,7 @@ m1 <- function() {
 }
 
 test_that("Initial estimate order is correct", {
-  tmp <- nlmixr(m1)
+  tmp <- suppressMessages(nlmixr(m1))
   expect_equal(log(tmp$saem.init$theta), c(4, 7, 6))
   expect_equal(tmp$saem.init$omega, c(0.1, 0.2, 0.3))
 })
@@ -67,7 +67,7 @@ m1 <- function() {
 }
 
 test_that("Covariates make sense.", {
-  m1 <- nlmixr(m1)
-  expect_equal(c(200, 60, 1.5, 0.75, 1, NA), m1$saem.init.theta)
-  expect_equal(c("lCl", "AllomCL", "lVc", "AllomV", "lKA"), m1$saem.theta.name)
+  m1 <- suppressMessages(nlmixr(m1))
+  expect_equal(m1$saem.init.theta, c(200, 60, 1.5, 0.75, 1, NA))
+  expect_equal(m1$saem.theta.name, c("lCl", "AllomCL", "lVc", "AllomV", "lKA"))
 })
