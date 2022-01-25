@@ -30,7 +30,7 @@ dat2$DV <- dat2$DV * dat2$f0
 testIt <- function(meth) {
   # sprintf("test finite difference sensitivities in %s", meth)
   test_that(sprintf("finite difference %s", meth), {
-    suppressWarnings({
+    suppressMessages(suppressWarnings({
       fit <- nlmixr(f, dat2, "focei",
                     control = foceiControl(maxOuterIterations = 0, covMethod = "")
       )
@@ -40,7 +40,7 @@ testIt <- function(meth) {
                     control = foceiControl(maxOuterIterations = 0, covMethod = "", eventCentral = FALSE)
       )
       expect_false(all(fit$eta$etaF == 0))
-    })
+    }))
   })
 }
 
