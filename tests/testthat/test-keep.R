@@ -28,11 +28,11 @@ d$WT3 <- d$WT + 0.4
 for (est in c("fo", "foi", "foce", "focei", "saem", "nlme", "posthoc")) {
   test_that(paste0("keep/drop in ", est), {
     if (est == "nlme") {
-      fitF <- nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5))
-      expect_warning(fitF2 <- nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5, keep="WT2", drop="center")))
+      fitF <- suppressMessages(nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5)))
+      expect_warning(fitF2 <- suppressMessages(nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5, keep="WT2", drop="center"))))
     } else {
-      fitF <- nlmixr(one.compartment, d, est=est)
-      expect_warning(fitF2 <- nlmixr(one.compartment, d, est=est, control=list(keep="WT2", drop="center")))
+      fitF <- suppressMessages(nlmixr(one.compartment, d, est=est))
+      expect_warning(fitF2 <- suppressMessages(nlmixr(one.compartment, d, est=est, control=list(keep="WT2", drop="center"))))
     }
     expect_true(any(names(fitF) == "WT"))
     expect_true(!any(names(fitF) == "WT2"))
@@ -75,7 +75,7 @@ test_that("keep/drop in focei (duplicate?)", {
     drop = c("depot")
   }
   
-  fitF <- nlmixr(one.compartment, theo_sd, est="focei")
+  fitF <- suppressMessages(nlmixr(one.compartment, theo_sd, est="focei"))
   expect_true(any(names(fitF) == "WT"))
   expect_true(!any(names(fitF) == "depot"))
   expect_true(!any(names(fitF) == "rxLambda"))
