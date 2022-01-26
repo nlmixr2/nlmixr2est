@@ -58,58 +58,6 @@ nlmixr2Test(
 
     fo <- nlmixr(fo)
 
-    fit.prop2 <- .nlmixr(fo, dat2, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
-
-    out.focei.prop <- qs::qread("out.focei.prop.qs")
-
-    test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
-      expect_equal(fit.prop$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
-      ## Individual properties
-      expect_equal(fit.prop$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
-      expect_equal(fit.prop$IRES, out.focei.prop$IRES, tolerance=1e-3)
-      expect_equal(fit.prop$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
-      ## WRES variants
-      expect_equal(fit.prop$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
-      ## FOI equivalents
-      expect_equal(fit.prop$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
-      ## CWRES variants
-      expect_equal(fit.prop$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
-      ## Note that E[x] for CPRED and CPREDI are equal
-      expect_equal(fit.prop$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
-    })
-
-
-    test_that("Matches NONMEM objective proportional function; (Based on Wang2007; unoptimized)", {
-      # Check unoptimized expression
-      expect_equal(fit.prop2$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
-      expect_equal(fit.prop2$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
-      ## Individual properties
-      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
-      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tolerance=1e-3)
-      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
-      ## WRES variants
-      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
-      expect_equal(fit.prop2$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
-      ## FOI equivalents
-      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
-      ## CWRES variants
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
-      ## Note that E[x] for CPRED and CPREDI are equal
-      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
-      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
-    })
-
     testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2, log=FALSE) {
       .f <- fun(f)
       .fo <- fun(fo)
@@ -165,48 +113,83 @@ nlmixr2Test(
       return(invisible(ret))
     }
 
+
+    fit.prop2 <- .nlmixr(fo, dat2, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
+
+    out.focei.prop <- qs::qread("out.focei.prop.qs")
+
+    test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
+      expect_equal(fit.prop$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
+      expect_equal(fit.prop$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
+      ## Individual properties
+      expect_equal(fit.prop$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
+      expect_equal(fit.prop$IRES, out.focei.prop$IRES, tolerance=1e-3)
+      expect_equal(fit.prop$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
+      ## WRES variants
+      expect_equal(fit.prop$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
+      ## FOI equivalents
+      expect_equal(fit.prop$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
+      ## CWRES variants
+      expect_equal(fit.prop$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
+      ## Note that E[x] for CPRED and CPREDI are equal
+      expect_equal(fit.prop$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
+    })
+
+
+    test_that("Matches NONMEM objective proportional function; (Based on Wang2007; unoptimized)", {
+      # Check unoptimized expression
+      expect_equal(fit.prop2$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
+      expect_equal(fit.prop2$eta.ke, out.focei.prop$ETA1, tolerance=1e-3) # match NONMEM output
+      ## Individual properties
+      expect_equal(fit.prop2$IPRED, out.focei.prop$IPRE, tolerance=1e-3)
+      expect_equal(fit.prop2$IRES, out.focei.prop$IRES, tolerance=1e-3)
+      expect_equal(fit.prop2$IWRES, out.focei.prop$IWRES, tolerance=1e-3)
+      ## WRES variants
+      expect_equal(fit.prop2$PRED, out.focei.prop$NPRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$PRED, out.focei.prop$PRED, tolerance=1e-3) # matches output of PRED from NONMEM
+      expect_equal(fit.prop2$RES, out.focei.prop$RES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$RES, out.focei.prop$NRES, tolerance=1e-3) # match NONMEM output
+      ## FOI equivalents
+      expect_equal(fit.prop2$PRED, out.focei.prop$PREDI, tolerance=1e-3) # matches output of PRED from NONMEM
+      ## CWRES variants
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRES, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPRED, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CWRES, out.focei.prop$CWRES, tolerance=1e-3) # match NONMEM output
+      ## Note that E[x] for CPRED and CPREDI are equal
+      expect_equal(fit.prop2$CRES, out.focei.prop$CRESI, tolerance=1e-3) # match NONMEM output
+      expect_equal(fit.prop2$CPRED, out.focei.prop$CPREDI, tolerance=1e-3) # match NONMEM output
+    })
+
+
     .propVals <- c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207)
-
     .propModVals <- c(63.353, 63.353, 63.001, 63.063, 63.063, 63.063)
-
     .propFVals <- c(6.496, 6.496, 6.488, 6.275, 9.262, 9.262)
-
     .propFModVals <- c(19.177, 19.177, 19.07, 18.202, 18.333, 18.333)
 
     .addVals <- c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026)
 
     .powVals <- c(9.966, 9.966, 9.948, 9.331, 9.651, 9.651)
-
     .powFModVals <- c(0.776, 0.776, 0.772, 0.58, 3.2, 3.2)
-
     .powF1Vals <- c(27.301, 27.301, 27.147, 26.854, 26.888, 26.888)
-
     .powF2Vals <- c(17.831, 17.831, 17.785, 16.617, 16.852, 16.852)
-
     .powF3Vals <- c(79.733, 79.733, 79.371, 79.448, 79.448, 79.448)
-
     .powFMod1Vals <- c(24.877, 24.877, 24.773, 24.518, 24.554, 24.554)
-
     .powFMod2Vals <- c(49.312, 49.312, 49.311, 49.296, 52.603, 52.603)
-
     .powFMod3Vals <- c(10.848, 10.848, 10.784, 9.446, 9.96, 9.96)
-
     .addProp2 <- c(39.735, 39.735, 39.562, 39.499, 39.505, 39.499)
-
     .addModPropMod2 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079)
-
     .addProp1 <- c(43.554, 43.554, 43.416, 43.394, 43.398, 43.394)
-
     .addPow1 <- c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093)
-
     .addPow2 <- c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662)
-
     .addModVals <- c(3.238, 3.238, 3.207, 2.438, 3.311, 3.311)
-
     .addModPropMod1 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079)
-
     .addModPropFModVals2 <- c(54.317, 54.317, 54.14, 54.165, 54.166, 54.166)
-
     .addPropFVals2 <- c(-2.321, -2.321, -2.322, -2.454, -0.65, -0.65)
 
     ################################################################################
@@ -753,17 +736,392 @@ nlmixr2Test(
     }, .lnormPowT2, addProp = 2)
 
 
-    stop()
+    #################################################################################
+    # Box-Cox Regression
+    #################################################################################
 
-    testErr("lnorm+pow", function() {
-      lnorm(0.1) + pow(0.1, 0.5)
-    }, c(95.634, 95.634, 95.57, 95.585, 95.585, 95.585), addProp = 2)
+    .boxCoxPropTVals <- c(35.132, 35.132, 34.879, 34.694, 34.709, 34.709)
+    .boxCoxPropTModVals <- c(58.21, 58.21, 57.741, 57.802, 57.803, 57.803)
+    .boxCoxPowTVals <- c(9.11, 9.11, 9.095, 8.215, 8.644, 8.644)
+    .boxCoxPowTF1Vals <- c(25.57, 25.57, 25.388, 24.951, 25.002, 25.002)
+    .boxCoxPowTF2Vals <- c(16.507, 16.507, 16.423, 14.981, 15.314, 15.314)
+    .boxCoxPowTF3Vals <- c(76.496, 76.496, 76.097, 76.179, 76.179, 76.179)
+    .boxCoxAddModPropTMod2 <- c(100.737, 100.737, 100.351, 100.437, 100.437, 100.437)
+    .boxCoxAddPropT2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07, 35.07)
+    .boxCoxPropT2ModVals <- c(58.21, 58.21, 57.741, 57.802, 57.803, 57.803)
+    .boxCoxPropAddPropT2Vals <- c(100.737, 100.737, 100.351, 100.437, 100.437, 100.437)
 
+    testErr("prop+boxCox->prop", function(f) {
+      f %>% model(ipre ~ prop(prop.sd) + boxCox(lambda)) %>% ini(prop.sd=sqrt(0.1), lambda=1)
+    }, .propVals)
+
+    testErr("prop+boxCox->propMod", function(f) {
+      f %>% model(ipre ~ prop(f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .propModVals)
+
+    # In this case propT = prop
+    testErr("propT+boxCox->propT", function(f) {
+      f %>% model(ipre ~ propT(prop.sd) + boxCox(lambda)) %>% ini(prop.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxPropTVals)
+
+    testErr("propTMod+boxCox->propTMod", function(f) {
+      f %>% model(ipre ~ propT(f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .boxCoxPropTModVals)
+
+    testErr("propF+boxCox->propF", function(f) {
+      f %>% model(ipre ~ propF(prop.sd, f2) + boxCox(lambda)) %>% ini(prop.sd=sqrt(0.1), lambda=1)
+    }, .propFVals)
+
+    testErr("propFMod+boxCox->propFMod", function(f) {
+      f %>% model(ipre ~ propF(lipre, f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .propFModVals)
+
+    ################################################################################
+    # boxCox -> Additive Model Tests
+    ################################################################################
+    testErr("add+boxCox->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + boxCox(lambda)) %>% ini(add.sd=sqrt(0.1), lambda=1)
+    }, .addVals)
+
+    testErr("addMod+boxCox->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .addModVals)
+
+    ################################################################################
+    # boxCox -> Power Model Tests
+    ################################################################################
+    testErr("boxCox+pow1->prop", function(f) {
+      f %>% model(ipre ~ pow(pow.sd, pw) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=1, lambda=1)
+    }, .propVals)
+
+    testErr("boxCox+powT1=propT=prop", function(f) {
+      f %>% model(ipre ~ powT(pow.sd, pw) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=1, lambda=1)
+    }, .boxCoxPropTVals)
+
+    testErr("boxCox+powF1=propF", function(f) {
+      f %>% model(ipre ~ powF(pow.sd, pw, f2) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=1, lambda=1)
+    }, .propFVals)
+
+    testErr("boxCox+pow1Mod=propMod", function(f) {
+      f %>% model(ipre ~ pow(f2, pw) + boxCox(lambda)) %>% ini(pw=1, lambda=1)
+    }, .propModVals)
+
+    testErr("boxCox+pow->pow", function(f) {
+      f %>% model(ipre ~ pow(pow.sd, pw) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, .powVals)
+
+    testErr("boxCox+powF1->powF1", function(f) {
+      f %>% model(ipre ~ pow(f2, pw) + boxCox(lambda)) %>% ini(pw=0.5, lambda=1)
+    }, .powF1Vals)
+
+    testErr("boxCox+powF2->powF2", function(f) {
+      f %>% model(ipre ~ pow(pow.sd, f2) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), lambda=1)
+    }, .powF2Vals)
+
+    testErr("boxCox+powF3->powF3", function(f) {
+      f %>% model(ipre ~ pow(lipre, f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .powF3Vals)
+
+    testErr("boxCox+powT->powT", function(f) {
+      f %>% model(ipre ~ powT(pow.sd, pw) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, .boxCoxPowTVals)
+
+    testErr("boxCox+powTF1->powTF1", function(f) {
+      f %>% model(ipre ~ powT(f2, pw) + boxCox(lambda)) %>% ini(pw=0.5, lambda=1)
+    }, .boxCoxPowTF1Vals)
+
+    testErr("boxCox+powFT2->powFT2", function(f) {
+      f %>% model(ipre ~ powT(pow.sd, f2) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxPowTF2Vals)
+
+    testErr("boxCox+powTF3->powTF3", function(f) {
+      f %>% model(ipre ~ powT(lipre, f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .boxCoxPowTF3Vals)
+
+    testErr("boxCox+powFMod->powFMod", function(f) {
+      f %>% model(ipre ~ powF(pow.sd, pw, f2) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, .powFModVals)
+
+    testErr("boxCox+powFMod1->powFMod1", function(f) {
+      f %>% model(ipre ~ powF(lipre, pw, f2) + boxCox(lambda)) %>% ini(pw=0.5, lambda=1)
+    }, .powFMod1Vals)
+
+    testErr("boxCox+powFMod2->powFMod2", function(f) {
+      f %>% model(ipre ~ powF(pow.sd, lipre, f2) + boxCox(lambda)) %>% ini(pow.sd=sqrt(0.1), lambda=1)
+    }, .powFMod2Vals)
+
+    testErr("boxCox+powFMod3->powFMod3", function(f) {
+      f %>% model(ipre ~ powF(lipre, f3, f2) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .powFMod3Vals)
+
+    ################################################################################
+    # Box-Cox Add+Proportional tests (combined 2)
+    ################################################################################
+    testErr("boxCox+add+prop, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>% ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 2)
+
+    testErr("boxCox+addMod+prop, combined 2->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + prop(prop.sd) + boxCox(lambda)) %>% ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>% ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, .propVals, addProp = 2)
+
+    testErr("boxCox+add+propMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(f2) + boxCox(lambda)) %>% ini(add.sd=0, lambda=1)
+    }, .propModVals, addProp = 2)
+
+    testErr("boxCox+addMod+propMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(f2) + prop(f3) + boxCox(lambda)) %>% ini(lambda=1)
+    }, .addModPropMod2, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2->add+prop, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2->add+prop, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 1)
+
+    ## propT
+    testErr("add+propT, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 2)
+
+    testErr("boxCox+addMod+propT, combined 2->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 2)
+
+    testErr("boxCox+add+propT, combined 2->propT", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, addProp = 2)
+
+    testErr("boxCox+add+propTMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(f2) + boxCox(lambda)) %>%
+        ini(add.sd=0, lambda=1)
+    }, .boxCoxPropTModVals, addProp = 2)
+
+    testErr("boxCox+addMod+propTMod, combined 2->propTMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propT(f3) + boxCox(lambda)) %>%
+        ini(lambda=1)
+    }, .boxCoxAddModPropTMod2, addProp = 2)
+
+    testErr("boxCox+add+propT, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxAddPropT2Vals, addProp = 2)
+
+    testErr("boxCox+add+propT, combined 2 (specified)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxAddPropT2Vals, addProp = 1)
+
+    # propF
+    testErr("boxCox+add+propF, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda)) %>% ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 2)
+
+    testErr("boxCox+addMod+propF, combined 2->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propF(prop.sd, f2) + boxCox(lambda)) %>% ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 2)
+
+    testErr("boxCox+add+propFMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(lipre, f2) + boxCox(lambda)) %>% ini(add.sd=0, lambda=1)
+    }, .propFModVals, addProp = 2)
+
+    testErr("boxCox+addMod+propFMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propF(lipre, f3) + boxCox(lambda)) %>%
+        ini(lambda=1)
+    }, .addModPropFModVals2, addProp = 2)
+
+    testErr("boxCox+add+propF, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    },  .addPropFVals2, addProp = 2)
+
+    testErr("boxCox+add+propF, combined 2 (specified)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addPropFVals2, addProp = 1)
+
+    ################################################################################
+    # Box-Box Add+Proportional tests (combined 1)
+    ################################################################################
+    testErr("boxCox+add+prop, combined 1->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 1)
+
+    testErr("boxCox+addMod+prop, combined 1->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 1)
+
+    testErr("boxCox+add+prop, combined 1->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, .propVals, addProp = 1)
+
+    testErr("boxCox+add+propMod, combined 1->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(f2) + boxCox(lambda)) %>%
+        ini(add.sd=0, lambda=1)
+    }, .propModVals, addProp = 1)
+
+    testErr("boxCox+addMod+propMod, combined 1->propMod", function(f) {
+      f %>% model(ipre ~ add(f2) + prop(f3) + boxCox(lambda)) %>%
+        ini(lambda=1)
+    },  .addModPropMod1, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2->add+prop, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 1)
+
+    ## propT
+    testErr("boxCox+add+propT, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 2)
+
+    testErr("boxCox+addMod+propT, combined 2->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 2)
+
+    .boxCoxPropT <- c(35.132, 35.132, 34.879, 34.694, 34.709, 34.709)
+
+    testErr("boxCox+add+propT, combined 2->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxPropT, addProp = 2)
+
+    testErr("boxCox+add+propTMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(f2) + boxCox(lambda)) %>%
+        ini(add.sd=0, lambda=1)
+    }, .boxCoxPropT2ModVals, addProp = 2)
+
+    .boxCoxAddPropT3Vals <- c(100.737, 100.737, 100.351, 100.437, 100.437, 100.437)
+
+    testErr("boxCox+addMod+propTMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propT(f3) + boxCox(lambda)) %>%
+        ini(lambda=1)
+    },  .boxCoxAddPropT3Vals, addProp = 2)
+
+    testErr("boxCox+add+propT, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 2)
+
+    .boxCoxAddPropT2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07, 35.07)
+
+    testErr("boxCox+add+propT, combined 2 (specified)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .boxCoxAddPropT2Vals, addProp = 1)
+
+    # propF
+    testErr("boxCox+add+propF, combined 2->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 2)
+
+    testErr("boxCox+addMod+propF, combined 2->addMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propF(prop.sd, f2) + boxCox(lambda)) %>%
+        ini(prop.sd=0, lambda=1)
+    }, .addModVals, addProp = 2)
+
+    testErr("boxCox+add+propF, combined 2->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda)) %>%
+        ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, .propFVals, addProp = 2)
+
+    testErr("boxCox+add+propFMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(lipre, f2) + boxCox(lambda)) %>%
+        ini(add.sd=0, lambda=1)
+    }, .propFModVals, addProp = 2)
+
+    testErr("boxCox+addMod+propFMod, combined 2->propMod", function(f) {
+      f %>% model(ipre ~ add(f2) + propF(lipre, f3) + boxCox(lambda)) %>%
+        ini(lambda=1)
+    }, .addModPropFModVals2, addProp = 2)
+
+    testErr("boxCox+add+propF, combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    },  .addPropFVals2, addProp = 2)
+
+    testErr("boxCox+add+propF, combined 2 (specified)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + propF(prop.sd, f2) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addPropFVals2, addProp = 1)
+
+    #################################################################################################
+    testErr("boxCox+add+prop, combined 1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp1, addProp = 1)
+
+    testErr("boxCox+add+prop, combined 1->add", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
+    }, .addVals, addProp = 1)
+
+    testErr("boxCox+add+prop, combined 1->prop", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda)) %>%
+        ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
+    }, .propVals, addProp = 1)
+
+    testErr("boxCox+add+prop, combined 1 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) + combined1()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp1, addProp = 2)
+
+    testErr("boxCox+add+prop, combined 2 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + boxCox(lambda) + combined2()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
+    }, .addProp2, addProp = 1)
+
+    ################################################################################
+    # Add+Pow tests (combined 2)
+    ################################################################################
+    testErr("boxCox+add+pow combined 2 -> add+prop combined2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lambda=1)
+    }, .addProp2, addProp = 2)
+
+    testErr("boxCox+add+pow combined 2 -> add+pow combined 2", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662), addProp = 2)
+
+    testErr("boxCox+add+pow combined 1 -> add+prop combined1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lambda=1)
+    }, .addProp1, addProp = 1)
+
+    testErr("boxCox+add+pow combined 1", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, .addPow1, addProp = 1)
+
+    testErr("boxCox+add+pow combined 1 (override)->add+pow combined 1 (override)", function(f) {
+      f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + combined1()) %>%
+        ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lambda=1)
+    }, .addPow1, addProp = 2)
+
+    skip()
     ## Box Cox
-    testErr("add+boxCox", function() {
-      return(add(.1) + boxCox(.5))
-    }, c(2.06, 2.06, 2.06, 2.06, 3.529, 2.06))
-
     testErr("prop+boxCox", function() {
       return(prop(.1) + boxCox(.5))
     }, c(61.473, 61.473, 61.298, 61.324, 61.325, 61.324))
