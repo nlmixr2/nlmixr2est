@@ -246,33 +246,6 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
   base::as.data.frame(..., stringsAsFactors = FALSE)
 }
 
-
-.isTestthat <- function() {
-  return(regexpr("/tests/testthat/", getwd(), fixed = TRUE) != -1)
-}
-
-#' nlmixTest function for testing
-#'
-#' @param expr  Expression for testing
-#' @param silent Boolean for testing
-#' @param test this represents the test group of the test
-#' @author Matthew Fidler
-#' @return Nothing, called for its side effects
-#' @export
-nlmixr2Test <- function(expr, silent = .isTestthat(), test = "cran") {
-  .Call(`_nlmixr2_setSilentErr`, 1L, PACKAGE = "nlmixr2")
-  rxode2::rxSetSilentErr(1L)
-  .test <- .test0 <- Sys.getenv("NOT_CRAN")
-  on.exit({
-    .Call(`_nlmixr2_setSilentErr`, 0L, PACKAGE = "nlmixr2")
-    rxode2::rxSetSilentErr(0L)
-  })
-  if (.test == "true") {
-    force(expr)
-  }
-}
-
-
 #' Nelder-Mead simplex search
 #'
 #' @param start initials
@@ -307,4 +280,40 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 #' @noRd
 .enQuote <- function(chr) {
   eval(parse(text = paste0("quote(", chr, ")")))
+}
+
+#' Respect suppress messages for nlmixr2 C functions
+#'
+#' This turns on the silent REprintf in C when `suppressMessages()` is
+#' turned on. This makes the `REprintf` act like `messages` in R,
+#' they can be suppressed with `suppressMessages()`
+#'
+#' @return Nothing
+#' @keywords internal
+#' @author Matthew Fidler
+#' @export
+#' @examples
+#'
+#' # nmSupressMsg() is called with nlmixr2()
+#'
+#' # In nlmixr2, we use REprintf so that interrupted threads do not crash R
+#' # if there is a user interrupt. This isn't captured by R's messages, but
+#' # This interface allows the `suppressMessages()` to suppress the C printing
+#' # as well
+#'
+#' # If you  want to suppress messages from nlmixr2 in other packages, you can use
+#' # this function
+nmSuppressMsg <- function() {
+  if (requireNamespace("knitr", quietly = TRUE)) {
+    if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
+      return(invisible(NULL))
+    } else {
+      .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+            PACKAGE="nlmixr2")
+    }
+  } else {
+    .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+          PACKAGE="nlmixr2")
+  }
+  invisible(NULL)
 }

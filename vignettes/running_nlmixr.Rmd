@@ -19,7 +19,6 @@ knitr::opts_chunk$set(
 options(huxtable.knit_print_df = FALSE)
 ```
 
-
 ![nlmixr](logo.png)
 
 # Running PK models with nlmixr

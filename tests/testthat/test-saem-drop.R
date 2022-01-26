@@ -1,5 +1,4 @@
-nlmixr2Test(
-{
+test_that("saem dropping parameters", {
   .nm <- loadNamespace("nlmixr2")
 
   muRefDataFrame <-
@@ -58,5 +57,4 @@ nlmixr2Test(
   expect_equal(.nm$.saemDropParameters(quote(cl <- exp(tcl + eta.cl + log(wt / 70) * cl.wt + cl.sex * sex + age * cl.age + 3)),
                                        muRefDataFrame, muRefCov),
                quote(cl <- exp(tcl + log(wt/70) * cl.wt + age * cl.age + 3)))
-
-}, test="cran")
+})
