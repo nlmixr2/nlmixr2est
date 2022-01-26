@@ -884,7 +884,7 @@ testErr("boxCox+add+prop, combined 2->add+prop, combined 2", function(f) {
 }, .addProp2, addProp = 1)
 
 ## propT
-testErr("add+propT, combined 2->add", function(f) {
+testErr("boxCox+add+propT, combined 2->add", function(f) {
   f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
     ini(add.sd=sqrt(0.1), prop.sd=0, lambda=1)
 }, .addVals, addProp = 2)
@@ -909,15 +909,17 @@ testErr("boxCox+addMod+propTMod, combined 2->propTMod", function(f) {
     ini(lambda=1)
 }, .boxCoxAddModPropTMod2, addProp = 2)
 
+.boxCoxAddPropTc2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07, 35.07)
+
 testErr("boxCox+add+propT, combined 2", function(f) {
   f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
     ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
-}, .boxCoxAddPropT2Vals, addProp = 2)
+}, .boxCoxAddPropTc2Vals, addProp = 2)
 
 testErr("boxCox+add+propT, combined 2 (specified)", function(f) {
   f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda) + combined2()) %>%
     ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
-}, .boxCoxAddPropT2Vals, addProp = 1)
+}, .boxCoxAddPropTc2Vals, addProp = 1)
 
 # propF
 testErr("boxCox+add+propF, combined 2->add", function(f) {
@@ -1015,11 +1017,6 @@ testErr("boxCox+addMod+propTMod, combined 2->propMod", function(f) {
     ini(lambda=1)
 },  .boxCoxAddPropT3Vals, addProp = 2)
 
-testErr("boxCox+add+propT, combined 2", function(f) {
-  f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
-    ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lambda=1)
-}, .addProp2, addProp = 2)
-
 .boxCoxAddPropT2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07, 35.07)
 
 testErr("boxCox+add+propT, combined 2 (specified)", function(f) {
@@ -1113,35 +1110,230 @@ testErr("boxCox+add+pow combined 1", function(f) {
 }, .addPow1, addProp = 1)
 
 testErr("boxCox+add+pow combined 1 (override)->add+pow combined 1 (override)", function(f) {
-  f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + combined1()) %>%
+  f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda) + combined1()) %>%
     ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lambda=1)
 }, .addPow1, addProp = 2)
 
-skip()
+
+################################################################################
+## BoxCox(0) and lnorm equivalence
+################################################################################
+
+testErr("boxCox(0)+add-> lnorm", function(f) {
+  f %>% model(ipre ~ add(add.sd) + boxCox(lambda)) %>%
+    ini(add.sd=sqrt(0.1), lambda=0)
+}, .lnorm, addProp = 1)
+
+################################################################################
+## lnorm(NA) tests
+################################################################################
+
+testErr("boxCox(0)+prop->lnorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ boxCox(lambda) + prop(prop.sd)) %>% ini(prop.sd=sqrt(0.1), lambda=0)
+}, .lnormProp, addProp = 1)
+
+testErr("boxCox(0)+propT->lnorm(NA)+propT", function(f) {
+  f %>% model(ipre ~ boxCox(lambda) + propT(prop.sd)) %>%
+    ini(prop.sd=sqrt(0.1), lambda=0)
+}, .lnormPropT, addProp = 1)
+
+testErr("boxCox(0)+propF->lnorm(NA)+propF", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + propF(prop.sd, f2)) %>%
+    ini(prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropF, addProp = 1)
+
+testErr("boxCox(0)+pow->lnorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormProp, addProp = 1)
+
+testErr("boxCox(0)+powT->lnorm(NA)+propT", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropT, addProp = 1)
+
+testErr("boxCox(0)+powF->lnorm(NA)+propF", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) %>%
+    ini(prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropF, addProp = 1)
+
+testErr("boxCox(0)+pow->lnorm(NA)+pow", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPow, addProp = 1)
+
+testErr("boxCox(0)+powT->lnorm(NA)+powT", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowT, addProp = 1)
+
+testErr("boxCox(0)+powF->lnorm(NA)+powF", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) %>%
+    ini(prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowF, addProp = 1)
+
+
+################################################################################
+## lnorm combined1
+################################################################################
+
+testErr("boxCox(0)+add+prop combined1->lnorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0)
+}, .lnormProp, addProp = 1)
+
+testErr("boxCox(0)+add+propT combined1->lnorm(NA)+propT", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropT, addProp = 1)
+
+testErr("boxCox(0)+add+propF combined1->lnorm(NA)+propF", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropF, addProp = 1)
+
+testErr("boxCox(0)+add+prop combined1->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 1)
+
+testErr("boxCox(0)+add+propT combined1->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 1)
+
+testErr("boxCox(0)+add+propF combined1->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 1)
+
+testErr("boxCox(0)+add+prop combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormProp1, addProp = 1)
+
+testErr("boxCox(0)+add+propT combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropT1, addProp = 1)
+
+testErr("boxCox(0)+add+propF combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropF1, addProp = 1)
+
+testErr("boxCox(0)+add+powF->lnorm+propF combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropF1, addProp = 1)
+
+testErr("boxCox(0)+add+pow->lnorm+prop combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormProp1, addProp = 1)
+
+testErr("boxCox(0)+add+powT->lnorm+propT combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropT1, addProp = 1)
+
+testErr("boxCox(0)+add+powF combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowF1, addProp = 1)
+
+testErr("boxCox(0)+add+pow combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPow1, addProp = 1)
+
+testErr("boxCox(0)+add+powT combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowT1, addProp = 1)
+
+################################################################################
+## lnorm combined2
+################################################################################
+
+testErr("boxCox(0)+add+propT combined2->lnorm(NA)+propT", function(f) {
+  f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
+    ini(add.sd=0, prop.sd=sqrt(0.1), lambda=0)
+}, .lnormPropT, addProp = 2)
+
+testErr("boxCox(0)+add+propF combined2->lnorm(NA)+propF", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) %>%
+    ini(lnorm.sd=0, prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropF, addProp = 2)
+
+testErr("boxCox(0)+add+prop combined2->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 2)
+
+testErr("boxCox(0)+add+propT combined2->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + propT(prop.sd)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 2)
+
+testErr("boxCox(0)+add+propF combined2->lnorm(NA)", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm) + propF(prop.sd, f2)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=0, lm=0)
+}, .lnorm, addProp = 2)
+
+testErr("boxCox(0)+add+pow->lnorm+prop combined2", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormProp2, addProp = 2)
+
+testErr("boxCox(0)+add+prop combined2", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormProp2 ,addProp = 2)
+
+testErr("boxCox(0)+add+propT combined2", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropT2, addProp = 2)
+
+testErr("boxCox(0)+add+propF combined1", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0)
+}, .lnormPropF2, addProp = 2)
+
+testErr("boxCox(0)+add+powF->lnorm+propF combined2", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropF2, addProp = 2)
+
+
+testErr("boxCox(0)+add+pow->lnorm+prop combined2", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm)+ pow(prop.sd, pw)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormProp2, addProp = 2)
+
+testErr("boxCox(0)+add+powT->lnorm+propT combined2", function(f) {
+  f %>% model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0)
+}, .lnormPropT2, addProp = 2)
+
+testErr("boxCox(0)+add+powF combined2", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + powF(prop.sd, pw, f2)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowF2, addProp = 2)
+
+testErr("boxCox(0)+add+pow combined2", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPow2, addProp = 2)
+
+testErr("boxCox(0)+add+powT combined2", function(f) {
+  f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + powT(prop.sd, pw)) %>%
+    ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0)
+}, .lnormPowT2, addProp = 2)
+
+skip("m")
 ## Box Cox
-testErr("prop+boxCox", function() {
-  return(prop(.1) + boxCox(.5))
-}, c(61.473, 61.473, 61.298, 61.324, 61.325, 61.324))
-
-testErr("pow+boxCox", function() {
-  return(pow(.1, 0.5) + boxCox(.5))
-}, c(39.567, 39.567, 39.477, 39.402, 39.411, 39.402))
-
-testErr("add+prop+boxCox", function() {
-  return(add(0.1) + prop(.1) + boxCox(.5))
-}, c(66.075, 66.075, 65.949, 65.973, 65.974, 65.973), addProp = 1)
-
-testErr("add+prop+boxCox", function() {
-  return(add(0.1) + prop(.1) + boxCox(.5))
-}, c(61.802, 61.802, 61.636, 61.661, 61.662, 61.661), addProp = 2)
-
-testErr("add+pow+boxCox", function() {
-  return(add(0.1) + pow(.1, 0.5) + boxCox(.5))
-}, c(46.768, 46.768, 46.709, 46.693, 46.695, 46.693), addProp = 1)
-
-testErr("add+pow+boxCox", function() {
-  return(add(0.1) + pow(.1, 0.5) + boxCox(.5))
-}, c(40.451, 40.451, 40.372, 40.313, 40.32, 40.313), addProp = 2)
 
 # Now yeoJohnson
 testErr("add+yeoJohnson", function() {
