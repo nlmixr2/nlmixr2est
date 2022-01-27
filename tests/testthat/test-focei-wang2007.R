@@ -1575,38 +1575,48 @@ testErr("boxCox(0.5)+add+powT combined2", function(f) {
 }, .boxCoxAddPowPowT2, addProp = 2)
 
 
-skip("m")
-## Box Cox
-
 # Now yeoJohnson
-testErr("add+yeoJohnson", function() {
-  return(add(.1) + yeoJohnson(.5))
-}, c(2.339, 2.339, 2.339, 2.339, 3.575, 2.339))
+.yeoJohnsonAdd <- c(11.279, 11.279, 11.279, 11.279, 11.738, 11.738)
+testErr("add+yeoJohnson", function(f) {
+  f %>% model(ipre ~ add(add.sd) + yeoJohnson(lm)) %>% ini(add.sd=sqrt(0.1), lm=0.5)
+})
 
-testErr("prop+yeoJohnson", function() {
-  return(prop(.1) + yeoJohnson(.5))
-}, c(62.821, 62.821, 62.647, 62.676, 62.677, 62.676))
+.yeoJohnsonProp <- c(80.257, 80.257, 80.102, 80.136, 80.136, 80.136)
+testErr("prop+yeoJohnson", function(f) {
+    f %>% model(ipre ~ prop(prop.sd) + yeoJohnson(lm)) %>% ini(prop.sd=sqrt(0.1), lm=0.5)
+})
 
-testErr("pow+yeoJohnson", function() {
-  return(pow(.1, 0.5) + yeoJohnson(.5))
-}, c(40.724, 40.724, 40.632, 40.575, 40.581, 40.575))
+.yeoJohnsonPow <- c(41.644, 41.644, 41.598, 41.552, 41.559, 41.559)
+testErr("pow+yeoJohnson", function(f) {
+    f %>% model(ipre ~ pow(prop.sd, pw) + yeoJohnson(lm)) %>% ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
+}, c(41.644, 41.644, 41.598, 41.552, 41.559, 41.559))
 
-testErr("add+prop+yeoJohnson", function() {
-  return(add(0.1) + prop(.1) + yeoJohnson(.5))
-}, c(67.453, 67.453, 67.329, 67.353, 67.354, 67.353), addProp = 1)
+.yeoJohnsonAddProp1 <- c(85.048, 85.048, 84.937, 84.961, 84.962, 84.962)
+testErr("add+prop+yeoJohnson", function(f) {
+  f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .yeoJohnsonAddProp1, addProp = 1)
 
-testErr("add+prop+yeoJohnson", function() {
-  return(add(0.1) + prop(.1) + yeoJohnson(.5))
-}, c(63.152, 63.152, 62.988, 63.016, 63.017, 63.016), addProp = 2)
+.yeoJohnsonAddProp2 <- c(80.605, 80.605, 80.458, 80.49, 80.491, 80.491)
+testErr("add+prop+yeoJohnson", function(f) {
+  f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .yeoJohnsonAddProp2, addProp = 2)
 
-testErr("add+pow+yeoJohnson", function() {
-  return(add(0.1) + pow(.1, 0.5) + yeoJohnson(.5))
-}, c(48.036, 48.036, 47.978, 47.967, 47.969, 47.967), addProp = 1)
+.yeoJohnsonAddPow1 <- c(52.481, 52.481, 52.456, 52.451, 52.452, 52.452)
+testErr("add+pow+yeoJohnson", function(f) {
+  f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+}, .yeoJohnsonAddPow1, addProp = 1)
 
-testErr("add+pow+yeoJohnson", function() {
-  return(add(0.1) + pow(.1, 0.5) + yeoJohnson(.5))
-}, c(41.628, 41.628, 41.548, 41.503, 41.509, 41.503), addProp = 2)
+.yeoJohnsonAddPow2 <- c(43.704, 43.704, 43.669, 43.641, 43.645, 43.645)
+testErr("add+pow+yeoJohnson", function(f) {
+  f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
+}, .yeoJohnsonAddPow2, addProp = 2)
 
+
+skip("place")
 ## logitNorm
 testErr("logitNorm", function() {
   return(logitNorm(.1, 0, 12))
