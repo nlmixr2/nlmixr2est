@@ -1615,36 +1615,48 @@ testErr("add+pow+yeoJohnson", function(f) {
     ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
 }, .yeoJohnsonAddPow2, addProp = 2)
 
+## logitNorm
+.logitNormAdd <- c(0.612, 0.612, 0.612, 0.612, 0.786, 0.786)
+testErr("logitNorm", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12)) %>%
+    ini(logit.sd=sqrt(0.1))
+}, .logitNormAdd)
+
+.logitNormProp <- c(67.882, 67.882, 67.731, 67.765, 67.765, 67.765)
+testErr("logitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(NA, 0, 12) + prop(prop.sd)) %>%
+    ini(prop.sd=sqrt(0.1))
+}, .logitNormProp)
+
+testErr("logitNorm(NA)+pow->logitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=1)
+}, .logitNormProp)
+
+.logitNormProp <- c(29.055, 29.055, 29.007, 28.987, 28.989, 28.989)
+testErr("logitNorm(NA)+pow->logitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=0.5)
+})
+
+.logitNormAddProp1 <- c(72.699, 72.699, 72.591, 72.615, 72.615, 72.615)
+testErr("logitNorm+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+}, .logitNormAddProp1, addProp = 1)
+
+testErr("logitNorm+pow->logitNorm+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+}, .logitNormAddProp1, addProp = 1)
+
+.logitNormAddPow1 <- c(40.053, 40.053, 40.028, 40.028, 40.029, 40.029)
+testErr("logitNorm+prop", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+}, .logitNormAddPow1, addProp = 1)
 
 skip("place")
-## logitNorm
-testErr("logitNorm", function() {
-  return(logitNorm(.1, 0, 12))
-}, c(0.612, 0.612, 0.612, 0.612, 0.786, 0.612))
-
-testErr("logitNorm(NA)+prop", function() {
-  return(logitNorm(NA, 0, 12) + prop(0.1))
-}, c(67.882, 67.882, 67.731, 67.765, 67.765, 67.765))
-
-testErr("logitNorm(NA)+pow", function() {
-  return(logitNorm(NA, 0, 12) + pow(0.1, 0.5))
-}, c(44.632, 44.632, 44.542, 44.556, 44.556, 44.556))
-
-testErr("logitNorm+prop", function() {
-  return(logitNorm(.1, 0, 12) + prop(0.1))
-}, c(72.699, 72.699, 72.591, 72.615, 72.615, 72.615), addProp = 1)
-
-testErr("logitNorm+prop", function() {
-  return(logitNorm(.1, 0, 12) + prop(0.1))
-}, c(68.233, 68.233, 68.09, 68.122, 68.123, 68.122), addProp = 2)
-
-testErr("logitNorm+pow", function() {
-  return(logitNorm(.1, 0, 12) + pow(0.1, 0.5))
-}, c(52.641, 52.641, 52.589, 52.6, 52.6, 52.6), addProp = 1)
-
-testErr("logitNorm+pow", function() {
-  return(logitNorm(.1, 0, 12) + pow(0.1, 0.5))
-}, c(45.668, 45.668, 45.59, 45.603, 45.603, 45.603), addProp = 2)
 
 ## logitNorm + yeoJohnson
 testErr("logitNorm+yeoJohnson", function() {
