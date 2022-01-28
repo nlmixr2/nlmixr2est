@@ -944,6 +944,7 @@ nlmixr2Est.saem <- function(env, ...) {
     assign(item, get(item, envir = env), envir = .envReset$env)
   })
   .envReset$cacheReset <- FALSE
+  .envReset$unload <- FALSE
   while (.envReset$reset) {
     .envReset$reset <- FALSE
     tryCatch({
@@ -965,6 +966,23 @@ nlmixr2Est.saem <- function(env, ...) {
           .minfo("try resetting cache")
           rxode2::rxClean()
           .envReset$cacheReset <- TRUE
+          .envReset$reset <- TRUE
+          .msuccess("done")
+        }
+      } else if (regexpr("maximal number of DLLs reached", e$message) != -1) {
+        if (.envReset$unload) {
+          .malert("Could not unload rxode2 models, try restarting R")
+        } else {
+          # reset
+          rm(list=ls(envir = env, all.names = TRUE), envir=env)
+          lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+            assign(item, get(item, envir = .envReset$env), envir = env)
+          })
+          gc()
+          .minfo("try resetting cache and unloading all rxode2 models")
+          try(rxode2::rxUnloadAll())
+          rxode2::rxClean()
+          .envReset$unload <- TRUE
           .envReset$reset <- TRUE
           .msuccess("done")
         }
