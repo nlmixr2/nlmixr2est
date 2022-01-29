@@ -1656,44 +1656,56 @@ testErr("logitNorm+prop", function(f) {
     ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
 }, .logitNormAddPow1, addProp = 1)
 
-skip("place")
-
 ## logitNorm + yeoJohnson
+.logitNormAddYeoJohnson <- c(9.019, 9.019, 9.019, 9.019, 9.576, 9.576)
 testErr("logitNorm+yeoJohnson", function(f) {
   f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + yeoJohnson(lm)) %>%
     ini(logit.sd=sqrt(0.1), lm=0.5)
-})
+}, .logitNormAddYeoJohnson)
 
+.logitNormPropAddYeoJohnson <- c(78.136, 78.136, 77.984, 78.017, 78.017, 78.017)
 testErr("logitNorm(NA)+prop+yeoJohnson", function(f) {
   f %>% model(ipre ~ logitNorm(NA, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
     ini(prop.sd=sqrt(0.1), lm=0.5)
-})
+}, .logitNormPropAddYeoJohnson)
 
 testErr("logitNorm(NA)+pow+yeoJohnson->logitNorm(NA)+prop+yeoJohnson", function(f) {
   f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
     ini(prop.sd=sqrt(0.1), lm=0.5, pw=1)
-}, c(50.631, 50.631, 50.54, 50.551, 50.552, 50.551))
+}, .logitNormPropAddYeoJohnson)
 
+.logitNormPowYeoJohnson <- c(39.334, 39.334, 39.287, 39.251, 39.256, 39.256)
 testErr("logitNorm(NA)+pow+yeoJohnson", function(f) {
   f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
     ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
-}, c(50.631, 50.631, 50.54, 50.551, 50.552, 50.551))
+}, .logitNormPowYeoJohnson)
 
-testErr("logitNorm+prop+yeoJohnson", function() {
-  return(logitNorm(.1, 0, 12) + prop(0.1) + yeoJohnson(0.5))
-}, c(78.693, 78.693, 78.585, 78.609, 78.609, 78.609), addProp = 1)
+.logitNormAddPropAddYeoJohnson1 <- c(82.941, 82.941, 82.833, 82.857, 82.857, 82.857)
+testErr("logitNorm+add+prop+yeoJohnson combined 1", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .logitNormAddPropAddYeoJohnson1, addProp=1)
 
-testErr("logitNorm+prop+yeoJohnson", function() {
-  return(logitNorm(.1, 0, 12) + prop(0.1) + yeoJohnson(0.5))
-}, c(74.231, 74.231, 74.088, 74.12, 74.12, 74.12), addProp = 2)
+.logitNormAddPropAddYeoJohnson2 <- c(78.485, 78.485, 78.341, 78.373, 78.373, 78.373)
+testErr("logitNorm+add+prop+yeoJohnson combined2", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .logitNormAddPropAddYeoJohnson2, addProp = 2)
 
-testErr("logitNorm+pow+yeoJohnson", function() {
-  return(logitNorm(.1, 0, 12) + pow(0.1, 0.5) + yeoJohnson(0.5))
-}, c(58.628, 58.628, 58.575, 58.586, 58.586, 58.586), addProp = 1)
 
-testErr("logitNorm+pow+yeoJohnson", function() {
-  return(logitNorm(.1, 0, 12) + pow(0.1, 0.5) + yeoJohnson(0.5))
-}, c(51.662, 51.662, 51.584, 51.595, 51.595, 51.595), addProp = 2)
+.logitNormAddPowAddYeoJohnson1 <- c(82.941, 82.941, 82.833, 82.857, 82.857, 82.857)
+testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, addProp = 1)
+
+.logitNormAddPowAddYeoJohnson2 <- c(78.485, 78.485, 78.341, 78.373, 78.373, 78.373)
+testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
+  f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .logitNormAddPowAddYeoJohnson2, addProp = 2)
+
+skip("place")
 
 ## probitNorm
 testErr("probitNorm", function() {
