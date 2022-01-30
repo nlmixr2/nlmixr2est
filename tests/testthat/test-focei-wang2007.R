@@ -228,6 +228,8 @@ testErr("addMod", function(f) {
   f %>% model(ipre ~ add(f2))
 }, .addModVals)
 
+skip_on_cran()
+
 ################################################################################
 # Power Model Tests
 ################################################################################
@@ -1747,7 +1749,7 @@ testErr("probitNorm+pow, combined1", function(f) {
 }, .probitNormAddPow1, addProp = 1)
 
 ## probitNorm + yeoJohnson
-.probitNormAddYeoJohnson <- c(9.019, 9.019, 9.019, 9.019, 9.576, 9.576)
+.probitNormAddYeoJohnson <- c(19.69, 19.69, 19.69, 19.69, 19.729, 19.729)
 testErr("probitNorm+yeoJohnson", function(f) {
   f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + yeoJohnson(lm)) %>%
     ini(probit.sd=sqrt(0.1), lm=0.5)
