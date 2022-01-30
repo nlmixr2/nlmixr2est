@@ -1,4 +1,5 @@
 test_that("turnover model; issue nlmixr#413", {
+
   pk.turnover.emax3 <- function() {
     ini({
       tktr <- log(1)
@@ -56,7 +57,7 @@ test_that("turnover model; issue nlmixr#413", {
       effect ~ add(pdadd.err) | pca
     })
   }
-  
+
   f <- nlmixr(pk.turnover.emax3)
   expect_equal(c(1L, 2L, 3L, 4L, NA, NA, 5L, 6L, 7L, 8L, NA), f$saem.theta.trans)
 })

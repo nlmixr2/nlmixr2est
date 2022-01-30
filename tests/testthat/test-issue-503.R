@@ -1,6 +1,7 @@
 test_that("add+prop saem; issue nlmixr#503", {
+
   PKdata <- warfarin[warfarin$dvid == "cp", ]
-  
+
   One.comp.KA.solved <- function() {
     ini({
       # Where initial conditions/variables are specified
@@ -23,7 +24,7 @@ test_that("add+prop saem; issue nlmixr#503", {
       linCmt() ~ propT(prop.err) + add(add.err)
     })
   }
-  
+
   fitOne.comp.KA.solved_S2 <-
     suppressMessages(nlmixr(
       One.comp.KA.solved,    #the model definition
@@ -36,6 +37,6 @@ test_that("add+prop saem; issue nlmixr#503", {
                   addProp="combined1"),
       tableControl(npde=TRUE, cwres=TRUE)
     ))
-  
+
   expect_true(fitOne.comp.KA.solved_S2$theta["add.err"] > 0.4)
 })
