@@ -574,6 +574,8 @@ is.latex <- function() {
 #'   ODE system cannot be solved.  It is based on each individual bad
 #'   solve.
 #'
+#' @param compress Should the object have compressed items
+#'
 #' @inheritParams configsaem
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -713,7 +715,8 @@ foceiControl <- function(sigdig = 3, ...,
                          gradProgressOfvTime = 10,
                          addProp = c("combined2", "combined1"),
                          singleOde = TRUE,
-                         badSolveObjfAdj=100) {
+                         badSolveObjfAdj=100,
+                         compress=TRUE) {
   if (is.null(boundTol)) {
     boundTol <- 5 * 10^(-sigdig + 1)
   }
@@ -920,6 +923,7 @@ foceiControl <- function(sigdig = 3, ...,
   } else {
     addProp <- match.arg(addProp)
   }
+  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1037,6 +1041,7 @@ foceiControl <- function(sigdig = 3, ...,
     addProp = addProp,
     singleOde = singleOde,
     badSolveObjfAdj=badSolveObjfAdj,
+    compress=compress,
     ...
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
@@ -2392,16 +2397,18 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     rm(list="saem", envir=.env)
     .env$saem0 <- .saem
   }
-  for (.item in c("origData", "phiM", "parHist", "saem0")) {
-    if (exists(.item, .env)) {
-      .obj <- get(.item, envir=.env)
-      .size <- object.size(.obj)
-      .objC <- qs::qserialize(.obj)
-      .size2 <- object.size(.objC)
-      if (.size2 < .size) {
-        .size0 <- (.size - .size2)
-        .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
-        assign(.item, .objC, envir=.env)
+  if (.control$compress) {
+    for (.item in c("origData", "phiM", "parHist", "saem0")) {
+      if (exists(.item, .env)) {
+        .obj <- get(.item, envir=.env)
+        .size <- object.size(.obj)
+        .objC <- qs::qserialize(.obj)
+        .size2 <- object.size(.objC)
+        if (.size2 < .size) {
+          .size0 <- (.size - .size2)
+          .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
+          assign(.item, .objC, envir=.env)
+        }
       }
     }
   }

@@ -405,7 +405,8 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   drop <- c(drop, "rxLambda", "rxYj")
   .w <- -which(names(.df) %in% drop)
   if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
-  .isDplyr <- requireNamespace("dplyr", quietly = TRUE)
+  class(.df) <- "data.frame"
+  .isDplyr <- requireNamespace("tibble", quietly = TRUE)
   if (!.isDplyr) {
     .isDataTable <- requireNamespace("data.table", quietly = TRUE)
     if (.isDataTable) {
@@ -421,7 +422,6 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   if (.fit$method == "population only") {
     .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", .fit$env$est,  .cls)
   } else {
-    .cls <- c("nlmixr2FitData", "nlmixr2FitCore", .fit$env$est, .cls)
     .cls <- c("nlmixr2FitData", "nlmixr2FitCore", .fit$env$est, .cls)
   }
   if (inherits(updateObject, "logical")) {

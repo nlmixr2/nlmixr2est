@@ -141,6 +141,7 @@ saemControl <- function(seed = 99,
                         perNoCor=0.75,
                         perFixOmega=0.1,
                         perFixResid=0.1,
+                        compress=compress,
                         ...) {
   type <- match.arg(type)
   .xtra <- list(...)
@@ -168,6 +169,7 @@ saemControl <- function(seed = 99,
   } else {
     addProp <- match.arg(addProp)
   }
+  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     ODEopt = rxode2::rxControl(
@@ -195,6 +197,7 @@ saemControl <- function(seed = 99,
     perNoCor=perNoCor,
     perFixOmega=perFixOmega,
     perFixResid=perFixResid,
+    compress=compress,
     ...
   )
   if (length(.rm) > 0) {
@@ -839,6 +842,7 @@ saemControl <- function(seed = 99,
   .ctl$method <- .saemControl$method
   .ctl$skipCov <- .ui$foceiSkipCov
   .ctl$interaction <- 1L
+  .ctl$compress <- .saemControl$compress
   rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }

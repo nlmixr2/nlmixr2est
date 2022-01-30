@@ -132,6 +132,7 @@ nmObjGetControl.saem <- function(x, ...) {
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.default <- function(x, ...) {
-  stop("cannot figure out get the control, add method for `nmObjHandleControlObject.", class(x)[1], "`",
-       call.=FALSE)
+  ## stop("cannot figure out get the control, add method for `nmObjHandleControlObject.", class(x)[1], "`",
+  ##      call.=FALSE)
+  NULL
 }
