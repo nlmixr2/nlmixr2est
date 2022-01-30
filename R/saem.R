@@ -141,7 +141,7 @@ saemControl <- function(seed = 99,
                         perNoCor=0.75,
                         perFixOmega=0.1,
                         perFixResid=0.1,
-                        compress=compress,
+                        compress=TRUE,
                         ...) {
   type <- match.arg(type)
   .xtra <- list(...)

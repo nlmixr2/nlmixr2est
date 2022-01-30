@@ -122,7 +122,7 @@ gqg.mlx <- function(dim, nnodes.gq) {
   #    w    = row vector of corresponding weights
   #
   if (nnodes.gq > 25) {
-    cat("The number of nodes for Gaussian Quadrature should be less than 25.\n")
+    message("The number of nodes for Gaussian Quadrature should be less than 25.")
     return(list(nodes = NULL, weights = c()))
   }
   if (nnodes.gq == 1) {
