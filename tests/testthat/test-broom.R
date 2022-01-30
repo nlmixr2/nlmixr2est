@@ -78,7 +78,7 @@ test_that("tidy works on nlmixr fit SAEM fits", {
   .est <- td$estimate
   .stdErr <- td$std.error
   .confLow <- td$conf.low
-  
+
   td <- broom.mixed::tidy(fitS, conf.level = 0.9, exponentiate = FALSE)
   check_tidy(td)
   expect_equal(
@@ -98,60 +98,62 @@ test_that("tidy works on nlmixr fit SAEM fits", {
     tolerance = tol
   )
   expect_equal(exp(td$conf.low), .confLow, tolerance = tol)
-  
+
   for (ef in c("ran_vals", "random")) {
     td <- broom.mixed::tidy(fitS, effects = ef, exponentiate = NA)
     td1 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     td <- broom.mixed::tidy(fitS, effects = ef, exponentiate = FALSE)
     td2 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     td <- broom.mixed::tidy(fitS, effects = ef, exponentiate = TRUE)
     td3 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     expect_equal(td1, td2)
     expect_equal(td2, td3)
   }
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_coef", exponentiate = NA)
   td1 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   .td1 <- td1
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_coef", exponentiate = FALSE)
   td2 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_coef", exponentiate = TRUE)
   td3 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   expect_equal(log(td1), td2)
   expect_equal(td2, log(td3))
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_pars", exponentiate = NA)
   td1 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_pars", exponentiate = FALSE)
   td2 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-  
+
   td <- broom.mixed::tidy(fitS, effects = "ran_pars", exponentiate = TRUE)
   td3 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-  
+
   expect_equal(td1, td2)
   expect_equal(td2, td3)
 })
 
+skip_on_cran()
+
 for (f in c("focei", "foce")) {
   fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
-  
+
   test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
     td <- broom.mixed::tidy(fitF, exponentiate = NA)
     check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
@@ -177,7 +179,7 @@ for (f in c("focei", "foce")) {
     .est <- td$estimate
     .stdErr <- td$std.error
     .confLow <- td$conf.low
-    
+
     td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = FALSE)
     check_tidy(td)
     expect_equal(td$estimate[1:3], log(.est)[1:3],
@@ -193,7 +195,7 @@ for (f in c("focei", "foce")) {
     expect_equal(exp(td$conf.low), .confLow,
                  tolerance = tol
     )
-    
+
     for (ef in c("ran_vals", "random")) {
       td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
       td1 <- td$estimate
@@ -270,7 +272,7 @@ for (f in c("foi", "fo")) {
     .est <- td$estimate
     .stdErr <- td$std.error
     .confLow <- td$conf.low
-    
+
     td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = FALSE)
     check_tidy(td)
     expect_equal(td$estimate[1:3], log(.est)[1:3],
@@ -368,7 +370,7 @@ test_that("tidy works on posthoc fit fits", {
     NA_real_, NA_real_, NA_real_, NA_real_, NA_real_, NA_real_,
     NA_real_
   ))
-  
+
   td <- broom.mixed::tidy(fitP, conf.level = 0.9, exponentiate = FALSE)
   check_tidy(td)
   expect_equal(td$estimate, c(
@@ -383,28 +385,28 @@ test_that("tidy works on posthoc fit fits", {
     NA_real_, NA_real_, NA_real_, NA_real_, NA_real_, NA_real_,
     NA_real_
   ), tolerance = tol)
-  
+
   for (ef in c("ran_vals", "random")) {
     td <- broom.mixed::tidy(fitP, effects = ef, exponentiate = NA)
     td1 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     td <- broom.mixed::tidy(fitP, effects = ef, exponentiate = FALSE)
     td2 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     td <- broom.mixed::tidy(fitP, effects = ef, exponentiate = TRUE)
     td3 <- td$estimate
     check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-    
+
     expect_equal(td1, td2, tolerance = tol)
     expect_equal(td2, td3, tolerance = tol)
   }
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_coef", exponentiate = NA)
   td1 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   expect_equal(td1, c(
     1.75611262206464, 1.92886734474446, 2.36872361414073, 1.18776870402381,
     1.48421770349779, 1.1603466406079, 0.728548560764397, 1.37496750947703,
@@ -416,33 +418,33 @@ test_that("tidy works on posthoc fit fits", {
     27.0633487903421, 40.6859508443866, 33.6487106457298, 35.5118803877647,
     31.940988239621, 26.0728299589223, 37.2139995031868, 24.7515885649664
   ), tolerance = tol)
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_coef", exponentiate = FALSE)
   td2 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_coef", exponentiate = TRUE)
   td3 <- td$estimate
   check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-  
+
   expect_equal(log(td1), td2, tolerance = tol)
   expect_equal(td2, log(td3), tolerance = tol)
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_pars", exponentiate = NA)
   td1 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
   expect_equal(td1, c(0.774596669241483, 0.547722557505166, 0.316227766016838, 0.7),
                tolerance = tol
   )
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_pars", exponentiate = FALSE)
   td2 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-  
+
   td <- broom.mixed::tidy(fitP, effects = "ran_pars", exponentiate = TRUE)
   td3 <- td$estimate
   check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-  
+
   expect_equal(td1, td2, tolerance = tol)
   expect_equal(td2, td3, tolerance = tol)
 })
