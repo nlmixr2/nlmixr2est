@@ -1633,11 +1633,11 @@ testErr("logitNorm(NA)+pow->logitNorm(NA)+prop", function(f) {
     ini(prop.sd=sqrt(0.1), pw=1)
 }, .logitNormProp)
 
-.logitNormProp <- c(29.055, 29.055, 29.007, 28.987, 28.989, 28.989)
+.logitNormPow <- c(29.055, 29.055, 29.007, 28.987, 28.989, 28.989)
 testErr("logitNorm(NA)+pow->logitNorm(NA)+prop", function(f) {
   f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
     ini(prop.sd=sqrt(0.1), pw=0.5)
-})
+}, .logitNormPow)
 
 .logitNormAddProp1 <- c(72.699, 72.699, 72.591, 72.615, 72.615, 72.615)
 testErr("logitNorm+prop", function(f) {
@@ -1697,7 +1697,7 @@ testErr("logitNorm+add+prop+yeoJohnson combined2", function(f) {
 testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
   f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
     ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
-}, addProp = 1)
+}, .logitNormAddPowAddYeoJohnson1, addProp = 1)
 
 .logitNormAddPowAddYeoJohnson2 <- c(78.485, 78.485, 78.341, 78.373, 78.373, 78.373)
 testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
@@ -1705,184 +1705,92 @@ testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
     ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
 }, .logitNormAddPowAddYeoJohnson2, addProp = 2)
 
-skip("place")
 
-## probitNorm
-testErr("probitNorm", function() {
-  return(probitNorm(.1, 0, 12))
-}, c(12.827, 12.827, 12.827, 12.827, 12.847, 12.827))
+.probitNormAdd <- c(12.827, 12.827, 12.827, 12.827, 12.847, 12.847)
+testErr("probitNorm", function(f) {
+  f %>% model(ipre ~ probitNorm(logit.sd, 0, 12)) %>%
+    ini(logit.sd=sqrt(0.1))
+}, .probitNormAdd)
 
-testErr("probitNorm(NA)+prop", function() {
-  return(probitNorm(NA, 0, 12) + prop(0.1))
-}, c(88.875, 88.875, 88.733, 88.766, 88.766, 88.766))
+.probitNormProp <- c(88.875, 88.875, 88.733, 88.766, 88.766, 88.766)
+testErr("probitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + prop(prop.sd)) %>%
+    ini(prop.sd=sqrt(0.1))
+}, .probitNormProp)
 
-testErr("probitNorm(NA)+pow", function() {
-  return(probitNorm(NA, 0, 12) + pow(0.1, 0.5))
-}, c(65.098, 65.098, 65.02, 65.037, 65.037, 65.037))
+testErr("probitNorm(NA)+pow->probitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=1)
+}, .probitNormProp)
 
-testErr("probitNorm+prop", function() {
-  return(probitNorm(0.1, 0, 12) + prop(0.1))
-}, c(93.761, 93.761, 93.661, 93.682, 93.682, 93.682), addProp = 1)
+.probitNormPow <- c(48.625, 48.625, 48.579, 48.587, 48.587, 48.587)
+testErr("probitNorm(NA)+pow->probitNorm(NA)+prop", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(prop.sd=sqrt(0.1), pw=0.5)
+}, .probitNormPow)
 
-testErr("probitNorm+prop", function() {
-  return(probitNorm(0.1, 0, 12) + prop(0.1))
-}, c(89.232, 89.232, 89.098, 89.129, 89.129, 89.129), addProp = 2)
+.probitNormAddProp1 <- c(93.761, 93.761, 93.661, 93.682, 93.682, 93.682)
+testErr("probitNorm+prop", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1))
+}, .probitNormAddProp1, addProp = 1)
 
-testErr("probitNorm+pow", function() {
-  return(probitNorm(0.1, 0, 12) + pow(0.1, 0.5))
-}, c(73.405, 73.405, 73.359, 73.37, 73.37, 73.37), addProp = 1)
+testErr("probitNorm+pow->probitNorm+prop", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
+}, .probitNormAddProp1, addProp = 1)
 
-testErr("probitNorm+pow", function() {
-  return(probitNorm(0.1, 0, 12) + pow(0.1, 0.5))
-}, c(66.187, 66.187, 66.12, 66.135, 66.135, 66.135), addProp = 2)
+.probitNormAddPow1 <- c(60.418, 60.418, 60.396, 60.401, 60.401, 60.401)
+testErr("probitNorm+pow, combined1", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
+}, .probitNormAddPow1, addProp = 1)
 
 ## probitNorm + yeoJohnson
+.probitNormAddYeoJohnson <- c(9.019, 9.019, 9.019, 9.019, 9.576, 9.576)
+testErr("probitNorm+yeoJohnson", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + yeoJohnson(lm)) %>%
+    ini(probit.sd=sqrt(0.1), lm=0.5)
+}, .probitNormAddYeoJohnson)
 
-testErr("probitNorm+yeoJohnson", function() {
-  return(probitNorm(.1, 0, 12) + yeoJohnson(0.5))
-}, c(16.768, 16.768, 16.768, 16.768, 16.799, 16.768))
+.probitNormPropAddYeoJohnson <- c(96.041, 96.041, 95.899, 95.931, 95.931, 95.931)
+testErr("probitNorm(NA)+prop+yeoJohnson", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(prop.sd=sqrt(0.1), lm=0.5)
+}, .probitNormPropAddYeoJohnson)
 
-testErr("probitNorm(NA)+prop+yeoJohnson", function() {
-  return(probitNorm(NA, 0, 12) + prop(0.1) + yeoJohnson(0.5))
-}, c(93.071, 93.071, 92.929, 92.962, 92.962, 92.962))
+testErr("probitNorm(NA)+pow+yeoJohnson->probitNorm(NA)+prop+yeoJohnson", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(prop.sd=sqrt(0.1), lm=0.5, pw=1)
+}, .probitNormPropAddYeoJohnson)
 
-testErr("probitNorm(NA)+pow+yeoJohnson", function() {
-  return(probitNorm(NA, 0, 12) + pow(0.1, 0.5) + yeoJohnson(0.5))
-}, c(69.295, 69.295, 69.217, 69.234, 69.234, 69.234))
+.probitNormPowYeoJohnson <- c(55.798, 55.798, 55.751, 55.758, 55.758, 55.758)
+testErr("probitNorm(NA)+pow+yeoJohnson", function(f) {
+  f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
+}, .probitNormPowYeoJohnson)
 
-testErr("probitNorm(0.1)+prop+yeoJohnson", function() {
-  return(probitNorm(0.1, 0, 12) + prop(0.1) + yeoJohnson(0.5))
-}, c(97.957, 97.957, 97.856, 97.878, 97.878, 97.878), addProp = 1)
+.probitNormAddPropAddYeoJohnson1 <- c(100.925, 100.925, 100.824, 100.846, 100.846, 100.846)
+testErr("probitNorm+add+prop+yeoJohnson combined 1", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .probitNormAddPropAddYeoJohnson1, addProp=1)
 
-testErr("probitNorm(0.1)+prop+yeoJohnson", function() {
-  return(probitNorm(0.1, 0, 12) + prop(0.1) + yeoJohnson(0.5))
-}, c(93.429, 93.429, 93.295, 93.326, 93.326, 93.326), addProp = 2)
+.probitNormAddPropAddYeoJohnson2 <- c(96.398, 96.398, 96.264, 96.295, 96.295, 96.295)
+testErr("probitNorm+add+prop+yeoJohnson combined2", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .probitNormAddPropAddYeoJohnson2, addProp = 2)
 
-testErr("probitNorm(0.1)+pow+yeoJohnson", function() {
-  return(probitNorm(0.1, 0, 12) + pow(0.1, 0.5) + yeoJohnson(0.5))
-}, c(77.599, 77.599, 77.553, 77.564, 77.564, 77.564), addProp = 1)
+.probitNormAddPowAddYeoJohnson1 <- c(100.925, 100.925, 100.824, 100.846, 100.846, 100.846)
+testErr("probitNorm+pow+yeoJohnson combined1", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .probitNormAddPowAddYeoJohnson1, addProp = 1)
 
-testErr("probitNorm(0.1)+pow+yeoJohnson", function() {
-  return(probitNorm(0.1, 0, 12) + pow(0.1, 0.5) + yeoJohnson(0.5))
-}, c(70.383, 70.383, 70.316, 70.331, 70.331, 70.331), addProp = 2)
+.probitNormAddPowAddYeoJohnson2 <- c(96.398, 96.398, 96.264, 96.295, 96.295, 96.295)
+testErr("probitNorm+pow+yeoJohnson combined2", function(f) {
+  f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
+    ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
+}, .probitNormAddPowAddYeoJohnson2, addProp = 2)
 
-## lognormal -- equivalent to add on log-space and back-transformed.
-
-## Next run on the log-transformed space
-datl <- dat
-datl$DV <- log(datl$DV)
-datl2 <- dat2
-datl2$DV <- log(datl2$DV)
-predl <- function() log(ipre)
-
-fit.lnorm <- .foceiFit(dat, inits, mypar1, mod, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "")
-)
-
-test_that("Matches NONMEM objective lognormal function; (Based on Wang2007)", {
-  expect_equal(fit.lnorm$objective, 40.039, tol=1e-3)
-})
-
-fit.lnorm0 <- .foceiFit(datl, inits, mypar1, mod, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "")
-)
-
-test_that("Matches NONMEM objective lognormal function; (Based on Wang2007)", {
-  expect_equal(fit.lnorm$objective, 40.039, tol=1e-3)
-  expect_equal(fit.lnorm0$objective + 2 * sum(datl$DV), fit.lnorm$objective)
-  expect_equal(fit.lnorm0$objective, -42.106, tol=1e-3)
-})
-
-fit.lnorm2 <- .foceiFit(dat2, inits, mypar1, m1, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "")
-)
-
-fit.lnorm20 <- .foceiFit(datl2, inits, mypar1, m1, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "")
-)
-
-test_that("Matches NONMEM objective lognormal function; ODE (Based on Wang2007)", {
-  expect_equal(fit.lnorm2$objective, 40.039, tol=1e-3)
-  expect_equal(fit.lnorm20$objective + 2 * sum(datl$DV), fit.lnorm2$objective)
-  expect_equal(fit.lnorm20$objective, -42.106, tol=1e-3)
-})
-
-fit.lnorm <- .foceiFit(dat, inits, mypar1, mod, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE)
-)
-
-fit.lnorm0 <- .foceiFit(datl, inits, mypar1, mod, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE)
-)
-
-test_that("Matches NONMEM objective lognormal error FOCE (Based on Wang2007)", {
-  expect_equal(fit.lnorm$objective, 40.039, tol=1e-3)
-  expect_equal(fit.lnorm0$objective + 2 * sum(datl$DV), fit.lnorm$objective)
-  expect_equal(fit.lnorm0$objective, -42.106, tol=1e-3)
-})
-
-fit.lnorm2 <- .foceiFit(dat2, inits, mypar1, m1, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE)
-)
-
-fit.lnorm20 <- .foceiFit(datl2, inits, mypar1, m1, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE)
-)
-
-test_that("Matches NONMEM objective lognormal error FOCE; ODE (Based on Wang2007)", {
-  expect_equal(fit.lnorm2$objective, 40.039, tol=1e-3)
-  expect_equal(fit.lnorm20$objective + 2 * sum(datl$DV), fit.lnorm2$objective)
-  expect_equal(fit.lnorm20$objective, -42.106, tol=1e-3)
-})
-
-fit.lnorm <- .foceiFit(dat, inits, mypar1, mod, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE, fo = TRUE)
-)
-
-fit.lnorm0 <- .foceiFit(datl, inits, mypar1, mod, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE, fo = TRUE)
-)
-
-test_that("Matches NONMEM objective lognormal error FO (Based on Wang2007)", {
-  expect_equal(fit.lnorm$objective, 40.055, tol=1e-3)
-  expect_equal(fit.lnorm0$objective + 2 * sum(datl$DV), fit.lnorm$objective)
-  expect_equal(fit.lnorm0$objective, -42.09, tol=1e-3)
-})
-
-fit.lnorm2 <- .foceiFit(dat2, inits, mypar1, m1, pred, function() {
-  return(lnorm(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE, fo = TRUE)
-)
-
-fit.lnorm20 <- .foceiFit(datl2, inits, mypar1, m1, predl, function() {
-  return(add(.1))
-},
-control = foceiControl(maxOuterIterations = 0, covMethod = "", interaction = FALSE, fo = TRUE)
-)
-
-test_that("Matches NONMEM objective lognormal error FO; ODE (Based on Wang2007)", {
-  expect_equal(fit.lnorm2$objective, 40.055, tol=1e-3)
-  expect_equal(fit.lnorm20$objective + 2 * sum(datl$DV), fit.lnorm2$objective)
-  expect_equal(fit.lnorm20$objective, -42.09, tol=1e-3)
-})
