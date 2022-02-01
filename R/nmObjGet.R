@@ -100,6 +100,7 @@ nmObjGet.dataMerge <- function(x, ...) {
   .fitData$nlmixrRowNums <- .env$.rownum
   .share <- setdiff(intersect(names(.origData), names(.fitData)), c("ID", "nlmixrRowNums"))
   .fitData <- .fitData[, !(names(.fitData) %in% .share)]
+  .origData$ID <- factor(.origData$ID, levels = levels(.origData$ID))
   .ret <- merge(.origData, .fitData, by=c("ID", "nlmixrRowNums"), all.x=TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
