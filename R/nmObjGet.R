@@ -86,6 +86,28 @@ nmObjGet.dataSav <- function(x, ...){
 
 #' @rdname nmObjGet
 #' @export
+nmObjGet.dataMerge <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  .origData <- .obj$origData
+  .origData$nlmixrRowNums <- seq_along(.origData[, 1])
+  .fitData <- as.data.frame(.obj)
+  if (is.null(.fitData$EVID)) .fitData$EVID <- 0
+  if (is.null(.fitData$AMT))  .fitData$AMT  <- 0
+  .names <- tolower(names(.origData))
+  .wid <- which(.names == "id")
+  names(.origData)[.wid] <- "ID"
+  .fitData$nlmixrRowNums <- .env$.rownum
+  .share <- setdiff(intersect(names(.origData), names(.fitData)), c("ID", "nlmixrRowNums"))
+  .fitData <- .fitData[, !(names(.fitData) %in% .share)]
+  .ret <- merge(.origData, .fitData, by=c("ID", "nlmixrRowNums"), all.x=TRUE)
+  .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
+  .ret
+}
+attr(nmObjGet.dataSav, "desc") <- "get the fit data merged with the original dataset"
+
+#' @rdname nmObjGet
+#' @export
 nmObjGet.saemTransformedData <- function(x, ...) {
   .dataSav <- nmObjGet.dataSav(x, ...)
   .obj <- x[[1]]

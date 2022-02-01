@@ -38,6 +38,7 @@ saemControl(
   perNoCor = 0.75,
   perFixOmega = 0.1,
   perFixResid = 0.1,
+  compress = TRUE,
   ...
 )
 }
@@ -190,6 +191,8 @@ fixed during optimization.}
 \item{perFixResid}{This is the percentage of the `nBurn` phase
 where the residual components are unfixed to allow better
 exploration of the likelihood surface.}
+
+\item{compress}{Should the object have compressed items}
 
 \item{...}{Other arguments to control SAEM.}
 }

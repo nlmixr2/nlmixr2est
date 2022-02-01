@@ -62,6 +62,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(model)) {
     stop("cannot solve with `model` NULL", call.=FALSE)
   }
+  keep <- unique(c(keep, "nlmixrRowNums"))
   .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                             returnType = returnType,
                             atol = fit$atol[1], rtol = fit$rtol[1],
@@ -114,6 +115,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @noRd
 .foceiPredIpredList <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters, keep=NULL, predOnly=is.null(fit$innerModel),
                                 addDosing=FALSE, subsetNonmem=TRUE) {
+  keep <- unique(c(keep, "nlmixrRowNums"))
   if (!predOnly && is.null(fit$innerModel)) {
     # Add inner problem calculation for cwres calculation
     fit$innerModelForce
@@ -162,12 +164,14 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                         table=tableControl(), dv=NULL, predOnly=FALSE,
                         addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
                         .prdLst) {
+  keep <- unique(c(keep, "nlmixrRowNums"))
   if (!inherits(dv, "numeric")) {
     dv <- .prdLst$ipred$dv
     table$doSim <- TRUE
   } else {
     table$doSim <- FALSE
   }
+
   if (npde) {
     .sim <- vpcSim(fit, n = table$nsim, seed = table$seed,
                    addDosing=addDosing, subsetNonmem=subsetNonmem)
@@ -202,6 +206,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                        addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
                        .prdLst=NULL) {
   if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
+  keep <- unique(c(keep, "nlmixrRowNums"))
   if (is.null(.prdLst)) {
     .prdLst <- .foceiPredIpredList(fit, data=data, keep=keep, thetaEtaParameters=thetaEtaParameters, predOnly=predOnly,
                                    addDosing=addDosing, subsetNonmem=subsetNonmem)
@@ -227,6 +232,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 .calcIres <- function(fit, data=fit$dataSav, table=tableControl(), dv=NULL,
                       addDosing=FALSE, subsetNonmem=TRUE, keep=NULL) {
+  keep <- unique(c(keep, "nlmixrRowNums"))
   if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
   .keep <- keep
   .names <- names(data)
@@ -272,6 +278,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 .calcTables <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
                         table=tableControl(), keep=NULL) {
+  keep <- unique(c(keep, "nlmixrRowNums"))
+
   if (!inherits(table, "tableControl")) table <- do.call(tableControl, table)
   if (is.null(table$cwres)) {
     table$cwres <- !is.null(fit$innerModel)
@@ -379,6 +387,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEtaParameters=object$foceiThetaEtaParameters,
                      table=tableControl(), keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
+  keep <- unique(c(keep, "nlmixrRowNums"))
   .pt <- proc.time()
   .malert("Calculating residuals/tables")
   .objName <- substitute(object)
@@ -402,7 +411,9 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     assign("shrink", .tabs$shrink, .fit)
     .df <- .tabs$resid
   }
-  drop <- c(drop, "rxLambda", "rxYj")
+  .rownum <- as.integer(.df$nlmixrRowNums)
+  assign(".rownum", .rownum, envir=.fit)
+  drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums")
   .w <- -which(names(.df) %in% drop)
   if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
   class(.df) <- "data.frame"
