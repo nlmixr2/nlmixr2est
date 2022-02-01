@@ -2,12 +2,21 @@
 % Please edit documentation in R/nmObjGet.R
 \name{nmObjGetData}
 \alias{nmObjGetData}
-\alias{nmObjGetData.dataMerge}
+\alias{nmObjGetData.dataMergeLeft}
+\alias{nmObjGetData.dataMergeRight}
+\alias{nmObjGetData.dataMergeInner}
+\alias{nmObjGetData.dataMergeFull}
 \title{Get an item from a nlmixr2FitData object}
 \usage{
 nmObjGetData(x, ...)
 
-\method{nmObjGetData}{dataMerge}(x, ...)
+\method{nmObjGetData}{dataMergeLeft}(x, ...)
+
+\method{nmObjGetData}{dataMergeRight}(x, ...)
+
+\method{nmObjGetData}{dataMergeInner}(x, ...)
+
+\method{nmObjGetData}{dataMergeFull}(x, ...)
 }
 \arguments{
 \item{x}{A specialized list with:

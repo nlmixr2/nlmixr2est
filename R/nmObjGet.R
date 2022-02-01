@@ -121,14 +121,11 @@ nmObjGet.idLvl <- function(x, ...){
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
-#' @rdname nmObjGetData
-#' @export
-nmObjGetData.dataMerge <- function(x, ...) {
-  .obj <- x[[1]]
-  .env <- .obj$env
-  .origData <- .obj$origData
+.dataMergeStub <- function(obj) {
+  .env      <- obj$env
+  .origData <- obj$origData
   .origData$nlmixrRowNums <- seq_along(.origData[, 1])
-  .fitData <- as.data.frame(.obj)
+  .fitData <- as.data.frame(obj)
   if (is.null(.fitData$EVID)) .fitData$EVID <- 0
   if (is.null(.fitData$AMT))  .fitData$AMT  <- 0
   .names <- tolower(names(.origData))
@@ -140,11 +137,53 @@ nmObjGetData.dataMerge <- function(x, ...) {
   if (inherits(.fitData$ID, "factor")) {
     .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))
   }
-  .ret <- merge(.origData, .fitData, by=c("ID", "nlmixrRowNums"), all.x=TRUE)
+  list(.origData, .fitData)
+}
+
+#' @rdname nmObjGetData
+#' @export
+nmObjGetData.dataMergeLeft <- function(x, ...) {
+  .obj <- x[[1]]
+  .lst <- .dataMergeStub(.obj)
+  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGet.dataSav, "desc") <- "get the fit data merged with the original dataset"
+attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit dataset"
+
+#' @rdname nmObjGetData
+#' @export
+nmObjGetData.dataMergeRight <- function(x, ...) {
+  .obj <- x[[1]]
+  .lst <- .dataMergeStub(.obj)
+  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
+  .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
+  .ret
+}
+attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fit dataset"
+
+#' @rdname nmObjGetData
+#' @export
+nmObjGetData.dataMergeInner <- function(x, ...) {
+  .obj <- x[[1]]
+  .lst <- .dataMergeStub(.obj)
+  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"))
+  .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
+  .ret
+}
+attr(nmObjGetData.dataMergeRight, "desc") <- "inner join between original and fit dataset"
+
+#' @rdname nmObjGetData
+#' @export
+nmObjGetData.dataMergeFull <- function(x, ...) {
+  .obj <- x[[1]]
+  .lst <- .dataMergeStub(.obj)
+  .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE, all.y=TRUE)
+  .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
+  .ret
+}
+attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit dataset"
+
 
 #' @rdname nmObjGet
 #' @export
