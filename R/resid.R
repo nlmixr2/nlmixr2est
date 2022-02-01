@@ -14,6 +14,8 @@
 #' @author Matthew Fidler
 #' @noRd
 #'
+
+
 # Since it can be accessed by the object, simply export it
 #' @rdname nmObjGet
 #' @export
@@ -417,6 +419,10 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
   .w <- -which(names(.df) %in% drop)
   if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
   class(.df) <- "data.frame"
+  .id <- .df$ID
+  attr(.id, "levels") <- object$idLvl
+  class(.id) <- "factor"
+  .df$ID <- .id
   .isDplyr <- requireNamespace("tibble", quietly = TRUE)
   if (!.isDplyr) {
     .isDataTable <- requireNamespace("data.table", quietly = TRUE)

@@ -2186,8 +2186,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
                          allTimeVar=TRUE, keepDosingOnly=FALSE)
-  .keepL <- attr(class(.et), ".rxode2.lst")$keepL
-  env$dataSav <- cbind(as.data.frame(.et), .keepL)
+  .lst <- attr(class(.et), ".rxode2.lst")
+  .keepL <- .lst$keepL
+  .idLvl <- .lst$idLvl
+  .dat <- cbind(as.data.frame(.et), .keepL)
+  env$dataSav <- .dat
+  env$idLvl <- .idLvl
 }
 
 .thetaReset <- new.env(parent = emptyenv())
@@ -2425,7 +2429,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                   "xType", "IDlabel", "ODEmodel",
                   # times
                   "optimTime", "setupTime", "covTime",
-                  "parHistData", "dataSav", "theta")) {
+                  "parHistData", "dataSav", "idLvl", "theta")) {
     if (exists(.item, .env)) {
       rm(list=.item, envir=.env)
     }

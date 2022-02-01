@@ -6,7 +6,7 @@
 \alias{nmObjGet.cor}
 \alias{nmObjGet.omegaR}
 \alias{nmObjGet.dataSav}
-\alias{nmObjGet.dataMerge}
+\alias{nmObjGet.idLvl}
 \alias{nmObjGet.saemTransformedData}
 \alias{nmObjGet.parHistStacked}
 \alias{nmObjGet.md5}
@@ -45,7 +45,7 @@ nmObjGet(x, ...)
 
 \method{nmObjGet}{dataSav}(x, ...)
 
-\method{nmObjGet}{dataMerge}(x, ...)
+\method{nmObjGet}{idLvl}(x, ...)
 
 \method{nmObjGet}{saemTransformedData}(x, ...)
 

@@ -314,9 +314,14 @@
   if (arg == "md5") {
     return(.nlmixr2Md5(obj))
   } else if (is.null(.ret)) {
-    .cls <- class(obj)
-    .env <- attr(.cls, ".foceiEnv")
-    .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
+    .lst <- list(obj, exact)
+    class(.lst) <- c(arg, "nmObjGetData")
+    .ret <- nmObjGetData(.lst)
+    if (is.null(.ret)) {
+      .cls <- class(obj)
+      .env <- attr(.cls, ".foceiEnv")
+      .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
+    }
   }
   return(.ret)
 }

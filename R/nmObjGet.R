@@ -8,6 +8,7 @@
 #' @return Value of argument or NULL
 #' @author Matthew L. Fidler
 #' @keywords internal
+#' @export
 nmObjGet <- function(x, ...) {
   if (!inherits(x, "nmObjGet")) {
     stop("'x' is wrong type for 'nmObjGet'", call.=FALSE)
@@ -20,6 +21,29 @@ nmObjGet <- function(x, ...) {
     .nmObjEnsureObjective(x[[1]])
   }
   UseMethod("nmObjGet")
+}
+
+#' Get an item from a nlmixr2FitData object
+#'
+#' @param x A specialized list with:
+#' - First argument is a nlmixr2FitData object
+#' - Second argument is if the exact argument is requested
+#' - The class would be the requested argument name followed by the class "nmObjGet"
+#' @param ... Other arguments
+#' @return Value of argument or NULL
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+nmObjGetData <- function(x, ...) {
+  if (!inherits(x, "nmObjGetData")) {
+    stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
+  }
+  UseMethod("nmObjGetData")
+}
+
+##' @export
+nmObjGetData.default <- function(x, ...) {
+  NULL
 }
 
 #' @rdname nmObjGet
@@ -86,7 +110,20 @@ nmObjGet.dataSav <- function(x, ...){
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.dataMerge <- function(x, ...) {
+nmObjGet.idLvl <- function(x, ...){
+  .obj <- x[[1]]
+  .objEnv <- .obj$env
+  if (exists("idLvl", .objEnv)) return(get("idLvl", envir=.objEnv))
+  .data <- .obj$origData
+  .env <- new.env(emptyenv())
+  .foceiPreProcessData(.data, .env, .obj$ui)
+  .env$idLvl
+}
+#attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
+
+#' @rdname nmObjGetData
+#' @export
+nmObjGetData.dataMerge <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
   .origData <- .obj$origData
@@ -100,7 +137,9 @@ nmObjGet.dataMerge <- function(x, ...) {
   .fitData$nlmixrRowNums <- .env$.rownum
   .share <- setdiff(intersect(names(.origData), names(.fitData)), c("ID", "nlmixrRowNums"))
   .fitData <- .fitData[, !(names(.fitData) %in% .share)]
-  .origData$ID <- factor(.origData$ID, levels = levels(.origData$ID))
+  if (inherits(.fitData$ID, "factor")) {
+    .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))
+  }
   .ret <- merge(.origData, .fitData, by=c("ID", "nlmixrRowNums"), all.x=TRUE)
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
