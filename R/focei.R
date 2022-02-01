@@ -2438,63 +2438,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 }
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
-  .envReset <- new.env(parent=emptyenv())
-  .envReset$reset <- TRUE
-  .envReset$env <- new.env(parent=emptyenv())
-  .envReset$ui <- ui
-  .envReset$method <- method
-  .envReset$est <- est
-  lapply(ls(envir = env, all.names = TRUE), function(item) {
-    assign(item, get(item, envir = env), envir = .envReset$env)
-  })
-  .envReset$cacheReset <- FALSE
-  .envReset$unload <- FALSE
-  while (.envReset$reset) {
-    .envReset$reset <- FALSE
-    tryCatch({
-      .envReset$ret <- .foceiFamilyReturn0(env=env, ui=.envReset$ui, method=.envReset$method, est=.envReset$est)
-    },
-    error=function(e) {
-      if (regexpr("not provided by package", e$message) != -1) {
-        if (.envReset$cacheReset) {
-          .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
-          stop(e)
-        } else {
-          # reset
-          rm(list=ls(envir = env, all.names = TRUE), envir=env)
-          lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
-            assign(item, get(item, envir = .envReset$env), envir = env)
-          })
-          gc()
-          .minfo("try resetting cache")
-          rxode2::rxClean()
-          .envReset$cacheReset <- TRUE
-          .envReset$reset <- TRUE
-          .msuccess("done")
-        }
-      } else if (regexpr("maximal number of DLLs reached", e$message) != -1) {
-        if (.envReset$unload) {
-          .malert("Could not unload rxode2 models, try restarting R")
-        } else {
-          # reset
-          rm(list=ls(envir = env, all.names = TRUE), envir=env)
-          lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
-            assign(item, get(item, envir = .envReset$env), envir = env)
-          })
-          gc()
-          .minfo("try resetting cache and unloading all rxode2 models")
-          try(rxode2::rxUnloadAll())
-          rxode2::rxClean()
-          .envReset$unload <- TRUE
-          .envReset$reset <- TRUE
-          .msuccess("done")
-        }
-      } else {
-        stop(e)
-      }
-    })
-  }
-  .envReset$ret
+  .foceiFamilyReturn0(env=env, ui=ui, method=method, est=est)
 }
 
 #'@rdname nlmixr2Est
