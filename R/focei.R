@@ -2180,9 +2180,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
     data[[.v]] <- as.double(data[[.v]])
   }
-  env$dataSav <- as.data.frame(rxode2::etTrans(inData=data, obj=ui$mv0,
-                                               addCmt=TRUE, dropUnits=TRUE,
-                                               allTimeVar=TRUE, keepDosingOnly=FALSE))
+  data$nlmixrRowNums <- seq_along(data[, 1])
+  .keep <- unique(c("nlmixrRowNums", env$table$keep))
+  .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
+                         addCmt=TRUE, dropUnits=TRUE,
+                         keep=unique(c("nlmixrRowNums", env$table$keep)),
+                         allTimeVar=TRUE, keepDosingOnly=FALSE)
+  .keepL <- attr(class(.et), ".rxode2.lst")$keepL
+  env$dataSav <- cbind(as.data.frame(.et), .keepL)
 }
 
 .thetaReset <- new.env(parent = emptyenv())

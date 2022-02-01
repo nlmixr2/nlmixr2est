@@ -119,7 +119,8 @@ foceiControl(
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
   singleOde = TRUE,
-  badSolveObjfAdj = 100
+  badSolveObjfAdj = 100,
+  compress = TRUE
 )
 }
 \arguments{
@@ -757,6 +758,8 @@ function and a rxode2 model}
 \item{badSolveObjfAdj}{The objective function adjustment when the
 ODE system cannot be solved.  It is based on each individual bad
 solve.}
+
+\item{compress}{Should the object have compressed items}
 }
 \value{
 The control object that changes the options for the FOCEi
