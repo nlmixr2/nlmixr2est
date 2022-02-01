@@ -51,7 +51,65 @@ nlmixr2Est <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
-  .lst <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
+  rxode2::rxUnloadAll()
+  .envReset <- new.env(parent=emptyenv())
+  if (!getOption("nlmixr2.resetCache", TRUE)) {
+    .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
+  } else{
+    .envReset$reset <- TRUE
+    .envReset$env <- new.env(parent=emptyenv())
+    lapply(ls(envir = env, all.names = TRUE), function(item) {
+      assign(item, get(item, envir = env), envir = .envReset$env)
+    })
+    .envReset$cacheReset <- FALSE
+    .envReset$unload <- FALSE
+    while (.envReset$reset) {
+      .envReset$reset <- FALSE
+      .envReset$ret <-try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE))
+      if (inherits(.envReset$ret, "try-error")) {
+        .msg <- attr(.envReset$ret, "condition")$message
+        if (regexpr("not provided by package", .msg) != -1) {
+          if (.envReset$cacheReset) {
+            .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
+            stop(.msg, call.=FALSE)
+          } else {
+            # reset
+            rm(list=ls(envir = env, all.names = TRUE), envir=env)
+            lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+              assign(item, get(item, envir = .envReset$env), envir = env)
+            })
+            gc()
+            .minfo("try resetting cache")
+            rxode2::rxClean()
+            .envReset$cacheReset <- TRUE
+            .envReset$reset <- TRUE
+            .msuccess("done")
+          }
+        } else if (regexpr("maximal number of DLLs reached", .msg) != -1) {
+          if (.envReset$unload) {
+            .malert("Could not unload rxode2 models, try restarting R")
+            stop(.msg, call.=FALSE)
+          } else {
+            # reset
+            rm(list=ls(envir = env, all.names = TRUE), envir=env)
+            lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+              assign(item, get(item, envir = .envReset$env), envir = env)
+            })
+            gc()
+            .minfo("try resetting cache and unloading all rxode2 models")
+            try(rxode2::rxUnloadAll())
+            rxode2::rxClean()
+            .envReset$unload <- TRUE
+            .envReset$reset <- TRUE
+            .msuccess("done")
+          }
+        } else {
+          stop(.msg, call.=FALSE)
+        }
+      }
+    }
+  }
+  .lst <- .envReset$ret
   .ret <- .lst[[1]]
   assign("warnings", .lst[[2]], .ret$env)
   lapply(.lst[[2]], warning, call.=FALSE)

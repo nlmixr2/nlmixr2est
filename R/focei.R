@@ -1698,7 +1698,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   }
   for (.v in s$..eventVars) {
     .vars <- as.character(get(.v, envir = s))
-    .vars <- rxGetModel(paste0("rx_lhs=", .vars))$params
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", .vars))$params
     for (.v2 in .vars) {
       .reg <- rex::rex(start, "ETA_", capture(any_numbers), "_", end)
       if (regexpr(.reg, .v2) != -1) {
@@ -2351,7 +2351,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 }
 
 
-.foceiFamilyReturn0 <- function(env, ui, ..., method=NULL, est="none") {
+.foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
                                            ui$foceiCmtPreModel, "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
@@ -2435,10 +2435,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
   }
   .ret
-}
-
-.foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
-  .foceiFamilyReturn0(env=env, ui=ui, method=method, est=est)
 }
 
 #'@rdname nlmixr2Est
