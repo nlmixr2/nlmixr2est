@@ -111,12 +111,12 @@ test_that("Issue nlmixr#502", {
   }
 
   expect_error(
-    suppressMessages(nlmixr(
+    suppressWarnings(suppressMessages(nlmixr(
       object=nlmixr_threecmt_mm_no_add_wtcl_pdtg_kout_delay2,
       data=d_mask,
       est="saem",
       control=saemControl(print=0, nEm = 3, nBurn = 3)
-    )),
+    ))),
     NA
   )
 })

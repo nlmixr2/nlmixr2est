@@ -59,7 +59,7 @@ test_that("focei 429", {
   }
 
   expect_error(
-    fit.TOF <- suppressMessages(nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0))),
+    fit.TOF <- suppressWarnings(suppressMessages(nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0)))),
     NA
   )
 
