@@ -283,21 +283,29 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
 }
 
 .saemGetIniDfAResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm"), column=column)
+  .saemGetIniDfResNameFromType(iniDf, cond, c("add", "lnorm", "probitNorm", "logitNorm"), column=column)
 }
 
 .saemGetIniDfBResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "pow"), column=column)
+  .saemGetIniDfResNameFromType(iniDf, cond, c("prop", "propT", "propF", "pow", "powT", "powF"), column=column)
 }
 
 .saemGetIniDfCResName <- function(iniDf, cond, column="name") {
-  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2"), column=column)
+  .saemGetIniDfResNameFromType(iniDf, cond, c("pow2", "powF2", "powT2"), column=column)
 }
 
 .saemGetIniDfLResName <- function(iniDf, cond, column="name") {
   .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column=column)
 }
-
+#'  Get saem residual item
+#'
+#'
+#' @param ui rxode2 UI
+#' @param column column name
+#' @return Residual names
+#' @author Matthew L. Fidler
+#' @examples
+#' @noRd
 .saemGetResItem <- function(ui, column="name") {
   .predDf <- ui$predDf
   .iniDf <- ui$iniDf
@@ -310,7 +318,6 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
            .ret <- switch(.resMod[i],
                           .saemGetIniDfAResName(.iniDf, .cond, column), # add = 1
                           .saemGetIniDfBResName(.iniDf, .cond, column), # prop = 2
-
                           c(.saemGetIniDfBResName(.iniDf, .cond, column),
                             .saemGetIniDfCResName(.iniDf, .cond, column)), # pow = 3
 
@@ -340,7 +347,9 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
                             .saemGetIniDfCResName(.iniDf, .cond, column),
                             .saemGetIniDfLResName(.iniDf, .cond, column)) # add + pow + lambda = 10
                           )
-           if (.num != length(.ret)) stop("'", .cond, "' has the incorrect number of residuals")
+           if (.num != length(.ret)) {
+             stop("endpoint '", .cond, "' for saem cannot locate the residual error(s) correctly", call.=FALSE)
+           }
            .ret
          }))
 }
