@@ -381,10 +381,61 @@ nmObjGet.ipredModel <- function(x, ...) {
 }
 attr(nmObjGet.ipredModel, "desc") <- "rxode2 ipred model for fit"
 
+#' @export
+nmObjGet.predOnlyModel <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  .est <- .env$est
+  .env <- list(.env)
+  class(.env) <- .est
+  nmObjGetPredOnly(.env)
+}
+attr(nmObjGet.ipredModel, "desc") <- "rxode2 pred only model for fit"
+
+
+#' Get the pred-only model for a fit depending on the object type
+#'
+#' By default it gets the focei models if available
+#'
+#' @param x nlmixr fit object
+#'
+#' @export
+nmObjGetPredOnly <- function(x) {
+  UseMethod("nmObjGetPredOnly")
+}
+
+#' @rdname nmObjGetPredOnly
+#' @export
+nmObjGetPredOnly.saem <- function(x) {
+  .env <- x[[1]]
+  .model <- NULL
+  if (exists("saemModel", envir=.env)) {
+    .model <- get("saemModel", envir=.env)
+  } else if (exists("model", envir=.env)) {
+    .model <- get("model", envir=.env)
+  } else {
+    stop("cannot find saem model components", call.=FALSE)
+  }
+  .model$predOnly
+}
+
+#' @rdname nmObjGetPredOnly
+#' @export
+nmObjGetPredOnly.default <- function(x) {
+  .env <- x[[1]]
+  .model <- NULL
+  if (exists("foceiModel", envir=.env)) {
+    .model <- get("foceiModel", envir=.env)
+  } else if (exists("model", envir=.env)) {
+    .model <- get("model", envir=.env)
+  }
+  .model$predOnly
+}
+
 
 #' Get the ipred model for a fit object depending on the object type
 #'
-#' By default it gets the focei models if availble.
+#' By default it gets the focei models if available.
 #'
 #' @param x nlmixr fit object
 #' @export
