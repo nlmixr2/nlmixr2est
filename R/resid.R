@@ -134,7 +134,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(.ipredModel)) {
     predOnly <- TRUE
   }
-  if (predOnly) .ipredModel <- fit$ipredModel
+  if (predOnly) {
+    .ipredModel <- fit$ipredModel
+  }
   .ret <- list(ipred = .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
                                        returnType="data.frame.TBS", keep=.keep, what="ipred",
                                        addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=predOnly),
@@ -142,7 +144,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                       addDosing=addDosing, subsetNonmem=subsetNonmem),
                etaLst=thetaEtaParameters$eta.lst)
   if (!predOnly) {
-    .ret <- c(.ret, list(predOnly=.foceiSolvePars(fit, fit$ipredModel, thetaEtaParameters$ipred,
+    .ret <- c(.ret, list(predOnly=.foceiSolvePars(fit, fit$predOnlyModel, thetaEtaParameters$ipred,
                                                    returnType="data.frame", keep=.keep, what="ebe",
                                                    addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=TRUE)))
   }
@@ -150,7 +152,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 
 .getRelevantLhs <- function(fit, keep=NULL, ipred=NULL) {
-  .ret <- setdiff(fit$ipredModel$lhs,fit$ui$ini$name)
+  .ret <- setdiff(fit$predOnlyModel$lhs,fit$ui$ini$name)
   .w <- which(regexpr("^rx", .ret) == -1)
   .ret <- unique(c(.ret[.w], keep))
   if (any(.ret == "tad")) {
@@ -186,21 +188,24 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
           .prdLst$ipred$cens, .prdLst$ipred$limit, table)
   } else {
     if (predOnly){
-      .state <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
+      .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
-      .params <- setdiff(intersect(names(fit$dataSav),fit$ipredModel$params),c("CMT","cmt","Cmt", .state, .lhs))
+      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
       .Call(`_nlmixr2_resCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     } else {
-      .state <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
+      .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
+      ## .stateSave <- vapply(.state, function(s){
+      ##   regexpr("^rx__sens_", s) == -1
+      ## }, logical(1), USE.NAMES=FALSE)
+      ## .state <- .state[.stateSave]
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
-      .params <- setdiff(intersect(names(fit$dataSav),fit$ipredModel$params),c("CMT","cmt","Cmt", .state, .lhs))
+      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
       .Call(`_nlmixr2_cwresCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
-    }
-  }
+    }  }
 }
 
 .calcCwres <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,

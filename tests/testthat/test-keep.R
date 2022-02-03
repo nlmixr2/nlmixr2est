@@ -25,15 +25,10 @@ d <- theo_sd
 d$WT2 <- d$WT + 0.5
 d$WT3 <- d$WT + 0.4
 
-for (est in c("fo", "foi", "foce", "focei", "saem", "nlme", "posthoc")) {
+for (est in c("fo", "foi", "foce", "focei", "saem", "posthoc")) {
   test_that(paste0("keep/drop in ", est), {
-    if (est == "nlme") {
-      fitF <- suppressMessages(nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5)))
-      expect_warning(fitF2 <- suppressMessages(nlmixr(one.compartment, d, est="nlme", control=nlmeControl(pnlsTol=0.5, keep="WT2", drop="center"))))
-    } else {
-      fitF <- suppressMessages(nlmixr(one.compartment, d, est=est))
-      expect_warning(fitF2 <- suppressMessages(nlmixr(one.compartment, d, est=est, control=list(keep="WT2", drop="center"))))
-    }
+    fitF <- suppressWarnings(suppressMessages(nlmixr(one.compartment, d, est=est)))
+    fitF2 <- suppressWarnings(suppressMessages(nlmixr(one.compartment, d, est=est, table=list(keep="WT2", drop="center"))))
     expect_true(any(names(fitF) == "WT"))
     expect_true(!any(names(fitF) == "WT2"))
     expect_true(!any(names(fitF) == "WT3"))
@@ -42,7 +37,7 @@ for (est in c("fo", "foi", "foce", "focei", "saem", "nlme", "posthoc")) {
     expect_true(any(names(fitF) == "dosenum"))
     expect_true(!any(names(fitF) == "rxLambda"))
     expect_true(!any(names(fitF) == "rxYj"))
-    
+
     expect_true(!any(names(fitF2) == "WT"))
     expect_true(any(names(fitF2) == "WT2"))
     expect_true(!any(names(fitF) == "WT3"))
@@ -53,31 +48,3 @@ for (est in c("fo", "foi", "foce", "focei", "saem", "nlme", "posthoc")) {
     expect_true(!any(names(fitF2) == "rxYj"))
   })
 }
-
-test_that("keep/drop in focei (duplicate?)", {
-  one.compartment <- function() {
-    ini({
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      tv <- 3.45    # Log V
-      add.sd <- 0.7
-    })
-    model({
-      ka <- exp(tka)
-      cl <- exp(tcl)
-      v <- exp(tv)
-      d/dt(depot) = -ka * depot
-      d/dt(center) = ka * depot - cl / v * center
-      cp = center / v
-      cp ~ add(add.sd)
-    })
-    keep = c("WT")
-    drop = c("depot")
-  }
-  
-  fitF <- suppressMessages(nlmixr(one.compartment, theo_sd, est="focei"))
-  expect_true(any(names(fitF) == "WT"))
-  expect_true(!any(names(fitF) == "depot"))
-  expect_true(!any(names(fitF) == "rxLambda"))
-  expect_true(!any(names(fitF) == "rxYj"))
-})
