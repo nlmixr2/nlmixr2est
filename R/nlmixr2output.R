@@ -532,19 +532,29 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 .nlmixr2FitUpdateParams <- function(x) {
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
+  .iniDf <- .ui$iniDf
+
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
+  } else if (exists("fixef", x)) {
+    .thetas <- get("fixef", x)
   } else {
     .thetas <- x$theta
   }
+  if (is.null(names(.thetas))) {
+    .thetaNames <- .iniDf$name[which(!is.na(.iniDf$ntheta))]
+    if (length(.thetaNames) > length(.thetas)) stop("corrupted rxode2 ui", call.=FALSE)
+    .thetas <- .thetas[seq_along(.thetaNames)]
+    names(.thetas) <- .thetaNames
+  }
   for (.n in names(.thetas)) {
-    .ui$iniDf$est[.ui$iniDf$name == .n] <- .thetas[.n]
+    .iniDf$est[.iniDf$name == .n] <- .thetas[.n]
   }
   .omega <- x$omega
   for (.i in seq_along(.ui$iniDf$neta1)) {
     if (!is.na(.ui$iniDf$neta1[.i])) {
-      .ui$iniDf$est[.i] <- .omega[.ui$iniDf$neta1[.i], .ui$iniDf$neta2[.i]]
+      .iniDf$est[.i] <- .omega[.iniDf$neta1[.i], .iniDf$neta2[.i]]
     }
   }
-  assign("ui", .ui, envir=x)
+  assign("iniDf", .iniDf, envir=.ui)
 }
