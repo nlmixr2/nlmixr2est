@@ -1,4 +1,3 @@
-
 #' NPDE calculation for nlmixr2
 #'
 #' @param object nlmixr2 fit object

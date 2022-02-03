@@ -413,8 +413,7 @@ extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP cen
   arma::ivec warn(idLoc.size()-1);
 
   int cores = as<int>(opt["cores"]);
-  
- #pragma omp parallel for num_threads(cores)
+
   for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
     calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
                                        lambda, yj, hi, low);
