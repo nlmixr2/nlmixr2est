@@ -1,25 +1,25 @@
-##' Generic for nlmixr2 estimation methods
-##'
-##' @param env Environment for the nlmixr2 estimation routines.
-##'
-##' This needs to have:
-##'
-##' - rxode2 ui object in `$ui`
-##'
-##' - data to fit in the estimation routine in `$data`
-##'
-##' - control for the estimation routine's control options in `$ui`
-##'
-##' @return nlmixr2 fit object
-##'
-##' @author Matthew Fidler
-##'
-##' @details
-##'
-##' This is a S3 generic that allows others to use the nlmixr2
-##'   environment to do their own estimation routines
-##'
-##' @export
+#' Generic for nlmixr2 estimation methods
+#'
+#' @param env Environment for the nlmixr2 estimation routines.
+#'
+#' This needs to have:
+#'
+#' - rxode2 ui object in `$ui`
+#'
+#' - data to fit in the estimation routine in `$data`
+#'
+#' - control for the estimation routine's control options in `$ui`
+#'
+#' @return nlmixr2 fit object
+#'
+#' @author Matthew Fidler
+#'
+#' @details
+#'
+#' This is a S3 generic that allows others to use the nlmixr2
+#'   environment to do their own estimation routines
+#'
+#' @export
 nlmixr2Est <- function(env, ...) {
   if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
@@ -42,7 +42,6 @@ nlmixr2Est <- function(env, ...) {
   }
   UseMethod("nlmixr2Est")
 }
-
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
 
 #' Call nlmixr2Est wrapped to collect the warnings

@@ -65,7 +65,6 @@ BEGIN_RCPP
   arma::vec predt(REAL(predL[npred]), ncalc, false, true);
   arma::vec pred(predt.size());
 
-
   arma::vec dv(REAL(dvIn), ncalc, false, true);
   arma::vec dvt(ncalc);
 
