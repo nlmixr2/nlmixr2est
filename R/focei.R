@@ -2304,7 +2304,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   .ret0
 }
-
+#'  Assign the control to the ui
+#'
+#' @param env Estimation/output environment
+#' @param ... Other arguments
+#' @return nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
 .foceiFamilyControl <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
@@ -2357,6 +2363,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
   .env <- ui$foceiOptEnv
+  .env$table <- env$table
   .data <- env$data
   .foceiPreProcessData(.data, .env, ui)
   .ret0 <- try(.foceiFitInternal(.env))
@@ -2429,7 +2436,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                   "xType", "IDlabel", "ODEmodel",
                   # times
                   "optimTime", "setupTime", "covTime",
-                  "parHistData", "dataSav", "idLvl", "theta")) {
+                  "parHistData", "dataSav", "idLvl", "theta",
+                  "missingTable", "missingControl", "missingEst")) {
     if (exists(.item, .env)) {
       rm(list=.item, envir=.env)
     }

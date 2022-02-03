@@ -42,6 +42,9 @@ nlmixr2Est <- function(env, ...) {
   }
   UseMethod("nlmixr2Est")
 }
+
+.tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
+
 #' Call nlmixr2Est wrapped to collect the warnings
 #'
 #'
@@ -52,6 +55,19 @@ nlmixr2Est <- function(env, ...) {
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
+  if (env$missingTable) {
+    .meta <- env$ui$meta
+    if (is.null(env$table)) {
+      env$table <- tableControl()
+    }
+    .table <- env$table
+    for (.elt in .tablePassthrough) {
+      if (exists(.elt, envir=.meta)) {
+        .table[[.elt]] <- .meta[[.elt]]
+      }
+    }
+    env$table <- .table
+  }
   .envReset <- new.env(parent=emptyenv())
   if (!getOption("nlmixr2.resetCache", TRUE)) {
     .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)

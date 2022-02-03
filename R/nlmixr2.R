@@ -173,6 +173,9 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   .env$data <- data
   .env$control <- control
   .env$table <- table
+  .env$missingTable <- missing(table)
+  .env$missingControl <- missing(control)
+  .env$missingEst <- missing(est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -194,6 +197,9 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   .env$data <- data
   .env$control <- control
   .env$table <- table
+  .env$missingTable <- missing(table)
+  .env$missingControl <- missing(control)
+  .env$missingEst <- missing(est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
