@@ -6,6 +6,7 @@
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2.h>
+#include "utilc.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -437,7 +438,7 @@ static inline void _saemOpt(int n, double *pxmin) {
                                                   _["maxfun"]=_saemItmax*n*n));
       double f = as<double>(ret["value"]);
       if (ISNA(f)) {
-        REprintf("newoua failed, switch to nelder-mead\n");
+        RSprintf("newoua failed, switch to nelder-mead\n");
         int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
         double ynewlo;
         nelder_fn(_saemFn, n, _saemStart, _saemStep, itmax, _saemTol, 1.0, 2.0, .5,
@@ -746,10 +747,14 @@ public:
     _warnAtolRtol = false;
     phiFile.open(phiMFile[0].c_str());
 
-    if (DEBUG>0) Rcout << "initialization successful\n";
+    if (DEBUG>0) {
+      RSprintf("initialization successful\n");
+    }
     fsaveMat = user_fn(phiM, evtM, optM);
     fsave = fsaveMat.col(0);
-    if (DEBUG>0) Rcout << "initial user_fn successful\n";
+    if (DEBUG>0){
+      RSprintf("initial user_fn successful\n");
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter); kiter++) {
       gamma2_phi1=Gamma2_phi1.diag();
       IGamma2_phi1=inv_sympd(Gamma2_phi1);
@@ -809,7 +814,7 @@ public:
         DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
       }
       else {
-        Rcout << "unknown distribution (id=" <<  distribution << ")\n";
+        RSprintf("unknown distribution (id=%d)\n", distribution);
         return;
       }
       //U_y is a vec of subject llik; summed over obs for each subject
@@ -1700,10 +1705,13 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      if (print != 0 && (kiter==0 || (kiter+1)%print==0))
-        Rcout << kiter+1
-              << ": "
-              << par_hist.row(kiter);
+      if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
+        RSprintf("%03d: ", kiter+1);
+        for (arma::uword j=0; j < pl.size(); ++j) {
+          RSprintf("%f\t", pl[j]);
+        }
+        RSprintf("\n");
+      }
       Rcpp::checkUserInterrupt();
     }//kiter
     phiFile.close();
@@ -2054,7 +2062,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     sortIds(_rx, 0);
   }
   if (hasNan && !_warnAtolRtol) {
-    REprintf("NaN in prediction; Consider: relax atol & rtol; change initials; change seed; change structural model\n  warning only issued once per problem\n");
+    RSprintf("NaN in prediction; Consider: relax atol & rtol; change initials; change seed; change structural model\n  warning only issued once per problem\n");
     _warnAtolRtol = true;
   }
   return g;
