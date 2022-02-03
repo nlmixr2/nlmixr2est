@@ -134,7 +134,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(.ipredModel)) {
     predOnly <- TRUE
   }
-  if (predOnly) .ipredModel <- fit$ipredModel
+  if (predOnly) {
+    .ipredModel <- fit$ipredModel
+  }
   .ret <- list(ipred = .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
                                        returnType="data.frame.TBS", keep=.keep, what="ipred",
                                        addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=predOnly),
@@ -194,6 +196,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     } else {
       .state <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
+      .stateSave <- vapply(.state, function(s){
+        regexpr("^rx__sens_", s) == -1
+      }, logical(1), USE.NAMES=FALSE)
+      .state <- .state[.stateSave]
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$ipredModel$params),c("CMT","cmt","Cmt", .state, .lhs))
       .Call(`_nlmixr2_cwresCalc`, .prdLst, fit$omega,
