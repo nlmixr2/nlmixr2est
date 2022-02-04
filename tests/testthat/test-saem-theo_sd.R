@@ -1,3 +1,6 @@
+skip_on_cran()
+skip_if_not(file.exists("test-saem-theo_sd.qs"))
+
 mod <- function() {
   ini({
     tka <- 0.45 ; label("Log Ka")
@@ -135,15 +138,15 @@ estVal <- function(i, n = tot) {
     )))
     v <- nlmixr(mod2, dat, est = "saem", control = ctl1)
     assign("mod2", mod2, globalenv())
-    if (!inherits(v, "nlmixrFitCore")) {
+    if (!inherits(v, "nlmixr2FitCore")) {
       message(sprintf("bad model at %d", i))
       print(mod2)
     }
     # saveRDS(v, paste0("test-saem-theo_sd-", i, "-", n, ".rds"))
     .sum <- c(objf = v$objective, v$theta)
-    return(setNames(sapply(.nm, function(x) {
+    return(invisible(setNames(sapply(.nm, function(x) {
       .sum[x]
-    }), .nm))
+    }), .nm)))
   }
   return(sapply(.nm, function(x) {
     NA_real_
@@ -178,11 +181,8 @@ for (.n in .nm) {
   val[, .n] <- round(val[[.n]], 2)
 }
 
-##qs::qsave(val, file="test-saem-theo_sd.qs")
+##qs::qsave(val, file=test_file("test-saem-theo_sd.qs"))
 
-## saveRDS(val, file="test-saem-theo_sd.rds")
-
-##expect_equal(val, )
 .test <- qs::qread("test-saem-theo_sd.qs")
 for (i in seq_along(.test$add)) {
   test_that(
@@ -197,6 +197,6 @@ for (i in seq_along(.test$add)) {
     ), {
       expect_equal(as.list(val[i, ]),
                    as.list(.test[i, ]),
-                   tol=1e-3)
+                   tolerance=1e-3)
     })
 }
