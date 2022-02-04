@@ -142,6 +142,12 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
   assign("origData", .od, .env)
   return(.new)
 }
+#' @rdname nmObjGet.addCwres
+#' @export
+nmObjGetData.addCwres <- function(x, ...) {
+  addCwres(x[[1]], updateObject = FALSE)
+}
+attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
 
 .setOfvFo <- function(fit, type = c("focei", "foce", "fo")) {
   rxode2::.setWarnIdSort(FALSE)
