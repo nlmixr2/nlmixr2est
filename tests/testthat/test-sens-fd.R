@@ -1,3 +1,5 @@
+skip_on_cran()
+
 f <- function() {
   ini({
     popKe <- 0.5
@@ -27,21 +29,22 @@ dat3 <- data.frame(ID = 1:10, f0 = 2 * exp(rnorm(10, sd = 0.1)))
 dat2 <- merge(dat2, dat3)
 dat2$DV <- dat2$DV * dat2$f0
 
+.nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+
 testIt <- function(meth) {
-  # sprintf("test finite difference sensitivities in %s", meth)
-  test_that(sprintf("finite difference %s", meth), {
-    suppressMessages(suppressWarnings({
-      fit <- nlmixr(f, dat2, "focei",
-                    control = foceiControl(maxOuterIterations = 0, covMethod = "")
-      )
-      expect_false(all(fit$eta$etaF == 0))
-      
-      fit <- nlmixr(f, dat2, "focei",
-                    control = foceiControl(maxOuterIterations = 0, covMethod = "", eventCentral = FALSE)
-      )
-      expect_false(all(fit$eta$etaF == 0))
-    }))
+
+  test_that(sprintf("finite difference %s, gill", meth), {
+    fit <- .nlmixr(f, dat2, est=meth,
+                   control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="gill"))
+    expect_false(all(fit$eta$etaF == 0))
   })
+
+  test_that(sprintf("finite difference %s, forward", meth), {
+    fit <- .nlmixr(f, dat2, est=meth,
+                   control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="forward"))
+    expect_false(all(fit$eta$etaF == 0))
+  })
+  invisible()
 }
 
-lapply(c("focei", "foce", "foi", "fo"), testIt)
+invisible(lapply(c("focei", "foce", "foi", "fo"), testIt))

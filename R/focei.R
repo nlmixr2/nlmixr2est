@@ -1800,7 +1800,13 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
-    return(qs::qread(.cacheFile))
+    .ret <- qs::qread(.cacheFile)
+    lapply(seq_along(.ret), function(i) {
+      if (inherits(.ret[[i]], "rxode2")) {
+        rxode2::rxLoad(.ret[[i]])
+      }
+    })
+    return(.ret)
   }
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
