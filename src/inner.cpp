@@ -5898,7 +5898,11 @@ Environment foceiFitCpp_(Environment e){
           List mvp = rxode2::rxModelVars_(noLhs);
           rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
           op_focei.canDoFD = true;
+        } else {
+          stop(_("focei cannot be run without rxode2 'predNoLhs'"));
         }
+      } else {
+        stop(_("focei cannot be run without 'predNoLhs'"));
       }
       // Now setup which ETAs need a finite difference
       if (model.containsElementNamed("eventEta")) {
