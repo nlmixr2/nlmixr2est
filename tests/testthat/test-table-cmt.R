@@ -1,4 +1,5 @@
 test_that("proper table outputs", {
+
   df <- data.frame(
     ID = c(123, 123, 123, 124, 124, 124),
     MDV = c(0,1,0, 0,1,0),
@@ -13,7 +14,7 @@ test_that("proper table outputs", {
     WT = c(NA,NA,2, NA,NA,2),
     CRPZERO = 5
   )
-  
+
   f <- function(){
     ini({
       # thetas
@@ -75,40 +76,41 @@ test_that("proper table outputs", {
       crp ~ prop(theta12) + add(theta11) | crp
     })
   }
-  
-  fit.s <-
-    suppressMessages(nlmixr(
-      object = f,
-      data = df,
-      est='focei',
-      control = foceiControl(
-        covMethod="r,s",
-        interaction = TRUE,
-        maxOuterIterations = 0,
-        iter.max=0, calcTables=FALSE
-      )
-    ))
-  
-  tab1 <- addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
+
+  .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+
+  fit.s <- .nlmixr(
+    object = f,
+    data = df,
+    est='focei',
+    control = foceiControl(
+      covMethod="r,s",
+      interaction = TRUE,
+      maxOuterIterations = 0,
+      iter.max=0, calcTables=FALSE))
+
+  .addTable <- function(...) suppressMessages(suppressWarnings(addTable(...)))
+
+  tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
   expect_true(all(!is.na(tab1$CMT)))
-  expect_type(tab1$CMT, "factor")
-  
-  tab2 <- addTable(fit.s, table=tableControl(cwres=TRUE, npde=FALSE))
+  expect_s3_class(tab1$CMT, "factor")
+
+  tab2 <- .addTable(fit.s, table=tableControl(cwres=TRUE, npde=FALSE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab2)))
   expect_true(all(!is.na(tab2$CMT)))
-  expect_type(tab2$CMT, "factor")
-  
-  tab3 <- addTable(fit.s, table=tableControl(cwres=FALSE, npde=TRUE))
+  expect_s3_class(tab2$CMT, "factor")
+
+  tab3 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=TRUE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab3)))
   expect_true(all(!is.na(tab3$CMT)))
-  expect_type(tab3$CMT, "factor")
-  
-  tab4 <- addTable(fit.s, table=tableControl(cwres=TRUE, npde=TRUE))
+  expect_s3_class(tab3$CMT, "factor")
+
+  tab4 <- .addTable(fit.s, table=tableControl(cwres=TRUE, npde=TRUE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab4)))
   expect_true(all(!is.na(tab4$CMT)))
-  expect_type(tab4$CMT, "factor")
-  
+  expect_s3_class(tab4$CMT, "factor")
+
   df <- data.frame(
     ID = 123,
     MDV = c(0,1,0),
@@ -123,16 +125,13 @@ test_that("proper table outputs", {
     WT = c(NA,NA,2),
     CRPZERO = 5
   )
-  
-  expect_error(suppressMessages(
-    nlmixr(
-      object = f, data = df, est='focei',
-      control = foceiControl(
-        covMethod="r,s",
-        interaction = TRUE,
-        maxOuterIterations = 0,
-        iter.max=0, calcTables=FALSE
-      )
-    )
-  ))
+
+  expect_error(.nlmixr(
+    object = f, data = df, est='focei',
+    control = foceiControl(
+      covMethod="r,s",
+      interaction = TRUE,
+      maxOuterIterations = 0,
+      iter.max=0, calcTables=FALSE)), NA)
+
 })
