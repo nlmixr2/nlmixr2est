@@ -172,7 +172,8 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
       maxOuterIterations = 0L, maxInnerIterations = 0L,
       interaction = .interaction, fo = .fo,
       etaMat = .etaMat, calcResid = FALSE,
-      covMethod = ""
+      covMethod = "",
+      compress=FALSE
     )
   )
   .env <- fit$env

@@ -54,6 +54,15 @@ nlmixr2Est <- function(env, ...) {
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
+  if (!exists("missingTable", envir=env)) {
+    env$missingTable <- FALSE
+  }
+  if (!exists("missingControl", envir=env)) {
+    env$missingControl <- FALSE
+  }
+  if (!exists("missingEst", envir=env)) {
+    env$missingEst <- FALSE
+  }
   if (env$missingTable) {
     .meta <- env$ui$meta
     if (is.null(env$table)) {
