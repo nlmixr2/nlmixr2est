@@ -38,10 +38,11 @@ jobs:
       - name: Query dependencies
         run: |
           install.packages('remotes')
-          remotes::install_github("nlmixrdevelopment/dparser-R")
+          remotes::install_github("nlmixr2/dparser-R")
           remotes::install_cran("stringi")
           remotes::install_github("https://github.com/symengine/symengine.R")
-          remotes::install_github("nlmixrdevelopment/RxODE")
+          remotes::install_github("nlmixr2/lotri")
+          remotes::install_github("nlmixr2/rxode2")
         shell: Rscript {0}
 
       - name: Cache R packages
@@ -54,7 +55,7 @@ jobs:
       - name: Install dependencies
         run: |
           remotes::install_deps(dependencies = TRUE)
-          remotes::install_github("nlmixrdevelopment/dparser-R")
+          remotes::install_github("nlmixr2/dparser-R")
         shell: Rscript {0}
 
       - name: Test coverage

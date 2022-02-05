@@ -26,7 +26,7 @@ jobs:
         run: |
           install.packages('remotes')
           remotes::install_github("jeroen/curl")
-          remotes::install_github("nlmixrdevelopment/dparser-R")
+          remotes::install_github("nlmixr2/dparser-R")
           remotes::install_cran("stringi")
           remotes::install_github("https://github.com/symengine/symengine.R")
           remotes::install_cran("covr")
@@ -52,8 +52,9 @@ jobs:
           # To get links for homepage
           remotes::install_cran("devtools")
           remotes::install_deps(dependencies = TRUE)
-          remotes::install_github("nlmixrdevelopment/dparser-R")
-          remotes::install_github("nlmixrdevelopment/RxODE")
+          remotes::install_github("nlmixr2/dparser-R")
+          remotes::install_github("nlmixr2/lotri")
+          remotes::install_github("nlmixr2/rxode2")
           remotes::install_github("jeroen/curl")
           remotes::install_dev("pkgdown")
           install.packages(c("xpose.nlmixr","ggPMX", "xgxr"))
