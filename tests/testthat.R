@@ -1,6 +1,6 @@
 library(testthat)
-library(RxODE)
-library(nlmixr)
+library(rxode2)
+library(nlmixr2)
 verbose_minimization <- FALSE
 
 test_check("nlmixr", stop_on_failure = FALSE, wrap=TRUE,
