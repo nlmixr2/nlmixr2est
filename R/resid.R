@@ -390,89 +390,88 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' print(f)
 #'
 #' }
-
 addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEtaParameters=object$foceiThetaEtaParameters,
                      table=tableControl(), keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
-  keep <- unique(c(keep, "nlmixrRowNums"))
-  .pt <- proc.time()
-  .malert("Calculating residuals/tables")
-  .objName <- substitute(object)
-  if (!inherits(object, "nlmixr2FitCore")) {
-    stop("requires a nlmixr2 fit object",
-         call.=FALSE)
-  }
-  .fit <- object$env
-  if (exists("origControl", .fit)) {
-    .control <- .fit$origControl
-  } else if (exists("control", .fit)) {
-    .control <- .fit$control
-  } else {
-    .control <- foceiControl()
-  }
-  if (is.null(.fit$omega)) {
-    .df <- .calcIres(.fit, data=data, table=table, dv=NULL,
-                     addDosing=table$addDosing, subsetNonmem=table$subsetNonmem, keep=keep)
-  } else {
-    .tabs <- .calcTables(.fit, data=data, table=table, keep=keep)
-    assign("shrink", .tabs$shrink, .fit)
-    .df <- .tabs$resid
-  }
-  .rownum <- as.integer(.df$nlmixrRowNums)
-  assign(".rownum", .rownum, envir=.fit)
-  drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums")
-  .w <- -which(names(.df) %in% drop)
-  if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
-  class(.df) <- "data.frame"
-  .id <- .df$ID
-  attr(.id, "levels") <- object$idLvl
-  class(.id) <- "factor"
-  .df$ID <- .id
-  .isDplyr <- requireNamespace("tibble", quietly = TRUE)
-  if (!.isDplyr) {
-    .isDataTable <- requireNamespace("data.table", quietly = TRUE)
-    if (.isDataTable) {
-      .df <- data.table::data.table(.df)
+  .nlmixrWithTiming("table", {
+    keep <- unique(c(keep, "nlmixrRowNums"))
+    .malert("Calculating residuals/tables")
+    .objName <- substitute(object)
+    if (!inherits(object, "nlmixr2FitCore")) {
+      stop("requires a nlmixr2 fit object",
+           call.=FALSE)
     }
-  } else {
-    .df <- tibble::as_tibble(.df)
-  }
-  .cls <- class(.df)
-  if (!any(names(.control) == "interaction")) {
-    .control$interaction <- FALSE
-  }
-  if (.fit$method == "population only") {
-    .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", .fit$env$est,  .cls)
-  } else {
-    .cls <- c("nlmixr2FitData", "nlmixr2FitCore", .fit$env$est, .cls)
-  }
-  if (inherits(updateObject, "logical")) {
-    if (!updateObject) {
-      .fit <- .cloneEnv(.fit)
+    .fit <- object$env
+    if (exists("origControl", .fit)) {
+      .control <- .fit$origControl
+    } else if (exists("control", .fit)) {
+      .control <- .fit$control
+    } else {
+      .control <- foceiControl()
     }
-  }
-  class(.fit) <- "nlmixr2FitCoreSilent"
-  attr(.cls, ".foceiEnv") <- .fit
-  class(.df) <- .cls
-  if (inherits(updateObject, "logical")) {
-    if (updateObject) {
-      .parent <- envir
-      .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-        if (.cur == .objName && identical(.parent[[.cur]]$env, .fit$env)) {
-          return(.cur)
-        }
-        return(NULL)
-      }))
-      if (length(.bound) == 1) {
-        if (exists(.bound, envir = .parent)) {
-          assign(.bound, .df, envir = .parent)
+    if (is.null(.fit$omega)) {
+      .df <- .calcIres(.fit, data=data, table=table, dv=NULL,
+                       addDosing=table$addDosing, subsetNonmem=table$subsetNonmem, keep=keep)
+    } else {
+      .tabs <- .calcTables(.fit, data=data, table=table, keep=keep)
+      assign("shrink", .tabs$shrink, .fit)
+      .df <- .tabs$resid
+    }
+    .rownum <- as.integer(.df$nlmixrRowNums)
+    assign(".rownum", .rownum, envir=.fit)
+    drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums")
+    .w <- -which(names(.df) %in% drop)
+    if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
+    class(.df) <- "data.frame"
+    .id <- .df$ID
+    attr(.id, "levels") <- object$idLvl
+    class(.id) <- "factor"
+    .df$ID <- .id
+    .isDplyr <- requireNamespace("tibble", quietly = TRUE)
+    if (!.isDplyr) {
+      .isDataTable <- requireNamespace("data.table", quietly = TRUE)
+      if (.isDataTable) {
+        .df <- data.table::data.table(.df)
+      }
+    } else {
+      .df <- tibble::as_tibble(.df)
+    }
+    .cls <- class(.df)
+    if (!any(names(.control) == "interaction")) {
+      .control$interaction <- FALSE
+    }
+    if (.fit$method == "population only") {
+      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", .fit$env$est,  .cls)
+    } else {
+      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", .fit$env$est, .cls)
+    }
+    if (inherits(updateObject, "logical")) {
+      if (!updateObject) {
+        .fit <- .cloneEnv(.fit)
+      }
+    }
+    class(.fit) <- "nlmixr2FitCoreSilent"
+    attr(.cls, ".foceiEnv") <- .fit
+    class(.df) <- .cls
+    if (inherits(updateObject, "logical")) {
+      if (updateObject) {
+        .parent <- envir
+        .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
+          if (.cur == .objName && identical(.parent[[.cur]]$env, .fit$env)) {
+            return(.cur)
+          }
+          return(NULL)
+        }))
+        if (length(.bound) == 1) {
+          if (exists(.bound, envir = .parent)) {
+            assign(.bound, .df, envir = .parent)
+          }
         }
       }
     }
-  }
-  .msuccess("done")
-  .fit$time <- .data.frame(.fit$time, table = (proc.time() - .pt)["elapsed"], check.names = FALSE)
-  .df
+    .msuccess("done")
+    .df
+  }, envir=object)
 }
 
 #' Output table/data.frame options

@@ -41,7 +41,6 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
-.nlmixr2Time <- NULL
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -137,6 +136,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                    table = tableControl(), ..., save = NULL,
                    envir = parent.frame()) {
   assignInMyNamespace(".nlmixr2Time", proc.time())
+  on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree()
@@ -148,11 +148,9 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   UseMethod("nlmixr2")
 }
 
-
 #' @rdname nlmixr
 #' @export
 nlmixr <- nlmixr2
-
 
 #' @rdname nlmixr2
 #' @export
