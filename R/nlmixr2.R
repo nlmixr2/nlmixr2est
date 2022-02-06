@@ -141,7 +141,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree()
   rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
+  on.exit(rxode2::.setWarnIdSort(TRUE), add=TRUE)
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html

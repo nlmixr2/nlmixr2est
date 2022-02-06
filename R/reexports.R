@@ -1,215 +1,220 @@
-##' @importFrom magrittr %>%
-##' @export
+#' @importFrom magrittr %>%
+#' @export
 magrittr::`%>%`
 
-##' @importFrom rxode2 rxode2
-##' @export
+#' @importFrom rxode2 rxode2
+#' @export
 rxode2::rxode2
 
+#' @importFrom rxode2 rxode
+#' @export
+rxode2::rxode
 
-##' @importFrom rxode2 logit
-##' @export
+
+#' @importFrom rxode2 RxODE
+#' @export
+rxode2::RxODE
+
+#' @importFrom rxode2 logit
+#' @export
 rxode2::logit
 
-##' @importFrom rxode2 expit
-##' @export
+#' @importFrom rxode2 expit
+#' @export
 rxode2::expit
 
-
-##' @importFrom rxode2 probit
-##' @export
+#' @importFrom rxode2 probit
+#' @export
 rxode2::probit
 
-##' @importFrom rxode2 probitInv
-##' @export
+#' @importFrom rxode2 probitInv
+#' @export
 rxode2::probitInv
 
-
-##' @importFrom rxode2 rxSolve
-##' @export
+#' @importFrom rxode2 rxSolve
+#' @export
 rxode2::rxSolve
 
-
-##' @importFrom rxode2 rxClean
-##' @export
+#' @importFrom rxode2 rxClean
+#' @export
 rxode2::rxClean
 
-##' @importFrom rxode2 rxCat
-##' @export
+#' @importFrom rxode2 rxCat
+#' @export
 rxode2::rxCat
 
-##' @importFrom nlme nlme
-##' @export
+#' @importFrom nlme nlme
+#' @export
 nlme::nlme
 
-##' @importFrom nlme ACF
-##' @export
+#' @importFrom nlme ACF
+#' @export
 nlme::ACF
 
-##' @importFrom nlme VarCorr
-##' @export
+#' @importFrom nlme VarCorr
+#' @export
 nlme::VarCorr
 
-##' @importFrom nlme getVarCov
-##' @export
+#' @importFrom nlme getVarCov
+#' @export
 nlme::getVarCov
 
 
-##' @importFrom nlme augPred
-##' @export
+#' @importFrom nlme augPred
+#' @export
 nlme::augPred
 
-##' @importFrom nlme fixef
-##' @export
+#' @importFrom nlme fixef
+#' @export
 nlme::fixef
 
-##' @importFrom nlme fixed.effects
-##' @export
+#' @importFrom nlme fixed.effects
+#' @export
 nlme::fixed.effects
 
-##' @importFrom nlme ranef
-##' @export
+#' @importFrom nlme ranef
+#' @export
 nlme::ranef
 
-##' @importFrom nlme random.effects
-##' @export
+#' @importFrom nlme random.effects
+#' @export
 nlme::random.effects
 
-##' @importFrom nlme nlmeControl
-##' @export
+#' @importFrom nlme nlmeControl
+#' @export
 nlme::nlmeControl
 
 
-##' @importFrom rxode2 eventTable
-##' @export
+#' @importFrom rxode2 eventTable
+#' @export
 rxode2::eventTable
 
-##' @importFrom rxode2 add.dosing
-##' @export
+#' @importFrom rxode2 add.dosing
+#' @export
 rxode2::add.dosing
 
-##' @importFrom rxode2 add.sampling
-##' @export
+#' @importFrom rxode2 add.sampling
+#' @export
 rxode2::add.sampling
 
-##' @importFrom nlme pdDiag
-##' @export
+#' @importFrom nlme pdDiag
+#' @export
 nlme::pdDiag
 
-##' @importFrom nlme pdSymm
-##' @export
+#' @importFrom nlme pdSymm
+#' @export
 nlme::pdSymm
 
-##' @importFrom nlme pdLogChol
-##' @export
+#' @importFrom nlme pdLogChol
+#' @export
 nlme::pdLogChol
 
-##' @importFrom nlme pdIdent
-##' @export
+#' @importFrom nlme pdIdent
+#' @export
 nlme::pdIdent
 
-##' @importFrom nlme pdCompSymm
-##' @export
+#' @importFrom nlme pdCompSymm
+#' @export
 nlme::pdCompSymm
 
-##' @importFrom nlme pdBlocked
-##' @export
+#' @importFrom nlme pdBlocked
+#' @export
 nlme::pdBlocked
 
-##' @importFrom nlme pdNatural
-##' @export
+#' @importFrom nlme pdNatural
+#' @export
 nlme::pdNatural
 
-##' @importFrom nlme pdConstruct
-##' @export
+#' @importFrom nlme pdConstruct
+#' @export
 nlme::pdConstruct
 
-##' @importFrom nlme pdFactor
-##' @export
+#' @importFrom nlme pdFactor
+#' @export
 nlme::pdFactor
 
-##' @importFrom nlme pdMat
-##' @export
+#' @importFrom nlme pdMat
+#' @export
 nlme::pdMat
 
-##' @importFrom nlme pdMatrix
-##' @export
+#' @importFrom nlme pdMatrix
+#' @export
 nlme::pdMatrix
 
-##' @importFrom nlme reStruct
-##' @export
+#' @importFrom nlme reStruct
+#' @export
 nlme::reStruct
 
-##' @importFrom nlme varWeights
-##' @export
+#' @importFrom nlme varWeights
+#' @export
 nlme::varWeights
 
-##' @importFrom nlme varPower
-##' @export
+#' @importFrom nlme varPower
+#' @export
 nlme::varPower
 
-##' @importFrom nlme varFixed
-##' @export
+#' @importFrom nlme varFixed
+#' @export
 nlme::varFixed
 
-##' @importFrom nlme varFunc
-##' @export
+#' @importFrom nlme varFunc
+#' @export
 nlme::varFunc
 
-##' @importFrom nlme varExp
-##' @export
+#' @importFrom nlme varExp
+#' @export
 nlme::varExp
 
-##' @importFrom nlme varConstPower
-##' @export
+#' @importFrom nlme varConstPower
+#' @export
 nlme::varConstPower
 
-##' @importFrom nlme varIdent
-##' @export
+#' @importFrom nlme varIdent
+#' @export
 nlme::varIdent
 
-##' @importFrom nlme varComb
-##' @export
+#' @importFrom nlme varComb
+#' @export
 nlme::varComb
 
-##' @importFrom nlme groupedData
-##' @export
+#' @importFrom nlme groupedData
+#' @export
 nlme::groupedData
 
-##' @importFrom nlme getData
-##' @export
+#' @importFrom nlme getData
+#' @export
 nlme::getData
 
-##' @importFrom rxode2 et
-##' @export
+#' @importFrom rxode2 et
+#' @export
 rxode2::et
 
-##' @importFrom rxode2 rxParams
-##' @export
+#' @importFrom rxode2 rxParams
+#' @export
 rxode2::rxParams
 
-##' @importFrom rxode2 rxParam
-##' @export
+#' @importFrom rxode2 rxParam
+#' @export
 rxode2::rxParam
 
 
-##' @importFrom rxode2 et
-##' @export
+#' @importFrom rxode2 et
+#' @export
 rxode2::et
 
-##' @importFrom rxode2 geom_cens
-##' @export
+#' @importFrom rxode2 geom_cens
+#' @export
 rxode2::geom_cens
 
-##' @importFrom rxode2 geom_amt
-##' @export
+#' @importFrom rxode2 geom_amt
+#' @export
 rxode2::geom_amt
 
 
-##' @importFrom rxode2 stat_cens
-##' @export
+#' @importFrom rxode2 stat_cens
+#' @export
 rxode2::stat_cens
 
-##' @importFrom rxode2 stat_amt
-##' @export
+#' @importFrom rxode2 stat_amt
+#' @export
 rxode2::stat_amt
