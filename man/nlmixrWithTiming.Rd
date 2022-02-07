@@ -58,8 +58,9 @@ nlmixrWithTiming("time1", {
 
 print(fit)
 
-}
+nlmixrAddTiming
 
+}
 }
 \author{
 Matthew L. Fidler
