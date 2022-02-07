@@ -11,10 +11,7 @@
   })
   if (is.environment(.currentTimingEnvironment) &
         inherits(.nlmixr2Time, "proc_time")) {
-    .time <- get("time", envir=.currentTimingEnvironment)
-    if (inherits(.extraTimingTable, "data.frame")) {
-      .time <- cbind(.time, .extraTimingTable)
-    }
+    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=.currentTimingEnvironment))
     # Keep non-zero times
     .keep <- vapply(seq_along(names(.time)),
                     function(i){
@@ -50,11 +47,39 @@
   .time - .lastTime
 }
 
+.nlmixrFinalizeTimingConstructTable <- function(time, name, preTiming) {
+  .w <- which(names(time) == name)
+  .time <- time
+  if (length(.w) == 1){
+    .time[, .w] <- .time[, .w] + .nlmixrPopTimingStack(preTiming)
+  } else {
+    .df <- list(0)
+    names(.df) <- name
+    .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+    .df[, 1] <- .nlmixrPopTimingStack(preTiming)
+    .time <- cbind(.time, .df)
+  }
+  .time
+}
+
+.nlmixrMergeTimeWithExtraTime <- function(time) {
+  if (!inherits(.extraTimingTable, "data.frame")) return(time)
+  on.exit({assignInMyNamespace(".extraTimingTable", NULL)})
+  .time <- time
+  .df <- .extraTimingTable
+  .dropNames <- NULL
+  for (.n in names(.df)) {
+    .w <- which(names(time) == .n)
+    if (length(.w) == 1L) {
+      .time[, .w] <- .time[, .w] + .df[, .n]
+      .dropNames <- c(.dropNames, .n)
+    }
+  }
+  .df <- .df[, !(names(.df) %in% .dropNames), drop = FALSE]
+  cbind(.time, .df)
+}
+
 .nlmixrFinalizeTiming <- function(name, preTiming, envir=NULL) {
-  .time <- .nlmixrPopTimingStack(preTiming)
-  .df <- list(.time)
-  names(.df) <- name
-  .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
   if (inherits(envir, "nlmixr2FitData")) {
     envir <- envir$env
   }
@@ -62,12 +87,17 @@
     envir <- .currentTimingEnvironment
   }
   if (is.environment(envir)) {
-    .time <- get("time", envir=envir)
-    assign("time",cbind(.time, .df), envir=envir)
+    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=envir))
+    assign("time", .nlmixrFinalizeTimingConstructTable(.time, name, preTiming), envir=envir)
   } else {
     if (inherits(.extraTimingTable, "data.frame")) {
-      assignInMyNamespace(".extraTimingTable", cbind(.extraTimingTable, .df))
+      assignInMyNamespace(".extraTimingTable",
+                          .nlmixrFinalizeTimingConstructTable(.extraTimingTable, name, preTiming))
     } else {
+      .df <- list(0)
+      names(.df) <- name
+      .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+      .df[, 1] <- .nlmixrPopTimingStack(preTiming)
       assignInMyNamespace(".extraTimingTable", .df)
     }
   }
