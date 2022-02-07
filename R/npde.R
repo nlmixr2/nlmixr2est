@@ -47,42 +47,42 @@
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
-  .pt <- proc.time()
-  .objName <- substitute(object)
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
-  if (missing(table)) table <- object$table
-  if (any(names(object) == "NPDE")) {
-    warning("already contains NPDE")
-    return(object)
-  }
-  .malert("Add NPDE")
-  if(missing(table)) {
-    table <- object$table
-  }
-  table$npde <- TRUE
-  .npde <- .calcNpde(object, dv=object$DV, table=table)
-  .cls <- class(object)
-  .new <- cbind(object, .npde[[2]])
-  class(.new) <- .cls
-  .env <- .new$env
-  if (inherits(updateObject, "logical")) {
-    if (updateObject) {
-      .parent <- envir
-      .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-        if (.cur == .objName && identical(.parent[[.cur]]$env, .env)) {
-          return(.cur)
-        }
-        return(NULL)
-      }))
-      if (length(.bound) == 1) {
-        if (exists(.bound, envir = .parent)) {
-          assign(.bound, .new, envir = .parent)
+  nlmixrWithTiming("NPDE", {
+    .objName <- substitute(object)
+    rxode2::.setWarnIdSort(FALSE)
+    on.exit(rxode2::.setWarnIdSort(TRUE))
+    if (missing(table)) table <- object$table
+    if (any(names(object) == "NPDE")) {
+      warning("already contains NPDE")
+      return(object)
+    }
+    .malert("Add NPDE")
+    if(missing(table)) {
+      table <- object$table
+    }
+    table$npde <- TRUE
+    .npde <- .calcNpde(object, dv=object$DV, table=table)
+    .cls <- class(object)
+    .new <- cbind(object, .npde[[2]])
+    class(.new) <- .cls
+    .env <- .new$env
+    if (inherits(updateObject, "logical")) {
+      if (updateObject) {
+        .parent <- envir
+        .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
+          if (.cur == .objName && identical(.parent[[.cur]]$env, .env)) {
+            return(.cur)
+          }
+          return(NULL)
+        }))
+        if (length(.bound) == 1) {
+          if (exists(.bound, envir = .parent)) {
+            assign(.bound, .new, envir = .parent)
+          }
         }
       }
     }
-  }
-  .env$time <- .data.frame(.env$time, npde = (proc.time() - .pt)["elapsed"], check.names = FALSE)
-  .msuccess("done")
-  .new
+    .msuccess("done")
+    .new
+  }, object$env)
 }

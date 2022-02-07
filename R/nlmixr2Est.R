@@ -10,6 +10,9 @@
 #'
 #' - control for the estimation routine's control options in `$ui`
 #'
+#' @param ... Other arguments provided to `nlmixr2Est()` provided for
+#'   flexibility but not currently used inside nlmixr
+#'
 #' @return nlmixr2 fit object
 #'
 #' @author Matthew Fidler

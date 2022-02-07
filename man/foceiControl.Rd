@@ -685,12 +685,11 @@ function.}
 \item{gradTrim}{The parameter to adjust the gradient to if the
 |gradient| is very large.}
 
-\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
-tolerances and try to resolve the system if there was a bad
-ODE solve.}
+\item{maxOdeRecalc}{This represents the maximum number of
+recalculations before focei fails ODE integration.}
 
-\item{odeRecalcFactor}{The factor to increase the rtol/atol with
-bad ODE solving.}
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
 
 \item{gradCalcCentralSmall}{A small number that represents the value
 where |grad| < gradCalcCentralSmall where forward differences
@@ -740,6 +739,9 @@ generator should be initialized}
 \item{resetThetaCheckPer}{represents objective function
 \% percentage below which resetThetaP is checked.}
 
+\item{etaMat}{Eta matrix for initial estimates or final estimates
+of the ETAs.}
+
 \item{repeatGillMax}{If the tolerances were reduced when
 calculating the initial Gill differences, the Gill difference
 is repeated up to a maximum number of times defined by this
@@ -750,6 +752,30 @@ the atol/rtol for the rest of the problem.}
 
 \item{gradProgressOfvTime}{This is the time for a single objective
 function evaluation (in seconds) to start progress bars on gradient evaluations}
+
+\item{addProp}{specifies the type of additive plus proportional
+  errors, the one where standard deviations add (combined1) or the
+  type where the variances add (combined2).
+
+The combined1 error type can be described by the following equation:
+
+  y = f + (a + b*f^c)*err
+
+The combined2 error model can be described by the following equation:
+
+ y = f + sqrt(a^2 + b^2*(f^c)^2)*err
+
+ Where:
+
+ - y represents the observed value
+
+ - f represents the predicted value
+
+ - a  is the additive standard deviation
+
+ - b is the proportional/power standard deviation
+
+ - c is the power exponent (in the proportional case c=1)}
 
 \item{singleOde}{This option allows a single ode model to include
 the PK parameter information instead of splitting it into a

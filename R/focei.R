@@ -576,7 +576,37 @@ is.latex <- function() {
 #'
 #' @param compress Should the object have compressed items
 #'
-#' @inheritParams configsaem
+#' @param etaMat Eta matrix for initial estimates or final estimates
+#'   of the ETAs.
+#'
+#' @param addProp specifies the type of additive plus proportional
+#'   errors, the one where standard deviations add (combined1) or the
+#'   type where the variances add (combined2).
+#'
+#' The combined1 error type can be described by the following equation:
+#'
+#'   y = f + (a + b*f^c)*err
+#'
+#' The combined2 error model can be described by the following equation:
+#'
+#'  y = f + sqrt(a^2 + b^2*(f^c)^2)*err
+#'
+#'  Where:
+#'
+#'  - y represents the observed value
+#'
+#'  - f represents the predicted value
+#'
+#'  - a  is the additive standard deviation
+#'
+#'  - b is the proportional/power standard deviation
+#'
+#'  - c is the power exponent (in the proportional case c=1)
+#'
+#' @param odeRecalcFactor The ODE recalculation factor when ODE
+#'   solving goes bad, this is the factor the rtol/atol is reduced
+#' @param maxOdeRecalc This represents the maximum number of
+#'   recalculations before focei fails ODE integration.
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -604,8 +634,6 @@ is.latex <- function() {
 #' @seealso \code{\link[n1qn1]{n1qn1}}
 #' @seealso \code{\link[rxode2]{rxSolve}}
 #' @export
-##' @param odeRecalcFactor
-##' @param maxOdeRecalc
 foceiControl <- function(sigdig = 3, ...,
                          epsilon = NULL, # 1e-4,
                          maxInnerIterations = 1000,
@@ -2403,51 +2431,54 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   assign("skipCov", .env$skipCov, envir=.ret)
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
+  assignInMyNamespace(".currentTimingEnvironment", .ret) # add environment for updating timing info
   if (.control$calcTables) {
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
   }
-  if (exists("saem", .env)) {
-    .saem <- get("saem", envir=.env)
-    .saemCfg <- attr(.saem, "saem.cfg")
-    # Delete unneeded variables
-    .saemCfg2 <- list()
-    for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables")) {
-      .saemCfg2[[.v]] <- .saemCfg[[.v]]
+  nlmixrWithTiming("compress", {
+    if (exists("saem", .env)) {
+      .saem <- get("saem", envir=.env)
+      .saemCfg <- attr(.saem, "saem.cfg")
+      # Delete unneeded variables
+      .saemCfg2 <- list()
+      for (.v in c("i1", "nphi1", "nphi0", "N", "ntotal", "ix_endpnt", "y", "nmc", "niter", "opt", "inits", "Mcovariables")) {
+        .saemCfg2[[.v]] <- .saemCfg[[.v]]
+      }
+      attr(.saem, "saem.cfg") <- .saemCfg2
+      rm(list="saem", envir=.env)
+      .env$saem0 <- .saem
     }
-    attr(.saem, "saem.cfg") <- .saemCfg2
-    rm(list="saem", envir=.env)
-    .env$saem0 <- .saem
-  }
-  if (.control$compress) {
-    for (.item in c("origData", "phiM", "parHist", "saem0")) {
-      if (exists(.item, .env)) {
-        .obj <- get(.item, envir=.env)
-        .size <- object.size(.obj)
-        .objC <- qs::qserialize(.obj)
-        .size2 <- object.size(.objC)
-        if (.size2 < .size) {
-          .size0 <- (.size - .size2)
-          .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
-          assign(.item, .objC, envir=.env)
+    if (.control$compress) {
+      for (.item in c("origData", "phiM", "parHist", "saem0")) {
+        if (exists(.item, .env)) {
+          .obj <- get(.item, envir=.env)
+          .size <- object.size(.obj)
+          .objC <- qs::qserialize(.obj)
+          .size2 <- object.size(.objC)
+          if (.size2 < .size) {
+            .size0 <- (.size - .size2)
+            .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
+            assign(.item, .objC, envir=.env)
+          }
         }
       }
     }
-  }
-  for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
-                  "fullTheta", "scaleC", "gillRet", "gillRetC",
-                  "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
-                  "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
-                  "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
-                  "xType", "IDlabel", "ODEmodel",
-                  # times
-                  "optimTime", "setupTime", "covTime",
-                  "parHistData", "dataSav", "idLvl", "theta",
-                  "missingTable", "missingControl", "missingEst")) {
-    if (exists(.item, .env)) {
-      rm(list=.item, envir=.env)
+    for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
+                    "fullTheta", "scaleC", "gillRet", "gillRetC",
+                    "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
+                    "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                    "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
+                    "xType", "IDlabel", "ODEmodel",
+                    # times
+                    "optimTime", "setupTime", "covTime",
+                    "parHistData", "dataSav", "idLvl", "theta",
+                    "missingTable", "missingControl", "missingEst")) {
+      if (exists(.item, .env)) {
+        rm(list=.item, envir=.env)
+      }
     }
-  }
+  })
   .ret
 }
 

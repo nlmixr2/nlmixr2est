@@ -41,7 +41,7 @@
 #' @param .ret focei environment
 #' @return Nothing, called for side effecs
 #' @author Matthew L. Fidler
-#' @examples
+#' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-0.95)/2)
   .btName <- names(.ret$popDfSig)[4]

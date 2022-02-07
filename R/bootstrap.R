@@ -743,6 +743,7 @@ modelBootstrap <- function(fit,
   .ctl$print <- 0
   .ctl$covMethod <- 0
   .ctl$calcTables <- FALSE
+  .ctl$compress <- FALSE
 
   modelsEnsemble <-
     lapply(bootData[.env$mod_idx:nboot], function(boot_data) {

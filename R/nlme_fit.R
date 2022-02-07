@@ -709,7 +709,6 @@ anova.nlmixr2Nlme <- function(object, ...) {
   return(ret)
 }
 
-##' @rdname focei.eta
 focei.eta.nlmixr2Nlme <- function(object, ...) {
   mat <- suppressWarnings(as.matrix(VarCorr(object)))
   dn <- dimnames(mat)
@@ -751,7 +750,6 @@ focei.eta.nlmixr2Nlme <- function(object, ...) {
   n
 }
 
-##' @rdname focei.theta
 focei.theta.nlmixr2Nlme <- function(object, uif, ...) {
   if (class(uif) == "function") {
     uif <- nlmixr2(uif)
@@ -801,7 +799,6 @@ focei.theta.nlmixr2Nlme <- function(object, uif, ...) {
 }
 
 
-##' @rdname as.focei
 as.focei.nlmixr2Nlme <- function(object, uif, pt = proc.time(), ..., data, calcResid = TRUE, nobs2 = 0,
                                 keep=NULL, drop=NULL, table=tableControl(), IDlabel=NULL) {
   if (is.null(calcResid)) calcResid <- TRUE

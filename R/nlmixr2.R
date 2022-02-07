@@ -41,7 +41,6 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
-.nlmixr2Time <- NULL
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -53,9 +52,17 @@ nlmixr2Version <- function() {
 #' @template uif
 #'
 #' @param object Fitted object or function specifying the model.
+#' @param data nlmixr data
+#' @param est estimation method
+#' @param control The estimation control object.  These are expected
+#'   to be different for each type of estimation method
+#' @param table The output table control object (like
+#'   `tableControl()`)
 #' @param ... Other parameters
 #' @param save Boolean to save a nlmixr2 object in a rds file in the
-#'     working directory.  If \code{NULL}, uses option "nlmixr2.save"
+#'   working directory.  If \code{NULL}, uses option "nlmixr2.save"
+#' @param envir Environment where the nlmixr object/function is
+#'   evaluated before running the estimation routine.
 #' @return Either a nlmixr2 model or a nlmixr2 fit object
 #' @author Matthew L. Fidler
 #' @examples
@@ -134,25 +141,24 @@ nlmixr2Version <- function() {
 #' }
 #' @export
 nlmixr2 <- function(object, data, est = NULL, control = list(),
-                   table = tableControl(), ..., save = NULL,
-                   envir = parent.frame()) {
+                    table = tableControl(), ..., save = NULL,
+                    envir = parent.frame()) {
   assignInMyNamespace(".nlmixr2Time", proc.time())
+  on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree()
   rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
+  on.exit(rxode2::.setWarnIdSort(TRUE), add=TRUE)
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
   UseMethod("nlmixr2")
 }
 
-
-#' @rdname nlmixr
+#' @rdname nlmixr2
 #' @export
 nlmixr <- nlmixr2
-
 
 #' @rdname nlmixr2
 #' @export

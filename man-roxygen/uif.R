@@ -184,9 +184,8 @@
 ##' A few points to note:
 ##'
 ##' \itemize{
-##' \item Parameters are defined before the differential equations.  Currently
-##'      directly defining the differential equations in terms of the population
-##'      parameters is not supported.
+##' \item Parameters are often defined before the differential equations.
+##'
 ##' \item The differential equations, parameters and error terms are in a single
 ##'      block, instead of multiple sections.
 ##' \item State names, calculated variables cannot start with either "\code{rx_}"
@@ -239,8 +238,6 @@
 ##' A few things to keep in mind:
 ##'
 ##' \itemize{
-##' \item Currently the solved systems support either oral dosing, IV dosing
-##'      or IV infusion dosing and does not allow mixing the dosing types.
 ##' \item While RxODE allows mixing of solved systems and ODEs, this has not
 ##'      been implemented in nlmixr yet.
 ##' \item The solved systems implemented are the one, two and three compartment
@@ -250,7 +247,6 @@
 ##'       nlmixr currently knows about numbered volumes, Vc/Vp, Clearances in terms of both Cl and
 ##'       Q/CLD.  Additionally nlmixr knows about elimination micro-constants (ie K12).  Mixing of
 ##'       these parameters for these models is currently not supported.
-##' }
 ##'
 ##'  \bold{Checking model syntax}
 ##'
@@ -300,19 +296,7 @@
 ##' dataset to estimate the parameters for a model given a dataset.
 ##'
 ##' This dataset has to have RxODE compatible events IDs.  Both
-##' Monolix and NONMEM use a different dataset description.  You may
-##' convert these datasets to RxODE-compatible datasets with the
-##' \code{\link{nmDataConvert}} function.  Note that steady state
-##' doses are not supported by RxODE, and therefore not supported by
-##' the conversion function.
-##'
-##' As an example, you can use a simulated rich 1-compartment dataset.
-##'
-##' \preformatted{
-##'  d <- Oral_1CPT
-##'  d <- d[,names(d) != "SS"];
-##'  d <- nmDataConvert(d);
-##' }
+##' Monolix and NONMEM use a a very similar standard to what nlmixr can support.
 ##'
 ##' Once the data has been converted to the appropriate format, you
 ##' can use the \code{nlmixr} function to run the appropriate code.
@@ -320,7 +304,7 @@
 ##' The method to estimate the model is:
 ##'
 ##' \preformatted{
-##' fit <- nlmixr(model.function, rxode.dataset, est="est",control=estControl(options))
+##' fit <- nlmixr(model.function, dataset, est="est",control=estControl(options))
 ##' }
 ##'
 ##' Currently \code{\link[nlme]{nlme}} and \code{\link{saem}} are implemented.  For example, to run the
@@ -385,9 +369,9 @@
 ##' done
 ##' }
 ##'
-##' The options for \code{\link{saem}} are controlled by \code{\link{saemControl}}.
+##' The options for \code{saem} are controlled by \code{\link{saemControl}}.
 ##' You may wish to make sure the minimization is complete in the case
-##' of \code{\link{saem}}.  You can do that with \code{\link{traceplot}} which shows the
+##' of \code{saem}.  You can do that with \code{\link{traceplot}} which shows the
 ##' iteration history with the divided by burn-in and EM phases.  In
 ##' this case, the burn in seems reasonable; you may wish to increase
 ##' the number of iterations in the EM phase of the estimation.
@@ -442,7 +426,7 @@
 ##' This example shows what is typical printout of a nlmixr fit object.  The elements of the fit are:
 ##'
 ##' \itemize{
-##'  \item The type of fit (\code{\link[nlme]{nlme}}, \code{\link{saem}}, etc)
+##'  \item The type of fit (\code{\link[nlme]{nlme}}, \code{saem}, etc)
 ##'  \item Metrics of goodness of fit (\code{\link{AIC}}, \code{\link{BIC}},
 ##'    and \code{\link{logLik}}).
 ##'    \itemize{
@@ -450,7 +434,7 @@
 ##'           regardless of the method used and used for goodness of fit metrics.
 ##'      \item This FOCEi likelihood has been compared to NONMEM's objective function and gives
 ##'          the same values (based on the data in Wang 2007)
-##'       \item Also note that \code{\link{saem}} does not calculate an objective function,
+##'       \item Also note that \code{saem} does not calculate an objective function,
 ##'             and the FOCEi is used as the only objective function for the fit.
 ##'       \item Even though the objective functions are calculated in the same manner, caution should
 ##'          be used when comparing fits from various estimation routines.

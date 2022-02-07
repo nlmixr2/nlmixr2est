@@ -101,9 +101,6 @@
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
-#' @inheritParams configsaem
-#' @inheritParams rxode2::rxSEinner
-#' @inheritParams rxode2::rxGenSaem
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
@@ -391,57 +388,60 @@ saemControl <- function(seed = 99,
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
-  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
-  if (length(timeVaryingCovariates) > 0) {
-    # Drop time-varying covariates
-    .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
-  }
-  assign("muRefFinal", .muRefCovariateDataFrame, ui)
-  on.exit(rm(list="muRefFinal", envir=ui))
-  .model <- ui$saemModelList
-  .inits <- ui$saemInit
-  .cfg <- .configsaem(model=.model,
-                      data=data,
-                      inits=.inits,
-                      mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
-                      ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
-                      distribution="normal",
-                      fixedOmega=ui$saemModelOmegaFixed,
-                      fixedOmegaValues=ui$saemModelOmegaFixedValues,
-                      parHistThetaKeep=ui$saemParHistThetaKeep,
-                      parHistOmegaKeep=ui$saemParHistOmegaKeep,
-                      seed=rxode2::rxGetControl(ui, "seed", 99),
-                      DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
-                      tol=rxode2::rxGetControl(ui, "tol", 1e-6),
-                      itmax=rxode2::rxGetControl(ui, "itmax", 30),
-                      type=rxode2::rxGetControl(ui, "type", "nelder-mead"),
-                      lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
-                      powRange=rxode2::rxGetControl(ui, "powRange", 10),
-                      odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
-                      maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
-                      nres=ui$saemModNumEst,
-                      perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
-                      perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
-                      perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
-                      perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
-                      resFixed=ui$saemResFixed)
-  .print <- rxode2::rxGetControl(ui, "print", 1)
-  if (inherits(.print, "numeric")) {
-    .cfg$print <- as.integer(.print)
-  }
-  .cfg$cres <- ui$saemCres
-  .cfg$yj <- ui$saemYj
-  .cfg$lres <- ui$saemLres
-  .cfg$low <- ui$saemLow
-  .cfg$hi <- ui$saemHi
-  .cfg$propT <- ui$saemPropT
-  .cfg$addProp <- ui$saemAddProp
-  .cfg$resValue <- ui$saemResValue
-  if (.cfg$print > 0) {
-    message("params:\t", paste(ui$saemParHistNames,collapse="\t"))
-  }
-  .saemCheckCfg(.cfg)
-  .model$saem_mod(.cfg)
+  nlmixrWithTiming("saem", {
+    .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
+    if (length(timeVaryingCovariates) > 0) {
+      # Drop time-varying covariates
+      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
+    }
+    assign("muRefFinal", .muRefCovariateDataFrame, ui)
+    on.exit(rm(list="muRefFinal", envir=ui))
+    .model <- ui$saemModelList
+    .inits <- ui$saemInit
+    .cfg <- .configsaem(model=.model,
+                        data=data,
+                        inits=.inits,
+                        mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
+                        ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
+                        distribution="normal",
+                        fixedOmega=ui$saemModelOmegaFixed,
+                        fixedOmegaValues=ui$saemModelOmegaFixedValues,
+                        parHistThetaKeep=ui$saemParHistThetaKeep,
+                        parHistOmegaKeep=ui$saemParHistOmegaKeep,
+                        seed=rxode2::rxGetControl(ui, "seed", 99),
+                        DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
+                        tol=rxode2::rxGetControl(ui, "tol", 1e-6),
+                        itmax=rxode2::rxGetControl(ui, "itmax", 30),
+                        type=rxode2::rxGetControl(ui, "type", "nelder-mead"),
+                        lambdaRange=rxode2::rxGetControl(ui, "lambdaRange", 3),
+                        powRange=rxode2::rxGetControl(ui, "powRange", 10),
+                        odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
+                        maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
+                        nres=ui$saemModNumEst,
+                        perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
+                        perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
+                        perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
+                        perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
+                        resFixed=ui$saemResFixed)
+    .print <- rxode2::rxGetControl(ui, "print", 1)
+    if (inherits(.print, "numeric")) {
+      .cfg$print <- as.integer(.print)
+    }
+    .cfg$cres <- ui$saemCres
+    .cfg$yj <- ui$saemYj
+    .cfg$lres <- ui$saemLres
+    .cfg$low <- ui$saemLow
+    .cfg$hi <- ui$saemHi
+    .cfg$propT <- ui$saemPropT
+    .cfg$addProp <- ui$saemAddProp
+    .cfg$resValue <- ui$saemResValue
+    if (.cfg$print > 0) {
+      message("params:\t", paste(ui$saemParHistNames,collapse="\t"))
+    }
+    .saemCheckCfg(.cfg)
+    .model$saem_mod(.cfg)
+
+  })
 }
 #' Get the saem control statement and install it into the ui
 #'
@@ -589,62 +589,79 @@ saemControl <- function(seed = 99,
 #' @author Matthew L. Fidler
 #' @noRd
 .saemCalcCov <- function(env) {
-  .ui <- env$ui
-  .saem <- env$saem
-  .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
-  .calcCov <- .covMethod == "linFim"
-  if (.covMethod == "") {
-    .cov <- NULL
-    .addCov <- FALSE
-  } else {
-    .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
-    .nth <- length(.tn)
+  nlmixrWithTiming("covariance", {
+    .ui <- env$ui
+    .saem <- env$saem
+    .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
+    .calcCov <- .covMethod == "linFim"
+    if (.covMethod == "") {
+      .cov <- NULL
+      .addCov <- FALSE
+    } else {
+      .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
+      .nth <- length(.tn)
 
-    .ini <- .ui$iniDf
-    .ini <- .ini[is.na(.ini$err), ]
-    .ini <- .ini[!is.na(.ini$ntheta), ]
-    .ini <- .ini[!.ini$fix, ]
-    .ini <- paste(.ini$name)
-    .calcCovTime <- proc.time()
-    if (.calcCov) {
-      .covm <- .saem$Ha[1:.nth, 1:.nth]
-      .covm <- try(calc.COV(.saem))
-      .doIt <- !inherits(.covm, "try-error")
-      if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
-      if (.doIt) {
-        .tmp <- try(chol(.covm), silent = TRUE)
-        .addCov <- TRUE
-        .sqrtm <- FALSE
-        if (inherits(.tmp, "try-error")) {
-          .tmp <- .covm
-          .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+      .ini <- .ui$iniDf
+      .ini <- .ini[is.na(.ini$err), ]
+      .ini <- .ini[!is.na(.ini$ntheta), ]
+      .ini <- .ini[!.ini$fix, ]
+      .ini <- paste(.ini$name)
+      if (.calcCov) {
+        .covm <- .saem$Ha[1:.nth, 1:.nth]
+        .covm <- try(calc.COV(.saem))
+        .doIt <- !inherits(.covm, "try-error")
+        if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
+        if (.doIt) {
+          .tmp <- try(chol(.covm), silent = TRUE)
+          .addCov <- TRUE
+          .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
-            .calcCov <- FALSE
-            .covm <- .saem$Ha[1:.nth, 1:.nth]
-            .tmp <- try(chol(.covm), silent = TRUE)
-            .addCov <- TRUE
-            .sqrtm <- FALSE
+            .tmp <- .covm
+            .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
-              .tmp <- .saem$Ha[1:.nth, 1:.nth]
-              .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+              .calcCov <- FALSE
+              .covm <- .saem$Ha[1:.nth, 1:.nth]
+              .tmp <- try(chol(.covm), silent = TRUE)
+              .addCov <- TRUE
+              .sqrtm <- FALSE
               if (inherits(.tmp, "try-error")) {
-                .addCov <- FALSE
+                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+                if (inherits(.tmp, "try-error")) {
+                  .addCov <- FALSE
+                } else {
+                  .sqrtm <- TRUE
+                }
               } else {
-                .sqrtm <- TRUE
+                .tmp <- .saem$Ha[1:.nth, 1:.nth]
               }
             } else {
-              .tmp <- .saem$Ha[1:.nth, 1:.nth]
+              .sqrtm <- TRUE
             }
           } else {
-            .sqrtm <- TRUE
+            .tmp <- .covm
           }
         } else {
-          .tmp <- .covm
+          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- try(chol(.covm), silent = TRUE)
+          .calcCov <- FALSE
+          .addCov <- TRUE
+          .sqrtm <- FALSE
+          if (inherits(.tmp, "try-error")) {
+            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
+            if (inherits(.tmp, "try-error")) {
+              .addCov <- FALSE
+            } else {
+              .sqrtm <- TRUE
+            }
+          } else {
+            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .calcCov <- FALSE
+          }
         }
       } else {
-        .tmp <- .saem$Ha[1:.nth, 1:.nth]
         .tmp <- try(chol(.covm), silent = TRUE)
-        .calcCov <- FALSE
         .addCov <- TRUE
         .sqrtm <- FALSE
         if (inherits(.tmp, "try-error")) {
@@ -660,61 +677,44 @@ saemControl <- function(seed = 99,
           .calcCov <- FALSE
         }
       }
-    } else {
-      .tmp <- try(chol(.covm), silent = TRUE)
-      .addCov <- TRUE
-      .sqrtm <- FALSE
-      if (inherits(.tmp, "try-error")) {
-        .tmp <- .saem$Ha[1:.nth, 1:.nth]
-        .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
-        if (inherits(.tmp, "try-error")) {
-          .addCov <- FALSE
+      if (.addCov) {
+        if (!.calcCov) {
+          .cov <- rxode2::rxInv(.tmp)
         } else {
-          .sqrtm <- TRUE
+          .cov <- .tmp
         }
-      } else {
-        .tmp <- .saem$Ha[1:.nth, 1:.nth]
-        .calcCov <- FALSE
+        attr(.cov, "dimnames") <- list(.tn, .tn)
+        .cov <- .cov[.ini, .ini, drop = FALSE]
       }
     }
     if (.addCov) {
-      if (!.calcCov) {
-        .cov <- rxode2::rxInv(.tmp)
-      } else {
-        .cov <- .tmp
-      }
-      attr(.cov, "dimnames") <- list(.tn, .tn)
-      .cov <- .cov[.ini, .ini, drop = FALSE]
-    }
-    .calcCovTime <- proc.time() - .calcCovTime
-    .calcCovTime <- .calcCovTime["elapsed"]
-  }
-  if (.addCov) {
-    env$cov <- .cov
-    env$.calcCovTime <- .calcCovTime
-    if (.calcCov) {
-      env$covMethod <- "linFim"
-      if (.addCov & .sqrtm) {
-        env$covMethod <- "|linFim|"
-        warning("covariance matrix non-positive definite, corrected by sqrtm(linFim %*% linFim)",
-                call.=FALSE)
-      }
-    } else {
+      env$cov <- .cov
       if (.calcCov) {
-        warning("linearization of FIM could not be used to calculate covariance",
-                call.=FALSE)
-      }
-      if (.addCov & .sqrtm) {
-        env$covMethod <- "|fim|"
-        warning("covariance matrix non-positive definite, corrected by sqrtm(fim %*% fim)",
-                call.=FALSE)
-      } else if (!.addCov) {
-        warning("FIM non-positive definite and cannot be used to calculate the covariance",
-                call.=FALSE)
+        env$covMethod <- "linFim"
+        if (.addCov & .sqrtm) {
+          env$covMethod <- "|linFim|"
+          warning("covariance matrix non-positive definite, corrected by sqrtm(linFim %*% linFim)",
+                  call.=FALSE)
+        }
+      } else {
+        if (.calcCov) {
+          warning("linearization of FIM could not be used to calculate covariance",
+                  call.=FALSE)
+        }
+        if (.addCov & .sqrtm) {
+          env$covMethod <- "|fim|"
+          warning("covariance matrix non-positive definite, corrected by sqrtm(fim %*% fim)",
+                  call.=FALSE)
+        } else if (!.addCov) {
+          warning("FIM non-positive definite and cannot be used to calculate the covariance",
+                  call.=FALSE)
+        }
       }
     }
-  }
+
+  })
 }
+
 
 #' Get the likelihood name for SAEM
 #'

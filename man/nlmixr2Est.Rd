@@ -37,6 +37,9 @@ This needs to have:
 - data to fit in the estimation routine in `$data`
 
 - control for the estimation routine's control options in `$ui`}
+
+\item{...}{Other arguments provided to `nlmixr2Est()` provided for
+flexibility but not currently used inside nlmixr}
 }
 \value{
 nlmixr2 fit object
