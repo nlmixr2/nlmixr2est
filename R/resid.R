@@ -393,7 +393,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEtaParameters=object$foceiThetaEtaParameters,
                      table=tableControl(), keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
-  .nlmixrWithTiming("table", {
+  nlmixrWithTiming("table", {
     keep <- unique(c(keep, "nlmixrRowNums"))
     .malert("Calculating residuals/tables")
     .objName <- substitute(object)

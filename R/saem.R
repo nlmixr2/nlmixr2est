@@ -391,7 +391,7 @@ saemControl <- function(seed = 99,
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
-  .nlmixrWithTiming("saem", {
+  nlmixrWithTiming("saem", {
     .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
     if (length(timeVaryingCovariates) > 0) {
       # Drop time-varying covariates
@@ -592,7 +592,7 @@ saemControl <- function(seed = 99,
 #' @author Matthew L. Fidler
 #' @noRd
 .saemCalcCov <- function(env) {
-  .nlmixrWithTiming("covariance", {
+  nlmixrWithTiming("covariance", {
     .ui <- env$ui
     .saem <- env$saem
     .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")

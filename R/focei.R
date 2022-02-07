@@ -2408,7 +2408,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                      table=.ret$table)
   }
-  .nlmixrWithTiming("compress", {
+  nlmixrWithTiming("compress", {
     if (exists("saem", .env)) {
       .saem <- get("saem", envir=.env)
       .saemCfg <- attr(.saem, "saem.cfg")

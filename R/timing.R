@@ -7,6 +7,7 @@
     assignInMyNamespace(".nlmixr2Time", NULL)
     assignInMyNamespace(".currentTimingEnvironment", NULL)
     assignInMyNamespace(".extraTimingTable", NULL)
+    assignInMyNamespace(".timingStack", NULL)
   })
   if (is.environment(.currentTimingEnvironment) &
         inherits(.nlmixr2Time, "proc_time")) {
@@ -42,9 +43,9 @@
   .time <- (proc.time() - preTiming)["elapsed"]
   .lastTime <- setNames(.timingStack[length(.timingStack)], NULL)
   if (length(.timingStack) == 1L) {
-    assign(".timingStack", NULL)
+    assignInMyNamespace(".timingStack", NULL)
   } else {
-    assign(".timingStack", .timingStack[-length(.timingStack)] + .time)
+    assignInMyNamespace(".timingStack", .timingStack[-length(.timingStack)] + .time)
   }
   .time - .lastTime
 }
@@ -54,6 +55,9 @@
   .df <- list(.time)
   names(.df) <- name
   .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+  if (inherits(envir, "nlmixr2FitData")) {
+    envir <- envir$env
+  }
   if (is.environment(.currentTimingEnvironment) & !is.environment(envir)) {
     envir <- .currentTimingEnvironment
   }
@@ -68,11 +72,68 @@
     }
   }
 }
-
-.nlmixrWithTiming <- function(name, code, envir=NULL) {
+#' Time a part of a nlmixr operation and add to nlmixr object
+#'
+#'
+#' @param name Name of the timing to be integrated
+#' @param code Code to be evaluated and timed
+#' @param envir can be either the nlmixr2 fit data, the nlmixr2 fit
+#'   environment or NULL, which implies it is going to be added to the
+#'   nlmixr fit when it is finalized.  If the function is being called
+#'   after a fit is created, please supply this environmental variable
+#' @return Result of code
+#' @author Matthew L. Fidler
+#' @examples
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'  ini({
+#'    ## You may label each parameter with a comment
+#'    tka <- 0.45 # Ka
+#'    tcl <- log(c(0, 2.7, 100)) # Log Cl
+#'    ## This works with interactive models
+#'    ## You may also label the preceding line with label("label text")
+#'    tv <- 3.45; label("log V")
+#'    ## the label("Label name") works with all models
+#'    eta.ka ~ 0.6
+#'    eta.cl ~ 0.3
+#'    eta.v ~ 0.1
+#'    add.sd <- 0.7
+#'  })
+#'  model({
+#'    ka <- exp(tka + eta.ka)
+#'    cl <- exp(tcl + eta.cl)
+#'    v <- exp(tv + eta.v)
+#'    linCmt() ~ add(add.sd)
+#'  })
+#' }
+#' fit <- nlmixr(one.cmt, theo_sd, est="saem")
+#'
+#' nlmixrWithTiming("time1", {
+#'    Sys.sleep(1)
+#'    # note this can be nested, time1 will exclude the timing from time2
+#'    nlmixrWithTiming("time2", {
+#'       Sys.sleep(1)
+#'    }, envir=fit)
+#' }, envir=fit)
+#'
+#' print(fit)
+#'
+#' }
+#'
+nlmixrWithTiming <- function(name, code, envir=NULL) {
   .pt <- proc.time()
+  checkmate::assertCharacter(name, len=1, all.missing=FALSE)
   force(name)
   force(envir)
+  if (is.null(envir)){
+  } else if (inherits(envir, "nlmixr2FitData")) {
+  } else if (is.environment(envir)) {
+  } else {
+    print(envir)
+    stop("'envir' must be NULL, a nlmixr2 object or an environment",
+         call.=FALSE)
+  }
   .nlmixrPushTimingStack(name)
   on.exit(.nlmixrFinalizeTiming(name, .pt, envir), add=TRUE)
   force(code)

@@ -47,7 +47,7 @@
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
-  .nlmixrWithTiming("NPDE", {
+  nlmixrWithTiming("NPDE", {
     .objName <- substitute(object)
     rxode2::.setWarnIdSort(FALSE)
     on.exit(rxode2::.setWarnIdSort(TRUE))
