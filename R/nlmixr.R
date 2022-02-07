@@ -1,6 +1,4 @@
 
-##' @rdname nlmixr2Est000
-##'@export
 nlmixr2Est000.nlme <- function(env, ...) {
   with(env, {
     if (.nid <= 1) stop("nlme is for mixed effects models, try 'dynmodel' (need more than 1 individual)")

@@ -142,7 +142,7 @@ addCwres <- function(fit, updateObject = TRUE, envir = parent.frame(1)) {
   assign("origData", .od, .env)
   return(.new)
 }
-#' @rdname nmObjGet.addCwres
+#' @rdname nmObjGetData
 #' @export
 nmObjGetData.addCwres <- function(x, ...) {
   addCwres(x[[1]], updateObject = FALSE)

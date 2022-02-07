@@ -33,7 +33,6 @@
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
 #' @param lambdaRange This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range (-3,3)
 #' @param powRange This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(1/10, 10) or c(0.1,10)
-#' @inheritParams rxode2::rxSEinner
 #' @inheritParams saemControl
 #'
 #' @return Returns a list neede for the saem fit procedure

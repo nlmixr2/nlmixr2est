@@ -2,9 +2,15 @@
 % Please edit documentation in R/nmObjGet.R
 \name{nmObjGetRxSolve}
 \alias{nmObjGetRxSolve}
+\alias{nmObjGetRxSolve.saem}
+\alias{nmObjGetRxSolve.default}
 \title{Get an option for the estimation method}
 \usage{
 nmObjGetRxSolve(x, what)
+
+\method{nmObjGetRxSolve}{saem}(x, what)
+
+\method{nmObjGetRxSolve}{default}(x, what)
 }
 \arguments{
 \item{x}{nlmixr fit object encapulated in a list.  The class is the estimation method used.}

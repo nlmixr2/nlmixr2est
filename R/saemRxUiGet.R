@@ -298,13 +298,10 @@ rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
   .saemGetIniDfResNameFromType(iniDf, cond, c("boxCox", "yeoJohnson"), column=column)
 }
 #'  Get saem residual item
-#'
-#'
 #' @param ui rxode2 UI
 #' @param column column name
 #' @return Residual names
 #' @author Matthew L. Fidler
-#' @examples
 #' @noRd
 .saemGetResItem <- function(ui, column="name") {
   .predDf <- ui$predDf

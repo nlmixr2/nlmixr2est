@@ -622,7 +622,7 @@ nmObjGetRxSolve <- function(x, what) {
   UseMethod("nmObjGetRxSolve")
 }
 
-#' @rdname nmObjGetAtol
+#' @rdname nmObjGetRxSolve
 #' @export
 nmObjGetRxSolve.saem <- function(x, what) {
   .env <- x[[1]]
@@ -636,7 +636,7 @@ nmObjGetRxSolve.saem <- function(x, what) {
   }
 }
 
-#' @rdname nmObjGetAtol
+#' @rdname nmObjGetRxSolve
 #' @export
 nmObjGetRxSolve.default <- function(x, what) {
   .env <- x[[1]]

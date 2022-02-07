@@ -101,9 +101,6 @@
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams foceiControl
-#' @inheritParams configsaem
-#' @inheritParams rxode2::rxSEinner
-#' @inheritParams rxode2::rxGenSaem
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
