@@ -8,7 +8,7 @@
 #' @importFrom rxode2 rxode2
 #' @importFrom graphics abline lines matplot plot points title
 #' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
-#' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData
+#' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
 #' @importFrom parallel mclapply
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
