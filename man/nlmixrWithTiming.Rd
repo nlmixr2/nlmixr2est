@@ -23,6 +23,7 @@ Result of code
 Time a part of a nlmixr operation and add to nlmixr object
 }
 \examples{
+
 \donttest{
 
 one.cmt <- function() {
@@ -58,9 +59,8 @@ nlmixrWithTiming("time1", {
 
 print(fit)
 
-nlmixrAddTiming
-
 }
+
 }
 \author{
 Matthew L. Fidler
