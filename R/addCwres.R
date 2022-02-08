@@ -85,6 +85,6 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.addCwres <- function(x, ...) {
-  addCwres(x[[1]], updateObject = FALSE)
+  addCwres(x[[1]], updateObject = FALSE, envir=parent.frame(2))
 }
 attr(nmObjGetData.addCwres, "desc") <- "Add CWRES to object if needed"
