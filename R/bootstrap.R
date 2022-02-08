@@ -200,7 +200,7 @@ bootstrapFit <- function(fit,
 
   # modify the fit object
   nrws <- nrow(bootSummary$parFixedDf$mean)
-  sigdig <- fit$control$sigdig
+  sigdig <- fit$foceiControl$sigdig
 
   newParFixedDf <- fit$parFixedDf
   newParFixed <- fit$parFixed
@@ -519,19 +519,15 @@ modelBootstrap <- function(fit,
                            pvalues = NULL,
                            restart = FALSE,
                            fitName = "fit") {
-  if (!inherits(fit, "nlmixr2FitCore")) {
-    stop("'fit' needs to be a nlmixr2 fit", call. = FALSE)
-  }
-
+  assertNlmixrFit(fit)
   if (missing(stratVar)) {
     performStrat <- FALSE
     stratVar <- NULL
-  }
-  else {
+  } else {
     performStrat <- TRUE
   }
 
-  data <- getData(fit)
+  data <- nlme::getData(fit)
 
   .w <- tolower(names(data)) == "id"
   uidCol <- names(data)[.w]
@@ -576,10 +572,10 @@ modelBootstrap <- function(fit,
 
   output_dir <-
     paste0("nlmixr2BootstrapCache_", fitName, "_", fit$bootstrapMd5) # a new directory with this name will be created
+
   if (!dir.exists(output_dir)) {
     dir.create(output_dir)
-  }
-  else if (dir.exists(output_dir) && restart == TRUE) {
+  } else if (dir.exists(output_dir) && restart == TRUE) {
     unlink(output_dir, recursive = TRUE, force = TRUE) # unlink any of the previous directories
     dir.create(output_dir) # create a fresh directory
   }
@@ -605,8 +601,7 @@ modelBootstrap <- function(fit,
       })
 
       startCtr <- length(bootData) + 1
-    }
-    else {
+    } else {
       cli::cli_alert_danger(
         cli::col_red(
           "need the data files at {.file {paste0(getwd(), '/', output_dir)}} to resume"
@@ -614,9 +609,7 @@ modelBootstrap <- function(fit,
       )
       stop("aborting...resume file missing", call. = FALSE)
     }
-  }
-
-  else {
+  } else {
     startCtr <- 1
   }
 
@@ -640,9 +633,7 @@ modelBootstrap <- function(fit,
           output_dir,
           "/boot_data_",
           mod_idx,
-          ".rds"
-        )
-      )
+          ".rds"))
     }
   }
 
@@ -660,16 +651,14 @@ modelBootstrap <- function(fit,
   fnameModelsEnsemblePattern <-
     paste0("modelsEnsemble_", "[0-9]+",
       ".rds",
-      sep = ""
-    )
+      sep = "")
   modFileExists <-
     list.files(paste0("./", output_dir), pattern = fnameModelsEnsemblePattern)
 
   fnameFitEnsemblePattern <-
     paste0("fitEnsemble_", "[0-9]+",
       ".rds",
-      sep = ""
-    )
+      sep = "")
   fitFileExists <- list.files(paste0("./", output_dir), pattern = fnameFitEnsemblePattern)
 
   if (!restart) {
@@ -739,9 +728,9 @@ modelBootstrap <- function(fit,
   }
 
   # get control settings for the 'fit' object and save computation effort by not computing the tables
-  .ctl <- fit$origControl
-  .ctl$print <- 0
-  .ctl$covMethod <- 0
+  .ctl <- fit$control
+  .ctl$print <- 0L
+  .ctl$covMethod <- 0L
   .ctl$calcTables <- FALSE
   .ctl$compress <- FALSE
 
@@ -754,8 +743,7 @@ modelBootstrap <- function(fit,
           fit <- suppressWarnings(nlmixr2(ui,
             boot_data,
             est = fitMeth,
-            control = .ctl
-          ))
+            control = .ctl))
 
           .env$multipleFits <- list(
             # objf = fit$OBJF,
@@ -763,8 +751,7 @@ modelBootstrap <- function(fit,
             omega = fit$omega,
             parFixedDf = fit$parFixedDf[, c("Estimate", "Back-transformed")],
             message = fit$message,
-            warnings = fit$warnings
-          )
+            warnings = fit$warnings)
 
           fit # to return 'fit'
         },
@@ -773,8 +760,7 @@ modelBootstrap <- function(fit,
           print(error_message)
           print("storing the models as NA ...")
           return(NA) # return NA otherwise (instead of NULL)
-        }
-      )
+        })
 
       saveRDS(
         .env$multipleFits,
@@ -783,9 +769,7 @@ modelBootstrap <- function(fit,
           output_dir,
           "/modelsEnsemble_",
           .env$mod_idx,
-          ".rds"
-        )
-      )
+          ".rds"))
 
       saveRDS(
         fit,
@@ -895,6 +879,7 @@ extractVars <- function(fitlist, id = "method") {
       # if id equals 'omega' or 'parFixedDf
       res
     }
+
   }
 }
 
