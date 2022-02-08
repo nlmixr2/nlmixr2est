@@ -3,13 +3,19 @@
 #' @param fit nlmixr2 fit object to update in the environment
 #' @param objName Name of the object
 #' @param envir Environment to search
+#' @param origFitEnv Original fit$env to compare, otherwise simply use fit$env
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @export
-nlmixrUpdateObject <- function(fit, objName, envir) {
+nlmixrUpdateObject <- function(fit, objName, envir, origFitEnv=NULL) {
   .parent <- envir
-  .env <- fit$env
-  .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
+  if (is.environment(origFitEnv)) {
+    .env <- origFitEnv
+  } else {
+    .env <- fit$env
+  }
+  .ls <- ls(.parent, all.names = TRUE)
+  .bound <- do.call("c", lapply(.ls, function(.cur) {
     if (.cur == objName && identical(.parent[[.cur]]$env, .env)) {
       return(.cur)
     }
