@@ -1,13 +1,54 @@
 .nlmixr2Time <- NULL
 .currentTimingEnvironment <- NULL
 .extraTimingTable <- NULL
+.timingStack <- NULL
 
-.finalizeOverallTiming <- function() {
-  on.exit({
+.timingStackNlmixr <- NULL
+
+#' Push the nlmixr timing stack for a nested nlmixr call
+#'
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.pushNlmixr2timing <- function() {
+  assignInMyNamespace(".timingStackNlmixr",
+                      c(.timingStackNlmixr,
+                        list(list(.nlmixr2Time, .currentTimingEnvironment, .extraTimingTable, .timingStack))))
+  assignInMyNamespace(".nlmixr2Time", NULL)
+  assignInMyNamespace(".currentTimingEnvironment", NULL)
+  assignInMyNamespace(".extraTimingTable", NULL)
+  assignInMyNamespace(".timingStack", NULL)
+}
+#' Pop the full nlmixr timing stack (if needed)
+#'
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.popNlmixr2Timing <- function() {
+  .l <- length(.timingStackNlmixr)
+  if (.l == 0) {
     assignInMyNamespace(".nlmixr2Time", NULL)
     assignInMyNamespace(".currentTimingEnvironment", NULL)
     assignInMyNamespace(".extraTimingTable", NULL)
     assignInMyNamespace(".timingStack", NULL)
+  } else {
+    .cur <- .timingStackNlmixr[[.l]]
+    if (.l == 1) {
+      assignInMyNamespace(".timingStackNlmixr", NULL)
+    } else {
+      assignInMyNamespace(".timingStackNlmixr",
+                          .timingStackNlmixr[[-.l]])
+    }
+    assignInMyNamespace(".nlmixr2Time", .cur[[1]])
+    assignInMyNamespace(".currentTimingEnvironment", .cur[[2]])
+    assignInMyNamespace(".extraTimingTable", .cur[[3]])
+    assignInMyNamespace(".timingStack", .cur[[4]])
+  }
+}
+
+.finalizeOverallTiming <- function() {
+  on.exit({
+    .popNlmixr2Timing()
   })
   if (is.environment(.currentTimingEnvironment) &
         inherits(.nlmixr2Time, "proc_time")) {
@@ -30,24 +71,23 @@
   }
 }
 
-.timingStack <- NULL
 
 .nlmixrPushTimingStack <- function(name) {
   assignInMyNamespace(".timingStack", c(.timingStack, setNames(0, name)))
 }
 
 .nlmixrPopTimingStack <- function(preTiming) {
-  .time <- (proc.time() - preTiming)["elapsed"]
   .lastTime <- setNames(.timingStack[length(.timingStack)], NULL)
   if (length(.timingStack) == 1L) {
     assignInMyNamespace(".timingStack", NULL)
+    .time <- setNames((proc.time() - preTiming)["elapsed"], NULL)
   } else {
+    .time <- setNames((proc.time() - preTiming)["elapsed"], NULL)
     assignInMyNamespace(".timingStack", .timingStack[-length(.timingStack)] + .time)
   }
   .time - .lastTime
 }
 #' Construct a final table, add the timing at the last second
-#'
 #'
 #' @param time Initial time table
 #' @param name Character name of timing

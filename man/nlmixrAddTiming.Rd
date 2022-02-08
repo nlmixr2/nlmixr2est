@@ -46,6 +46,12 @@ one.cmt <- function() {
 
 fit <- nlmixr(one.cmt, theo_sd, est="saem")
 
+# will add to the current setup
+nlmixrAddTiming(fit, "setup", 3)
+
+# Add a new item to the timing dataframe
+nlmixrAddTiming(fit, "new", 3)
+
 }
 }
 \author{

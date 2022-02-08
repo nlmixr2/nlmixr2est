@@ -751,15 +751,14 @@ static inline double calcGradForEtaGeneral(double *eta,
   if (op_focei.eventType != 1) aEps[cpar] = op_focei.eventFD;  
   if (op_focei.eventType == 1 && aEps[cpar] == 0) {
     double hf, hphif, err, gillDf, gillDf2, gillErr;
-    int gillRet;
     if (w == 0) {
-      gillRet = gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
-                       eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                       cid, gill83etaF);
+      gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
+             eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+             cid, gill83etaF);
     } else {
-      gillRet = gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
-                       eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                       cid, gill83etaR);
+      gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
+             eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+             cid, gill83etaR);
     }
     err = 1/(std::fabs(eta[cpar])+1);
     aEps[cpar]  = hf*err;
@@ -3299,7 +3298,12 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.pgtol	= as<double>(odeO["lbfgsPgtol"]);
   op_focei.lmm		= as<int>(odeO["lbfgsLmm"]);
   op_focei.covDerivMethod = as<int>(odeO["covDerivMethod"]);
-  op_focei.covMethod = as<int>(odeO["covMethod"]);
+  int type = TYPEOF(odeO["covMethod"]);
+  if (type == INTSXP || type == REALSXP) {
+    op_focei.covMethod = as<int>(odeO["covMethod"]);
+  } else {
+    Rcpp::stop("'covMethod' needs to be an integer in lower level inner");
+  }
   op_focei.eigen = as<int>(odeO["eigen"]);
   op_focei.ci=0.95;
   op_focei.sigdig=as<double>(odeO["sigdig"]);
@@ -5291,8 +5295,9 @@ NumericMatrix foceiCalcCov(Environment e){
           return as<NumericMatrix>(e["cov"]);
         }
       } else {
-        if (boundary){
-          warning(_("parameter estimate near boundary; covariance not calculated:\n   ") + boundStr + _("\n use 'getVarCov' to calculate anyway"));
+        if (op_focei.covMethod && boundary){
+          warning(_("parameter estimate near boundary; covariance not calculated:\n   ") + boundStr +
+                  _("\n use 'getVarCov' to calculate anyway"));
           e["covMethod"] = "Boundary issue; Get SEs with `getVarCov()`: " + boundStr;
         }
         op_focei.cur=op_focei.totTick;

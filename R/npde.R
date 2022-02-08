@@ -47,40 +47,28 @@
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
+  assertNlmixrFitData(object)
+  if (any(names(object) == "NPDE")) {
+      warning("already contains NPDE", call.=FALSE)
+      return(object)
+  }
+  checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
   nlmixrWithTiming("NPDE", {
-    .objName <- substitute(object)
+    .objName <- as.character(substitute(object))
     rxode2::.setWarnIdSort(FALSE)
     on.exit(rxode2::.setWarnIdSort(TRUE))
     if (missing(table)) table <- object$table
-    if (any(names(object) == "NPDE")) {
-      warning("already contains NPDE")
-      return(object)
-    }
     .malert("Add NPDE")
     if(missing(table)) {
       table <- object$table
     }
     table$npde <- TRUE
+    .fitEnv <- object$env
     .npde <- .calcNpde(object, dv=object$DV, table=table)
-    .cls <- class(object)
-    .new <- cbind(object, .npde[[2]])
-    class(.new) <- .cls
-    .env <- .new$env
-    if (inherits(updateObject, "logical")) {
-      if (updateObject) {
-        .parent <- envir
-        .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-          if (.cur == .objName && identical(.parent[[.cur]]$env, .env)) {
-            return(.cur)
-          }
-          return(NULL)
-        }))
-        if (length(.bound) == 1) {
-          if (exists(.bound, envir = .parent)) {
-            assign(.bound, .new, envir = .parent)
-          }
-        }
-      }
+    .fit <- nlmixrClone(object)
+    .new <- nlmixrCbind(.fit, .npde[[2]])
+    if (updateObject) {
+      nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
     }
     .msuccess("done")
     .new

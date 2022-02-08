@@ -143,6 +143,7 @@ nlmixr2Version <- function() {
 nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
+  .pushNlmixr2timing()
   assignInMyNamespace(".nlmixr2Time", proc.time())
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()

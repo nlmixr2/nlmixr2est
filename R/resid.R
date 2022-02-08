@@ -331,13 +331,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
-.cloneEnv <- function(env) {
-  .env <- new.env(parent = emptyenv())
-  for (.x in ls(env, all.names=TRUE)) {
-    assign(.x, get(.x, env), .env)
-  }
-  return(.env)
-}
 
 #' Add table information to nlmixr2 fit object without tables
 #'
