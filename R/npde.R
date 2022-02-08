@@ -63,10 +63,12 @@ addNpde <- function(object, updateObject = TRUE,
       table <- object$table
     }
     table$npde <- TRUE
+    .fitEnv <- object$env
     .npde <- .calcNpde(object, dv=object$DV, table=table)
-    .new <- nlmixrCbind(object, .npde[[2]])
+    .fit <- nlmixrClone(object)
+    .new <- nlmixrCbind(.fit, .npde[[2]])
     if (updateObject) {
-      nlmixrUpdateObject(.new, .objName, envir)
+      nlmixrUpdateObject(.new, .objName, envir, .fitEnv)
     }
     .msuccess("done")
     .new
