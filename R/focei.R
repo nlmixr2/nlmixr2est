@@ -1748,7 +1748,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   if (!is.null(inner)) {
     if (.sumProd) {
       .malert("stabilizing round off errors in FD model...")
-      s$..pred.nolhs <- rxSumProdModel(s$..pred.nolhs)
+      s$..pred.nolhs <- rxode2::rxSumProdModel(s$..pred.nolhs)
       .msuccess("done")
     }
     if (.optExpression) {
@@ -1977,7 +1977,8 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     .scaleC <- c(.scaleC, rep(NA_real_, .len - .lenC))
   } else if (.len < .lenC) {
     .scaleC <- .scaleC[seq(1, .lenC)]
-    warning("scaleC control option has more options than estimated population parameters, please check.")
+    warning("'scaleC' control option has more options than estimated population parameters, please check",
+            call.=FALSE)
   }
 
   .ini <- ui$iniDf
@@ -2019,7 +2020,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
             .a <- .muRefCurEval$low[.i]
             .b <- .muRefCurEval$hi[.i]
             .x <- .ini$est[.j]
-            .scaleC[.j] <- -1.0*(-.a + .x)^2*(-1.0 + 1.0*(-.a + .b)/(-.a + .x))*log(abs(-1.0 + 1.0*(-.a + b)/(-.a + .x)))/(-.a + .b)
+            .scaleC[.j] <- -1.0*(-.a + .x)^2*(-1.0 + 1.0*(-.a + .b)/(-.a + .x))*log(abs(-1.0 + 1.0*(-.a + .b)/(-.a + .x)))/(-.a + .b)
           } else if (.curEval == "expit") {
             # 1/D(log(expit(x, a, b)))
             .a <- .muRefCurEval$low[.i]
@@ -2030,7 +2031,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
             .a <- .muRefCurEval$low[.i]
             .b <- .muRefCurEval$hi[.i]
             .x <- .ini$est[.j]
-            .scaleC[.j] <- 1.4142135623731*exp(0.5*.x^2)*sqrt(pi)*(.a + 0.5*(-.a + .b)*(1.0 + erf(0.707106781186547*x)))/(-.a + .b)
+            .scaleC[.j] <- 1.4142135623731*exp(0.5*.x^2)*sqrt(pi)*(.a + 0.5*(-.a + .b)*(1.0 + rxode2::erf(0.707106781186547*.x)))/(-.a + .b)
           } else if (.curEval == "probit") {
             .a <- .muRefCurEval$low[.i]
             .b <- .muRefCurEval$hi[.i]
@@ -2453,9 +2454,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       for (.item in c("origData", "phiM", "parHist", "saem0")) {
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
-          .size <- object.size(.obj)
+          .size <- utils::object.size(.obj)
           .objC <- qs::qserialize(.obj)
-          .size2 <- object.size(.objC)
+          .size2 <- utils::object.size(.objC)
           if (.size2 < .size) {
             .size0 <- (.size - .size2)
             .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )

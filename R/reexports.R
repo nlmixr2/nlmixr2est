@@ -10,10 +10,22 @@ rxode2::rxode2
 #' @export
 rxode2::rxode
 
-
 #' @importFrom rxode2 RxODE
 #' @export
 rxode2::RxODE
+
+#' @importFrom rxode2 ini
+#' @export
+rxode2::ini
+
+#' @importFrom rxode2 model
+#' @export
+rxode2::model
+
+#' @importFrom rxode2 lotri
+#' @export
+rxode2::lotri
+
 
 #' @importFrom rxode2 logit
 #' @export
