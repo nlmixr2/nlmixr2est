@@ -3,8 +3,8 @@
 #' `cbind` for `nlmixr` objects that preserve the fit information
 #'
 #' @param fit nlmixr fit
-#' @param extraData data to merge to nlmixr fit
-#' @return fit expanded with extra values
+#' @param extra data to cbind to nlmixr fit
+#' @return fit expanded with extra values, without disturbing the fit information
 #' @author Matthew L. Fidler
 #' @export
 nlmixrCbind <- function(fit, extra) {
