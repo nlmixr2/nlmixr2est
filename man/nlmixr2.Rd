@@ -115,76 +115,35 @@ NA
 
 \donttest{
 
-f_ode <- function(){
-    ini({
-        lCl <- 1.6      #log Cl (Lhr)
-        lVc <- log(80)   #log Vc (L)
-        lKA <- 0.3      #log Ka (1/hr)
-        prop.err <- c(0, 0.2, 1)
-        eta.Cl ~ 0.3 ## BSV Cl
-        eta.Vc ~ 0.2 ## BSV Vc
-        eta.KA ~ 0.1 ## BSV Ka
-    })
-    model({
-        ## First parameters are defined in terms of the initial estimates
-        ## parameter names.
-        Cl <- exp(lCl + eta.Cl)
-        Vc = exp(lVc + eta.Vc)
-        KA <- exp(lKA + eta.KA)
-        ## After the differential equations are defined
-        kel <- Cl / Vc;
-        d/dt(depot)    = -KA*depot;
-        d/dt(centr)  =  KA*depot-kel*centr;
-        ## And the concentration is then calculated
-        cp = centr / Vc;
-        ## Last, nlmixr2 is told that the plasma concentration follows
-        ## a proportional error (estimated by the parameter prop.err)
-        cp ~ prop(prop.err)
-    })
-}
-f_linCmt <- function(){
-    ini({
-        lCl <- 1.6      #log Cl (L/hr)
-        lVc <- log(90)   #log Vc (L)
-        lKA <- 0.1      #log Ka (1/hr)
-        prop.err <- c(0, 0.2, 1)
-        add.err <- c(0, 0.01)
-        eta.Cl ~ 0.1 ## BSV Cl
-        eta.Vc ~ 0.1 ## BSV Vc
-        eta.KA ~ 0.1 ## BSV Ka
-    })
-    model({
-        Cl <- exp(lCl + eta.Cl)
-        Vc = exp(lVc + eta.Vc)
-        KA <- exp(lKA + eta.KA)
-        ## Instead of specifying the ODEs, you can use
-        ## the linCmt() function to use the solved system.
-        ##
-        ## This function determines the type of PK solved system
-        ## to use by the parameters that are defined.  In this case
-        ## it knows that this is a one-compartment model with first-order
-        ## absorption.
-        linCmt() ~ add(add.err) + prop(prop.err)
-    })
+one.cmt <- function() {
+ ini({
+   ## You may label each parameter with a comment
+   tka <- 0.45 # Ka
+   tcl <- log(c(0, 2.7, 100)) # Log Cl
+   ## This works with interactive models
+   ## You may also label the preceding line with label("label text")
+   tv <- 3.45; label("log V")
+   ## the label("Label name") works with all models
+   eta.ka ~ 0.6
+   eta.cl ~ 0.3
+   eta.v ~ 0.1
+   add.sd <- 0.7
+   prop.sd <- 0.01
+ })
+ model({
+   ka <- exp(tka + eta.ka)
+   cl <- exp(tcl + eta.cl)
+   v <- exp(tv + eta.v)
+   linCmt() ~ add(add.sd) + prop(prop.sd)
+ })
 }
 
-# Use nlme algorithm
-fit_linCmt_nlme <- try(nlmixr2(f_ode, Oral_1CPT, est="nlme",
-               control=nlmeControl(maxstepsOde = 50000, pnlsTol=0.4)))
-if (!inherits(fit_linCmt_nlme, "try-error")) print(fit_linCmt_nlme)
+fitF <- nlmixr(one.cmt, theo_sd, "focei")
 
-# Use Focei algorithm
-fit_linCmt_focei <- try(nlmixr2(f_linCmt, Oral_1CPT, est="focei"))
-if (!inherits(fit_linCmt_focei, "try-error")) print(fit_linCmt_focei)
-
-# The ODE model can be fitted using the saem algorithm, more
-# iterations should be used for real applications
-
-fit_ode_saem <- try(nlmixr2(f_ode, Oral_1CPT, est = "saem",
-        control = saemControl(n.burn = 50, n.em = 100, print = 50)))
-if (!inherits(fit_ode_saem, "try-error")) print(fit_ode_saem)
+fitS <- nlmixr(one.cmt, theo_sd, "saem")
 
 }
+
 }
 \author{
 Matthew L. Fidler

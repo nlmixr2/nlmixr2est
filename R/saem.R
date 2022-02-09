@@ -791,11 +791,11 @@ saemControl <- function(seed = 99,
     } else {
       .saemObf <- NA_real_
     }
-  } else if (is(object, "numeric")) {
-    .saemObf <- obf
+  } else if (is(.obf, "numeric")) {
+    .saemObf <- .obf
   }
   env$objective <- .saemObf
-  env$.likTime <- .likTime
+  env$.likTime  <- .likTime
 }
 
 #' Get the calculate cwres residual parameter for saem

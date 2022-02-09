@@ -20,7 +20,8 @@ Nothing, called for side effects
 Manually add time to a nlmixr2 object
 }
 \examples{
-#' \donttest{
+
+\donttest{
 
 one.cmt <- function() {
  ini({
@@ -53,6 +54,7 @@ nlmixrAddTiming(fit, "setup", 3)
 nlmixrAddTiming(fit, "new", 3)
 
 }
+
 }
 \author{
 Matthew L. Fidler

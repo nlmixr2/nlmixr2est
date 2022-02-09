@@ -290,7 +290,7 @@ bootstrapFit <- function(fit,
         cli::cli_h1(.msg)
         xPosthoc <- nlmixr2(x,
           data = origData, est = "posthoc",
-          control = list(calcTables = FALSE, print = 1)
+          control = list(calcTables = FALSE, print = 1, compress=FALSE)
         )
         saveRDS(xPosthoc, .path)
       }

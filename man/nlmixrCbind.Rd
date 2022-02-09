@@ -9,10 +9,10 @@ nlmixrCbind(fit, extra)
 \arguments{
 \item{fit}{nlmixr fit}
 
-\item{extraData}{data to merge to nlmixr fit}
+\item{extra}{data to cbind to nlmixr fit}
 }
 \value{
-fit expanded with extra values
+fit expanded with extra values, without disturbing the fit information
 }
 \description{
 `cbind` for `nlmixr` objects that preserve the fit information

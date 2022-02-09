@@ -174,6 +174,7 @@
 #' @return Result of code
 #' @author Matthew L. Fidler
 #' @examples
+#'
 #' \donttest{
 #'
 #' one.cmt <- function() {
@@ -209,9 +210,8 @@
 #'
 #' print(fit)
 #'
-#' nlmixrAddTiming
-#'
 #' }
+#'
 #' @export
 nlmixrWithTiming <- function(name, code, envir=NULL) {
   .pt <- proc.time()
@@ -237,7 +237,8 @@ nlmixrWithTiming <- function(name, code, envir=NULL) {
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @examples
-#' #' \donttest{
+#'
+#' \donttest{
 #'
 #' one.cmt <- function() {
 #'  ini({
@@ -270,6 +271,7 @@ nlmixrWithTiming <- function(name, code, envir=NULL) {
 #' nlmixrAddTiming(fit, "new", 3)
 #'
 #' }
+#'
 #' @export
 nlmixrAddTiming <- function(object, name, time) {
   .env <- object

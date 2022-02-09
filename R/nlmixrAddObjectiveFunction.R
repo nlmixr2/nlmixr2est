@@ -19,7 +19,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     .cn <- NA_real_
     if (!is.na(.inRow2[[2]])) {
       .cn <- .inRow2[[2]]
-    } else if (!.is.na(.inRow[[2]])) {
+    } else if (!is.na(.inRow[[2]])) {
       .cn <- .inRow[[2]]
     }
     if (is.na(.inRow2[[1]])) {
@@ -31,7 +31,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     } else {
       if (any(.rownames == type)) stop("objective function '", type, "' already present", call.=FALSE)
       # Now the original data frame is not NA.
-      .tmp <- rbind(.inrRow[[1]], .inRow2[[1]])
+      .tmp <- rbind(.inRow[[1]], .inRow2[[1]])
       .tmp[["Condition Number"]] <- .cn
       row.names(.tmp) <- c(.rownames, type)
       assign("objDf", .tmp, envir=fit$env)

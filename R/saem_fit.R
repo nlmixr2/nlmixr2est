@@ -21,7 +21,7 @@
 #'
 #' Configure an SAEM model by generating an input list to the SAEM model function
 #'
-#' @param model a compiled saem model by gen_saem_user_fn()
+#' @param model a compiled saem model
 #' @param data input data
 #' @param inits initial values
 #' @param mcmc a list of various mcmc options
@@ -68,12 +68,6 @@
 #'
 #' PRED <- function() centr / V
 #' PRED2 <- function() C2
-#'
-#' saem_fit <- gen_saem_user_fn(model = m1, PKpars, pred = PRED)
-#'
-#' # Can also use PRED2
-#' saem_fit <- gen_saem_user_fn(model=m2, PKpars, pred=PRED2)
-#'
 #'
 #' # You can also use the nlmixr2 UI to run this model and call the lower level functions
 #'

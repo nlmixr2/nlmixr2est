@@ -163,8 +163,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret
 }
 
-
-.calcCwres0 <- function(fit, data=fit$dataSav, thetaEtaParameters=.foceiThetaEtaParameters(fit),
+.calcCwres0 <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
                         table=tableControl(), dv=NULL, predOnly=FALSE,
                         addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
                         .prdLst) {

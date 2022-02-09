@@ -53,11 +53,10 @@
   }
   .sigma <- object$ui$simulationSigma
   return(list(
-    rx = .mod, params = .params, events = .nlmixr2Data,
-    thetaMat = .thetaMat, omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub
+    rx = .mod, params = .params, events = .nlmixr2Data, thetaMat = .thetaMat,
+    omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub
   ))
 }
-
 
 #' Simulate a nlmixr2 solved system
 #'
@@ -361,7 +360,7 @@ nlmixr2Pred <- function(object, ..., ipred = FALSE) {
     }
   }
   if (!rxode2::rxIs(lst$events, "rx.event")) {
-    lst$events <- nlmixr2Data(getData(object))
+    lst$events <- nlme::getData(object)
   }
   message("Compiling model...", appendLF = FALSE)
   lst$object <- .predOnlyRx(object)

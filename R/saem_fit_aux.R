@@ -265,7 +265,7 @@ calc.COV <- function(fit0) {
   if (is(fit0, "saemFit")) {
     fit <- fit0
   } else {
-    fit <- as.saem(fit0)
+    stop("'calc.COV' needs a 'saemFit' object", call.=FALSE)
   }
   .env <- attr(fit, "env")
   saem.cfg <- attr(fit, "saem.cfg")

@@ -4,7 +4,7 @@
 \alias{nlmixrUpdateObject}
 \title{Update the nlmix2 object with new fit information}
 \usage{
-nlmixrUpdateObject(fit, objName, envir)
+nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 }
 \arguments{
 \item{fit}{nlmixr2 fit object to update in the environment}
@@ -12,6 +12,8 @@ nlmixrUpdateObject(fit, objName, envir)
 \item{objName}{Name of the object}
 
 \item{envir}{Environment to search}
+
+\item{origFitEnv}{Original fit$env to compare, otherwise simply use fit$env}
 }
 \value{
 Nothing, called for side effects
