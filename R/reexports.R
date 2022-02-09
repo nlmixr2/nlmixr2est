@@ -92,11 +92,6 @@ nlme::ranef
 #' @export
 nlme::random.effects
 
-#' @importFrom nlme nlmeControl
-#' @export
-nlme::nlmeControl
-
-
 #' @importFrom rxode2 eventTable
 #' @export
 rxode2::eventTable

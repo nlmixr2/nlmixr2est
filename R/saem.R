@@ -941,7 +941,9 @@ saemControl <- function(seed = 99,
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
+  .ui <- env$ui
   .saemFamilyControl(env, ...)
+  on.exit({rm("control", envir=.ui)})
   .saemFamilyFit(env,  ...)
 }
 
