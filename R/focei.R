@@ -1136,21 +1136,6 @@ foceiControl <- function(sigdig = 3, ...,
   return(.ret)
 }
 
-.mymin <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .control <- control[names(control) %in% c(
-    "eval.max", "iter.max", "trace", "abs.tol",
-    "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol", "scale.init", "diff.g"
-  )]
-
-  if (all(lower != -Inf) | all(upper != Inf)) {
-    warning("Optimization: Boundaries not used in Nelder-Mead")
-  }
-  fit <- mymin(par, fn, control = .control)
-  fit$message <- c("NON-CONVERGENCE", "NELDER_FTOL_REACHED")[1 + fit$convergence]
-  fit$x <- fit$par
-  return(fit)
-}
-
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   .ctl <- .ctl[names(.ctl) %in% c(
