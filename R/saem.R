@@ -758,7 +758,7 @@ saemControl <- function(seed = 99,
 #' @noRd
 .saemCalcLikelihood <- function(env, ...) {
   .ui <- env$ui
-  env$adjObf <- rxode2::rxGetControl(.ui, "adjObf", FALSE)
+  env$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .saem <- env$saem
   .saemCfg <- attr(.saem, "saem.cfg")
   .nphi1 <- .saemCfg$nphi1
@@ -846,7 +846,6 @@ saemControl <- function(seed = 99,
   rm(list=".etaMat", envir=env)
   env$control <- do.call(foceiControl, .ctl)
 }
-
 #' Set the extra text for saem
 #'
 #' @param .env saem environment

@@ -320,7 +320,7 @@ rxUiGet.nlmeWeights <- function(x, ...) {
     if (.errType == "add + prop") {
       return(nlme::varConstPower(fixed=list(power=1)))
     } else {
-      return(nlme::varConstPower(fixed=list(power=1)))
+      return(nlme::varConstPower())
     }
   } else {
     if (.errType == "add + prop") {

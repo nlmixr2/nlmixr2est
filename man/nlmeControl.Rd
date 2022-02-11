@@ -26,9 +26,12 @@ nlmeControl(
   optExpression = TRUE,
   sumProd = FALSE,
   rxControl = rxode2::rxControl(atol = 1e-04, rtol = 1e-04),
+  method = c("ML", "REML"),
   random = NULL,
   fixed = NULL,
   sens = TRUE,
+  verbose = TRUE,
+  returnNlme = FALSE,
   ...
 )
 }
@@ -117,6 +120,10 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{method}{a character string.  If \code{"REML"} the model is fit by
+   maximizing the restricted log-likelihood.  If \code{"ML"} the
+   log-likelihood is maximized.  Defaults to \code{"ML"}.}
+
 \item{random}{optionally, any of the following: (i) a two-sided formula
    of the form \code{r1+...+rn~x1+...+xm | g1/.../gQ}, with
    \code{r1,...,rn} naming parameters included on the right
@@ -157,6 +164,14 @@ this is \code{FALSE}.}
    fixed effects for the corresponding parameter(s).}
 
 \item{sens}{Calculate gradients using forward sensitivity}
+
+\item{verbose}{an optional logical value. If \code{TRUE} information on
+   the evolution of the iterative algorithm is printed. Default is
+   \code{FALSE}.}
+
+\item{returnNlme}{Returns the nlme object instead of the nlmixr
+object (by default FALSE).  If any of the nlme specific options
+of `random`, `fixed`, `sens`, the nlme object is returned}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

@@ -22,7 +22,9 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
     method=c("ML", "REML"),
-    random=NULL, fixed=NULL, sens=TRUE, verbose=TRUE, returnNlme=FALSE, ...) {
+    random=NULL, fixed=NULL, sens=TRUE, verbose=TRUE, returnNlme=FALSE,
+    addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
+    adjObf=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -35,6 +37,9 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   checkmate::assertLogical(sens, len=1, any.missing=FALSE)
   checkmate::assertLogical(verbose, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnNlme, len=1, any.missing=FALSE)
+  checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
+  checkmate::assertLogical(compress, len=1, any.missing=TRUE)
+  checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
 
   checkmate::assertIntegerish(pnlsMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
@@ -46,6 +51,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
   method <- match.arg(method)
+  addProp <- match.arg(addProp)
 
   if (!inherits(rxControl, "rxControl")) rxControl <- do.call(rxode2::rxControl, rxControl)
 
@@ -61,7 +67,8 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
                opt = match.arg(opt), natural = natural, sigma = sigma,
                optExpression=optExpression, sumProd=sumProd,
                rxControl=rxControl, sens=sens, method=method,verbose=verbose,
-               returnNlme=returnNlme,
+               returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
+               compress=compress,
                ...)
   class(.ret) <- "nlmeControl"
   .ret
@@ -190,7 +197,141 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
                            return(object)
                          })))
 }
+#' Get the theta estimates from nlme using roxde2 ui
+#'
+#'
+#' @param nlme nlme object
+#' @param ui rxode2 object
+#' @return named theta vector
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeGetTheta <- function(nlme, ui) {
+  .f <- nlme::fixef(nlme)
+  .predDf <- ui$predDf
+  .iniDf <- ui$iniDf
+  .errType <- .predDf$errType
+  if (.errType == "prop") {
+    stop("not tested", call.=FALSE)
+  } else if (.errType == "pow") {
+    stop("not tested", call.=FALSE)
+  } else if (.errType == "add") {
+    .w <- which(ui$iniDf$err == "add")
+    .add <- setNames(nlme$sigma, ui$iniDf$name[.w])
+    return(c(.f, .add))
+  }
+  stop("not tested", call.=FALSE)
+}
+#' Get non mu referenced names from mu referenced theta
+#'
+#' @param names Names to translate
+#' @param ui rxode2 ui
+#' @return non mu referenced names
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeGetNonMuRefNames <- function(names, ui) {
+  .muRef <- ui$muRefDataFrame
+  vapply(names, function(n) {
+    .w <- which(.muRef$theta == n)
+    if (length(.w) == 1) return(.muRef$eta[.w])
+    n
+  }, character(1), USE.NAMES=FALSE)
+}
 
+#' Get the nlme eta matrix as expected for focei
+#'
+#' @param nlme nlme object
+#' @param ui rxode2 ui object
+#' @return matrix of eta estimates, ordered by ID and named by the eta names in focei.
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeGetEtaMat <- function(nlme, ui) {
+  .etaMat <- nlme::ranef(nlme)
+  .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))), ]
+  names(.etaMat) <- .nlmeGetNonMuRefNames(names(.etaMat), ui)
+  row.names(.etaMat) <- NULL
+  as.matrix(.etaMat)
+}
+#' Get the covariance from nlme
+#'
+#' @param nlme nlme object
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeGetCov <- function(nlme) {
+  .se <-   summary(nlme)$tTable[,"Std.Error"]
+  .cov <- diag(.se * .se)
+  dimnames(.cov) <- list(names(.se), names(.se))
+  .cov
+}
+#' Get the omega matrix from nlme
+#'
+#'
+#' @param nlme nlme object
+#' @param ui rxode2 object
+#' @return Named omega matrix
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeGetOmega <- function(nlme, ui) {
+  .omega <- ui$omega
+  diag(.omega) <- 0
+  if (all(.omega == 0)) {
+    .var <- as.matrix(nlme::VarCorr(nlme)[,"Variance"])
+    .name <- .nlmeGetNonMuRefNames(rownames(.var), ui)
+    .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
+    .var <- .var[names(.var) != "Residual"]
+    .ome <- diag(.var)
+    .name <- names(.var)
+    dimnames(.ome) <- list(.name, .name)
+    .ome
+  } else {
+    stop("not handled yet")
+  }
+}
+
+#' @rdname nmObjHandleControlObject
+#' @export
+nmObjHandleControlObject.nlmeControl <- function(control, env) {
+  assign("nlmeControl", control, envir=env)
+}
+
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.nlme <- function(x, ...) {
+  .env <- x[[1]]
+  if (exists("nlmeControl", .env)) {
+    .control <- get("nlmeControl", .env)
+    if (inherits(.control, "nlmeControl")) return(.control)
+  }
+  if (exists("control", .env)) {
+    .control <- get("control", .env)
+    if (inherits(.control, "nlmeControl")) return(.control)
+  }
+  stop("cannot find nlme related control object", call.=FALSE)
+}
+
+.nlmeControlToFoceiControl <- function(env) {
+  .nlmeControl <- env$nlmeControl
+  .ui <- env$ui
+  .ctl <- env$nlmeControl$rxControl
+  names(.ctl) <- sub("maxsteps", "maxstepsOde", names(.ctl))
+  .ctl <- .ctl[names(.ctl) != "scale"]
+  .ctl$maxOuterIterations <- 0
+  .ctl$maxInnerIterations <- 0
+  .ctl$covMethod <- "" #.covMethod
+  .ctl$etaMat <- env$etaMat
+  .ctl$sumProd <- .nlmeControl$sumProd
+  .ctl$optExpression <- .nlmeControl$optExpression
+  .ctl$scaleTo <- 0
+  .ctl$calcTables <- .nlmeControl$calcTables
+  if (.nlmeControl$addProp == 1L) {
+    .ctl$addProp <- "combined1"
+  } else {
+    .ctl$addProp <- "combined2"
+  }
+  .ctl$skipCov <- .ui$foceiSkipCov
+  .ctl$interaction <- 1L
+  .ctl$compress <- .nlmeControl$compress
+  env$control <- do.call(foceiControl, .ctl)
+}
 
 .nlmeFamilyFit <- function(env, ...) {
   .ui <- env$ui
@@ -211,28 +352,34 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   if (rxode2::rxGetControl(.ui, "returnNlme", FALSE)) {
     return(.ret$nlme)
   }
-  assign("nlmeFit", .ret$nlme, envir=globalenv())
-  return(.ret)
+  .ret$ui <- .ui
+  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
+  .ret$fullTheta <- .nlmeGetTheta(.ret$nlme, .ui)
+  .ret$cov <- .nlmeGetCov(.ret$nlme)
+  .ret$covMethod <- "nlme"
+  .ret$etaMat <- .nlmeGetEtaMat(.ret$nlme, .ui)
+  .ret$etaObf <- data.frame(ID = seq_along(.ret$etaMat[, 1]),
+                           as.data.frame(.ret$etaMat),
+                           OBJI = NA)
+  .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
   .ret$control <- .control
   nmObjHandleControlObject(.ret$control, .ret)
-  .ret$ui <- .ui
-  .saemCalcCov(.ret)
-  .getSaemTheta(.ret)
-  .getSaemOmega(.ret)
-  .nlmixr2FitUpdateParams(.ret)
-  .saemAddParHist(.ret)
-  .saemCalcLikelihood(.ret)
-   if (exists("control", .ui)) {
+  if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
-   }
-  .ret$theta <- .ui$saemThetaDataFrame
-  .ret$model <- .ui$saemModelPred
+  }
+  .ret$est <- "nlme"
+
+  # There is no parameter history for nlme
+  #.saemCalcLikelihood(.ret)
+  .ret$objective <- -2 * as.numeric(logLik(.ret$nlme)) - ifelse(.ret$adjObf, nobs(.ret$nlme) * log(2 * pi), 0)
+  .ret$model <- .ui$ebe
   .ret$message <- "" # no message for now
-  .ret$est <- "saem"
-  .saemControlToFoceiControl(.ret)
+  .ret$est <- "nlme"
+  .nlmeControlToFoceiControl(.ret)
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
   .env <- .ret$env
   .env$method <- "nlme "
+  .nlmeAddLikelihood(.ret$nlme, .ret)
   .ret
 }
 
