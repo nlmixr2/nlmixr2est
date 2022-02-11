@@ -94,12 +94,15 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 #' @keywords internal
 #' @export
 .nlmixrNlmeFun <- function(pars, id) {
-  .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID %in% unique(id), ]
+  .ids <- unique(id)
+  .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID %in% .ids, ]
   .pars <- as.data.frame(c(pars, list(ID=id)))
-  .pars <- .pars[!duplicated(.pars$ID), names(.pars) != "ID"]
+  .pars <- .pars[!duplicated(.pars$ID),]
   row.names(.pars) <- NULL
-  .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF, returnType="data.frame"),
-                                     .nlmeFitRxControl))
+  .ctl <- .nlmeFitRxControl
+  .ctl$returnType <- "data.frame"
+  .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
+                                      .nlmeFitRxControl))
   .ret <- .retF$rx_pred_
   .grad <- .retF[, paste0("rxD_", names(pars))]
   names(.grad) <- names(pars)
@@ -129,11 +132,9 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  .dsAll$rxNum <- seq_along(.dsAll$ID)
   assignInMyNamespace(".nlmeFitDataObservations", nlme::groupedData(DV ~ TIME | ID, .dsAll[.dsAll$EVID == 0, ]))
   assignInMyNamespace(".nlmeFitDataAll", .dsAll)
 }
-
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates=.tv) {
   .nlmeFitDataSetup(dataSav)

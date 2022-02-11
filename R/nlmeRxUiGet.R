@@ -211,11 +211,14 @@ rxUiGet.nlmePdOmega <- function(x, ...) {
   .omega <- .ui$omega
   .omega2 <- .omega
   diag(.omega2) <- 0
-  .min <- min(diag(.omega))
-  if (.min < 1) {
-    .omega <- .omega / .min
-  }
   .name <- dimnames(.omega)[[1]]
+  .muRef <- .ui$muRefDataFrame
+  .name <- vapply(.name, function(n) {
+    .w <- which(.muRef$eta == n)
+    if (length(.w) == 1) return(.muRef$theta[.w])
+    .n
+  }, character(1), USE.NAMES=FALSE)
+  dimnames(.omega) <- list(.name, .name)
   if (all(.omega2 == 0)) {
     nlme::pdDiag(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
   } else {
