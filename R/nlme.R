@@ -7,6 +7,9 @@
 #' @inheritParams nlme::nlmeControl
 #' @inheritParams nlme::nlme
 #' @param sens Calculate gradients using forward sensitivity
+#' @param returnNlme Returns the nlme object instead of the nlmixr
+#'   object (by default FALSE).  If any of the nlme specific options
+#'   of `random`, `fixed`, `sens`, the nlme object is returned
 #' @inheritParams foceiControl
 #' @export
 #' @examples
@@ -18,7 +21,8 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
-    random=NULL, fixed=NULL, sens=TRUE, ...) {
+    method=c("ML", "REML"),
+    random=NULL, fixed=NULL, sens=TRUE, verbose=TRUE, returnNlme=FALSE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -29,17 +33,19 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   checkmate::assertLogical(apVar, len=1, any.missing=FALSE)
   checkmate::assertLogical(natural, len=1, any.missing=FALSE)
   checkmate::assertLogical(sens, len=1, any.missing=FALSE)
+  checkmate::assertLogical(verbose, len=1, any.missing=FALSE)
+  checkmate::assertLogical(returnNlme, len=1, any.missing=FALSE)
 
   checkmate::assertIntegerish(pnlsMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(niterEM, len=1, any.missing=FALSE, lower=1)
-
   checkmate::assertNumeric(minScale, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(pnlsTol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(msTol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(tolerance, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
+  method <- match.arg(method)
 
   if (!inherits(rxControl, "rxControl")) rxControl <- do.call(rxode2::rxControl, rxControl)
 
@@ -54,7 +60,8 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
                apVar = apVar, .relStep = .relStep, minAbsParApVar = minAbsParApVar,
                opt = match.arg(opt), natural = natural, sigma = sigma,
                optExpression=optExpression, sumProd=sumProd,
-               rxControl=rxControl, sens=sens,
+               rxControl=rxControl, sens=sens, method=method,verbose=verbose,
+               returnNlme=returnNlme,
                ...)
   class(.ret) <- "nlmeControl"
   .ret
@@ -156,12 +163,32 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 
   .ctl <- ui$control
   class(.ctl) <- NULL
+  .fixed <- rxode2::rxGetControl(ui, "fixed", NULL)
+  if (is.null(.fixed)) {
+    .fixed <- ui$nlmeFixedFormula
+  } else {
+    rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
+  }
+  .random <- rxode2::rxGetControl(ui, "random", NULL)
+  if (is.null(.random)) {
+    .random <- ui$nlmePdOmega
+  } else {
+    rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
+  }
+  .verbose <- rxode2::rxGetControl(ui, "random", TRUE)
+  .method <- rxode2::rxGetControl(ui, "method", "ML")
+  .weights <- rxode2::rxGetControl(ui, "weights", NULL)
+  if (is.null(.weights)) {
+    .weights <- ui$nlmeWeights
+  } else {
+    rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
+  }
   eval(bquote(nlme::nlme(model=.(ui$nlmeModel), data=.nlmeFitDataObservations,
-             fixed=.(ui$nlmeFixedFormula), random=.(ui$nlmePdOmega),
-             start=.(ui$nlmeStart), weights=.(ui$nlmeWeights),
-             control=.(.ctl), na.action=function(object, ...) {
-               return(object)
-             })))
+                         method=.(.method),fixed=.(.fixed), random=.(.random),
+                         start=.(ui$nlmeStart), weights=.(.weights),
+                         control=.(.ctl), verbose=.(.verbose), na.action=function(object, ...) {
+                           return(object)
+                         })))
 }
 
 
@@ -181,6 +208,9 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     .tv <- names(.et)[-seq(1, 6)]
   }
   .ret$nlme <- .nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  if (rxode2::rxGetControl(.ui, "returnNlme", FALSE)) {
+    return(.ret$nlme)
+  }
   assign("nlmeFit", .ret$nlme, envir=globalenv())
   return(.ret)
   .ret$control <- .control
