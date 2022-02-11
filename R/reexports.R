@@ -225,3 +225,7 @@ rxode2::stat_cens
 #' @importFrom rxode2 stat_amt
 #' @export
 rxode2::stat_amt
+
+#' @importFrom rxode2 rxControl
+#' @export
+rxode2::rxControl

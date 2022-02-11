@@ -15,7 +15,8 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
-    rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4), ...) {
+    rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
+    random=NULL, fixed=NULL, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -35,14 +36,13 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   checkmate::assertNumeric(msTol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(tolerance, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
-  checkmate::assertNumeric(minAbsParApVar len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
 
-  if (!inherits(rxControl, "rxControl")) rxControl <- do.call("rbind", rxControl)
+  if (!inherits(rxControl, "rxControl")) rxControl <- do.call(rxode2::rxControl, rxControl)
 
   if (is.null(sigma))
     sigma <- 0
-  else if (!is.finite(sigma) || length(sigma) != 1 || sigma <
-             0)
+  else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0)
     stop("Within-group std. dev. must be a positive numeric value")
   .ret <- list(maxIter = maxIter, pnlsMaxIter = pnlsMaxIter, msMaxIter = msMaxIter,
                minScale = minScale, tolerance = tolerance, niterEM = niterEM,
@@ -56,7 +56,13 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   class(.ret) <- "nlmeControl"
   .ret
 }
-
+#' Get the nlme family control
+#'
+#' @param env nlme optimization environment
+#' @param ... Other arguments
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
 .nlmeFamilyControl <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
@@ -64,12 +70,123 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     .control <- nlmixr2::nlmeControl()
   }
   if (!inherits(.control, "nlmeControl")){
-    .control <- do.call(nlmixr2::saemControl, .control)
+    .control <- do.call(nlmixr2::nlmeControl, .control)
   }
   assign("control", .control, envir=.ui)
-
 }
+
+.nlmeFitDataObservations <- NULL
+.nlmeFitDataAll   <- NULL
+.nlmeFitRxModel   <- NULL
+.nlmeFitRxControl <- NULL
+.nlmeFitFunction <- NULL
+
+
+#' A surrogate function for nlme to call for ode solving
+#'
+#' @param pars Parameters that will be estimated
+#' @param id The patient identifiers for the estimated data.
+#' @return Predictions
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+.nlmixrNlmeFun <- function(pars, id) {
+  .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID %in% unique(id), ]
+  .pars <- as.data.frame(c(pars, list(ID=id)))
+  .pars <- .pars[!duplicated(.pars$ID), names(.pars) != "ID"]
+  row.names(.pars) <- NULL
+  do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF, returnType="data.frame"),
+                             .nlmeFitRxControl))[, "rx_diff_"]
+}
+
+#' A surrogate function for nlme to call for ode solving
+#'
+#' @return User function for the saved model
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+.nlmixrNlmeUserFun <- function() {
+  .nlmeFitFunction
+}
+
+#' Setup the data for nlme estimation
+#'
+#' @param dataSav Formatted Data
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmeFitDataSetup <- function(dataSav) {
+  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
+  .dsAll$rxNum <- seq_along(dataSav$ID)
+  .dsAll$rxDV <- .dsAll$DV
+  .dsAll$DV <- 6
+  assignInMyNamespace(".nlmeFitDataObservations", nlme::groupedData(DV ~ TIME | ID, .dsAll[.dsAll$EVID == 0, ]))
+  assignInMyNamespace(".nlmeFitDataAll", .dsAll)
+}
+
+
+.nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates=.tv) {
+  .nlmeFitDataSetup(dataSav)
+  assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
+  assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
+  .ctl <- ui$control
+  class(.ctl) <- NULL
+  nlme::nlme(model=ui$nlmeModel, data=.nlmeFitDataObservations,
+             fixed=ui$nlmeFixedFormula, random=ui$nlmePdOmega,
+             start=ui$nlmeStart, weights=ui$nlmeWeights,
+             control=.ctl, method="REML", na.action=function(object, ...) {
+               return(object)
+             })
+}
+
+
+.nlmeFamilyFit <- function(env, ...) {
+  .ui <- env$ui
+  .control <- .ui$control
+  .data <- env$data
+  .ret <- new.env(parent=emptyenv())
+  .ret$table <- env$table
+  .foceiPreProcessData(.data, .ret, .ui)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
+  # Just like saem, nlme can use mu-referenced covariates
+  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+  if (is.null(.nTv)) .nTv <- 0
+  .tv <- character(0)
+  if (.nTv != 0) {
+    .tv <- names(.et)[-seq(1, 6)]
+  }
+  .ret$nlme <- .nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  assign("nlmeFit", .ret$nlme, envir=globalenv())
+  return(.ret)
+  .ret$control <- .control
+  nmObjHandleControlObject(.ret$control, .ret)
+  .ret$ui <- .ui
+  .saemCalcCov(.ret)
+  .getSaemTheta(.ret)
+  .getSaemOmega(.ret)
+  .nlmixr2FitUpdateParams(.ret)
+  .saemAddParHist(.ret)
+  .saemCalcLikelihood(.ret)
+   if (exists("control", .ui)) {
+    rm(list="control", envir=.ui)
+   }
+  .ret$theta <- .ui$saemThetaDataFrame
+  .ret$model <- .ui$saemModelPred
+  .ret$message <- "" # no message for now
+  .ret$est <- "saem"
+  .saemControlToFoceiControl(.ret)
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
+  .env <- .ret$env
+  .env$method <- "nlme "
+  .ret
+}
+
 nlmixr2Est.nlme <- function(env, ...) {
+  .ui <- env$ui
   .nlmeFamilyControl(env, ...)
   on.exit({rm("control", envir=.ui)})
   .nlmeFamilyFit(env,  ...)

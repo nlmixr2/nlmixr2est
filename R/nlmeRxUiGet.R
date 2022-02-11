@@ -20,26 +20,25 @@ rxGetDistributionNlmeLines <- function(line) {
 #' @export
 .rxGetDVFTransform <- function(env, pred1, yj) {
   if (yj == 2) {
-    return(quote(DVIN))
+    return(quote(rxDV))
   } else if (yj == 3) {
-    return(quote(log(DVIN)))
+    return(quote(log(rxDV)))
   } else {
-    return(quote(rxTBS(DVIN, rx_lambda_, rx_yj_, rx_low_, rx_hi_)))
+    return(quote(rxTBS(rxDV, rx_lambda_, rx_yj_, rx_low_, rx_hi_)))
   }
 }
 #' @export
 rxGetDistributionNlmeLines.norm <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  .ret <- vector("list", 7)
+  .ret <- vector("list", 6)
   .yj <- as.double(pred1$transform) - 1
   .ret[[1]] <- bquote(rx_yj_ ~ .(.yj))
   .ret[[2]] <- bquote(rx_lambda_~.(rxode2::.rxGetLambdaFromPred1AndIni(env, pred1)))
   .ret[[3]] <- bquote(rx_low_ ~ .(rxode2::.rxGetLowBoundaryPred1AndIni(env, pred1)))
   .ret[[4]] <- bquote(rx_hi_ ~ .(rxode2::.rxGetHiBoundaryPred1AndIni(env, pred1)))
-  .ret[[5]] <- bquote(rx_pred_ ~ .(rxode2::.rxGetPredictionFTransform(env, pred1, .yj)))
-  .ret[[6]] <- bquote(rx_dv_ ~ .(.rxGetDVFTransform(env, pred1, .yj)))
-  .ret[[7]] <- quote(rx_diff_ <- rx_pred_ - rx_dv_)
+  .ret[[5]] <- bquote(rx_pred_f_ ~ .(rxode2::.rxGetPredictionF(env, pred1)))
+  .ret[[6]] <- bquote(rx_pred_ ~ .(rxode2::.rxGetPredictionFTransform(env, pred1, .yj)))
   .ret
 }
 
@@ -50,8 +49,6 @@ rxGetDistributionNlmeLines.t <- function(line) {
 
 #' @export
 rxGetDistributionNlmeLines.default  <- function(line) {
-  print(line[[1]])
-  print(line[[2]])
   stop("Distribution not supported")
 }
 
@@ -110,21 +107,33 @@ rxUiGet.loadPruneNlme <- function(x, ...) {
 }
 
 #' @export
+rxUiGet.nlmeS <- function(x, ...) {
+  .s <- .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
+  .stateVars <- rxode2::rxState(.s)
+  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
+  rxode2::.rxJacobian(.s, c(.stateVars, .estPar))
+  rxode2::.rxSens(.s, .estPar)
+  .s
+}
+
+
+
+#' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
   .ui <- x[[1]]
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   #.par <- c(.estPar, .ui$covariates)
   .par <- .estPar
-  eval(parse(text=paste0("function(", paste(.par, collapse=","), ", TIME, ID) {\n",
-                         "nlmixr2::.nlmixrNlmeFun(c(", paste(paste0(.estPar, "=", .estPar), collapse=","), "))\n",
+  eval(parse(text=paste0("function(", paste(.par, collapse=","), ",sss ID) {\n",
+                         "nlmixr2::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
                          "}")))
 }
 
-#' @export
-rxUiGet.nlmeModel <- function(x, ...) {
+ #' @export
+rxUiGet.nlmeRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlme(x, ...)
-  .prd <- get("rx_diff_", envir = .s)
-  .prd <- paste0("rx_diff_=", rxode2::rxFromSE(.prd))
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
@@ -151,5 +160,86 @@ rxUiGet.nlmeModel <- function(x, ...) {
   }
   paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+}
+
+#attr(rxUiGet.nlmeRxModel, "desc") <- "nlme rxode2 text"
+
+#' @export
+rxUiGet.nlmeModel <- function(x, ...) {
+  .ui <- x[[1]]
+  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
+  .par <- .estPar
+  as.formula(paste0("DV ~ (.nlmixrNlmeUserFun())(", paste(c(.par, "TIME", "ID"), collapse=","), ")"))
+}
+#attr(rxUiGet.nlmeModel, "desc") <- "nlme formula for nlmixr model"
+
+#' @export
+rxUiGet.nlmePdOmega <- function(x, ...) {
+  .ui <- x[[1]]
+  .omega <- .ui$omega
+  .omega2 <- .omega
+  diag(.omega2) <- 0
+  .min <- min(diag(.omega))
+  if (.min < 1) {
+    .omega <- .omega / .min
+  }
+  .name <- dimnames(.omega)[[1]]
+  if (all(.omega2 == 0)) {
+    nlme::pdDiag(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
+  } else {
+    nlme::pdSymm(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
+  }
+}
+#attr(rxUiGet.nlmePdOmega, "desc") <- "nlme omega matrix form"
+
+
+#' @export
+rxUiGet.nlmeStart <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .w <- which(!is.na(.iniDf$ntheta) & is.na(.iniDf$err))
+  setNames(.iniDf$est[.w], .iniDf$name[.w])
+}
+#attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
+
+
+#' @export
+rxUiGet.nlmeFixedFormula <- function(x, ...) {
+  .start <- rxUiGet.nlmeStart(x, ...)
+  as.formula(paste(paste(names(.start), collapse="+"), "~1"))
+}
+#attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
+#' @export
+rxUiGet.nlmeWeights <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  if (length(.predDf$cond) != 1) stop("cannot apply to multiple endpoint models", call.=FALSE)
+  if (.predDf$distribution != "norm") stop("nlme not supported for this unexplained error structure", call.=FALSE)
+  .errType <- .predDf$errType
+  if (.errType == "prop") {
+    return(nlme::varPower(fixed=list(power=1)))
+  } else if (.errType == "pow") {
+    return(nlme::varPower())
+  } else if (.errType == "add") {
+    return(NULL)
+  }
+  .addProp <- .pred$addProp
+  if (.addProp == "default") {
+    .addProp <- rxode2::rxGetControl(.ui, "addProp", "combined2")
+  }
+  if (.addProp == "combined1") {
+    if (.errType == "add + prop") {
+      return(nlme::varConstPower(fixed=list(power=1)))
+    } else {
+      return(nlme::varConstPower(fixed=list(power=1)))
+    }
+  } else {
+    if (.errType == "add + prop") {
+      return(nlme::varConstProp())
+    } else {
+      stop("add+prop combined2 does not support nlme power currently",
+           call.=FALSE)
+    }
+  }
 }
 
