@@ -139,6 +139,12 @@ rxUiGet.nlmeS <- function(x, ...) {
   rxode2::rxProgressStop()
   .s
 }
+#attr(rxUiGet.nlmeS, "desc") <- "Symengine environment with nlme sensitivities"
+#' @export
+rxUiGet.nlmeFD <- function(x, ...) {
+  .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
+}
+#attr(rxUiGet.nlmeFD, "desc") <- "Symengine environment pred-only nlme environment"
 
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
@@ -149,10 +155,13 @@ rxUiGet.nlmeFunction <- function(x, ...) {
   eval(parse(text=paste0("function(", paste(.par, collapse=","), ", ID) {\n",
                          "nlmixr2::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
                          "}")))
+
+
+
 }
 
  #' @export
-rxUiGet.nlmeRxModel <- function(x, ...) {
+rxUiGet.nlmeRxModelSens <- function(x, ...) {
   .s <- rxUiGet.nlmeS(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -188,6 +197,50 @@ rxUiGet.nlmeRxModel <- function(x, ...) {
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
+#' @export
+rxUiGet.nlmeRxModelFD <- function(x, ...) {
+  .s <- rxUiGet.nlmeFD(x, ...)
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  ## .lhs0 <- .s$..lhs0
+  ## if (is.null(.lhs0)) .lhs0 <- ""
+  .ddt <- .s$..ddt
+  .ret <- paste(c(
+    #.s$..stateInfo["state"],
+    #.lhs0,
+    .ddt,
+    .prd,
+    #.s$..stateInfo["statef"],
+    #.s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  if (.sumProd) {
+    .malert("stabilizing round off errors in nlme model...")
+    .ret <- rxode2::rxSumProdModel(.ret)
+    .msuccess("done")
+  }
+  if (.optExpression) {
+    .ret <- rxode2::rxOptExpr(.ret, "nlme model")
+     .msuccess("done")
+  }
+  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+}
+
+
+#' @export
+rxUiGet.nlmeRxModel <- function(x, ...) {
+  .sens <- rxode2::rxGetControl(x[[1]], "sens", TRUE)
+  if (.sens) {
+    rxUiGet.nlmeRxModelSens(x, ...)
+  } else {
+    rxUiGet.nlmeRxModelFD(x, ...)
+  }
+}
+
+
 #attr(rxUiGet.nlmeRxModel, "desc") <- "nlme rxode2 text"
 
 #' @export
@@ -204,6 +257,7 @@ rxUiGet.nlmeGradDimnames <- function(x, ...) {
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   eval(parse(text=paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse=","), "))")))
 }
+
 
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {

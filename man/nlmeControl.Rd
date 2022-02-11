@@ -28,6 +28,7 @@ nlmeControl(
   rxControl = rxode2::rxControl(atol = 1e-04, rtol = 1e-04),
   random = NULL,
   fixed = NULL,
+  sens = TRUE,
   ...
 )
 }
@@ -115,6 +116,47 @@ calculation. By default this is turned on.}
 multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
+
+\item{random}{optionally, any of the following: (i) a two-sided formula
+   of the form \code{r1+...+rn~x1+...+xm | g1/.../gQ}, with
+   \code{r1,...,rn} naming parameters included on the right
+   hand side of \code{model}, \code{x1+...+xm} specifying the
+   random-effects model for
+   these parameters and \code{g1/.../gQ} the grouping structure
+   (\code{Q} may be equal to 1, in which case no \code{/} is
+   required). The random effects formula will be repeated 
+   for all levels of grouping, in the case of multiple levels of
+   grouping; (ii) a two-sided formula of the form
+   \code{r1+...+rn~x1+..+xm}, a list of two-sided formulas of the form
+   \code{r1~x1+...+xm}, with possibly different random-effects models
+   for different parameters, a \code{pdMat} object with a two-sided
+   formula, or list of two-sided formulas (i.e. a non-\code{NULL} value for
+   \code{formula(random)}), or a list of pdMat objects with two-sided
+   formulas, or lists of two-sided formulas. In this case, the grouping
+   structure formula will be given in \code{groups}, or derived from the
+   data used to fit the nonlinear mixed-effects model, which should
+   inherit from class  \code{groupedData},; (iii) a named list
+   of formulas, lists of formulas, or \code{pdMat} objects as in (ii),
+   with the grouping factors as names. The order of nesting will be
+   assumed the same as the order of the order of the elements in the
+   list; (iv) an \code{reStruct} object. See the documentation on
+   \code{pdClasses} for a description of the available \code{pdMat}
+   classes. Defaults to \code{fixed}, 
+   resulting in all fixed effects having also random effects.}
+
+\item{fixed}{a two-sided linear formula of the form
+   \code{f1+...+fn~x1+...+xm}, or a list of two-sided formulas of the form
+   \code{f1~x1+...+xm}, with possibly different models for different
+   parameters. The \code{f1,...,fn} are the names of parameters included on
+   the right hand side of \code{model} and the \code{x1+...+xm}
+   expressions define linear models for these parameters (when the left
+   hand side of the formula contains several parameters, they all are
+   assumed to follow the same linear model, described by the right hand
+   side expression).
+   A \code{1} on the right hand side of the formula(s) indicates a single
+   fixed effects for the corresponding parameter(s).}
+
+\item{sens}{Calculate gradients using forward sensitivity}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

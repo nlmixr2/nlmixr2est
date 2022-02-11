@@ -5,6 +5,8 @@
 #' is used as the ‘control’ argument to the ‘nlme’ function.
 #'
 #' @inheritParams nlme::nlmeControl
+#' @inheritParams nlme::nlme
+#' @param sens Calculate gradients using forward sensitivity
 #' @inheritParams foceiControl
 #' @export
 #' @examples
@@ -16,7 +18,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
-    random=NULL, fixed=NULL, ...) {
+    random=NULL, fixed=NULL, sens=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -26,6 +28,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   checkmate::assertLogical(gradHess, len=1, any.missing=FALSE)
   checkmate::assertLogical(apVar, len=1, any.missing=FALSE)
   checkmate::assertLogical(natural, len=1, any.missing=FALSE)
+  checkmate::assertLogical(sens, len=1, any.missing=FALSE)
 
   checkmate::assertIntegerish(pnlsMaxIter, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(msMaxIter, len=1, any.missing=FALSE, lower=1)
@@ -51,7 +54,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
                apVar = apVar, .relStep = .relStep, minAbsParApVar = minAbsParApVar,
                opt = match.arg(opt), natural = natural, sigma = sigma,
                optExpression=optExpression, sumProd=sumProd,
-               rxControl=rxControl,
+               rxControl=rxControl, sens=sens,
                ...)
   class(.ret) <- "nlmeControl"
   .ret
@@ -81,6 +84,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 .nlmeFitRxControl <- NULL
 .nlmeFitFunction <- NULL
 .nlmeGradDimnames <- NULL
+.nlmeFitSens <- FALSE
 
 
 #' A surrogate function for nlme to call for ode solving
@@ -94,21 +98,27 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 #' @keywords internal
 #' @export
 .nlmixrNlmeFun <- function(pars, id) {
-  .ids <- unique(id)
-  .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID %in% .ids, ]
+  .ids <- as.character(unique(id))
+  .datF <- do.call(rbind, lapply(seq_along(.ids), function(i){
+    .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID == .ids[i], ]
+    .datF$ID <- i
+    .datF
+  }))
   .pars <- as.data.frame(c(pars, list(ID=id)))
   .pars <- .pars[!duplicated(.pars$ID),]
+  .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
   .ctl <- .nlmeFitRxControl
   .ctl$returnType <- "data.frame"
   .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
                                       .nlmeFitRxControl))
   .ret <- .retF$rx_pred_
-  .grad <- .retF[, paste0("rxD_", names(pars))]
-  names(.grad) <- names(pars)
-  .grad <- as.matrix(.grad)
-  dimnames(.grad) <- .nlmeGradDimnames
-  #attr(.ret, "gradient") <- .grad
+  if (.nlmeFitSens) {
+    .grad <- .retF[, paste0("rxD_", names(pars))]
+    .grad <- as.matrix(.grad)
+    dimnames(.grad) <- .nlmeGradDimnames
+    attr(.ret, "gradient") <- .grad
+  }
   .ret
 }
 
@@ -140,16 +150,18 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
   assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
+  assignInMyNamespace(".nlmeFitSens", rxode2::rxGetControl(ui, "sens", TRUE))
   assignInMyNamespace(".nlmeGradDimnames", ui$nlmeGradDimnames)
   assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
+
   .ctl <- ui$control
   class(.ctl) <- NULL
-  nlme::nlme(model=ui$nlmeModel, data=.nlmeFitDataObservations,
-             fixed=ui$nlmeFixedFormula, random=ui$nlmePdOmega,
-             start=ui$nlmeStart, weights=ui$nlmeWeights,
-             control=.ctl, na.action=function(object, ...) {
+  eval(bquote(nlme::nlme(model=.(ui$nlmeModel), data=.nlmeFitDataObservations,
+             fixed=.(ui$nlmeFixedFormula), random=.(ui$nlmePdOmega),
+             start=.(ui$nlmeStart), weights=.(ui$nlmeWeights),
+             control=.(.ctl), na.action=function(object, ...) {
                return(object)
-             })
+             })))
 }
 
 
