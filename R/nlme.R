@@ -80,6 +80,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
 .nlmeFitFunction <- NULL
+.nlmeGradDimnames <- NULL
 
 
 #' A surrogate function for nlme to call for ode solving
@@ -97,8 +98,15 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   .pars <- as.data.frame(c(pars, list(ID=id)))
   .pars <- .pars[!duplicated(.pars$ID), names(.pars) != "ID"]
   row.names(.pars) <- NULL
-  do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF, returnType="data.frame"),
-                             .nlmeFitRxControl))[, "rx_diff_"]
+  .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF, returnType="data.frame"),
+                                     .nlmeFitRxControl))
+  .ret <- .retF$rx_pred_
+  .grad <- .retF[, paste0("rxD_", names(pars))]
+  names(.grad) <- names(pars)
+  .grad <- as.matrix(.grad)
+  dimnames(.grad) <- .nlmeGradDimnames
+  #attr(.ret, "gradient") <- .grad
+  .ret
 }
 
 #' A surrogate function for nlme to call for ode solving
@@ -121,9 +129,7 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  .dsAll$rxNum <- seq_along(dataSav$ID)
-  .dsAll$rxDV <- .dsAll$DV
-  .dsAll$DV <- 6
+  .dsAll$rxNum <- seq_along(.dsAll$ID)
   assignInMyNamespace(".nlmeFitDataObservations", nlme::groupedData(DV ~ TIME | ID, .dsAll[.dsAll$EVID == 0, ]))
   assignInMyNamespace(".nlmeFitDataAll", .dsAll)
 }
@@ -133,12 +139,14 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
   assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
+  assignInMyNamespace(".nlmeGradDimnames", ui$nlmeGradDimnames)
+  assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
   .ctl <- ui$control
   class(.ctl) <- NULL
   nlme::nlme(model=ui$nlmeModel, data=.nlmeFitDataObservations,
              fixed=ui$nlmeFixedFormula, random=ui$nlmePdOmega,
              start=ui$nlmeStart, weights=ui$nlmeWeights,
-             control=.ctl, method="REML", na.action=function(object, ...) {
+             control=.ctl, na.action=function(object, ...) {
                return(object)
              })
 }

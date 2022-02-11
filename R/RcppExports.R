@@ -5,6 +5,16 @@ cholSE_ <- function(A, tol) {
     .Call(`_nlmixr2_cholSE_`, A, tol)
 }
 
+#' Expand Gradient for nlme
+#'
+#' @param state is the state to expand
+#' @param params is the parameters to expand
+#' @keywords internal
+#' @noRd
+nlmixrExpandFdParNlme_ <- function(state, vars) {
+    .Call(`_nlmixr2_nlmixrExpandFdParNlme_`, state, vars)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2_freeFocei`))
 }
@@ -172,3 +182,7 @@ nlmixr2Parameters <- function(theta, eta) {
     .Call(`_nlmixr2_nlmixr2Parameters`, theta, eta)
 }
 
+# Register entry points for exported C++ functions
+methods::setLoadAction(function(ns) {
+    .Call('_nlmixr2_RcppExport_registerCCallable', PACKAGE = 'nlmixr2')
+})

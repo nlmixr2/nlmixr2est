@@ -138,7 +138,11 @@ nlmixr2Est0 <- function(env, ...) {
   }
   .lst <- .envReset$ret
   .ret <- .lst[[1]]
-  assign("warnings", .lst[[2]], .ret$env)
+  if (is.environment(.ret)) {
+    try(assign("warnings", .lst[[2]], .ret), silent=TRUE)
+  } else {
+    try(assign("warnings", .lst[[2]], .ret$env), silent=TRUE)
+  }
   lapply(.lst[[2]], warning, call.=FALSE)
   .ret
 }

@@ -99,24 +99,46 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlmixr nlme model, equivalent to saem rxode2 model"
 
-
-
-#' @export
-rxUiGet.loadPruneNlme <- function(x, ...) {
-  .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
-}
-
 #' @export
 rxUiGet.nlmeS <- function(x, ...) {
-  .s <- .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
+  .s <- .loadSymengine(.nlmePrune(x), promoteLinSens = TRUE)
   .stateVars <- rxode2::rxState(.s)
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   rxode2::.rxJacobian(.s, c(.stateVars, .estPar))
   rxode2::.rxSens(.s, .estPar)
+  .grd <- nlmixrExpandFdParNlme_(.stateVars, .estPar)
+  if (rxode2::.useUtf()) {
+    .malert("calculate \u2202(f)/\u2202(parameter)")
+  } else {
+    .malert("calculate d(f)/d(parameter)")
+  }
+  rxode2::rxProgress(dim(.grd)[1])
+  on.exit({
+    rxode2::rxProgressAbort()
+  })
+  .any.zero <- FALSE
+  .all.zero <- TRUE
+  assign(".s", .s, envir=globalenv())
+  .ret <- apply(.grd, 1, function(x) {
+    .l <- x["calc"]
+    .l <- eval(parse(text = .l))
+    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
+    if (identical(.zErr, 0)) {
+      .any.zero <<- TRUE
+    } else if (.all.zero) {
+      .all.zero <<- FALSE
+    }
+    rxode2::rxTick()
+    return(.ret)
+  })
+  if (.all.zero) {
+    stop("none of the predictions depend on estimated parameters", call. = FALSE)
+  }
+  .s$..HdEta <- .ret
+  rxode2::rxProgressStop()
   .s
 }
-
-
 
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
@@ -124,25 +146,29 @@ rxUiGet.nlmeFunction <- function(x, ...) {
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   #.par <- c(.estPar, .ui$covariates)
   .par <- .estPar
-  eval(parse(text=paste0("function(", paste(.par, collapse=","), ",sss ID) {\n",
+  eval(parse(text=paste0("function(", paste(.par, collapse=","), ", ID) {\n",
                          "nlmixr2::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
                          "}")))
 }
 
  #' @export
 rxUiGet.nlmeRxModel <- function(x, ...) {
-  .s <- rxUiGet.loadPruneNlme(x, ...)
+  .s <- rxUiGet.nlmeS(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .sens <- .s$..sens
+  if (is.null(.sens)) .sens <- ""
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
     .ddt,
+    .sens,
     .prd,
+    .s$..HdEta,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""
@@ -169,9 +195,15 @@ rxUiGet.nlmeModel <- function(x, ...) {
   .ui <- x[[1]]
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   .par <- .estPar
-  as.formula(paste0("DV ~ (.nlmixrNlmeUserFun())(", paste(c(.par, "TIME", "ID"), collapse=","), ")"))
+  as.formula(paste0("DV ~ (.nlmixrNlmeUserFun())(", paste(c(.par, "ID"), collapse=","), ")"))
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlme formula for nlmixr model"
+
+#' @export
+rxUiGet.nlmeGradDimnames <- function(x, ...) {
+  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
+  eval(parse(text=paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse=","), "))")))
+}
 
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {
