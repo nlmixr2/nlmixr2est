@@ -14,15 +14,16 @@
 #' @export
 #' @examples
 #' nlmixr2::nlmeControl()
-nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale = 0.001,
+#' nlmixr2NlmeControl()
+nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale = 0.001,
     tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
-    returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
+    returnObject = TRUE, msVerbose = FALSE, msWarnNoConv = TRUE,
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
     method=c("ML", "REML"),
-    random=NULL, fixed=NULL, sens=TRUE, verbose=TRUE, returnNlme=FALSE,
+    random=NULL, fixed=NULL, sens=FALSE, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ...) {
 
@@ -73,6 +74,10 @@ nlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, minScale 
   class(.ret) <- "nlmeControl"
   .ret
 }
+
+#' @rdname nlmixr2NlmeControl
+#' @export
+nlmeControl <- nlmixr2NlmeControl
 #' Get the nlme family control
 #'
 #' @param env nlme optimization environment
@@ -338,6 +343,29 @@ nmObjGetControl.nlme <- function(x, ...) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
+  # The environment needs:
+  # - table for table options
+  # - $origData -- Original Data
+  # - $dataSav -- Processed data from .foceiPreProcessData
+  # - $idLvl -- Level information for ID factor added
+  # - $ui for ui object
+  # - $fullTheta Full theta information
+  # - $etaObf data frame with ID, etas and OBJI
+  # - $cov For covariance
+  # - $covMethod for the method of calculating the covariance
+  # - $adjObf Should the objective function value be adjusted
+  # - $objective objective function value
+  # - $extra Extra print information
+  # - $method Estimation method (for printing)
+  # - $omega Omega matrix
+  # - $etaObf Eat objective function data frame
+  # - $theta Is a theta data frame
+  # - $model a list of model information for table generation.  Needs a `predOnly` model
+  # - $message Message for display
+  # - $est estimation method
+  # - $ofvType (optional) tells the type of ofv is currently being used
+  # When running the focei problem to create the nlmixr object, you also need a
+  #  foceiControl object
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui)
   .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
@@ -348,7 +376,21 @@ nmObjGetControl.nlme <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .ret$nlme <- .nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+
+  .nlme <- try(.collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE))
+  .ret$nlme <- .nlme[[1]]
+  .ret$message <- NULL
+  lapply(.nlme[[2]], function(x){
+    warning(x, call.=FALSE)
+    if (regexpr("PNLS", x) != -1) {
+      .ret$message <- c(.ret$message, paste0(x, " (carefully review results)"))
+    }
+  })
+  if (is.null(.ret$message)) {
+    .ret$message <- ""
+  } else {
+    .ret$message <- paste(.ret$message, collapse="\n")
+  }
   if (rxode2::rxGetControl(.ui, "returnNlme", FALSE)) {
     return(.ret$nlme)
   }
@@ -362,6 +404,7 @@ nmObjGetControl.nlme <- function(x, ...) {
                            as.data.frame(.ret$etaMat),
                            OBJI = NA)
   .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
+  .ret$theta <- .ui$saemThetaDataFrame
   .ret$control <- .control
   nmObjHandleControlObject(.ret$control, .ret)
   if (exists("control", .ui)) {
@@ -373,20 +416,19 @@ nmObjGetControl.nlme <- function(x, ...) {
   #.saemCalcLikelihood(.ret)
   .ret$objective <- -2 * as.numeric(logLik(.ret$nlme)) - ifelse(.ret$adjObf, nobs(.ret$nlme) * log(2 * pi), 0)
   .ret$model <- .ui$ebe
-  .ret$message <- "" # no message for now
   .ret$est <- "nlme"
+  .ret$ofvType <- "nlme"
   .nlmeControlToFoceiControl(.ret)
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
   .env <- .ret$env
   .env$method <- "nlme "
-  .nlmeAddLikelihood(.ret$nlme, .ret)
   .ret
 }
 
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
   .nlmeFamilyControl(env, ...)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)})
   .nlmeFamilyFit(env,  ...)
 }
 

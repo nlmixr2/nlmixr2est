@@ -22,7 +22,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     } else if (!is.na(.inRow[[2]])) {
       .cn <- .inRow[[2]]
     }
-    if (is.na(.inRow2[[1]])) {
+    if (is.na(.inRow2[[1]][[1]])) {
       # Here the original data frame is NA, that is the objective function has not been calculated
       .tmp <- cbind(.inRow[[1]], data.frame("Condition Number"=.cn, check.names=FALSE))
       row.names(.tmp) <- type

@@ -3508,7 +3508,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     }
     return true;
   } else {
-    stop("Not Setup right.........");
+    stop("Not Setup right\nNeeds: theta = data.frame for theta information \n omega= matrix\n etaObf=eta objective function");
     return false;
   }
 }
@@ -5821,6 +5821,10 @@ void foceiFinalizeTables(Environment e){
   } else if (op_focei.interaction){
     objDf.attr("row.names") = CharacterVector::create("FOCEi");
     e["ofvType"] = "focei";
+  } else if (e.exists("ofvType")) {
+    std::string ofvType = as<std::string>(e["ofvType"]);
+    objDf.attr("row.names") = ofvType;
+    e["ofvType"]= ofvType;
   } else {
     objDf.attr("row.names") = CharacterVector::create("FOCE");
     e["ofvType"] = "foce";
