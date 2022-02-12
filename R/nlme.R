@@ -304,12 +304,12 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeGetCov <- function(nlme) {
   .snt <- summary(nlme)$tTable
-  .se <- .snt[,"Std.Error", drop = FALSE]
+  .se <- .snt[,"Std.Error"]
   if (length(.se) == 1) {
     matrix(.se * .se, 1, 1, dimnames=list(rownames(.snt), rownames(.snt)))
   } else {
     .cov <- diag(.se * .se)
-    dimnames(.cov) <- list(names(.se), names(.se))
+    dimnames(.cov) <- list(rownames(.snt), rownames(.snt))
     .cov
   }
 }
