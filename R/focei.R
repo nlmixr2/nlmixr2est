@@ -2386,6 +2386,10 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .env$table <- env$table
   .data <- env$data
   .foceiPreProcessData(.data, .env, ui)
+  if (!is.null(.env$cov)){
+    checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
+                            row.names="strict", col.names="strict")
+  }
   .ret0 <- try(.foceiFitInternal(.env))
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) {
