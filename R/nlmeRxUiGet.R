@@ -311,7 +311,7 @@ rxUiGet.nlmeWeights <- function(x, ...) {
   } else if (.errType == "add") {
     return(NULL)
   }
-  .addProp <- .pred$addProp
+  .addProp <- .predDf$addProp
   if (.addProp == "default") {
     .addProp <- rxode2::rxGetControl(.ui, "addProp", "combined2")
   }
