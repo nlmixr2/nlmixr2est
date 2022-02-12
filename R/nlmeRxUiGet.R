@@ -276,6 +276,9 @@ rxUiGet.nlmePdOmega <- function(x, ...) {
   if (all(.omega2 == 0)) {
     nlme::pdDiag(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
   } else {
+    .omega <- as.matrix(Matrix::nearPD(.omega)$mat)
+    dimnames(.omega) <- list(.name, .name)
+    warning("nlme will estimate a full omega matrix if any covariances are estimated", call.=FALSE)
     nlme::pdSymm(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))
   }
 }

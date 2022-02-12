@@ -33,7 +33,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
       # Now the original data frame is not NA.
       .tmp <- rbind(.inRow[[1]], .inRow2[[1]])
       .tmp[["Condition Number"]] <- .cn
-      row.names(.tmp) <- c(.rownames, type)
+      row.names(.tmp) <- c(type, .rownames)
       assign("objDf", .tmp, envir=fit$env)
       setOfv(fit, type)
     }

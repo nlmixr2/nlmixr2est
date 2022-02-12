@@ -23,7 +23,7 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
     method=c("ML", "REML"),
-    random=NULL, fixed=NULL, sens=FALSE, verbose=TRUE, returnNlme=FALSE,
+    random=NULL, fixed=NULL, weights=NULL, sens=FALSE, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ...) {
 
@@ -69,7 +69,7 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
                optExpression=optExpression, sumProd=sumProd,
                rxControl=rxControl, sens=sens, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
-               compress=compress,
+               compress=compress, random=random, fixed=fixed, weights=weights,
                ...)
   class(.ret) <- "nlmeControl"
   .ret
@@ -187,7 +187,7 @@ nlmeControl <- nlmixr2NlmeControl
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
-  .verbose <- rxode2::rxGetControl(ui, "random", TRUE)
+  .verbose <- rxode2::rxGetControl(ui, "verbose", TRUE)
   .method <- rxode2::rxGetControl(ui, "method", "ML")
   .weights <- rxode2::rxGetControl(ui, "weights", NULL)
   if (is.null(.weights)) {
@@ -278,18 +278,30 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeGetOmega <- function(nlme, ui) {
   .omega <- ui$omega
   diag(.omega) <- 0
+  .vc <- nlme::VarCorr(nlme)
+  .var <- as.matrix(.vc[,"Variance"])
+  .rn <- rownames(.var)
+  .name <- .nlmeGetNonMuRefNames(.rn, ui)
+  .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
+  .var <- .var[names(.var) != "Residual"]
+  .ome <- diag(.var)
+  .name <- names(.var)
+  dimnames(.ome) <- list(.name, .name)
   if (all(.omega == 0)) {
-    .var <- as.matrix(nlme::VarCorr(nlme)[,"Variance"])
-    .name <- .nlmeGetNonMuRefNames(rownames(.var), ui)
-    .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
-    .var <- .var[names(.var) != "Residual"]
-    .ome <- diag(.var)
-    .name <- names(.var)
-    dimnames(.ome) <- list(.name, .name)
-    .ome
-  } else {
-    stop("not handled yet")
+    return(.ome)
   }
+  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2)])
+  .cor2$extra <- ""
+  names(.cor2) <- rownames(.cor2)
+  .cor2 <- as.matrix(.cor2)
+  diag(.cor2) <- "1"
+  .cor2[upper.tri(.cor2)] <- .cor2[lower.tri(.cor2)]
+  .cor2 <- matrix(suppressMessages(as.numeric(.cor2)), nrow(.cor2), ncol(.cor2), dimnames=dimnames(.ome))
+  diag(.ome) <- sqrt(diag(.ome))
+  .ome <- .ome %*% .cor2 %*% .ome
+  .ome <- as.matrix(Matrix::nearPD(f$omega)$mat)
+  dimnames(.ome) <- list(.name, .name)
+  .ome
 }
 
 #' @rdname nmObjHandleControlObject
@@ -376,7 +388,6 @@ nmObjGetControl.nlme <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-
   .nlme <- try(.collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE))
   .ret$nlme <- .nlme[[1]]
   .ret$message <- NULL
@@ -406,6 +417,7 @@ nmObjGetControl.nlme <- function(x, ...) {
   .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
   .ret$theta <- .ui$saemThetaDataFrame
   .ret$control <- .control
+  .ret$extra <- paste0(" by ", crayon::bold$yellow(ifelse(.control$method == "REML", "REML", "maximum likelihood")))
   nmObjHandleControlObject(.ret$control, .ret)
   if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
@@ -413,18 +425,20 @@ nmObjGetControl.nlme <- function(x, ...) {
   .ret$est <- "nlme"
 
   # There is no parameter history for nlme
-  #.saemCalcLikelihood(.ret)
-  .ret$objective <- -2 * as.numeric(logLik(.ret$nlme)) - ifelse(.ret$adjObf, nobs(.ret$nlme) * log(2 * pi), 0)
+  .ret$objective <- -2 * as.numeric(logLik(.ret$nlme))
   .ret$model <- .ui$ebe
   .ret$est <- "nlme"
   .ret$ofvType <- "nlme"
   .nlmeControlToFoceiControl(.ret)
+  .nlmixr2FitUpdateParams(.ret)
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
   .env <- .ret$env
-  .env$method <- "nlme "
+  .env$method <- "nlme"
   .ret
 }
 
+#' @rdname nlmixr2Est
+#' @export
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
   .nlmeFamilyControl(env, ...)
