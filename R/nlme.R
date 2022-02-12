@@ -235,8 +235,11 @@ nlmeControl <- nlmixr2NlmeControl
   }
   if (.addProp == "combined1") {
     if (.errType == "add + prop") {
-      stop("1")
-      return(nlme::varConstPower(fixed=list(power=1)))
+      .w <- which(ui$iniDf$err == "add")
+      .add <- setNames(exp(attr(nlme$apVar, "Pars")["varStruct.const"]), ui$iniDf$name[.w])
+      .w <- which(ui$iniDf$err == "prop")
+      .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
+      return(c(.f, .add, .prop))
     } else {
       stop("2")
       return(nlme::varConstPower())
