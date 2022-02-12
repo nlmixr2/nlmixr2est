@@ -216,7 +216,9 @@ nlmeControl <- nlmixr2NlmeControl
   .iniDf <- ui$iniDf
   .errType <- .predDf$errType
   if (.errType == "prop") {
-    stop("not tested", call.=FALSE)
+    .w <- which(ui$iniDf$err == "prop")
+    .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
+    return(c(.f, .prop))
   } else if (.errType == "pow") {
     stop("not tested", call.=FALSE)
   } else if (.errType == "add") {
