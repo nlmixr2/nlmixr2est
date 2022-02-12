@@ -292,7 +292,7 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeGetEtaMat <- function(nlme, ui) {
   .etaMat <- nlme::ranef(nlme)
-  .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))), ]
+  .etaMat <- .etaMat[order(as.numeric(row.names(.etaMat))),, drop = FALSE]
   names(.etaMat) <- .nlmeGetNonMuRefNames(names(.etaMat), ui)
   row.names(.etaMat) <- NULL
   as.matrix(.etaMat)
