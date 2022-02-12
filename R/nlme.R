@@ -229,7 +229,31 @@ nlmeControl <- nlmixr2NlmeControl
     .add <- setNames(nlme$sigma, ui$iniDf$name[.w])
     return(c(.f, .add))
   }
-  stop("not tested", call.=FALSE)
+  .addProp <- .predDf$addProp
+  if (.addProp == "default") {
+    .addProp <- rxode2::rxGetControl(ui, "addProp", "combined2")
+  }
+  if (.addProp == "combined1") {
+    if (.errType == "add + prop") {
+      stop("1")
+      return(nlme::varConstPower(fixed=list(power=1)))
+    } else {
+      stop("2")
+      return(nlme::varConstPower())
+    }
+  } else {
+    if (.errType == "add + prop") {
+      .w <- which(ui$iniDf$err == "add")
+      .add <- setNames(exp(attr(nlme$apVar, "Pars")["varStruct.const"]), ui$iniDf$name[.w])
+      .w <- which(ui$iniDf$err == "prop")
+      .prop <- setNames(attr(nlme$apVar, "Pars")["varStruct.prop"], ui$iniDf$name[.w])
+      return(c(.f, .add, .prop))
+    } else {
+      stop("add+prop combined2 does not support nlme power currently",
+           call.=FALSE)
+    }
+  }
+
 }
 #' Get non mu referenced names from mu referenced theta
 #'
