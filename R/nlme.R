@@ -204,7 +204,6 @@ nlmeControl <- nlmixr2NlmeControl
 }
 #' Get the theta estimates from nlme using roxde2 ui
 #'
-#'
 #' @param nlme nlme object
 #' @param ui rxode2 object
 #' @return named theta vector
@@ -220,7 +219,11 @@ nlmeControl <- nlmixr2NlmeControl
     .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
     return(c(.f, .prop))
   } else if (.errType == "pow") {
-    stop("not tested", call.=FALSE)
+    .w <- which(ui$iniDf$err == "pow2")
+    .pw <- setNames(attr(nlme$apVar, "Pars")["varStruct.power"], ui$iniDf$name[.w])
+    .w <- which(ui$iniDf$err == "pow")
+    .coef <- setNames(nlme$sigma, ui$iniDf$name[.w])
+    return(c(.f, .coef, .pw))
   } else if (.errType == "add") {
     .w <- which(ui$iniDf$err == "add")
     .add <- setNames(nlme$sigma, ui$iniDf$name[.w])
@@ -428,9 +431,9 @@ nmObjGetControl.nlme <- function(x, ...) {
                            as.data.frame(.ret$etaMat),
                            OBJI = NA)
   .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
-  .ret$theta <- .ui$saemThetaDataFrame
   .ret$control <- .control
   .ret$extra <- paste0(" by ", crayon::bold$yellow(ifelse(.control$method == "REML", "REML", "maximum likelihood")))
+  .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
@@ -443,8 +446,9 @@ nmObjGetControl.nlme <- function(x, ...) {
   .ret$est <- "nlme"
   .ret$ofvType <- "nlme"
   .nlmeControlToFoceiControl(.ret)
-  .nlmixr2FitUpdateParams(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
+
   .env <- .ret$env
   .env$method <- "nlme"
   .ret
