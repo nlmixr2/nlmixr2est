@@ -99,6 +99,7 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlmixr nlme model, equivalent to saem rxode2 model"
 
+
 #' @export
 rxUiGet.nlmeS <- function(x, ...) {
   .s <- .loadSymengine(.nlmePrune(x), promoteLinSens = TRUE)
@@ -266,12 +267,7 @@ rxUiGet.nlmePdOmega <- function(x, ...) {
   .omega2 <- .omega
   diag(.omega2) <- 0
   .name <- dimnames(.omega)[[1]]
-  .muRef <- .ui$muRefDataFrame
-  .name <- vapply(.name, function(n) {
-    .w <- which(.muRef$eta == n)
-    if (length(.w) == 1) return(.muRef$theta[.w])
-    .n
-  }, character(1), USE.NAMES=FALSE)
+  .name <- .nlmeGetNonMuRefNames(.name, .ui)
   dimnames(.omega) <- list(.name, .name)
   if (all(.omega2 == 0)) {
     nlme::pdDiag(value=.omega, form=as.formula(paste(paste(.name, collapse="+"), "~1")))

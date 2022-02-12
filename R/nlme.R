@@ -388,7 +388,10 @@ nmObjGetControl.nlme <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .nlme <- try(.collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE))
+  if (rxode2::rxGetControl(.ui, "sens", FALSE) && length(f$nonMuEtas) > 0) {
+    stop("'sens=TRUE' requires mu-referenced etas", call.=FALSE)
+  }
+  .nlme <- .collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
   .ret$nlme <- .nlme[[1]]
   .ret$message <- NULL
   lapply(.nlme[[2]], function(x){
