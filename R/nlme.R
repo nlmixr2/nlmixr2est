@@ -219,8 +219,9 @@ nlmeControl <- nlmixr2NlmeControl
     .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
     return(c(.f, .prop))
   } else if (.errType == "pow") {
+    .nlmePars <- coef(nlme$modelStruct$varStruct)
     .w <- which(ui$iniDf$err == "pow2")
-    .pw <- setNames(attr(nlme$apVar, "Pars")["varStruct.power"], ui$iniDf$name[.w])
+    .pw <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
     .w <- which(ui$iniDf$err == "pow")
     .coef <- setNames(nlme$sigma, ui$iniDf$name[.w])
     return(c(.f, .coef, .pw))
@@ -235,21 +236,29 @@ nlmeControl <- nlmixr2NlmeControl
   }
   if (.addProp == "combined1") {
     if (.errType == "add + prop") {
+       .nlmePars <- coef(nlme$modelStruct$varStruct)
       .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(attr(nlme$apVar, "Pars")["varStruct.const"]), ui$iniDf$name[.w])
+      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       return(c(.f, .add, .prop))
     } else {
-      stop("2")
-      return(nlme::varConstPower())
+      .nlmePars <- coef(nlme$modelStruct$varStruct)
+      .w <- which(ui$iniDf$err == "add")
+      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
+      .w <- which(ui$iniDf$err == "pow")
+      .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
+      .w <- which(ui$iniDf$err == "pow2")
+      .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
+      return(c(.f, .add, .prop, .pow))
     }
   } else {
     if (.errType == "add + prop") {
+      .nlmePars <- coef(nlme$modelStruct$varStruct)
       .w <- which(ui$iniDf$err == "add")
-      .add <- setNames(exp(attr(nlme$apVar, "Pars")["varStruct.const"]), ui$iniDf$name[.w])
+      .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
-      .prop <- setNames(attr(nlme$apVar, "Pars")["varStruct.prop"], ui$iniDf$name[.w])
+      .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
       return(c(.f, .add, .prop))
     } else {
       stop("add+prop combined2 does not support nlme power currently",

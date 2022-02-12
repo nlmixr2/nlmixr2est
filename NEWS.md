@@ -58,14 +58,15 @@
 ## nlme changes
 
 - `nlme` has been completely rewritten to directly run from the
-  `rxode2` UI.
+  `rxode2` UI
 
 - `nlme` now has an option to support ode sensitivities (`sens=TRUE`)
   as well as finite difference.
   
-- `nlme` always tries to use mu-referencing (when available).
+- `nlme` always tries to use mu-referencing (when available)
 
-- Internally `nlme` now uses parallel processing for solving so it should be faster.
+- Internally `nlme` now uses parallel processing for solving so it
+  should be faster.
 
 - `nlmixr2NlmeControl()` (which will overwrite `nlmeControl()`)
   documents and adds more options to `nlme`.
@@ -77,7 +78,7 @@
 - `returnNlme` is a new option that will return the `nlme` object
   instead of the traditional `nlme` object.
 
-- `nlme_ode` and `lme_lin_cmpt` are both removed
+- `nlme_ode` and `lme_lin_cmpt` are both removed.
 
 ## nlmixr2 object change
 
