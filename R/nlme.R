@@ -264,13 +264,17 @@ nlmeControl <- nlmixr2NlmeControl
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmeGetCov <- function(nlme) {
-  .se <-   summary(nlme)$tTable[,"Std.Error"]
-  .cov <- diag(.se * .se)
-  dimnames(.cov) <- list(names(.se), names(.se))
-  .cov
+  .snt <- summary(nlme)$tTable
+  .se <- .snt[,"Std.Error", drop = FALSE]
+  if (length(.se) == 1) {
+    matrix(.se * .se, 1, 1, dimnames=list(rownames(.snt), rownames(.snt)))
+  } else {
+    .cov <- diag(.se * .se)
+    dimnames(.cov) <- list(names(.se), names(.se))
+    .cov
+  }
 }
 #' Get the omega matrix from nlme
-#'
 #'
 #' @param nlme nlme object
 #' @param ui rxode2 object
@@ -281,18 +285,22 @@ nlmeControl <- nlmixr2NlmeControl
   .omega <- ui$omega
   diag(.omega) <- 0
   .vc <- nlme::VarCorr(nlme)
-  .var <- as.matrix(.vc[,"Variance"])
+  .var <- as.matrix(.vc[,"Variance", drop = FALSE])
   .rn <- rownames(.var)
   .name <- .nlmeGetNonMuRefNames(.rn, ui)
   .var <- setNames(suppressWarnings(as.numeric(.var)), .name)
   .var <- .var[names(.var) != "Residual"]
-  .ome <- diag(.var)
+  if (length(.var) == 1) {
+    .ome <- matrix(.var, 1, 1)
+  } else {
+   .ome <- diag(.var)
+  }
   .name <- names(.var)
   dimnames(.ome) <- list(.name, .name)
   if (all(.omega == 0)) {
     return(.ome)
   }
-  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2)])
+  .cor2 <- as.data.frame(.vc[-length(.rn), -(1:2), drop = FALSE])
   .cor2$extra <- ""
   names(.cor2) <- rownames(.cor2)
   .cor2 <- as.matrix(.cor2)
