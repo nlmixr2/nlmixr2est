@@ -942,7 +942,11 @@ saemControl <- function(seed = 99,
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
   .saemFamilyControl(env, ...)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)) {
+      rm("control", envir=.ui)
+    }
+  }, add=TRUE)
   .saemFamilyFit(env,  ...)
 }
 
