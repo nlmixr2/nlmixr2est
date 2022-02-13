@@ -2742,11 +2742,11 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   int neta = 0;
   unsigned int ntheta = 0;
   for (;k--;){
-    for (j = ps; j--;){
+    for (j = ps; j--;) {
       // Compare ETAS first since they are smaller strings.
       cur = as<std::string>(pars[k]);
       etaS = "ETA[" + std::to_string(j+1) + "]";
-      if (cur == etaS){
+      if (cur == etaS) {
         op_focei.etaTrans[j] = k;
         neta++;
         break;
@@ -2760,10 +2760,10 @@ static inline void foceiSetupTrans_(CharacterVector pars){
       }
     }
   }
-  if (op_focei.ntheta != ntheta){
+  if (op_focei.ntheta != ntheta) {
     stop("theta mismatch op_focei.ntheta %d, ntheta: %d\n", op_focei.ntheta, ntheta);
   }
-  if (op_focei.neta != neta){
+  if (op_focei.neta != neta) {
     stop("eta mismatch op_focei.neta %d, neta: %d\n", op_focei.neta, neta);
   }
   op_focei.nzm = (op_focei.neta + 1) * (op_focei.neta + 2) / 2 + (op_focei.neta + 1)*6+1;

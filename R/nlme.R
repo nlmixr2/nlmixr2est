@@ -475,7 +475,6 @@ nmObjGetControl.nlme <- function(x, ...) {
     rm(list="control", envir=.ui)
   }
   .ret$est <- "nlme"
-
   # There is no parameter history for nlme
   .ret$objective <- -2 * as.numeric(logLik(.ret$nlme))
   .ret$model <- .ui$ebe
@@ -484,7 +483,6 @@ nmObjGetControl.nlme <- function(x, ...) {
   .nlmeControlToFoceiControl(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
-
   .env <- .ret$env
   .env$method <- "nlme"
   .ret

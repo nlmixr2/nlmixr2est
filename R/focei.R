@@ -1699,6 +1699,9 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 }
 
 .innerInternal <- function(ui, s) {
+  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
+                                           ui$foceiCmtPreModel, "\n"))
+  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   if (exists("..maxTheta", s)) {
     .eventTheta <- rep(0L, s$..maxTheta)
   } else {
@@ -2378,9 +2381,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
-  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
-                                           ui$foceiCmtPreModel, "\n"))
-  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
   .env <- ui$foceiOptEnv
   .env$table <- env$table

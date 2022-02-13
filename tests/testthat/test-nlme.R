@@ -24,6 +24,7 @@ test_that("nlme one compartment theo_sd", {
   f <- one.compartment()
 
   nlme  <- nlmixr(f, theo_sd, "nlme", control=nlmeControl( ))
+
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
   one.compartment <- function() {
@@ -77,6 +78,7 @@ test_that("nlme one compartment theo_sd", {
   f <- one.compartment()
 
   nlme  <- nlmixr(f, theo_sd, "nlme", control=nlmeControl(maxIter=2))
+
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
   expect_error(nlmixr(f, theo_sd, "nlme", control=nlmeControl(maxIter=2, sens=TRUE)))
