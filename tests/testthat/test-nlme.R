@@ -1,3 +1,5 @@
+.nlmixr <- function(...) suppressWarnings(suppressMessages(nlmixr(...)))
+
 test_that("nlme one compartment theo_sd", {
 
   one.compartment <- function() {
@@ -21,9 +23,7 @@ test_that("nlme one compartment theo_sd", {
     })
   }
 
-  f <- one.compartment()
-
-  nlme  <- nlmixr(f, theo_sd, "nlme", control=nlmeControl( ))
+  nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -48,9 +48,7 @@ test_that("nlme one compartment theo_sd", {
     })
   }
 
-  f <- one.compartment()
-
-  nlme  <- nlmixr(f, theo_sd, "nlme", control=nlmeControl(maxIter=5))
+  nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(maxIter=5, verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -75,13 +73,9 @@ test_that("nlme one compartment theo_sd", {
     })
   }
 
-  f <- one.compartment()
-
-  nlme  <- nlmixr(f, theo_sd, "nlme", control=nlmeControl(maxIter=2))
+  nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(maxIter=2, verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
-
-  expect_error(nlmixr(f, theo_sd, "nlme", control=nlmeControl(maxIter=2, sens=TRUE)))
 
 })
 
@@ -109,7 +103,7 @@ test_that("Other error structures", {
 
   f <- mod()
 
-  nlme  <- nlmixr(f, dat, "nlme", control=nlmeControl())
+  nlme  <- .nlmixr(f, dat, "nlme", control=nlmeControl(verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -132,7 +126,7 @@ test_that("Other error structures", {
 
   f <- mod()
 
-  nlme  <- nlmixr(mod, dat, "nlme", control=nlmeControl())
+  nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -155,7 +149,7 @@ test_that("Other error structures", {
 
   f <- mod()
 
-  nlme  <- nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000))
+  nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -178,7 +172,7 @@ test_that("Other error structures", {
 
   f <- mod()
 
-  nlme  <- nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000))
+  nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE))
 
   expect_true(inherits(nlme, "nlmixr2FitData"))
 
@@ -202,7 +196,7 @@ test_that("Other error structures", {
 
   f <- mod()
 
-  nlme  <- nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000))
+  nlme  <- .nlmixr(mod, dat, "nlme", control=nlmeControl(msMaxIter=10000, verbose=FALSE))
 
 })
 

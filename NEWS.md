@@ -60,9 +60,6 @@
 - `nlme` has been completely rewritten to directly run from the
   `rxode2` UI
 
-- `nlme` now has an option to support ode sensitivities (`sens=TRUE`)
-  as well as finite difference.
-  
 - `nlme` always tries to use mu-referencing (when available)
 
 - Internally `nlme` now uses parallel processing for solving so it

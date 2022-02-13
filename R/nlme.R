@@ -6,7 +6,6 @@
 #'
 #' @inheritParams nlme::nlmeControl
 #' @inheritParams nlme::nlme
-#' @param sens Calculate gradients using forward sensitivity
 #' @param returnNlme Returns the nlme object instead of the nlmixr
 #'   object (by default FALSE).  If any of the nlme specific options
 #'   of `random`, `fixed`, `sens`, the nlme object is returned
@@ -23,7 +22,7 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
     rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
     method=c("ML", "REML"),
-    random=NULL, fixed=NULL, weights=NULL, sens=FALSE, verbose=TRUE, returnNlme=FALSE,
+    random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
     adjObf=TRUE, ...) {
 
@@ -35,7 +34,6 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
   checkmate::assertLogical(gradHess, len=1, any.missing=FALSE)
   checkmate::assertLogical(apVar, len=1, any.missing=FALSE)
   checkmate::assertLogical(natural, len=1, any.missing=FALSE)
-  checkmate::assertLogical(sens, len=1, any.missing=FALSE)
   checkmate::assertLogical(verbose, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnNlme, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -67,7 +65,7 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
                apVar = apVar, .relStep = .relStep, minAbsParApVar = minAbsParApVar,
                opt = match.arg(opt), natural = natural, sigma = sigma,
                optExpression=optExpression, sumProd=sumProd,
-               rxControl=rxControl, sens=sens, method=method,verbose=verbose,
+               rxControl=rxControl, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
                ...)
@@ -102,8 +100,6 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
 .nlmeFitFunction <- NULL
-.nlmeGradDimnames <- NULL
-.nlmeFitSens <- FALSE
 
 
 #' A surrogate function for nlme to call for ode solving
@@ -132,12 +128,6 @@ nlmeControl <- nlmixr2NlmeControl
   .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
                                       .nlmeFitRxControl))
   .ret <- .retF$rx_pred_
-  if (.nlmeFitSens) {
-    .grad <- .retF[, paste0("rxD_", names(pars))]
-    .grad <- as.matrix(.grad)
-    dimnames(.grad) <- .nlmeGradDimnames
-    attr(.ret, "gradient") <- .grad
-  }
   .ret
 }
 
@@ -169,8 +159,6 @@ nlmeControl <- nlmixr2NlmeControl
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
   assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
-  assignInMyNamespace(".nlmeFitSens", rxode2::rxGetControl(ui, "sens", TRUE))
-  assignInMyNamespace(".nlmeGradDimnames", ui$nlmeGradDimnames)
   assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
 
   .ctl <- ui$control
@@ -436,9 +424,6 @@ nmObjGetControl.nlme <- function(x, ...) {
   .tv <- character(0)
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
-  }
-  if (rxode2::rxGetControl(.ui, "sens", FALSE) && length(.ui$nonMuEtas) > 0) {
-    stop("'sens=TRUE' requires mu-referenced etas", call.=FALSE)
   }
   .nlme <- .collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
   .ret$nlme <- .nlme[[1]]

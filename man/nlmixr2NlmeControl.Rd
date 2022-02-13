@@ -31,7 +31,6 @@ nlmixr2NlmeControl(
   random = NULL,
   fixed = NULL,
   weights = NULL,
-  sens = FALSE,
   verbose = TRUE,
   returnNlme = FALSE,
   addProp = c("combined2", "combined1"),
@@ -67,7 +66,6 @@ nlmeControl(
   random = NULL,
   fixed = NULL,
   weights = NULL,
-  sens = FALSE,
   verbose = TRUE,
   returnNlme = FALSE,
   addProp = c("combined2", "combined1"),
@@ -212,8 +210,6 @@ this is \code{FALSE}.}
    \code{varClasses} for a description of the available \code{varFunc}
    classes. Defaults to \code{NULL}, corresponding to homoscedastic
    within-group errors.}
-
-\item{sens}{Calculate gradients using forward sensitivity}
 
 \item{verbose}{an optional logical value. If \code{TRUE} information on
    the evolution of the iterative algorithm is printed. Default is
