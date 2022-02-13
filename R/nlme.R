@@ -348,7 +348,7 @@ nlmeControl <- nlmixr2NlmeControl
   .cor2 <- matrix(suppressMessages(as.numeric(.cor2)), nrow(.cor2), ncol(.cor2), dimnames=dimnames(.ome))
   diag(.ome) <- sqrt(diag(.ome))
   .ome <- .ome %*% .cor2 %*% .ome
-  .ome <- as.matrix(Matrix::nearPD(f$omega)$mat)
+  .ome <- as.matrix(Matrix::nearPD(ui$omega)$mat)
   dimnames(.ome) <- list(.name, .name)
   .ome
 }
@@ -437,7 +437,7 @@ nmObjGetControl.nlme <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  if (rxode2::rxGetControl(.ui, "sens", FALSE) && length(f$nonMuEtas) > 0) {
+  if (rxode2::rxGetControl(.ui, "sens", FALSE) && length(.ui$nonMuEtas) > 0) {
     stop("'sens=TRUE' requires mu-referenced etas", call.=FALSE)
   }
   .nlme <- .collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
