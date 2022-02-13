@@ -30,6 +30,7 @@ nlmixr2NlmeControl(
   method = c("ML", "REML"),
   random = NULL,
   fixed = NULL,
+  weights = NULL,
   sens = FALSE,
   verbose = TRUE,
   returnNlme = FALSE,
@@ -65,6 +66,7 @@ nlmeControl(
   method = c("ML", "REML"),
   random = NULL,
   fixed = NULL,
+  weights = NULL,
   sens = FALSE,
   verbose = TRUE,
   returnNlme = FALSE,
@@ -202,6 +204,14 @@ this is \code{FALSE}.}
    side expression).
    A \code{1} on the right hand side of the formula(s) indicates a single
    fixed effects for the corresponding parameter(s).}
+
+\item{weights}{an optional \code{varFunc} object or one-sided formula
+   describing the within-group heteroscedasticity structure. If given as
+   a formula, it is used as the argument to \code{varFixed},
+   corresponding to fixed variance weights. See the documentation on
+   \code{varClasses} for a description of the available \code{varFunc}
+   classes. Defaults to \code{NULL}, corresponding to homoscedastic
+   within-group errors.}
 
 \item{sens}{Calculate gradients using forward sensitivity}
 

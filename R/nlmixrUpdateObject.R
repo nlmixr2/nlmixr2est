@@ -6,6 +6,7 @@
 #' @param origFitEnv Original fit$env to compare, otherwise simply use fit$env
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
+#' @keywords internal
 #' @export
 nlmixrUpdateObject <- function(fit, objName, envir, origFitEnv=NULL) {
   .parent <- envir
