@@ -1,6 +1,6 @@
 .setOfvFo <- function(fit, type = c("focei", "foce", "fo")) {
   .type <- match.arg(type)
-  nlmixrWithTiming(paste(.type, "Lik"), {
+  nlmixrWithTiming(paste0(.type, "Lik"), {
     rxode2::.setWarnIdSort(FALSE)
     on.exit(rxode2::.setWarnIdSort(TRUE))
     .foceiControl <- fit$foceiControl
@@ -9,16 +9,16 @@
     .foceiControl$maxOuterIterations <- 0L
     .foceiControl$maxInnerIterations <- 0L
     .foceiControl$calcResid <- FALSE
-    .foceiControl$covMethod <- ""
+    .foceiControl$covMethod <- 0L
     .foceiControl$compress <- FALSE
     if (.type == "focei") {
-      foceiControl$interaction <- TRUE
+      .foceiControl$interaction <- TRUE
       .rn <- "FOCEi"
     } else if (.type == "foce") {
-      foceiControl$interaction <- FALSE
+      .foceiControl$interaction <- FALSE
       .rn <- "FOCE"
     } else {
-      foceiControl$interaction <- FALSE
+      .foceiControl$interaction <- FALSE
       .foceiControl$fo <- TRUE
       .foceiControl$etaMat <- NULL
       .rn <- "FO"
@@ -71,8 +71,9 @@ setOfv <- function(x, type) {
     if (any(tolower(type) == c("focei", "foce", "fo"))) {
       return(.setOfvFo(x, tolower(type)))
     } else if (!is.null(x$saem)) {
-      nlmixrWithTiming(paste(type, "Lik"), {
+      nlmixrWithTiming(paste0(type, "Lik"), {
         .ret <- x$saem
+        .env <- x$env
         .reg <- rex::rex(start, "laplace", capture(.regNum), end)
         .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
         if (regexpr(.reg, type, perl = TRUE) != -1) {
