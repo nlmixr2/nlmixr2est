@@ -2080,7 +2080,7 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
   if (!Rf_isNull(obj)){
     // Now need to get the largest item to setup the solving space
     RObject pars = opt[".pars"];
-    List odeO = opt["ODEopt"];
+    List odeO = opt["rxControl"];
     // SEXP evt = x["evt"];
     // SEXP evtM = x["evtM"];
     int nEvt = INTEGER(Rf_getAttrib(evt, R_DimSymbol))[0];

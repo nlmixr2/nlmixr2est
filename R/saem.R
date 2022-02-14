@@ -88,6 +88,7 @@
 #'   correlations.  Byt defualt this is 0.75 or 75% of the
 #'   Monte-carlo iteration
 #'
+#'
 #' @param perFixOmega This is the percentage of the `nBurn` phase
 #'   where the omega values are unfixed to allow better exploration
 #'   of the likelihood surface.  After this time, the omegas are
@@ -109,10 +110,6 @@ saemControl <- function(seed = 99,
                         nBurn = 200, nEm = 300,
                         nmc = 3,
                         nu = c(2, 2, 2),
-                        atol = 1e-06,
-                        rtol = 1e-04,
-                        method = "liblsoda",
-                        transitAbs = FALSE,
                         print = 1,
                         trace = 0,
                         covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
@@ -121,11 +118,9 @@ saemControl <- function(seed = 99,
                         nnodes.gq = 3,
                         nsd.gq = 1.6,
                         optExpression = TRUE,
-                        maxsteps = 100000L,
                         adjObf = TRUE,
                         sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
-                        singleOde = TRUE,
                         tol = 1e-6,
                         itmax = 30,
                         type = c("nelder-mead", "newuoa"),
@@ -133,28 +128,15 @@ saemControl <- function(seed = 99,
                         lambdaRange = 3,
                         odeRecalcFactor=10^(0.5),
                         maxOdeRecalc=5L,
-#                        perPhi0=0.5,
                         perSa=0.75,
                         perNoCor=0.75,
                         perFixOmega=0.1,
                         perFixResid=0.1,
                         compress=TRUE,
+                        rxControl=NULL,
                         ...) {
   type <- match.arg(type)
-  .xtra <- list(...)
   .rm <- c()
-  if (missing(transitAbs) && !is.null(.xtra$transit_abs)) {
-    transitAbs <- .xtra$transit_abs
-    .rm <- c(.rm, "transit_abs")
-  }
-  if (missing(nBurn) && !is.null(.xtra$n.burn)) {
-    nBurn <- .xtra$n.burn
-    .rm <- c(.rm, "n.burn")
-  }
-  if (missing(nEm) && !is.null(.xtra$n.em)) {
-    nEm <- .xtra$n.em
-    .rm <- c(.rm, "n.em")
-  }
   if (inherits(addProp, "numeric")) {
     if (addProp == 1) {
       addProp <- "combined1"
@@ -169,10 +151,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
-    ODEopt = rxode2::rxControl(
-      atol = atol, rtol = rtol, method = method,
-      transitAbs = transitAbs, maxsteps = maxsteps, ...
-    ),
+    rxControl = rxControl,
     seed = seed,
     print = print,
     DEBUG = trace,
@@ -402,7 +381,7 @@ saemControl <- function(seed = 99,
                         data=data,
                         inits=.inits,
                         mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
-                        ODEopt=rxode2::rxGetControl(ui, "ODEopt", rxode2::rxControl()),
+                        rxControl=rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()),
                         distribution="normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
@@ -823,7 +802,7 @@ saemControl <- function(seed = 99,
 .saemControlToFoceiControl <- function(env) {
   .saemControl <- env$saemControl
   .ui <- env$ui
-  .ctl <- env$saemControl$ODEopt
+  .ctl <- env$saemControl$rxControl
   names(.ctl) <- sub("maxsteps", "maxstepsOde", names(.ctl))
   .ctl <- .ctl[names(.ctl) != "scale"]
   .ctl$maxOuterIterations <- 0

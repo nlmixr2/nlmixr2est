@@ -10,6 +10,7 @@
 #'   object (by default FALSE).  If any of the nlme specific options
 #'   of `random`, `fixed`, `sens`, the nlme object is returned
 #' @inheritParams foceiControl
+#' @inheritParams saemControl
 #' @export
 #' @examples
 #' nlmixr2::nlmeControl()

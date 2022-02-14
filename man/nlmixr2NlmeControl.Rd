@@ -248,6 +248,10 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
+\item{adjObf}{is a boolean to indicate if the objective function
+should be adjusted to be closer to NONMEM's default objective
+function.  By default this is \code{TRUE}}
+
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}
    mentioned above), where used (\code{eval.max} and those from
