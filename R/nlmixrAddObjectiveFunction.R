@@ -1,4 +1,4 @@
-#'  Add object function data frame to the current objective function
+#'  Add objective function data frame to the current objective function
 #'
 #' @param fit nlmixr fit object
 #' @param objDf nlmixr objective function data frame which has column
@@ -41,6 +41,9 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     if (any(.rownames == type)) stop("objective function '", type, "' already present", call.=FALSE)
     ## Now there is at least one interesting objective function
     .cn <- .cur[["Condition Number"]][1]
+    if (is.null(.cn)) {
+      .cn <- NA_real_
+    }
     if (is.na(.cn) & !is.na(.inRow[[2]])) {
       .cn <- .inRow[[2]]
     }

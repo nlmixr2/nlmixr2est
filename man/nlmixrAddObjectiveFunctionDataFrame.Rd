@@ -2,7 +2,7 @@
 % Please edit documentation in R/nlmixrAddObjectiveFunction.R
 \name{nlmixrAddObjectiveFunctionDataFrame}
 \alias{nlmixrAddObjectiveFunctionDataFrame}
-\title{Add object function data frame to the current objective function}
+\title{Add objective function data frame to the current objective function}
 \usage{
 nlmixrAddObjectiveFunctionDataFrame(fit, objDf, type)
 }
@@ -19,7 +19,7 @@ names "OBJF", "AIC", "BIC", "Log-likelihood" and
 Nothing, called for side effects
 }
 \description{
-Add object function data frame to the current objective function
+Add objective function data frame to the current objective function
 }
 \author{
 Matthew L. Fidler

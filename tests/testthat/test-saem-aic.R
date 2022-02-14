@@ -1,4 +1,5 @@
 test_that("testing saem without table can add focei objf", {
+
   one.cmt <- function() {
     ini({
       tka <- 0.45 ; label("Log Ka")
@@ -16,16 +17,16 @@ test_that("testing saem without table can add focei objf", {
       linCmt() ~ add(add.sd)
     })
   }
-  
-  fit <- 
+
+  fit <-
     suppressMessages(
       nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
     )
-  
+
   expect_s3_class(fit, "nlmixr2FitCore")
   expect_false(inherits(fit, "data.frame"))
   expect_false(inherits(fit, "nlmixrFitData"))
-  
+
   expect_error(suppressMessages(setOfv(fit, "focei")), NA)
   expect_error(suppressMessages(setOfv(fit, "foce")), NA)
   expect_error(suppressMessages(setOfv(fit, "fo")), NA)
