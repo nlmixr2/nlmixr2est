@@ -15,7 +15,8 @@
 #' @export
 assertNlmixrFit <- function(fit) {
   .object <- as.character(substitute(fit))
-  if (!inherits(fit, "nlmixr2FitCore")) {
+  if (!(inherits(fit, "nlmixr2FitCore") ||
+        inherits(fit, "nlmixr2FitCoreSilent"))) {
     stop("'", .object, "' needs to be a nlmixr fit object",
          call.=FALSE)
   }
