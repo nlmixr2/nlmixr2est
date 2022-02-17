@@ -99,7 +99,7 @@
 #' @noRd
 .configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
-                       ODEopt = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", transitAbs = FALSE, maxeval = 100000),
+                       rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", transitAbs = FALSE, maxeval = 100000),
                        distribution = c("normal", "poisson", "binomial"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
@@ -121,9 +121,8 @@
   type.idx <- c("nelder-mead" = 1L, "newuoa" = 2L)
   type <- match.arg(type)
   type <- type.idx[type]
-  force(ODEopt)
-  names(ODEopt) <- gsub("transit_abs", "transitAbs", names(ODEopt))
-  ODEopt <- do.call(rxode2::rxSolve, c(list(object=NULL), ODEopt))
+  force(rxControl)
+  rxControl <- do.call(rxode2::rxControl, rxControl)
   # mcmc=list(niter=c(200,300), nmc=3, nu=c(2,2,2));ODEopt = list(atol=1e-6, rtol=1e-4, stiff=1, transit_abs=0);distribution=c("normal","poisson","binomial");seed=99;data=dat;distribution=1;fixed=NULL
   set.seed(seed)
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
@@ -432,10 +431,10 @@
   opt$distribution <- distribution
   opt$paramUpdate <- attr(model$saem_mod, "paramUpdate")
   optM$paramUpdate <- attr(model$saem_mod, "paramUpdate")
-  opt$ODEopt <- ODEopt
-  optM$ODEopt <- ODEopt
+  opt$rxControl <- rxControl
+  optM$rxControl <- rxControl
   cfg <- list(
-    ODEopt = ODEopt,
+    rxControl = rxControl,
     inits = inits.save,
     nu = mcmc$nu,
     niter = niter,

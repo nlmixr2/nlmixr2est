@@ -134,6 +134,7 @@ saemControl <- function(seed = 99,
                         perFixResid=0.1,
                         compress=TRUE,
                         rxControl=NULL,
+                        sigdig=NULL,
                         ...) {
   type <- match.arg(type)
   .rm <- c()
@@ -149,6 +150,11 @@ saemControl <- function(seed = 99,
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  if (is.null(rxControl)) {
+    rxControl <- rxode2::rxControl(sigdig=sigdig)
+  } else if (is.list(rxControl)) {
+    rxControl <- do.call(rxode2::rxControl, rxControl)
+  }
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     rxControl = rxControl,
