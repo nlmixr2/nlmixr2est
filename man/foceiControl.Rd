@@ -714,21 +714,6 @@ to zero and do not optimize any longer}
 qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
 (excluding zero) times by the 0.95\% normal region}
 
-\item{stiff}{a logical (\code{TRUE} by default) indicating whether
-the ODE system is stiff or not.\preformatted{For stiff ODE systems (`stiff = TRUE`), `rxode2` uses the
-LSODA (Livermore Solver for Ordinary Differential Equations)
-Fortran package, which implements an automatic method switching
-for stiff and non-stiff problems along the integration
-interval, authored by Hindmarsh and Petzold (2003).
-
-For non-stiff systems (`stiff = FALSE`), `rxode2` uses
-DOP853, an explicit Runge-Kutta method of order 8(5, 3) of
-Dormand and Prince as implemented in C by Hairer and Wanner
-(1993).
-
-If stiff is not specified, the `method` argument is used instead.
-}}
-
 \item{nRetries}{If FOCEi doesn't fit with the current parameter
 estimates, randomly sample new parameter estimates and restart
 the problem.  This is similar to 'PsN' resampling.}
