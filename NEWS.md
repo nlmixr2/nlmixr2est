@@ -53,7 +53,13 @@
   combined model is run (by default `combined2()`)
 
 - Parameter history and printout now uses standard deviation for
-  additive only components, matching the estimation of the components
+  additive only components, matching the estimation of the components.
+  
+- `rxode2` solving options are now saved in the `rxControl` part of
+  the `saemControl()`.  That is
+  `saemControl(rxControl=rxControl(...))`; This fixes any conflicting
+  option names as well as allowing alignment between the control
+  structures in `focei`, `nlme` and `saem`
 
 ## nlme changes
 
@@ -76,6 +82,12 @@
   instead of the traditional `nlme` object.
 
 - `nlme_ode` and `lme_lin_cmpt` are both removed.
+
+- `rxode2` solving options are now saved in the `rxControl` part of
+  the `saemControl()`.  That is
+  `nlmeControl(rxControl=rxControl(...))`; This fixes any conflicting
+  option names as well as allowing alignment between the control
+  structures in `focei`, `nlme` and `saem`
 
 ## nlmixr2 object change
 

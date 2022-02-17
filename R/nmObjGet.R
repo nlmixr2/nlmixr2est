@@ -11,7 +11,7 @@
 #' @export
 nmObjGet <- function(x, ...) {
   if (!inherits(x, "nmObjGet")) {
-    stop("'x' is wrong type for 'nmObjGet'", call.=FALSE)
+    stop("'", as.character(substitute(x)), "' is wrong type for 'nmObjGet'", call.=FALSE)
   }
   .arg <- class(x)[1]
   if (any(.arg == c(

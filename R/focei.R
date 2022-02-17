@@ -9,6 +9,7 @@
 .regDecimalint <- rex::rex(or("0", group("1":"9", any_of("0":"9"))))
 .regNum <- rex::rex(maybe("-"), or(.regDecimalint, .regFloat1, .regFloat2))
 
+
 use.utf <- function() {
   opt <- getOption("cli.unicode", NULL)
   if (!is.null(opt)) {
@@ -43,27 +44,7 @@ is.latex <- function() {
 #'  \item The significant figures that some tables are rounded to.
 #' }
 #'
-#' @param atolSens Sensitivity atol, can be different than atol with
-#'     liblsoda.  This allows a less accurate solve for gradients (if desired)
-#'
-#' @param rtolSens Sensitivity rtol, can be different than rtol with
-#'     liblsoda.  This allows a less accurate solve for gradients (if desired)
-#'
-#' @param ssAtol Steady state absolute tolerance (atol) for calculating if steady-state
-#'     has been archived.
-#'
-#' @param ssRtol Steady state relative tolerance (rtol) for
-#'     calculating if steady-state has been achieved.
-#'
-#' @param ssAtolSens Sensitivity absolute tolerance (atol) for
-#'     calculating if steady state has been achieved for sensitivity compartments.
-#'
-#' @param ssRtolSens Sensitivity relative tolerance (rtol) for
-#'     calculating if steady state has been achieved for sensitivity compartments.
-#'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
-#'
-#' @param maxstepsOde Maximum number of steps for ODE solver.
 #'
 #' @param print Integer representing when the outer step is
 #'     printed. When this is 0 or do not print the iterations.  1 is
@@ -605,8 +586,10 @@ is.latex <- function() {
 #'
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
+#'
 #' @param maxOdeRecalc This represents the maximum number of
 #'   recalculations before focei fails ODE integration.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -639,13 +622,6 @@ foceiControl <- function(sigdig = 3, ...,
                          maxInnerIterations = 1000,
                          maxOuterIterations = 5000,
                          n1qn1nsim = NULL,
-                         method = c("liblsoda", "lsoda", "dop853"),
-                         transitAbs = NULL, atol = NULL, rtol = NULL,
-                         atolSens = NULL, rtolSens = NULL,
-                         ssAtol = NULL, ssRtol = NULL, ssAtolSens = NULL, ssRtolSens = NULL,
-                         minSS = 10L, maxSS = 1000L,
-                         maxstepsOde = 500000L, hmin = 0L, hmax = NA_real_, hini = 0, maxordn = 12L, maxords = 5L, cores,
-                         covsInterpolation = c("locf", "linear", "nocb", "midpoint"),
                          print = 1L,
                          printNcol = floor((getOption("width") - 23) / 12),
                          scaleTo = 1.0,
@@ -744,7 +720,8 @@ foceiControl <- function(sigdig = 3, ...,
                          addProp = c("combined2", "combined1"),
                          singleOde = TRUE,
                          badSolveObjfAdj=100,
-                         compress=TRUE) {
+                         compress=TRUE,
+                         rxControl=NULL) {
   if (is.null(boundTol)) {
     boundTol <- 5 * 10^(-sigdig + 1)
   }
@@ -763,30 +740,6 @@ foceiControl <- function(sigdig = 3, ...,
   if (is.null(lbfgsFactr)) {
     lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
   }
-  if (is.null(atol)) {
-    atol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(rtol)) {
-    rtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(atolSens)) {
-    atolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(rtolSens)) {
-    rtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(ssAtol)) {
-    ssAtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(ssRtol)) {
-    ssRtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(ssAtolSens)) {
-    ssAtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(ssRtolSens)) {
-    ssRtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
   if (is.null(rel.tol)) {
     rel.tol <- 10^(-sigdig - 1)
   }
@@ -796,43 +749,15 @@ foceiControl <- function(sigdig = 3, ...,
   if (is.null(derivSwitchTol)) {
     derivSwitchTol <- 2 * 10^(-sigdig - 1)
   }
+
   ## if (is.null(gillRtol)){
   ##     ## FIXME: there is a way to calculate this according to the
   ##     ## Gill paper but it is buried in their optimization book.
   ##     gillRtol <- 10 ^ (-sigdig - 1);
   ## }
   .xtra <- list(...)
-  if (is.null(transitAbs) && !is.null(.xtra$transit_abs)) { # nolint
-    transitAbs <- .xtra$transit_abs # nolint
-  }
-  if (missing(covsInterpolation) && !is.null(.xtra$covs_interpolation)) { # nolint
-    covsInterpolation <- .xtra$covs_interpolation # nolint
-  }
   if (missing(maxInnerIterations) && !is.null(.xtra$max_iterations)) { # nolint
     maxInnerIterations <- .xtra$max_iterations # nolint
-  }
-  if (!missing(stiff) && missing(method)) {
-    if (rxode2::rxIs(stiff, "logical")) {
-      if (stiff) {
-        method <- "lsoda"
-        warning("stiff=TRUE has been replaced with method = \"lsoda\".")
-      } else {
-        method <- "dop853"
-        warning("stiff=FALSE has been replaced with method = \"dop853\".")
-      }
-    }
-  } else {
-    if (inherits(method, "numeric")) {
-      method <- as.integer(method)
-    }
-    if (!rxode2::rxIs(method, "integer")) {
-      if (inherits(method, "character")) {
-        method <- match.arg(method)
-      } else {
-        method <- "liblsoda"
-        warning("could not figure out method, using 'liblsoda'")
-      }
-    }
   }
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
@@ -852,22 +777,6 @@ foceiControl <- function(sigdig = 3, ...,
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
   derivMethod <- as.integer(.methodIdx[derivMethod])
   covDerivMethod <- .methodIdx[match.arg(covDerivMethod)]
-  if (length(covsInterpolation) > 1) covsInterpolation <- covsInterpolation[1]
-  if (!rxode2::rxIs(covsInterpolation, "integer")) {
-    covsInterpolation <- tolower(match.arg(
-      covsInterpolation,
-      c("linear", "locf", "LOCF", "constant", "nocb", "NOCB", "midpoint")
-    ))
-  }
-
-  ## if (covsInterpolation == "constant") covsInterpolation <- "locf";
-  ## covsInterpolation  <- as.integer(which(covsInterpolation == c("linear", "locf", "nocb", "midpoint")) - 1);
-  if (missing(cores)) {
-    cores <- rxode2::rxCores()
-  }
-  if (missing(n1qn1nsim)) {
-    n1qn1nsim <- 10 * maxInnerIterations + 1
-  }
   if (length(covMethod) == 1) {
     if (covMethod == "") {
       covMethod <- 0L
@@ -877,6 +786,9 @@ foceiControl <- function(sigdig = 3, ...,
     covMethod <- match.arg(covMethod)
     .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
     covMethod <- .covMethodIdx[match.arg(covMethod)]
+  }
+  if (missing(n1qn1nsim)) {
+    n1qn1nsim <- 10 * maxInnerIterations + 1
   }
   .outerOptTxt <- "custom"
   if (rxode2::rxIs(outerOpt, "character")) {
@@ -952,28 +864,18 @@ foceiControl <- function(sigdig = 3, ...,
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  if (is.null(rxControl)) {
+    rxControl <- rxode2::rxControl(sigdig=sigdig)
+  } else if (is.list(rxControl)) {
+    rxControl <- do.call(rxode2::rxControl, rxControl)
+  }
+  if (!inherits(rxControl, "rxControl")) {
+    stop("rxControl needs to be ode solving options from rxode2::rxControl()",
+         call.=FALSE)
+  }
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
-    method = method,
-    transitAbs = transitAbs,
-    atol = atol,
-    rtol = rtol,
-    atolSens = atolSens,
-    rtolSens = rtolSens,
-    ssAtol = ssAtol,
-    ssRtol = ssRtol,
-    ssAtolSens = ssAtolSens,
-    ssRtolSens = ssRtolSens,
-    minSS = minSS, maxSS = maxSS,
-    maxstepsOde = maxstepsOde,
-    hmin = hmin,
-    hmax = hmax,
-    hini = hini,
-    maxordn = maxordn,
-    maxords = maxords,
-    cores = cores,
-    covsInterpolation = covsInterpolation,
     n1qn1nsim = as.integer(n1qn1nsim),
     print = as.integer(print),
     lbfgsLmm = as.integer(lbfgsLmm),
@@ -1070,6 +972,7 @@ foceiControl <- function(sigdig = 3, ...,
     singleOde = singleOde,
     badSolveObjfAdj=badSolveObjfAdj,
     compress=compress,
+    rxControl=rxControl,
     ...
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
@@ -1079,10 +982,6 @@ foceiControl <- function(sigdig = 3, ...,
   } else if (!is.null(etaMat)) {
     .ret$etaMat <- etaMat
   }
-  .tmp <- .ret
-  .tmp$maxsteps <- maxstepsOde
-  .tmp <- do.call(rxode2::rxControl, .tmp)
-  .ret$rxControl <- .tmp
   class(.ret) <- "foceiControl"
   return(.ret)
 }
@@ -1873,24 +1772,16 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiOptEnvAssignTol <- function(ui, env) {
-  .len <- length(env$model$pred.nolhs$state)
+  .len <- length(env$model$predNoLhs$state)
   rxode2::rxAssignControlValue(ui, "predNeq", .len)
-  .atol <- rep(rxode2::rxGetControl(ui, "atol", 5e-06), .len)
-  .rtol <- rep(rxode2::rxGetControl(ui, "rtol", 5e-06), .len)
-  .ssAtol <- rep(rxode2::rxGetControl(ui, "ssAtol", 5e-06), .len)
-  .ssRtol <- rep(rxode2::rxGetControl(ui, "ssRtol", 5e-06), .len)
   if (!is.null(env$model$inner)) {
-    .len2 <- length(env$model$inner$state) - .len
-    .defSens <- 5e-06 / 2
-    .atol <- c(.atol, rep(rxode2::rxGetControl(ui, "atolSens", .defSens), .len2))
-    .rtol <- c(.rtol, rep(rxode2::rxGetControl(ui, "rtolSens", .defSens), .len2))
-    .ssAtol <- c(.ssAtol, rep(rxode2::rxGetControl(ui, "ssAtolSens", .defSens), .len2))
-    .ssRtol <- c(.ssAtol, rep(rxode2::rxGetControl(ui, "ssRtolSens", .defSens), .len2))
+    .len0 <- length(env$model$inner$state)
+    .len2 <- .len0 - .len
+    if (.len2 > 0){
+      .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+      rxode2::rxAssignControlValue(ui, "rxControl", rxode2::rxControlUpdateSens(.rxControl, .len2, .len0))
+    }
   }
-  rxode2::rxAssignControlValue(ui, "atol", .atol)
-  rxode2::rxAssignControlValue(ui, "rtol", .rtol)
-  rxode2::rxAssignControlValue(ui, "ssAtol", .ssAtol)
-  rxode2::rxAssignControlValue(ui, "ssRtol", .ssRtol)
 }
 
 #'  This sets up the initial omega/eta estimates and the boundaries for the whole system
@@ -2228,64 +2119,69 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
-  while (this.env$err == "theta reset") {
-    assign("err", "", this.env)
-    .ret0 <- tryCatch(
-    {
-      foceiFitCpp_(.ret)
-    },
-    error = function(e) {
-      if (regexpr("theta reset", e$message) != -1) {
-        assign("zeroOuter", FALSE, this.env)
-        assign("zeroGrad", FALSE, this.env)
-        if (regexpr("theta reset0", e$message) != -1) {
-          assign("zeroGrad", TRUE, this.env)
-        }  else if (regexpr("theta resetZ", e$message) != -1) {
-          assign("zeroOuter", TRUE, this.env)
+  if (getOption("nlmixr2.retryFocei", TRUE)){
+    while (this.env$err == "theta reset") {
+      assign("err", "", this.env)
+      .ret0 <- tryCatch(
+      {
+        foceiFitCpp_(.ret)
+      },
+      error = function(e) {
+        if (regexpr("theta reset", e$message) != -1) {
+          assign("zeroOuter", FALSE, this.env)
+          assign("zeroGrad", FALSE, this.env)
+          if (regexpr("theta reset0", e$message) != -1) {
+            assign("zeroGrad", TRUE, this.env)
+          }  else if (regexpr("theta resetZ", e$message) != -1) {
+            assign("zeroOuter", TRUE, this.env)
+          }
+          assign("err", "theta reset", this.env)
+        } else {
+          assign("err", e$message, this.env)
         }
-        assign("err", "theta reset", this.env)
-      } else {
-        assign("err", e$message, this.env)
+      })
+      if (this.env$err == "theta reset") {
+        .nm <- names(.ret$thetaIni)
+        .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
+        .ret$rxInv$theta <- .thetaReset$omegaTheta
+        .ret$control$printTop <- FALSE
+        .ret$etaMat <- .thetaReset$etaMat
+        .ret$control$etaMat <- .thetaReset$etaMat
+        .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
+        .ret$control$nF <- .thetaReset$nF
+        .ret$control$gillRetC <- .thetaReset$gillRetC
+        .ret$control$gillRet <- .thetaReset$gillRet
+        .ret$control$gillRet <- .thetaReset$gillRet
+        .ret$control$gillDf <- .thetaReset$gillDf
+        .ret$control$gillDf2 <- .thetaReset$gillDf2
+        .ret$control$gillErr <- .thetaReset$gillErr
+        .ret$control$rEps <- .thetaReset$rEps
+        .ret$control$aEps <- .thetaReset$aEps
+        .ret$control$rEpsC <- .thetaReset$rEpsC
+        .ret$control$aEpsC <- .thetaReset$aEpsC
+        .ret$control$c1 <- .thetaReset$c1
+        .ret$control$c2 <- .thetaReset$c2
+        if (this.env$zeroOuter) {
+          message("Posthoc reset")
+          .ret$control$maxOuterIterations <- 0L
+        } else if (this.env$zeroGrad) {
+          message("Theta reset (zero gradient values); Switch to bobyqa")
+          rxode2::rxReq("minqa")
+          .ret$control$outerOptFun <- .bobyqa
+          .ret$control$outerOpt <- -1L
+        } else {
+          message("Theta reset (ETA drift)")
+        }
       }
-    })
-    if (this.env$err == "theta reset") {
-      .nm <- names(.ret$thetaIni)
-      .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
-      .ret$rxInv$theta <- .thetaReset$omegaTheta
-      .ret$control$printTop <- FALSE
-      .ret$etaMat <- .thetaReset$etaMat
-      .ret$control$etaMat <- .thetaReset$etaMat
-      .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
-      .ret$control$nF <- .thetaReset$nF
-      .ret$control$gillRetC <- .thetaReset$gillRetC
-      .ret$control$gillRet <- .thetaReset$gillRet
-      .ret$control$gillRet <- .thetaReset$gillRet
-      .ret$control$gillDf <- .thetaReset$gillDf
-      .ret$control$gillDf2 <- .thetaReset$gillDf2
-      .ret$control$gillErr <- .thetaReset$gillErr
-      .ret$control$rEps <- .thetaReset$rEps
-      .ret$control$aEps <- .thetaReset$aEps
-      .ret$control$rEpsC <- .thetaReset$rEpsC
-      .ret$control$aEpsC <- .thetaReset$aEpsC
-      .ret$control$c1 <- .thetaReset$c1
-      .ret$control$c2 <- .thetaReset$c2
-      if (this.env$zeroOuter) {
-        message("Posthoc reset")
-        .ret$control$maxOuterIterations <- 0L
-      } else if (this.env$zeroGrad) {
-        message("Theta reset (zero gradient values); Switch to bobyqa")
-        rxode2::rxReq("minqa")
-        .ret$control$outerOptFun <- .bobyqa
-        .ret$control$outerOpt <- -1L
+      if (this.env$err != "") {
+        stop(this.env$err)
       } else {
-        message("Theta reset (ETA drift)")
+        return(.ret0)
       }
+
     }
-    if (this.env$err != "") {
-      stop(this.env$err)
-    } else {
-      return(.ret0)
-    }
+  } else {
+    foceiFitCpp_(.ret)
   }
 }
 #'  Restart the estimation if it wasn't successful by moving the parameters (randomly)
@@ -2322,7 +2218,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       }
     )
     .ret$thetaIni <- .estNew
-    .ret0 <- try(.foceiFitInternal(.ret))
+    if (getOption("nlmixr2.retryFocei", TRUE)) {
+      .ret0 <- try(.foceiFitInternal(.ret))
+    } else {
+      .ret0 <- .foceiFitInternal(.ret)
+    }
+
     .n <- .n + 1
   }
   .ret0
@@ -2390,7 +2291,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
                             row.names="strict", col.names="strict")
   }
-  .ret0 <- try(.foceiFitInternal(.env))
+  if (getOption("nlmixr2.retryFocei", TRUE)) {
+    .ret0 <- try(.foceiFitInternal(.env))
+  } else {
+    .ret0 <- .foceiFitInternal(.env)
+  }
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)

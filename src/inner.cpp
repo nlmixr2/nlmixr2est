@@ -2994,7 +2994,8 @@ NumericVector foceiSetup_(const RObject &obj,
   if (control.isNull()){
     stop("ODE options must be specified.");
   }
-  List odeO = as<List>(control);
+  List foceiO = as<List>(control);
+  List rxControl = as<List>(foceiO["rxControl"]);
   // This fills in op_focei.neta
   List mvi;
   if (!Rf_isNull(obj)){
@@ -3006,12 +3007,12 @@ NumericVector foceiSetup_(const RObject &obj,
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
 
-  op_focei.badSolveObjfAdj=fabs(as<double>(odeO["badSolveObjfAdj"]));
+  op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
 
   op_focei.zeroGrad = false;
-  op_focei.resetThetaCheckPer = as<double>(odeO["resetThetaCheckPer"]);
-  op_focei.printTop = as<int>(odeO["printTop"]);
-  op_focei.nF2 = as<int>(odeO["nF"]);
+  op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
+  op_focei.printTop = as<int>(foceiO["printTop"]);
+  op_focei.nF2 = as<int>(foceiO["nF"]);
   if (op_focei.nF2 == 0){
     vGrad.clear();
     vPar.clear();
@@ -3020,17 +3021,17 @@ NumericVector foceiSetup_(const RObject &obj,
     niter.clear();
     niterGrad.clear();
   }
-  op_focei.maxOuterIterations = as<int>(odeO["maxOuterIterations"]);
-  op_focei.maxInnerIterations = as<int>(odeO["maxInnerIterations"]);
-  op_focei.maxOdeRecalc = as<int>(odeO["maxOdeRecalc"]);
+  op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
+  op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
+  op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
-  op_focei.odeRecalcFactor = as<double>(odeO["odeRecalcFactor"]);
+  op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
   op_focei.reducedTol = 0;
   op_focei.repeatGill=0;
   op_focei.repeatGillN=0;
-  op_focei.repeatGillMax=as<int>(odeO["repeatGillMax"]);
-  op_focei.stickyRecalcN=as<int>(odeO["stickyRecalcN"]);
-  op_focei.neta = as<int>(odeO["neta"]);
+  op_focei.repeatGillMax=as<int>(foceiO["repeatGillMax"]);
+  op_focei.stickyRecalcN=as<int>(foceiO["stickyRecalcN"]);
+  op_focei.neta = as<int>(foceiO["neta"]);
   if (op_focei.neta != 0) {
     if (!rxode2::rxIs(rxInv, "rxSymInvCholEnv")){
       stop(_("Omega isn't in the proper format"));
@@ -3038,17 +3039,17 @@ NumericVector foceiSetup_(const RObject &obj,
       _rxInv = as<List>(rxInv);
     }
   }
-  op_focei.omegan = as<int>(odeO["nomega"]);
-  op_focei.ntheta = as<int>(odeO["ntheta"]);
+  op_focei.omegan = as<int>(foceiO["nomega"]);
+  op_focei.ntheta = as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
-  op_focei.nfixed = as<int>(odeO["nfixed"]);
+  op_focei.nfixed = as<int>(foceiO["nfixed"]);
   if (op_focei.maxOuterIterations <= 0){
     // No scaling.
     foceiSetupTheta_(mvi, theta, thetaFixed, 0.0, !Rf_isNull(obj));
     op_focei.scaleObjective=0;
   } else {
-    foceiSetupTheta_(mvi, theta, thetaFixed, as<double>(odeO["scaleTo"]), !Rf_isNull(obj));
-    op_focei.scaleObjectiveTo=as<double>(odeO["scaleObjective"]);
+    foceiSetupTheta_(mvi, theta, thetaFixed, as<double>(foceiO["scaleTo"]), !Rf_isNull(obj));
+    op_focei.scaleObjectiveTo=as<double>(foceiO["scaleObjective"]);
     if (op_focei.scaleObjectiveTo <= 0){
       op_focei.scaleObjective=0;
     } else {
@@ -3132,7 +3133,6 @@ NumericVector foceiSetup_(const RObject &obj,
   params.attr("row.names") = IntegerVector::create(NA_INTEGER,-nsub);
   // Now pre-fill parameters.
   if (!Rf_isNull(obj)) {
-    List rxControl = odeO["rxControl"];
     rxControl[Rxc_cores] = IntegerVector::create(1); // #Force one core; parallelization needs to be taken care of here in inner.cpp
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
@@ -3145,37 +3145,37 @@ NumericVector foceiSetup_(const RObject &obj,
     if (op_focei.neta == 0) foceiSetupNoEta_();
     else foceiSetupEta_(etaMat0);
   }
-  op_focei.epsilon=as<double>(odeO["epsilon"]);
-  op_focei.nsim=as<int>(odeO["n1qn1nsim"]);
+  op_focei.epsilon=as<double>(foceiO["epsilon"]);
+  op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
   op_focei.resetThetaSize = R_PosInf;
-  // op_focei.printInner=as<int>(odeO["printInner"]);
+  // op_focei.printInner=as<int>(foceiO["printInner"]);
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
-  op_focei.printOuter=as<int>(odeO["print"]);
+  op_focei.printOuter=as<int>(foceiO["print"]);
   if (op_focei.printOuter < 0) op_focei.printOuter = -op_focei.printOuter;
   // if (op_focei.printInner > 0){
   //   rx->op->cores=1;
   // }
   int totN=op_focei.ntheta + op_focei.omegan;
-  NumericVector cEps=odeO["derivEps"];
+  NumericVector cEps=foceiO["derivEps"];
   if (cEps.size() != 2){
     stop("derivEps must be 2 elements for determining forward difference step size.");
   }
-  NumericVector covDerivEps=odeO["centralDerivEps"];
+  NumericVector covDerivEps=foceiO["centralDerivEps"];
   if (covDerivEps.size() != 2){
     stop("centralDerivEps must be 2 elements for determining central difference step size.");
   }
-  op_focei.derivMethod = as<int>(odeO["derivMethod"]);
+  op_focei.derivMethod = as<int>(foceiO["derivMethod"]);
   if (op_focei.derivMethod == 3){
     op_focei.derivMethod=0;
-    op_focei.derivSwitchTol=as<double>(odeO["derivSwitchTol"]);
+    op_focei.derivSwitchTol=as<double>(foceiO["derivSwitchTol"]);
     op_focei.derivMethodSwitch=1;
   }
 
   IntegerVector muRef;
-  if (odeO.containsElementNamed("foceiMuRef")){
-    if (rxode2::rxIs(odeO["foceiMuRef"], "integer")) {
-      muRef = as<IntegerVector>(odeO["foceiMuRef"]);
+  if (foceiO.containsElementNamed("foceiMuRef")){
+    if (rxode2::rxIs(foceiO["foceiMuRef"], "integer")) {
+      muRef = as<IntegerVector>(foceiO["foceiMuRef"]);
     }
   }
   if (muRef.size() == 0){
@@ -3218,15 +3218,15 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.nF2 != 0){
     // Restore Gill information
-    IntegerVector gillRetC =as<IntegerVector>(odeO["gillRetC"]);
-    IntegerVector gillRet =as<IntegerVector>(odeO["gillRet"]);
-    NumericVector gillDf = as<NumericVector>(odeO["gillDf"]);
-    NumericVector gillDf2 = as<NumericVector>(odeO["gillDf2"]);
-    NumericVector gillErr = as<NumericVector>(odeO["gillErr"]);
-    NumericVector rEps = as<NumericVector>(odeO["rEps"]);
-    NumericVector aEps = as<NumericVector>(odeO["aEps"]);
-    NumericVector rEpsC = as<NumericVector>(odeO["rEpsC"]);
-    NumericVector aEpsC = as<NumericVector>(odeO["aEpsC"]);
+    IntegerVector gillRetC =as<IntegerVector>(foceiO["gillRetC"]);
+    IntegerVector gillRet =as<IntegerVector>(foceiO["gillRet"]);
+    NumericVector gillDf = as<NumericVector>(foceiO["gillDf"]);
+    NumericVector gillDf2 = as<NumericVector>(foceiO["gillDf2"]);
+    NumericVector gillErr = as<NumericVector>(foceiO["gillErr"]);
+    NumericVector rEps = as<NumericVector>(foceiO["rEps"]);
+    NumericVector aEps = as<NumericVector>(foceiO["aEps"]);
+    NumericVector rEpsC = as<NumericVector>(foceiO["rEpsC"]);
+    NumericVector aEpsC = as<NumericVector>(foceiO["aEpsC"]);
     std::copy(gillRetC.begin(), gillRetC.end(), &op_focei.gillRetC[0]);
     std::copy(gillRet.begin(), gillRet.end(), &op_focei.gillRet[0]);
     std::copy(gillDf.begin(), gillDf.end(), &op_focei.gillDf[0]);
@@ -3292,70 +3292,70 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.calcGrad=0;
 
   // Outer options
-  op_focei.outerOpt	=as<int>(odeO["outerOpt"]);
+  op_focei.outerOpt	=as<int>(foceiO["outerOpt"]);
   // lbfgsb options
-  op_focei.factr	= as<double>(odeO["lbfgsFactr"]);
-  op_focei.pgtol	= as<double>(odeO["lbfgsPgtol"]);
-  op_focei.lmm		= as<int>(odeO["lbfgsLmm"]);
-  op_focei.covDerivMethod = as<int>(odeO["covDerivMethod"]);
-  int type = TYPEOF(odeO["covMethod"]);
+  op_focei.factr	= as<double>(foceiO["lbfgsFactr"]);
+  op_focei.pgtol	= as<double>(foceiO["lbfgsPgtol"]);
+  op_focei.lmm		= as<int>(foceiO["lbfgsLmm"]);
+  op_focei.covDerivMethod = as<int>(foceiO["covDerivMethod"]);
+  int type = TYPEOF(foceiO["covMethod"]);
   if (type == INTSXP || type == REALSXP) {
-    op_focei.covMethod = as<int>(odeO["covMethod"]);
+    op_focei.covMethod = as<int>(foceiO["covMethod"]);
   } else {
     Rcpp::stop("'covMethod' needs to be an integer in lower level inner");
   }
-  op_focei.eigen = as<int>(odeO["eigen"]);
+  op_focei.eigen = as<int>(foceiO["eigen"]);
   op_focei.ci=0.95;
-  op_focei.sigdig=as<double>(odeO["sigdig"]);
-  op_focei.useColor=as<int>(odeO["useColor"]);
-  op_focei.boundTol=as<double>(odeO["boundTol"]);
-  op_focei.printNcol=as<int>(odeO["printNcol"]);
-  op_focei.noabort=as<int>(odeO["noAbort"]);
-  op_focei.interaction=as<int>(odeO["interaction"]);
-  op_focei.cholSEtol=as<double>(odeO["cholSEtol"]);
-  op_focei.hessEps=as<double>(odeO["hessEps"]);
-  op_focei.cholAccept=as<double>(odeO["cholAccept"]);
-  op_focei.resetEtaSize=as<double>(odeO["resetEtaSize"]);
-  op_focei.resetThetaSize=as<double>(odeO["resetThetaSize"]);
-  op_focei.resetThetaFinalSize = as<double>(odeO["resetThetaFinalSize"]);
+  op_focei.sigdig=as<double>(foceiO["sigdig"]);
+  op_focei.useColor=as<int>(foceiO["useColor"]);
+  op_focei.boundTol=as<double>(foceiO["boundTol"]);
+  op_focei.printNcol=as<int>(foceiO["printNcol"]);
+  op_focei.noabort=as<int>(foceiO["noAbort"]);
+  op_focei.interaction=as<int>(foceiO["interaction"]);
+  op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
+  op_focei.hessEps=as<double>(foceiO["hessEps"]);
+  op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
+  op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
+  op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
+  op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
 
-  op_focei.cholSEOpt=as<double>(odeO["cholSEOpt"]);
-  op_focei.cholSECov=as<double>(odeO["cholSECov"]);
-  op_focei.fo=as<int>(odeO["fo"]);
+  op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
+  op_focei.cholSECov=as<double>(foceiO["cholSECov"]);
+  op_focei.fo=as<int>(foceiO["fo"]);
   if (op_focei.neta == 0) op_focei.fo = 0;
   if (op_focei.fo) op_focei.maxInnerIterations=0;
 
-  op_focei.covTryHarder=as<int>(odeO["covTryHarder"]);
-  op_focei.resetHessianAndEta=as<int>(odeO["resetHessianAndEta"]);
-  op_focei.gillK = as<int>(odeO["gillK"]);
-  op_focei.gillKcov = as<int>(odeO["gillKcov"]);
-  op_focei.gillStep    = fabs(as<double>(odeO["gillStep"]));
-  op_focei.gillStepCov = fabs(as<double>(odeO["gillStepCov"]));
-  op_focei.gillFtol    = fabs(as<double>(odeO["gillFtol"]));
-  op_focei.gillFtolCov = fabs(as<double>(odeO["gillFtolCov"]));
+  op_focei.covTryHarder=as<int>(foceiO["covTryHarder"]);
+  op_focei.resetHessianAndEta=as<int>(foceiO["resetHessianAndEta"]);
+  op_focei.gillK = as<int>(foceiO["gillK"]);
+  op_focei.gillKcov = as<int>(foceiO["gillKcov"]);
+  op_focei.gillStep    = fabs(as<double>(foceiO["gillStep"]));
+  op_focei.gillStepCov = fabs(as<double>(foceiO["gillStepCov"]));
+  op_focei.gillFtol    = fabs(as<double>(foceiO["gillFtol"]));
+  op_focei.gillFtolCov = fabs(as<double>(foceiO["gillFtolCov"]));
   op_focei.didGill = 0;
-  op_focei.gillRtol = as<double>(odeO["gillRtol"]);
-  op_focei.scaleType = as<int>(odeO["scaleType"]);
-  op_focei.normType = as<int>(odeO["normType"]);
-  op_focei.scaleC0=as<double>(odeO["scaleC0"]);
-  op_focei.scaleCmin=as<double>(odeO["scaleCmin"]);
-  op_focei.scaleCmax=as<double>(odeO["scaleCmax"]);
-  op_focei.abstol=as<double>(odeO["abstol"]);
-  op_focei.reltol=as<double>(odeO["reltol"]);
-  op_focei.smatNorm=as<int>(odeO["smatNorm"]);
-  op_focei.rmatNorm=as<int>(odeO["rmatNorm"]);
-  op_focei.covGillF=as<int>(odeO["covGillF"]);
-  op_focei.optGillF=as<int>(odeO["optGillF"]);
-  op_focei.covSmall = as<double>(odeO["covSmall"]);
-  op_focei.gradTrim = as<double>(odeO["gradTrim"]);
-  op_focei.gradCalcCentralLarge = as<double>(odeO["gradCalcCentralLarge"]);
-  op_focei.gradCalcCentralSmall = as<double>(odeO["gradCalcCentralSmall"]);
-  op_focei.etaNudge = as<double>(odeO["etaNudge"]);
-  op_focei.etaNudge2 = as<double>(odeO["etaNudge2"]);
-  op_focei.eventFD = as<double>(odeO["eventFD"]);
-  op_focei.eventType = as<int>(odeO["eventType"]);
-  op_focei.predNeq = as<int>(odeO["predNeq"]);
-  op_focei.gradProgressOfvTime = as<double>(odeO["gradProgressOfvTime"]);
+  op_focei.gillRtol = as<double>(foceiO["gillRtol"]);
+  op_focei.scaleType = as<int>(foceiO["scaleType"]);
+  op_focei.normType = as<int>(foceiO["normType"]);
+  op_focei.scaleC0=as<double>(foceiO["scaleC0"]);
+  op_focei.scaleCmin=as<double>(foceiO["scaleCmin"]);
+  op_focei.scaleCmax=as<double>(foceiO["scaleCmax"]);
+  op_focei.abstol=as<double>(foceiO["abstol"]);
+  op_focei.reltol=as<double>(foceiO["reltol"]);
+  op_focei.smatNorm=as<int>(foceiO["smatNorm"]);
+  op_focei.rmatNorm=as<int>(foceiO["rmatNorm"]);
+  op_focei.covGillF=as<int>(foceiO["covGillF"]);
+  op_focei.optGillF=as<int>(foceiO["optGillF"]);
+  op_focei.covSmall = as<double>(foceiO["covSmall"]);
+  op_focei.gradTrim = as<double>(foceiO["gradTrim"]);
+  op_focei.gradCalcCentralLarge = as<double>(foceiO["gradCalcCentralLarge"]);
+  op_focei.gradCalcCentralSmall = as<double>(foceiO["gradCalcCentralSmall"]);
+  op_focei.etaNudge = as<double>(foceiO["etaNudge"]);
+  op_focei.etaNudge2 = as<double>(foceiO["etaNudge2"]);
+  op_focei.eventFD = as<double>(foceiO["eventFD"]);
+  op_focei.eventType = as<int>(foceiO["eventType"]);
+  op_focei.predNeq = as<int>(foceiO["predNeq"]);
+  op_focei.gradProgressOfvTime = as<double>(foceiO["gradProgressOfvTime"]);
   op_focei.initObj=0;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
@@ -3382,9 +3382,9 @@ NumericVector foceiSetup_(const RObject &obj,
   double mn = op_focei.initPar[op_focei.npars-1], mx=op_focei.initPar[op_focei.npars-1],mean=0, oN=0, oM=0,s=0;
   double len=0;
   unsigned int k;
-  if (op_focei.nF2 > 0 && odeO.containsElementNamed("c1") && odeO.containsElementNamed("c2")){
-    op_focei.c1 = odeO["c1"];
-    op_focei.c2 = odeO["c2"];
+  if (op_focei.nF2 > 0 && foceiO.containsElementNamed("c1") && foceiO.containsElementNamed("c2")){
+    op_focei.c1 = foceiO["c1"];
+    op_focei.c2 = foceiO["c2"];
   } else {
     switch (op_focei.normType){
     case 1:
