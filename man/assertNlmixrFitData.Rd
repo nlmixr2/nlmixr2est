@@ -2,7 +2,7 @@
 % Please edit documentation in R/assert.R
 \name{assertNlmixrFitData}
 \alias{assertNlmixrFitData}
-\title{Assert that this is a nlmixr fit data object}
+\title{Assert that this is a nlmixr2 fit data object}
 \usage{
 assertNlmixrFitData(fit)
 }
@@ -13,7 +13,7 @@ assertNlmixrFitData(fit)
 Nothing
 }
 \description{
-Will error without nlmixr fit data object
+Will error without nlmixr2 fit data object
 }
 \examples{
 \dontrun{
