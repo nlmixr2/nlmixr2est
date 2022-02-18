@@ -55,7 +55,7 @@ is.latex <- function() {
 #'     By default this is 1.  When zero or below, no scaling is performed.
 #'
 #' @param scaleObjective Scale the initial objective function to this
-#'     value.  By default this is 1.
+#'     value.  By default this is 0 (meaning do not scale)
 #'
 #' @param derivEps Forward difference tolerances, which is a
 #'     vector of relative difference and absolute difference.  The
@@ -259,27 +259,28 @@ is.latex <- function() {
 #'     greatest expected change to a variable.  Note also that
 #'     smallest difference abs(upper-lower) should be greater than or
 #'     equal to rhobeg*2. If this is not the case then rhobeg will be
-#'     adjusted.
+#'     adjusted. (bobyqa)
 #'
 #' @param rhoend The smallest value of the trust region radius that
-#'     is allowed. If not defined, then 10^(-sigdig-1) will be used.
+#'     is allowed. If not defined, then 10^(-sigdig-1) will be used. (bobyqa)
 #'
 #' @param npt The number of points used to approximate the objective
 #'     function via a quadratic approximation for bobyqa. The value
 #'     of npt must be in the interval [n+2,(n+1)(n+2)/2] where n is
 #'     the number of parameters in par. Choices that exceed 2*n+1 are
-#'     not recommended. If not defined, it will be set to 2*n + 1
-#' @param eval.max Number of maximum evaluations of the objective function
+#'     not recommended. If not defined, it will be set to 2*n + 1. (bobyqa)
 #'
-#' @param iter.max Maximum number of iterations allowed.
+#' @param eval.max Number of maximum evaluations of the objective function (nlmimb)
 #'
-#' @param rel.tol Relative tolerance before nlminb stops.
+#' @param iter.max Maximum number of iterations allowed (nlmimb)
 #'
-#' @param x.tol X tolerance for nlmixr2 optimizers
+#' @param rel.tol Relative tolerance before nlminb stops (nlmimb).
 #'
-#' @param abstol Absolute tolerance for nlmixr2 optimizer
+#' @param x.tol X tolerance for nlmixr2 optimizer
 #'
-#' @param reltol  tolerance for nlmixr2
+#' @param abstol Absolute tolerance for nlmixr2 optimizer (BFGS)
+#'
+#' @param reltol  tolerance for nlmixr2 (BFGS)
 #'
 #' @param gillK The total number of possible steps to determine the
 #'     optimal forward/central difference step size per parameter (by
@@ -617,31 +618,32 @@ is.latex <- function() {
 #' @seealso \code{\link[n1qn1]{n1qn1}}
 #' @seealso \code{\link[rxode2]{rxSolve}}
 #' @export
-foceiControl <- function(sigdig = 3, ...,
+foceiControl <- function(sigdig = 3, #
+                         ...,
                          epsilon = NULL, # 1e-4,
-                         maxInnerIterations = 1000,
-                         maxOuterIterations = 5000,
-                         n1qn1nsim = NULL,
-                         print = 1L,
-                         printNcol = floor((getOption("width") - 23) / 12),
-                         scaleTo = 1.0,
-                         scaleObjective = 0,
-                         normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
-                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
-                         scaleCmax = 1e5,
-                         scaleCmin = 1e-5,
-                         scaleC = NULL,
-                         scaleC0 = 1e5,
-                         derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
-                         derivMethod = c("switch", "forward", "central"),
-                         derivSwitchTol = NULL,
-                         covDerivMethod = c("central", "forward"),
-                         covMethod = c("r,s", "r", "s", ""),
-                         hessEps = (.Machine$double.eps)^(1 / 3),
-                         eventFD = sqrt(.Machine$double.eps),
-                         eventType = c("gill", "central", "forward"),
-                         centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
-                         lbfgsLmm = 7L,
+                         maxInnerIterations = 1000, #
+                         maxOuterIterations = 5000, #
+                         n1qn1nsim = NULL, #
+                         print = 1L, #
+                         printNcol = floor((getOption("width") - 23) / 12), #
+                         scaleTo = 1.0, #
+                         scaleObjective = 0, #
+                         normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+                         scaleCmax = 1e5, #
+                         scaleCmin = 1e-5, #
+                         scaleC = NULL, #
+                         scaleC0 = 1e5, #
+                         derivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+                         derivMethod = c("switch", "forward", "central"), #
+                         derivSwitchTol = NULL, #
+                         covDerivMethod = c("central", "forward"), #
+                         covMethod = c("r,s", "r", "s", ""), #
+                         hessEps = (.Machine$double.eps)^(1 / 3), #
+                         eventFD = sqrt(.Machine$double.eps), #
+                         eventType = c("gill", "central", "forward"), #
+                         centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
+                         lbfgsLmm = 7L, #
                          lbfgsPgtol = 0,
                          lbfgsFactr = NULL,
                          eigen = TRUE,
@@ -722,73 +724,138 @@ foceiControl <- function(sigdig = 3, ...,
                          badSolveObjfAdj=100,
                          compress=TRUE,
                          rxControl=NULL) {
-  if (is.null(boundTol)) {
-    boundTol <- 5 * 10^(-sigdig + 1)
-  }
-  if (is.null(epsilon)) {
-    epsilon <- 10^(-sigdig - 1)
-  }
-  if (is.null(abstol)) {
-    abstol <- 10^(-sigdig - 1)
-  }
-  if (is.null(reltol)) {
-    reltol <- 10^(-sigdig - 1)
-  }
-  if (is.null(rhoend)) {
-    rhoend <- 10^(-sigdig - 1)
-  }
-  if (is.null(lbfgsFactr)) {
-    lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
-  }
-  if (is.null(rel.tol)) {
-    rel.tol <- 10^(-sigdig - 1)
-  }
-  if (is.null(x.tol)) {
-    x.tol <- 10^(-sigdig - 1)
-  }
-  if (is.null(derivSwitchTol)) {
-    derivSwitchTol <- 2 * 10^(-sigdig - 1)
-  }
-
-  ## if (is.null(gillRtol)){
-  ##     ## FIXME: there is a way to calculate this according to the
-  ##     ## Gill paper but it is buried in their optimization book.
-  ##     gillRtol <- 10 ^ (-sigdig - 1);
-  ## }
-  .xtra <- list(...)
-  if (missing(maxInnerIterations) && !is.null(.xtra$max_iterations)) { # nolint
-    maxInnerIterations <- .xtra$max_iterations # nolint
-  }
-  ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
-  ## method <- as.integer(.methodIdx[method]);
-  if (rxode2::rxIs(scaleType, "character")) {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- as.integer(.scaleTypeIdx[match.arg(scaleType)])
-  }
-  if (rxode2::rxIs(eventType, "character")) {
-    .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
-    eventType <- as.integer(.eventTypeIdx[match.arg(eventType)])
-  }
-  if (rxode2::rxIs(normType, "character")) {
-    .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6)
-    normType <- as.integer(.normTypeIdx[match.arg(normType)])
-  }
-  derivMethod <- match.arg(derivMethod)
-  .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-  derivMethod <- as.integer(.methodIdx[derivMethod])
-  covDerivMethod <- .methodIdx[match.arg(covDerivMethod)]
-  if (length(covMethod) == 1) {
-    if (covMethod == "") {
-      covMethod <- 0L
+  if (!is.null(sigdig)) {
+    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    if (is.null(boundTol)) {
+      boundTol <- 5 * 10^(-sigdig + 1)
+    }
+    if (is.null(epsilon)) {
+      epsilon <- 10^(-sigdig - 1)
+    }
+    if (is.null(abstol)) {
+      abstol <- 10^(-sigdig - 1)
+    }
+    if (is.null(reltol)) {
+      reltol <- 10^(-sigdig - 1)
+    }
+    if (is.null(rhoend)) {
+      rhoend <- 10^(-sigdig - 1)
+    }
+    if (is.null(lbfgsFactr)) {
+      lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
+    }
+    if (is.null(rel.tol)) {
+      rel.tol <- 10^(-sigdig - 1)
+    }
+    if (is.null(x.tol)) {
+      x.tol <- 10^(-sigdig - 1)
+    }
+    if (is.null(derivSwitchTol)) {
+      derivSwitchTol <- 2 * 10^(-sigdig - 1)
     }
   }
-  if (rxode2::rxIs(covMethod, "character")) {
+  checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxOuterIteerations, lower=0, any.missing=FALSE, len=1)
+  if (missing(n1qn1nsim)) {
+    n1qn1nsim <- 10 * maxInnerIterations + 1
+  }
+  checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  if (!is.null(scaleC)) {
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSEmr)
+  }
+  checkmate::assertNumeric(scaleC0, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(derivEps, lower=0, len=2, any.missing=FALSE)
+  checkmate::assertNumeric(derivSwitchTol, lower=0, len=1, any.missing=FALSE)
+  if (checkmate::testIntegerish(covTryHarder, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    covTryHarder <- as.integer(covTryHarder)
+  } else {
+    checkmate::assertLogical(covTryHarder, any.missing=FALSE, len=1)
+    covTryHarder <- as.integer(covTryHarder)
+  }
+
+  checkmate::assertNumeric(rhobeg, lower=0, len=1, finite=TRUE, any.missing=FALSE)
+  checkmate::assertNumeric(rhoend, lower=0, len=1, finite=TRUE, any.missing=FALSE)
+  if (rhoend >= rhobeg) {
+     stop("the trust region method needs '0 < rhoend < rhobeg'",
+         call.=FALSE)
+  }
+  if (!is.null(npt)) {
+    checkmate::assertIntegerish(npt, lower=1, len=1, any.missing=FALSE)
+  }
+  checkmate::assertIntegerish(eval.max, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(iter.max, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(rel.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(x.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(abstol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(reltol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+
+  checkmate::assertIntegerish(gillK, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(gillKcov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillStep, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillStepCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillFtol, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
+  # gillRtolCov is calculated in the `inner.cpp`
+
+  checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
+  checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
+  checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
+  checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+
+  checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
+  checkmate::assertNumeric(eventFD, lower=0, any.missing=FALSE, len=1)
+
+  checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
+  lbfgsLmm <- as.integer(lbfgsLmm)
+
+  ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
+  ## method <- as.integer(.methodIdx[method]);
+  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    scaleType <- as.integer(scaleType)
+  } else {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+    scaleType <- .scaleTypeIdx[match.arg(scaleType)]
+  }
+  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+    eventType <- as.integer(eventType)
+  } else {
+    .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
+    eventType <- .eventTypeIdx[match.arg(eventType)]
+  }
+  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    normType <- as.integer(normType)
+  } else {mr
+    .normTypmeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+    normType <- .normTypeIdx[match.arg(normType)]
+  }
+  .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
+  if (checkmate::testIntegerish(derivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+    derivMethod <- as.integer(derivMethod)
+  } else {
+    derivMethod <- match.arg(derivMethod)
+    derivMethod <- .methodIdx[derivMethod]
+  }
+  if (checkmate::testIntegerish(covDerivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
+    covDerivMethod <- as.integer(covDerivMethod)
+  } else {
+    covDerivMethod <- match.arg(covDerivMethod)
+    covDerivMethod <- .methodIdx[covDerivMethod]
+  }
+  if (checkmate::testIntegerish(covMethod, len=1, lower=1L, upper=3L, any.missing=FALSE)) {
+    covMethod <- as.integer(covMethod)
+  } else if (rxode2::rxIs(covMethod, "character")) {
     covMethod <- match.arg(covMethod)
     .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
     covMethod <- .covMethodIdx[match.arg(covMethod)]
-  }
-  if (missing(n1qn1nsim)) {
-    n1qn1nsim <- 10 * maxInnerIterations + 1
   }
   .outerOptTxt <- "custom"
   if (rxode2::rxIs(outerOpt, "character")) {
@@ -814,10 +881,14 @@ foceiControl <- function(sigdig = 3, ...,
       outerOptFun <- .Rvmmin
       outerOpt <- -1L
     } else {
-      .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
-      outerOpt <- .outerOptIdx[outerOpt]
-      if (outerOpt == 1L) {
-        rxode2::rxReq("lbfgsb3c")
+      if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
+        outerOpt <- as.integer(outerOpt)
+      } else {
+        .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
+        outerOpt <- .outerOptIdx[outerOpt]
+        if (outerOpt == 1L) {
+          rxode2::rxReq("lbfgsb3c")
+        }
       }
       outerOptFun <- NULL
     }
@@ -825,11 +896,13 @@ foceiControl <- function(sigdig = 3, ...,
     outerOptFun <- outerOpt
     outerOpt <- -1L
   }
-  if (rxode2::rxIs(innerOpt, "character")) {
+  if (checkmate::testIntegerish(innerOpt, lower=1, upper=1, len=1)) {
+    innerOpt <- as.integer(innerOpt)
+  } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-    innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
+    innerOpt <- .innerOptFun[match.arg(innerOpt)]
   }
-
+  checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
   if (resetEtaP > 0 & resetEtaP < 1) {
     .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
   } else if (resetEtaP <= 0) {
@@ -837,7 +910,7 @@ foceiControl <- function(sigdig = 3, ...,
   } else {
     .resetEtaSize <- 0
   }
-
+  checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
   if (resetThetaP > 0 & resetThetaP < 1) {
     .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
   } else if (resetThetaP <= 0) {
@@ -845,6 +918,7 @@ foceiControl <- function(sigdig = 3, ...,
   } else {
     stop("Cannot always reset THETAs")
   }
+  checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
   if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
     .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
   } else if (resetThetaP <= 0) {
@@ -852,20 +926,16 @@ foceiControl <- function(sigdig = 3, ...,
   } else {
     stop("Cannot always reset THETAs")
   }
-  if (inherits(addProp, "numeric")) {
-    if (addProp == 1) {
-      addProp <- "combined1"
-    } else if (addProp == 2) {
-      addProp <- "combined2"
-    } else {
-      stop("addProp must be 1, 2, \"combined1\" or \"combined2\"", call.=FALSE)
-    }
+  if (checkmate::testIntegerish(addProp, lower=1, upper=1, len=1)) {
+    addProp <- c("combined1", "combined2")[addProp]
   } else {
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  genRxControl <- FALSE
   if (is.null(rxControl)) {
     rxControl <- rxode2::rxControl(sigdig=sigdig)
+    genRxControl <- TRUE
   } else if (is.list(rxControl)) {
     rxControl <- do.call(rxode2::rxControl, rxControl)
   }
@@ -914,7 +984,7 @@ foceiControl <- function(sigdig = 3, ...,
     cholSEOpt = as.integer(cholSEOpt),
     cholSECov = as.integer(cholSECov),
     fo = as.integer(fo),
-    covTryHarder = as.integer(covTryHarder),
+    covTryHarder = covTryHarder,
     outerOptFun = outerOptFun,
     ## bobyqa
     rhobeg = as.double(rhobeg),
@@ -973,19 +1043,21 @@ foceiControl <- function(sigdig = 3, ...,
     badSolveObjfAdj=badSolveObjfAdj,
     compress=compress,
     rxControl=rxControl,
-    ...
+    genRxControl=genRxControl
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying etaMat, assume you wish to evaluate at ETAs, so setting maxInnerIterations=0")
+    warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
+            call.=FALSE)
     .ret$maxInnerIterations <- 0L
+    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   } else if (!is.null(etaMat)) {
+    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
   return(.ret)
 }
-
 .ucminf <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   rxode2::rxReq("ucminf")
   .ctl <- control
