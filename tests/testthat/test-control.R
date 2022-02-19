@@ -35,3 +35,14 @@ test_that("test foceiControl option sanity", {
   expect_equal(.ctl, .ctl2)
 
 })
+
+
+test_that("saemControl sanity", {
+  expect_error(saemControl(), NA)
+  nlmixrControlTest(saemControl())
+  .ctl <- saemControl()
+  expect_error(do.call(saemControl, .ctl), NA)
+  .ctl2 <- do.call(saemControl, .ctl)
+  expect_equal(.ctl, .ctl2)
+
+})
