@@ -918,29 +918,41 @@ foceiControl <- function(sigdig = 3, #
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
-  checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
-  if (resetEtaP > 0 & resetEtaP < 1) {
-    .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
-  } else if (resetEtaP <= 0) {
-    .resetEtaSize <- Inf
+  if (!is.null(.xtra$resetEtaSize)) {
+    .resetEtaSize <- .xtra$resetEtaSize
   } else {
-    .resetEtaSize <- 0
+      checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
+      if (resetEtaP > 0 & resetEtaP < 1) {
+        .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
+      } else if (resetEtaP <= 0) {
+        .resetEtaSize <- Inf
+      } else {
+        .resetEtaSize <- 0
+      }
   }
-  checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
-  if (resetThetaP > 0 & resetThetaP < 1) {
-    .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaSize <- Inf
-  } else {
-    stop("Cannot always reset THETAs")
+  if (!is.null(.xtra$resetThetaSize)) {
+    .resetThetaSize <- .xtra$resetThetaSize
+  } else{
+    checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
+    if (resetThetaP > 0 & resetThetaP < 1) {
+      .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
+    } else if (resetThetaP <= 0) {
+      .resetThetaSize <- Inf
+    } else {
+      stop("cannot always reset THETAs", call.=FALSE)
+    }
   }
-  checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
-  if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
-    .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaFinalSize <- Inf
+  if (!is.null(.xtra$resetThetaFinalSize)) {
+    .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
-    stop("Cannot always reset THETAs")
+    checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
+    if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
+      .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
+    } else if (resetThetaP <= 0) {
+      .resetThetaFinalSize <- Inf
+    } else {
+      stop("cannot always reset THETAs", call.=FALSE)
+    }
   }
   if (checkmate::testIntegerish(addProp, lower=1, upper=1, len=1)) {
     addProp <- c("combined1", "combined2")[addProp]
