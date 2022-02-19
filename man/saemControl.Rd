@@ -182,6 +182,8 @@ exploration of the likelihood surface.}
 
 \item{compress}{Should the object have compressed items}
 
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+
 \item{sigdig}{Specifies the "significant digits" that the ode
 solving requests.  When specified this controls the relative and
 absolute tolerances of the ODE solvers.  By default the tolerance

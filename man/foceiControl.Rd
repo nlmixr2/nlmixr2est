@@ -658,6 +658,8 @@ ODE system cannot be solved.  It is based on each individual bad
 solve.}
 
 \item{compress}{Should the object have compressed items}
+
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 }
 \value{
 The control object that changes the options for the FOCEi

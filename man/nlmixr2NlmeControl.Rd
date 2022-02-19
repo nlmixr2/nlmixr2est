@@ -160,6 +160,8 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+
 \item{method}{a character string.  If \code{"REML"} the model is fit by
    maximizing the restricted log-likelihood.  If \code{"ML"} the
    log-likelihood is maximized.  Defaults to \code{"ML"}.}

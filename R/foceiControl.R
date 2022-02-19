@@ -553,6 +553,8 @@
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
 #'
+#' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
