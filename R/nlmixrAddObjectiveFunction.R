@@ -1,4 +1,4 @@
-#'  Add object function data frame to the current objective function
+#'  Add objective function data frame to the current objective function
 #'
 #' @param fit nlmixr fit object
 #' @param objDf nlmixr objective function data frame which has column
@@ -22,7 +22,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     } else if (!is.na(.inRow[[2]])) {
       .cn <- .inRow[[2]]
     }
-    if (is.na(.inRow2[[1]])) {
+    if (is.na(.inRow2[[1]][[1]])) {
       # Here the original data frame is NA, that is the objective function has not been calculated
       .tmp <- cbind(.inRow[[1]], data.frame("Condition Number"=.cn, check.names=FALSE))
       row.names(.tmp) <- type
@@ -33,7 +33,7 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
       # Now the original data frame is not NA.
       .tmp <- rbind(.inRow[[1]], .inRow2[[1]])
       .tmp[["Condition Number"]] <- .cn
-      row.names(.tmp) <- c(.rownames, type)
+      row.names(.tmp) <- c(type, .rownames)
       assign("objDf", .tmp, envir=fit$env)
       setOfv(fit, type)
     }
@@ -41,6 +41,9 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
     if (any(.rownames == type)) stop("objective function '", type, "' already present", call.=FALSE)
     ## Now there is at least one interesting objective function
     .cn <- .cur[["Condition Number"]][1]
+    if (is.null(.cn)) {
+      .cn <- NA_real_
+    }
     if (is.na(.cn) & !is.na(.inRow[[2]])) {
       .cn <- .inRow[[2]]
     }

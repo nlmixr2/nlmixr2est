@@ -27,7 +27,7 @@ test_that("cwres (and focei objective fun) is added to saem with addCwres", {
   fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
   expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
-  suppressMessages(expect_error(addNpde(fit), NA))
+  suppressMessages(expect_error(addCwres(fit), NA))
   expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
   expect_equal(row.names(fit$objDf), "FOCEi")
 

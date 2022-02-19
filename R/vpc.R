@@ -44,6 +44,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   set.seed(seed)
   .si <- object$simInfo
   .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
+  .w <- which(names(.si) == "rx")
+  .si <- .si[-.w]
   .si$nsim <- n
   .si <- c(.si, list(...))
   .pt <- proc.time()
@@ -52,7 +54,6 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   .si$dfSub <- NULL
   .si$dfObs <- NULL
   .si$returnType <- "data.frame.TBS"
-
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
   .sim <- do.call(rxode2::rxSolve, .si)

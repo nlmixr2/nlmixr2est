@@ -33,8 +33,8 @@
 ##'
 ##' The \code{ini} model block is meant to hold the initial estimates
 ##' for the model, and the boundaries of the parameters for estimation
-##' routines that support boundaries (note nlmixr's \code{\link{saem}}
-##' and \code{\link[nlme]{nlme}} do not currently support parameter boundaries).
+##' routines that support boundaries (note nlmixr's \code{saem}
+##' and \code{nlme} do not currently support parameter boundaries).
 ##'
 ##' To explain how these initial estimates are specified we will start
 ##' with an annotated example:
@@ -194,7 +194,7 @@
 ##'      for additive error,  prop(parameter) for proportional error or \code{add(parameter1) + prop(parameter2)}
 ##'      for additive plus proportional error.  You can also specify \code{norm(parameter)} for the additive error,
 ##'      since it follows a normal distribution.
-##' \item Some routines, like \code{\link{saem}} require  parameters in terms of \code{Pop.Parameter + Individual.Deviation.Parameter + Covariate*Covariate.Parameter}.
+##' \item Some routines, like \code{saem} require  parameters in terms of \code{Pop.Parameter + Individual.Deviation.Parameter + Covariate*Covariate.Parameter}.
 ##'      The order of these parameters do not matter.  This is similar to NONMEM's mu-referencing, though
 ##'      not quite so restrictive.
 ##' \item The type of parameter in the model is determined by the initial block;  Covariates used in the
@@ -308,8 +308,8 @@
 ##' fit <- nlmixr(model.function, dataset, est="est", control=estControl(options))
 ##' }
 ##'
-##' Currently \code{\link[nlme]{nlme}} and \code{\link{saem}} are implemented.  For example, to run the
-##' above model with \code{\link{saem}}, we could have the following:
+##' Currently \code{nlme} and \code{saem} are implemented.  For example, to run the
+##' above model with \code{saem}, we could have the following:
 ##'
 ##'\preformatted{
 ##' > f <- function()\{

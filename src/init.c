@@ -80,6 +80,8 @@ SEXP _nlmixr2_powerD(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _saemResidF(SEXP v);
 
+SEXP _nlmixr2_nlmixrExpandFdParNlme_(SEXP, SEXP);
+
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2_freeFocei", (DL_FUNC) &_nlmixr2_freeFocei, 0},
   {"neldermead_wrap",      (DL_FUNC) &neldermead_wrap,      11},
@@ -131,6 +133,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2_iresCalc", (DL_FUNC) &_nlmixr2_iresCalc, 10},
   {"_nlmixr2_calcShrinkOnly", (DL_FUNC) &_nlmixr2_calcShrinkOnly, 3},
   {"_nlmixr2_popResFinal", (DL_FUNC) &_nlmixr2_popResFinal, 1},
+  {"_nlmixr2_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2_nlmixrExpandFdParNlme_, 2},
   {NULL, NULL, 0}
 };
 

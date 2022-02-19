@@ -51,6 +51,7 @@ one.compartment <- function() {
 fitS <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0))))
 
 test_that("tidy works on nlmixr fit SAEM fits", {
+
   td <- broom.mixed::tidy(fitS, exponentiate = NA)
   check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
   expect_equal(

@@ -138,20 +138,28 @@ nsis <- function() { ## build installer...
 #' @author Matthew L. Fidler
 #' @noRd
 .collectWarnings <- function(expr, lst = FALSE) {
-  ws <- c()
-  this.env <- environment()
-  ret <-
-    suppressWarnings(withCallingHandlers(
-      expr,
-      warning = function(w) {
-        assign("ws", unique(c(w$message, ws)), this.env)
+  if (getOption("nlmixr2.collectWarnings", TRUE)) {
+    ws <- c()
+    this.env <- environment()
+    ret <-
+      suppressWarnings(withCallingHandlers(
+        expr,
+        warning = function(w) {
+          assign("ws", unique(c(w$message, ws)), this.env)
+        }
+      ))
+    if (lst) {
+      return(list(ret, ws))
+    } else {
+      for (w in ws) {
+        warning(w)
       }
-    ))
-  if (lst) {
-    return(list(ret, ws))
+      return(ret)
+    }
   } else {
-    for (w in ws) {
-      warning(w)
+    ret <- force(expr)
+    if (lst) {
+      return(list(ret, NULL))
     }
     return(ret)
   }

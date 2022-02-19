@@ -1,8 +1,9 @@
 test_that("cov-focei", {
+
   dat <-
     warfarin %>%
     dplyr::filter(dvid == "cp")
-  
+
   #### doesn't work with FOCEI ### doesn't work with SAEM with CRWES=True but does iwth CWRES=FALSE
   One.SD.ODE <- function() {
     ini({
@@ -10,7 +11,7 @@ test_that("cov-focei", {
       lcl <- log(0.135) # log Cl (L/h)
       lv <- log(8) # log V (L)
       lmtt <- log(1.1) # log MTx
-      
+
       prop.err <- 0.15 # proportional error (SD/mean)
       add.err <- 0.6 # additive error (mg/L)
       eta.cl + eta.v + eta.mtt ~ c(
@@ -25,7 +26,7 @@ test_that("cov-focei", {
       v <- exp(lv + eta.v)
       mtt <- exp(lmtt + eta.mtt)
       ktr <- 6 / mtt
-      
+
       ## ODE example
       d / dt(depot) <- -ktr * depot
       d / dt(central) <- ktr * trans5 - (cl / v) * central
@@ -34,15 +35,16 @@ test_that("cov-focei", {
       d / dt(trans3) <- ktr * trans2 - ktr * trans3
       d / dt(trans4) <- ktr * trans3 - ktr * trans4
       d / dt(trans5) <- ktr * trans4 - ktr * trans5
-      
+
       ## Concentration is calculated
       cp <- central / v
       ## And is assumed to follow proportional and additive error
       cp ~ prop(prop.err) + add(add.err)
     })
   }
-  
+
   f <- suppressMessages(suppressWarnings(nlmixr(One.SD.ODE, dat, "posthoc")))
-  
-  expect_s3_class(f, "posthoc")
+
+  expect_s3_class(f, "nlmixr2.posthoc")
+
 })

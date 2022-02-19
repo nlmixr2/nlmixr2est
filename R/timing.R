@@ -99,13 +99,23 @@
   .w <- which(names(time) == name)
   .time <- time
   if (length(.w) == 1){
-    .time[, .w] <- .time[, .w] + .nlmixrPopTimingStack(preTiming)
+    .amt <- .nlmixrPopTimingStack(preTiming)
+    if (length(.amt) == 1) {
+      if (!is.na(.amt)) {
+        .time[, .w] <- .time[, .w] + .amt
+      }
+    }
   } else {
     .df <- list(0)
     names(.df) <- name
     .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
-    .df[, 1] <- .nlmixrPopTimingStack(preTiming)
-    .time <- cbind(.time, .df)
+    .amt <- .nlmixrPopTimingStack(preTiming)
+    if (length(.amt) == 1) {
+      if (!is.na(.amt)) {
+        .df[, 1] <- .amt
+        .time <- cbind(.time, .df)
+      }
+    }
   }
   .time
 }
@@ -157,8 +167,13 @@
       .df <- list(0)
       names(.df) <- name
       .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
-      .df[, 1] <- .nlmixrPopTimingStack(preTiming)
-      assignInMyNamespace(".extraTimingTable", .df)
+      .amt <- .nlmixrPopTimingStack(preTiming)
+      if (length(.amt) == 1) {
+        if (!is.na(.amt)) {
+          .df[, 1] <- .amt
+          assignInMyNamespace(".extraTimingTable", .df)
+        }
+      }
     }
   }
 }
@@ -283,10 +298,12 @@ nlmixrAddTiming <- function(object, name, time) {
   if (length(.w) == 1L) {
     .time[, .w] <- .time[, .w] + time
   } else {
-    .df <- list(time)
-    names(.df) <- name
-    .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
-    .time <- cbind(.time, .df)
+    if (!is.na(time)) {
+      .df <- list(time)
+      names(.df) <- name
+      .df <- as.data.frame(.df, check.names=FALSE, row.names="elapsed")
+      .time <- cbind(.time, .df)
+    }
   }
   assign("time", .time, envir=.env)
   invisible()

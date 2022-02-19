@@ -24,3 +24,4 @@ Update the nlmix2 object with new fit information
 \author{
 Matthew L. Fidler
 }
+\keyword{internal}

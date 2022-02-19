@@ -9,6 +9,7 @@
 .regDecimalint <- rex::rex(or("0", group("1":"9", any_of("0":"9"))))
 .regNum <- rex::rex(maybe("-"), or(.regDecimalint, .regFloat1, .regFloat2))
 
+
 use.utf <- function() {
   opt <- getOption("cli.unicode", NULL)
   if (!is.null(opt)) {
@@ -25,1067 +26,6 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
-#' Control Options for FOCEi
-#'
-#' @param sigdig Optimization significant digits. This controls:
-#'
-#' \itemize{
-#'
-#'  \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-#'
-#'  \item The tolerance of the ODE solvers is
-#'  \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
-#'  steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
-#'  (sensitivity changes only applicable for liblsoda)
-#'
-#'  \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-#'
-#'  \item The significant figures that some tables are rounded to.
-#' }
-#'
-#' @param atolSens Sensitivity atol, can be different than atol with
-#'     liblsoda.  This allows a less accurate solve for gradients (if desired)
-#'
-#' @param rtolSens Sensitivity rtol, can be different than rtol with
-#'     liblsoda.  This allows a less accurate solve for gradients (if desired)
-#'
-#' @param ssAtol Steady state absolute tolerance (atol) for calculating if steady-state
-#'     has been archived.
-#'
-#' @param ssRtol Steady state relative tolerance (rtol) for
-#'     calculating if steady-state has been achieved.
-#'
-#' @param ssAtolSens Sensitivity absolute tolerance (atol) for
-#'     calculating if steady state has been achieved for sensitivity compartments.
-#'
-#' @param ssRtolSens Sensitivity relative tolerance (rtol) for
-#'     calculating if steady state has been achieved for sensitivity compartments.
-#'
-#' @param epsilon Precision of estimate for n1qn1 optimization.
-#'
-#' @param maxstepsOde Maximum number of steps for ODE solver.
-#'
-#' @param print Integer representing when the outer step is
-#'     printed. When this is 0 or do not print the iterations.  1 is
-#'     print every function evaluation (default), 5 is print every 5
-#'     evaluations.
-#'
-#' @param scaleTo Scale the initial parameter estimate to this value.
-#'     By default this is 1.  When zero or below, no scaling is performed.
-#'
-#' @param scaleObjective Scale the initial objective function to this
-#'     value.  By default this is 1.
-#'
-#' @param derivEps Forward difference tolerances, which is a
-#'     vector of relative difference and absolute difference.  The
-#'     central/forward difference step size h is calculated as:
-#'
-#'         \code{h = abs(x)*derivEps[1] + derivEps[2]}
-#'
-#' @param derivMethod indicates the method for calculating
-#'     derivatives of the outer problem.  Currently supports
-#'     "switch", "central" and "forward" difference methods.  Switch
-#'     starts with forward differences.  This will switch to central
-#'     differences when abs(delta(OFV)) <= derivSwitchTol and switch
-#'     back to forward differences when abs(delta(OFV)) >
-#'     derivSwitchTol.
-#'
-#' @param derivSwitchTol The tolerance to switch forward to central
-#'     differences.
-#'
-#' @param covDerivMethod indicates the method for calculating the
-#'     derivatives while calculating the covariance components
-#'     (Hessian and S).
-#'
-#' @param covMethod Method for calculating covariance.  In this
-#'     discussion, R is the Hessian matrix of the objective
-#'     function. The S matrix is the sum of individual
-#'     gradient cross-product (evaluated at the individual empirical
-#'     Bayes estimates).
-#'
-#' \itemize{
-#'
-#'  \item "\code{r,s}" Uses the sandwich matrix to calculate the
-#'  covariance, that is: \code{solve(R) \%*\% S \%*\% solve(R)}
-#'
-#'  \item "\code{r}" Uses the Hessian matrix to calculate the
-#'  covariance as \code{2 \%*\% solve(R)}
-#'
-#'  \item "\code{s}" Uses the cross-product matrix to calculate the
-#'  covariance as \code{4 \%*\% solve(S)}
-#'
-#'  \item "" Does not calculate the covariance step.
-#' }
-#'
-#' @param covTryHarder If the R matrix is non-positive definite and
-#'     cannot be corrected to be non-positive definite try estimating
-#'     the Hessian on the unscaled parameter space.
-#'
-#' @param hessEps is a double value representing the epsilon for the Hessian calculation.
-#'
-#' @param centralDerivEps Central difference tolerances.  This is a
-#'     numeric vector of relative difference and absolute difference.
-#'     The central/forward difference step size h is calculated as:
-#'
-#'         \code{h = abs(x)*derivEps[1] + derivEps[2]}
-#'
-#' @param lbfgsLmm An integer giving the number of BFGS updates
-#'     retained in the "L-BFGS-B" method, It defaults to 7.
-#'
-#' @param lbfgsPgtol is a double precision variable.
-#'
-#'     On entry pgtol >= 0 is specified by the user.  The iteration
-#'     will stop when:
-#'
-#'        \code{max(\| proj g_i \| i = 1, ..., n) <= lbfgsPgtol}
-#'
-#'     where pg_i is the ith component of the projected gradient.
-#'
-#'     On exit pgtol is unchanged.  This defaults to zero, when the
-#'     check is suppressed.
-#'
-#' @param lbfgsFactr Controls the convergence of the "L-BFGS-B"
-#'     method.  Convergence occurs when the reduction in the
-#'     objective is within this factor of the machine
-#'     tolerance. Default is 1e10, which gives a tolerance of about
-#'     \code{2e-6}, approximately 4 sigdigs.  You can check your
-#'     exact tolerance by multiplying this value by
-#'     \code{.Machine$double.eps}
-#'
-#' @param diagXform This is the transformation used on the diagonal
-#'     of the \code{chol(solve(omega))}. This matrix and values are the
-#'     parameters estimated in FOCEi. The possibilities are:
-#'
-#' \itemize{
-#'  \item \code{sqrt} Estimates the sqrt of the diagonal elements of \code{chol(solve(omega))}.  This is the default method.
-#'
-#'  \item \code{log} Estimates the log of the diagonal elements of \code{chol(solve(omega))}
-#'
-#'  \item \code{identity} Estimates the diagonal elements without any transformations
-#' }
-#' @param sumProd Is a boolean indicating if the model should change
-#'     multiplication to high precision multiplication and sums to
-#'     high precision sums using the PreciseSums package.  By default
-#'     this is \code{FALSE}.
-#'
-#'
-#' @param optExpression Optimize the rxode2 expression to speed up
-#'     calculation. By default this is turned on.
-#'
-#' @param ci Confidence level for some tables.  By default this is
-#'     0.95 or 95\% confidence.
-#'
-#' @param useColor Boolean indicating if focei can use ASCII color codes
-#'
-#' @param boundTol Tolerance for boundary issues.
-#'
-#' @param calcTables This boolean is to determine if the foceiFit
-#'     will calculate tables. By default this is \code{TRUE}
-#'
-#' @param ... Ignored parameters
-#'
-#' @param maxInnerIterations Number of iterations for n1qn1
-#'     optimization.
-#'
-#' @param maxOuterIterations Maximum number of L-BFGS-B optimization
-#'     for outer problem.
-#'
-#' @param n1qn1nsim Number of function evaluations for n1qn1
-#'     optimization.
-#'
-#' @param eigen A boolean indicating if eigenvectors are calculated
-#'     to include a condition number calculation.
-#'
-#' @param addPosthoc Boolean indicating if posthoc parameters are
-#'     added to the table output.
-#'
-#' @param printNcol Number of columns to printout before wrapping
-#'     parameter estimates/gradient
-#'
-#' @param noAbort Boolean to indicate if you should abort the FOCEi
-#'     evaluation if it runs into troubles.  (default TRUE)
-#'
-#' @param interaction Boolean indicate FOCEi should be used (TRUE)
-#'     instead of FOCE (FALSE)
-#'
-#' @param cholSEOpt Boolean indicating if the generalized Cholesky
-#'     should be used while optimizing.
-#'
-#' @param cholSECov Boolean indicating if the generalized Cholesky
-#'     should be used while calculating the Covariance Matrix.
-#'
-#' @param fo is a boolean indicating if this is a FO approximation routine.
-#'
-#' @param cholSEtol tolerance for Generalized Cholesky
-#'     Decomposition.  Defaults to suggested (.Machine$double.eps)^(1/3)
-#'
-#' @param cholAccept Tolerance to accept a Generalized Cholesky
-#'     Decomposition for a R or S matrix.
-#'
-#' @param outerOpt optimization method for the outer problem
-#'
-#' @param innerOpt optimization method for the inner problem (not
-#'     implemented yet.)
-#'
-#' @param stateTrim Trim state amounts/concentrations to this value.
-#'
-#' @param resetEtaP represents the p-value for reseting the
-#'     individual ETA to 0 during optimization (instead of the saved
-#'     value).  The two test statistics used in the z-test are either
-#'     chol(omega^-1) \%*\% eta or eta/sd(allEtas).  A p-value of 0
-#'     indicates the ETAs never reset.  A p-value of 1 indicates the
-#'     ETAs always reset.
-#'
-#' @param resetThetaP represents the p-value for reseting the
-#'     population mu-referenced THETA parameters based on ETA drift
-#'     during optimization, and resetting the optimization.  A
-#'     p-value of 0 indicates the THETAs never reset.  A p-value of 1
-#'     indicates the THETAs always reset and is not allowed.  The
-#'     theta reset is checked at the beginning and when nearing a
-#'     local minima.  The percent change in objective function where
-#'     a theta reset check is initiated is controlled in
-#'     \code{resetThetaCheckPer}.
-#'
-#' @param resetThetaCheckPer represents objective function
-#'     \% percentage below which resetThetaP is checked.
-#'
-#' @param resetThetaFinalP represents the p-value for reseting the
-#'     population mu-referenced THETA parameters based on ETA drift
-#'     during optimization, and resetting the optimization one final time.
-#'
-#' @param resetHessianAndEta is a boolean representing if the
-#'     individual Hessian is reset when ETAs are reset using the
-#'     option \code{resetEtaP}.
-#'
-#' @param diagOmegaBoundUpper This represents the upper bound of the
-#'     diagonal omega matrix.  The upper bound is given by
-#'     diag(omega)*diagOmegaBoundUpper.  If
-#'     \code{diagOmegaBoundUpper} is 1, there is no upper bound on
-#'     Omega.
-#'
-#' @param diagOmegaBoundLower This represents the lower bound of the
-#'     diagonal omega matrix.  The lower bound is given by
-#'     diag(omega)/diagOmegaBoundUpper.  If
-#'     \code{diagOmegaBoundLower} is 1, there is no lower bound on
-#'     Omega.
-#'
-#' @param rhobeg Beginning change in parameters for bobyqa algorithm
-#'     (trust region).  By default this is 0.2 or 20% of the initial
-#'     parameters when the parameters are scaled to 1. rhobeg and
-#'     rhoend must be set to the initial and final values of a trust
-#'     region radius, so both must be positive with 0 < rhoend <
-#'     rhobeg. Typically rhobeg should be about one tenth of the
-#'     greatest expected change to a variable.  Note also that
-#'     smallest difference abs(upper-lower) should be greater than or
-#'     equal to rhobeg*2. If this is not the case then rhobeg will be
-#'     adjusted.
-#'
-#' @param rhoend The smallest value of the trust region radius that
-#'     is allowed. If not defined, then 10^(-sigdig-1) will be used.
-#'
-#' @param npt The number of points used to approximate the objective
-#'     function via a quadratic approximation for bobyqa. The value
-#'     of npt must be in the interval [n+2,(n+1)(n+2)/2] where n is
-#'     the number of parameters in par. Choices that exceed 2*n+1 are
-#'     not recommended. If not defined, it will be set to 2*n + 1
-#' @param eval.max Number of maximum evaluations of the objective function
-#'
-#' @param iter.max Maximum number of iterations allowed.
-#'
-#' @param rel.tol Relative tolerance before nlminb stops.
-#'
-#' @param x.tol X tolerance for nlmixr2 optimizers
-#'
-#' @param abstol Absolute tolerance for nlmixr2 optimizer
-#'
-#' @param reltol  tolerance for nlmixr2
-#'
-#' @param gillK The total number of possible steps to determine the
-#'     optimal forward/central difference step size per parameter (by
-#'     the Gill 1983 method).  If 0, no optimal step size is
-#'     determined.  Otherwise this is the optimal step size
-#'     determined.
-#'
-#' @param gillRtol The relative tolerance used for Gill 1983
-#'     determination of optimal step size.
-#'
-#' @param scaleType The scaling scheme for nlmixr2.  The supported types are:
-#'
-#' \itemize{
-#' \item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
-#'
-#'    v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
-#'
-#' The \code{scaleTo} parameter is specified by the \code{normType},
-#' and the scales are specified by \code{scaleC}.
-#'
-#' \item \code{norm} This approach uses the simple scaling provided
-#'     by the \code{normType} argument.
-#'
-#' \item \code{mult} This approach does not use the data
-#' normalization provided by \code{normType}, but rather uses
-#' multiplicative scaling to a constant provided by the \code{scaleTo}
-#' argument.
-#'
-#'   In this case:
-#'
-#'   v_{scaled} = v_{current}/v_{init}*scaleTo
-#'
-#' \item \code{multAdd} This approach changes the scaling based on
-#' the parameter being specified.  If a parameter is defined in an
-#' exponential block (ie exp(theta)), then it is scaled on a
-#' linearly, that is:
-#'
-#'   v_{scaled} = (v_{current}-v_{init}) + scaleTo
-#'
-#' Otherwise the parameter is scaled multiplicatively.
-#'
-#'    v_{scaled} = v_{current}/v_{init}*scaleTo
-#'
-#' }
-#'
-#' @param scaleC The scaling constant used with
-#'     \code{scaleType=nlmixr2}.  When not specified, it is based on
-#'     the type of parameter that is estimated.  The idea is to keep
-#'     the derivatives similar on a log scale to have similar
-#'     gradient sizes.  Hence parameters like log(exp(theta)) would
-#'     have a scaling factor of 1 and log(theta) would have a scaling
-#'     factor of ini_value (to scale by 1/value; ie
-#'     d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)
-#'
-#'    \itemize{
-#'
-#'    \item For parameters in an exponential (ie exp(theta)) or
-#'    parameters specifying powers, boxCox or yeoJohnson
-#'    transformations , this is 1.
-#'
-#'    \item For additive, proportional, lognormal error structures,
-#'    these are given by 0.5*abs(initial_estimate)
-#'
-#'    \item Factorials are scaled by abs(1/digamma(inital_estimate+1))
-#'
-#'    \item parameters in a log scale (ie log(theta)) are transformed
-#'    by log(abs(initial_estimate))*abs(initial_estimate)
-#'
-#'    }
-#'
-#'    These parameter scaling coefficients are chose to try to keep
-#'    similar slopes among parameters.  That is they all follow the
-#'    slopes approximately on a log-scale.
-#'
-#'    While these are chosen in a logical manner, they may not always
-#'    apply.  You can specify each parameters scaling factor by this
-#'    parameter if you wish.
-#'
-#' @param scaleC0 Number to adjust the scaling factor by if the initial
-#'     gradient is zero.
-#'
-#' @param scaleCmax Maximum value of the scaleC to prevent overflow.
-#'
-#' @param scaleCmin Minimum value of the scaleC to prevent underflow.
-#'
-#' @param normType This is the type of parameter
-#'     normalization/scaling used to get the scaled initial values
-#'     for nlmixr2.  These are used with \code{scaleType} of.
-#'
-#'     With the exception of \code{rescale2}, these come
-#'     from
-#'     \href{https://en.wikipedia.org/wiki/Feature_scaling}{Feature
-#'     Scaling}. The \code{rescale2} The rescaling is the same type
-#'     described in the
-#'     \href{http://apmonitor.com/me575/uploads/Main/optimization_book.pdf}{OptdesX}
-#'     software manual.
-#'
-#'     In general, all all scaling formula can be described by:
-#'
-#'     v_{scaled} = (v_{unscaled}-C_{1})/C_{2}
-#'
-#'     Where
-#'
-#'
-#'     The other data normalization approaches follow the following formula
-#'
-#'     v_{scaled} = (v_{unscaled}-C_{1})/C_{2};
-#'
-#' \itemize{
-#'
-#' \item \code{rescale2} This scales all parameters from (-1 to 1).
-#'     The relative differences between the parameters are preserved
-#'     with this approach and the constants are:
-#'
-#'     C_{1} = (max(all unscaled values)+min(all unscaled values))/2
-#'
-#'     C_{2} = (max(all unscaled values) - min(all unscaled values))/2
-#'
-#'
-#' \item \code{rescale} or min-max normalization. This rescales all
-#'     parameters from (0 to 1).  As in the \code{rescale2} the
-#'     relative differences are preserved.  In this approach:
-#'
-#'     C_{1} = min(all unscaled values)
-#'
-#'     C_{2} = max(all unscaled values) - min(all unscaled values)
-#'
-#'
-#' \item \code{mean} or mean normalization.  This rescales to center
-#'     the parameters around the mean but the parameters are from 0
-#'     to 1.  In this approach:
-#'
-#'     C_{1} = mean(all unscaled values)
-#'
-#'     C_{2} = max(all unscaled values) - min(all unscaled values)
-#'
-#' \item \code{std} or standardization.  This standardizes by the mean
-#'      and standard deviation.  In this approach:
-#'
-#'     C_{1} = mean(all unscaled values)
-#'
-#'     C_{2} = sd(all unscaled values)
-#'
-#' \item \code{len} or unit length scaling.  This scales the
-#'    parameters to the unit length.  For this approach we use the Euclidean length, that
-#'    is:
-#'
-#'     C_{1} = 0
-#'
-#'     C_{2} = sqrt(v_1^2 + v_2^2 + ... + v_n^2)
-#'
-#'
-#' \item \code{constant} which does not perform data normalization. That is
-#'
-#'     C_{1} = 0
-#'
-#'     C_{2} = 1
-#'
-#' }
-#'
-#' @param gillStep When looking for the optimal forward difference
-#'     step size, this is This is the step size to increase the
-#'     initial estimate by.  So each iteration the new step size =
-#'     (prior step size)*gillStep
-#'
-#' @param gillFtol The gillFtol is the gradient error tolerance that
-#'     is acceptable before issuing a warning/error about the gradient estimates.
-#'
-#' @param gillKcov The total number of possible steps to determine
-#'     the optimal forward/central difference step size per parameter
-#'     (by the Gill 1983 method) during the covariance step.  If 0,
-#'     no optimal step size is determined.  Otherwise this is the
-#'     optimal step size determined.
-#'
-#' @param gillStepCov When looking for the optimal forward difference
-#'     step size, this is This is the step size to increase the
-#'     initial estimate by.  So each iteration during the covariance
-#'     step is equal to the new step size = (prior step size)*gillStepCov
-#'
-#' @param gillFtolCov The gillFtol is the gradient error tolerance
-#'     that is acceptable before issuing a warning/error about the
-#'     gradient estimates during the covariance step.
-#'
-#' @param rmatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the R matrix
-#'
-#' @param smatNorm A parameter to normalize gradient step size by the
-#'     parameter value during the calculation of the S matrix
-#'
-#' @param covGillF Use the Gill calculated optimal Forward difference
-#'     step size for the instead of the central difference step size
-#'     during the central difference gradient calculation.
-#'
-#' @param optGillF Use the Gill calculated optimal Forward difference
-#'     step size for the instead of the central difference step size
-#'     during the central differences for optimization.
-#'
-#' @param covSmall The covSmall is the small number to compare
-#'     covariance numbers before rejecting an estimate of the
-#'     covariance as the final estimate (when comparing sandwich vs
-#'     R/S matrix estimates of the covariance).  This number controls
-#'     how small the variance is before the covariance matrix is
-#'     rejected.
-#'
-#' @param adjLik In nlmixr2, the objective function matches NONMEM's
-#'     objective function, which removes a 2*pi constant from the
-#'     likelihood calculation. If this is TRUE, the likelihood
-#'     function is adjusted by this 2*pi factor.  When adjusted this
-#'     number more closely matches the likelihood approximations of
-#'     nlme, and SAS approximations.  Regardless of if this is turned
-#'     on or off the objective function matches NONMEM's objective
-#'     function.
-#'
-#' @param gradTrim The parameter to adjust the gradient to if the
-#'     |gradient| is very large.
-#'
-#' @param gradCalcCentralSmall A small number that represents the value
-#'     where |grad| < gradCalcCentralSmall where forward differences
-#'     switch to central differences.
-#'
-#' @param gradCalcCentralLarge A large number that represents the value
-#'     where |grad| > gradCalcCentralLarge where forward differences
-#'     switch to central differences.
-#'
-#' @param etaNudge By default initial ETA estimates start at zero;
-#'   Sometimes this doesn't optimize appropriately.  If this value is
-#'   non-zero, when the n1qn1 optimization didn't perform
-#'   appropriately, reset the Hessian, and nudge the ETA up by this
-#'   value; If the ETA still doesn't move, nudge the ETA down by this
-#'   value. By default this value is qnorm(1-0.05/2)*1/sqrt(3), the
-#'   first of the Gauss Quadrature numbers times by the 0.95\% normal
-#'   region. If this is not successful try the second eta nudge
-#'   number (below).  If +-etaNudge2 is not successful, then assign
-#'   to zero and do not optimize any longer
-#'
-#' @param etaNudge2 This is the second eta nudge.  By default it is
-#'   qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
-#'   (excluding zero) times by the 0.95\% normal region
-#'
-#' @param maxOdeRecalc Maximum number of times to reduce the ODE
-#'     tolerances and try to resolve the system if there was a bad
-#'     ODE solve.
-#'
-#' @param odeRecalcFactor The factor to increase the rtol/atol with
-#'     bad ODE solving.
-#'
-#' @param repeatGillMax If the tolerances were reduced when
-#'     calculating the initial Gill differences, the Gill difference
-#'     is repeated up to a maximum number of times defined by this
-#'     parameter.
-#'
-#' @param stickyRecalcN The number of bad ODE solves before reducing
-#'     the atol/rtol for the rest of the problem.
-#'
-#' @param nRetries If FOCEi doesn't fit with the current parameter
-#'     estimates, randomly sample new parameter estimates and restart
-#'     the problem.  This is similar to 'PsN' resampling.
-#'
-#' @param eventFD Finite difference step for forward or central
-#'     difference estimation of event-based gradients
-#'
-#' @param eventType Event gradient type for dosing events; Can be
-#'   "gill", "central" or "forward"
-#'
-#' @param gradProgressOfvTime This is the time for a single objective
-#'     function evaluation (in seconds) to start progress bars on gradient evaluations
-#'
-#' @param singleOde This option allows a single ode model to include
-#'   the PK parameter information instead of splitting it into a
-#'   function and a rxode2 model
-#'
-#' @param badSolveObjfAdj The objective function adjustment when the
-#'   ODE system cannot be solved.  It is based on each individual bad
-#'   solve.
-#'
-#' @param compress Should the object have compressed items
-#'
-#' @param etaMat Eta matrix for initial estimates or final estimates
-#'   of the ETAs.
-#'
-#' @param addProp specifies the type of additive plus proportional
-#'   errors, the one where standard deviations add (combined1) or the
-#'   type where the variances add (combined2).
-#'
-#' The combined1 error type can be described by the following equation:
-#'
-#'   y = f + (a + b*f^c)*err
-#'
-#' The combined2 error model can be described by the following equation:
-#'
-#'  y = f + sqrt(a^2 + b^2*(f^c)^2)*err
-#'
-#'  Where:
-#'
-#'  - y represents the observed value
-#'
-#'  - f represents the predicted value
-#'
-#'  - a  is the additive standard deviation
-#'
-#'  - b is the proportional/power standard deviation
-#'
-#'  - c is the power exponent (in the proportional case c=1)
-#'
-#' @param odeRecalcFactor The ODE recalculation factor when ODE
-#'   solving goes bad, this is the factor the rtol/atol is reduced
-#' @param maxOdeRecalc This represents the maximum number of
-#'   recalculations before focei fails ODE integration.
-#' @inheritParams rxode2::rxSolve
-#' @inheritParams minqa::bobyqa
-#'
-#' @details
-#'
-#' Note this uses the R's L-BFGS-B in \code{\link{optim}} for the
-#' outer problem and the BFGS \code{\link[n1qn1]{n1qn1}} with that
-#' allows restoring the prior individual Hessian (for faster
-#' optimization speed).
-#'
-#' However the inner problem is not scaled.  Since most eta estimates
-#' start near zero, scaling for these parameters do not make sense.
-#'
-#' This process of scaling can fix some ill conditioning for the
-#' unscaled problem.  The covariance step is performed on the
-#' unscaled problem, so the condition number of that matrix may not
-#' be reflective of the scaled problem's condition-number.
-#'
-#' @author Matthew L. Fidler
-#'
-#' @return The control object that changes the options for the FOCEi
-#'   family of estimation methods
-#'
-#' @seealso \code{\link{optim}}
-#' @seealso \code{\link[n1qn1]{n1qn1}}
-#' @seealso \code{\link[rxode2]{rxSolve}}
-#' @export
-foceiControl <- function(sigdig = 3, ...,
-                         epsilon = NULL, # 1e-4,
-                         maxInnerIterations = 1000,
-                         maxOuterIterations = 5000,
-                         n1qn1nsim = NULL,
-                         method = c("liblsoda", "lsoda", "dop853"),
-                         transitAbs = NULL, atol = NULL, rtol = NULL,
-                         atolSens = NULL, rtolSens = NULL,
-                         ssAtol = NULL, ssRtol = NULL, ssAtolSens = NULL, ssRtolSens = NULL,
-                         minSS = 10L, maxSS = 1000L,
-                         maxstepsOde = 500000L, hmin = 0L, hmax = NA_real_, hini = 0, maxordn = 12L, maxords = 5L, cores,
-                         covsInterpolation = c("locf", "linear", "nocb", "midpoint"),
-                         print = 1L,
-                         printNcol = floor((getOption("width") - 23) / 12),
-                         scaleTo = 1.0,
-                         scaleObjective = 0,
-                         normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
-                         scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
-                         scaleCmax = 1e5,
-                         scaleCmin = 1e-5,
-                         scaleC = NULL,
-                         scaleC0 = 1e5,
-                         derivEps = rep(20 * sqrt(.Machine$double.eps), 2),
-                         derivMethod = c("switch", "forward", "central"),
-                         derivSwitchTol = NULL,
-                         covDerivMethod = c("central", "forward"),
-                         covMethod = c("r,s", "r", "s", ""),
-                         hessEps = (.Machine$double.eps)^(1 / 3),
-                         eventFD = sqrt(.Machine$double.eps),
-                         eventType = c("gill", "central", "forward"),
-                         centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
-                         lbfgsLmm = 7L,
-                         lbfgsPgtol = 0,
-                         lbfgsFactr = NULL,
-                         eigen = TRUE,
-                         addPosthoc = TRUE,
-                         diagXform = c("sqrt", "log", "identity"),
-                         sumProd = FALSE,
-                         optExpression = TRUE,
-                         ci = 0.95,
-                         useColor = crayon::has_color(),
-                         boundTol = NULL,
-                         calcTables = TRUE,
-                         noAbort = TRUE,
-                         interaction = TRUE,
-                         cholSEtol = (.Machine$double.eps)^(1 / 3),
-                         cholAccept = 1e-3,
-                         resetEtaP = 0.15,
-                         resetThetaP = 0.05,
-                         resetThetaFinalP = 0.15,
-                         diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
-                         diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
-                         cholSEOpt = FALSE,
-                         cholSECov = FALSE,
-                         fo = FALSE,
-                         covTryHarder = FALSE,
-                         ## Ranking based on run 025
-                         ## L-BFGS-B: 20970.53 (2094.004    429.535)
-                         ## bobyqa: 21082.34 (338.677    420.754)
-                         ## lbfgsb3* (modified for tolerances):
-                         ## nlminb: 20973.468 (755.821    458.343)
-                         ## mma: 20974.20 (Time: Opt: 3000.501 Cov: 467.287)
-                         ## slsqp: 21023.89 (Time: Opt: 460.099; Cov: 488.921)
-                         ## lbfgsbLG: 20974.74 (Time: Opt: 946.463; Cov:397.537)
-                         outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "Rvmmin"),
-                         innerOpt = c("n1qn1", "BFGS"),
-                         ##
-                         rhobeg = .2,
-                         rhoend = NULL,
-                         npt = NULL,
-                         ## nlminb
-                         rel.tol = NULL,
-                         x.tol = NULL,
-                         eval.max = 4000,
-                         iter.max = 2000,
-                         abstol = NULL,
-                         reltol = NULL,
-                         resetHessianAndEta = FALSE,
-                         stateTrim = Inf,
-                         gillK = 10L,
-                         gillStep = 4,
-                         gillFtol = 0,
-                         gillRtol = sqrt(.Machine$double.eps),
-                         gillKcov = 10L,
-                         gillStepCov = 2,
-                         gillFtolCov = 0,
-                         rmatNorm = TRUE,
-                         smatNorm = TRUE,
-                         covGillF = TRUE,
-                         optGillF = TRUE,
-                         covSmall = 1e-5,
-                         adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
-                         gradTrim = Inf,
-                         maxOdeRecalc = 5,
-                         odeRecalcFactor = 10^(0.5),
-                         gradCalcCentralSmall = 1e-4,
-                         gradCalcCentralLarge = 1e4,
-                         etaNudge = qnorm(1-0.05/2)/sqrt(3),
-                         etaNudge2=qnorm(1-0.05/2) * sqrt(3/5),
-                         stiff,
-                         nRetries = 3,
-                         seed = 42,
-                         resetThetaCheckPer = 0.1,
-                         etaMat = NULL,
-                         repeatGillMax = 3,
-                         stickyRecalcN = 5,
-                         gradProgressOfvTime = 10,
-                         addProp = c("combined2", "combined1"),
-                         singleOde = TRUE,
-                         badSolveObjfAdj=100,
-                         compress=TRUE) {
-  if (is.null(boundTol)) {
-    boundTol <- 5 * 10^(-sigdig + 1)
-  }
-  if (is.null(epsilon)) {
-    epsilon <- 10^(-sigdig - 1)
-  }
-  if (is.null(abstol)) {
-    abstol <- 10^(-sigdig - 1)
-  }
-  if (is.null(reltol)) {
-    reltol <- 10^(-sigdig - 1)
-  }
-  if (is.null(rhoend)) {
-    rhoend <- 10^(-sigdig - 1)
-  }
-  if (is.null(lbfgsFactr)) {
-    lbfgsFactr <- 10^(-sigdig - 1) / .Machine$double.eps
-  }
-  if (is.null(atol)) {
-    atol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(rtol)) {
-    rtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(atolSens)) {
-    atolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(rtolSens)) {
-    rtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(ssAtol)) {
-    ssAtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(ssRtol)) {
-    ssRtol <- 0.5 * 10^(-sigdig - 2)
-  }
-  if (is.null(ssAtolSens)) {
-    ssAtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(ssRtolSens)) {
-    ssRtolSens <- 0.5 * 10^(-sigdig - 1.5)
-  }
-  if (is.null(rel.tol)) {
-    rel.tol <- 10^(-sigdig - 1)
-  }
-  if (is.null(x.tol)) {
-    x.tol <- 10^(-sigdig - 1)
-  }
-  if (is.null(derivSwitchTol)) {
-    derivSwitchTol <- 2 * 10^(-sigdig - 1)
-  }
-  ## if (is.null(gillRtol)){
-  ##     ## FIXME: there is a way to calculate this according to the
-  ##     ## Gill paper but it is buried in their optimization book.
-  ##     gillRtol <- 10 ^ (-sigdig - 1);
-  ## }
-  .xtra <- list(...)
-  if (is.null(transitAbs) && !is.null(.xtra$transit_abs)) { # nolint
-    transitAbs <- .xtra$transit_abs # nolint
-  }
-  if (missing(covsInterpolation) && !is.null(.xtra$covs_interpolation)) { # nolint
-    covsInterpolation <- .xtra$covs_interpolation # nolint
-  }
-  if (missing(maxInnerIterations) && !is.null(.xtra$max_iterations)) { # nolint
-    maxInnerIterations <- .xtra$max_iterations # nolint
-  }
-  if (!missing(stiff) && missing(method)) {
-    if (rxode2::rxIs(stiff, "logical")) {
-      if (stiff) {
-        method <- "lsoda"
-        warning("stiff=TRUE has been replaced with method = \"lsoda\".")
-      } else {
-        method <- "dop853"
-        warning("stiff=FALSE has been replaced with method = \"dop853\".")
-      }
-    }
-  } else {
-    if (inherits(method, "numeric")) {
-      method <- as.integer(method)
-    }
-    if (!rxode2::rxIs(method, "integer")) {
-      if (inherits(method, "character")) {
-        method <- match.arg(method)
-      } else {
-        method <- "liblsoda"
-        warning("could not figure out method, using 'liblsoda'")
-      }
-    }
-  }
-  ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
-  ## method <- as.integer(.methodIdx[method]);
-  if (rxode2::rxIs(scaleType, "character")) {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- as.integer(.scaleTypeIdx[match.arg(scaleType)])
-  }
-  if (rxode2::rxIs(eventType, "character")) {
-    .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
-    eventType <- as.integer(.eventTypeIdx[match.arg(eventType)])
-  }
-  if (rxode2::rxIs(normType, "character")) {
-    .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6)
-    normType <- as.integer(.normTypeIdx[match.arg(normType)])
-  }
-  derivMethod <- match.arg(derivMethod)
-  .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-  derivMethod <- as.integer(.methodIdx[derivMethod])
-  covDerivMethod <- .methodIdx[match.arg(covDerivMethod)]
-  if (length(covsInterpolation) > 1) covsInterpolation <- covsInterpolation[1]
-  if (!rxode2::rxIs(covsInterpolation, "integer")) {
-    covsInterpolation <- tolower(match.arg(
-      covsInterpolation,
-      c("linear", "locf", "LOCF", "constant", "nocb", "NOCB", "midpoint")
-    ))
-  }
-
-  ## if (covsInterpolation == "constant") covsInterpolation <- "locf";
-  ## covsInterpolation  <- as.integer(which(covsInterpolation == c("linear", "locf", "nocb", "midpoint")) - 1);
-  if (missing(cores)) {
-    cores <- rxode2::rxCores()
-  }
-  if (missing(n1qn1nsim)) {
-    n1qn1nsim <- 10 * maxInnerIterations + 1
-  }
-  if (length(covMethod) == 1) {
-    if (covMethod == "") {
-      covMethod <- 0L
-    }
-  }
-  if (rxode2::rxIs(covMethod, "character")) {
-    covMethod <- match.arg(covMethod)
-    .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-    covMethod <- .covMethodIdx[match.arg(covMethod)]
-  }
-  .outerOptTxt <- "custom"
-  if (rxode2::rxIs(outerOpt, "character")) {
-    outerOpt <- match.arg(outerOpt)
-    .outerOptTxt <- outerOpt
-    if (outerOpt == "bobyqa") {
-      rxode2::rxReq("minqa")
-      outerOptFun <- .bobyqa
-      outerOpt <- -1L
-    } else if (outerOpt == "nlminb") {
-      outerOptFun <- .nlminb
-      outerOpt <- -1L
-    } else if (outerOpt == "mma") {
-      outerOptFun <- .nloptr
-      outerOpt <- -1L
-    } else if (outerOpt == "slsqp") {
-      outerOptFun <- .slsqp
-      outerOpt <- -1L
-    } else if (outerOpt == "lbfgsbLG") {
-      outerOptFun <- .lbfgsbLG
-      outerOpt <- -1L
-    } else if (outerOpt == "Rvmmin") {
-      outerOptFun <- .Rvmmin
-      outerOpt <- -1L
-    } else {
-      .outerOptIdx <- c("L-BFGS-B" = 0L, "lbfgsb3c" = 1L)
-      outerOpt <- .outerOptIdx[outerOpt]
-      if (outerOpt == 1L) {
-        rxode2::rxReq("lbfgsb3c")
-      }
-      outerOptFun <- NULL
-    }
-  } else if (is(outerOpt, "function")) {
-    outerOptFun <- outerOpt
-    outerOpt <- -1L
-  }
-  if (rxode2::rxIs(innerOpt, "character")) {
-    .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-    innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
-  }
-
-  if (resetEtaP > 0 & resetEtaP < 1) {
-    .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
-  } else if (resetEtaP <= 0) {
-    .resetEtaSize <- Inf
-  } else {
-    .resetEtaSize <- 0
-  }
-
-  if (resetThetaP > 0 & resetThetaP < 1) {
-    .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaSize <- Inf
-  } else {
-    stop("Cannot always reset THETAs")
-  }
-  if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
-    .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaFinalSize <- Inf
-  } else {
-    stop("Cannot always reset THETAs")
-  }
-  if (inherits(addProp, "numeric")) {
-    if (addProp == 1) {
-      addProp <- "combined1"
-    } else if (addProp == 2) {
-      addProp <- "combined2"
-    } else {
-      stop("addProp must be 1, 2, \"combined1\" or \"combined2\"", call.=FALSE)
-    }
-  } else {
-    addProp <- match.arg(addProp)
-  }
-  checkmate::assertLogical(compress, any.missing=FALSE, len=1)
-  .ret <- list(
-    maxOuterIterations = as.integer(maxOuterIterations),
-    maxInnerIterations = as.integer(maxInnerIterations),
-    method = method,
-    transitAbs = transitAbs,
-    atol = atol,
-    rtol = rtol,
-    atolSens = atolSens,
-    rtolSens = rtolSens,
-    ssAtol = ssAtol,
-    ssRtol = ssRtol,
-    ssAtolSens = ssAtolSens,
-    ssRtolSens = ssRtolSens,
-    minSS = minSS, maxSS = maxSS,
-    maxstepsOde = maxstepsOde,
-    hmin = hmin,
-    hmax = hmax,
-    hini = hini,
-    maxordn = maxordn,
-    maxords = maxords,
-    cores = cores,
-    covsInterpolation = covsInterpolation,
-    n1qn1nsim = as.integer(n1qn1nsim),
-    print = as.integer(print),
-    lbfgsLmm = as.integer(lbfgsLmm),
-    lbfgsPgtol = as.double(lbfgsPgtol),
-    lbfgsFactr = as.double(lbfgsFactr),
-    scaleTo = scaleTo,
-    epsilon = epsilon,
-    derivEps = derivEps,
-    derivMethod = derivMethod,
-    covDerivMethod = covDerivMethod,
-    covMethod = covMethod,
-    centralDerivEps = centralDerivEps,
-    eigen = as.integer(eigen),
-    addPosthoc = as.integer(addPosthoc),
-    diagXform = match.arg(diagXform),
-    sumProd = sumProd,
-    optExpression = optExpression,
-    outerOpt = as.integer(outerOpt),
-    ci = as.double(ci),
-    sigdig = as.double(sigdig),
-    scaleObjective = as.double(scaleObjective),
-    useColor = as.integer(useColor),
-    boundTol = as.double(boundTol),
-    calcTables = calcTables,
-    printNcol = as.integer(printNcol),
-    noAbort = as.integer(noAbort),
-    interaction = as.integer(interaction),
-    cholSEtol = as.double(cholSEtol),
-    hessEps = as.double(hessEps),
-    cholAccept = as.double(cholAccept),
-    resetEtaSize = as.double(.resetEtaSize),
-    resetThetaSize = as.double(.resetThetaSize),
-    resetThetaFinalSize = as.double(.resetThetaFinalSize),
-    diagOmegaBoundUpper = diagOmegaBoundUpper,
-    diagOmegaBoundLower = diagOmegaBoundLower,
-    cholSEOpt = as.integer(cholSEOpt),
-    cholSECov = as.integer(cholSECov),
-    fo = as.integer(fo),
-    covTryHarder = as.integer(covTryHarder),
-    outerOptFun = outerOptFun,
-    ## bobyqa
-    rhobeg = as.double(rhobeg),
-    rhoend = as.double(rhoend),
-    npt = npt,
-    ## nlminb
-    rel.tol = as.double(rel.tol),
-    x.tol = as.double(x.tol),
-    eval.max = eval.max,
-    iter.max = iter.max,
-    innerOpt = innerOpt,
-    ## BFGS
-    abstol = abstol,
-    reltol = reltol,
-    derivSwitchTol = derivSwitchTol,
-    resetHessianAndEta = as.integer(resetHessianAndEta),
-    stateTrim = as.double(stateTrim),
-    gillK = as.integer(gillK),
-    gillKcov = as.integer(gillKcov),
-    gillRtol = as.double(gillRtol),
-    gillStep = as.double(gillStep),
-    gillStepCov = as.double(gillStepCov),
-    scaleType = scaleType,
-    normType = normType,
-    scaleC = scaleC,
-    scaleCmin = as.double(scaleCmin),
-    scaleCmax = as.double(scaleCmax),
-    scaleC0 = as.double(scaleC0),
-    outerOptTxt = .outerOptTxt,
-    rmatNorm = as.integer(rmatNorm),
-    smatNorm = as.integer(smatNorm),
-    covGillF = as.integer(covGillF),
-    optGillF = as.integer(optGillF),
-    gillFtol = as.double(gillFtol),
-    gillFtolCov = as.double(gillFtolCov),
-    covSmall = as.double(covSmall),
-    adjLik = adjLik,
-    gradTrim = as.double(gradTrim),
-    gradCalcCentralSmall = as.double(gradCalcCentralSmall),
-    gradCalcCentralLarge = as.double(gradCalcCentralLarge),
-    etaNudge = as.double(etaNudge),
-    etaNudge2=as.double(etaNudge2),
-    maxOdeRecalc = as.integer(maxOdeRecalc),
-    odeRecalcFactor = as.double(odeRecalcFactor),
-    nRetries = nRetries,
-    seed = seed,
-    resetThetaCheckPer = resetThetaCheckPer,
-    etaMat = etaMat,
-    repeatGillMax = as.integer(repeatGillMax),
-    stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
-    eventFD = eventFD,
-    eventType = eventType,
-    gradProgressOfvTime = gradProgressOfvTime,
-    addProp = addProp,
-    singleOde = singleOde,
-    badSolveObjfAdj=badSolveObjfAdj,
-    compress=compress,
-    ...
-  )
-  if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying etaMat, assume you wish to evaluate at ETAs, so setting maxInnerIterations=0")
-    .ret$maxInnerIterations <- 0L
-    .ret$etaMat <- etaMat
-  } else if (!is.null(etaMat)) {
-    .ret$etaMat <- etaMat
-  }
-  .tmp <- .ret
-  .tmp$maxsteps <- maxstepsOde
-  .tmp <- do.call(rxode2::rxControl, .tmp)
-  .ret$rxControl <- .tmp
-  class(.ret) <- "foceiControl"
-  return(.ret)
-}
 
 .ucminf <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   rxode2::rxReq("ucminf")
@@ -1699,6 +639,9 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 }
 
 .innerInternal <- function(ui, s) {
+  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
+                                           ui$foceiCmtPreModel, "\n"))
+  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   if (exists("..maxTheta", s)) {
     .eventTheta <- rep(0L, s$..maxTheta)
   } else {
@@ -1870,24 +813,16 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiOptEnvAssignTol <- function(ui, env) {
-  .len <- length(env$model$pred.nolhs$state)
+  .len <- length(env$model$predNoLhs$state)
   rxode2::rxAssignControlValue(ui, "predNeq", .len)
-  .atol <- rep(rxode2::rxGetControl(ui, "atol", 5e-06), .len)
-  .rtol <- rep(rxode2::rxGetControl(ui, "rtol", 5e-06), .len)
-  .ssAtol <- rep(rxode2::rxGetControl(ui, "ssAtol", 5e-06), .len)
-  .ssRtol <- rep(rxode2::rxGetControl(ui, "ssRtol", 5e-06), .len)
   if (!is.null(env$model$inner)) {
-    .len2 <- length(env$model$inner$state) - .len
-    .defSens <- 5e-06 / 2
-    .atol <- c(.atol, rep(rxode2::rxGetControl(ui, "atolSens", .defSens), .len2))
-    .rtol <- c(.rtol, rep(rxode2::rxGetControl(ui, "rtolSens", .defSens), .len2))
-    .ssAtol <- c(.ssAtol, rep(rxode2::rxGetControl(ui, "ssAtolSens", .defSens), .len2))
-    .ssRtol <- c(.ssAtol, rep(rxode2::rxGetControl(ui, "ssRtolSens", .defSens), .len2))
+    .len0 <- length(env$model$inner$state)
+    .len2 <- .len0 - .len
+    if (.len2 > 0){
+      .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+      rxode2::rxAssignControlValue(ui, "rxControl", rxode2::rxControlUpdateSens(.rxControl, .len2, .len0))
+    }
   }
-  rxode2::rxAssignControlValue(ui, "atol", .atol)
-  rxode2::rxAssignControlValue(ui, "rtol", .rtol)
-  rxode2::rxAssignControlValue(ui, "ssAtol", .ssAtol)
-  rxode2::rxAssignControlValue(ui, "ssRtol", .ssRtol)
 }
 
 #'  This sets up the initial omega/eta estimates and the boundaries for the whole system
@@ -2225,64 +1160,69 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
-  while (this.env$err == "theta reset") {
-    assign("err", "", this.env)
-    .ret0 <- tryCatch(
-    {
-      foceiFitCpp_(.ret)
-    },
-    error = function(e) {
-      if (regexpr("theta reset", e$message) != -1) {
-        assign("zeroOuter", FALSE, this.env)
-        assign("zeroGrad", FALSE, this.env)
-        if (regexpr("theta reset0", e$message) != -1) {
-          assign("zeroGrad", TRUE, this.env)
-        }  else if (regexpr("theta resetZ", e$message) != -1) {
-          assign("zeroOuter", TRUE, this.env)
+  if (getOption("nlmixr2.retryFocei", TRUE)){
+    while (this.env$err == "theta reset") {
+      assign("err", "", this.env)
+      .ret0 <- tryCatch(
+      {
+        foceiFitCpp_(.ret)
+      },
+      error = function(e) {
+        if (regexpr("theta reset", e$message) != -1) {
+          assign("zeroOuter", FALSE, this.env)
+          assign("zeroGrad", FALSE, this.env)
+          if (regexpr("theta reset0", e$message) != -1) {
+            assign("zeroGrad", TRUE, this.env)
+          }  else if (regexpr("theta resetZ", e$message) != -1) {
+            assign("zeroOuter", TRUE, this.env)
+          }
+          assign("err", "theta reset", this.env)
+        } else {
+          assign("err", e$message, this.env)
         }
-        assign("err", "theta reset", this.env)
-      } else {
-        assign("err", e$message, this.env)
+      })
+      if (this.env$err == "theta reset") {
+        .nm <- names(.ret$thetaIni)
+        .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
+        .ret$rxInv$theta <- .thetaReset$omegaTheta
+        .ret$control$printTop <- FALSE
+        .ret$etaMat <- .thetaReset$etaMat
+        .ret$control$etaMat <- .thetaReset$etaMat
+        .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
+        .ret$control$nF <- .thetaReset$nF
+        .ret$control$gillRetC <- .thetaReset$gillRetC
+        .ret$control$gillRet <- .thetaReset$gillRet
+        .ret$control$gillRet <- .thetaReset$gillRet
+        .ret$control$gillDf <- .thetaReset$gillDf
+        .ret$control$gillDf2 <- .thetaReset$gillDf2
+        .ret$control$gillErr <- .thetaReset$gillErr
+        .ret$control$rEps <- .thetaReset$rEps
+        .ret$control$aEps <- .thetaReset$aEps
+        .ret$control$rEpsC <- .thetaReset$rEpsC
+        .ret$control$aEpsC <- .thetaReset$aEpsC
+        .ret$control$c1 <- .thetaReset$c1
+        .ret$control$c2 <- .thetaReset$c2
+        if (this.env$zeroOuter) {
+          message("Posthoc reset")
+          .ret$control$maxOuterIterations <- 0L
+        } else if (this.env$zeroGrad) {
+          message("Theta reset (zero gradient values); Switch to bobyqa")
+          rxode2::rxReq("minqa")
+          .ret$control$outerOptFun <- .bobyqa
+          .ret$control$outerOpt <- -1L
+        } else {
+          message("Theta reset (ETA drift)")
+        }
       }
-    })
-    if (this.env$err == "theta reset") {
-      .nm <- names(.ret$thetaIni)
-      .ret$thetaIni <- setNames(.thetaReset$thetaIni + 0.0, .nm)
-      .ret$rxInv$theta <- .thetaReset$omegaTheta
-      .ret$control$printTop <- FALSE
-      .ret$etaMat <- .thetaReset$etaMat
-      .ret$control$etaMat <- .thetaReset$etaMat
-      .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
-      .ret$control$nF <- .thetaReset$nF
-      .ret$control$gillRetC <- .thetaReset$gillRetC
-      .ret$control$gillRet <- .thetaReset$gillRet
-      .ret$control$gillRet <- .thetaReset$gillRet
-      .ret$control$gillDf <- .thetaReset$gillDf
-      .ret$control$gillDf2 <- .thetaReset$gillDf2
-      .ret$control$gillErr <- .thetaReset$gillErr
-      .ret$control$rEps <- .thetaReset$rEps
-      .ret$control$aEps <- .thetaReset$aEps
-      .ret$control$rEpsC <- .thetaReset$rEpsC
-      .ret$control$aEpsC <- .thetaReset$aEpsC
-      .ret$control$c1 <- .thetaReset$c1
-      .ret$control$c2 <- .thetaReset$c2
-      if (this.env$zeroOuter) {
-        message("Posthoc reset")
-        .ret$control$maxOuterIterations <- 0L
-      } else if (this.env$zeroGrad) {
-        message("Theta reset (zero gradient values); Switch to bobyqa")
-        rxode2::rxReq("minqa")
-        .ret$control$outerOptFun <- .bobyqa
-        .ret$control$outerOpt <- -1L
+      if (this.env$err != "") {
+        stop(this.env$err)
       } else {
-        message("Theta reset (ETA drift)")
+        return(.ret0)
       }
+
     }
-    if (this.env$err != "") {
-      stop(this.env$err)
-    } else {
-      return(.ret0)
-    }
+  } else {
+    foceiFitCpp_(.ret)
   }
 }
 #'  Restart the estimation if it wasn't successful by moving the parameters (randomly)
@@ -2319,7 +1259,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       }
     )
     .ret$thetaIni <- .estNew
-    .ret0 <- try(.foceiFitInternal(.ret))
+    if (getOption("nlmixr2.retryFocei", TRUE)) {
+      .ret0 <- try(.foceiFitInternal(.ret))
+    } else {
+      .ret0 <- .foceiFitInternal(.ret)
+    }
+
     .n <- .n + 1
   }
   .ret0
@@ -2378,15 +1323,20 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
-  assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
-                                           ui$foceiCmtPreModel, "\n"))
-  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   .control <- ui$control
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
   .foceiPreProcessData(.data, .env, ui)
-  .ret0 <- try(.foceiFitInternal(.env))
+  if (!is.null(.env$cov)){
+    checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
+                            row.names="strict", col.names="strict")
+  }
+  if (getOption("nlmixr2.retryFocei", TRUE)) {
+    .ret0 <- try(.foceiFitInternal(.env))
+  } else {
+    .ret0 <- .foceiFitInternal(.env)
+  }
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)

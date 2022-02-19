@@ -92,11 +92,6 @@ nlme::ranef
 #' @export
 nlme::random.effects
 
-#' @importFrom nlme nlmeControl
-#' @export
-nlme::nlmeControl
-
-
 #' @importFrom rxode2 eventTable
 #' @export
 rxode2::eventTable
@@ -230,3 +225,7 @@ rxode2::stat_cens
 #' @importFrom rxode2 stat_amt
 #' @export
 rxode2::stat_amt
+
+#' @importFrom rxode2 rxControl
+#' @export
+rxode2::rxControl

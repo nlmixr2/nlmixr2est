@@ -7,7 +7,7 @@
 
 - New error types are supported in focei including mixing theta and
   etas in residual errors and different types of proportional errors
-  
+
 - Different types of additive and proportional errors can be used for
   each endpoint using ` + combined1()` or `+ combined2()` otherwise it
   takes the supplied `addProp` option to figure out which type of
@@ -21,7 +21,7 @@
 - mu referencing is no longer required for `saem`; Internally non
   mu-referenced values are converted to mu referenced values and the
   converted back when calculating the nlmixr2 object.
-  
+
 - `nlmixr2` forced the parameter ordering to (1) population effects,
   (2) non mu-referenced between subject effects (3) omega estimates
   and (4) residual effects. This changes the order that `nlmixr2` sees
@@ -40,32 +40,66 @@
   because they are increasingly difficult to use and convert to
   something standard; a few methods (like `print`, `summary` etc) are
   maintained to view the lower level object and for debugging it.
-  
+
 - Parameter history and print-out no longer includes fixed parameters.
 
 - The model to calculate the residuals more closely matches the model
   used for estimation to remove small rounding differences that may
   occur in the models.
-  
+
 - Different types of additive and proportional errors can be used for
   each endpoint using ` + combined1()` or `+ combined2()` otherwise it
   takes the supplied `addProp` option to figure out which type of
   combined model is run (by default `combined2()`)
-  
+
 - Parameter history and printout now uses standard deviation for
-  additive only components, matching the estimation of the components
+  additive only components, matching the estimation of the components.
   
+- `rxode2` solving options are now saved in the `rxControl` part of
+  the `saemControl()`.  That is
+  `saemControl(rxControl=rxControl(...))`; This fixes any conflicting
+  option names as well as allowing alignment between the control
+  structures in `focei`, `nlme` and `saem`
+
+## nlme changes
+
+- `nlme` has been completely rewritten to directly run from the
+  `rxode2` UI
+
+- `nlme` always tries to use mu-referencing (when available)
+
+- Internally `nlme` now uses parallel processing for solving so it
+  should be faster.
+
+- `nlmixr2NlmeControl()` (which will overwrite `nlmeControl()`)
+  documents and adds more options to `nlme`.
+
+- `weights`, `fixed`, `random` can be specified in
+  `nlmixr2NlmeControl()`.  If so, then the `nlme` object will be
+  returned.
+
+- `returnNlme` is a new option that will return the `nlme` object
+  instead of the traditional `nlme` object.
+
+- `nlme_ode` and `lme_lin_cmpt` are both removed.
+
+- `rxode2` solving options are now saved in the `rxControl` part of
+  the `saemControl()`.  That is
+  `nlmeControl(rxControl=rxControl(...))`; This fixes any conflicting
+  option names as well as allowing alignment between the control
+  structures in `focei`, `nlme` and `saem`
+
 ## nlmixr2 object change
 
 - With `saem`, the nlmixr2 function now saves/compresses the `phiM`
   information.  This means the gaussian and laplacian likelihoods can
   be calculated when you save the nlmixr object and then restore it
   later.
-  
+
 - The nlmixr2 object compresses infrequently used and removes many
   unneeded objects. Even with compression, the `saem` objects are
   often a bit bigger since they include the large `phiM` object.
-  
+
 - `nlmixr2` now supports non-mu referenced ETAs in the `fit$parFixed`
   and `fit$parFixedDf`
 
@@ -80,8 +114,8 @@
 - `$simInfo$sigma` is a diagonal matrix since now the normal
   simulation is controlled by the variability modeled as a population
   value.
-  
-## NPDE changes 
+
+## NPDE changes
 
 - Fixed a bug where the number of simulations for a NPDE calculation
   are correctly passed by `addNpde(fit, table=tableControl(nsim=500))`
@@ -97,7 +131,7 @@
   simulation for other packages more easily (like `ggPMX`) without
   creating or summarizing data since `ggPMX` has its own methods for
   summarizing and creating plots.
-  
+
 - VPC now directly uses `rxode2::rxSolve`
 
 ## augPred() changes
@@ -118,7 +152,7 @@
 
 - Many methods lower level utility functions have been deleted.
 
-- `nmDocx`, `nmLst` and `nmSave` is removed.
+- `nmDocx`, `nmLst` and `nmSave` have been removed.
 
 ## Bug fixes
 

@@ -433,9 +433,9 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
       .control$interaction <- FALSE
     }
     if (.fit$method == "population only") {
-      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", .fit$env$est,  .cls)
+      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", "pop", paste0("nlmixr2.", .fit$env$est),  .cls)
     } else {
-      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", .fit$env$est, .cls)
+      .cls <- c("nlmixr2FitData", "nlmixr2FitCore", paste0("nlmixr2.", .fit$env$est), .cls)
     }
     if (inherits(updateObject, "logical")) {
       if (!updateObject) {

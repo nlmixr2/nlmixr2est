@@ -89,7 +89,7 @@ test_that("proper table outputs", {
       maxOuterIterations = 0,
       iter.max=0, calcTables=FALSE))
 
-  .addTable <- function(...) suppressMessages(suppressWarnings(addTable(...)))
+ .addTable <- function(...) suppressMessages(suppressWarnings(addTable(...)))
 
   tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
