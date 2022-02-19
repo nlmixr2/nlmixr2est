@@ -1,6 +1,6 @@
-#' Assert that this is a nlmixr fit object
+#' Assert that this is a nlmixr2 fit object
 #'
-#' Will error without nlmixr fit object
+#' Will error without nlmixr2 fit object
 #'
 #' @param fit Fit object
 #' @return Nothing
@@ -17,14 +17,14 @@ assertNlmixrFit <- function(fit) {
   .object <- as.character(substitute(fit))
   if (!(inherits(fit, "nlmixr2FitCore") ||
         inherits(fit, "nlmixr2FitCoreSilent"))) {
-    stop("'", .object, "' needs to be a nlmixr fit object",
+    stop("'", .object, "' needs to be a nlmixr2 fit object",
          call.=FALSE)
   }
 }
 
-#' Assert that this is a nlmixr fit data object
+#' Assert that this is a nlmixr2 fit data object
 #'
-#' Will error without nlmixr fit data object
+#' Will error without nlmixr2 fit data object
 #'
 #' @param fit Fit object
 #' @return Nothing
@@ -40,11 +40,11 @@ assertNlmixrFit <- function(fit) {
 assertNlmixrFitData <- function(fit) {
   .object <- as.character(substitute(fit))
   if (!inherits(fit, "nlmixr2FitData")) {
-    stop("'", .object, "' needs to be a nlmixr fit object with data attached",
+    stop("'", .object, "' needs to be a nlmixr2 fit object with data attached",
          call.=FALSE)
   }
 }
-#' Assert a nlmixr object data frame row is compatible with what needs to be added
+#' Assert a nlmixr2 object data frame row is compatible with what needs to be added
 #'
 #' @param df Data frame to assert
 #' @param allowNa Allow NA data frame
