@@ -766,11 +766,22 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-
-  checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
-  checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
-  checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
-  checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
+  }
+  rmatNorm <- as.integer(rmatNorm)
+  if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
+  }
+  smatNorm <- as.integer(smatNorm)
+  if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
+  }
+  covGillF <- as.integer(covGillF)
+  if (!checkmate::testIntegerish(optGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  }
+  optGillF <- as.integer(optGillF)
 
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
@@ -856,8 +867,11 @@ foceiControl <- function(sigdig = 3, #
       covMethod <- .covMethodIdx[match.arg(covMethod)]
     }
   }
+  .xtra <- list(...)
   .outerOptTxt <- "custom"
-  if (rxode2::rxIs(outerOpt, "character")) {
+  if (!is.null(.xtra$outerOptFun)) {
+    outerOptFun <- .xtra$outerOptFun
+  } else if (rxode2::rxIs(outerOpt, "character")) {
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
@@ -931,16 +945,20 @@ foceiControl <- function(sigdig = 3, #
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
-  genRxControl <- FALSE
-  if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig)
-    genRxControl <- TRUE
-  } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
-  }
-  if (!inherits(rxControl, "rxControl")) {
-    stop("rxControl needs to be ode solving options from rxode2::rxControl()",
-         call.=FALSE)
+  if (!is.null(.xtra$genRxControl)) {
+    genRxControl <- .xtra$genRxControl
+  } else {
+    genRxControl <- FALSE
+    if (is.null(rxControl)) {
+      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      genRxControl <- TRUE
+    } else if (is.list(rxControl)) {
+      rxControl <- do.call(rxode2::rxControl, rxControl)
+    }
+    if (!inherits(rxControl, "rxControl")) {
+      stop("rxControl needs to be ode solving options from rxode2::rxControl()",
+           call.=FALSE)
+    }
   }
   checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
@@ -1055,10 +1073,10 @@ foceiControl <- function(sigdig = 3, #
     scaleCmax = as.double(scaleCmax),
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
-    rmatNorm = as.integer(rmatNorm),
-    smatNorm = as.integer(smatNorm),
-    covGillF = as.integer(covGillF),
-    optGillF = as.integer(optGillF),
+    rmatNorm = rmatNorm,
+    smatNorm = smatNorm,
+    covGillF = covGillF,
+    optGillF = optGillF,
     gillFtol = as.double(gillFtol),
     gillFtolCov = as.double(gillFtolCov),
     covSmall = as.double(covSmall),
