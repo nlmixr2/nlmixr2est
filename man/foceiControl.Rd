@@ -99,7 +99,8 @@ foceiControl(
   addProp = c("combined2", "combined1"),
   badSolveObjfAdj = 100,
   compress = TRUE,
-  rxControl = NULL
+  rxControl = NULL,
+  sigdigTable = NULL
 )
 }
 \arguments{
@@ -116,7 +117,6 @@ foceiControl(
 
  \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
 
- \item The significant figures that some tables are rounded to.
 }}
 
 \item{...}{Ignored parameters}
@@ -660,6 +660,10 @@ solve.}
 \item{compress}{Should the object have compressed items}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
+
+\item{sigdigTable}{Significant digits in the final output table.
+If not specified, then it matches the significant digits in the
+`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 }
 \value{
 The control object that changes the options for the FOCEi

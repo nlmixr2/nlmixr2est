@@ -3305,8 +3305,8 @@ NumericVector foceiSetup_(const RObject &obj,
     Rcpp::stop("'covMethod' needs to be an integer in lower level inner");
   }
   op_focei.eigen = as<int>(foceiO["eigen"]);
-  op_focei.ci=0.95;
-  op_focei.sigdig=as<double>(foceiO["sigdig"]);
+  op_focei.ci=as<double>(foceiO["ci"]);
+  op_focei.sigdig=as<double>(foceiO["sigdigTable"]);
   op_focei.useColor=as<int>(foceiO["useColor"]);
   op_focei.boundTol=as<double>(foceiO["boundTol"]);
   op_focei.printNcol=as<int>(foceiO["printNcol"]);

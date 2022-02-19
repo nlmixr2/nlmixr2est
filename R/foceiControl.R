@@ -13,8 +13,11 @@
 #'
 #'  \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
 #'
-#'  \item The significant figures that some tables are rounded to.
 #' }
+#'
+#' @param sigdigTable Significant digits in the final output table.
+#'   If not specified, then it matches the significant digits in the
+#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -685,7 +688,8 @@ foceiControl <- function(sigdig = 3, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
                          compress=TRUE, #
-                         rxControl=NULL) { #
+                         rxControl=NULL,
+                         sigdigTable=NULL) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -716,6 +720,16 @@ foceiControl <- function(sigdig = 3, #
       derivSwitchTol <- 2 * 10^(-sigdig - 1)
     }
   }
+  if (is.null(sigdigTable)) {
+    if (is.null(sigdig)) {
+      sigdigTable <- 3L
+    } else {
+      sigdigTable <- sigdig
+    }
+  } else {
+    checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+  }
+
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
@@ -1040,6 +1054,7 @@ foceiControl <- function(sigdig = 3, #
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
+    sigdigTable=sigdigTable,
     scaleObjective = as.double(scaleObjective),
     useColor = useColor,
     boundTol = as.double(boundTol),

@@ -1,5 +1,7 @@
 nlmixrControlTest <- function(control) {
   expect_true(inherits(control$rxControl, "rxControl"))
+  expect_true(checkmate::testNumeric(control$ci, lower=0, upper=1, any.missing=FALSE, len=1))
+  expect_true(checkmate::testIntegerish(control$sigdigTable, lower=1, any.missing=FALSE, len=1))
 }
 
 test_that("test foceiControl option sanity", {
