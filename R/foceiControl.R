@@ -728,7 +728,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
   if (!is.null(scaleC)) {
-    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSEmr)
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
   }
   checkmate::assertNumeric(scaleC0, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(derivEps, lower=0, len=2, any.missing=FALSE)

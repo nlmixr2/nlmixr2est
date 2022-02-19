@@ -156,7 +156,7 @@ nlmeControl <- nlmixr2NlmeControl
   assignInMyNamespace(".nlmeFitDataAll", .dsAll)
 }
 
-.nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates=.tv) {
+.nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
   assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
