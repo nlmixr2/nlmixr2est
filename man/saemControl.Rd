@@ -10,10 +10,6 @@ saemControl(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
-  atol = 1e-06,
-  rtol = 1e-04,
-  method = "liblsoda",
-  transitAbs = FALSE,
   print = 1,
   trace = 0,
   covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
@@ -22,11 +18,9 @@ saemControl(
   nnodes.gq = 3,
   nsd.gq = 1.6,
   optExpression = TRUE,
-  maxsteps = 100000L,
   adjObf = TRUE,
   sumProd = FALSE,
   addProp = c("combined2", "combined1"),
-  singleOde = TRUE,
   tol = 1e-06,
   itmax = 30,
   type = c("nelder-mead", "newuoa"),
@@ -39,6 +33,8 @@ saemControl(
   perFixOmega = 0.1,
   perFixResid = 0.1,
   compress = TRUE,
+  rxControl = NULL,
+  sigdig = NULL,
   ...
 )
 }
@@ -71,31 +67,6 @@ computation.  In Monolix this is equivalent to \code{L}.}
 
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
-
-\item{atol}{a numeric absolute tolerance (1e-8 by default) used
-by the ODE solver to determine if a good solution has been
-achieved;  This is also used in the solved linear model to check
-if prior doses do not add anything to the solution.}
-
-\item{rtol}{a numeric relative tolerance (\code{1e-6} by default) used
-by the ODE solver to determine if a good solution has been
-achieved. This is also used in the solved linear model to check
-if prior doses do not add anything to the solution.}
-
-\item{method}{The method for solving ODEs.  Currently this supports:
-\itemize{
-\item \code{"liblsoda"} thread safe lsoda.  This supports parallel
-thread-based solving, and ignores user Jacobian specification.
-\item \code{"lsoda"} -- LSODA solver.  Does not support parallel thread-based
-solving, but allows user Jacobian specification.
-\item \code{"dop853"} -- DOP853 solver.  Does not support parallel thread-based
-solving nor user Jacobain specification
-\item \code{"indLin"} -- Solving through inductive linearization.  The rxode2 dll
-must be setup specially to use this solving routine.
-}}
-
-\item{transitAbs}{boolean indicating if this is a transit
-compartment absorption}
 
 \item{print}{The number it iterations that are completed before
 anything is printed to the console.  By default, this is 1.}
@@ -139,9 +110,6 @@ times the SD)}
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
 
-\item{maxsteps}{maximum number of (internally defined) steps allowed
-during one call to the solver. (5000 by default)}
-
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
@@ -175,10 +143,6 @@ The combined2 error model can be described by the following equation:
 
  - c is the power exponent (in the proportional case c=1)}
 
-\item{singleOde}{This option allows a single ode model to include
-the PK parameter information instead of splitting it into a
-function and a rxode2 model}
-
 \item{tol}{This is the tolerance for the regression models used
 for complex residual errors (ie add+prop etc)}
 
@@ -195,8 +159,9 @@ of iterations is itmax*number of parameters}
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
 
-\item{maxOdeRecalc}{This represents the maximum number of
-recalculations before focei fails ODE integration.}
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
 
 \item{perSa}{This is the percent of the time the `nBurn`
 iterations in phase runs runs a simulated annealing.}
@@ -216,6 +181,15 @@ where the residual components are unfixed to allow better
 exploration of the likelihood surface.}
 
 \item{compress}{Should the object have compressed items}
+
+\item{sigdig}{Specifies the "significant digits" that the ode
+solving requests.  When specified this controls the relative and
+absolute tolerances of the ODE solvers.  By default the tolerance
+is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
+sensitivity equations and steady-state solutions the default is
+\code{0.5*10^(-sigdig-1.5)} (sensitivity changes only applicable
+for liblsoda).  By default this is unspecified (\code{NULL}) and uses
+the standard \code{atol}/\code{rtol}.}
 
 \item{...}{Other arguments to control SAEM.}
 }

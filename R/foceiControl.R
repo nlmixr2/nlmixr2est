@@ -716,7 +716,7 @@ foceiControl <- function(sigdig = 3, #
   }
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(maxOuterIteerations, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
   if (missing(n1qn1nsim)) {
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
@@ -778,12 +778,12 @@ foceiControl <- function(sigdig = 3, #
   lbfgsLmm <- as.integer(lbfgsLmm)
   checkmate::assertNumeric(lbfgsPgtol, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(lbfgsFactr, lower=0, any.missing=FALSE, len=1)
-  if (!checkmate::testIntegerish(eigen, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(eigen, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(eigen, any.missing=FALSE, len=1)
   }
   eigen <- as.integer(eigen)
 
-  if (!checkmate::testIntegerish(addPosthoc, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(addPosthoc, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(addPosthoc, any.missing=FALSE, len=1)
   }
   addPosthoc <- as.integer(addPosthoc)
@@ -793,7 +793,7 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(boundTol, len=1, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(boundTol, lower=0, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   if(!checkmate::testIntegerish(noAbort, lower=0, upper=1, any.missing=FALSE, len=1)) {
@@ -823,10 +823,11 @@ foceiControl <- function(sigdig = 3, #
     .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
     eventType <- .eventTypeIdx[match.arg(eventType)]
   }
+
+  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
     normType <- as.integer(normType)
-  } else {mr
-    .normTypmeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+  } else {
     normType <- .normTypeIdx[match.arg(normType)]
   }
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
@@ -938,22 +939,22 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
 
-  if (!checkmate::testIntegerish(cholSEOpt, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(cholSEOpt, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(cholSEOpt, any.missing=FALSE, len=1)
   }
   cholSEOpt <- as.integer(cholSEOpt)
 
-  if (!checkmate::testIntegerish(cholSECov, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(cholSECov, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(cholSECov, any.missing=FALSE, len=1)
   }
   cholSECov <- as.integer(cholSECov)
 
-  if (!checkmate::testIntegerish(fo, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(fo, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(fo, any.missing=FALSE, len=1)
   }
   fo <- as.integer(fo)
 
-  if (!checkmate::testIntegerish(resetHessianAndEta, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(resetHessianAndEta, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(resetHessianAndEta, any.missing=FALSE, len=1)
   }
   resetHessianAndEta <- as.integer(resetHessianAndEta)
@@ -967,7 +968,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(gradCalcCentralLarge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(etaNudge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(etaNudge2, len=1, lower=0, any.missing=FALSE, finite=TRUE)
-  checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
