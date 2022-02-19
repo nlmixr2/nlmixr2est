@@ -843,12 +843,16 @@ foceiControl <- function(sigdig = 3, #
     covDerivMethod <- match.arg(covDerivMethod)
     covDerivMethod <- .methodIdx[covDerivMethod]
   }
-  if (checkmate::testIntegerish(covMethod, len=1, lower=1L, upper=3L, any.missing=FALSE)) {
+  if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
   } else if (rxode2::rxIs(covMethod, "character")) {
-    covMethod <- match.arg(covMethod)
-    .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-    covMethod <- .covMethodIdx[match.arg(covMethod)]
+    if (all(covMethod == "")) {
+      covMethod <- 0L
+    } else {
+      covMethod <- match.arg(covMethod)
+      .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+      covMethod <- .covMethodIdx[match.arg(covMethod)]
+    }
   }
   .outerOptTxt <- "custom"
   if (rxode2::rxIs(outerOpt, "character")) {
@@ -969,7 +973,9 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(etaNudge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(etaNudge2, len=1, lower=0, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+  if (!is.null(seed)) {
+    checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+  }
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)

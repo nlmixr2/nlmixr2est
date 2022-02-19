@@ -812,7 +812,7 @@ saemControl <- function(seed = 99,
   .ctl <- .ctl[names(.ctl) != "scale"]
   .ctl$maxOuterIterations <- 0
   .ctl$maxInnerIterations <- 0
-  .ctl$covMethod <- "" #.covMethod
+  .ctl$covMethod <- 0L #.covMethod
   .ctl$etaMat <- env$.etaMat
   .ctl$sumProd <- .saemControl$sumProd
   .ctl$optExpression <- .saemControl$optExpression
