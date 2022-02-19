@@ -496,9 +496,6 @@
 #'     tolerances and try to resolve the system if there was a bad
 #'     ODE solve.
 #'
-#' @param odeRecalcFactor The factor to increase the rtol/atol with
-#'     bad ODE solving.
-#'
 #' @param repeatGillMax If the tolerances were reduced when
 #'     calculating the initial Gill differences, the Gill difference
 #'     is repeated up to a maximum number of times defined by this
@@ -519,10 +516,6 @@
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
-#'
-#' @param singleOde This option allows a single ode model to include
-#'   the PK parameter information instead of splitting it into a
-#'   function and a rxode2 model
 #'
 #' @param badSolveObjfAdj The objective function adjustment when the
 #'   ODE system cannot be solved.  It is based on each individual bad
@@ -559,9 +552,6 @@
 #'
 #' @param odeRecalcFactor The ODE recalculation factor when ODE
 #'   solving goes bad, this is the factor the rtol/atol is reduced
-#'
-#' @param maxOdeRecalc This represents the maximum number of
-#'   recalculations before focei fails ODE integration.
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -629,17 +619,17 @@ foceiControl <- function(sigdig = 3, #
                          calcTables = TRUE,#
                          noAbort = TRUE, #
                          interaction = TRUE, #
-                         cholSEtol = (.Machine$double.eps)^(1 / 3),
-                         cholAccept = 1e-3,
-                         resetEtaP = 0.15,
-                         resetThetaP = 0.05,
-                         resetThetaFinalP = 0.15,
+                         cholSEtol = (.Machine$double.eps)^(1 / 3), #
+                         cholAccept = 1e-3, #
+                         resetEtaP = 0.15, #
+                         resetThetaP = 0.05, #
+                         resetThetaFinalP = 0.15, #
                          diagOmegaBoundUpper = 5, # diag(omega) = diag(omega)*diagOmegaBoundUpper; =1 no upper
                          diagOmegaBoundLower = 100, # diag(omega) = diag(omega)/diagOmegaBoundLower; = 1 no lower
-                         cholSEOpt = FALSE,
-                         cholSECov = FALSE,
-                         fo = FALSE,
-                         covTryHarder = FALSE,
+                         cholSEOpt = FALSE, #
+                         cholSECov = FALSE, #
+                         fo = FALSE, #
+                         covTryHarder = FALSE, #
                          ## Ranking based on run 025
                          ## L-BFGS-B: 20970.53 (2094.004    429.535)
                          ## bobyqa: 21082.34 (338.677    420.754)
@@ -648,54 +638,52 @@ foceiControl <- function(sigdig = 3, #
                          ## mma: 20974.20 (Time: Opt: 3000.501 Cov: 467.287)
                          ## slsqp: 21023.89 (Time: Opt: 460.099; Cov: 488.921)
                          ## lbfgsbLG: 20974.74 (Time: Opt: 946.463; Cov:397.537)
-                         outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "Rvmmin"),
-                         innerOpt = c("n1qn1", "BFGS"),
+                         outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "Rvmmin"), #
+                         innerOpt = c("n1qn1", "BFGS"), #
                          ##
-                         rhobeg = .2,
-                         rhoend = NULL,
-                         npt = NULL,
+                         rhobeg = .2, #
+                         rhoend = NULL, #
+                         npt = NULL, #
                          ## nlminb
-                         rel.tol = NULL,
-                         x.tol = NULL,
-                         eval.max = 4000,
-                         iter.max = 2000,
-                         abstol = NULL,
-                         reltol = NULL,
-                         resetHessianAndEta = FALSE,
-                         stateTrim = Inf,
-                         gillK = 10L,
-                         gillStep = 4,
-                         gillFtol = 0,
-                         gillRtol = sqrt(.Machine$double.eps),
-                         gillKcov = 10L,
-                         gillStepCov = 2,
-                         gillFtolCov = 0,
-                         rmatNorm = TRUE,
-                         smatNorm = TRUE,
-                         covGillF = TRUE,
-                         optGillF = TRUE,
-                         covSmall = 1e-5,
+                         rel.tol = NULL, #
+                         x.tol = NULL, #
+                         eval.max = 4000, #
+                         iter.max = 2000, #
+                         abstol = NULL, #
+                         reltol = NULL, #
+                         resetHessianAndEta = FALSE, #
+                         stateTrim = Inf, #
+                         gillK = 10L, #
+                         gillStep = 4, #
+                         gillFtol = 0, #
+                         gillRtol = sqrt(.Machine$double.eps), #
+                         gillKcov = 10L, #
+                         gillStepCov = 2, #
+                         gillFtolCov = 0, #
+                         rmatNorm = TRUE, #
+                         smatNorm = TRUE, #
+                         covGillF = TRUE, #
+                         optGillF = TRUE, #
+                         covSmall = 1e-5, #
                          adjLik = TRUE, ## Adjust likelihood by 2pi for FOCEi methods
-                         gradTrim = Inf,
-                         maxOdeRecalc = 5,
-                         odeRecalcFactor = 10^(0.5),
-                         gradCalcCentralSmall = 1e-4,
-                         gradCalcCentralLarge = 1e4,
-                         etaNudge = qnorm(1-0.05/2)/sqrt(3),
-                         etaNudge2=qnorm(1-0.05/2) * sqrt(3/5),
-                         stiff,
-                         nRetries = 3,
-                         seed = 42,
-                         resetThetaCheckPer = 0.1,
-                         etaMat = NULL,
-                         repeatGillMax = 3,
-                         stickyRecalcN = 5,
-                         gradProgressOfvTime = 10,
+                         gradTrim = Inf, #
+                         maxOdeRecalc = 5, #
+                         odeRecalcFactor = 10^(0.5), #
+                         gradCalcCentralSmall = 1e-4, #
+                         gradCalcCentralLarge = 1e4, #
+                         etaNudge = qnorm(1-0.05/2)/sqrt(3), #
+                         etaNudge2=qnorm(1-0.05/2) * sqrt(3/5), #
+                         nRetries = 3, #
+                         seed = 42, #
+                         resetThetaCheckPer = 0.1, #
+                         etaMat = NULL, #
+                         repeatGillMax = 3,#
+                         stickyRecalcN = 5, #
+                         gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
-                         singleOde = TRUE,
-                         badSolveObjfAdj=100,
-                         compress=TRUE,
-                         rxControl=NULL) {
+                         badSolveObjfAdj=100, #
+                         compress=TRUE, #
+                         rxControl=NULL) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -813,10 +801,13 @@ foceiControl <- function(sigdig = 3, #
   }
   noAbort <- as.integer(noAbort)
 
-  if(!checkmate::testIntegerish(interaction, lower=0, upper=1, any.missing=FALSE, len=1)) {
+  if (!checkmate::testIntegerish(interaction, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(interaction, len=1, any.missing=FALSE)
   }
   interaction <- as.integer(interaction)
+
+  checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(cholAccept, lower=0, any.missing=FALSE, len=1)
 
   ## .methodIdx <- c("lsoda"=1L, "dop853"=0L, "liblsoda"=2L);
   ## method <- as.integer(.methodIdx[method]);
@@ -944,6 +935,46 @@ foceiControl <- function(sigdig = 3, #
     stop("rxControl needs to be ode solving options from rxode2::rxControl()",
          call.=FALSE)
   }
+  checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
+
+  if (!checkmate::testIntegerish(cholSEOpt, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(cholSEOpt, any.missing=FALSE, len=1)
+  }
+  cholSEOpt <- as.integer(cholSEOpt)
+
+  if (!checkmate::testIntegerish(cholSECov, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(cholSECov, any.missing=FALSE, len=1)
+  }
+  cholSECov <- as.integer(cholSECov)
+
+  if (!checkmate::testIntegerish(fo, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(fo, any.missing=FALSE, len=1)
+  }
+  fo <- as.integer(fo)
+
+  if (!checkmate::testIntegerish(resetHessianAndEta, lower=0, uppper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(resetHessianAndEta, any.missing=FALSE, len=1)
+  }
+  resetHessianAndEta <- as.integer(resetHessianAndEta)
+  checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertLogical(adjLik, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(gradTrim, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertNumeric(gradCalcCentralSmall, len=1, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(gradCalcCentralLarge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(etaNudge, len=1, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertNumeric(etaNudge2, len=1, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(nRetries, lower=0, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
+  checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
+  checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
+
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -982,9 +1013,9 @@ foceiControl <- function(sigdig = 3, #
     resetThetaFinalSize = as.double(.resetThetaFinalSize),
     diagOmegaBoundUpper = diagOmegaBoundUpper,
     diagOmegaBoundLower = diagOmegaBoundLower,
-    cholSEOpt = as.integer(cholSEOpt),
-    cholSECov = as.integer(cholSECov),
-    fo = as.integer(fo),
+    cholSEOpt = cholSEOpt,
+    cholSECov = cholSECov,
+    fo = fo,
     covTryHarder = covTryHarder,
     outerOptFun = outerOptFun,
     ## bobyqa
@@ -1001,7 +1032,7 @@ foceiControl <- function(sigdig = 3, #
     abstol = abstol,
     reltol = reltol,
     derivSwitchTol = derivSwitchTol,
-    resetHessianAndEta = as.integer(resetHessianAndEta),
+    resetHessianAndEta = resetHessianAndEta,
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),
@@ -1040,7 +1071,6 @@ foceiControl <- function(sigdig = 3, #
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
-    singleOde = singleOde,
     badSolveObjfAdj=badSolveObjfAdj,
     compress=compress,
     rxControl=rxControl,
