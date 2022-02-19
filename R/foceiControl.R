@@ -828,33 +828,33 @@ foceiControl <- function(sigdig = 3, #
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- .scaleTypeIdx[match.arg(scaleType)]
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
     .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
-    eventType <- .eventTypeIdx[match.arg(eventType)]
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
     normType <- as.integer(normType)
   } else {
-    normType <- .normTypeIdx[match.arg(normType)]
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
   if (checkmate::testIntegerish(derivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     derivMethod <- as.integer(derivMethod)
   } else {
     derivMethod <- match.arg(derivMethod)
-    derivMethod <- .methodIdx[derivMethod]
+    derivMethod <- setNames(.methodIdx[derivMethod], NULL)
   }
   if (checkmate::testIntegerish(covDerivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covDerivMethod <- as.integer(covDerivMethod)
   } else {
     covDerivMethod <- match.arg(covDerivMethod)
-    covDerivMethod <- .methodIdx[covDerivMethod]
+    covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
@@ -864,11 +864,14 @@ foceiControl <- function(sigdig = 3, #
     } else {
       covMethod <- match.arg(covMethod)
       .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-      covMethod <- .covMethodIdx[match.arg(covMethod)]
+      covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
     }
   }
   .xtra <- list(...)
   .outerOptTxt <- "custom"
+  if (!is.null(.xtra$outerOptTxt)) {
+    .outerOptTxt <- .xtra$outerOptTxt
+  }
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
@@ -913,7 +916,7 @@ foceiControl <- function(sigdig = 3, #
     innerOpt <- as.integer(innerOpt)
   } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-    innerOpt <- .innerOptFun[match.arg(innerOpt)]
+    innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
   checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
   if (resetEtaP > 0 & resetEtaP < 1) {

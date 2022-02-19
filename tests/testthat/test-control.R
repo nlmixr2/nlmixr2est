@@ -7,4 +7,6 @@ test_that("test control options", {
   nlmixrControlTest(foceiControl())
   .ctl <- foceiControl()
   expect_error(do.call(foceiControl, .ctl), NA)
+  .ctl2 <- do.call(foceiControl, .ctl)
+  expect_equal(.ctl, .ctl2)
 })
