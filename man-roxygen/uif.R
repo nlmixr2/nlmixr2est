@@ -78,9 +78,9 @@
 ##'    '=' or '<-' statement, not a '~').
 ##' \item Naming variables that start with "\code{_}" are not supported.  Note that R does not
 ##'     allow variable starting with "\code{_}" to be assigned without quoting them.
-##' \item Naming variables that start with "\code{rx_}" or "\code{nlmixr_}" is not supported since
-##'    \link[RxODE]{RxODE} and nlmixr use these prefixes internally for certain estimation
-##'    routines and calculating residuals.
+##' \item Naming variables that start with "\code{rx_}" or "\code{nlmixr_}" is
+##'   not supported since \link[rxode2]{rxode2} and nlmixr2 use these prefixes
+##'   internally for certain estimation routines and calculating residuals.
 ##' \item Variable names are case sensitive, just like they are in R. "\code{CL}" is not the
 ##'    same as "\code{Cl}".
 ##' }
@@ -238,17 +238,18 @@
 ##' A few things to keep in mind:
 ##'
 ##' \itemize{
-##' \item While RxODE allows mixing of solved systems and ODEs, this has not
-##'      been implemented in nlmixr yet.
-##' \item The solved systems implemented are the one, two and three compartment
-##'       models with or without first-order absorption.  Each of the models support a
-##'       lag time with a tlag parameter.
-##' \item In general the linear compartment model figures out the model by the parameter names.
-##'       nlmixr currently knows about numbered volumes, Vc/Vp, Clearances in terms of both Cl and
-##'       Q/CLD.  Additionally nlmixr knows about elimination micro-constants (ie K12).  Mixing of
-##'       these parameters for these models is currently not supported.
+##'   \item While RxODE allows mixing of solved systems and ODEs, this has not
+##'     been implemented in nlmixr yet.
+##'   \item The solved systems implemented are the one, two and three compartment
+##'     models with or without first-order absorption.  Each of the models support a
+##'     lag time with a tlag parameter.
+##'   \item In general the linear compartment model figures out the model by the parameter names.
+##'     nlmixr currently knows about numbered volumes, Vc/Vp, Clearances in terms of both Cl and
+##'     Q/CLD.  Additionally nlmixr knows about elimination micro-constants (ie K12).  Mixing of
+##'     these parameters for these models is currently not supported.
+##' }
 ##'
-##'  \bold{Checking model syntax}
+##' \bold{Checking model syntax}
 ##'
 ##' After specifying the model syntax you can check that nlmixr is
 ##' interpreting it correctly by using the \code{nlmixr} function on
@@ -304,7 +305,7 @@
 ##' The method to estimate the model is:
 ##'
 ##' \preformatted{
-##' fit <- nlmixr(model.function, dataset, est="est",control=estControl(options))
+##' fit <- nlmixr(model.function, dataset, est="est", control=estControl(options))
 ##' }
 ##'
 ##' Currently \code{\link[nlme]{nlme}} and \code{\link{saem}} are implemented.  For example, to run the
@@ -419,7 +420,7 @@
 ##'  3 1      0.75  389.  464. -74.5  -0.398   434. -45.2 -0.526  463. -73.9
 ##'  # ... with 6,944 more rows, and 11 more variables: CWRES <dbl>, eta.Cl <dbl>,
 ##'  #   eta.Vc <dbl>, eta.KA <dbl>, depot <dbl>, centr <dbl>, Cl <dbl>, Vc <dbl>,
-#   KA <dbl>, kel <dbl>, cp <dbl>##'
+##'  #   KA <dbl>, kel <dbl>, cp <dbl>
 ##' }
 ##'
 ##'
@@ -438,59 +439,59 @@
 ##'             and the FOCEi is used as the only objective function for the fit.
 ##'       \item Even though the objective functions are calculated in the same manner, caution should
 ##'          be used when comparing fits from various estimation routines.
-##'  }
+##'    }
 ##'  \item The next item is the timing of each of the steps of the fit.
-##' \itemize{
-##' \item These can be also accessed by (\code{fit.s$time}).
-##' \item As a mnemonic, the access for this item is shown in the printout.  This is true for
-##'     almost all of the other items in the printout.
-##' }
-##' \item After the timing of the fit, the parameter estimates are displayed (can be accessed by
-##'      \code{fit.s$par.fixed})
-##' \itemize{
-##' \item While the items are rounded for R printing, each estimate without rounding is still accessible by the `$` syntax.
-##'   For example, the `$Untransformed` gives the untransformed parameter values.
-##' \item The Untransformed parameter takes log-space parameters and back-transforms them to normal parameters.  Not the CIs
-##'         are listed on the back-transformed parameter space.
-##' \item Proportional Errors are converted to %CV on the untransformed space
-##' }
-##' \item Omega block (accessed by \code{fit.s$omega})
-##' \item The table of fit data. Please note:
-##' \itemize{
-##' \item A nlmixr fit object is actually a data frame.  Saving it as a Rdata object and then loading it
-##'     without nlmixr will just show the data by itself.  Don't worry; the fit information has not vanished,
-##'     you can bring it back by simply loading nlmixr, and then accessing the data.
-##' \item Special access to fit information (like the \code{$omega}) needs nlmixr to extract the information.
-##' \item If you use the \code{$} to access information, the order of precedence is:
-##' \itemize{
-##' \item Fit data from the overall data.frame
-##' \item Information about the parsed nlmixr model (via \code{$uif})
-##' \item Parameter history if available (via \code{$par.hist} and \code{$par.hist.stacked})
-##' \item Fixed effects table (via \code{$par.fixed})
-##' \item Individual differences from the typical population parameters (via \code{$eta})
-##' \item Fit information from the list of information generated during the post-hoc
-##'      residual calculation.
-##' \item Fit information from the environment where the post-hoc residual were calculated
-##' \item Fit information about how the data and options interacted with the specified model
-##'      (such as estimation options or if the solved system is for an infusion or an IV bolus).
-##' }
-##' \item While the printout may displays the data as a \code{data.table} object or \code{tbl}
-##'     object, the data is NOT any of these objects, but rather a derived data frame.
-##' \item Since the object \emph{is} a data.frame, you can treat it like one.
-##' }
+##'    \itemize{
+##'      \item These can be also accessed by (\code{fit.s$time}).
+##'      \item As a mnemonic, the access for this item is shown in the printout.
+##'         This is true for almost all of the other items in the printout.
+##'    }
+##'  \item After the timing of the fit, the parameter estimates are displayed (can be accessed by
+##'    \code{fit.s$par.fixed})
+##'    \itemize{
+##'      \item While the items are rounded for R printing, each estimate without rounding is still accessible by the `$` syntax.
+##'        For example, the `$Untransformed` gives the untransformed parameter values.
+##'      \item The Untransformed parameter takes log-space parameters and back-transforms them to normal parameters.  Not the CIs
+##'        are listed on the back-transformed parameter space.
+##'      \item Proportional Errors are converted to %CV on the untransformed space
+##'    }
+##'  \item Omega block (accessed by \code{fit.s$omega})
+##'  \item The table of fit data. Please note:
+##'    \itemize{
+##'      \item A nlmixr fit object is actually a data frame.  Saving it as a Rdata object and then loading it
+##'        without nlmixr will just show the data by itself.  Don't worry; the fit information has not vanished,
+##'        you can bring it back by simply loading nlmixr, and then accessing the data.
+##'      \item Special access to fit information (like the \code{$omega}) needs nlmixr to extract the information.
+##'      \item If you use the \code{$} to access information, the order of precedence is:
+##'        \itemize{
+##'          \item Fit data from the overall data.frame
+##'          \item Information about the parsed nlmixr model (via \code{$uif})
+##'          \item Parameter history if available (via \code{$par.hist} and \code{$par.hist.stacked})
+##'          \item Fixed effects table (via \code{$par.fixed})
+##'          \item Individual differences from the typical population parameters (via \code{$eta})
+##'          \item Fit information from the list of information generated during the post-hoc
+##'            residual calculation.
+##'          \item Fit information from the environment where the post-hoc residual were calculated
+##'          \item Fit information about how the data and options interacted with the specified model
+##'            (such as estimation options or if the solved system is for an infusion or an IV bolus).
+##'        }
+##'      \item While the printout may displays the data as a \code{data.table} object or \code{tbl}
+##'        object, the data is NOT any of these objects, but rather a derived data frame.
+##'      \item Since the object \emph{is} a data.frame, you can treat it like one.
+##'    }
 ##' }
 ##'
 ##' In addition to the above properties of the fit object, there are a
 ##' few additional that may be helpful for the modeler:
 ##'
 ##' \itemize{
-##' \item \code{$theta} gives the fixed effects parameter estimates (in NONMEM the
-##'      \code{theta}s). This can also be accessed in \code{\link[nlme]{fixed.effects}}
-##'      function. Note that the residual variability is treated as a fixed effect parameter
-##'      and is included in this list.
-##' \item \code{$eta} gives the random effects parameter estimates, or in NONMEM the
-##'       \code{eta}s.  This can also be accessed in using the \code{\link{random.effects}}
-##' function.
+##'   \item \code{$theta} gives the fixed effects parameter estimates (in NONMEM the
+##'     \code{theta}s). This can also be accessed in \code{\link[nlme]{fixed.effects}}
+##'     function. Note that the residual variability is treated as a fixed effect parameter
+##'     and is included in this list.
+##'   \item \code{$eta} gives the random effects parameter estimates, or in NONMEM the
+##'     \code{eta}s.  This can also be accessed in using the \code{\link{random.effects}}
+##'     function.
 ##' }
 ##'
 ##'
