@@ -254,8 +254,8 @@
     .curObj <- get("objective", .env)
     if (is.na(.curObj)) {
       .nnodes <- 3
-      if (exists("nnodes.gq", .env)) {
-        .nnodes <- .env$nnodes.gq
+      if (exists("nnodesGq", .env)) {
+        .nnodes <- .env$nnodesGq
       }
       .nsd <- 1.6
       if (exists("nsd.gq", .env)) {

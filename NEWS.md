@@ -15,6 +15,8 @@
 
 - Focei model cache is now named `focei-md5Digest.qs` and uses `qs`
   compression/saving/loading.
+  
+- `foceiControl()` aligned between other methods.
 
 ## SAEM changes
 
@@ -60,6 +62,9 @@
   `saemControl(rxControl=rxControl(...))`; This fixes any conflicting
   option names as well as allowing alignment between the control
   structures in `focei`, `nlme` and `saem`
+  
+- `saemControl()` aligned between other methods.
+
 
 ## nlme changes
 
@@ -72,7 +77,8 @@
   should be faster.
 
 - `nlmixr2NlmeControl()` (which will overwrite `nlmeControl()`)
-  documents and adds more options to `nlme`.
+  documents and adds more options to `nlme`. Also aligned with other
+  methods.
 
 - `weights`, `fixed`, `random` can be specified in
   `nlmixr2NlmeControl()`.  If so, then the `nlme` object will be

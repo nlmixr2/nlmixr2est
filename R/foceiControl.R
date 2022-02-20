@@ -13,8 +13,11 @@
 #'
 #'  \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
 #'
-#'  \item The significant figures that some tables are rounded to.
 #' }
+#'
+#' @param sigdigTable Significant digits in the final output table.
+#'   If not specified, then it matches the significant digits in the
+#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -685,7 +688,8 @@ foceiControl <- function(sigdig = 3, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
                          compress=TRUE, #
-                         rxControl=NULL) { #
+                         rxControl=NULL,
+                         sigdigTable=NULL) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -716,6 +720,16 @@ foceiControl <- function(sigdig = 3, #
       derivSwitchTol <- 2 * 10^(-sigdig - 1)
     }
   }
+  if (is.null(sigdigTable)) {
+    if (is.null(sigdig)) {
+      sigdigTable <- 3L
+    } else {
+      sigdigTable <- sigdig
+    }
+  } else {
+    checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+  }
+
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
@@ -766,11 +780,22 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
-
-  checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
-  checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
-  checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
-  checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
+  }
+  rmatNorm <- as.integer(rmatNorm)
+  if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
+  }
+  smatNorm <- as.integer(smatNorm)
+  if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
+  }
+  covGillF <- as.integer(covGillF)
+  if (!checkmate::testIntegerish(optGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(optGillF, any.missing=FALSE, len=1)
+  }
+  optGillF <- as.integer(optGillF)
 
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
@@ -817,33 +842,33 @@ foceiControl <- function(sigdig = 3, #
     scaleType <- as.integer(scaleType)
   } else {
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    scaleType <- .scaleTypeIdx[match.arg(scaleType)]
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
     .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
-    eventType <- .eventTypeIdx[match.arg(eventType)]
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
     normType <- as.integer(normType)
   } else {
-    normType <- .normTypeIdx[match.arg(normType)]
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
   }
   .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
   if (checkmate::testIntegerish(derivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     derivMethod <- as.integer(derivMethod)
   } else {
     derivMethod <- match.arg(derivMethod)
-    derivMethod <- .methodIdx[derivMethod]
+    derivMethod <- setNames(.methodIdx[derivMethod], NULL)
   }
   if (checkmate::testIntegerish(covDerivMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covDerivMethod <- as.integer(covDerivMethod)
   } else {
     covDerivMethod <- match.arg(covDerivMethod)
-    covDerivMethod <- .methodIdx[covDerivMethod]
+    covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
@@ -853,11 +878,26 @@ foceiControl <- function(sigdig = 3, #
     } else {
       covMethod <- match.arg(covMethod)
       .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-      covMethod <- .covMethodIdx[match.arg(covMethod)]
+      covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
     }
   }
+  .xtra <- list(...)
+  .bad <- names(.xtra)
+  .bad <- .bad[!(.bad %in% c("genRxControl", "resetEtaSize",
+                             "resetThetaSize", "resetThetaFinalSize",
+                             "outerOptFun", "outerOptTxt"))]
+  if (length(.bad) > 0) {
+    stop("unused argument: ", paste
+    (paste0("'", .bad, "'", sep=""), collapse=", "),
+    call.=FALSE)
+  }
   .outerOptTxt <- "custom"
-  if (rxode2::rxIs(outerOpt, "character")) {
+  if (!is.null(.xtra$outerOptTxt)) {
+    .outerOptTxt <- .xtra$outerOptTxt
+  }
+  if (!is.null(.xtra$outerOptFun)) {
+    outerOptFun <- .xtra$outerOptFun
+  } else if (rxode2::rxIs(outerOpt, "character")) {
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
@@ -899,31 +939,43 @@ foceiControl <- function(sigdig = 3, #
     innerOpt <- as.integer(innerOpt)
   } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-    innerOpt <- .innerOptFun[match.arg(innerOpt)]
+    innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
-  checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
-  if (resetEtaP > 0 & resetEtaP < 1) {
-    .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
-  } else if (resetEtaP <= 0) {
-    .resetEtaSize <- Inf
+  if (!is.null(.xtra$resetEtaSize)) {
+    .resetEtaSize <- .xtra$resetEtaSize
   } else {
-    .resetEtaSize <- 0
+      checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
+      if (resetEtaP > 0 & resetEtaP < 1) {
+        .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
+      } else if (resetEtaP <= 0) {
+        .resetEtaSize <- Inf
+      } else {
+        .resetEtaSize <- 0
+      }
   }
-  checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
-  if (resetThetaP > 0 & resetThetaP < 1) {
-    .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaSize <- Inf
-  } else {
-    stop("Cannot always reset THETAs")
+  if (!is.null(.xtra$resetThetaSize)) {
+    .resetThetaSize <- .xtra$resetThetaSize
+  } else{
+    checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
+    if (resetThetaP > 0 & resetThetaP < 1) {
+      .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
+    } else if (resetThetaP <= 0) {
+      .resetThetaSize <- Inf
+    } else {
+      stop("cannot always reset THETAs", call.=FALSE)
+    }
   }
-  checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
-  if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
-    .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
-  } else if (resetThetaP <= 0) {
-    .resetThetaFinalSize <- Inf
+  if (!is.null(.xtra$resetThetaFinalSize)) {
+    .resetThetaFinalSize <- .xtra$resetThetaFinalSize
   } else {
-    stop("Cannot always reset THETAs")
+    checkmate::assertNumeric(resetThetaFinalP, lower=0, upper=1, len=1)
+    if (resetThetaFinalP > 0 & resetThetaFinalP < 1) {
+      .resetThetaFinalSize <- qnorm(1 - (resetThetaFinalP / 2))
+    } else if (resetThetaP <= 0) {
+      .resetThetaFinalSize <- Inf
+    } else {
+      stop("cannot always reset THETAs", call.=FALSE)
+    }
   }
   if (checkmate::testIntegerish(addProp, lower=1, upper=1, len=1)) {
     addProp <- c("combined1", "combined2")[addProp]
@@ -931,16 +983,20 @@ foceiControl <- function(sigdig = 3, #
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
-  genRxControl <- FALSE
-  if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig)
-    genRxControl <- TRUE
-  } else if (is.list(rxControl)) {
-    rxControl <- do.call(rxode2::rxControl, rxControl)
-  }
-  if (!inherits(rxControl, "rxControl")) {
-    stop("rxControl needs to be ode solving options from rxode2::rxControl()",
-         call.=FALSE)
+  if (!is.null(.xtra$genRxControl)) {
+    genRxControl <- .xtra$genRxControl
+  } else {
+    genRxControl <- FALSE
+    if (is.null(rxControl)) {
+      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      genRxControl <- TRUE
+    } else if (is.list(rxControl)) {
+      rxControl <- do.call(rxode2::rxControl, rxControl)
+    }
+    if (!inherits(rxControl, "rxControl")) {
+      stop("rxControl needs to be ode solving options from rxode2::rxControl()",
+           call.=FALSE)
+    }
   }
   checkmate::assertNumeric(diagOmegaBoundUpper, lower=1, len=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(diagOmegaBoundLower, lower=1, len=1, any.missing=FALSE, finite=TRUE)
@@ -1007,6 +1063,7 @@ foceiControl <- function(sigdig = 3, #
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
+    sigdigTable=sigdigTable,
     scaleObjective = as.double(scaleObjective),
     useColor = useColor,
     boundTol = as.double(boundTol),
@@ -1055,10 +1112,10 @@ foceiControl <- function(sigdig = 3, #
     scaleCmax = as.double(scaleCmax),
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
-    rmatNorm = as.integer(rmatNorm),
-    smatNorm = as.integer(smatNorm),
-    covGillF = as.integer(covGillF),
-    optGillF = as.integer(optGillF),
+    rmatNorm = rmatNorm,
+    smatNorm = smatNorm,
+    covGillF = covGillF,
+    optGillF = optGillF,
     gillFtol = as.double(gillFtol),
     gillFtolCov = as.double(gillFtolCov),
     covSmall = as.double(covSmall),
