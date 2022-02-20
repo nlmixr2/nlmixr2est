@@ -1,6 +1,5 @@
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
-
   .origData <- rxode2::etTrans(fit$dataSav, fit$ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
@@ -53,37 +52,28 @@
 #' @export
 nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                 minimum = NULL, maximum = NULL, length.out = 51L, ...) {
-  .si <- fit$simInfo
-  .si$object <- fit
-  .si$rx <- .getSimModel(fit, hideIpred=TRUE)
-  .si$nsim <- 1
-  .si$keep <- c("DV", "CMT")
-  .si$events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
-                                   minimum = minimum, maximum = maximum,
-                                   length.out = length.out)
-  .si$modelName <- "augPred ipred"
-  .si$dfObs <- 0
-  .si$dfSub <- 0
-  .si$thetaMat <- NA
-  .si$returnType <- "data.frame"
-  .params <- .si$params
-  .omega <- .si$omega
-  .sigma <- .si$sigma
-  .si$omega <- NA
-  .si$sigma <- NA
-  .si$params <- data.frame(t(fit$theta),fit$eta,
-                           t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
   rxode2::.setWarnIdSort(FALSE)
   on.exit(rxode2::.setWarnIdSort(TRUE))
-  .sim <- do.call("nlmixr2Sim", .si)
+  .si <- fit$simInfo
+  .rx <- .getSimModel(fit, hideIpred=TRUE)
+  .rx <- eval(.rx)
+  .sigma <- .si$sigma
+  .omega <- .si$omega
+  .params <- data.frame(t(fit$theta),fit$eta,
+                        t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
+                                minimum = minimum, maximum = maximum,
+                                length.out = length.out)
+
+  # ipred
+  .sim <- rxode2::rxSolve(object=.rx, .params, .events,
+                          keep=c("DV", "CMT"), returnType="data.frame")
   names(.sim) <- sub("sim", "ipred", names(.sim))
   # now do pred
-  .si$keep <- NULL
-  .si$params <- c(
-      .params, setNames(rep(0, dim(.omega)[1]), dimnames(.omega)[[2]]),
-      setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]]))
-  .si$modelName <- "augPred pred"
-  .sim2 <- do.call("nlmixr2Sim", .si)
+  .params <- c(t(fit$theta),t(setNames(rep(0, dim(.omega)[1]), dimnames(.omega)[[2]])),
+               t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
+                           returnType="data.frame")
   .sim$pred <- .sim2$sim
   .stk <- stack(.sim[, c("ipred", "pred", "DV")])
   .stk$id <- .sim$id
