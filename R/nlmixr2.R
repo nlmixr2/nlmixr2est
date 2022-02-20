@@ -102,6 +102,7 @@ nlmixr2Version <- function() {
 nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
+  rxode2::rxUnloadAll()
   assignInMyNamespace(".nlmixr2Time", proc.time())
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
