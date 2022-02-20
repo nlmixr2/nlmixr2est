@@ -69,7 +69,11 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
     .genRxControl <- .xtra$genRxControl
   }
   if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig)
+    if (is.null(sigdig)) {
+      rxControl <- rxode2::rxControl(sigdig=sigdig)
+    } else {
+        rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+    }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
