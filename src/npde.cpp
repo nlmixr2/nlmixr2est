@@ -300,7 +300,7 @@ calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
 
 rxGetId2_t rxGetId2;
 
-extern "C" SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
+extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
     rxGetId2 = (rxGetId2_t) R_GetCCallable("rxode2", "rxGetId");
   if (TYPEOF(npdeSim) != VECSXP) {

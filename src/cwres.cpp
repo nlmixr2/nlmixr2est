@@ -42,7 +42,7 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
   }
 }
 
-extern "C" SEXP _nlmixr2_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
+extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 				  SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
 				  SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
 				  SEXP cwresOpt) {

@@ -43,25 +43,25 @@
 #' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
 #' @export
 boxCox <- function(x, lambda = 1) {
-  .Call(`_nlmixr2_boxCox_`, x, lambda, 0L)
+  .Call(`_nlmixr2est_boxCox_`, x, lambda, 0L)
 }
 
 #' @rdname boxCox
 #' @export
 iBoxCox <- function(x, lambda = 1) {
-  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 0L)
+  .Call(`_nlmixr2est_iBoxCox_`, x, lambda, 0L)
 }
 
 #' @rdname boxCox
 #' @export
 yeoJohnson <- function(x, lambda = 1) {
-  .Call(`_nlmixr2_boxCox_`, x, lambda, 1L)
+  .Call(`_nlmixr2est_boxCox_`, x, lambda, 1L)
 }
 
 #' @rdname boxCox
 #' @export
 iYeoJohnson <- function(x, lambda = 1) {
-  .Call(`_nlmixr2_iBoxCox_`, x, lambda, 1L)
+  .Call(`_nlmixr2est_iBoxCox_`, x, lambda, 1L)
 }
 
 
@@ -231,7 +231,7 @@ nlmixr2Print <- function(x, ...) {
 #'
 #' @export
 cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
-  .Call(`_nlmixr2_cholSE_`, matrix, tol)
+  .Call(`_nlmixr2est_cholSE_`, matrix, tol)
 }
 # #########################################################################
 
@@ -316,12 +316,12 @@ nmSuppressMsg <- function() {
     if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
       return(invisible(NULL))
     } else {
-      .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
-            PACKAGE="nlmixr2")
+      .Call(`_nlmixr2est_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+            PACKAGE="nlmixr2est")
     }
   } else {
-    .Call(`_nlmixr2_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
-          PACKAGE="nlmixr2")
+    .Call(`_nlmixr2est_setSilentErr`, as.integer(length(capture.output(message(" "), type = "message")) == 0L),
+          PACKAGE="nlmixr2est")
   }
   invisible(NULL)
 }

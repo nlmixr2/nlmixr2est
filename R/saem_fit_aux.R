@@ -89,12 +89,12 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   }
   rxode2::rxProgress(nx)
   ysave <- yobs
-  yobs <- .Call(`_nlmixr2_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
+  yobs <- .Call(`_nlmixr2est_powerD`, yobs, lambda, as.integer(yj), as.double(low), as.double(hi))
   on.exit(rxode2::rxProgressAbort("Error calculating likelihood"))
   for (j in 1:nx) {
     phi[, i1] <- a + b * matrix(rep(x[j, ], N), ncol = nphi1, byrow = TRUE)
     f <- fsave <- as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt))
-    f <- .Call(`_nlmixr2_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
+    f <- .Call(`_nlmixr2est_powerD`, f, lambda, as.integer(yj), as.double(low), as.double(hi))
     g <- ares + bres * abs(fsave)
     g[g < 1.0e-200] <- 1.0e-200
     DYF[ind.io] <- -0.5 * ((yobs - f) / g)^2 - log(g)
@@ -109,7 +109,7 @@ calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   rxode2::rxProgressStop()
   # - 2 * saem.cfg$extraLL
   ll2 <- 2 * sum(log(Q) + rowSums(log(b))) - N * log(det(Omega)) - (N * nphi1 + ntotal) * log(2 * pi) -
-    2 * .Call(`_nlmixr2_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
+    2 * .Call(`_nlmixr2est_powerL`, ysave, lambda, as.integer(yj), as.double(low), as.double(hi))
   -ll2
 }
 gqg.mlx <- function(dim, nnodes.gq) {
@@ -318,14 +318,14 @@ calc.COV <- function(fit0) {
   f1 <- sapply(1:nphi, function(j) {
     phi[, j] <- hat.phi[, j] + dphi[, j]
     ret <- .Call(
-      `_nlmixr2_powerD`, as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt)),
+      `_nlmixr2est_powerD`, as.vector(dopred(phi, saem.cfg$evt, saem.cfg$opt)),
       lambda, as.integer(yj), as.double(low), as.double(hi)
     )
     rxode2::rxTick()
     return(ret)
   })
   f0 <- f0s <- as.vector(dopred(hat.phi, saem.cfg$evt, saem.cfg$opt))
-  f0 <- .Call(`_nlmixr2_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
+  f0 <- .Call(`_nlmixr2est_powerD`, f0, lambda, as.integer(yj), as.double(low), as.double(hi))
   DF <- (f1 - f0) / dphi[id, ]
   g <- ares + bres * abs(f0s)
 

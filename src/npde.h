@@ -55,7 +55,7 @@ typedef struct {
 extern "C" {
 #endif
 
-  SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt);
+  SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt);
 
 #if defined(__cplusplus)
 }

@@ -2,7 +2,7 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 cholSE_ <- function(A, tol) {
-    .Call(`_nlmixr2_cholSE_`, A, tol)
+    .Call(`_nlmixr2est_cholSE_`, A, tol)
 }
 
 #' Expand Gradient for nlme
@@ -12,11 +12,11 @@ cholSE_ <- function(A, tol) {
 #' @keywords internal
 #' @noRd
 nlmixrExpandFdParNlme_ <- function(state, vars) {
-    .Call(`_nlmixr2_nlmixrExpandFdParNlme_`, state, vars)
+    .Call(`_nlmixr2est_nlmixrExpandFdParNlme_`, state, vars)
 }
 
 freeFocei <- function() {
-    invisible(.Call(`_nlmixr2_freeFocei`))
+    invisible(.Call(`_nlmixr2est_freeFocei`))
 }
 
 #' Calculate the inverse preconditioning matrix
@@ -26,75 +26,75 @@ freeFocei <- function() {
 #' @return The inverse preconditioning matrix
 #'
 preCondInv <- function(Rin) {
-    .Call(`_nlmixr2_preCondInv`, Rin)
+    .Call(`_nlmixr2est_preCondInv`, Rin)
 }
 
 foceiInnerLp <- function(eta, id = 1L) {
-    .Call(`_nlmixr2_foceiInnerLp`, eta, id)
+    .Call(`_nlmixr2est_foceiInnerLp`, eta, id)
 }
 
 likInner <- function(eta, id = 1L) {
-    .Call(`_nlmixr2_likInner`, eta, id)
+    .Call(`_nlmixr2est_likInner`, eta, id)
 }
 
 foceiLik <- function(theta) {
-    .Call(`_nlmixr2_foceiLik`, theta)
+    .Call(`_nlmixr2est_foceiLik`, theta)
 }
 
 foceiOfv <- function(theta) {
-    .Call(`_nlmixr2_foceiOfv`, theta)
+    .Call(`_nlmixr2est_foceiOfv`, theta)
 }
 
 foceiNumericGrad <- function(theta) {
-    .Call(`_nlmixr2_foceiNumericGrad`, theta)
+    .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
 
 foceiSetup_ <- function(obj, data, theta, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
-    .Call(`_nlmixr2_foceiSetup_`, obj, data, theta, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
+    .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
 }
 
 foceiOuterF <- function(theta) {
-    .Call(`_nlmixr2_foceiOuterF`, theta)
+    .Call(`_nlmixr2est_foceiOuterF`, theta)
 }
 
 foceiOuterG <- function(theta) {
-    .Call(`_nlmixr2_foceiOuterG`, theta)
+    .Call(`_nlmixr2est_foceiOuterG`, theta)
 }
 
 foceiOuter <- function(e) {
-    .Call(`_nlmixr2_foceiOuter`, e)
+    .Call(`_nlmixr2est_foceiOuter`, e)
 }
 
 nlmixr2Gill83_ <- function(what, args, envir, which, gillRtol, gillK = 10L, gillStep = 2, gillFtol = 0, optGillF = TRUE) {
-    .Call(`_nlmixr2_nlmixr2Gill83_`, what, args, envir, which, gillRtol, gillK, gillStep, gillFtol, optGillF)
+    .Call(`_nlmixr2est_nlmixr2Gill83_`, what, args, envir, which, gillRtol, gillK, gillStep, gillFtol, optGillF)
 }
 
 #' @rdname nlmixr2GradFun
 #' @export
 nlmixr2Eval_ <- function(theta, md5) {
-    .Call(`_nlmixr2_nlmixr2Eval_`, theta, md5)
+    .Call(`_nlmixr2est_nlmixr2Eval_`, theta, md5)
 }
 
 #' @rdname nlmixr2GradFun
 #' @export
 nlmixr2Unscaled_ <- function(theta, md5) {
-    .Call(`_nlmixr2_nlmixr2Unscaled_`, theta, md5)
+    .Call(`_nlmixr2est_nlmixr2Unscaled_`, theta, md5)
 }
 
 #' @rdname nlmixr2GradFun
 #' @export
 nlmixr2Grad_ <- function(theta, md5) {
-    .Call(`_nlmixr2_nlmixr2Grad_`, theta, md5)
+    .Call(`_nlmixr2est_nlmixr2Grad_`, theta, md5)
 }
 
 #' @rdname nlmixr2GradFun
 #' @export
 nlmixr2ParHist_ <- function(md5) {
-    .Call(`_nlmixr2_nlmixr2ParHist_`, md5)
+    .Call(`_nlmixr2est_nlmixr2ParHist_`, md5)
 }
 
 nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
-    .Call(`_nlmixr2_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
+    .Call(`_nlmixr2est_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
 }
 
 #' Return the square root of general square matrix A
@@ -105,11 +105,11 @@ nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
 #'
 #' @export
 sqrtm <- function(m) {
-    .Call(`_nlmixr2_sqrtm`, m)
+    .Call(`_nlmixr2est_sqrtm`, m)
 }
 
 foceiCalcCov <- function(e) {
-    .Call(`_nlmixr2_foceiCalcCov`, e)
+    .Call(`_nlmixr2est_foceiCalcCov`, e)
 }
 
 #' Fit/Evaluate FOCEi
@@ -123,66 +123,66 @@ foceiCalcCov <- function(e) {
 #' @keywords internal
 #' @export
 foceiFitCpp_ <- function(e) {
-    .Call(`_nlmixr2_foceiFitCpp_`, e)
+    .Call(`_nlmixr2est_foceiFitCpp_`, e)
 }
 
 boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
-    .Call(`_nlmixr2_boxCox_`, x, lambda, yj)
+    .Call(`_nlmixr2est_boxCox_`, x, lambda, yj)
 }
 
 iBoxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
-    .Call(`_nlmixr2_iBoxCox_`, x, lambda, yj)
+    .Call(`_nlmixr2est_iBoxCox_`, x, lambda, yj)
 }
 
 lin_cmt_stan <- function(obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP) {
-    .Call(`_nlmixr2_lin_cmt_stan`, obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP)
+    .Call(`_nlmixr2est_lin_cmt_stan`, obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP)
 }
 
 llik_binomial_c <- function(y, N, params) {
-    .Call(`_nlmixr2_llik_binomial_c`, y, N, params)
+    .Call(`_nlmixr2est_llik_binomial_c`, y, N, params)
 }
 
 llik_poisson <- function(y, params) {
-    .Call(`_nlmixr2_llik_poisson`, y, params)
+    .Call(`_nlmixr2est_llik_poisson`, y, params)
 }
 
 llik_normal <- function(y, params) {
-    .Call(`_nlmixr2_llik_normal`, y, params)
+    .Call(`_nlmixr2est_llik_normal`, y, params)
 }
 
 llik_betabinomial <- function(y, N, params) {
-    .Call(`_nlmixr2_llik_betabinomial`, y, N, params)
+    .Call(`_nlmixr2est_llik_betabinomial`, y, N, params)
 }
 
 llik_student_t <- function(y, params) {
-    .Call(`_nlmixr2_llik_student_t`, y, params)
+    .Call(`_nlmixr2est_llik_student_t`, y, params)
 }
 
 llik_beta <- function(y, params) {
-    .Call(`_nlmixr2_llik_beta`, y, params)
+    .Call(`_nlmixr2est_llik_beta`, y, params)
 }
 
 llik_neg_binomial <- function(y, params) {
-    .Call(`_nlmixr2_llik_neg_binomial`, y, params)
+    .Call(`_nlmixr2est_llik_neg_binomial`, y, params)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
-    .Call(`_nlmixr2_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
+    .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
 saem_do_pred <- function(in_phi, in_evt, in_opt) {
-    .Call(`_nlmixr2_saem_do_pred`, in_phi, in_evt, in_opt)
+    .Call(`_nlmixr2est_saem_do_pred`, in_phi, in_evt, in_opt)
 }
 
 saem_fit <- function(xSEXP) {
-    .Call(`_nlmixr2_saem_fit`, xSEXP)
+    .Call(`_nlmixr2est_saem_fit`, xSEXP)
 }
 
 nlmixr2Parameters <- function(theta, eta) {
-    .Call(`_nlmixr2_nlmixr2Parameters`, theta, eta)
+    .Call(`_nlmixr2est_nlmixr2Parameters`, theta, eta)
 }
 
 # Register entry points for exported C++ functions
 methods::setLoadAction(function(ns) {
-    .Call('_nlmixr2_RcppExport_registerCCallable', PACKAGE = 'nlmixr2')
+    .Call('_nlmixr2est_RcppExport_registerCCallable', PACKAGE = 'nlmixr2')
 })

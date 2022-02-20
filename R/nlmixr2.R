@@ -15,9 +15,9 @@
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom ggplot2 ggplot aes geom_point facet_wrap geom_line geom_abline xlab geom_smooth aes_string
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
-#' @useDynLib nlmixr2, .registration=TRUE
+#' @useDynLib nlmixr2est, .registration=TRUE
 
-rex::register_shortcuts("nlmixr2")
+rex::register_shortcuts("nlmixr2est")
 ## GGplot use and other issues...
 utils::globalVariables(c("DV", "ID", "IPRED", "IRES", "PRED", "TIME", "grp", "initCondition", "values", "nlmixr2_pred", "iter", "val", "EVID"))
 
