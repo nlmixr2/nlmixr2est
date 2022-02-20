@@ -25,7 +25,7 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=NULL, sigdigTable=NULL, ...) {
+    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -403,28 +403,21 @@ nmObjGetControl.nlme <- function(x, ...) {
 .nlmeControlToFoceiControl <- function(env) {
   .nlmeControl <- env$nlmeControl
   .ui <- env$ui
-  .ctl <- env$nlmeControl$rxControl
-  names(.ctl) <- sub("maxsteps", "maxstepsOde", names(.ctl))
-  .ctl <- .ctl[names(.ctl) != "scale"]
-  .ctl$maxOuterIterations <- 0
-  .ctl$maxInnerIterations <- 0
-  .ctl$covMethod <- 0L #.covMethod
-  .ctl$etaMat <- env$etaMat
-  .ctl$sumProd <- .nlmeControl$sumProd
-  .ctl$optExpression <- .nlmeControl$optExpression
-  .ctl$scaleTo <- 0
-  .ctl$calcTables <- .nlmeControl$calcTables
-  if (.nlmeControl$addProp == 1L) {
-    .ctl$addProp <- "combined1"
-  } else {
-    .ctl$addProp <- "combined2"
-  }
-  .ctl$skipCov <- .ui$foceiSkipCov
-  .ctl$interaction <- 1L
-  .ctl$compress <- .nlmeControl$compress
-  .ctl$ci <- .nlmeControl$ci
-  .ctl$sigdigTable <- .nlmeControl$sigdigTable
-  env$control <- do.call(foceiControl, .ctl)
+  env$control <- foceiControl(rxControl=env$nlmeControl$rxControl,
+                              maxOuterIterations=0L,
+                              maxInnerIterations=0L,
+                              covMethod=0L,
+                              etaMat=env$etaMat,
+                              sumProd=.nlmeControl$sumProd,
+                              optExpression=.nlmeControl$optExpression,
+                              scaleTo=0,
+                              calcTables=.nlmeControl$calcTables,
+                              addProp=.nlmeControl$addProp,
+                              skipCov=.ui$foceiSkipCov,
+                              interaction=1L,
+                              compress=.nlmeControl$compress,
+                              ci=.nlmeControl$ci,
+                              sigdigTable=.nlmeControl$sigdigTable)
 }
 
 .nlmeFamilyFit <- function(env, ...) {
