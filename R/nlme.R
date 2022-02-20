@@ -21,11 +21,11 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
-    rxControl=rxode2::rxControl(atol=1e-4, rtol=1e-4),
+    rxControl=NULL,
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ...) {
+    adjObf=TRUE, ci=0.95, sigdig=NULL, sigdigTable=NULL, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -50,15 +50,43 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
   checkmate::assertNumeric(tolerance, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(ci, lower=0, upper=1, any.missing=FALSE, len=1)
+
   method <- match.arg(method)
   addProp <- match.arg(addProp)
 
-  if (!inherits(rxControl, "rxControl")) rxControl <- do.call(rxode2::rxControl, rxControl)
+  .xtra <- list(...)
+  .genRxControl <- FALSE
+  if (!is.null(.xtra$genRxControl)) {
+    .genRxControl <- .xtra$genRxControl
+  }
+  if (is.null(rxControl)) {
+    rxControl <- rxode2::rxControl(sigdig=sigdig)
+    .genRxControl <- TRUE
+  } else if (inherits(rxControl, "rxControl")) {
+  } else if (is.list(rxControl)) {
+    rxControl <- do.call(rxode2::rxControl, rxControl)
+  } else {
+    stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
+  }
+
 
   if (is.null(sigma))
     sigma <- 0
   else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0)
     stop("Within-group std. dev. must be a positive numeric value")
+
+  if (!is.null(sigdig)) {
+    checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
+    if (is.null(sigdigTable)) {
+      sigdigTable <- round(sigdig)
+    }
+  }
+  if (is.null(sigdigTable)) {
+    sigdigTable <- 3
+  }
+  checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+
   .ret <- list(maxIter = maxIter, pnlsMaxIter = pnlsMaxIter, msMaxIter = msMaxIter,
                minScale = minScale, tolerance = tolerance, niterEM = niterEM,
                pnlsTol = pnlsTol, msTol = msTol, returnObject = returnObject,
@@ -69,7 +97,8 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
                rxControl=rxControl, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
-               ...)
+               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
+               genRxControl=.genRxControl)
   class(.ret) <- "nlmeControl"
   .ret
 }
@@ -385,6 +414,8 @@ nmObjGetControl.nlme <- function(x, ...) {
   .ctl$skipCov <- .ui$foceiSkipCov
   .ctl$interaction <- 1L
   .ctl$compress <- .nlmeControl$compress
+  .ctl$ci <- .nlmeControl$ci
+  .ctl$sigdigTable <- .nlmeControl$sigdigTable
   env$control <- do.call(foceiControl, .ctl)
 }
 

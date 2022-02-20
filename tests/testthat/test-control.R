@@ -12,6 +12,7 @@ nlmixrControlTest <- function(control) {
 test_that("test foceiControl option sanity", {
   expect_error(foceiControl(), NA)
   nlmixrControlTest(foceiControl())
+
   .ctl <- foceiControl()
   expect_error(do.call(foceiControl, .ctl), NA)
   .ctl2 <- do.call(foceiControl, .ctl)
@@ -51,5 +52,15 @@ test_that("saemControl sanity", {
   .ctl <- saemControl(rxControl=rxControl(sigdig=6))
   expect_false(.ctl$genRxControl)
   .ctl2 <- do.call(saemControl, .ctl)
+  expect_equal(.ctl, .ctl2)
+})
+
+test_that("nlmixr2NlmeControl sanity", {
+  expect_error(nlmixr2NlmeControl(), NA)
+  nlmixrControlTest(nlmixr2NlmeControl())
+
+  .ctl <- nlmixr2NlmeControl()
+  expect_error(do.call(nlmixr2NlmeControl, .ctl), NA)
+  .ctl2 <- do.call(nlmixr2NlmeControl, .ctl)
   expect_equal(.ctl, .ctl2)
 })
