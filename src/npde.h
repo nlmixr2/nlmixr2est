@@ -3,7 +3,7 @@
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("nlmixr2", String)
+#define _(String) dgettext ("nlmixr2est", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)

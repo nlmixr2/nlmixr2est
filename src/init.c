@@ -135,15 +135,15 @@ static const R_CallMethodDef CallEntries[] = {
   {NULL, NULL, 0}
 };
 
-void R_init_nlmixr2(DllInfo *dll)
+void R_init_nlmixr2est(DllInfo *dll)
 {
-  R_RegisterCCallable("nlmixr2","nelder_fn", (DL_FUNC) &nelder_fn);
+  R_RegisterCCallable("nlmixr2est","nelder_fn", (DL_FUNC) &nelder_fn);
   R_registerRoutines(dll, CEntries, CallEntries, NULL, NULL);
   R_useDynamicSymbols(dll, TRUE);
   R_forceSymbols(dll,FALSE);
 }
 
 void rxOptionsFreeFocei();
-void R_unload_nlmixr2(DllInfo *info){
+void R_unload_nlmixr2est(DllInfo *info){
   rxOptionsFreeFocei();
 }

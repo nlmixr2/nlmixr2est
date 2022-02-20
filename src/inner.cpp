@@ -6,7 +6,7 @@
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("nlmixr2", String)
+#define _(String) dgettext ("nlmixr2est", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)
@@ -1650,7 +1650,7 @@ void parHistData(Environment e, bool focei);
 
 static inline void thetaReset00(NumericVector &thetaIni, NumericVector &omegaTheta, arma::mat &etaMat) {
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment thetaReset = nlmixr2[".thetaReset"];
   focei_options *fop = &op_focei;
   thetaReset["maxInnerIterations"]=fop->maxInnerIterations;
@@ -3877,7 +3877,7 @@ void foceiCustomFun(Environment e){
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Function f = as<Function>(nlmixr2["foceiOuterF"]);
   Function g = as<Function>(nlmixr2["foceiOuterG"]);
   List ctl = e["control"];
@@ -4038,7 +4038,7 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
 //[[Rcpp::export]]
 double nlmixr2Eval_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EF = md5 + ".f";
   std::string EE = md5 + ".e";
@@ -4298,7 +4298,7 @@ void nlmixr2GradPrint(NumericVector gr, int gradType, int cn, bool useColor,
 RObject nlmixr2Unscaled_(NumericVector theta, std::string md5){
   // Unscaled
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string unscaledPar = md5 + ".uPar";
   gradInfo[unscaledPar] = theta;
@@ -4310,7 +4310,7 @@ RObject nlmixr2Unscaled_(NumericVector theta, std::string md5){
 //[[Rcpp::export]]
 NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
 
   std::string Egill = md5 + ".g";
@@ -4471,7 +4471,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
 //[[Rcpp::export]]
 RObject nlmixr2ParHist_(std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2");
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
   Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EW = md5 + ".w";
   LogicalVector lEW;
@@ -5402,13 +5402,13 @@ void parHistData(Environment e, bool focei){
     ret.attr("class") = "data.frame";
     ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
     Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2");
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
     if (thetaReset.exists("parHistData")) {
       // rbind  data.
       if (TYPEOF(thetaReset["parHistData"]) == VECSXP) {
         Function loadNamespace("loadNamespace", R_BaseNamespace);
-        Environment nlmixr2 = loadNamespace("nlmixr2");
+        Environment nlmixr2 = loadNamespace("nlmixr2est");
         Function rbind = nlmixr2[".rbindParHistory"];
         ret = rbind(thetaReset["parHistData"], ret);
       }

@@ -10,7 +10,7 @@
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("nlmixr2", String)
+#define _(String) dgettext ("nlmixr2est", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)
@@ -412,7 +412,7 @@ static inline void _saemOpt(int n, double *pxmin) {
   if (n == 1) {
     // Use R's optimize for unidimensional optimization
     Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2");
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function optimize1 = nlmixr2[".saemOpt1"];
     NumericVector par0(1);
     par0[0] = _saemStart[0];
@@ -427,7 +427,7 @@ static inline void _saemOpt(int n, double *pxmin) {
     } else if (_saemType == 2) {
       // Try Newoua
       Function loadNamespace("loadNamespace", R_BaseNamespace);
-      Environment nlmixr2 = loadNamespace("nlmixr2");
+      Environment nlmixr2 = loadNamespace("nlmixr2est");
       Function newuoa = nlmixr2[".newuoa"];
       NumericVector par0(n);
       for (int i = n; i--;) {
