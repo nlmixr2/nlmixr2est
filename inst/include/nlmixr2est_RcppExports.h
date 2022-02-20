@@ -4,6 +4,7 @@
 #ifndef RCPP_nlmixr2est_RCPPEXPORTS_H_GEN_
 #define RCPP_nlmixr2est_RCPPEXPORTS_H_GEN_
 
+#include "nlmixr2est_types.h"
 #include <RcppEigen.h>
 #include <Rcpp.h>
 

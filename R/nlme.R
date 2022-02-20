@@ -13,7 +13,7 @@
 #' @inheritParams saemControl
 #' @export
 #' @examples
-#' nlmixr2::nlmeControl()
+#' nlmixr2est::nlmeControl()
 #' nlmixr2NlmeControl()
 nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
     tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
@@ -129,10 +129,10 @@ nlmeControl <- nlmixr2NlmeControl
   .ui <- env$ui
   .control <- env$control
   if (is.null(.control)) {
-    .control <- nlmixr2::nlmeControl()
+    .control <- nlmixr2est::nlmeControl()
   }
   if (!inherits(.control, "nlmeControl")){
-    .control <- do.call(nlmixr2::nlmeControl, .control)
+    .control <- do.call(nlmixr2est::nlmeControl, .control)
   }
   assign("control", .control, envir=.ui)
 }

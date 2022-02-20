@@ -249,7 +249,7 @@
     .control <- saemControl()
   }
   if (!inherits(.control, "saemControl")){
-    .control <- do.call(nlmixr2::saemControl, .control)
+    .control <- do.call(nlmixr2est::saemControl, .control)
   }
   assign("control", .control, envir=.ui)
 }

@@ -1283,7 +1283,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- foceiControl()
   }
   if (!inherits(.control, "foceiControl")){
-    .control <- do.call(nlmixr2::foceiControl, .control)
+    .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
 }
