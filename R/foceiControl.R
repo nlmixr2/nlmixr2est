@@ -882,6 +882,15 @@ foceiControl <- function(sigdig = 3, #
     }
   }
   .xtra <- list(...)
+  .bad <- names(.xtra)
+  .bad <- .bad[!(.bad %in% c("genRxControl", "resetEtaSize",
+                             "resetThetaSize", "resetThetaFinalSize",
+                             "outerOptFun", "outerOptTxt"))]
+  if (length(.bad) > 0) {
+    stop("unused argument: ", paste
+    (paste0("'", .bad, "'", sep=""), collapse=", "),
+    call.=FALSE)
+  }
   .outerOptTxt <- "custom"
   if (!is.null(.xtra$outerOptTxt)) {
     .outerOptTxt <- .xtra$outerOptTxt

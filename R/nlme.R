@@ -56,6 +56,14 @@ nlmixr2NlmeControl <- function(maxIter = 50, pnlsMaxIter = 7, msMaxIter = 50, mi
   addProp <- match.arg(addProp)
 
   .xtra <- list(...)
+  .bad <- names(.xtra)
+  .bad <- .bad[!(.bad %in% "genRxControl")]
+  if (length(.bad) > 0) {
+    stop("unused argument: ", paste
+    (paste0("'", .bad, "'", sep=""), collapse=", "),
+    call.=FALSE)
+  }
+
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl

@@ -140,6 +140,15 @@ saemControl <- function(seed = 99, # Seed
                         ci=0.95,
                         ...) {
   .xtra <- list(...)
+  .bad <- names(.xtra)
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc",
+                             "DEBUG"))]
+  if (length(.bad) > 0) {
+    stop("unused argument: ", paste
+    (paste0("'", .bad, "'", sep=""), collapse=", "),
+    call.=FALSE)
+  }
+
   checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
@@ -155,6 +164,9 @@ saemControl <- function(seed = 99, # Seed
   checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
   checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
   checkmate::assertIntegerish(print, any.missing=FALSE, lower=0, len=1)
+  if (!is.null(.xtra$DEBUG)) {
+    trace <- .xtra$DEBUG
+  }
   checkmate::assertIntegerish(trace, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertLogical(calcTables, any.missing=FALSE, len=1)
   checkmate::assertLogical(logLik, any.missing=FALSE, len=1)

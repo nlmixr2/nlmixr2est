@@ -38,6 +38,8 @@ test_that("test foceiControl option sanity", {
   expect_false(.ctl$genRxControl)
   .ctl2 <- do.call(foceiControl, .ctl)
   expect_equal(.ctl, .ctl2)
+
+  expect_error(foceiControl(foceiControl="matt"))
 })
 
 
@@ -53,6 +55,12 @@ test_that("saemControl sanity", {
   expect_false(.ctl$genRxControl)
   .ctl2 <- do.call(saemControl, .ctl)
   expect_equal(.ctl, .ctl2)
+
+  .ctl <- saemControl(trace=1)
+  .ctl2 <- do.call(saemControl, .ctl)
+  expect_equal(.ctl, .ctl2)
+
+  expect_error(saemControl(foceiControl="matt"))
 })
 
 test_that("nlmixr2NlmeControl sanity", {
@@ -63,4 +71,6 @@ test_that("nlmixr2NlmeControl sanity", {
   expect_error(do.call(nlmixr2NlmeControl, .ctl), NA)
   .ctl2 <- do.call(nlmixr2NlmeControl, .ctl)
   expect_equal(.ctl, .ctl2)
+
+  expect_error(nlmixr2NlmeControl(foceiControl="matt"))
 })
