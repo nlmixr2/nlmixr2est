@@ -293,6 +293,6 @@ a list with all possible arguments is returned.  The returned list
 is used as the ‘control’ argument to the ‘nlme’ function.
 }
 \examples{
-nlmixr2::nlmeControl()
+nlmixr2est::nlmeControl()
 nlmixr2NlmeControl()
 }
