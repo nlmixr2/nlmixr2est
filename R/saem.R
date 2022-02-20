@@ -615,29 +615,24 @@
 .saemControlToFoceiControl <- function(env) {
   .saemControl <- env$saemControl
   .ui <- env$ui
-  .ctl <- env$saemControl$rxControl
-  .ctl <- .ctl[names(.ctl) != "scale"]
-  .ctl$maxOuterIterations <- 0L
-  .ctl$maxInnerIterations <- 0L
-  .ctl$covMethod <- 0L #.covMethod
-  .ctl$etaMat <- env$.etaMat
-  .ctl$sumProd <- .saemControl$sumProd
-  .ctl$optExpression <- .saemControl$optExpression
-  .ctl$scaleTo <- 0
-  .ctl$calcTables <- .saemControl$calcTables
-  if (.saemControl$addProp == 1L) {
-    .ctl$addProp <- "combined1"
-  } else {
-    .ctl$addProp <- "combined2"
-  }
-  .ctl$method <- .saemControl$method
-  .ctl$skipCov <- .ui$foceiSkipCov
-  .ctl$interaction <- 1L
-  .ctl$compress <- .saemControl$compress
-  .ctl$ci <- .saemControl$ci
-  .ctl$sigdigTable <- .saemControl$sigdigTable
+  .rxControl <- env$saemControl$rxControl
+  .foceiControl <- foceiControl(maxOuterIterations=0L,
+                                maxInnerIterations=0L,
+                                covMethod=0L,
+                                etaMat=env$.etaMat,
+                                sumProd=.saemControl$sumProd,
+                                optExpression=.saemControl$optExpression,
+                                scaleTo=0,
+                                calcTables=.saemControl$calcTables,
+                                addProp=.saemControl$addProp,
+                                skipCov=.ui$foceiSkipCov,
+                                interaction=1L,
+                                compress=.saemControl$compress,
+                                ci=.saemControl$ci,
+                                sigdigTable=.saemControl$sigdigTable,
+                                rxControl=.rxControl)
   rm(list=".etaMat", envir=env)
-  env$control <- do.call(foceiControl, .ctl)
+  env$control <- .foceiControl
 }
 #' Set the extra text for saem
 #'

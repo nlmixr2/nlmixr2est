@@ -885,11 +885,15 @@ foceiControl <- function(sigdig = 3, #
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "resetEtaSize",
                              "resetThetaSize", "resetThetaFinalSize",
-                             "outerOptFun", "outerOptTxt"))]
+                             "outerOptFun", "outerOptTxt", "skipCov"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
     call.=FALSE)
+  }
+  .skipCov <- NULL
+  if (!is.null(.xtra$skipCov)) {
+    .skipCov <- .xtra$skipCov
   }
   .outerOptTxt <- "custom"
   if (!is.null(.xtra$outerOptTxt)) {
@@ -1140,7 +1144,8 @@ foceiControl <- function(sigdig = 3, #
     badSolveObjfAdj=badSolveObjfAdj,
     compress=compress,
     rxControl=rxControl,
-    genRxControl=genRxControl
+    genRxControl=genRxControl,
+    skipCov=.skipCov
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
