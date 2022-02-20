@@ -6,9 +6,9 @@
 \title{Control Values for nlme Fit with extra options for nlmixr}
 \usage{
 nlmixr2NlmeControl(
-  maxIter = 50,
-  pnlsMaxIter = 7,
-  msMaxIter = 50,
+  maxIter = 100,
+  pnlsMaxIter = 100,
+  msMaxIter = 100,
   minScale = 0.001,
   tolerance = 1e-05,
   niterEM = 25,
@@ -44,9 +44,9 @@ nlmixr2NlmeControl(
 )
 
 nlmeControl(
-  maxIter = 50,
-  pnlsMaxIter = 7,
-  msMaxIter = 50,
+  maxIter = 100,
+  pnlsMaxIter = 100,
+  msMaxIter = 100,
   minScale = 0.001,
   tolerance = 1e-05,
   niterEM = 25,
