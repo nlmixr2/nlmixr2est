@@ -26,7 +26,7 @@ nlmixr2NlmeControl(
   sigma = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
-  rxControl = rxode2::rxControl(atol = 1e-04, rtol = 1e-04),
+  rxControl = NULL,
   method = c("ML", "REML"),
   random = NULL,
   fixed = NULL,
@@ -37,6 +37,9 @@ nlmixr2NlmeControl(
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 4,
+  sigdigTable = NULL,
   ...
 )
 
@@ -61,7 +64,7 @@ nlmeControl(
   sigma = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
-  rxControl = rxode2::rxControl(atol = 1e-04, rtol = 1e-04),
+  rxControl = NULL,
   method = c("ML", "REML"),
   random = NULL,
   fixed = NULL,
@@ -72,6 +75,9 @@ nlmeControl(
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
+  ci = 0.95,
+  sigdig = 4,
+  sigdigTable = NULL,
   ...
 )
 }
@@ -253,6 +259,28 @@ will calculate tables. By default this is \code{TRUE}}
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
+
+\item{ci}{Confidence level for some tables.  By default this is
+0.95 or 95\% confidence.}
+
+\item{sigdig}{Optimization significant digits. This controls:
+
+\itemize{
+
+ \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
+
+ \item The tolerance of the ODE solvers is
+ \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
+ steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
+ (sensitivity changes only applicable for liblsoda)
+
+ \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
+
+}}
+
+\item{sigdigTable}{Significant digits in the final output table.
+If not specified, then it matches the significant digits in the
+`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}
