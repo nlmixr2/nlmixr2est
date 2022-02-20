@@ -276,7 +276,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   .Call(neldermead_wrap, fr, rho, length(start), start, step,
     as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
     as.integer(con$trace),
-    PACKAGE = "nlmixr2"
+    PACKAGE = "nlmixr2est"
   )
 }
 

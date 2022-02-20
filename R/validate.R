@@ -21,7 +21,7 @@ nlmixr2Validate <- function(type = NULL, check = FALSE) {
     on.exit(Sys.setenv("NOT_CRAN"=.oldCran))
   }
   rxode2::.rxWithOptions(list(testthat.progress.max_fails=10000000000), {
-    path <- file.path(system.file("tests", package = "nlmixr2"), "testthat")
+    path <- file.path(system.file("tests", package = "nlmixr2est"), "testthat")
     rxode2::.rxWithWd(path, {
       try(testthat::test_dir(path, filter = .filter))
       message("================================================================================")

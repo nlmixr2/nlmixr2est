@@ -1,11 +1,11 @@
 .resetCacheIfNeeded <- function() {
   .wd <- rxode2::rxTempDir()
   if (.wd != "") {
-    .md5File <- file.path(.wd, "nlmixr2.md5")
+    .md5File <- file.path(.wd, "nlmixr2est.md5")
     if (file.exists(.md5File)) {
       .md5 <- readLines(.md5File)
       if (.md5 != nlmixr2.md5) {
-        packageStartupMessage("detected new version of nlmixr2, cleaning rxode2 cache")
+        packageStartupMessage("detected new version of nlmixr2est, cleaning rxode2 cache")
         rxode2::rxClean()
       }
     } else {

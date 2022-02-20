@@ -56,7 +56,7 @@ rxUiGet.saemFunction <- function(x, ...) {
       rxode2::rxSolveFree()
     })
     if (missing(b) && missing(c)) {
-      .ret <- .Call(`_nlmixr2est_saem_fit`, a, PACKAGE = "nlmixr2")
+      .ret <- .Call(`_nlmixr2est_saem_fit`, a, PACKAGE = "nlmixr2est")
       attr(.ret, "dopred") <- .(.fnPred)
       return(.ret)
     } else {
