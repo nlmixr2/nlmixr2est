@@ -1,4 +1,6 @@
-# nlmixr2 1.0.0 -- new package
+# nlmixr2est 1.0.0 -- new package
+
+`nlmixr2est` contains the estimation functions within `nlmixr2`.
 
 ## FOCEI family changes
 
