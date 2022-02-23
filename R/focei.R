@@ -1283,7 +1283,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- foceiControl()
   }
   if (!inherits(.control, "foceiControl")){
-    .control <- do.call(nlmixr2::foceiControl, .control)
+    .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
 }
@@ -1349,8 +1349,8 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!all(is.na(ui$iniDf$neta1))) {
     .etas <- .ret$ranef
     .thetas <- .ret$fixef
-    .pars <- .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
-    .ret$shrink <- .Call(`_nlmixr2_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
+    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
+    .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
   }
   .updateParFixed(.ret)
   if (!exists("table", .ret)) {

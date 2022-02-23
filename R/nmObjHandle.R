@@ -53,7 +53,7 @@ nmObjHandleControlObject <- function(control, env) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foceiControl <- function(control, env) {
-  assign("foceiControl", control, envir=env)
+  assign("foceiControl0", control, envir=env)
 }
 
 
@@ -71,6 +71,32 @@ nmObjHandleControlObject.default <- function(control, env) {
        call.=FALSE)
 }
 
+#' Method for getting focei compatible control object from nlmixr object
+#'
+#' @param x nlmixr composed fit object
+#'
+#' @param ... Other parameters
+#'
+#' @return foceiControl translated from current control
+#'
+#' @export
+nmObjGetFoceiControl <- function(x, ...) {
+  UseMethod("nmObjGetFoceiControl")
+}
+
+#' @rdname nmObjGetFoceiControl
+#' @export
+nmObjGetFoceiControl.default <- function(x) {
+  .env <- x[[1]]
+  if (exists("foceiControl0", .env)) {
+    return(get("foceiControl0", .env))
+  } else {
+    stop("cannot figure out how to make/retrieve the focei control\nmissing 'nmObjGetFoceiControl.",
+         class(x)[1], "'",
+         call.=FALSE)
+  }
+}
+
 #' Get control object from fit
 #'
 #' @param x nlmixr fit object
@@ -82,13 +108,12 @@ nmObjGetControl <- function(x, ...) {
   UseMethod("nmObjGetControl")
 }
 
-
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.focei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("foceiControl", .env)) {
-    .control <- get("foceiControl", .env)
+  if (exists("foceiControl0", .env)) {
+    .control <- get("foceiControl0", .env)
     if (inherits(.control, "foceiControl")) return(.control)
   }
   if (exists("control", .env)) {

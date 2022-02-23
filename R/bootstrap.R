@@ -200,7 +200,7 @@ bootstrapFit <- function(fit,
 
   # modify the fit object
   nrws <- nrow(bootSummary$parFixedDf$mean)
-  sigdig <- fit$foceiControl$sigdig
+  sigdig <- fit$control$sigdigTable
 
   newParFixedDf <- fit$parFixedDf
   newParFixed <- fit$parFixed

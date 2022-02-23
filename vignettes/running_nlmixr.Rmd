@@ -31,7 +31,7 @@ A. Upton of the University of California, San Francisco:
 ```{r}
 ## Load libraries
 library(ggplot2)
-library(nlmixr2)
+library(nlmixr2est)
 str(theo_sd)
 
 ggplot(theo_sd, aes(TIME, DV)) + geom_line(aes(group=ID), col="red") +

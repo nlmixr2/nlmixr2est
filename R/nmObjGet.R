@@ -108,6 +108,12 @@ nmObjGet.dataSav <- function(x, ...){
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
+#' @export
+nmObjGet.foceiControl <- function(x, ...) {
+  nmObjGetFoceiControl(.createEstObject(x[[1]]), ...)
+}
+attr(nmObjGet.foceiControl, "desc") <- "Get the focei control required for creating the nlmixr object"
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.idLvl <- function(x, ...){
@@ -620,20 +626,6 @@ nmObjGet.control <- function(x, ...) {
 #' @export
 nmObjGetRxSolve <- function(x, what) {
   UseMethod("nmObjGetRxSolve")
-}
-
-#' @rdname nmObjGetRxSolve
-#' @export
-nmObjGetRxSolve.saem <- function(x, what) {
-  .env <- x[[1]]
-  .control <- nmObjGetControl(x)
-  if (any(names(.control) == "ODEopt")) {
-    .lst <- .control$ODEopt
-    if (is.null(what)) return(.lst)
-    return(.lst[[what]])
-  } else {
-    NextMethod()
-  }
 }
 
 #' @rdname nmObjGetRxSolve

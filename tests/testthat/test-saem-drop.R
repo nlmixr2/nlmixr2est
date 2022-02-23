@@ -1,5 +1,5 @@
 test_that("saem dropping parameters", {
-  .nm <- loadNamespace("nlmixr2")
+  .nm <- loadNamespace("nlmixr2est")
 
   muRefDataFrame <-
     structure(list(theta = c("tka", "tcl", "tv"),

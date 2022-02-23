@@ -3,7 +3,7 @@
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
-#define _(String) dgettext ("nlmixr2", String)
+#define _(String) dgettext ("nlmixr2est", String)
 /* replace pkg as appropriate */
 #else
 #define _(String) (String)
@@ -55,7 +55,7 @@ typedef struct {
 extern "C" {
 #endif
 
-  SEXP _nlmixr2_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt);
+  SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt);
 
 #if defined(__cplusplus)
 }

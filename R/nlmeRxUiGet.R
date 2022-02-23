@@ -112,7 +112,7 @@ rxUiGet.nlmeFunction <- function(x, ...) {
   #.par <- c(.estPar, .ui$covariates)
   .par <- .estPar
   eval(parse(text=paste0("function(", paste(.par, collapse=","), ", ID) {\n",
-                         "nlmixr2::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
+                         "nlmixr2est::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
                          "}")))
 
 

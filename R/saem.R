@@ -249,7 +249,7 @@
     .control <- saemControl()
   }
   if (!inherits(.control, "saemControl")){
-    .control <- do.call(nlmixr2::saemControl, .control)
+    .control <- do.call(nlmixr2est::saemControl, .control)
   }
   assign("control", .control, envir=.ui)
 }
@@ -612,7 +612,7 @@
 #' @return Nothing called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.saemControlToFoceiControl <- function(env) {
+.saemControlToFoceiControl <- function(env, assign=TRUE) {
   .saemControl <- env$saemControl
   .ui <- env$ui
   .rxControl <- env$saemControl$rxControl
@@ -631,9 +631,18 @@
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
                                 rxControl=.rxControl)
-  rm(list=".etaMat", envir=env)
-  env$control <- .foceiControl
+  if (exists(".etaMat", env)){ rm(list=".etaMat", envir=env) }
+  if (assign) env$control <- .foceiControl
+  .foceiControl
 }
+
+#' @export
+#' @rdname nmObjGetFoceiControl
+nmObjGetFoceiControl.saem <- function(x, ...) {
+  .env <- x[[1]]
+  .saemControlToFoceiControl(.env, assign=FALSE)
+}
+
 #' Set the extra text for saem
 #'
 #' @param .env saem environment

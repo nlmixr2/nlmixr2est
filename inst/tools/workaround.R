@@ -1,5 +1,5 @@
 ## This is only for nlmixr
-for (f in c("src/RcppExports.cpp", "inst/include/nlmixr2_RcppExports.h")) {
+for (f in c("src/RcppExports.cpp", "inst/include/nlmixr2est_RcppExports.h")) {
   l <- readLines(f)
   w <- which(regexpr("^[#]include <RcppArmadillo.h>", l) != -1)
   if (length(w) == 1) {

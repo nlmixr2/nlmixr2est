@@ -1,5 +1,5 @@
 #define STRICT_R_HEADER
-#include "../inst/include/nlmixr2_types.h"
+#include "../inst/include/nlmixr2est_types.h"
 #include "evaluate.h"
 #include "lin_cmt.h"
 Rcpp::EvalBase *ev = NULL;                  // pointer to abstract base class

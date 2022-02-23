@@ -1,6 +1,6 @@
 #define STRICT_R_HEADER
 #include <stan/math/prim/mat/fun/Eigen.hpp> // must come before #include <RcppEigen.h>
-#include "../inst/include/nlmixr2_types.h"
+#include "../inst/include/nlmixr2est_types.h"
 #include <RcppEigen.h>
 // [[Rcpp::depends(RcppEigen)]]
 using namespace Rcpp;
@@ -313,7 +313,7 @@ SEXP llik_neg_binomial(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd
 #if 0
 
 require(Rcpp)
-dyn.load("nlmixr2.so")
+dyn.load("nlmixr2est.so")
 lin_cmt <- function(obs_time,dose_time,dose,Tinf,params,oral,infusion,ncmt,parameterization)
    .Call('lin_cmt_stan', obs_time,dose_time,dose,Tinf,params,oral,infusion,ncmt,parameterization)
 a = lin_cmt(0:72*1.0, 0:1*24*1.0, rep(10.0,2), 0, c(.1, 1, .2, 0), 1, 0, 1, 1)

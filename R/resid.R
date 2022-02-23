@@ -23,7 +23,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .fit <- x[[1]]
   .etas <- .fit$ranef
   .thetas <- .fit$fixef
-  .Call(`_nlmixr2_nlmixr2Parameters`, .thetas, .etas)
+  .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
 }
 #attr(nmObjGet.foceiThetaEtaParameters, "desc") <- "nmObjGet.foceiThetaEtaParameters"
 
@@ -183,14 +183,14 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .w <- which(names(.sim) == "sim")
     .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
     .sim <- .sim[, .n0]
-    .Call(`_nlmixr2_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
+    .Call(`_nlmixr2est_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
           .prdLst$ipred$cens, .prdLst$ipred$limit, table)
   } else {
     if (predOnly){
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr2_resCalc`, .prdLst, fit$omega,
+      .Call(`_nlmixr2est_resCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     } else {
@@ -201,7 +201,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       ## .state <- .state[.stateSave]
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
-      .Call(`_nlmixr2_cwresCalc`, .prdLst, fit$omega,
+      .Call(`_nlmixr2est_cwresCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     }  }
@@ -266,7 +266,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .state <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
   .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .ipred)), .state)
   .params <- setdiff(intersect(names(fit$dataSav),fit$ipredModel$params),c("CMT","cmt","Cmt", .state, .lhs))
-  .ret <- .Call(`_nlmixr2_iresCalc`, .ipred, dv, .ipred$evid, .ipred$cens, .ipred$limit,
+  .ret <- .Call(`_nlmixr2est_iresCalc`, .ipred, dv, .ipred$evid, .ipred$cens, .ipred$limit,
                 .lhs, .state, .params, fit$IDlabel, table)
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
@@ -278,7 +278,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 .calcShrinkOnly <- function(fit, thetaEtaParameters=fit$foceiThetaEtaParameters) {
   .omega <- fit$omega
-  .ret <- .Call(`_nlmixr2_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
   .ret[, -dim(.omega)[1] - 1]
 }
 
@@ -321,7 +321,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .ret[[2]] <- .calcCwres(fit, data=fit$dataSav, thetaEtaParameters=.thetaEtaParameters, table=table, dv=.ret[[1]][[1]],
                             predOnly=.predOnly, addDosing=table$addDosing, subsetNonmem=table$subsetNonmem,
                             keep=keep, .prdLst=.prdLst, npde=.npde2)
-  .ret <- .Call(`_nlmixr2_popResFinal`, .ret)
+  .ret <- .Call(`_nlmixr2est_popResFinal`, .ret)
   .dups <- which(duplicated(names(.ret)))
   if (length(.dups) > 0) {
     warning("some duplicate columns were dropped", call.=FALSE)
