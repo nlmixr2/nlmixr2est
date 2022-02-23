@@ -186,20 +186,14 @@ exploration of the likelihood surface.}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
-\item{sigdig}{Optimization significant digits. This controls:
-
-\itemize{
-
- \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-
- \item The tolerance of the ODE solvers is
- \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
- steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
- (sensitivity changes only applicable for liblsoda)
-
- \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-
-}}
+\item{sigdig}{Specifies the "significant digits" that the ode
+solving requests.  When specified this controls the relative and
+absolute tolerances of the ODE solvers.  By default the tolerance
+is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
+sensitivity equations and steady-state solutions the default is
+\code{0.5*10^(-sigdig-1.5)} (sensitivity changes only applicable
+for liblsoda).  By default this is unspecified (\code{NULL}) and uses
+the standard \code{atol}/\code{rtol}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
