@@ -630,20 +630,6 @@ nmObjGetRxSolve <- function(x, what) {
 
 #' @rdname nmObjGetRxSolve
 #' @export
-nmObjGetRxSolve.saem <- function(x, what) {
-  .env <- x[[1]]
-  .control <- nmObjGetControl(x)
-  if (any(names(.control) == "ODEopt")) {
-    .lst <- .control$ODEopt
-    if (is.null(what)) return(.lst)
-    return(.lst[[what]])
-  } else {
-    NextMethod()
-  }
-}
-
-#' @rdname nmObjGetRxSolve
-#' @export
 nmObjGetRxSolve.default <- function(x, what) {
   .env <- x[[1]]
   .control <- nmObjGetControl(x)

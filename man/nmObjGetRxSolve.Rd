@@ -2,13 +2,10 @@
 % Please edit documentation in R/nmObjGet.R
 \name{nmObjGetRxSolve}
 \alias{nmObjGetRxSolve}
-\alias{nmObjGetRxSolve.saem}
 \alias{nmObjGetRxSolve.default}
 \title{Get an option for the estimation method}
 \usage{
 nmObjGetRxSolve(x, what)
-
-\method{nmObjGetRxSolve}{saem}(x, what)
 
 \method{nmObjGetRxSolve}{default}(x, what)
 }

@@ -108,13 +108,12 @@ nmObjGetControl <- function(x, ...) {
   UseMethod("nmObjGetControl")
 }
 
-
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.focei <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("foceiControl", .env)) {
-    .control <- get("foceiControl", .env)
+  if (exists("foceiControl0", .env)) {
+    .control <- get("foceiControl0", .env)
     if (inherits(.control, "foceiControl")) return(.control)
   }
   if (exists("control", .env)) {
