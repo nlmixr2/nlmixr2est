@@ -766,7 +766,7 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertIntegerish(npt, lower=1, len=1, any.missing=FALSE)
   }
   checkmate::assertIntegerish(eval.max, lower=1, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(iter.max, lower=1, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(iter.max, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(rel.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(x.tol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertNumeric(abstol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
