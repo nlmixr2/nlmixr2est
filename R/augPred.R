@@ -93,9 +93,6 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .stk
 }
 
-
-.augPredEndpoint <- NULL
-
 #' @rdname nlmixr2AugPredSolve
 #' @export
 augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, minimum = NULL, maximum = NULL,
@@ -105,29 +102,3 @@ augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, mini
     length.out = length.out, ...
   )
 })
-
-#' @export
-plot.nlmixr2AugPred <- function(x, y, ...) {
-  if (any(names(x) == "Endpoint")) {
-    for (.tmp in levels(x$Endpoint)) {
-      assignInMyNamespace(".augPredEndpoint", .tmp)
-      .x <- x[x$Endpoint == .tmp, names(x) != "Endpoint"]
-      plot.nlmixr2AugPred(.x)
-    }
-  } else {
-    ids <- unique(x$id)
-    time <- values <- ind <- id <- NULL # Rcheck fix
-    for (i in seq(1, length(ids), by = 16)) {
-      tmp <- ids[seq(i, i + 15)]
-      tmp <- tmp[!is.na(tmp)]
-      d1 <- x[x$id %in% tmp, ]
-      dobs <- d1[d1$ind == "Observed", ]
-      dpred <- d1[d1$ind != "Observed", ]
-      p3 <- ggplot(d1, aes(time, values, col = ind)) +
-        geom_line(data = dpred, size = 1.2) +
-        geom_point(data = dobs) +
-        facet_wrap(~id) + rxode2::rxTheme() + ggplot2::ggtitle(label=.augPredEndpoint)
-      print(p3)
-    }
-  }
-}
