@@ -108,6 +108,12 @@ nmObjGet.dataSav <- function(x, ...){
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
+#' @export
+nmObjGet.foceiControl <- function(x, ...) {
+  nmObjGetFoceiControl(.createEstObject(x[[1]]), ...)
+}
+attr(nmObjGet.foceiControl, "desc") <- "Get the focei control required for creating the nlmixr object"
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.idLvl <- function(x, ...){

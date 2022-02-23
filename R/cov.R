@@ -20,7 +20,7 @@
     }
     assign("covList", .covList, .env)
   }
-  .control <- .env$control
+  .control <- .env$foceiControl
   .control$maxInnerIterations <- 0L
   .control$maxOuterIterations <- 0L
   .control$boundTol <- 0 # turn off boundary
@@ -86,7 +86,7 @@
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
   .fit2 <- nlmixr2CreateOutputFromUi(.ui, data=.dat, control=.control,
-                                    table=.env$table,env=.env2, est="none")
+                                     table=.env$table,env=.env2, est="none")
   .env$cov <- .fit2$cov
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed
