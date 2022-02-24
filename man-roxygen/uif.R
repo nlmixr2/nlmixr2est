@@ -372,7 +372,7 @@
 ##'
 ##' The options for \code{saem} are controlled by \code{\link{saemControl}}.
 ##' You may wish to make sure the minimization is complete in the case
-##' of \code{saem}.  You can do that with \code{\link{traceplot}} which shows the
+##' of \code{saem}.  You can do that with \code{traceplot} which shows the
 ##' iteration history with the divided by burn-in and EM phases.  In
 ##' this case, the burn in seems reasonable; you may wish to increase
 ##' the number of iterations in the EM phase of the estimation.

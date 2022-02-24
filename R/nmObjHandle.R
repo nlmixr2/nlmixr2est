@@ -86,7 +86,7 @@ nmObjGetFoceiControl <- function(x, ...) {
 
 #' @rdname nmObjGetFoceiControl
 #' @export
-nmObjGetFoceiControl.default <- function(x) {
+nmObjGetFoceiControl.default <- function(x, ...) {
   .env <- x[[1]]
   if (exists("foceiControl0", .env)) {
     return(get("foceiControl0", .env))

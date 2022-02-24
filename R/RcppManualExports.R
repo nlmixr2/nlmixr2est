@@ -44,7 +44,7 @@
 #' @return calculated concentrations
 #' @export lin_cmt
 lin_cmt <- function(obs_time, dose_time, dose, Tinf, params, oral, infusion, ncmt, parameterization) {
-  .Call(nlmixr2_lin_cmt, PACKAGE = "nlmixr2", obs_time, dose_time, dose, Tinf, params, oral, infusion, ncmt, parameterization)
+  .Call(`nlmixr2_lin_cmt`, PACKAGE = "nlmixr2est", obs_time, dose_time, dose, Tinf, params, oral, infusion, ncmt, parameterization)
 }
 
 # require(nlmixr2)

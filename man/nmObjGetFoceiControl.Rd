@@ -11,7 +11,7 @@
 
 nmObjGetFoceiControl(x, ...)
 
-\method{nmObjGetFoceiControl}{default}(x)
+\method{nmObjGetFoceiControl}{default}(x, ...)
 
 \method{nmObjGetFoceiControl}{saem}(x, ...)
 }
