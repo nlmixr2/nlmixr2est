@@ -19,16 +19,6 @@ freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
 
-#' Calculate the inverse preconditioning matrix
-#'
-#' @param Rin The R matrix input
-#'
-#' @return The inverse preconditioning matrix
-#'
-preCondInv <- function(Rin) {
-    .Call(`_nlmixr2est_preCondInv`, Rin)
-}
-
 foceiInnerLp <- function(eta, id = 1L) {
     .Call(`_nlmixr2est_foceiInnerLp`, eta, id)
 }
