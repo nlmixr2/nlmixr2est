@@ -69,7 +69,6 @@ SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
 			  SEXP);
-SEXP _nlmixr2est_preCondInv(SEXP);
 
 static const R_CMethodDef CEntries[] = {
     {NULL, NULL, 0}
@@ -118,7 +117,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmixr2Hess_", (DL_FUNC) &_nlmixr2est_nlmixr2Hess_, 4},
   {"_nlmixr2est_augPredTrans", (DL_FUNC) &_nlmixr2est_augPredTrans, 6},
   {"_nlmixr2est_nlmixr2Unscaled_", (DL_FUNC) &_nlmixr2est_nlmixr2Unscaled_, 2},
-  {"_nlmixr2est_preCondInv", (DL_FUNC) &_nlmixr2est_preCondInv, 1},
   {"_nlmixr2est_setSilentErr", (DL_FUNC) &_nlmixr2est_setSilentErr, 1},
   {"_nlmixr2est_saem_fit", (DL_FUNC) &_nlmixr2est_saem_fit, 1},
   {"_nlmixr2est_saem_do_pred", (DL_FUNC) &_nlmixr2est_saem_do_pred, 3},
