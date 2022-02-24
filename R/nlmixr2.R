@@ -15,6 +15,7 @@
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom ggplot2 ggplot aes geom_point facet_wrap geom_line geom_abline xlab geom_smooth aes_string
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
+#' @import nlmixr2data
 #' @useDynLib nlmixr2est, .registration=TRUE
 
 rex::register_shortcuts("nlmixr2est")
