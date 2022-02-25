@@ -6,18 +6,17 @@
 <!-- badges: start -->
 
 [![R build
-status](https://github.com/nlmixr2/nlmixr2/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2/actions)
-[![Codecov test
-coverage](https://codecov.io/gh/nlmixr2/nlmixr2/branch/master/graph/badge.svg)](https://codecov.io/gh/nlmixr2/nlmixr2?branch=master)
+status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
+[![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
 [![CRAN
-checks](https://cranchecks.info/badges/summary/nlmixr)](https://cran.r-project.org/web/checks/check_results_nlmixr.html)
+checks](https://cranchecks.info/badges/summary/nlmixr2est)](https://cran.r-project.org/web/checks/check_results_nlmixr2est.html)
 [![CRAN total
-downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr)](https://cran.r-project.org/package=nlmixr)
+downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 [![CRAN monthly
-downloads](https://cranlogs.r-pkg.org/badges/nlmixr)](https://cran.r-project.org/package=nlmixr)
+downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 <!-- badges: end -->
 
-------------------------------------------------------------------------
+-----
 
 ![nlmixr](logo.png)
 
