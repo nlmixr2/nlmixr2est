@@ -101,15 +101,6 @@ print.nlmixr2Class <- function(x, ...) {
 }
 
 ##' @export
-print.nlmixr2PlotList <- function(x, ...) {
-  .x <- x
-  class(.x) <- NULL
-  for (.i in seq_along(.x)) {
-    try(print(.x[[.i]]))
-  }
-}
-
-##' @export
 print.nlmixr2FitCoreSilent <- function(x, ...) {
   return(invisible(x))
 }
