@@ -78,9 +78,9 @@
   checkmate::assertIntegerish(cfg$ntotal, lower=0, len=1, .var.name="saem.cfg$ntotal")
   .ntotal <- cfg$ntotal
   # observed
-  checkmate::assertNumeric(cfg$y, lower=0, len=.ntotal, .var.name="saem.cfg$y")
+  checkmate::assertNumeric(cfg$y, len=.ntotal, .var.name="saem.cfg$y")
   # repeated observed
-  checkmate::assertNumeric(cfg$yM, lower=0, len=.ntotal * .nmc, .var.name="saem.cfg$yM")
+  checkmate::assertNumeric(cfg$yM, len=.ntotal * .nmc, .var.name="saem.cfg$yM")
 
   # event table matrix
   checkmate::assertMatrix(cfg$evt, mode="numeric", .var.name="saem.cfg$evt")
