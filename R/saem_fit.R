@@ -99,7 +99,7 @@
 #' @noRd
 .configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
-                       rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", transitAbs = FALSE, maxeval = 100000),
+                       rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
                        distribution = c("normal", "poisson", "binomial"),
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,

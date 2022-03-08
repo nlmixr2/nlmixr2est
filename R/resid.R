@@ -70,7 +70,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                             atol = fit$atol[1], rtol = fit$rtol[1],
                             maxsteps = fit$maxstepsOde,
                             hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
-                            transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                            maxordn = fit$maxordn,
                             maxords = fit$maxords, method = fit$methodOde,
                             keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
   rxode2::rxSolveFree()
@@ -80,7 +80,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                               atol = fit$atol[1], rtol = fit$rtol[1],
                               maxsteps = fit$maxstepsOde * 2,
                               hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
-                              transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                              maxordn = fit$maxordn,
                               maxords = fit$maxords, method = "lsoda",
                               keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
     rxode2::rxSolveFree()
@@ -90,7 +90,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                 atol = fit$atol[1], rtol = fit$rtol[1],
                                 maxsteps = fit$maxstepsOde * 2,
                                 hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
-                                transitAbs = fit$transitAbs, maxordn = fit$maxordn,
+                                maxordn = fit$maxordn,
                                 maxords = fit$maxords, method = "dop853",
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
