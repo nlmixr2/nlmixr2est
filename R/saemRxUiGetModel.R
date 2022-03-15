@@ -37,6 +37,10 @@
     if (is.name(x) || is.atomic(x)) {
       return(x)
     } else if (is.call(x)) {
+      if (identical(x[[1]], quote(`+`)) &&
+            length(x) == 2) {
+        return(f(x[[2]]))
+      }
       if (identical(x[[1]], quote(`+`))) {
         if (.saemDropParametersIsMuRefCovariate(x[[2]], muRefCovariateDataFrame)) {
           return(f(x[[3]]))
