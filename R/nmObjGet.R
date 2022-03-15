@@ -583,12 +583,6 @@ nmObjGet.hini <- function(x, ...) {
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.transitAbs <- function(x, ...) {
-  nmObjGetRxSolve(.createEstObject(x[[1]]), "transitAbs")
-}
-
-#' @rdname nmObjGet
-#' @export
 nmObjGet.maxordn <- function(x, ...) {
   nmObjGetRxSolve(.createEstObject(x[[1]]), "maxordn")
 }

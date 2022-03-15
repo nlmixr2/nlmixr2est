@@ -25,7 +25,6 @@
 \alias{nmObjGet.hmin}
 \alias{nmObjGet.hmax}
 \alias{nmObjGet.hini}
-\alias{nmObjGet.transitAbs}
 \alias{nmObjGet.maxordn}
 \alias{nmObjGet.maxords}
 \alias{nmObjGet.methodOde}
@@ -82,8 +81,6 @@ nmObjGet(x, ...)
 \method{nmObjGet}{hmax}(x, ...)
 
 \method{nmObjGet}{hini}(x, ...)
-
-\method{nmObjGet}{transitAbs}(x, ...)
 
 \method{nmObjGet}{maxordn}(x, ...)
 
