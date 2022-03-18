@@ -82,7 +82,6 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
 
-
   if (is.null(sigma))
     sigma <- 0
   else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0)
@@ -223,6 +222,7 @@ nlmeControl <- nlmixr2NlmeControl
     )))
   ret
 }
+
 #' Get the theta estimates from nlme using roxde2 ui
 #'
 #' @param nlme nlme object
@@ -286,8 +286,8 @@ nlmeControl <- nlmixr2NlmeControl
            call.=FALSE)
     }
   }
-
 }
+
 #' Get non mu referenced names from mu referenced theta
 #'
 #' @param names Names to translate
@@ -318,6 +318,7 @@ nlmeControl <- nlmixr2NlmeControl
   row.names(.etaMat) <- NULL
   as.matrix(.etaMat)
 }
+
 #' Get the covariance from nlme
 #'
 #' @param nlme nlme object
@@ -334,6 +335,7 @@ nlmeControl <- nlmixr2NlmeControl
     .cov
   }
 }
+
 #' Get the omega matrix from nlme
 #'
 #' @param nlme nlme object
@@ -422,7 +424,6 @@ nmObjGetControl.nlme <- function(x, ...) {
 nmObjGetFoceiControl.nlme <- function(x, ...) {
   .nlmeControlToFoceiControl(x[[1]])
 }
-
 
 .nlmeFamilyFit <- function(env, ...) {
   .ui <- env$ui
@@ -518,5 +519,3 @@ nlmixr2Est.nlme <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)})
   .nlmeFamilyFit(env,  ...)
 }
-
-
