@@ -24,6 +24,8 @@
     rxode2::.s3register("generics::augment", "nlmixr2FitCore")
     rxode2::.s3register("generics::augment", "nlmixr2FitCoreSilent")
   }
+  rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCore")
+  rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCoreSilent")
   .resetCacheIfNeeded()
 }
 
