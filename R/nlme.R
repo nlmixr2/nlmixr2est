@@ -225,12 +225,22 @@ nlmeControl <- nlmixr2NlmeControl
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
-  eval(bquote(nlme::nlme(model=.(ui$nlmeModel), data=.nlmeFitDataObservations,
-                         method=.(.method),fixed=.(.fixed), random=.(.random),
-                         start=.(ui$nlmeStart), weights=.(.weights),
-                         control=.(.ctl), verbose=.(.verbose), na.action=function(object, ...) {
-                           return(object)
-                         })))
+  ret <-
+    eval(bquote(nlme::nlme(
+      model=.(ui$nlmeModel),
+      data=.nlmeFitDataObservations,
+      method=.(.method),
+      fixed=.(.fixed),
+      random=.(.random),
+      start=.(ui$nlmeStart),
+      weights=.(.weights),
+      control=.(.ctl),
+      verbose=.(.verbose),
+      na.action=function(object, ...) {
+        return(object)
+      }
+    )))
+  ret
 }
 #' Get the theta estimates from nlme using roxde2 ui
 #'
