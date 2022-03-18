@@ -26,22 +26,22 @@
 nlmixr2Est <- function(env, ...) {
   if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
-  } else if (!inherits(env$ui, "rxUi")) {
+  } else if (!inherits(get("ui", envir=env), "rxUi")) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
   }
   if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)
-  } else if (!inherits(env$data, "data.frame")) {
+  } else if (!inherits(get("data", envir=env), "data.frame")) {
     stop("'data' is not a data.frame", call.=FALSE)
   }
-  env$data <- as.data.frame(env$data)
+  assign("data", as.data.frame(get("data", envir=env)), envir=env)
   if (!exists("control", envir=env)) {
     stop("need 'control' object", call.=FALSE)
-  } else if (is.null(env$control)) {
+  } else if (is.null(get("control", envir=env))) {
   }
   if (!exists("table", envir=env)) {
     stop("need 'table' object", call.=FALSE)
-  } else if (is.null(env$table)) {
+  } else if (is.null(get("table", envir=env))) {
   }
   UseMethod("nlmixr2Est")
 }
@@ -58,26 +58,35 @@ nlmixr2Est <- function(env, ...) {
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
   if (!exists("missingTable", envir=env)) {
-    env$missingTable <- FALSE
+    assign("missingTable", FALSE, envir=env)
   }
   if (!exists("missingControl", envir=env)) {
-    env$missingControl <- FALSE
+    assign("missingControl", FALSE, envir=env)
   }
   if (!exists("missingEst", envir=env)) {
-    env$missingEst <- FALSE
+    assign("missingEst", FALSE, envir=env)
   }
-  if (env$missingTable) {
-    .meta <- env$ui$meta
-    if (is.null(env$table)) {
-      env$table <- tableControl()
+  if (!exists("missingTable", envir=env)) {
+    assign("missingTable", TRUE, envir=env)
+  }
+  .doIt <- TRUE
+  if (is.null(get("missingTable", envir=env))) {
+  } else if (get("missingTable", envir=env)) {
+  } else {
+    .doIt <- FALSE
+  }
+  if (.doIt) {
+    .meta <- get("ui", envir=env)$meta
+    if (is.null(get("table", envir=env))) {
+      assign("table", tableControl(), envir=envir)
     }
-    .table <- env$table
+    .table <- get("table", envir=env)
     for (.elt in .tablePassthrough) {
       if (exists(.elt, envir=.meta)) {
         .table[[.elt]] <- .meta[[.elt]]
       }
     }
-    env$table <- .table
+    assign("table", .table, envir=env)
   }
   .envReset <- new.env(parent=emptyenv())
   if (!getOption("nlmixr2.resetCache", TRUE)) {
@@ -90,6 +99,7 @@ nlmixr2Est0 <- function(env, ...) {
     })
     .envReset$cacheReset <- FALSE
     .envReset$unload <- FALSE
+    class(.envReset) <- class(env)
     while (.envReset$reset) {
       .envReset$reset <- FALSE
       .envReset$ret <-try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE))
