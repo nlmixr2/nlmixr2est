@@ -137,7 +137,6 @@ nlmeControl <- nlmixr2NlmeControl
   assign("control", .control, envir=.ui)
 }
 
-.nlmeFitDataObservations <- NULL
 .nlmeFitDataAll   <- NULL
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
@@ -177,7 +176,6 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  assignInMyNamespace(".nlmeFitDataObservations", nlme::groupedData(DV ~ TIME | ID, .dsAll[.dsAll$EVID == 0, ]))
   assignInMyNamespace(".nlmeFitDataAll", .dsAll)
 }
 
@@ -211,7 +209,7 @@ nlmeControl <- nlmixr2NlmeControl
   ret <-
     eval(bquote(nlme::nlme(
       model=.(ui$nlmeModel),
-      data=.nlmeFitDataObservations,
+      data=nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
       method=.(.method),
       fixed=.(.fixed),
       random=.(.random),
