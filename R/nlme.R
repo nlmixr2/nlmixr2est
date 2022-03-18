@@ -17,7 +17,7 @@
 #' nlmixr2NlmeControl()
 nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
     tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
-    returnObject = TRUE, msVerbose = FALSE, msWarnNoConv = TRUE,
+    returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
