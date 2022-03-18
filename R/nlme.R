@@ -163,8 +163,6 @@ nlmeControl <- nlmixr2NlmeControl
   .pars <- .pars[!duplicated(.pars$ID),]
   .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
-  .ctl <- .nlmeFitRxControl
-  .ctl$returnType <- "data.frame"
   .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
                                       .nlmeFitRxControl))
   .ret <- .retF$rx_pred_
