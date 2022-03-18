@@ -141,8 +141,6 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeFitDataAll   <- NULL
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
-.nlmeFitFunction <- NULL
-
 
 #' A surrogate function for nlme to call for ode solving
 #'
@@ -188,7 +186,6 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
-  assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
   assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
 
   .ctl <- ui$control
