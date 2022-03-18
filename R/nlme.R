@@ -173,18 +173,6 @@ nlmeControl <- nlmixr2NlmeControl
   .ret
 }
 
-#' A surrogate function for nlme to call for ode solving
-#'
-#' @return User function for the saved model
-#' @details
-#' This is an internal function and should not be called directly.
-#' @author Matthew L. Fidler
-#' @keywords internal
-#' @export
-.nlmixrNlmeUserFun <- function() {
-  .nlmeFitFunction
-}
-
 #' Setup the data for nlme estimation
 #'
 #' @param dataSav Formatted Data
