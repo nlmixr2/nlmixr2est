@@ -325,3 +325,4 @@ nmSuppressMsg <- function() {
   }
   invisible(NULL)
 }
+

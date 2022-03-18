@@ -229,3 +229,23 @@ rxode2::stat_amt
 #' @importFrom rxode2 rxControl
 #' @export
 rxode2::rxControl
+
+#' @importFrom rxode2 rxModelVars
+#' @export
+rxode2::rxModelVars
+
+#' @importFrom rxode2 rxLhs
+#' @export
+rxode2::rxLhs
+
+#' @importFrom rxode2 rxState
+#' @export
+rxode2::rxState
+
+#' @importFrom rxode2 rxInit
+#' @export
+rxode2::rxInit
+
+#' @importFrom rxode2 rxParams
+#' @export
+rxode2::rxParams
