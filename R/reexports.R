@@ -249,3 +249,9 @@ rxode2::rxInit
 #' @importFrom rxode2 rxParams
 #' @export
 rxode2::rxParams
+
+#' @importFrom rxode2 rxModelVarsS3
+#' @export
+rxode2::rxModelVarsS3
+
+
