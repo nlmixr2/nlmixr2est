@@ -201,7 +201,7 @@ test_that("Other error structures", {
 })
 
 test_that("nlme random effects are returned", {
-  one.cmt <- function() {
+  one.cmt.all.mu.ref <- function() {
     ini({
       ## You may label each parameter with a comment
       tka <- 0.45 # Log Ka
@@ -223,6 +223,29 @@ test_that("nlme random effects are returned", {
     })
   }
   
-  fit_nlme <- .nlmixr(one.cmt, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE))
+  fit_nlme <- .nlmixr(one.cmt.all.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE))
+  expect_true(!all(ranef(fit_nlme)[[1]] == 0))
+
+  one.cmt.one.mu.ref <- function() {
+    ini({
+      ## You may label each parameter with a comment
+      tka <- 0.45 # Log Ka
+      tcl <- log(c(0, 2.7, 100)) # Log Cl
+      ## This works with interactive models
+      ## You may also label the preceding line with label("label text")
+      tv <- 3.45; label("log V")
+      ## the label("Label name") works with all models
+      eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  
+  fit_nlme <- .nlmixr(one.cmt.one.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE))
   expect_true(!all(ranef(fit_nlme)[[1]] == 0))
 })
