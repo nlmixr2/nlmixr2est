@@ -5,7 +5,7 @@ Depends: R (>= 4.0), nlmixr2data
 Imports: Rcpp (>= 0.12.3), brew, parallel, lbfgsb3c,
         dparser, methods, ggplot2, rex, minqa, Matrix,
  	n1qn1 (>= 6.0.1-10), 
-	rxode2(>= 1.0.0), nlme, magrittr, backports, symengine
+	rxode2(>= 1.0.0), nlme, magrittr, backports
 Suggests: 
     Deriv,
     Rvmmin,
