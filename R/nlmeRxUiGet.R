@@ -162,9 +162,25 @@ rxUiGet.nlmeRxModel <- function(x, ...) {
 #' @export
 rxUiGet.nlmeModel <- function(x, ...) {
   .ui <- x[[1]]
-  .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
-  .par <- .estPar
-  as.formula(paste0("DV ~ (.nlmixrNlmeUserFun())(", paste(c(.par, "ID"), collapse=","), ")"))
+  # This includes both fixed effects and non-mu-referenced random effects
+  saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
+  if (!all(x[[1]]$muRefTable$level %in% "id")) {
+    stop("est='nlme' can only have random effects on ID")
+  }
+  muRef.par <-
+    setNames(
+      paste(x[[1]]$muRefTable$theta, x[[1]]$muRefTable$eta, sep="+"),
+      x[[1]]$muRefTable$theta
+    )
+  nonMuRef.par <-
+    setNames(nm=setdiff(saem.par, x[[1]]$muRefTable$theta))
+  all.par <- c(muRef.par, nonMuRef.par)
+  as.formula(
+    sprintf(
+      "DV~.nlmixrNlmeFun(pars=list(%s), id=ID)",
+      paste(names(all.par), all.par, sep="=", collapse=", ")
+    )
+  )
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlme formula for nlmixr model"
 
