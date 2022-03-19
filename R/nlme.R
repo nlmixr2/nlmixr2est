@@ -17,7 +17,7 @@
 #' nlmixr2NlmeControl()
 nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
     tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
-    returnObject = TRUE, msVerbose = FALSE, msWarnNoConv = TRUE,
+    returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
     sigma = NULL, optExpression=TRUE, sumProd=FALSE,
@@ -82,7 +82,6 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
 
-
   if (is.null(sigma))
     sigma <- 0
   else if (!is.finite(sigma) || length(sigma) != 1 || sigma < 0)
@@ -137,12 +136,9 @@ nlmeControl <- nlmixr2NlmeControl
   assign("control", .control, envir=.ui)
 }
 
-.nlmeFitDataObservations <- NULL
 .nlmeFitDataAll   <- NULL
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
-.nlmeFitFunction <- NULL
-
 
 #' A surrogate function for nlme to call for ode solving
 #'
@@ -165,24 +161,10 @@ nlmeControl <- nlmixr2NlmeControl
   .pars <- .pars[!duplicated(.pars$ID),]
   .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
-  .ctl <- .nlmeFitRxControl
-  .ctl$returnType <- "data.frame"
   .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
                                       .nlmeFitRxControl))
   .ret <- .retF$rx_pred_
   .ret
-}
-
-#' A surrogate function for nlme to call for ode solving
-#'
-#' @return User function for the saved model
-#' @details
-#' This is an internal function and should not be called directly.
-#' @author Matthew L. Fidler
-#' @keywords internal
-#' @export
-.nlmixrNlmeUserFun <- function() {
-  .nlmeFitFunction
 }
 
 #' Setup the data for nlme estimation
@@ -193,14 +175,12 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  assignInMyNamespace(".nlmeFitDataObservations", nlme::groupedData(DV ~ TIME | ID, .dsAll[.dsAll$EVID == 0, ]))
   assignInMyNamespace(".nlmeFitDataAll", .dsAll)
 }
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
   assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
-  assignInMyNamespace(".nlmeFitFunction", ui$nlmeFunction)
   assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
 
   .ctl <- ui$control
@@ -225,13 +205,24 @@ nlmeControl <- nlmixr2NlmeControl
   } else {
     rxode2::rxAssignControlValue(ui, "returnNlme", TRUE)
   }
-  eval(bquote(nlme::nlme(model=.(ui$nlmeModel), data=.nlmeFitDataObservations,
-                         method=.(.method),fixed=.(.fixed), random=.(.random),
-                         start=.(ui$nlmeStart), weights=.(.weights),
-                         control=.(.ctl), verbose=.(.verbose), na.action=function(object, ...) {
-                           return(object)
-                         })))
+  ret <-
+    eval(bquote(nlme::nlme(
+      model=.(ui$nlmeModel),
+      data=nlme::groupedData(DV ~ TIME | ID, dataSav[dataSav$EVID == 0, ]),
+      method=.(.method),
+      fixed=.(.fixed),
+      random=.(.random),
+      start=.(ui$nlmeStart),
+      weights=.(.weights),
+      control=.(.ctl),
+      verbose=.(.verbose),
+      na.action=function(object, ...) {
+        return(object)
+      }
+    )))
+  ret
 }
+
 #' Get the theta estimates from nlme using roxde2 ui
 #'
 #' @param nlme nlme object
@@ -295,8 +286,8 @@ nlmeControl <- nlmixr2NlmeControl
            call.=FALSE)
     }
   }
-
 }
+
 #' Get non mu referenced names from mu referenced theta
 #'
 #' @param names Names to translate
@@ -327,6 +318,7 @@ nlmeControl <- nlmixr2NlmeControl
   row.names(.etaMat) <- NULL
   as.matrix(.etaMat)
 }
+
 #' Get the covariance from nlme
 #'
 #' @param nlme nlme object
@@ -343,6 +335,7 @@ nlmeControl <- nlmixr2NlmeControl
     .cov
   }
 }
+
 #' Get the omega matrix from nlme
 #'
 #' @param nlme nlme object
@@ -431,7 +424,6 @@ nmObjGetControl.nlme <- function(x, ...) {
 nmObjGetFoceiControl.nlme <- function(x, ...) {
   .nlmeControlToFoceiControl(x[[1]])
 }
-
 
 .nlmeFamilyFit <- function(env, ...) {
   .ui <- env$ui
@@ -523,9 +515,10 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiMixedOnly(env$ui, " for the estimation routine 'nlme', try 'focei'", .var.name="model")
+  rxode2::assertRxUiNormal(env$ui, " for the estimation routine 'nlme'", .var.name="model")
+  rxode2::assertRxUiSingleEndpoint(env$ui, " for the estimation routine 'nlme'", .var.name="model")
   .nlmeFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)})
   .nlmeFamilyFit(env,  ...)
 }
-
-
