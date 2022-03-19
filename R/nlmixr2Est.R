@@ -78,7 +78,7 @@ nlmixr2Est0 <- function(env, ...) {
   if (.doIt) {
     .meta <- get("ui", envir=env)$meta
     if (is.null(get("table", envir=env))) {
-      assign("table", tableControl(), envir=envir)
+      assign("table", tableControl(), envir=env)
     }
     .table <- get("table", envir=env)
     for (.elt in .tablePassthrough) {
