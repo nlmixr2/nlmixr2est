@@ -20,6 +20,11 @@
   
 - `foceiControl()` aligned between other methods.
 
+- `foceiControl(adjLik=TRUE)` uses the NONMEM-style objective function
+  throughout.  `foceiControl(adjLik=FALSE)` uses the adjusted
+  objective function throughout, and adjusts it back to the NONMEM
+  objective function.
+
 ## SAEM changes
 
 - mu referencing is no longer required for `saem`; Internally non
