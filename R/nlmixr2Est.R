@@ -45,6 +45,26 @@ nlmixr2Est <- function(env, ...) {
   }
   UseMethod("nlmixr2Est")
 }
+
+#' Show all the current estimation methods
+#'
+#' @return List of supported nlmixr2 estimation options (est=...)
+#' @examples
+#' nlmixr2AllEst()
+#' @export
+nlmixr2AllEst <- function() {
+  .ret <- vapply(as.character(methods("nlmixr2Est")), function(est){substr(est,12,nchar(est))}, character(1), USE.NAMES=FALSE)
+  .ret[!(.ret %in% c("default", "output"))]
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.default <- function(env, ...) {
+  .curEst <- class(env)[1]
+  stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",
+       call.=FALSE)
+}
+
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
 
 #' Call nlmixr2Est wrapped to collect the warnings

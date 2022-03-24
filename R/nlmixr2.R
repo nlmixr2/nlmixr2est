@@ -54,7 +54,8 @@ nlmixr2Version <- function() {
 #'
 #' @param object Fitted object or function specifying the model.
 #' @param data nlmixr data
-#' @param est estimation method
+#' @param est estimation method (all methods are shown by
+#'   `nlmixr2AllEst()`). Methods can be added for other tools
 #' @param control The estimation control object.  These are expected
 #'   to be different for each type of estimation method
 #' @param table The output table control object (like
