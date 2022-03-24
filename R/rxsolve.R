@@ -11,3 +11,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
                                   events = .events, inits = NULL), .rxControl,
                              list(theta = NULL, eta = NULL)))
 }
+
+#'@rdname nlmixr2Est
+#'@export
+nlmixr2Est.simulation <- nlmixr2Est.rxSolve
