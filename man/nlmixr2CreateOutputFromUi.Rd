@@ -32,7 +32,7 @@ nlmixr2CreateOutputFromUi(
 - `$etaObf` data frame with ID, etas and OBJI
 - `$cov` For covariance
 - `$covMethod` for the method of calculating the covariance
-- `$adjOf` Should the objective function value be adjusted
+- `$adjObf` Should the objective function value be adjusted
 - `$objective` objective function value
 - `$extra` Extra print information
 - `$method` Estimation method (for printing)
