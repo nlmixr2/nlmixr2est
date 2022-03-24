@@ -9,3 +9,6 @@ model.nlmixr2FitCore <- function(x, ..., envir = parent.frame()) {
 
 #' @export
 model.nlmixr2FitData <- model.nlmixr2FitCore
+
+#' @export
+model.nlmixr2FitCoreSilent <- model.nlmixr2FitCore
