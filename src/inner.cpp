@@ -303,6 +303,7 @@ typedef struct {
   double badSolveObjfAdj = 100;
   bool didPredSolve = false;
   bool canDoFD  = false;
+  bool adjLik = false;
 } focei_options;
 
 focei_options op_focei;
@@ -670,6 +671,10 @@ static inline void likM2(focei_ind *fInd, double& limit, double&f, double &r) {
     // When limit < f, this is M2
     // When limit >=f, the limit is an upper limit (instead of lower limit)
     fInd->llik += -log(1-0.5*(1+erf(((limit<f)*2-1)*(limit-f)/_safe_sqrt(r)/M_SQRT2)));
+    if (op_focei.adjLik) {
+      // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
+      fInd->llik -= 0.5*log(M_2PI);
+    }
   }
 }
 
@@ -677,6 +682,10 @@ static inline void likCens(focei_ind *fInd, int &cens, double& limit, double&f, 
   fInd->llik += log(0.5*(1+erf(((double)(cens)*(dv-f))/_safe_sqrt(r)/M_SQRT2)));
   if (R_FINITE(limit)  && !ISNA(limit)){
     fInd->llik += -log(1-0.5*(1+erf((double)(cens)*(limit-f)/_safe_sqrt(r)/M_SQRT2)));
+    if (op_focei.adjLik) {
+      // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
+      fInd->llik += 0.5*log(M_2PI);
+    }
   }
 }
 
@@ -917,6 +926,10 @@ double likInner0(double *eta, int id){
             if (cens == 0){
               fInd->llik += err * err/_safe_zero(r) + lnr;
               likM2(fInd, limit, f, r);
+              if (!op_focei.adjLik) {
+                // Add 0.5*log(2*pi)
+                fInd->llik += 0.5*log(M_2PI);
+              }
             } else if (cens != 0) {
               likCens(fInd, cens, limit, f, dv, r);
             }
@@ -1040,6 +1053,10 @@ double likInner0(double *eta, int id){
               if (cens == 0){
                 fInd->llik += err * err/_safe_zero(r) + lnr;
                 likM2(fInd, limit, f, r);
+                if (!op_focei.adjLik) {
+                  // Add 0.5*log(2*pi)
+                  fInd->llik += 0.5*log(M_2PI);
+                }
               } else if (cens != 0) {
                 likCens(fInd, cens, limit, f, dv, r);
               }
@@ -1099,6 +1116,10 @@ double likInner0(double *eta, int id){
               if (cens == 0){
                 fInd->llik += err * err/_safe_zero(r) + lnr;
                 likM2(fInd, limit, f, r);
+                if (!op_focei.adjLik) {
+                  // Add 0.5*log(2*pi)
+                  fInd->llik += 0.5*log(M_2PI);
+                }
               } else {
                 likCens(fInd, cens, limit, f, dv, r);
               }
@@ -2979,7 +3000,7 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
-
+  op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
 
   op_focei.zeroGrad = false;
@@ -3426,24 +3447,28 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
       e.exists("omega") && e.exists("etaObf")) {
     bool mixed = rxode2::rxIs(e["omega"], "matrix") && rxode2::rxIs(e["etaObf"], "data.frame");
     int nobs2=0;
-    if (e.exists("nobs2")){
+    if (e.exists("nobs2")) {
       nobs2=as<int>(e["nobs2"]);
     } else {
       nobs2 = rx->nobs2;
     }
-    if (op_focei.scaleObjective){
+    if (op_focei.scaleObjective) {
       fmin = fmin * op_focei.initObjective / op_focei.scaleObjectiveTo;
     }
+
     bool doAdj = false;
     bool doObf = false;
     if (!e.exists("objective")){
-      e["objective"] = fmin;
-      if (as<bool>(e["adjLik"])){
+      if (op_focei.adjLik){
         doAdj = true;
+      } else {
+        fmin -= 0.5*(nobs2)*log(M_2PI);
+        doAdj=true;
       }
+      e["objective"] = fmin;
     } else {
       fmin = as<double>(e["objective"]);
-      if (e.exists("adjObf") && as<bool>(e["adjObf"])){
+      if (op_focei.adjLik){
         doObf=true;
       }
     }
@@ -3474,7 +3499,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     e["AIC"] = fmin+2*adj+2*op_focei.npars;
     if (doObf){
       // -2 * object$logLik - object$dim$N * log(2 * pi)
-      adj = -2*as<double>(logLik) - (nobs2)*log(2*M_PI);
+      adj = -2*as<double>(logLik) - (nobs2)*log(M_2PI);
       e["OBJF"] = adj;
       e["objf"] = adj;
       e["objective"] = adj;
