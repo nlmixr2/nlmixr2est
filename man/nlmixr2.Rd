@@ -80,7 +80,8 @@ nlmixr(
 
 \item{data}{nlmixr data}
 
-\item{est}{estimation method}
+\item{est}{estimation method (all methods are shown by
+`nlmixr2AllEst()`). Methods can be added for other tools}
 
 \item{control}{The estimation control object.  These are expected
 to be different for each type of estimation method}

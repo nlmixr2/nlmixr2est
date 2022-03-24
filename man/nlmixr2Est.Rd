@@ -10,6 +10,7 @@
 \alias{nlmixr2Est.output}
 \alias{nlmixr2Est.nlme}
 \alias{nlmixr2Est}
+\alias{nlmixr2Est.default}
 \alias{nlmixr2Est.rxSolve}
 \alias{nlmixr2Est.simulation}
 \alias{nlmixr2Est.saem}
@@ -30,6 +31,8 @@
 \method{nlmixr2Est}{nlme}(env, ...)
 
 nlmixr2Est(env, ...)
+
+\method{nlmixr2Est}{default}(env, ...)
 
 \method{nlmixr2Est}{rxSolve}(env, ...)
 
