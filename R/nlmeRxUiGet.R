@@ -164,16 +164,16 @@ rxUiGet.nlmeModel <- function(x, ...) {
   .ui <- x[[1]]
   # This includes both fixed effects and non-mu-referenced random effects
   saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
-  if (!all(x[[1]]$muRefTable$level %in% "id")) {
+  if (!all(x[[1]]$muRefDataFrame$level %in% "id")) {
     stop("est='nlme' can only have random effects on ID")
   }
   muRef.par <-
     setNames(
-      paste(x[[1]]$muRefTable$theta, x[[1]]$muRefTable$eta, sep="+"),
-      x[[1]]$muRefTable$theta
+      paste(x[[1]]$muRefDataFrame$theta, x[[1]]$muRefDataFrame$eta, sep="+"),
+      x[[1]]$muRefDataFrame$theta
     )
   nonMuRef.par <-
-    setNames(nm=setdiff(saem.par, x[[1]]$muRefTable$theta))
+    setNames(nm=setdiff(saem.par, x[[1]]$muRefDataFrame$theta))
   all.par <- c(muRef.par, nonMuRef.par)
   as.formula(
     sprintf(
