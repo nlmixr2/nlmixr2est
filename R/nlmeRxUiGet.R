@@ -44,18 +44,18 @@ rxGetDistributionNlmeLines.norm <- function(line) {
 
 #' @export
 rxGetDistributionNlmeLines.t <- function(line) {
-  stop("t isn't supported yet")
+  stop("t isn't supported yet", call.=FALSE)
 }
 
 #' @export
 rxGetDistributionNlmeLines.default  <- function(line) {
-  stop("Distribution not supported")
+  stop("distribution not supported", call.=FALSE)
 }
 
 #' @export
 rxGetDistributionNlmeLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  if (length(.predDf$cond) != 1) stop("nlme does not support multiple endpoint models")
+  if (length(.predDf$cond) != 1) stop("nlme does not support multiple endpoint models", call.=FALSE)
   lapply(seq_along(.predDf$cond), function(c){
     .mod <- .createFoceiLineObject(line, c)
     rxGetDistributionNlmeLines(.mod)
@@ -164,9 +164,6 @@ rxUiGet.nlmeModel <- function(x, ...) {
   .ui <- x[[1]]
   # This includes both fixed effects and non-mu-referenced random effects
   saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
-  if (!all(x[[1]]$muRefTable$level %in% "id")) {
-    stop("est='nlme' can only have random effects on ID")
-  }
   muRef.par <-
     setNames(
       paste(x[[1]]$muRefTable$theta, x[[1]]$muRefTable$eta, sep="+"),
