@@ -122,13 +122,34 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
 #' @export
 nlmixr <- nlmixr2
 
+.nlmixr2pipeData <- NULL
+.nlmixr2pipeControl <- NULL
+.nlmixr2pipeTable <- NULL
+
+.nlmixr2savePipe <- function(x) {
+  assignInMyNamespace(".nlmixr2pipeData", x$origData)
+  assignInMyNamespace(".nlmixr2pipeControl", x$control)
+  assignInMyNamespace(".nlmixr2pipeTable", x$pipeTable)
+}
+
+.nlmixr2clearPipe <- function(x) {
+  assignInMyNamespace(".nlmixr2pipeData", NULL)
+  assignInMyNamespace(".nlmixr2pipeControl", NULL)
+  assignInMyNamespace(".nlmixr2pipeTable", NULL)
+}
+
 #' @rdname nlmixr2
 #' @export
 nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
-                            save = NULL, envir = parent.frame()) {
+                             save = NULL, envir = parent.frame()) {
+  on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modName <- deparse(substitute(object))
+
+  .modelName <- try(as.character(substitute(object)), silent=TRUE)
+  if (inherits(.modelName, "try-error")) .modelName <- NULL
   .uif <- rxode2::rxode(object)
+  assign("modelName", .modelName, envir=.uif)
+
   if (missing(data) && missing(est)) {
     return(.uif)
   } else if (missing(data)) {
@@ -136,9 +157,21 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
-  .env$data <- data
-  .env$control <- control
-  .env$table <- table
+  if (is.null(data) && !is.null(.nlmixr2pipeData)) {
+    .env$data <- .nlmixr2pipeData
+  } else {
+    .env$data <- data
+  }
+  if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
+    .env$control <- .nlmixr2pipeControl
+  } else {
+    .env$control <- control
+  }
+  if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
+    .env$table <- .nlmixr2pipeTable
+  } else {
+    .env$table <- table
+  }
   .env$missingTable <- missing(table)
   .env$missingControl <- missing(control)
   .env$missingEst <- missing(est)
@@ -151,8 +184,10 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
 nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
                          save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modName <- deparse(substitute(object))
+  .modName <- try(as.character(substitute(object)), silent=TRUE)
+  if (inherits(.modelName, "try-error")) .modelName <- NULL
   .uif <- object
+  if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
   if (missing(data) && missing(est)) {
     return(.uif)
   } else if (missing(data)) {
@@ -160,9 +195,21 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
-  .env$data <- data
-  .env$control <- control
-  .env$table <- table
+    if (is.null(data) && !is.null(.nlmixr2pipeData)) {
+    .env$data <- .nlmixr2pipeData
+  } else {
+    .env$data <- data
+  }
+  if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
+    .env$control <- .nlmixr2pipeControl
+  } else {
+    .env$control <- control
+  }
+  if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
+    .env$table <- .nlmixr2pipeTable
+  } else {
+    .env$table <- table
+  }
   .env$missingTable <- missing(table)
   .env$missingControl <- missing(control)
   .env$missingEst <- missing(est)
@@ -174,6 +221,7 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
 #' @export
 nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
                                    save = NULL, envir = parent.frame()) {
+  on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
   .uif <- object
