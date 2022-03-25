@@ -1422,6 +1422,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #'@export
 nlmixr2Est.focei <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   on.exit({rm("control", envir=.ui)})
   .foceiFamilyReturn(env, .ui, ..., est="focei")
@@ -1432,6 +1435,9 @@ nlmixr2Est.focei <- function(env, ...) {
 #'@export
 nlmixr2Est.foce <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   on.exit({rm("control", envir=.ui)})
@@ -1443,6 +1449,9 @@ nlmixr2Est.foce <- function(env, ...) {
 #'@export
 nlmixr2Est.posthoc <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'posthoc'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'posthoc'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
@@ -1480,6 +1489,9 @@ nlmixr2Est.posthoc <- function(env, ...) {
 #'@export
 nlmixr2Est.foi <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   .control <- .ui$control
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
@@ -1504,6 +1516,9 @@ nlmixr2Est.foi <- function(env, ...) {
 #'@export
 nlmixr2Est.fo <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   .control <- .ui$control
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
@@ -1522,10 +1537,14 @@ nlmixr2Est.fo <- function(env, ...) {
   .addObjDfToReturn(.ret, .objDf)
   .ret
 }
+
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.output <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
+
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)

@@ -515,9 +515,11 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiMixedOnly(env$ui, " for the estimation routine 'nlme', try 'focei'", .var.name="model")
-  rxode2::assertRxUiNormal(env$ui, " for the estimation routine 'nlme'", .var.name="model")
-  rxode2::assertRxUiSingleEndpoint(env$ui, " for the estimation routine 'nlme'", .var.name="model")
+  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
+  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
+  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   .nlmeFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)})
   .nlmeFamilyFit(env,  ...)

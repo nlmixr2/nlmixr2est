@@ -738,6 +738,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNormal(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
+  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
+
   .saemFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
