@@ -1,5 +1,6 @@
 #' @export
 update.nlmixr2FitCore <- function(object, ...) {
+  .nlmixr2savePipe(object)
   .modelLines <- rxode2::.quoteCallInfoLines(match.call(expand.dots = TRUE)[-(1:2)],
                                              envir = envir)
   x <- object$ui
