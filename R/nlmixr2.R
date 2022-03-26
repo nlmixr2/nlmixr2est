@@ -125,17 +125,20 @@ nlmixr <- nlmixr2
 .nlmixr2pipeData <- NULL
 .nlmixr2pipeControl <- NULL
 .nlmixr2pipeTable <- NULL
+.nlmixr2pipeEst <- NULL
 
 .nlmixr2savePipe <- function(x) {
   assignInMyNamespace(".nlmixr2pipeData", x$origData)
   assignInMyNamespace(".nlmixr2pipeControl", x$control)
-  assignInMyNamespace(".nlmixr2pipeTable", x$pipeTable)
+  assignInMyNamespace(".nlmixr2pipeTable", x$table)
+  assignInMyNamespace(".nlmixr2pipeEst", x$est)
 }
 
 .nlmixr2clearPipe <- function(x) {
   assignInMyNamespace(".nlmixr2pipeData", NULL)
   assignInMyNamespace(".nlmixr2pipeControl", NULL)
   assignInMyNamespace(".nlmixr2pipeTable", NULL)
+  assignInMyNamespace(".nlmixr2pipeEst", NULL)
 }
 
 #' @rdname nlmixr2
@@ -150,27 +153,40 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   .uif <- rxode2::rxode(object)
   assign("modelName", .modelName, envir=.uif)
 
-  if (missing(data) && missing(est)) {
+  .missingData <- FALSE
+  if (missing(data)) {
+    .missingData <- TRUE
+    data <- NULL
+  }
+
+  if (.missingData && missing(est)) {
     return(.uif)
-  } else if (missing(data)) {
-    stop("need data", call.=FALSE)
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
+    .minfo("use {.code data} from pipeline")
+  } else if (.missingData) {
+    stop("need data", call.=FALSE)
   } else {
     .env$data <- data
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .env$control <- .nlmixr2pipeControl
+    .minfo("use {.code control} from pipeline")
   } else {
     .env$control <- control
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     .env$table <- .nlmixr2pipeTable
+    .minfo("use {.code table} from pipeline")
   } else {
     .env$table <- table
+  }
+  if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
+    .minfo("use {.code est} from pipeline")
+    est <- .nlmixr2pipeEst
   }
   .env$missingTable <- missing(table)
   .env$missingControl <- missing(control)
@@ -190,25 +206,37 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
   if (missing(data) && missing(est)) {
     return(.uif)
-  } else if (missing(data)) {
-    stop("need data", call.=FALSE)
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
-    if (is.null(data) && !is.null(.nlmixr2pipeData)) {
+  .missingData <- FALSE
+  if (missing(data)) {
+    data <- NULL
+    .missingData <- TRUE
+  }
+  if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
+    .minfo("use {.code data} from pipeline")
+  } else if (.missingData) {
+    stop("need data", call.=FALSE)
   } else {
     .env$data <- data
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .env$control <- .nlmixr2pipeControl
+    .minfo("use {.code control} from pipeline")
   } else {
     .env$control <- control
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     .env$table <- .nlmixr2pipeTable
+    .minfo("use {.code table} from pipeline")
   } else {
     .env$table <- table
+  }
+  if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
+    est <- .nlmixr2pipeEst
+    .minfo("use {.code est} from pipeline")
   }
   .env$missingTable <- missing(table)
   .env$missingControl <- missing(control)
@@ -225,16 +253,28 @@ nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, tab
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
   .uif <- object
-  if (missing(data)) {
+  if (is.null(data) && !is.null(.nlmixr2pipeData)) {
+    data <- .nlmixr2pipeData
+    .minfo("use {.code data} from pipeline")
+  }  else if (missing(data)) {
     data <- object$origData
   }
-  if (missing(est)) {
+  if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
+    est <- .nlmixr2pipeEst
+    .minfo("use {.code est} from pipeline")
+  } else if (missing(est)) {
     est <- object$est
   }
-  if (missing(control)) {
+  if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
+    control <- .nlmixr2pipeControl
+    .minfo("use {.code control} from pipeline")
+  } else if (missing(control)) {
     control <- object$control
   }
-  if (missing(table)) {
+  if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
+    table <- .nlmixr2pipeTable
+    .minfo("use {.code table} from pipeline")
+  } else if (missing(table)) {
     table <- object$table
   }
   .env <- new.env(parent=emptyenv())
