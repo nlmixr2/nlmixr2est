@@ -167,7 +167,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                         table=tableControl(), dv=NULL, predOnly=FALSE,
                         addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
                         .prdLst) {
-  assertNlmixrFitData(fit)
+  assertNlmixrFit(fit)
   checkmate::assertDataFrame(data)
   checkmate::assertLogical(predOnly, len=1, any.missing=FALSE)
   checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
