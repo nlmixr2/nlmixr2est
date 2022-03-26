@@ -1,6 +1,5 @@
 #' @importFrom stats predict logLik na.fail pchisq approxfun cov cov2cor dlnorm median na.omit qchisq
 #' @importFrom n1qn1 n1qn1
-#' @importFrom brew brew
 #' @importFrom nlme nlme fixed.effects random.effects
 #' @importFrom nlme groupedData
 #' @importFrom nlme getData
@@ -9,11 +8,9 @@
 #' @importFrom graphics abline lines matplot plot points title
 #' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
 #' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
-#' @importFrom parallel mclapply
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
-#' @importFrom ggplot2 ggplot aes geom_point facet_wrap geom_line geom_abline xlab geom_smooth aes_string
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
 #' @import nlmixr2data
 #' @useDynLib nlmixr2est, .registration=TRUE
