@@ -166,11 +166,11 @@ rxUiGet.nlmeModel <- function(x, ...) {
   saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
   muRef.par <-
     setNames(
-      paste(x[[1]]$muRefTable$theta, x[[1]]$muRefTable$eta, sep="+"),
-      x[[1]]$muRefTable$theta
+      paste(x[[1]]$muRefDataFrame$theta, x[[1]]$muRefDataFrame$eta, sep="+"),
+      x[[1]]$muRefDataFrame$theta
     )
   nonMuRef.par <-
-    setNames(nm=setdiff(saem.par, x[[1]]$muRefTable$theta))
+    setNames(nm=setdiff(saem.par, x[[1]]$muRefDataFrame$theta))
   all.par <- c(muRef.par, nonMuRef.par)
   as.formula(
     sprintf(
