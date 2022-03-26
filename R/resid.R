@@ -167,6 +167,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                         table=tableControl(), dv=NULL, predOnly=FALSE,
                         addDosing=FALSE, subsetNonmem=TRUE, keep=NULL, npde=FALSE,
                         .prdLst) {
+  assertNlmixrFitData(fit)
+  checkmate::assertDataFrame(data)
+  checkmate::assertLogical(predOnly, len=1, any.missing=FALSE)
+  checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
+  checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
+  checkmate::assertLogical(npde, len=1, any.missing=FALSE)
   keep <- unique(c(keep, "nlmixrRowNums"))
   if (!inherits(dv, "numeric")) {
     dv <- .prdLst$ipred$dv
