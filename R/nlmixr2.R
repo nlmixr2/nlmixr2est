@@ -184,7 +184,7 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
 nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
                          save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .modName <- try(as.character(substitute(object)), silent=TRUE)
+  .modelName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.modelName, "try-error")) .modelName <- NULL
   .uif <- object
   if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
