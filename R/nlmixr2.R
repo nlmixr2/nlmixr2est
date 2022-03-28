@@ -170,10 +170,10 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
     .env$data <- data
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
-    .env$control <- .nlmixr2pipeControl
     .minfo("use {.code control} from pipeline")
+    .env$control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
   } else {
-    .env$control <- control
+    .env$control <- getValidNlmixrControl(control, est)
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     .env$table <- .nlmixr2pipeTable
@@ -220,10 +220,10 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
     .env$data <- data
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
-    .env$control <- .nlmixr2pipeControl
+    .env$control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
     .minfo("use {.code control} from pipeline")
   } else {
-    .env$control <- control
+    .env$control <- getValidNlmixrControl(control, est)
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     .env$table <- .nlmixr2pipeTable
@@ -263,10 +263,10 @@ nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, tab
     est <- object$est
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
-    control <- .nlmixr2pipeControl
     .minfo("use {.code control} from pipeline")
+    control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
   } else if (missing(control)) {
-    control <- object$control
+    control <- getValidNlmixrControl(object$control, est)
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     table <- .nlmixr2pipeTable
