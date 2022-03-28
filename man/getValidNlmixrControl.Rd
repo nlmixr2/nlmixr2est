@@ -12,31 +12,34 @@
 \alias{getValidNlmixrCtl.saem}
 \alias{getValidNlmixrCtl.rxSolve}
 \alias{getValidNlmixrCtl.simulation}
+\alias{getValidNlmixrCtl.default}
 \title{Get valid nlmixr control object}
 \usage{
 getValidNlmixrControl(control, est)
 
 getValidNlmixrCtl(control)
 
-getValidNlmixrCtl.focei(control)
+\method{getValidNlmixrCtl}{focei}(control)
 
-getValidNlmixrCtl.foce(control)
+\method{getValidNlmixrCtl}{foce}(control)
 
-getValidNlmixrCtl.fo(control)
+\method{getValidNlmixrCtl}{fo}(control)
 
-getValidNlmixrCtl.foi(control)
+\method{getValidNlmixrCtl}{foi}(control)
 
-getValidNlmixrCtl.posthoc(control)
+\method{getValidNlmixrCtl}{posthoc}(control)
 
-getValidNlmixrCtl.foce(control)
+\method{getValidNlmixrCtl}{foce}(control)
 
-getValidNlmixrCtl.nlme(control)
+\method{getValidNlmixrCtl}{nlme}(control)
 
-getValidNlmixrCtl.saem(control)
+\method{getValidNlmixrCtl}{saem}(control)
 
-getValidNlmixrCtl.rxSolve(control)
+\method{getValidNlmixrCtl}{rxSolve}(control)
 
-getValidNlmixrCtl.simulation(control)
+\method{getValidNlmixrCtl}{simulation}(control)
+
+\method{getValidNlmixrCtl}{default}(control)
 }
 \arguments{
 \item{control}{nlmixr control object}

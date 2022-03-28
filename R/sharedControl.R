@@ -100,3 +100,11 @@ getValidNlmixrCtl.rxSolve <- function(control) {
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.default <- function(control) {
+  .cls <- class(control)[1]
+  stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrControl.", .cls, "` method",
+       call.=FALSE)
+}
