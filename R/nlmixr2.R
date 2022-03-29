@@ -140,7 +140,7 @@ nlmixr <- nlmixr2
 
 #' @rdname nlmixr2
 #' @export
-nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
+nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                              save = NULL, envir = parent.frame()) {
   on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
@@ -151,9 +151,8 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
   assign("modelName", .modelName, envir=.uif)
 
   .missingData <- FALSE
-  if (missing(data)) {
+  if (is.null(data)) {
     .missingData <- TRUE
-    data <- NULL
   }
 
   if (.missingData && missing(est)) {
@@ -194,22 +193,21 @@ nlmixr2.function <- function(object, data, est = NULL, control = NULL, table = t
 
 #' @rdname nlmixr2
 #' @export
-nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
+nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                          save = NULL, envir = parent.frame()) {
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modelName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.modelName, "try-error")) .modelName <- NULL
   .uif <- object
   if (is.null(.uif$modelName)) assign("modelName", .modelName, envir=.uif)
-  if (missing(data) && missing(est)) {
+  if (is.null(data) && missing(est)) {
     return(.uif)
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- .uif
   .missingData <- FALSE
-  if (missing(data)) {
+  if (is.null(data)) {
     data <- NULL
-    .missingData <- TRUE
   }
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
@@ -242,14 +240,18 @@ nlmixr2.rxUi <- function(object, data, est = NULL, control = NULL, table = table
   nlmixr2Est0(.env)
 }
 
+.nlmixr2SimInfo <- NULL
 #' @rdname nlmixr2
 #' @export
-nlmixr2.nlmixr2FitCore <- function(object, data, est = NULL, control = NULL, table = tableControl(), ...,
+nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                                    save = NULL, envir = parent.frame()) {
-  on.exit(.nlmixr2clearPipe())
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
-  .uif <- object
+  assignInMyNamespace(".nlmixr2SimInfo", .simInfo(object))
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
