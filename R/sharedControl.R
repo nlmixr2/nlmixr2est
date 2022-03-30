@@ -31,6 +31,7 @@ getValidNlmixrCtl.focei <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
   if (is.null(.ctl)) .ctl <- foceiControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("foceiControl", .ctl)
   if (!inherits(.ctl, "foceiControl")) {
     .minfo("invalid control for `est=\"", .cls, "\"`, using default")
     .ctl <- foceiControl()
@@ -63,6 +64,7 @@ getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
 getValidNlmixrCtl.nlme <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- nlmeControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("nlmeControl", .ctl)
   if (!inherits(.ctl, "nlmeControl")) {
     .minfo("invalid control for `est=\"nlme\"`, using default")
     .ctl <- nlmeControl()
@@ -75,6 +77,7 @@ getValidNlmixrCtl.nlme <- function(control) {
 getValidNlmixrCtl.saem <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- saemControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("saemControl", .ctl)
   if (!inherits(.ctl, "saemControl")) {
     .minfo("invalid control for `est=\"saem\"`, using default")
     .ctl <- saemControl()
@@ -88,6 +91,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
   if (is.null(.ctl)) .ctl <- rxControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("rxControl", .ctl)
   if (!inherits(.ctl, "rxControl")) {
     .cls <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
@@ -100,6 +104,19 @@ getValidNlmixrCtl.rxSolve <- function(control) {
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
+
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.tableControl <- function(control) {
+  .ctl <- control[[1]]
+  if (is.null(.ctl)) .ctl <- tableControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("tableControl", .ctl)
+  if (!inherits(.ctl, "tableControl")) {
+    .minfo("invalid control for table, using default")
+    .ctl <- tableControl()
+  }
+  .ctl
+}
 
 #' @rdname getValidNlmixrControl
 #' @export
