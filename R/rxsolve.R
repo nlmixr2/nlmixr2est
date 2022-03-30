@@ -1,7 +1,7 @@
 .rxSolveGetControlForNlmixr <- function(env) {
   .ui <- get("ui", envir=env)
   .rxControl <- get("control", envir=env)
-  if (is.null(.rxControl)) {
+  if (!inherits(.rxControl, "rxControl")) {
     .rxControl <- rxode2::rxControl()
   }
   .events <- get("data", envir=env)
@@ -28,6 +28,12 @@
     }
   }
   .rxControl
+}
+
+##' @rdname nmObjGet
+##' @export
+nmObjGet.rxControlWithVar <- function(x, ...) {
+  .rxSolveGetControlForNlmixr(x[[1]])
 }
 
 #'@rdname nlmixr2Est
