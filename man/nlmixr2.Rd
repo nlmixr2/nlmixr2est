@@ -33,7 +33,7 @@ nlmixr(
 
 \method{nlmixr2}{`function`}(
   object,
-  data,
+  data = NULL,
   est = NULL,
   control = NULL,
   table = tableControl(),
@@ -44,7 +44,7 @@ nlmixr(
 
 \method{nlmixr2}{rxUi}(
   object,
-  data,
+  data = NULL,
   est = NULL,
   control = NULL,
   table = tableControl(),
@@ -55,7 +55,7 @@ nlmixr(
 
 \method{nlmixr2}{nlmixr2FitCore}(
   object,
-  data,
+  data = NULL,
   est = NULL,
   control = NULL,
   table = tableControl(),
@@ -66,7 +66,7 @@ nlmixr(
 
 \method{nlmixr2}{nlmixr2FitData}(
   object,
-  data,
+  data = NULL,
   est = NULL,
   control = NULL,
   table = tableControl(),
