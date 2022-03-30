@@ -266,6 +266,7 @@
   .nobs <- 0
   dat <- rxode2::etTrans(data$nmdat, attr(model$saem_mod, "rx"), addCmt=TRUE, dropUnits=TRUE, allTimeVar=TRUE)
   .nobs <- attr(class(dat), ".rxode2.lst")$nobs
+  dat <- as.data.frame(dat) # convert back evid=3 oddness...
   ## if(length(dat) !=7) stop("SAEM doesn't support time varying covariates yet.");
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params

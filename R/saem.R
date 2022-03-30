@@ -685,7 +685,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 }
 
 .saemGetDataForFit <- function(dataSav, ui) {
-  rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
+  .tmp <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
+  as.data.frame(.tmp)
 }
 
 #' Fit the saem family of models
@@ -703,7 +704,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui)
   .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
-  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+ .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) .nTv <- 0
   .tv <- character(0)
   if (.nTv != 0) {
