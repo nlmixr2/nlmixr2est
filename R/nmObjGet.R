@@ -636,6 +636,6 @@ nmObjGetRxSolve.default <- function(x, what) {
 #' @rdname nmObjGet
 #' @export
 nmObjGet.rxControl <- function(x, ...) {
-  nmObjGetRxSolve(.createEstObject(x[[1]]), NULL )
+  nmObjGetRxSolve(.createEstObject(x[[1]]), NULL)
 }
 attr(nmObjGet.rxControl, "desc") <- "rxode2 solving options"

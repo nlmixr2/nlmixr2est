@@ -4,7 +4,6 @@
   if (!inherits(.rxControl, "rxControl")) {
     .rxControl <- rxode2::rxControl()
   }
-  .events <- get("data", envir=env)
   if (!is.null(.nlmixr2SimInfo)) {
     .thetaMat <- .nlmixr2SimInfo$thetaMat
     if (is.null(.rxControl$thetaMat)) {
@@ -33,12 +32,35 @@
 ##' @rdname nmObjGet
 ##' @export
 nmObjGet.rxControlWithVar <- function(x, ...) {
-  .rxSolveGetControlForNlmixr(x[[1]])
+  .tmp <- x[[1]]
+  assignInMyNamespace(".nlmixr2SimInfo", .tmp$simInfo)
+  .env <- .tmp$env
+  if (exists("control", .env)) {
+    .oldControl <- get("control", .env)
+    on.exit({
+      assignInMyNamespace(".nlmixr2SimInfo", NULL)
+      assign("control", .oldControl, envir=.env)})
+    if (!inherits(.oldControl, "rxControl")) {
+      .rxControl <- nmObjGet.rxControl(x, ...)
+    } else {
+      .rxControl <- .oldControl
+    }
+    assign("control", .rxControl, envir=.env)
+  } else {
+    .rxControl <- nmObjGet.rxControl(x, ...)
+    assign("control", .rxControl, envir=.env)
+    on.exit({
+      assignInMyNamespace(".nlmixr2SimInfo", NULL)
+      rm(list="control", envir=.env)
+    m})
+  }
+  .rxSolveGetControlForNlmixr(.env)
 }
 
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.rxSolve <- function(env, ...) {
+  .events <- get("data", envir=env)
   do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
@@ -48,6 +70,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
 #'@export
 nlmixr2Est.simulation <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
+  .events <- get("data", envir=env)
   if (is.na(.rxControl$simVariability)) {
     .rxControl$simVariability <- TRUE
   }
@@ -60,6 +83,7 @@ nlmixr2Est.simulation <- function(env, ...) {
 #'@export
 nlmixr2Est.predict <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
+  .events <- get("data", envir=env)
   if (is.na(.rxControl$simVariability)) {
     .rxControl$simVariability <- FALSE
   }
