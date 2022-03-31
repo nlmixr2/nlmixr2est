@@ -474,23 +474,6 @@ nobs.nlmixr2FitCore <- function(object, ...) {
 vcov.nlmixr2FitCore <- function(object, ...) {
   object$cov
 }
-#' This gets the parsed data in the lower-level manner that nlmixr2 expects.
-#'
-#' @param object nlmixr2 Object
-#'
-#' @return Gets the parsed data
-#'
-#' @export
-#'
-#' @author Matthew L. Fidler
-#' @keywords internal
-.nmGetData <- function(object, keep=NULL) {
-  if (is.null(keep)) keep <- character(0)
-  .uif <- object$uif
-  .tmp <- deparse(body(.uif$theta.pars))[-1]
-  .tmp <- .tmp[-length(.tmp)]
-  return(rxode2::etTrans(object$origData, paste(paste(.tmp, collapse = "\n"), "\n", .uif$rxode), TRUE, TRUE, TRUE, keep=keep))
-}
 
 #' @export
 getData.nlmixr2FitCore <- function(object) {
