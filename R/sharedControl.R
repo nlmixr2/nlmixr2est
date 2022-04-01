@@ -138,3 +138,24 @@ getValidNlmixrCtl.default <- function(control) {
   stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrControl.", .cls, "` method",
        call.=FALSE)
 }
+
+#'  Get specified control structure from reference
+#'
+#'
+#' @param ref Reference control
+#' @param ... Other arguments for new control
+#' @return List for new control object
+#' @author Matthew L. Fidler
+#' @noRd
+.getControlFromDots <- function(ref, ...){
+  .in <- list(...)
+  .out <- vector(mode="list")
+  for (.n in names(ref)) {
+    .w <- which(names(.in) == .n)
+    if (length(.w) == 1L) {
+      .out[[.n]] <- .in[[.w]]
+      .in <- .in[-.w]
+    }
+  }
+  return(list(ctl=.out, rest=.in))
+}
