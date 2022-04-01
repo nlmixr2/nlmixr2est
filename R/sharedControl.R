@@ -33,7 +33,7 @@ getValidNlmixrCtl.focei <- function(control) {
   if (is.null(.ctl)) .ctl <- foceiControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("foceiControl", .ctl)
   if (!inherits(.ctl, "foceiControl")) {
-    .minfo("invalid control for `est=\"", .cls, "\"`, using default")
+    .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- foceiControl()
   }
   .ctl
@@ -95,7 +95,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   if (!inherits(.ctl, "rxControl")) {
     .cls <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
-      .minfo("invalid control for `est=\"", .cls, "\"`, using default")
+      .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     }
   }
   .cls

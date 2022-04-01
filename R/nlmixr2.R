@@ -267,14 +267,18 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .minfo("use {.code control} from pipeline")
     control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
-  } else {
+  } else if (is.null(control)) {
     control <- getValidNlmixrControl(object$control, est)
+  } else {
+    control <- getValidNlmixrControl(control, est)
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     table <- getValidNlmixrControl(.nlmixr2pipeTable, "tableControl")
     .minfo("use {.code table} from pipeline")
-  } else if (missing(table)) {
+  } else if (is.null(table)) {
     table <- getValidNlmixrControl(object$table, "tableControl")
+  } else {
+    table <- getValidNlmixrControl(table, "tableControl")
   }
   .env <- new.env(parent=emptyenv())
   .env$ui <- object$ui
