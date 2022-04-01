@@ -1,8 +1,14 @@
 .rxSolveGetControlForNlmixr <- function(env) {
   .ui <- get("ui", envir=env)
-  .rxControl <- get("control", envir=env)
+  if (exists("control", envir=env)) {
+    .rxControl <- get("control", envir=env)
+  }
   if (!inherits(.rxControl, "rxControl")) {
-    .rxControl <- rxode2::rxControl()
+    .rxControl <- try(.rxControl$rxControl)
+    if (!inherits(.rxControl, "rxControl")) {
+      .minfo("using default solving options `rxode2::rxControl()`")
+      .rxControl <- rxode2::rxControl()
+    }
   }
   if (!is.null(.nlmixr2SimInfo)) {
     .thetaMat <- .nlmixr2SimInfo$thetaMat
@@ -91,4 +97,3 @@ nlmixr2Est.predict <- function(env, ...) {
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
 }
-
