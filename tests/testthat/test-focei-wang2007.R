@@ -558,10 +558,12 @@ testErr("lnorm", function(f) {
 }, .lnorm, addProp = 1)
 
 test_that("lognormal likelihood can be determined by data too", {
-  expect_equal(setNames(round(expect_warning(expect_warning(testErr("add lnorm", function(f) {
-    f %>% model(lipre ~ add(add.sd)) %>% ini(add.sd=sqrt(0.1))
-  },  log=TRUE) + 2 * sum(datl$DV), "changed to"), "changed to"), 3), NULL),
-  .lnorm, tolerance=5e-3)
+  suppressWarnings({
+    expect_equal(setNames(round(testErr("add lnorm", function(f) {
+      f %>% model(lipre ~ add(add.sd)) %>% ini(add.sd=sqrt(0.1))
+    },  log=TRUE) + 2 * sum(datl$DV), 3), NULL),
+    .lnorm, tolerance=5e-3)
+  })
 })
 
 
