@@ -4,7 +4,7 @@
 \alias{nlmixrAddObjectiveFunctionDataFrame}
 \title{Add objective function data frame to the current objective function}
 \usage{
-nlmixrAddObjectiveFunctionDataFrame(fit, objDf, type)
+nlmixrAddObjectiveFunctionDataFrame(fit, objDf, type, etaObf = NULL)
 }
 \arguments{
 \item{fit}{nlmixr fit object}
@@ -14,6 +14,9 @@ names "OBJF", "AIC", "BIC", "Log-likelihood" and
 "Condition Number"}
 
 \item{type}{Objective Function Type}
+
+\item{etaObf}{Eta objective function table to add (with focei) to
+give focei objective function}
 }
 \value{
 Nothing, called for side effects
