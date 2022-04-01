@@ -257,17 +257,20 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     .minfo("use {.code data} from pipeline")
   }  else if (missing(data)) {
     data <- object$origData
+    .minfo("use {.code data} from prior fit")
   }
   if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   } else if (missing(est)) {
+    .minfo("use {.code est} from prior fit")
     est <- object$est
   }
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .minfo("use {.code control} from pipeline")
     control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
   } else if (is.null(control)) {
+    .minfo("use {.code control} from prior fit")
     control <- getValidNlmixrControl(object$control, est)
   } else {
     control <- getValidNlmixrControl(control, est)
@@ -276,6 +279,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     table <- getValidNlmixrControl(.nlmixr2pipeTable, "tableControl")
     .minfo("use {.code table} from pipeline")
   } else if (is.null(table)) {
+    .minfo("use {.code table} from prior fit")
     table <- getValidNlmixrControl(object$table, "tableControl")
   } else {
     table <- getValidNlmixrControl(table, "tableControl")
