@@ -35,6 +35,8 @@ getValidNlmixrCtl.focei <- function(control) {
   if (!inherits(.ctl, "foceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- foceiControl()
+  } else {
+    .ctl <- do.call(foceiControl, .ctl)
   }
   .ctl
 }
@@ -68,6 +70,8 @@ getValidNlmixrCtl.nlme <- function(control) {
   if (!inherits(.ctl, "nlmeControl")) {
     .minfo("invalid control for `est=\"nlme\"`, using default")
     .ctl <- nlmeControl()
+  } else {
+    .ctl <- do.call(nlmeControl, .ctl)
   }
   .ctl
 }
@@ -81,6 +85,8 @@ getValidNlmixrCtl.saem <- function(control) {
   if (!inherits(.ctl, "saemControl")) {
     .minfo("invalid control for `est=\"saem\"`, using default")
     .ctl <- saemControl()
+  } else {
+    .ctl <- do.call(saemControl, .ctl)
   }
   .ctl
 }
@@ -91,12 +97,17 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
   if (is.null(.ctl)) .ctl <- rxControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("rxControl", .ctl)
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call(rxode2::rxControl, .ctl)
   if (!inherits(.ctl, "rxControl")) {
-    .cls <- .ctl$rxControl
+    .ctl <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
       .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
+      .ctl <- rxode2::rxControl()
+    } else {
+      .ctl <- do.call(rxode2::rxControl, .ctl)
     }
+  } else {
+    .ctl <- do.call(rxode2::rxControl, .ctl)
   }
   .cls
 }
@@ -110,10 +121,12 @@ getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
 getValidNlmixrCtl.tableControl <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- tableControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("tableControl", .ctl)
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call(tableControl, .ctl)
   if (!inherits(.ctl, "tableControl")) {
     .minfo("invalid control for table, using default")
     .ctl <- tableControl()
+  } else {
+    .ctl <- do.call(tableControl, .ctl)
   }
   .ctl
 }
