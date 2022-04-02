@@ -77,9 +77,6 @@ nlmixr2Est.rxSolve <- function(env, ...) {
 nlmixr2Est.simulate <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .events <- get("data", envir=env)
-  if (is.na(.rxControl$simVariability)) {
-    .rxControl$simVariability <- TRUE
-  }
   do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
@@ -105,5 +102,5 @@ simulate.nlmixr2FitCore <- function(object, ...) {
   .table <- do.call(.getControlFromDots, c(list(tableControl()), .both$rest))
   .both$rest <- .table$rest
   .table <- do.call(tableControl, .table$ctl)
-  do.call(nlmixr2, c(list(object=object, est="predict", control=.rxControl, table=.table), .both$rest))
+  do.call(nlmixr2, c(list(object=object, est="rxSolve", control=.rxControl, table=.table), .both$rest))
 }
