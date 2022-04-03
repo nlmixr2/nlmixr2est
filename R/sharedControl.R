@@ -94,10 +94,13 @@ getValidNlmixrCtl.saem <- function(control) {
 #' @rdname getValidNlmixrControl
 #' @export
 getValidNlmixrCtl.rxSolve <- function(control) {
-  .ctl <- control[[1]]
-  .cls <- class(control)[1]
+  .ctl <- control
+  class(.ctl) <- NULL
+  .ctl <- .ctl[[1]]
   if (is.null(.ctl)) .ctl <- rxControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call(rxode2::rxControl, .ctl)
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
+    .ctl <- do.call(rxode2::rxControl, .ctl)
+  }
   if (!inherits(.ctl, "rxControl")) {
     .ctl <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
@@ -109,7 +112,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   } else {
     .ctl <- do.call(rxode2::rxControl, .ctl)
   }
-  .cls
+  .ctl
 }
 
 #' @rdname getValidNlmixrControl
