@@ -53,7 +53,7 @@ nlmixr2Est <- function(env, ...) {
 #' nlmixr2AllEst()
 #' @export
 nlmixr2AllEst <- function() {
-  .ret <- vapply(as.character(methods("nlmixr2Est")), function(est){substr(est,12,nchar(est))}, character(1), USE.NAMES=FALSE)
+  .ret <- vapply(as.character(utils::methods("nlmixr2Est")), function(est){substr(est,12,nchar(est))}, character(1), USE.NAMES=FALSE)
   .ret[!(.ret %in% c("default", "output"))]
 }
 

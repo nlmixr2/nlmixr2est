@@ -104,7 +104,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   if (!inherits(.ctl, "rxControl")) {
     .ctl <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
-      .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
+      .minfo(paste0("invalid control for `est=\"", class(control)[1], "\"`, using default"))
       .ctl <- rxode2::rxControl()
     } else {
       .ctl <- do.call(rxode2::rxControl, .ctl)
