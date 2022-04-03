@@ -1,4 +1,5 @@
 #' @importFrom stats predict logLik na.fail pchisq approxfun cov cov2cor dlnorm median na.omit qchisq
+#' @importFrom symengine S
 #' @importFrom n1qn1 n1qn1
 #' @importFrom nlme nlme fixed.effects random.effects
 #' @importFrom nlme groupedData
