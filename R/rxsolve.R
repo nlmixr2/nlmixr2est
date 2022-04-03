@@ -96,6 +96,19 @@ nlmixr2Est.predict <- function(env, ...) {
 }
 
 #' @export
+predict.nlmixr2FitCore <- function(object, ...) {
+  .both <- .getControlFromDots(rxode2::rxControl(), ...)
+  .both$ctl$omega <- NA
+  .both$ctl$sigma <- NA
+  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  .table <- do.call(.getControlFromDots, c(list(tableControl()), .both$rest))
+  .both$rest <- .table$rest
+  .table <- do.call(tableControl, .table$ctl)
+  do.call(nlmixr2, c(list(object=object, est="rxSolve", control=.rxControl, table=.table), .both$rest))
+}
+
+
+#' @export
 simulate.nlmixr2FitCore <- function(object, ...) {
   .both <- .getControlFromDots(rxode2::rxControl(), ...)
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
