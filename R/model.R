@@ -2,7 +2,7 @@
 model.nlmixr2FitCore <- function(x, ..., append = FALSE,
                                  auto = getOption("rxode2.autoVarPiping",TRUE),
                                  envir = parent.frame()) {
-  .nlmixr2savePipe(object)
+  .nlmixr2savePipe(x)
   .modelLines <- rxode2::.quoteCallInfoLines(match.call(expand.dots = TRUE)[-(1:2)],
                                              envir = envir)
   .ret <- rxode2::.copyUi(x$ui)

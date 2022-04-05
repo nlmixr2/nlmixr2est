@@ -529,12 +529,34 @@ tableControl <- function(npde = NULL,
                          cores=NULL,
                          keep=NULL,
                          drop=NULL) {
+  checkmate::assertLogical(npde, any.missing=FALSE, len=1, null.ok=TRUE)
+  checkmate::assertLogical(cwres, any.missing=FALSE, len=1, null.ok=TRUE)
+  checkmate::assertLogical(ties, any.missing=FALSE, len=1, null.ok=FALSE)
+  checkmate::assertIntegerish(nsim, lower=0, len=1)
+  checkmate::assertIntegerish(seed, lower=0, len=1)
+  checkmate::assertNumeric(cholSEtol, lower=0, len=1)
+  checkmate::assertLogical(state, len=1, any.missing=FALSE)
+  checkmate::assertLogical(lhs, len=1, any.missing=FALSE)
+  checkmate::assertLogical(eta, len=1, any.missing=FALSE)
+  checkmate::assertLogical(covariates, len=1, any.missing=FALSE)
+  checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
+  checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
+  checkmate::assertCharacter(keep, null.ok=TRUE)
+  checkmate::assertCharacter(drop, null.ok=TRUE)
+  if (inherits(censMethod, "character")) {
+    .censMethod <- setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL)
+  } else {
+    checkmate::assertIntegerish(censMethod)
+    .censMethod <- as.integer(censMethod)
+  }
   if (is.null(cores)) {
-    cores = rxode2::rxCores()
+    cores <- rxode2::rxCores()
+  } else {
+    checkmate::assertIntegerish(cores, len=1, lower=1)
   }
   .ret <- list(
     npde = npde, cwres = cwres, nsim = nsim, ties = ties, seed = seed,
-    censMethod=setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL),
+    censMethod=.censMethod,
     cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores, keep=keep, drop=drop)
   class(.ret) <- "tableControl"
   return(.ret)

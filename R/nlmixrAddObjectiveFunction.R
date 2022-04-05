@@ -5,15 +5,20 @@
 #'   names "OBJF", "AIC", "BIC", "Log-likelihood" and
 #'   "Condition Number"
 #' @param type Objective Function Type
+#' @param etaObf Eta objective function table to add (with focei) to
+#'   give focei objective function
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @export
-nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type) {
+nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf=NULL) {
   assertNlmixrFit(fit)
   checkmate::assertCharacter(type, len=1, any.missing=FALSE)
   .inRow <- assertNlmixrObjDataFrameRow(objDf, allowNa=FALSE)
   .cur <- fit$objDf
   .rownames <- row.names(.cur)
+  if (!is.null(etaObf)) {
+    assign("etaObf", etaObf, envir=fit$env)
+  }
   if (length(.cur$OBJF) == 1) {
     .inRow2 <- assertNlmixrObjDataFrameRow(.cur, allowNa=TRUE)
     .cn <- NA_real_

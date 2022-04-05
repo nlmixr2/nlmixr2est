@@ -12,7 +12,7 @@
 \alias{nlmixr2Est}
 \alias{nlmixr2Est.default}
 \alias{nlmixr2Est.rxSolve}
-\alias{nlmixr2Est.simulation}
+\alias{nlmixr2Est.simulate}
 \alias{nlmixr2Est.predict}
 \alias{nlmixr2Est.saem}
 \title{Generic for nlmixr2 estimation methods}
@@ -37,7 +37,7 @@ nlmixr2Est(env, ...)
 
 \method{nlmixr2Est}{rxSolve}(env, ...)
 
-\method{nlmixr2Est}{simulation}(env, ...)
+\method{nlmixr2Est}{simulate}(env, ...)
 
 \method{nlmixr2Est}{predict}(env, ...)
 

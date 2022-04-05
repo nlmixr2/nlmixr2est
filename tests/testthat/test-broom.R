@@ -1,3 +1,4 @@
+
 tol <- 1e-5
 ## From https://raw.githubusercontent.com/bbolker/broom.mixed/master/tests/testthat/helper-checkers.R
 
@@ -153,6 +154,8 @@ test_that("tidy works on nlmixr fit SAEM fits", {
 skip_on_cran()
 
 for (f in c("focei", "foce")) {
+
+
   fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
 
   test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
