@@ -1270,9 +1270,11 @@ double LikInner2(double *eta, int likId, int id){
     arma::mat H0(fInd->H0, op_focei.neta, op_focei.neta, false, true);
     k=0;
     if (fInd->doChol){
-      if (!chol(H0, H)) {
+      arma::mat Hfin, Hin = H;
+      if (!chol(Hfin, Hin)) {
         return NA_REAL;
       }
+      H0 = Hfin;
     } else {
       H0=cholSE__(H, op_focei.cholSEtol);
     }
