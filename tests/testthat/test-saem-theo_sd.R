@@ -181,7 +181,7 @@ for (.n in .nm) {
   val[, .n] <- round(val[[.n]], 2)
 }
 
-##qs::qsave(val, file=test_file("test-saem-theo_sd.qs"))
+##qs::qsave(val, file="test-saem-theo_sd.qs")
 
 .test <- qs::qread("test-saem-theo_sd.qs")
 for (i in seq_along(.test$add)) {

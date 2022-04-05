@@ -1,27 +1,44 @@
 .rxSolveGetControlForNlmixr <- function(env) {
   .ui <- get("ui", envir=env)
-  .rxControl <- get("control", envir=env)
+  if (exists("control", envir=env)) {
+    .rxControl <- get("control", envir=env)
+  }
   if (!inherits(.rxControl, "rxControl")) {
-    .rxControl <- rxode2::rxControl()
+    .rxControl <- try(.rxControl$rxControl)
+    if (!inherits(.rxControl, "rxControl")) {
+      .minfo("using default solving options `rxode2::rxControl()`")
+      .rxControl <- rxode2::rxControl()
+    }
+  }
+  .isPred <- is.na(.rxControl$omega) & (is.na(.rxControl$sigma))
+  if (length(.isPred) != 1) .isPred <- FALSE
+  if (!.isPred) {
+    if (is.na(.rxControl$simVariability)) {
+      if (.rxControl$nStud == 1) {
+        .isPred <- TRUE
+      }
+    } else if (!.rxControl$simVariability) {
+      .isPred <- TRUE
+    }
   }
   if (!is.null(.nlmixr2SimInfo)) {
     .thetaMat <- .nlmixr2SimInfo$thetaMat
-    if (is.null(.rxControl$thetaMat)) {
+    if (is.null(.rxControl$thetaMat) & !.isPred) {
       .minfo("using population uncertainty from fitted model (`thetaMat`)")
       .rxControl$thetaMat <- .thetaMat
     }
-    if (.rxControl$dfObs == 0L) {
+    if (.rxControl$dfObs == 0L & !.isPred) {
       .minfo(paste0("using `dfObs=", .nlmixr2SimInfo$dfObs,
              "` from the number of observations in fitted model"))
       .rxControl$dfObs <- .nlmixr2SimInfo$dfObs
     }
-    if (.rxControl$dfSub == 0L) {
+    if (.rxControl$dfSub == 0L & !.isPred) {
       .minfo(paste0("using `dfSub=", .nlmixr2SimInfo$dfSub,
              "` from the number of subjects in fitted model"))
       .rxControl$dfSub <- .nlmixr2SimInfo$dfSub
     }
 
-    if (is.null(.rxControl$sigma)) {
+    if (is.null(.rxControl$sigma) & !.isPred) {
       .minfo("using diagonal `sigma` based on model")
       .rxControl$sigma <- .nlmixr2SimInfo$sigma
     }
@@ -68,12 +85,9 @@ nlmixr2Est.rxSolve <- function(env, ...) {
 
 #'@rdname nlmixr2Est
 #'@export
-nlmixr2Est.simulation <- function(env, ...) {
+nlmixr2Est.simulate <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .events <- get("data", envir=env)
-  if (is.na(.rxControl$simVariability)) {
-    .rxControl$simVariability <- TRUE
-  }
   do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
@@ -92,3 +106,29 @@ nlmixr2Est.predict <- function(env, ...) {
                              list(theta = NULL, eta = NULL)))
 }
 
+#' @export
+predict.nlmixr2FitCore <- function(object, ...) {
+  .both <- .getControlFromDots(rxode2::rxControl(), ...)
+  .both$ctl$omega <- NA
+  .both$ctl$sigma <- NA
+  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  if (inherits(.both$rest$newdata, "data.frame")) {
+    nlmixr2(object=object, data=.both$rest$newdata,
+            est="rxSolve", control=.rxControl)
+  } else {
+    nlmixr2(object=object, est="rxSolve", control=.rxControl)
+  }
+}
+
+
+#' @export
+simulate.nlmixr2FitCore <- function(object, ...) {
+  .both <- .getControlFromDots(rxode2::rxControl(), ...)
+  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  if (inherits(.both$rest$newdata, "data.frame")) {
+    nlmixr2(object=object, data=.both$rest$newdata,
+            est="rxSolve", control=.rxControl)
+  } else {
+    nlmixr2(object=object, est="rxSolve", control=.rxControl)
+  }
+}

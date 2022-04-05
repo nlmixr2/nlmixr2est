@@ -8,7 +8,7 @@
     .foceiControl$fo <- FALSE
     .foceiControl$maxOuterIterations <- 0L
     .foceiControl$maxInnerIterations <- 0L
-    .foceiControl$calcResid <- FALSE
+    .foceiControl$calcTables <- FALSE
     .foceiControl$covMethod <- 0L
     .foceiControl$compress <- FALSE
     if (.type == "focei") {
@@ -27,10 +27,12 @@
     if (any(rownames(.inObjDf) == .rn)) {
       return(fit)
     }
+    .foceiControl <- do.call(foceiControl, .foceiControl)
     .newFit <- nlmixr2(fit, nlme::getData(fit), "focei", control = .foceiControl)
     .env <- fit$env
     .ob1 <- .newFit$objDf
-    nlmixrAddObjectiveFunctionDataFrame(fit, .ob1, .rn)
+    .etaObf <- .newFit$etaObf
+    nlmixrAddObjectiveFunctionDataFrame(fit, .ob1, .rn, .etaObf)
     invisible(fit)
   }, envir=fit)
 }

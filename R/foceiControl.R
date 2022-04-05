@@ -885,7 +885,9 @@ foceiControl <- function(sigdig = 3, #
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "resetEtaSize",
                              "resetThetaSize", "resetThetaFinalSize",
-                             "outerOptFun", "outerOptTxt", "skipCov"))]
+                             "outerOptFun", "outerOptTxt", "skipCov",
+                             "foceiMuRef", "predNeq", "nfixed", "nomega",
+                             "neta", "ntheta", "nF", "printTop"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),

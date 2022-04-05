@@ -1415,6 +1415,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       }
     }
   })
+  if (any(names(.ret) == "CWRES") && regexpr("^fo", est) == -1) {
+    # focei is available; add objective function
+    .setOfvFo(.ret, "focei")
+  }
+
   .ret
 }
 
@@ -1426,7 +1431,11 @@ nlmixr2Est.focei <- function(env, ...) {
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)) {
+      rm("control", envir=.ui)
+    }
+  })
   .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 
@@ -1549,7 +1558,11 @@ nlmixr2Est.output <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)) {
+      rm("control", envir=.ui)
+    }
+  })
   if (!exists("est", envir=env)) env$est <- "posthoc"
   .foceiFamilyReturn(env, .ui, ..., est=env$est)
 }
