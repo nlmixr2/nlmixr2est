@@ -73,6 +73,30 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   }
   return(.sim)
 }
+#' Expand a VPC simulation
+#'
+#'
+#' @param object nlmixr fit object
+#' @param sim vpc simulation object
+#' @param extra extra data from original fit to add
+#' @return Expanded data frame with extra pieces added
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
+vpcSimExpand <- function(object, sim, extra) {
+  if (is.null(extra)) return(sim)
+  .fullData <- object$dataMergeInner
+  .extra <- extra[extra %in% names(.fullData)]
+  if (length(.extra) == 0) return(sim)
+  .sim <- sim
+  .w <- seq(1, which(names(.sim) == "rxLambda") - 1)
+  .sim1 <- .sim[, .w]
+  .sim2 <- .sim[, -.w]
+  for (.n in .extra) {
+    .sim1[[.n]] <- .fullData[[.n]]
+  }
+  cbind(.sim1, .sim2)
+}
 
 #' Get the least prediction simulation information for VPC
 #'
