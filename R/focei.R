@@ -1449,7 +1449,11 @@ nlmixr2Est.foce <- function(env, ...) {
 
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)){
+      rm("control", envir=.ui)
+    }
+  })
   env$est <- "foce"
   .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
@@ -1465,7 +1469,11 @@ nlmixr2Est.posthoc <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)){
+      rm("control", envir=.ui)
+    }
+  })
   env$est <- "posthoc"
   .foceiFamilyReturn(env, .ui, ..., est="posthoc")
 }
@@ -1507,7 +1515,11 @@ nlmixr2Est.foi <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)){
+      rm("control", envir=.ui)
+    }
+  })
   env$skipTable <- TRUE
   .ret <- .foceiFamilyReturn(env, .ui, ...)
   .objDf <- .ret$objDf
@@ -1534,7 +1546,11 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
-  on.exit({rm("control", envir=.ui)})
+  on.exit({
+    if (exists("control", envir=.ui)){
+      rm("control", envir=.ui)
+    }
+  })
   env$skipTable <- TRUE
   .ret <- .foceiFamilyReturn(env, .ui, ...)
   .objDf <- .ret$objDf

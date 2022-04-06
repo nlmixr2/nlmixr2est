@@ -15,7 +15,10 @@
 #'
 #' @param env Environment for the fit information
 nmObjHandleModelObject <- function(model, env) {
-  on.exit(rm("model", envir=env))
+  on.exit({
+    if (exists("model", envir=env)){
+      rm("model", envir=env)
+    }})
   UseMethod("nmObjHandleModelObject")
 }
 
@@ -46,7 +49,11 @@ nmObjHandleModelObject.default <- function(model, env) {
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 nmObjHandleControlObject <- function(control, env) {
-  on.exit(rm("control", envir=env))
+  on.exit({
+    if (exists("control", envir=env)) {
+      rm("control", envir=env)
+    }
+  })
   UseMethod("nmObjHandleControlObject")
 }
 

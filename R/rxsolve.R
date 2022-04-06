@@ -68,7 +68,9 @@ nmObjGet.rxControlWithVar <- function(x, ...) {
     assign("control", .rxControl, envir=.env)
     on.exit({
       assignInMyNamespace(".nlmixr2SimInfo", NULL)
-      rm(list="control", envir=.env)
+      if (exists("control", envir=.env)) {
+        rm(list="control", envir=.env)
+      }
     })
   }
   .rxSolveGetControlForNlmixr(.env)

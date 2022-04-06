@@ -186,7 +186,11 @@
       .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
     assign("muRefFinal", .muRefCovariateDataFrame, ui)
-    on.exit(rm(list="muRefFinal", envir=ui))
+    on.exit({
+      if (exists("muRefFinal", envir=ui)) {
+        rm(list="muRefFinal", envir=ui)
+      }
+    })
     .model <- ui$saemModelList
     .inits <- ui$saemInit
     .cfg <- .configsaem(model=.model,
@@ -630,7 +634,9 @@
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
                                 rxControl=.rxControl)
-  if (exists(".etaMat", env)){ rm(list=".etaMat", envir=env) }
+  if (exists(".etaMat", env)){
+    rm(list=".etaMat", envir=env)
+  }
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
