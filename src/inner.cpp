@@ -2083,8 +2083,8 @@ SEXP foceiEtas(Environment e) {
       tmp[j] = fInd->saveEta[eta];
     }
   }
-  if (e.exists("IDlabel")) {
-    RObject idl = e["IDlabel"];
+  if (e.exists("idLvl")) {
+    RObject idl = e["idLvl"];
     if (idl.sexp_type() == STRSXP) {
       ids.attr("class") = "factor";
       ids.attr("levels") = idl;
@@ -5491,6 +5491,14 @@ void foceiFinalizeTables(Environment e){
     List etas = e["etaObf"];
     IntegerVector idx = seq_len(etas.length())-1;
     etas = etas[idx != etas.length()-1];
+    if (e.exists("idLvl")) {
+      RObject idl = e["idLvl"];
+      RObject eta0 = etas[0];
+      if (idl.sexp_type() == STRSXP) {
+        eta0.attr("class") = "factor";
+        eta0.attr("levels") = idl;
+      }
+    }
     e["ranef"]=etas;
 
     // Now put names on the objects
