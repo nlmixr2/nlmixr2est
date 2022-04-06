@@ -7,7 +7,7 @@ model.nlmixr2FitCore <- function(x, ..., append = FALSE,
                                              envir = envir)
   .ret <- rxode2::.copyUi(x$ui)
   rxode2::.modelHandleModelLines(.modelLines, .ret, modifyIni = FALSE,
-                                 envir)
+                                 envir=envir)
 }
 
 #' @export
