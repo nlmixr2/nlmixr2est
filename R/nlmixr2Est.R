@@ -111,6 +111,7 @@ nlmixr2Est0 <- function(env, ...) {
     assign("table", .table, envir=env)
   }
   .envReset <- new.env(parent=emptyenv())
+  .envReset$reset <- TRUE
   if (!getOption("nlmixr2.resetCache", TRUE)) {
     .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
   } else{
