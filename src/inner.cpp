@@ -742,12 +742,12 @@ static inline double calcGradForEtaGeneral(double *eta,
              eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
              cid, gill83etaR);
     }
-    err = 1/(std::fabs(eta[cpar])+1);
-    aEps[cpar]  = hf*err;
+    if (hf == 0) hf = op_focei.eventFD;
+    aEps[cpar]  = hf;
     return gillDf;
   } else {
     // now use forward
-    double delta = (std::fabs(eta[cpar])*aEps[cpar] + aEps[cpar]);
+    double delta = aEps[cpar];
     focei_ind *fInd = &(inds_focei[cid]);
     rx_solving_options_ind *ind =  &(rx->subjects[cid]);
     double fv;
