@@ -5035,7 +5035,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,arma::symmatu(re));
+                  success= chol(H0,re);
                   if (success){
                     e["cholR"] = wrap(H0);
                     rstr = "|r|";
@@ -5126,7 +5126,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,arma::symmatu(re));
+                  success= chol(H0,re);
                   if (success){
                     e["cholS"] = wrap(H0);
                     sstr = "|s|";
