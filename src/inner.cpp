@@ -821,10 +821,10 @@ double likInner0(double *eta, int id){
     if (fInd->doFD == 0) {
       innerOde(id);
       j=0;
-      while (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN && op->badSolve && j < op_focei.maxOdeRecalc){
+      while (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN && op->badSolve && j < op_focei.maxOdeRecalc) {
         op_focei.stickyRecalcN2++;
-        op_focei.reducedTol=1;
-        op_focei.reducedTol2=1;
+        op_focei.reducedTol  = 1;
+        op_focei.reducedTol2 = 1;
         // Not thread safe
         rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
         ind->solved = -1;
@@ -844,8 +844,18 @@ double likInner0(double *eta, int id){
       predSolve=true;
       op_focei.didPredSolve = true;
     }
-    if (op->neq > 0 && (ISNA(ind->solve[0]) || std::isnan(ind->solve[0]) ||
-                        std::isinf(ind->solve[0]))){
+    bool isBadSolve = false;
+    int nsolve = (op->neq + op->nlin)*ind->n_all_times;
+    if (op->neq > 0) {
+      for (int ns = 0; ns < nsolve; ++ns) {
+        if (ISNA(ind->solve[ns]) || std::isnan(ind->solve[ns]) ||
+            std::isinf(ind->solve[ns])) {
+          isBadSolve = true;
+          break;
+        }
+      }
+    }
+    if (isBadSolve){
       return NA_REAL;
       //throw std::runtime_error("bad solve");
     } else {
@@ -1214,8 +1224,6 @@ double likInner(NumericVector eta, int id = 1){
 
 double LikInner2(double *eta, int likId, int id){
   focei_ind *fInd = &(inds_focei[id]);
-  // print(wrap(-likInner0(eta)));
-  // print(wrap(op_focei.logDetOmegaInv5));
   double lik=0;
   if (op_focei.neta == 0) {
     lik = fInd->llik;
@@ -1584,7 +1592,6 @@ static inline int innerOpt1(int id, int likId) {
                 std::fill_n(&fInd->var[0], fop->neta, 0.1);
               }
             }
-
           }
         }
       }
