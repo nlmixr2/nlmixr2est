@@ -123,6 +123,7 @@ nlmixr2Est0 <- function(env, ...) {
     .envReset$cacheReset <- FALSE
     .envReset$unload <- FALSE
     class(.envReset) <- class(env)
+    if (length(.envReset$reset) != 1) .envReset$reset <- TRUE
     while (.envReset$reset) {
       .envReset$reset <- FALSE
       .envReset$ret <-try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE))
@@ -167,6 +168,7 @@ nlmixr2Est0 <- function(env, ...) {
           stop(.msg, call.=FALSE)
         }
       }
+      if (length(.envReset$reset) != 1) .envReset$reset <- TRUE
     }
   }
   .lst <- .envReset$ret

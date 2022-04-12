@@ -1,6 +1,5 @@
 #ifndef __ARMAHEAD_H__
 #define __ARMAHEAD_H__
-
 #define ARMA_DONT_PRINT_ERRORS
 #define ARMA_DONT_USE_OPENMP // Known to cause speed problems
 // #ifdef _OPENMP
