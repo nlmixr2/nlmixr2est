@@ -223,6 +223,12 @@ saemControl <- function(seed = 99, # Seed
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
 
+  if (checkmate::testIntegerish(covMethod, lower=0, len=1, any.missing=FALSE)) {
+    .covMethod <- covMethod
+  } else {
+    .covMethod <- match.arg(.covMethod)
+  }
+
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     rxControl = rxControl,
@@ -250,7 +256,7 @@ saemControl <- function(seed = 99, # Seed
     genRxControl=.genRxControl,
     sigdigTable=sigdigTable,
     ci=ci,
-    covMethod=match.arg(covMethod),
+    covMethod=.covMethod,
     logLik=logLik,
     calcTables=calcTables
   )

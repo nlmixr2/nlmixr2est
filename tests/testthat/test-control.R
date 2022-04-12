@@ -81,3 +81,7 @@ test_that("foceiControl for lbfgsb3c", {
   .tmp2 <- do.call("foceiControl", .tmp)
   expect_equal(.tmp, .tmp2)
 })
+
+test_that("saemControl can take integer for covMethod", {
+  expect_error(saemControl(covMethod=0L), NA)
+})
