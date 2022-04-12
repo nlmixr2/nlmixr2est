@@ -226,7 +226,7 @@ saemControl <- function(seed = 99, # Seed
   if (checkmate::testIntegerish(covMethod, lower=0, len=1, any.missing=FALSE)) {
     .covMethod <- covMethod
   } else {
-    .covMethod <- match.arg(.covMethod)
+    .covMethod <- match.arg(covMethod)
   }
 
   .ret <- list(
