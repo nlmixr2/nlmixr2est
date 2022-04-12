@@ -1281,8 +1281,8 @@ double LikInner2(double *eta, int likId, int id){
     arma::mat H0(fInd->H0, op_focei.neta, op_focei.neta, false, true);
     k=0;
     if (fInd->doChol){
-      arma::mat Hout;
-      bool success = chol(Hout, arma::symmatu(H));
+      arma::mat Hout, Hin = H;
+      bool success = chol(Hout, H);
       if (!success) {
         return NA_REAL;
       }
