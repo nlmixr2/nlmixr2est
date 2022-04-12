@@ -85,3 +85,7 @@ test_that("foceiControl for lbfgsb3c", {
 test_that("saemControl can take integer for covMethod", {
   expect_error(saemControl(covMethod=0L), NA)
 })
+
+test_that("saemControl can take integer for covMethod", {
+  expect_error(nlmeControl(covMethod=0L), NA)
+})
