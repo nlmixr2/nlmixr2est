@@ -1263,6 +1263,7 @@ double LikInner2(double *eta, int likId, int id){
           H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
                             c.col(l) % c.col(k)) +
             op_focei.omegaInv(k, l);
+          if (std::isinf(H(k, l))) return NA_REAL;
           H(l, k) = H(k, l);
         }
       }
@@ -1272,6 +1273,7 @@ double LikInner2(double *eta, int likId, int id){
           // tmp = a.col(l) %  B % a.col(k);
           H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
             op_focei.omegaInv(k, l);
+          if (std::isinf(H(k, l))) return NA_REAL;
           H(l, k) = H(k, l);
         }
       }
