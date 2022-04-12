@@ -24,6 +24,9 @@
   throughout.  `foceiControl(adjLik=FALSE)` uses the adjusted
   objective function throughout, and adjusts it back to the NONMEM
   objective function.
+  
+- Internally `arma::chol()` is changed to
+  `arma::chol(arma::symmatu())` to ensure symmetry.
 
 ## SAEM changes
 
