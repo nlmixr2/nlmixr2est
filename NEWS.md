@@ -25,12 +25,13 @@
   objective function throughout, and adjusts it back to the NONMEM
   objective function.
   
-- Internally `arma::chol()` is changed to
-  `arma::chol(arma::symmatu())` to ensure symmetry.
-  
 - Lag time and other between subject variability differences no longer
   calculate an ideal relative step size, but an absolute step size
   when using Gill differences (default)
+  
+- Objective function checks for infinite/NaN/NA values for the entire
+  solving space and ensures no overflow occurs when calculating the
+  inner hessian
 
 ## SAEM changes
 
