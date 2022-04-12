@@ -1272,7 +1272,7 @@ double LikInner2(double *eta, int likId, int id){
     k=0;
     if (fInd->doChol){
       arma::mat Hout;
-      bool success = chol(Hout, H);
+      bool success = chol(Hout, arma::symmatu(H));
       if (!success) {
         return NA_REAL;
       }
@@ -5026,7 +5026,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,re);
+                  success= chol(H0,arma::symmatu(re));
                   if (success){
                     e["cholR"] = wrap(H0);
                     rstr = "|r|";
@@ -5117,7 +5117,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,re);
+                  success= chol(H0,arma::symmatu(re));
                   if (success){
                     e["cholS"] = wrap(H0);
                     sstr = "|s|";
