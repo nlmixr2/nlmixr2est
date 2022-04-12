@@ -5561,9 +5561,6 @@ void foceiFinalizeTables(Environment e){
   NumericVector probitThetaLow;
   if (e.exists("logThetasF")){
     logTheta =  as<IntegerVector>(e["logThetasF"]);
-  } else if (e.exists("model")){
-    List model = e["model"];
-    logTheta =  as<IntegerVector>(model["log.thetas"]);
   }
   if (e.exists("logitThetasF")) {
     logitTheta = as<IntegerVector>(e["logitThetasF"]);
@@ -6009,15 +6006,8 @@ Environment foceiFitCpp_(Environment e){
     arma::vec scaleC = as<arma::vec>(e["scaleC"]);
     std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
   }
-  if (e.exists("logThetas")){
-    logTheta =  as<IntegerVector>(e["logThetas"]);
-  } else if (e.exists("model")){
-    List model = e["model"];
-    if (model.containsElementNamed("log.thetas")){
-      if (rxode2::rxIs(model["log.thetas"], "integer") || rxode2::rxIs(model["log.thetas"], "numeric")){
-        logTheta =  as<IntegerVector>(model["log.thetas"]);
-      }
-    }
+  if (e.exists("logThetasF")){
+    logTheta =  as<IntegerVector>(e["logThetasF"]);
   }
   if (e.exists("logitThetas") && e.exists("logitThetasLow") &&
       e.exists("logitThetasHi")) {
