@@ -74,3 +74,10 @@ test_that("nlmixr2NlmeControl sanity", {
 
   expect_error(nlmixr2NlmeControl(foceiControl="matt"))
 })
+
+test_that("foceiControl for lbfgsb3c", {
+  .tmp <- foceiControl(print = 1, outerOpt="lbfgsb3c")
+  expect_error(do.call("foceiControl", .tmp), NA)
+  .tmp2 <- do.call("foceiControl", .tmp)
+  expect_equal(.tmp, .tmp2)
+})

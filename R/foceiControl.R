@@ -901,6 +901,7 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$outerOptTxt)) {
     .outerOptTxt <- .xtra$outerOptTxt
   }
+  outerOptFun <- NULL
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {

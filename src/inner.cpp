@@ -1138,6 +1138,14 @@ double likInner0(double *eta, int id){
           }
           // k--;
           k++;
+          if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+             if (ind->n_all_times != j + 1) {
+               warning("on iteration: %d, obs mismatch; id: %d k: %d/%d j: %d/%d; likely nlmixr2 bug", op_focei.nF+op_focei.nF2,
+                       id, k, ind->n_all_times - ind->ndoses - ind->nevid2,
+                       j, ind->n_all_times);
+             }
+            break;
+          }
         }
       }
       if (op_focei.neta == 0) {
