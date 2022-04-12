@@ -27,6 +27,10 @@
   
 - Internally `arma::chol()` is changed to
   `arma::chol(arma::symmatu())` to ensure symmetry.
+  
+- Lag time and other between subject variability differences no longer
+  calculate an ideal relative step size, but an absolute step size
+  when using Gill differences (default)
 
 ## SAEM changes
 
