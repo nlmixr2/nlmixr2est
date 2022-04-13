@@ -1,6 +1,8 @@
 .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
 #.nlmixr <- function(...) nlmixr(...)
 
+rxode2::rxUnloadAll()
+
 dat <- Wang2007
 dat$DV <- dat$Y
 
@@ -1798,3 +1800,4 @@ testErr("probitNorm+pow+yeoJohnson combined2", function(f) {
     ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
 }, .probitNormAddPowAddYeoJohnson2, addProp = 2)
 
+rxode2::rxUnloadAll()
