@@ -142,21 +142,42 @@
 
   model$N.eta <- attr(model$saem_mod, "nrhs")
   model$nendpnt <- attr(model$saem_mod, "nendpnt")
-  if (is.null(model$nendpnt)) model$nendpnt <- 1
-
-  if (is.null(model$log.eta)) model$log.eta <- rep(TRUE, model$N.eta)
-  if (is.null(model$omega)) model$omega <- diag(model$N.eta)
-  if (is.null(model$res.mod)) model$res.mod <- rep(1, model$nendpnt)
-  if (is.null(inits$omega)) inits$omega <- rep(1, model$N.eta) * 4
-  if (is.null(inits$ares)) inits$ares <- 10
-  if (is.null(inits$bres)) inits$bres <- 1
-  if (is.null(inits$cres)) inits$cres <- 1
-  if (is.null(inits$lres)) inits$lres <- 1
-  if (is.null(mcmc$print)) mcmc$print <- 1
+  if (is.null(model$nendpnt)) {
+    model$nendpnt <- 1
+  }
+  if (is.null(model$log.eta)) {
+    model$log.eta <- rep(TRUE, model$N.eta)
+  }
+  if (is.null(model$omega)) {
+    model$omega <- diag(model$N.eta)
+  }
+  if (is.null(model$res.mod)) {
+    model$res.mod <- rep(1, model$nendpnt)
+  }
+  if (is.null(inits$omega)) {
+    inits$omega <- rep(1, model$N.eta) * 4
+  }
+  if (is.null(inits$ares)) {
+    inits$ares <- 10
+  }
+  if (is.null(inits$bres)) {
+    inits$bres <- 1
+  }
+  if (is.null(inits$cres)) {
+    inits$cres <- 1
+  }
+  if (is.null(inits$lres)) {
+    inits$lres <- 1
+  }
+  if (is.null(mcmc$print)) {
+    mcmc$print <- 1
+  }
   if (model$N.eta - length(inits$theta) > 0) {
     inits$theta <- c(inits$theta, rep(NA_real_, model$N.eta - length(inits$theta)))
   }
-  if (is.null(names(inits$theta))) names(inits$theta) <- rep("", length(inits$theta))
+  if (is.null(names(inits$theta))) {
+    names(inits$theta) <- rep("", length(inits$theta))
+  }
   inits.save <- inits
   inits$theta.fix <- matrix(names(inits$theta),
     byrow = TRUE,
@@ -236,8 +257,26 @@
   if (check) stop("saem classic UI needs sequential ID. check your data")
   ntotal <- length(id)
   N <- length(unique(id))
-  covariables <- if (is.null(model$covars)) NULL else unlist(stats::aggregate(.as.data.frame(data$data[, model$covars, drop = FALSE]), list(id), unique)[, -1, drop = FALSE])
-  if (!is.null(covariables)) dim(covariables) <- c(N, data$N.covar)
+  if (is.null(model$covars)) {
+    covariables <- NULL
+  } else {
+    covariables <- unlist(stats::aggregate(.as.data.frame(data$data[, model$covars, drop = FALSE]),
+                                           list(id),
+                                           unique)[, -1, drop = FALSE])
+  }
+  if (!is.null(covariables)){
+    if (length(covariables) == N * data$N.covar) {
+      dim(covariables) <- c(N, data$N.covar)
+    } else {
+      message("covariables")
+      print(covariables)
+      message("covars")
+      print(model$covars)
+      print(data$N.covar)
+      stop("internal covariate mismatch for 'saem'",
+           call.=FALSE)
+    }
+  }
   nb_measures <- table(id)
   ncov <- data$N.covar + 1
   nmc <- mcmc$nmc

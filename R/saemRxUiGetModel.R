@@ -1,4 +1,3 @@
-
 #'  Determine if the parameter is a mu-referenced covariate
 #'
 #' @param expr Expression to check
