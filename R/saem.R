@@ -186,9 +186,13 @@
       .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
     assign("muRefFinal", .muRefCovariateDataFrame, ui)
+    assign("timeVaryingCovariates", timeVaryingCovariates, ui)
     on.exit({
       if (exists("muRefFinal", envir=ui)) {
         rm(list="muRefFinal", envir=ui)
+      }
+      if (exists("timeVaryingCovariates", envir=ui)) {
+        rm(list="timeVaryingCovariates", envir=ui)
       }
     })
     .model <- ui$saemModelList

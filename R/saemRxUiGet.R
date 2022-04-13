@@ -559,10 +559,17 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
-  .n <- vapply(.fixed, function(x) ifelse(x, "FIXED", ""),
+  if (exists("muRefFinal", .ui)) {
+    .cov <- .ui$muRefFinal
+  } else {
+    .cov <- .ui$muRefCovariateDataFrame
+  }
+  .theta <- .fixed
+  .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
+  .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
+  .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
-
-  setNames(vapply(seq_along(.logEta),
+  .ret <- vapply(seq_along(.logEta),
                   function(i){
                     .isEta <- any(.names[i] %in% .etaNames)
                     if (.logEta[i]) {
@@ -578,7 +585,25 @@ rxUiGet.saemInitTheta <- function(x, ...) {
                         return(.est[i])
                       }
                     }
-                  }, numeric(1), USE.NAMES=FALSE), .n)
+                  }, numeric(1), USE.NAMES=FALSE)
+  if (length(.cov$theta) > 0) {
+    .allCovs <- rxUiGet.saemCovars(x, ...)
+    .lc <- length(.allCovs)
+    .m <- matrix(rep(NA, .lc * length(.ret)), ncol = .lc)
+    dimnames(.m) <- list(names(.theta), .allCovs)
+    for (.c in seq_along(.cov)) {
+      .curTheta <- .cov[.c, "theta"]
+      .curCov <- .cov[.c, "covariate"]
+      .curPar <- .cov[.c, "covariateParameter"]
+      .w <- which(.iniDf$name == .curPar)
+      .est <- .iniDf$est[.w]
+      .m[.curTheta, .curCov] <- .est
+    }
+    .ret <- setNames(c(.ret, as.vector(.m)), rep(.n, .lc + 1))
+  } else {
+    .ret <- setNames(.ret, .n)
+  }
+  .ret
 }
 #attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
 
