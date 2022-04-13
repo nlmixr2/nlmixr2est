@@ -13,70 +13,72 @@ knitr::opts_chunk$set(
 )
 ```
 
-# nlmixr: an R package for population PKPD modeling
+# nlmixr2est: The core estimation routines for nlmixr2
 
 <!-- badges: start -->
-[![R build status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
+[![R build
+status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
-[![CRAN checks](https://cranchecks.info/badges/summary/nlmixr2est)](https://cran.r-project.org/web/checks/check_results_nlmixr2est.html)
-[![CRAN total downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-[![CRAN monthly downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+[![CRAN
+checks](https://cranchecks.info/badges/summary/nlmixr2est)](https://cran.r-project.org/web/checks/check_results_nlmixr2est.html)
+[![CRAN total
+downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+[![CRAN monthly
+downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+[![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://codecov.io/gh/nlmixr2/nlmixr2est)
 <!-- badges: end -->
 
-***
-
-![nlmixr](logo.png)
-
-
-`nlmixr` is an R package for fitting general dynamic models,
-pharmacokinetic (PK) models and pharmacokinetic-pharmacodynamic (PKPD)
-models in particular, with either individual data or population
-data. The nlme and SAEM estimation routines can be accessed using a
-universal user interface (UUI), that provides universal model and
-parameter definition syntax and results in a fit object that can be
-used as input into the `Xpose` package. Running nlmixr using the UUI
-is described in [this vignette](https://nlmixr2.github.io/nlmixr2/articles/running_nlmixr.html).
-
-Under the hood `nlmixr` has five main modules:  
-
-1. `dynmodel()` and its mcmc cousin `dynmodel.mcmc()` for nonlinear
-   dynamic models of individual data;
-2. `nlme_lin_cmpt()`for one to three linear compartment models of
-   population data with first order absorption, or i.v. bolus, or
-   i.v. infusion using the nlme algorithm;
-3. `nlme_ode()` for general dynamic models defined by ordinary
-   differential equations (ODEs) of population data using the nlme
-   algorithm;
-4. `saem_fit` for general dynamic models defined by ordinary differential equations (ODEs) of population data by the Stochastic Approximation Expectation-Maximization (SAEM) algorithm;  
-5. `gnlmm` for generalized non-linear mixed-models (possibly defined
-   by ordinary differential equations) of population data by the
-   adaptive Gaussian quadrature algorithm.
-
-A few utilities to facilitate population model building are also included in `nlmixr`.
-
-Documentation can be found at https://nlmixr2.github.io/nlmixr2/, and we maintain a comprehensive and ever-growing guide to using `nlmixr` at our [bookdown site](https://nlmixr2.github.io/nlmixr_bookdown/index.html).
-
-More examples and the associated data files are available at 
-https://github.com/nlmixr2/nlmixr2/tree/master/vignettes.
-
-We recommend you have a look at [`rxode2`](https://nlmixr2.github.io/rxode2/articles/RxODE-intro.html), the engine upon which `nlmixr` depends, as well as [`xpose.nlmixr`](https://github.com/nlmixr2/xpose.nlmixr), which provides a link to the seminal nonlinear mixed-effects model diagnostics package [`xpose`](https://uupharmacometrics.github.io/xpose/), and [`shinyMixR`](https://github.com/RichardHooijmaijers/shinyMixR), which provides a means to build a project-centric workflow around nlmixr from the R command line and from a streamlined [`shiny`](https://shiny.rstudio.com/) front-end application. Members of the nlmixr team also contribute to the [`ggPMX`](https://github.com/ggPMXdevelopment/ggPMX), [`xgxr`](https://github.com/Novartis/xgxr) and [`pmxTools`](https://github.com/kestrel99/pmxTools) packages. For PKPD modeling (with ODE and dosing history) with
-[Stan](http://mc-stan.org/), check out Yuan Xiong's package [`PMXStan`](https://github.com/yxiong1/pmxstan).
+The goal of nlmixr2est is to provide the nlmixr2 core estimation routines.
 
 ## Installation
 
-When on CRAN, you can install the released version of nlmixr from [CRAN](https://CRAN.R-project.org) with:
+You can install the development version of nlmixr2est from [GitHub](https://github.com/) with:
 
-```{r eval=FALSE, echo=TRUE}
-install.packages("nlmixr2")
+``` r
+# install.packages("remotes")
+remotes::install_github("nlmixr2/nlmixr2data")
+remotes::install_github("nlmixr2/lotri")
+remotes::install_github("nlmixr2/rxode2")
+remotes::install_github("nlmixr2/nlmixr2est")
 ```
 
-### Installing the Development Version
+For most people, using nlmixr2 directly would be likely easier.
 
-First, install [rxode2](https://github.com/nlmixr2/rxode2#installation).  If not on Windows, you will also need to follow the instructions to install [symengine](https://github.com/symengine/symengine.R#installation).
+```{r example}
+library(nlmixr2est)
 
-And then install the development version of nlmixr2 from [GitHub](https://github.com/) with:
+## The basic model consiss of an ini block that has initial estimates
+one.compartment <- function() {
+  ini({
+    tka <- 0.45 # Log Ka
+    tcl <- 1 # Log Cl
+    tv <- 3.45    # Log V
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v ~ 0.1
+    add.sd <- 0.7
+  })
+  # and a model block with the error sppecification and model specification
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- exp(tcl + eta.cl)
+    v <- exp(tv + eta.v)
+    d/dt(depot) = -ka * depot
+    d/dt(center) = ka * depot - cl / v * center
+    cp = center / v
+    cp ~ add(add.sd)
+  })
+}
 
-```{r eval=FALSE, echo=TRUE}
-if (!requireNamespace("devtools")) install.packages("devtools")
-devtools::install_github("nlmixr2/nlmixr2")
+## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
+fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
+
+# Since the fit is performed in `nlmixr2est` this code works
+print(fit)
+
+# But plots are in the helper package `nlmixr2plot`, and therefore:
+plot(fit)
+# does not give the standard goodness of fit plots
 ```
+
+
