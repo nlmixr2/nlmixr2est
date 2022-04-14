@@ -578,7 +578,6 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .theta <- .fixed
   .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
   .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
-
   .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
   .ret <- vapply(seq_along(.logEta),

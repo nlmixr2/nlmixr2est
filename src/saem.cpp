@@ -743,7 +743,7 @@ public:
 
   void saem_fit() {
     //arma_rng::set_seed(99);
-    double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
+    double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
     _warnAtolRtol = false;
@@ -1004,7 +1004,6 @@ public:
       if (kiter<=(unsigned int)(nb_correl)) {
         Gamma2_phi1 = diagmat(Gamma2_phi1);
       }
-
 
       if (nphi0>0) {
         if (kiter<=(unsigned int)(niter_phi0)) {

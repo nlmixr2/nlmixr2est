@@ -432,7 +432,6 @@
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
   phiM <- phiM + .mat2 %*% .tmp
 
-
   mc.idx <- rep(1:N, nmc)
   statphi <- sapply(1:nphi, function(x) tapply(phiM[, x], mc.idx, mean))
   statphi11 <- statphi[, i1]
@@ -495,7 +494,6 @@
     pas = pas,
     pash = pash,
     minv = minv,
-
     N = N,
     ntotal = ntotal,
     y = y,
