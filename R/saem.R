@@ -724,6 +724,18 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .tv <- names(.et)[-seq(1, 6)]
     }
   }
+  .cov <- .ui$muRefCovariateDataFrame
+  .iniDf <- .ui$iniDf
+  for (.i in seq_along(.cov$covariateParameter)) {
+    .cp <- .cov$covariateParameter[.i]
+    .cv <- .cov$covariate[.i]
+    .w <- which(.iniDf$name == .cp)
+    if (.iniD$fix[.w]) {
+      .tv <- c(.tv, .cv)
+    }
+  }
+  .tv <- unique(.tv)
+
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
   .ret$control <- .control
   nmObjHandleControlObject(.ret$control, .ret)
