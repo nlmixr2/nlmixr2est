@@ -239,7 +239,6 @@
     }
     .saemCheckCfg(.cfg)
     .model$saem_mod(.cfg)
-
   })
 }
 #' Get the saem control statement and install it into the ui

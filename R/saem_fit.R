@@ -178,11 +178,13 @@
   if (is.null(names(inits$theta))) {
     names(inits$theta) <- rep("", length(inits$theta))
   }
+  .nt <- names(inits$theta)
+  .nt <- .nt[!is.na(.nt)]
   inits.save <- inits
   inits$theta.fix <- matrix(names(inits$theta),
     byrow = TRUE,
     ncol = model$N.eta
-  )
+    )
   inits$theta <- matrix(inits$theta, byrow = TRUE, ncol = model$N.eta)
   model$cov.mod <- 1 - is.na(inits$theta)
   data$N.covar <- nrow(inits$theta) - 1
@@ -218,7 +220,10 @@
   if (check) stop("nphi and covstruct dim mismatch")
 
   check <- prod(mcov[1, ])
-  if (check == 0) stop("structural par(s) absent")
+  if (check == 0) {
+    print(mcov)
+    stop("structural parameter(s) absent", call.=FALSE)
+  }
   check <- nphi - dim(mcov)[2]
   if (check) stop("nphi and ncol(mcov) mismatch")
   check <- sum(dim(inits$theta) - dim(mcov) != 0)

@@ -12,12 +12,14 @@
             length(expr[[3]]) == 1) {
         .cov1 <- as.character(expr[[2]])
         .cov2 <- as.character(expr[[3]])
-        .w <- which(muRefCovariateDataFrame$covariate == .cov1 &
-                      muRefCovariateDataFrame$covariateParameter == .cov2)
-        if (length(.w) == 1) return(TRUE)
-        .w <- which(muRefCovariateDataFrame$covariate == .cov2 &
-                      muRefCovariateDataFrame$covariateParameter == .cov1)
-        if (length(.w) == 1) return(TRUE)
+        .w <- which(muRefCovariateDataFrame$covariate == .cov1)
+        if (length(.w) >= 1) {
+          return(any(muRefCovariateDataFrame$covariateParameter[.w] == .cov2))
+        }
+        .w <- which(muRefCovariateDataFrame$covariate == .cov2)
+        if (length(.w) >= 1) {
+          return(any(muRefCovariateDataFrame$covariateParameter[.w] == .cov1))
+        }
       }
     }
   }
@@ -74,11 +76,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemDropMuRefFromModel <- function(ui) {
-  if (exists("muRefFinal", ui)) {
-    .muRefFinal <- ui$muRefFinal
-  } else {
-    .muRefFinal <- ui$muRefCovariateDataFrame
-  }
+  .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
   lapply(ui$lstExpr, function(line){
     .saemDropParameters(line, .muRefDataFrame, .muRefFinal)
@@ -148,10 +146,19 @@ nmGetDistributionSaemLines.default  <- function(line) {
 }
 
 #' @export
+rxUiGet.saemParamsLine <- function(x, ...) {
+  .x <- x[[1]]
+  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .names <- .names[!(.names %in% .cov$covariateParameter)]
+  str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
+}
+
+#' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              paramsLine=NA,
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE,
@@ -244,13 +251,20 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
 #attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
 
 #' @export
+rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
+  .pars <- rxUiGet.saemParamsToEstimate(x, ...)
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .pars[!(.pars %in% .cov$covariateParameter)]
+}
+
+#' @export
 rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 #attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
 
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
   .ui <- x[[1]]
-  .par <- c(rxUiGet.saemParamsToEstimate(x, ...), .ui$covariates)
+  .par <- c(rxUiGet.saemParamsToEstimateCov(x, ...), .ui$covariates)
   paste0("params(", paste(.par, collapse=","), ")")
 }
 attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
@@ -313,11 +327,7 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
       .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
     }
   }
-  if (exists("muRefFinal", .ui)) {
-    .muRefFinal <- .ui$muRefFinal
-  } else {
-    .muRefFinal <- .ui$muRefCovariateDataFrame
-  }
+  .muRefFinal <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   for (.c in seq_along(.muRefFinal$theta)) {
     .tv <- .muRefFinal$theta[.c]
     .w <- which(.thetaNames$name == .muRefFinal$covariateParameter[.c])
