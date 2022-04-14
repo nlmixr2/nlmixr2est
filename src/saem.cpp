@@ -702,10 +702,12 @@ public:
     veclres = lres(ix_endpnt);
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
-      if (res_mod(b) == rmAdd)
+      if (res_mod(b) == rmAdd) {
         sigma2[b] = max(ares(b)*ares(b), 10.0);
-      if (res_mod(b) == rmProp)
+      }
+      if (res_mod(b) == rmProp) {
         sigma2[b] = max(bres(b)*bres(b), 1.0);
+      }
       statrese[b] = 0.0;
     }
 
@@ -726,11 +728,11 @@ public:
     mprior_phi0.set_size(N, nphi0);
     statphi01.set_size(N, nphi0);
 
-    mx.nM = nM;
-    mx.yM = yM;
+    mx.nM     = nM;
+    mx.yM     = yM;
     mx.indioM = indioM;
-    mx.evtM = evtM;
-    mx.optM = optM;
+    mx.evtM   = evtM;
+    mx.optM   = optM;
 
     distribution=as<int>(x["distribution"]);
     DEBUG=as<int>(x["DEBUG"]);
@@ -741,7 +743,7 @@ public:
 
   void saem_fit() {
     //arma_rng::set_seed(99);
-    double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
+    double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
     ofstream phiFile;
     _warnAtolRtol = false;
@@ -794,9 +796,9 @@ public:
         vec yt = yM;
         for (int i = ft.size(); i--;) {
           int cur = ix_endpnt(i);
-          ft(i) = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          yt(i) = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          ftT(i) = handleF(propT(cur), ft(i), f(i), false, true);
+          ft(i)   = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          yt(i)   = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
         }
         // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
         // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
@@ -818,21 +820,21 @@ public:
         return;
       }
       //U_y is a vec of subject llik; summed over obs for each subject
-      vec U_y=sum(DYF,0).t();
+      vec U_y=sum(DYF, 0).t();
 
       if(nphi1>0) {
         vec U_phi;
         do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi);
-        mat dphi=phiM.cols(i1)-mphi1.mprior_phiM;
-        U_phi=0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+        mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
+        U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
         do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi);
         do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi);
       }
       if(nphi0>0) {
         vec U_phi;
         do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi);
-        mat dphi=phiM.cols(i0)-mphi0.mprior_phiM;
-        U_phi=0.5*sum(dphi%(dphi*IGamma2_phi0),1);
+        mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
+        U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
         do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi);
         do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi);
       }
@@ -847,24 +849,26 @@ public:
       mat Statphi12=zeros<mat>(nphi1,nphi1);
       mat Statphi02=zeros<mat>(nphi0,nphi0);
       double statr[MAXENDPNT], resk;
-      for(int b=0; b<nendpnt; ++b) statr[b]= 0;
+      for(int b=0; b<nendpnt; ++b) {
+        statr[b]= 0;
+      }
 
-      vec D1=zeros<vec>(nb_param);    //CHG!!!
-      mat D11=zeros<mat>(nb_param,nb_param);
-      mat D2=zeros<mat>(nb_param,nb_param);
+      vec D1 = zeros<vec>(nb_param);    //CHG!!!
+      mat D11 = zeros<mat>(nb_param,nb_param);
+      mat D2 = zeros<mat>(nb_param,nb_param);
       vec resy(nmc);
-      mat d2logk=zeros<mat>(nb_param,nb_param);
+      mat d2logk = zeros<mat>(nb_param,nb_param);
 
-      d2logk(span(0,nlambda1-1),span(0,nlambda1-1))=-CGamma21;
-      if (nphi0>0) {
-        d2logk(span(nlambda1,nlambda-1),span(nlambda1,nlambda-1))=-CGamma20;
+      d2logk(span(0,nlambda1-1), span(0,nlambda1-1))=-CGamma21;
+      if (nphi0 > 0) {
+        d2logk(span(nlambda1,nlambda-1), span(nlambda1,nlambda-1))=-CGamma20;
       }
 
       vec fsM;
       fsM.set_size(0);
       //integration
       for(int k=0; k<nmc; k++) {
-        phi.slice(k)=phiM.rows(span(k*N,(k+1)*N-1));
+        phi.slice(k)=phiM.rows(span(k*N, (k+1)*N-1));
 
         Statphi11 += phi.slice(k).cols(i1);
         Statphi01 += phi.slice(k).cols(i0);
@@ -895,6 +899,9 @@ public:
             resid(i) -=  ft;
             if (res_mod(b) == rmProp) {
               fa = handleF(propT(b), ft, f_cur[i], true, true);
+              if (fa <= double_xmin) {
+                fa = 1;
+              }
               resid(i) = resid(i)/fa;
             }
           }
@@ -905,8 +912,12 @@ public:
 #endif
 
           if (res_mod(b) <= rmProp) {
-            
             resk = dot(resid, resid);
+            if (resk > xmax) {
+              resk = xmax;
+            } else if (resk < double_xmin) {
+              resk = double_xmin;
+            }
           }
           else {
             resk = 1;                                              //FIXME
@@ -994,7 +1005,6 @@ public:
         Gamma2_phi1 = diagmat(Gamma2_phi1);
       }
 
-
       if (nphi0>0) {
         if (kiter<=(unsigned int)(niter_phi0)) {
           // omega estimation
@@ -1030,6 +1040,7 @@ public:
             if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
               bres(b) = resValue[offsetR];
             } else {
+              if (sig2 == 0) sig2 = 1;
               bres(b) = sqrt(sig2);
             }
           }
@@ -1631,7 +1642,6 @@ public:
       vecares = ares(ix_endpnt);
       vecbres = bres(ix_endpnt);
       if (DEBUG>0) Rcout << "par update successful\n";
-
 
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;

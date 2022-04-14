@@ -1,12 +1,20 @@
 #' @export
+rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
+  .ui <- x[[1]]
+  if (exists("muRefFinal", .ui)) {
+    .cov <- .ui$muRefFinal
+  } else {
+    .cov <- .ui$muRefCovariateDataFrame
+  }
+  .cov
+}
+
+
+#' @export
 rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   .ui <- x[[1]]
   # mu ref final removes time varying covariates
-  if (exists("muRefFinal", .ui)) {
-    .muRefFinal <- .ui$muRefFinal
-  } else {
-    .muRefFinal <- .ui$muRefCovariateDataFrame
-  }
+  .muRefFinal <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .cov <- .ui$covariates
   .muCov <- unique(.muRefFinal$covariate)
   .cov <- .cov[!(.cov %in% .muCov)]
@@ -67,6 +75,11 @@ rxUiGet.saemFunction <- function(x, ...) {
   .inPars <- rxUiGet.saemInPars(x, ...)
   .param <- rxode2::rxParam(.mod)
   .estParam <- rxUiGet.saemParamsToEstimate(x, ...)
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  if (length(.cov$covariateParameter) > 0) {
+    .param <- .param[!(.param %in% .cov$covariateParameter)]
+    .estParam <- .estParam[!(.estParam %in% .cov$covariateParameter)]
+  }
   .parmUpdate <- vapply(.param, function(x) {
     if (x %in% .estParam) {
       return(1L)
@@ -106,7 +119,7 @@ rxUiGet.saemEtaTrans <- function(x, ...) {
   .ui <- x[[1]]
   .etas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
-  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .muRefDataFrame <- .ui$muRefDataFrame
   vapply(.etas, function(eta) {
     .w <- which(eta == .muRefDataFrame$eta)
@@ -139,7 +152,7 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
   .ui <- x[[1]]
-  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
   .dm <- length(.thetas)
   .mat <- matrix(rep(0, .dm * .dm), .dm)
@@ -156,7 +169,7 @@ rxUiGet.saemModelOmega <- function(x, ...) {
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
   .ui <- x[[1]]
-  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
   .dm <- length(.thetas)
   .mat <- matrix(rep(0, .dm * .dm), .dm)
@@ -173,7 +186,7 @@ rxUiGet.saemModelOmegaFixed <- function(x, ...) {
 #' @export
 rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
   .ui <- x[[1]]
-  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
   .dm <- length(.thetas)
   .mat <- matrix(rep(0, .dm * .dm), .dm)
@@ -385,7 +398,7 @@ rxUiGet.saemEtaNames <- function(x, ...) {
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, "name"]
   ## .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
-  .names <- rxUiGet.saemParamsToEstimate(x, ...)
+  .names <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .names <- rep("", length(.names))
   for (.i in seq_along(.etaTrans)) {
     .names[.etaTrans[.i]] <- .etaNames[.i]
@@ -524,6 +537,8 @@ rxUiGet.saemLogEta <- function(x, ...) {
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
   .ce <- .ui$muRefCurEval
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
   vapply(.thetas, function(x) {
     .w <- which(.ce$parameter == x)
     if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
@@ -559,10 +574,13 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
-  .n <- vapply(.fixed, function(x) ifelse(x, "FIXED", ""),
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .theta <- .fixed
+  .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
+  .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
+  .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
-
-  setNames(vapply(seq_along(.logEta),
+  .ret <- vapply(seq_along(.logEta),
                   function(i){
                     .isEta <- any(.names[i] %in% .etaNames)
                     if (.logEta[i]) {
@@ -578,7 +596,25 @@ rxUiGet.saemInitTheta <- function(x, ...) {
                         return(.est[i])
                       }
                     }
-                  }, numeric(1), USE.NAMES=FALSE), .n)
+                  }, numeric(1), USE.NAMES=FALSE)
+  if (length(.cov$theta) > 0) {
+    .allCovs <- rxUiGet.saemCovars(x, ...)
+    .lc <- length(.allCovs)
+    .m <- matrix(rep(NA, .lc * length(.ret)), ncol = .lc)
+    dimnames(.m) <- list(names(.theta), .allCovs)
+    for (.c in seq_along(.cov)) {
+      .curTheta <- .cov[.c, "theta"]
+      .curCov <- .cov[.c, "covariate"]
+      .curPar <- .cov[.c, "covariateParameter"]
+      .w <- which(.iniDf$name == .curPar)
+      .est <- .iniDf$est[.w]
+      .m[.curTheta, .curCov] <- .est
+    }
+    .ret <- setNames(c(.ret, as.vector(.m)), rep(.n, .lc + 1))
+  } else {
+    .ret <- setNames(.ret, .n)
+  }
+  .ret
 }
 #attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
 
@@ -589,13 +625,18 @@ rxUiGet.saemInitOmega <- function(x, ...) {
   .eta <- .iniDf[is.na(.iniDf$ntheta), ]
   .eta <- .eta[.eta$neta1 == .eta$neta2, ]
   .eta <- setNames(.eta$est, .eta$name)
-  .pars <- rxUiGet.saemParamsToEstimate(x, ...)
+  .pars <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .ret <- rep(1.0, length(.pars))
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
   for (i in seq_along(.etaTrans)) {
     .ret[.etaTrans[i]] <- .eta[i]
   }
-  setNames(.ret, .pars)
+  .ret <- setNames(.ret, .pars)
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  if (length(.cov$covariateParameter) > 0) {
+    .ret <- .ret[!(names(.ret) %in% .cov$covariateParameter)]
+  }
+  .ret
 }
 #attr(rxUiGet.saemInitOmega, "desc") <- "initialization for saem's omega"
 
