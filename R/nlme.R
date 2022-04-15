@@ -514,9 +514,9 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
-  .op <- options()
-  options(nlmixr2.saemMuRefCov=FALSE)
-  on.exit(options(.op), add=TRUE)
+  .op <- options() # nolint
+  options(nlmixr2.saemMuRefCov=FALSE) # nolint
+  on.exit(options(.op), add=TRUE) # nolint
   .ui <- env$ui
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
