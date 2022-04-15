@@ -6,7 +6,7 @@ test_that("test augPred", {
     dplyr::select(-dvid) %>%
     dplyr::mutate(sex = ifelse(sex == "male", 1, 0))
 
-    One.comp.KA.solved <- function() {
+  One.comp.KA.solved <- function() {
       ini({
         # Where initial conditions/variables are specified
         lka  <- log(1.15)  #log ka (1/h)
