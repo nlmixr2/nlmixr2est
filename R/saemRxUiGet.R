@@ -1,6 +1,9 @@
 #' @export
 rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   .ui <- x[[1]]
+  if (!rxode2::rxGetControl(x[[1]], "muRefCov", getOption("nlmixr2.saemMuRefCov", TRUE))) {
+    return(data.frame(theta=character(0), covariate=character(0), covariateParameter=character(0)))
+  }
   if (exists("muRefFinal", .ui)) {
     .cov <- .ui$muRefFinal
   } else {

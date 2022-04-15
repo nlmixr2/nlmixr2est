@@ -129,3 +129,42 @@ test_that("test fixed parameters become non mu referenced covariates", {
   expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
 
 })
+
+
+test_that("all non time-varying covs", {
+
+  withr::with_options(list(nlmixr2.saemMuRefCov=FALSE), {
+
+    mod <- function() {
+      ini({
+        tka <- 0.45 ; label("Log Ka")
+        tcl <- 1 ; label("Log Cl")
+        tv <- 3.45 ; label("Log V")
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+        wt.v2 <- -3
+        sexf.cl <- 1.5
+        wt.cl <- 3
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + wt.cl*logWt70 + sexf.cl*sexf)
+        v <- exp(tv + eta.v + wt.v2*logWt70)
+        d / dt(depot) <- -ka * depot
+        d / dt(center) <- ka * depot - cl / v * center
+        ipre <- center / v
+        ipre ~ add(add.sd)
+      })
+    }
+
+    f <- nlmixr(mod)
+
+    expect_equal(f$saemParamsToEstimateCov, f$saemParamsToEstimate)
+
+    fit1 <- nlmixr(mod, dat, "saem")
+
+
+  })
+})

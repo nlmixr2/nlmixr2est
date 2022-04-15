@@ -98,6 +98,12 @@
 #'   where the residual components are unfixed to allow better
 #'   exploration of the likelihood surface.
 #'
+#' @param muRefCov This controls if mu-referenced covariates in `saem`
+#'   are handled differently than non mu-referenced covariates.  When
+#'   `TRUE`, mu-referenced covariates have special handling.  When
+#'   `FALSE` mu-referenced covariates are treated the same as any
+#'   other input parameter.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -138,6 +144,7 @@ saemControl <- function(seed = 99, # Seed
                         sigdig=NULL,
                         sigdigTable=NULL,
                         ci=0.95,
+                        muRefCov=TRUE,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -185,6 +192,7 @@ saemControl <- function(seed = 99, # Seed
   checkmate::assertNumeric(perNoCor, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perFixOmega, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perFixResid, any.missing=FALSE, lower=0, upper=1, len=1)
+  checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -258,7 +266,8 @@ saemControl <- function(seed = 99, # Seed
     ci=ci,
     covMethod=.covMethod,
     logLik=logLik,
-    calcTables=calcTables
+    calcTables=calcTables,
+    muRefCov=muRefCov
   )
   class(.ret) <- "saemControl"
   .ret
