@@ -6,6 +6,19 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   } else {
     .cov <- .ui$muRefCovariateDataFrame
   }
+  .iniDf <- .ui$iniDf
+  .rm <- NULL
+  for (.i in seq_along(.cov$covariateParameter)) {
+    .cp <- .cov$covariateParameter[.i]
+    .cv <- .cov$covariate[.i]
+    .w <- which(.iniDf$name == .cp)
+    if (.iniDf$fix[.w]) {
+      .rm <- c(.rm, -.i)
+    }
+  }
+  if (!is.null(.rm)) {
+    .cov <- .cov[.rm,]
+  }
   .cov
 }
 
@@ -108,6 +121,24 @@ rxUiGet.saemFixed <- function(x, ...) {
   .fixError <- .dft[!is.na(.dft$err), ]
   .dft <- .dft[is.na(.dft$err), ]
   .dft <- setNames(.dft$fix, paste(.dft$name))
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  if (length(.cov$theta) > 0) {
+    .theta <- .dft
+    .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
+    .allCovs <- rxUiGet.saemCovars(x, ...)
+    .lc <- length(.allCovs)
+    .m <- matrix(rep(NA_character_, .lc * length(.theta)), ncol = .lc)
+    dimnames(.m) <- list(names(.theta), .allCovs)
+    for (.c in seq_along(.cov$covariateParameter)) {
+      .curTheta <- .cov[.c, "theta"]
+      .curCov <- .cov[.c, "covariate"]
+      .curPar <- .cov[.c, "covariateParameter"]
+      .m[.curTheta, .curCov] <- .curPar
+    }
+    .m <- cbind(matrix(names(.theta), ncol=1), .m)
+    .m <- as.vector(t(.m))
+    .dft <- .dft[.m[!is.na(.m)]]
+  }
   .extra <- .ui$nonMuEtas
   .extra <- setNames(rep(TRUE, length(.extra)), .ui$nonMuEtas)
   c(.dft, .extra)
@@ -604,7 +635,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
     .lc <- length(.allCovs)
     .m <- matrix(rep(NA, .lc * length(.ret)), ncol = .lc)
     dimnames(.m) <- list(names(.theta), .allCovs)
-    for (.c in seq_along(.cov)) {
+    for (.c in seq_along(.cov$theta)) {
       .curTheta <- .cov[.c, "theta"]
       .curCov <- .cov[.c, "covariate"]
       .curPar <- .cov[.c, "covariateParameter"]
@@ -612,7 +643,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
       .est <- .iniDf$est[.w]
       .m[.curTheta, .curCov] <- .est
     }
-    .ret <- setNames(c(.ret, as.vector(.m)), rep(.n, .lc + 1))
+    .ret <- setNames(c(.ret, as.vector(.m)), c(.n, rep("", .lc + 1)))
   } else {
     .ret <- setNames(.ret, .n)
   }
