@@ -249,22 +249,21 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
-    .fixed <- rxUiGet.saemFixed(x, ...)
-    .theta <- .fixed
-    .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
+    .theta <- .ret
+    .theta <- .theta[!(.theta %in% .cov$covariateParameter)]
     .allCovs <- rxUiGet.saemCovars(x, ...)
     .lc <- length(.allCovs)
     .m <- matrix(rep(NA_character_, .lc * length(.theta)), ncol = .lc)
-    dimnames(.m) <- list(names(.theta), .allCovs)
-    for (.c in seq_along(.cov)) {
+    dimnames(.m) <- list(.theta, .allCovs)
+    for (.c in seq_along(.cov$covariateParameter)) {
       .curTheta <- .cov[.c, "theta"]
       .curCov <- .cov[.c, "covariate"]
       .curPar <- .cov[.c, "covariateParameter"]
       .m[.curTheta, .curCov] <- .curPar
     }
-    .m <- as.vector(.m)
-    .m <- .m[!is.na(.m)]
-    .ret <- c(names(.theta), .m)
+    .m <- cbind(matrix(.theta, ncol=1), .m)
+    .m <- as.vector(t(.m))
+    .ret <- .m[!is.na(.m)]
   }
   c(.ret, .ui$nonMuEtas)
 }

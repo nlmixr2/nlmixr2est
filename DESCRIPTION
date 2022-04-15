@@ -27,7 +27,8 @@ Suggests:
     cli,
     qs,
     covr,
-    vpc
+    vpc,
+    withr
 Version: 2.0.6
 Authors@R: c(person("Matthew","Fidler",
       role = c("aut", "cre"), email = "matthew.fidler@gmail.com",

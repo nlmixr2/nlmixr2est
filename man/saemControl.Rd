@@ -37,6 +37,7 @@ saemControl(
   sigdig = NULL,
   sigdigTable = NULL,
   ci = 0.95,
+  muRefCov = TRUE,
   ...
 )
 }
@@ -201,6 +202,12 @@ If not specified, then it matches the significant digits in the
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
+
+\item{muRefCov}{This controls if mu-referenced covariates in `saem`
+are handled differently than non mu-referenced covariates.  When
+`TRUE`, mu-referenced covariates have special handling.  When
+`FALSE` mu-referenced covariates are treated the same as any
+other input parameter.}
 
 \item{...}{Other arguments to control SAEM.}
 }
