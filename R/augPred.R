@@ -59,12 +59,11 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
-  .params <- data.frame(t(fit$theta),fit$eta,
+  .params <- data.frame(t(fit$theta),fit$eta[, -1],
                         t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
-
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keep=c("DV", "CMT"), returnType="data.frame")
