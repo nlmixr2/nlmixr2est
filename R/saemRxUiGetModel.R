@@ -262,9 +262,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
       .curPar <- .cov[.c, "covariateParameter"]
       .m[.curTheta, .curCov] <- .curPar
     }
-    .m <- as.vector(.m)
-    .m <- .m[!is.na(.m)]
-    .ret <- c(names(.theta), .m)
+    .m <- cbind(matrix(names(.theta), ncol=1), .m)
+    .m <- as.vector(t(.m))
+    .ret <- .m[!is.na(.m)]
   }
   c(.ret, .ui$nonMuEtas)
 }

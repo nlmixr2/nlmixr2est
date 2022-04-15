@@ -730,7 +730,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .cp <- .cov$covariateParameter[.i]
     .cv <- .cov$covariate[.i]
     .w <- which(.iniDf$name == .cp)
-    if (.iniD$fix[.w]) {
+    if (.iniDf$fix[.w]) {
       .tv <- c(.tv, .cv)
     }
   }

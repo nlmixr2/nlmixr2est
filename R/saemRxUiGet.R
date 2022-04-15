@@ -570,11 +570,13 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .names <- names(.logEta)
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
-  .est <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"]
+  .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
+                   .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
-  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .theta <- .fixed
   .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
   .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
