@@ -86,6 +86,7 @@
   sigdig <span class="op">=</span> <span class="cn">NULL</span>,
   sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,
   ci <span class="op">=</span> <span class="fl">0.95</span>,
+  muRefCov <span class="op">=</span> <span class="cn">TRUE</span>,
   <span class="va">...</span>
 <span class="op">)</span></code></pre></div>
     </div>
@@ -234,6 +235,12 @@ If not specified, then it matches the significant digits in the
 <dt>ci</dt>
 <dd><p>Confidence level for some tables.  By default this is
 0.95 or 95% confidence.</p></dd>
+<dt>muRefCov</dt>
+<dd><p>This controls if mu-referenced covariates in `saem`
+are handled differently than non mu-referenced covariates.  When
+`TRUE`, mu-referenced covariates have special handling.  When
+`FALSE` mu-referenced covariates are treated the same as any
+other input parameter.</p></dd>
 <dt>...</dt>
 <dd><p>Other arguments to control SAEM.</p></dd>
 </dl></div>
