@@ -305,6 +305,7 @@ typedef struct {
   bool didPredSolve = false;
   bool canDoFD  = false;
   bool adjLik = false;
+  bool fallbackFD = false;
 } focei_options;
 
 focei_options op_focei;
@@ -1887,7 +1888,7 @@ static inline int didInnerResetFailTryOne(focei_ind *indF, int& id) {
 
 static inline int didInnerResetFail(focei_ind *indF, int& id) {
   if (didInnerResetFailTryOne(indF, id)) {
-    if (op_focei.canDoFD) {
+    if (op_focei.canDoFD && op_focei.fallbackFD) {
       indF->doFD = 1;
       if (didInnerResetFailTryOne(indF, id)) {
         indF->doFD = 0;
@@ -3367,6 +3368,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.eventType = as<int>(foceiO["eventType"]);
   op_focei.predNeq = as<int>(foceiO["predNeq"]);
   op_focei.gradProgressOfvTime = as<double>(foceiO["gradProgressOfvTime"]);
+  op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
   op_focei.initObj=0;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
