@@ -100,7 +100,8 @@ foceiControl(
   badSolveObjfAdj = 100,
   compress = TRUE,
   rxControl = NULL,
-  sigdigTable = NULL
+  sigdigTable = NULL,
+  fallbackFD = FALSE
 )
 }
 \arguments{
@@ -664,6 +665,9 @@ solve.}
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+
+\item{fallbackFD}{Fallback to the finite differences if the
+sensitivity equations do not solve.}
 }
 \value{
 The control object that changes the options for the FOCEi
