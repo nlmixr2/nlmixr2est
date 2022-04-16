@@ -558,6 +558,10 @@
 #'
 #' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
 #'
+#'
+#' @param fallbackFD Fallback to the finite differences if the
+#'   sensitivity equations do not solve.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -689,7 +693,8 @@ foceiControl <- function(sigdig = 3, #
                          badSolveObjfAdj=100, #
                          compress=TRUE, #
                          rxControl=NULL,
-                         sigdigTable=NULL) { #
+                         sigdigTable=NULL,
+                         fallbackFD=FALSE) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1046,6 +1051,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
+  checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
 
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
@@ -1148,7 +1154,8 @@ foceiControl <- function(sigdig = 3, #
     compress=compress,
     rxControl=rxControl,
     genRxControl=genRxControl,
-    skipCov=.skipCov
+    skipCov=.skipCov,
+    fallbackFD=fallbackFD
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
