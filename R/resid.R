@@ -417,14 +417,24 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     }
     .rownum <- as.integer(.df$nlmixrRowNums)
     assign(".rownum", .rownum, envir=.fit)
-    drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums")
+    .newKeep <- keep[keep != "nlmixrRowNums"]
+    drop <- c(drop, .newKeep, "rxLambda", "rxYj")
     .w <- -which(names(.df) %in% drop)
     if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
+    if (length(.newKeep) > 1) {
+      .origData <- obj$origData
+      .origData$nlmixrRowNums <- seq_along(.origData[, 1])
+      .share <- setdiff(intersect(names(.origData), names(.df)), c("ID", "nlmixrRowNums"))
+      .df <- .fitData[, !(names(.df) %in% .share)]
+      .df <- merge(.origData, .df, by=c("ID", "nlmixrRowNums"))
+      .df <- .df[, names(.df) != "nlmixrRowNums"]
+    }
     class(.df) <- "data.frame"
     .id <- .df$ID
     attr(.id, "levels") <- object$idLvl
     class(.id) <- "factor"
     .df$ID <- .id
+
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
       .isDataTable <- requireNamespace("data.table", quietly = TRUE)
