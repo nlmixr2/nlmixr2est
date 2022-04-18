@@ -127,6 +127,7 @@ nlmixr <- nlmixr2
 
 .nlmixr2savePipe <- function(x) {
   assignInMyNamespace(".nlmixr2pipeData", x$origData)
+  rxode2::rxSetCovariateNamesForPiping(names(x$origData))
   assignInMyNamespace(".nlmixr2pipeControl", x$control)
   assignInMyNamespace(".nlmixr2pipeTable", x$table)
   assignInMyNamespace(".nlmixr2pipeEst", x$est)
@@ -137,6 +138,7 @@ nlmixr <- nlmixr2
   assignInMyNamespace(".nlmixr2pipeControl", NULL)
   assignInMyNamespace(".nlmixr2pipeTable", NULL)
   assignInMyNamespace(".nlmixr2pipeEst", NULL)
+  rxode2::rxSetCovariateNamesForPiping(NULL)
 }
 
 #' @rdname nlmixr2
