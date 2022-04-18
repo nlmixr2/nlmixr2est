@@ -59,7 +59,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
-  .params <- data.frame(t(fit$theta),fit$eta[, -1],
+  .params <- data.frame(t(fit$theta),fit$eta[, -1, drop = FALSE],
                         t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
@@ -69,8 +69,11 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
                           keep=c("DV", "CMT"), returnType="data.frame")
   names(.sim) <- sub("sim", "ipred", names(.sim))
   # now do pred
-  .params <- c(t(fit$theta),t(setNames(rep(0, dim(.omega)[1]), dimnames(.omega)[[2]])),
-               t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  .params <- c(t(fit$theta),t(rep(0, dim(.omega)[1])),
+               t(rep(0, dim(.sigma)[1])))
+  .params <- setNames(.params, c(names(fit$theta),
+                                 dimnames(.omega)[[2]],
+                                 dimnames(.sigma)[[2]]))
   .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
                            returnType="data.frame")
   .sim$pred <- .sim2$sim
