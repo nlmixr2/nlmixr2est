@@ -74,7 +74,8 @@
 #' @param ui rxode2 ui
 #' @return model line expression with mu referenced information dropped.
 #' @author Matthew L. Fidler
-#' @noRd
+#' @keywords internal
+#' @export
 .saemDropMuRefFromModel <- function(ui) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
