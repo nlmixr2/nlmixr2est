@@ -74,6 +74,8 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .params <- setNames(.params, c(names(fit$theta),
                                  dimnames(.omega)[[2]],
                                  dimnames(.sigma)[[2]]))
+  rxode2::.setWarnIdSort(FALSE)
+  on.exit(rxode2::.setWarnIdSort(TRUE))
   .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
                            returnType="data.frame")
   .sim$pred <- .sim2$sim

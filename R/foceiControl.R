@@ -738,7 +738,8 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
-  if (missing(n1qn1nsim)) {
+
+  if (is.null(n1qn1nsim)) {
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
   checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
