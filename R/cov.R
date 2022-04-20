@@ -1,6 +1,4 @@
 .setCov <- function(obj, ...) {
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .env <- obj
   if (rxode2::rxIs(obj, "nlmixr2FitData")) {
@@ -116,8 +114,6 @@
 ##'
 ##' @export
 setCov <- function(fit, method) {
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
   .pt <- proc.time()
   .env <- fit
   if (rxode2::rxIs(fit, "nlmixr2FitData")) {
@@ -146,8 +142,6 @@ setCov <- function(fit, method) {
 
 ##' @export
 getVarCov.nlmixr2FitCore <- function(obj, ...) {
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
   .env <- obj
   if (rxode2::rxIs(obj, "nlmixr2FitData")) {
     .env <- obj$env

@@ -54,8 +54,6 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   .si$dfSub <- NULL
   .si$dfObs <- NULL
   .si$returnType <- "data.frame.TBS"
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
   .sim <- do.call(rxode2::rxSolve, .si)
   if (pred) {
     .si2 <- .si

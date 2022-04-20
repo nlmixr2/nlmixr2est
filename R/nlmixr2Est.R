@@ -76,8 +76,6 @@ nlmixr2Est.default <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
-  rxode2::.setWarnIdSort(FALSE)
-  on.exit(rxode2::.setWarnIdSort(TRUE))
   rxode2::rxUnloadAll()
   if (!exists("missingTable", envir=env)) {
     assign("missingTable", FALSE, envir=env)

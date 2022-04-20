@@ -1,8 +1,6 @@
 .setOfvFo <- function(fit, type = c("focei", "foce", "fo")) {
   .type <- match.arg(type)
   nlmixrWithTiming(paste0(.type, "Lik"), {
-    rxode2::.setWarnIdSort(FALSE)
-    on.exit(rxode2::.setWarnIdSort(TRUE))
     .foceiControl <- fit$foceiControl
     .foceiControl$etaMat <- as.matrix(fit$eta[, -1]) ## with fo should be NULL
     .foceiControl$fo <- FALSE
