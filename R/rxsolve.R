@@ -10,8 +10,10 @@
       .rxControl <- rxode2::rxControl()
     }
   }
-  .isPred <- is.na(.rxControl$omega) & (is.na(.rxControl$sigma))
-  if (length(.isPred) != 1) .isPred <- FALSE
+  .isPred <- FALSE
+  if (length(.rxControl$omega) == 1 && length(.rxControl$sigma) == 1) {
+    .isPred <- is.na(.rxControl$omega) & (is.na(.rxControl$sigma))
+  }
   if (!.isPred) {
     if (is.na(.rxControl$simVariability)) {
       if (.rxControl$nStud == 1) {
@@ -121,7 +123,6 @@ predict.nlmixr2FitCore <- function(object, ...) {
     nlmixr2(object=object, est="rxSolve", control=.rxControl)
   }
 }
-
 
 #' @export
 simulate.nlmixr2FitCore <- function(object, ...) {
