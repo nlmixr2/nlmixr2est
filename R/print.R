@@ -1,3 +1,7 @@
+.h2 <- function(x) {
+  cli::cli_text(crayon::bold(paste0(cli::symbol$line, cli::symbol$line, " ", x, " ", cli::symbol$line, cli::symbol$line)))
+}
+
 .getR <- function(x, sd = FALSE) {
   if (is.null(x)) {
     return(x)
@@ -167,7 +171,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     .parent <- parent.frame(2)
 
     cat(cli::cli_format_method({
-      cli::cli_rule(paste0(
+      .h2(paste0(
         crayon::bold$blue("nlmix"),
         crayon::bold$red("r"), " ",
         crayon::bold$yellow(x$method),
@@ -322,7 +326,7 @@ print.nlmixr2FitCore <- function(x, ...) {
       if (rxode2::rxIs(x, "data.table")) .dfName <- "data.table"
       cat("\n")
       cat(cli::cli_format_method({
-        cli::cli_rule(paste0(
+        .h2(paste0(
           crayon::bold("Fit Data"),
           " (object",
           ifelse(.bound == "", "", " "),
@@ -410,7 +414,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     on <- on[1]
   }
   cat(cli::cli_format_method({
-    cli::cli_rule(paste0(
+    .h2(paste0(
       crayon::bold(name), " (", extra,
       paste(crayon::bold$blue(paste0(ifelse(on, crayon::yellow(bound), ""), "$", access)), collapse = " or "), "):"
     ))
