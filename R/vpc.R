@@ -49,7 +49,10 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   .si$nsim <- n
   .si <- c(.si, list(...))
   .pt <- proc.time()
-  .si$keep <- keep
+  .si$keep <- unique(c(keep, "nlmixrRowNums"))
+  .data <- .si$events
+  .data$nlmixrRowNums <- seq_along(.data[, 1])
+  .si$events <- .data
   .si$thetaMat <- NULL
   .si$dfSub <- NULL
   .si$dfObs <- NULL
@@ -83,17 +86,19 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
 #' @keywords internal
 vpcSimExpand <- function(object, sim, extra) {
   if (is.null(extra)) return(sim)
-  .fullData <- object$dataMergeInner
+  .fullData <- object$origData
+  .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
   .extra <- extra[extra %in% names(.fullData)]
+  .extra <- extra[!(extra %in% names(sim))]
   if (length(.extra) == 0) return(sim)
+  .wid <- which(tolower(names(.fullData)) == "id")
+  names(.fullData)[.wid] <- "ID"
   .sim <- sim
-  .w <- seq(1, which(names(.sim) == "rxLambda") - 1)
-  .sim1 <- .sim[, .w]
-  .sim2 <- .sim[, -.w]
-  for (.n in .extra) {
-    .sim1[[.n]] <- .fullData[[.n]]
-  }
-  cbind(.sim1, .sim2)
+  .wid <- which(tolower(names(.sim)) == "id")
+  names(.sim)[.wid] <- "ID"
+  .ret <- merge(.fullData, .sim, by=c("ID", "nlmixrRowNums"))
+  .w <- which(names(.ret) == "nlmixrRowNums")
+  .ret[, -.w]
 }
 
 #' Get the least prediction simulation information for VPC
