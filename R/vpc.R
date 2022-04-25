@@ -72,8 +72,63 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
     .sim2 <- do.call(rxode2::rxSolve, .si2)
     .sim$pred <- .sim2$sim
   }
+  .sim <- vpcNameDataCmts(object, .sim)
   return(.sim)
 }
+#' Name the data and compartments
+#'
+#'
+#' @param object nlmixr2 fit object
+#' @param data dataset to name `dvid` and `cmt` columns to correspond with the model
+#' @return Updated object/data
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+vpcNameDataCmts <- function(object, data) {
+  .wdvid <- which(tolower(names(data)) == "dvid")
+  .wcmt <- which(tolower(names(data)) == "cmt")
+  .info <- get("predDf", object$ui)
+  if (is.null(.info)) {
+    return(invisible(data))
+  }
+  .state0 <- rxode2::rxModelVars(object$ui)$state
+  .maxCmt <- max(.info$cmt)
+  .cmtF <- character(max(length(.state0), .maxCmt))
+  .dvidF <- character(length(.info$cmt))
+  for (.i in seq_along(.state0)) {
+    .cmtF[.i] <- .state0[.i]
+  }
+  for (.i in seq_along(.info$cmt)) {
+    .cmtF[.info$cmt[.i]] <- paste(.info$cond[.i])
+    .dvidF[.i] <- paste(.info$cond[.i])
+  }
+  if (length(.wdvid) == 1) {
+    if (inherits(data[[.wdvid]], "numeric")) data[[.wdvid]] <- as.integer(data[[.wdvid]])
+    if (!inherits(data[[.wdvid]], "factor") &&
+          inherits(data[[.wdvid]], "integer")) {
+      .tmp <- data[[.wdvid]]
+      attr(.tmp, "levels") <- .dvidF
+      attr(.tmp, "class") <- "factor"
+      data[[.wdvid]] <- .tmp
+    } else if (inherits(data[[.wdvid]], "character")) {
+      data[[.wdvid]] <- factor(data[[.wdvid]], .dvidF)
+    }
+  }
+  if (length(.wcmt) == 1) {
+    if (inherits(data[[.wcmt]], "numeric")) data[[.wcmt]] <- as.integer(data[[.wcmt]])
+    if (!inherits(data[[.wcmt]], "factor") &&
+          inherits(data[[.wcmt]], "integer")) {
+      .tmp <- data[[.wcmt]]
+      attr(.tmp, "levels") <- .cmtF
+      attr(.tmp, "class") <- "factor"
+      data[[.wcmt]] <- .tmp
+    } else if (inherits(data[[.wcmt]], "character")) {
+      data[[.wcmt]] <- factor(data[[.wcmt]], .cmtF)
+    }
+  }
+  data
+}
+
 #' Expand a VPC simulation
 #'
 #'
@@ -98,7 +153,7 @@ vpcSimExpand <- function(object, sim, extra) {
   names(.sim)[.wid] <- "ID"
   .ret <- merge(.fullData, .sim, by=c("ID", "nlmixrRowNums"))
   .w <- which(names(.ret) == "nlmixrRowNums")
-  .ret[, -.w]
+  vpcNameDataCmts(object, .ret[, -.w])
 }
 
 #' Get the least prediction simulation information for VPC
