@@ -1,4 +1,5 @@
 skip_on_cran()
+
 test_that("test augPred", {
 
   PKdata <- nlmixr2data::warfarin %>%
@@ -75,5 +76,56 @@ test_that("test augPred", {
   fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
 
   expect_error(augPred(fit), NA)
+
+})
+
+test_that("test augPred with xgxr dataset", {
+
+  dat <- xgxr::case1_pkpd %>%
+    dplyr::rename(DV=LIDV) %>%
+    dplyr::filter(CMT %in% 1:2) %>%
+    dplyr::filter(TRTACT != "Placebo")
+
+  doses <- unique(dat$DOSE)
+  nid <- 3 # 7 ids per dose group
+  dat2 <- do.call("rbind",
+                  lapply(doses, function(x) {
+                    ids <- dat %>%
+                      dplyr::filter(DOSE == x) %>%
+                      dplyr::summarize(ids=unique(ID)) %>%
+                      dplyr::pull()
+                    ids <- ids[seq(1, nid)]
+                    dat %>%
+                      dplyr::filter(ID %in% ids)
+                  }))
+
+  cmt2 <- function(){
+    ini({
+      lka <- log(0.1) # log Ka
+      lv <- log(10) # Log Vc
+      lcl <- log(4) # Log Cl
+      lq <- log(10) # log Q
+      lvp <- log(20) # Log Vp
+
+      eta.ka ~ 0.01
+      eta.v ~ 0.1
+      eta.cl ~ 0.1
+      logn.sd = 10
+    })
+    model({
+      ka <- exp(lka + eta.ka)
+      cl <- exp(lcl + eta.cl)
+      v <- exp(lv + eta.v)
+      q <- exp(lq)
+      vp <- exp(lvp)
+      linCmt() ~ lnorm(logn.sd)
+    })
+  }
+
+  cmt2fit.logn <- nlmixr2::nlmixr(cmt2, dat2, "saem",
+                                  control=list(print=0),
+                                  table=nlmixr2::tableControl(cwres=TRUE, npde=TRUE))
+
+  expect_error(augPred(cmt2fit.logn), NA)
 
 })

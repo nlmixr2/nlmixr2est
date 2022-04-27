@@ -17,8 +17,7 @@
   .base <- expand.grid(TIME=seq(minimum, maximum, length.out=length.out),
                        EVID=2, AMT=NA_real_, II=NA_real_, DV=NA_real_, CMT=.allCmt)
   .covsi <- match.arg(covsInterpolation)
-  .ret <- do.call("rbind",
-                  c(list(as.data.frame(.origData)),
+  .ret0 <- c(list(as.data.frame(.origData)),
                     lapply(seq_along(.idLvl), function(id) {
                       .cur <- .origData[.origData$ID == id, ]
                       if (length(.covs) > 0) {
@@ -35,7 +34,25 @@
                       } else {
                         data.frame(ID=id, .base)
                       }
-                    })))
+                    }))
+  .u <- unique(unlist(lapply(.ret0, function(x){
+    names(x)
+  })))
+  .ret0 <- lapply(.ret0, function(x) {
+    .d <- setdiff(.u, names(x))
+    if (any(.d == "CENS")) {
+      x$CENS <- 0
+    }
+    if (any(.d == "LIMIT")) {
+      x$LIMIT <- NA_real_
+    }
+    .d <- setdiff(.d, c("CENS", "LIMIT"))
+    for (.c in .d) {
+      x[[.c]] <- NA_real_
+    }
+    x
+  })
+  .ret <- do.call("rbind", .ret0)
   attr(.ret$ID, "levels") <- .idLvl
   class(.ret$ID) <- "factor"
   .ret <- .ret[order(.ret$ID, .ret$TIME), ]
