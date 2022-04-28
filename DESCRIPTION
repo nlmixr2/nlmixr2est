@@ -28,7 +28,8 @@ Suggests:
     qs,
     covr,
     vpc,
-    withr
+    withr,
+    xgxr
 Version: 2.0.6
 Authors@R: c(person("Matthew","Fidler",
       role = c("aut", "cre"), email = "matthew.fidler@gmail.com",
