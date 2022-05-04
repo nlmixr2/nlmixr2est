@@ -53,7 +53,7 @@ jobs:
           remotes::install_cran("devtools")
           remotes::install_deps(dependencies = TRUE)
           remotes::install_github("nlmixr2/dparser-R")
-          remotes::install_github("nlmixr2/nlmixr2data")
+          remotes::install_cran("nlmixr2data")
           remotes::install_github("nlmixr2/lotri")
           remotes::install_github("nlmixr2/rxode2")
           remotes::install_github("jeroen/curl")
