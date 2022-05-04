@@ -757,6 +757,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
 
   .saemFamilyControl(env, ...)
   on.exit({
