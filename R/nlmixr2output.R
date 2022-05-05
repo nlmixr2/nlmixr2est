@@ -536,15 +536,17 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # In the case of nlme, it estimates the whole covariance matrix, even if you don't want it to.
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
-  .lotri <- lotri::as.lotri(.iniDf)
-  attr(.omega, "lotriEst") <- attr(.lotri, "lotriEst")
-  class(.omega) <- class(.lotri)
-  .iniDf1 <- .iniDf[is.na(.iniDf$neta1), ]
-  .iniDf2 <- as.data.frame(.omega)
-  .iniDf2 <- .iniDf2[!is.na(.iniDf2$neta1), ]
-  .iniDf2$err <- NA_character_
-  .names <- names(.iniDf)
-  .iniDf <- rbind(.iniDf1, .iniDf2)
-  .iniDf <- .iniDf[, .names]
-  assign("iniDf", .iniDf, envir=.ui)
+  if (!is.null(.omega)) {
+    .lotri <- lotri::as.lotri(.iniDf)
+    attr(.omega, "lotriEst") <- attr(.lotri, "lotriEst")
+    class(.omega) <- class(.lotri)
+    .iniDf1 <- .iniDf[is.na(.iniDf$neta1), ]
+    .iniDf2 <- as.data.frame(.omega)
+    .iniDf2 <- .iniDf2[!is.na(.iniDf2$neta1), ]
+    .iniDf2$err <- NA_character_
+    .names <- names(.iniDf)
+    .iniDf <- rbind(.iniDf1, .iniDf2)
+    .iniDf <- .iniDf[, .names]
+    assign("iniDf", .iniDf, envir=.ui)
+  }
 }

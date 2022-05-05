@@ -1353,6 +1353,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
     .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
   }
+  assign("est", est, envir=.ret)
   .updateParFixed(.ret)
   if (!exists("table", .ret)) {
     .ret$table <- tableControl()
@@ -1360,11 +1361,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .nlmixr2FitUpdateParams(.ret)
   .ret$IDlabel <- rxode2::.getLastIdLvl()
   if (exists("skipTable", envir=.ret)) {
-    if (.ret$skipTable) {
+    if (is.na(.ret$skipTable)) {
+    } else if (.ret$skipTable) {
       .control$calcTables <- FALSE
     }
   }
-  assign("est", est, envir=.ret)
   assign("skipCov", .env$skipCov, envir=.ret)
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
@@ -1509,6 +1510,8 @@ nlmixr2Est.foi <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
   .control <- .ui$control
@@ -1540,6 +1543,7 @@ nlmixr2Est.fo <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
+  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
   .control <- .ui$control
