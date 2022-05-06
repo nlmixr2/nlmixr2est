@@ -136,6 +136,10 @@
   simulation is controlled by the variability modeled as a population
   value.
 
+- `nlmixr2` now allows etas that have initial omega estimates of zero
+  to be dropped from the model (instead of issuing an error about a
+  non-positive definite `$omega` matrix)
+
 ## NPDE changes
 
 - Fixed a bug where the number of simulations for a NPDE calculation
