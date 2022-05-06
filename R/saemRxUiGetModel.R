@@ -1,3 +1,4 @@
+.saemNothingIsAMuRefCovariate <- FALSE
 #'  Determine if the parameter is a mu-referenced covariate
 #'
 #' @param expr Expression to check
@@ -6,6 +7,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemDropParametersIsMuRefCovariate <- function(expr, muRefCovariateDataFrame) {
+  if (.saemNothingIsAMuRefCovariate) return(FALSE)
   if (length(expr) == 3) {
     if (identical(expr[[1]], quote(`*`))) {
       if (length(expr[[2]]) == 1 &&
