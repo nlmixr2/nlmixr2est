@@ -65,6 +65,42 @@ nlmixr2Est.default <- function(env, ...) {
        call.=FALSE)
 }
 
+.nlmixrEstUpdatesOrigModel <- function(ret) {
+  .ui <- try(ret$ui)
+  if (inherits(.ui, "rxUi")) {
+    .final <- .nlmixrPureInputUi
+    .finalIni <- .final$iniDf
+    .iniDf <- .ui$iniDf
+    .theta <- .iniDf[is.na(.iniDf$neta1), ]
+    for (.i in seq_along(.theta$name)) {
+      .w <- which(.finalIni$name == .theta$name[.i])
+      if (length(.w) == 1) {
+        .finalIni$est[.w] <- .theta$est[.i]
+      }
+    }
+    .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
+    if (length(.etas$name) > 0) {
+      .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
+      .etaFinal <- vapply(.etaNames, function(n) {
+        .finalIni[which(.finalIni$name == n), "neta1"]
+      }, double(1), USE.NAMES=TRUE)
+
+      .etaCur <- vapply(.etaNames, function(n) {
+        .etas[which(.etas$name == n), "neta1"]
+      }, double(1), USE.NAMES=TRUE)
+      for (.i in seq_along(.etas$name)) {
+        .eta1 <- .etaFinal[names(.etaCur)[which(.etas$neta1[.i] == .etaCur)]]
+        .eta2 <- .etaFinal[names(.etaCur)[which(.etas$neta2[.i] == .etaCur)]]
+        .finalIni$est[which(.finalIni$neta1 == .eta1 & .finalIni$neta2 == .eta2)] <- .etas$est[.i]
+      }
+    }
+    assign("iniDf", .finalIni, .final)
+    assign("ui", .final, envir=ret$env)
+    .minfo("initial model updated with final estimates, zero etas are excluded from output")
+  }
+  assignInMyNamespace(".nlmixrPureInputUi", NULL)
+}
+
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
 
 #' Call nlmixr2Est wrapped to collect the warnings
@@ -175,6 +211,9 @@ nlmixr2Est0 <- function(env, ...) {
     try(assign("warnings", .lst[[2]], .ret), silent=TRUE)
   } else {
     try(assign("warnings", .lst[[2]], .ret$env), silent=TRUE)
+  }
+  if (!is.null(.nlmixrPureInputUi)) {
+    .nlmixrEstUpdatesOrigModel(.ret)
   }
   lapply(.lst[[2]], warning, call.=FALSE)
   .ret

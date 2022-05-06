@@ -62,7 +62,13 @@
   .retf
 }
 
-
+#' This downgrades the UI for any of the zero etas in the model
+#'
+#' @param ui  rxode2 User interface function
+#' @param zeroEtas The names of the zero etas in the model
+#' @return New rxode2 ui with the zero etas removed
+#' @author Matthew L. Fidler
+#' @noRed
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
   assignInMyNamespace(".saemNothingIsAMuRefCovariate", TRUE)
   on.exit(assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE))
@@ -77,7 +83,6 @@
                         }, character(1), USE.NAMES=FALSE),
                  collapse="\n"),
            "})"))
-
   .iniDf <- ui$iniDf
   .etas <- .iniDf[.iniDf$name %in% zeroEtas, "neta1"]
   .w <- which(.iniDf$neta1 %in% .etas | .iniDf$neta2 %in% .etas)
@@ -102,9 +107,7 @@
 }
 
 
-
-
-
+.nlmixrPureInputUi <- NULL
 #' This preprocesses the UI with any needed modifications
 #'
 #'
@@ -120,4 +123,12 @@
   } else {
     .ret <- ui
   }
+  .zeroEtas <- .getZeroEtasFromModel(.ret)
+  if (length(.zeroEtas) > 0) {
+    assignInMyNamespace(".nlmixrPureInputUi", .ret)
+    .minfo(paste0("the following etas are removed from the model since their inital estimates are zero: ",
+           paste(.zeroEtas, collapse=", ")))
+    .ret <- .downgradeEtas(ui, zeroEtas=.zeroEtas)
+  }
+  .ret
 }
