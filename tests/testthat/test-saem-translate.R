@@ -99,9 +99,11 @@ test_that("Standard theo linCmt()", {
 
   expect_equal(f$saemModelPredReplaceLst,
                c(tka = "THETA[1] + ETA[1]", tcl = "THETA[2] + ETA[2]", tv = "THETA[3] + ETA[3]", add.sd = "THETA[4]"))
+
 })
 
 test_that("non mu-ref theo linCmt() with fixed components", {
+
   one.cmt <- function() {
     ini({
       tka <- exp(0.45) ; label("Ka")
@@ -208,9 +210,11 @@ test_that("non mu-ref theo linCmt() with fixed components", {
 
   expect_equal(f$saemModelPredReplaceLst,
                c(tka = "THETA[1]", tcl = "THETA[2] + ETA[2]", tv = "THETA[3] + ETA[3]", eta.ka = "ETA[1]", add.sd = "THETA[4]"))
+
 })
 
 test_that("theo wt cov parsing", {
+
   one.cmt <- function() {
     ini({
       tka <- 0.45 ; label("Ka")
@@ -233,7 +237,12 @@ test_that("theo wt cov parsing", {
   f <- one.cmt()
 
   expect_equal(f$saemModelPredReplaceLst,
-               c(tka = "THETA[1] + ETA[1]", tcl = "THETA[2] + ETA[2] + wt * THETA[4]", tv = "THETA[3] + ETA[3]", cl.wt = "THETA[4]", add.sd = "THETA[5]"))
+               c(tka = "THETA[1] + ETA[1]",
+                 tcl = "THETA[2] + ETA[2] + wt * THETA[4]",
+                 tv = "THETA[3] + ETA[3]",
+                 cl.wt = "THETA[4]",
+                 add.sd = "THETA[5]"))
+
 })
 
 test_that("nimo parsing", {
@@ -402,4 +411,5 @@ test_that("nimo parsing", {
       class = "data.frame",
       row.names = c("tcl", "tv1", "tQ", "tv2", "tkss", "tkint", "tksyn", "tkdeg", "add.err"))
   )
+
 })
