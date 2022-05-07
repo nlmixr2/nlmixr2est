@@ -20,9 +20,9 @@
 #' @param x expression
 #' @param muRefDataFrame rxode2 muRefDataFRame
 #' @param zeroEtas rxode2 zero etas that will be dropped
-#' @return
+#' @return expression with interesting mus re-inserted
 #' @author Matthew L. Fidler
-#' @examples
+#' @noRd
 .addBackInterestingMuEtas <- function(x, muRefDataFrame, zeroEtas) {
   if (is.call(x)) {
     return(as.call(lapply(x, .addBackInterestingMuEtas, muRefDataFrame=muRefDataFrame,
@@ -68,7 +68,7 @@
 #' @param zeroEtas The names of the zero etas in the model
 #' @return New rxode2 ui with the zero etas removed
 #' @author Matthew L. Fidler
-#' @noRed
+#' @noRd
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
   assignInMyNamespace(".saemNothingIsAMuRefCovariate", TRUE)
   on.exit(assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE))

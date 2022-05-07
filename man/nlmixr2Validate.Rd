@@ -5,14 +5,14 @@
 \alias{nmTest}
 \title{Validate nlmixr2}
 \usage{
-nlmixr2Validate(type = NULL, check = FALSE)
+nlmixr2Validate(type = NULL, skipOnCran = TRUE)
 
-nmTest(type = NULL, check = FALSE)
+nmTest(type = NULL, skipOnCran = TRUE)
 }
 \arguments{
 \item{type}{of test to be run}
 
-\item{check}{Use devtools::check to run checks}
+\item{skipOnCran}{when `TRUE` skip the test on CRAN.}
 }
 \value{
 Nothing, called for its side effects
