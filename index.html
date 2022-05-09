@@ -97,7 +97,6 @@
 <p>For most people, using nlmixr2 directly would be likely easier.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/nlmixr2/nlmixr2est" class="external-link">nlmixr2est</a></span><span class="op">)</span>
-<span class="co">#&gt; Loading required package: nlmixr2data</span>
 
 <span class="co">## The basic model consiss of an ini block that has initial estimates</span>
 <span class="va">one.compartment</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span>
@@ -129,45 +128,43 @@
 <span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span>
 <span class="co">#&gt; ✔ done</span>
 <span class="co">#&gt; → finding duplicate expressions in saem model...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|&gt;---------------------------------]  33%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; → optimizing duplicate expressions in saem model...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; rxode2 1.0.0 using 4 threads (see ?getRxThreads)</span>
 <span class="co">#&gt; Calculating covariance matrix</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; &gt;-------------------------------------------------]  01%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; → loading into symengine environment...</span>
 <span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span>
 <span class="co">#&gt; ✔ done</span>
 <span class="co">#&gt; → finding duplicate expressions in saem predOnly model 0...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; → finding duplicate expressions in saem predOnly model 1...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span>
-<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span>
+<span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  </span>
 <span class="co">#&gt; ✔ done</span>
 <span class="co">#&gt; → Calculating residuals/tables</span>
 <span class="co">#&gt; ✔ done</span>
 <span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span>
 <span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span>
 <span class="co">#&gt; → compress parHist in nlmixr2 object, save 9408</span>
-<span class="co">#&gt; → compress saem0 in nlmixr2 object, save 24560</span>
 
 <span class="co"># Since the fit is performed in `nlmixr2est` this code works</span>
 <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span>
-<span class="co">#&gt; ── nlmixr SAEM OBJF by FOCEi approximation ─────────────────────────────────────</span>
+<span class="co">#&gt; ── nlmixr SAEM OBJF by FOCEi approximation ──</span>
 <span class="co">#&gt; </span>
 <span class="co">#&gt;  Gaussian/Laplacian Likelihoods: AIC() or $objf etc. </span>
 <span class="co">#&gt;  FOCEi CWRES &amp; Likelihoods: addCwres() </span>
 <span class="co">#&gt; </span>
-<span class="co">#&gt; ── Time (sec $time): ───────────────────────────────────────────────────────────</span>
+<span class="co">#&gt; ── Time (sec $time): ──</span>
 <span class="co">#&gt; </span>
 <span class="co">#&gt;           setup covariance  saem table compress    other</span>
-<span class="co">#&gt; elapsed 0.00148   0.015003 2.291 0.021     0.02 1.371517</span>
+<span class="co">#&gt; elapsed 0.00132   0.039003 3.589 0.067     0.03 1.257677</span>
 <span class="co">#&gt; </span>
-<span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ───────────────────────────</span>
+<span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span>
 <span class="co">#&gt; </span>
 <span class="co">#&gt;        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span>
 <span class="co">#&gt; tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span>
@@ -180,7 +177,7 @@
 <span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span>
 <span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span>
 <span class="co">#&gt; </span>
-<span class="co">#&gt; ── Fit Data (object is a modified tibble): ─────────────────────────────────────</span>
+<span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span>
 <span class="co">#&gt; # A tibble: 132 × 19</span>
 <span class="co">#&gt;   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp</span>
 <span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;</span>
@@ -238,10 +235,7 @@
 <ul class="list-unstyled">
 <li><a href="https://github.com/nlmixr2/nlmixr2est/actions" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg" alt="R build status"></a></li>
 <li><a href="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est" class="external-link"><img src="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge" alt="CodeFactor"></a></li>
-<li><a href="https://cran.r-project.org/web/checks/check_results_nlmixr2est.html" class="external-link"><img src="https://cranchecks.info/badges/summary/nlmixr2est" alt="CRAN checks"></a></li>
-<li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est" alt="CRAN total downloads"></a></li>
-<li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/nlmixr2est" alt="CRAN monthly downloads"></a></li>
-<li><a href="https://codecov.io/gh/nlmixr2/nlmixr2est" class="external-link"><img src="https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl" alt="codecov"></a></li>
+<li><a href="https://app.codecov.io/gh/nlmixr2/nlmixr2est" class="external-link"><img src="https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl" alt="codecov"></a></li>
 </ul>
 </div>
 
