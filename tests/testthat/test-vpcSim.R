@@ -1,6 +1,8 @@
 nmTest({
   test_that("vpcSim retains column information", {
 
+    library(data.table)
+
     PKPDdata <- nlmixr2data::warfarin
     data.table::setDT(PKPDdata)
 
