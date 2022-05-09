@@ -73,6 +73,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
     .sim$pred <- .sim2$sim
   }
   .sim <- vpcNameDataCmts(object, .sim)
+  class(.sim) <- c("nlmixr2vpcSim", class(.sim))
   return(.sim)
 }
 #' Name the data and compartments
