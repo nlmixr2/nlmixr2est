@@ -159,6 +159,8 @@ vpcSimExpand <- function(object, sim, extra) {
 
 #' Get the least prediction simulation information for VPC
 #'
+#' @return The last prediction simulation from the `vpcSim` function (data.frame)
+#'
 #' @export
 #' @keywords internal
 .nlmixr2estLastPredSimulationInfo <- function() {

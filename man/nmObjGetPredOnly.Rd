@@ -15,6 +15,9 @@ nmObjGetPredOnly(x)
 \arguments{
 \item{x}{nlmixr fit object}
 }
+\value{
+rxode2 pred-only model
+}
 \description{
 By default it gets the focei models if available
 }

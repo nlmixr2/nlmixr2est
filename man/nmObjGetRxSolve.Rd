@@ -10,10 +10,17 @@ nmObjGetRxSolve(x, what)
 \method{nmObjGetRxSolve}{default}(x, what)
 }
 \arguments{
-\item{x}{nlmixr fit object encapulated in a list.  The class is the estimation method used.}
+\item{x}{nlmixr fit object encapulated in a list.  The class is the
+estimation method used.}
 
 \item{what}{What part of the rx solve are you attempting to get?}
+}
+\value{
+The estimation option based on `what`, for example
+  `nlmixrObjGetRxSolve(x, "atol")` will get a double vector of
+  absolute tolerances
 }
 \description{
 By default it gets the focei models if availble.
 }
+\keyword{internal}

@@ -405,6 +405,8 @@ attr(nmObjGet.ipredModel, "desc") <- "rxode2 pred only model for fit"
 #'
 #' @param x nlmixr fit object
 #'
+#' @return rxode2 pred-only model
+#'
 #' @export
 nmObjGetPredOnly <- function(x) {
   UseMethod("nmObjGetPredOnly")
@@ -444,6 +446,9 @@ nmObjGetPredOnly.default <- function(x) {
 #' By default it gets the focei models if available.
 #'
 #' @param x nlmixr fit object
+#'
+#' @return ipred `rxode2` model
+#'
 #' @export
 nmObjGetIpredModel <- function(x) {
   UseMethod("nmObjGetIpredModel")
@@ -497,6 +502,9 @@ attr(nmObjGet.ipredModel, "desc") <- "rxode2 estimation model for fit"
 #' By default it gets the focei models if availble.
 #'
 #' @param x nlmixr fit object
+#'
+#' @return returns the estimation `$model` for the estimation type
+#'
 #' @export
 nmObjGetEstimationModel <- function(x) {
   UseMethod("nmObjGetEstimationModel")
@@ -615,8 +623,13 @@ nmObjGet.control <- function(x, ...) {
 #'
 #' By default it gets the focei models if availble.
 #'
-#' @param x nlmixr fit object encapulated in a list.  The class is the estimation method used.
+#' @param x nlmixr fit object encapulated in a list.  The class is the
+#'   estimation method used.
 #' @param what What part of the rx solve are you attempting to get?
+#' @return The estimation option based on `what`, for example
+#'   `nlmixrObjGetRxSolve(x, "atol")` will get a double vector of
+#'   absolute tolerances
+#' @keywords internal
 #' @export
 nmObjGetRxSolve <- function(x, what) {
   UseMethod("nmObjGetRxSolve")

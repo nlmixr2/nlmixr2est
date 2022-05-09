@@ -6,6 +6,9 @@
 \usage{
 .nlmixr2estLastPredSimulationInfo()
 }
+\value{
+The last prediction simulation from the `vpcSim` function (data.frame)
+}
 \description{
 Get the least prediction simulation information for VPC
 }

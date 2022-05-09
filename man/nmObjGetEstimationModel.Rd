@@ -9,6 +9,9 @@ nmObjGetEstimationModel(x)
 \arguments{
 \item{x}{nlmixr fit object}
 }
+\value{
+returns the estimation `$model` for the estimation type
+}
 \description{
 By default it gets the focei models if availble.
 }

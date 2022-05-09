@@ -13,6 +13,9 @@
 #' - `predNoLhs` -- This is the prediction model.  It only has the
 #'    prediction and no left handed equations.
 #'
+#' @return This returns the `$model` object for a fit.  It is a s3
+#'   method because it may be different between different model types
+#'
 #' @param env Environment for the fit information
 nmObjHandleModelObject <- function(model, env) {
   on.exit({

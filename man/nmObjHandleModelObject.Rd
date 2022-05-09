@@ -31,6 +31,10 @@ nmObjHandleModelObject(model, env)
 
 \item{env}{Environment for the fit information}
 }
+\value{
+This returns the `$model` object for a fit.  It is a s3
+  method because it may be different between different model types
+}
 \description{
 Handle Model Object
 }

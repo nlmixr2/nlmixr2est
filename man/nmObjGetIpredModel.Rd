@@ -21,6 +21,9 @@ nmObjGetIpredModel(x)
 \arguments{
 \item{x}{nlmixr fit object}
 }
+\value{
+ipred `rxode2` model
+}
 \description{
 By default it gets the focei models if available.
 }
