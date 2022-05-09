@@ -287,6 +287,9 @@ If not specified, then it matches the significant digits in the
    mentioned above), where used (\code{eval.max} and those from
    \code{abs.tol} down).}
 }
+\value{
+a nlmixr-nlme list
+}
 \description{
 The values supplied in the function call replace the defaults and
 a list with all possible arguments is returned.  The returned list

@@ -28,6 +28,7 @@ nlmixr2.logo <- "         _             _             \n        | | %9s (_) %s\n
 #' @param version Version information (by default use package version)
 #' @return nothing; Called to display version information
 #' @author Matthew L. Fidler
+#' @export
 nlmixr2Logo <- function(str = "", version = sessionInfo()$otherPkgs$nlmixr2$Version) {
   message(sprintf(nlmixr2.logo, str, version))
 }

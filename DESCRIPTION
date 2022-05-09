@@ -79,7 +79,7 @@ License: GPL (>=3)
 NeedsCompilation: yes
 LinkingTo: dparser(>= 0.1.8), rxode2(>= 1.0.0), RcppEigen (>= 0.3.3.3.0),
     lbfgsb3c, Rcpp, BH, StanHeaders(>= 2.18.0), RcppArmadillo (>= 0.5.600.2.0)
-URL: https://github.com/nlmixr2/nlmixr2
+URL: https://github.com/nlmixr2/nlmixr2est
 RoxygenNote: 7.1.2
 Biarch: true
 Maintainer: Matthew Fidler <matthew.fidler@gmail.com>

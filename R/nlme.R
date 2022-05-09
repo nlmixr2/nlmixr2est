@@ -11,6 +11,7 @@
 #'   of `random`, `fixed`, `sens`, the nlme object is returned
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @return a nlmixr-nlme list
 #' @export
 #' @examples
 #' nlmixr2est::nlmeControl()

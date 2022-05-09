@@ -66,6 +66,7 @@ iYeoJohnson <- function(x, lambda = 1) {
 
 
 #' @importFrom utils capture.output
+#' @noRd
 .captureOutput <- function(expr, envir = parent.frame()) {
   eval(
     {
