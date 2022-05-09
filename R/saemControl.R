@@ -85,8 +85,8 @@
 #'
 #' @param perNoCor This is the percentage of the MCMC phase of the SAEM
 #'   algorithm where the variance/covariance matrix has no
-#'   correlations.  Byt defualt this is 0.75 or 75% of the
-#'   Monte-carlo iteration
+#'   correlations. By default this is 0.75 or 75% of the
+#'   Monte-carlo iteration.
 #'
 #'
 #' @param perFixOmega This is the percentage of the `nBurn` phase

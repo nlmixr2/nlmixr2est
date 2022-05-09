@@ -13,5 +13,5 @@ nmObjGetEstimationModel(x)
 returns the estimation `$model` for the estimation type
 }
 \description{
-By default it gets the focei models if availble.
+By default it gets the focei models if available.
 }

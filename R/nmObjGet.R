@@ -499,7 +499,7 @@ attr(nmObjGet.ipredModel, "desc") <- "rxode2 estimation model for fit"
 
 #' Get the estimation model for a fit object depending on the object type
 #'
-#' By default it gets the focei models if availble.
+#' By default it gets the focei models if available.
 #'
 #' @param x nlmixr fit object
 #'
@@ -621,9 +621,9 @@ nmObjGet.control <- function(x, ...) {
 
 #' Get an option for the estimation method
 #'
-#' By default it gets the focei models if availble.
+#' By default it gets the focei models if available.
 #'
-#' @param x nlmixr fit object encapulated in a list.  The class is the
+#' @param x nlmixr fit object in a list.  The class is the
 #'   estimation method used.
 #' @param what What part of the rx solve are you attempting to get?
 #' @return The estimation option based on `what`, for example

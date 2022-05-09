@@ -126,7 +126,7 @@
   .zeroEtas <- .getZeroEtasFromModel(.ret)
   if (length(.zeroEtas) > 0) {
     assignInMyNamespace(".nlmixrPureInputUi", .ret)
-    .minfo(paste0("the following etas are removed from the model since their inital estimates are zero: ",
+    .minfo(paste0("the following etas are removed from the model since their initial estimates are zero: ",
            paste(.zeroEtas, collapse=", ")))
     .ret <- .downgradeEtas(ui, zeroEtas=.zeroEtas)
   }
