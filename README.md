@@ -8,13 +8,7 @@
 [![R build
 status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
-[![CRAN
-checks](https://cranchecks.info/badges/summary/nlmixr2est)](https://cran.r-project.org/web/checks/check_results_nlmixr2est.html)
-[![CRAN total
-downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-[![CRAN monthly
-downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-[![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://codecov.io/gh/nlmixr2/nlmixr2est)
+[![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
 <!-- badges: end -->
 
 The goal of nlmixr2est is to provide the nlmixr2 core estimation
@@ -37,7 +31,6 @@ For most people, using nlmixr2 directly would be likely easier.
 
 ``` r
 library(nlmixr2est)
-#> Loading required package: nlmixr2data
 
 ## The basic model consiss of an ini block that has initial estimates
 one.compartment <- function() {
@@ -69,45 +62,43 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|>---------------------------------]  33%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
-#> rxode2 1.0.0 using 4 threads (see ?getRxThreads)
 #> Calculating covariance matrix
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> >-------------------------------------------------]  01%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem predOnly model 0...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 2...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
 #> → compress parHist in nlmixr2 object, save 9408
-#> → compress saem0 in nlmixr2 object, save 24560
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
-#> ── nlmixr SAEM OBJF by FOCEi approximation ─────────────────────────────────────
+#> ── nlmixr SAEM OBJF by FOCEi approximation ──
 #> 
 #>  Gaussian/Laplacian Likelihoods: AIC() or $objf etc. 
 #>  FOCEi CWRES & Likelihoods: addCwres() 
 #> 
-#> ── Time (sec $time): ───────────────────────────────────────────────────────────
+#> ── Time (sec $time): ──
 #> 
 #>           setup covariance  saem table compress    other
-#> elapsed 0.00148   0.015003 2.291 0.021     0.02 1.371517
+#> elapsed 0.00132   0.039003 3.589 0.067     0.03 1.257677
 #> 
-#> ── Population Parameters ($parFixed or $parFixedDf): ───────────────────────────
+#> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
 #> tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% 
@@ -120,7 +111,7 @@ print(fit)
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
 #> 
-#> ── Fit Data (object is a modified tibble): ─────────────────────────────────────
+#> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 19
 #>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
