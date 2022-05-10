@@ -1002,7 +1002,7 @@ foceiControl <- function(sigdig = 3, #
     genRxControl <- FALSE
     if (is.null(rxControl)) {
       rxControl <- rxode2::rxControl(sigdig=sigdig,
-                                     maxsteps=50000L)
+                                     maxsteps=500000L)
       genRxControl <- TRUE
     } else if (is.list(rxControl)) {
       rxControl <- do.call(rxode2::rxControl, rxControl)
