@@ -118,11 +118,11 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrPreprocessUi <- function(ui) {
-  if (!exists("lstChr", ui)) {
-    .ret <- .muRefDowngrade(ui)
-  } else {
-    .ret <- ui
+  ui <- rxode2::assertRxUi(ui)
+  if (exists("lstChr", ui)) {
+    .muRefDowngrade(ui)
   }
+  .ret <- ui
   assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .zeroEtas <- .getZeroEtasFromModel(.ret)
   if (length(.zeroEtas) > 0) {

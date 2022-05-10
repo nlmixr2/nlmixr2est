@@ -1,6 +1,6 @@
 Package: nlmixr2est
 Type: Package
-Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation routines
+Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation Routines
 Depends: R (>= 4.0), nlmixr2data
 Imports: Rcpp (>= 0.12.3), lbfgsb3c,
         dparser, methods, rex, minqa, Matrix,

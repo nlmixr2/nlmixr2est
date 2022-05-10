@@ -136,6 +136,9 @@ nlmixr2Est0 <- function(env, ...) {
     if (is.null(get("table", envir=env))) {
       assign("table", tableControl(), envir=env)
     }
+    if (!is.environment(.meta)) {
+      .meta <- new.env(parent=emptyenv())
+    }
     .table <- get("table", envir=env)
     for (.elt in .tablePassthrough) {
       if (exists(.elt, envir=.meta)) {
