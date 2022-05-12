@@ -138,7 +138,7 @@ getValidNlmixrCtl.tableControl <- function(control) {
 #' @export
 getValidNlmixrCtl.default <- function(control) {
   .cls <- class(control)[1]
-  stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrControl.", .cls, "` method",
+  stop("do not know how to validate control for `est=\"", .cls, "\"`, please add `getValidNlmixrCtl.", .cls, "` method",
        call.=FALSE)
 }
 
