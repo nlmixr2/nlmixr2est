@@ -2926,11 +2926,15 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gVid = op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub;
   double *ptr = op_focei.gB + rx->nall;
   // Could use .zeros() but since I used Calloc, they are already zero.
+  // Yet not doing it causes the theta reset error.
   op_focei.etaM = mat(ptr, op_focei.neta, 1, false, true);
+  op_focei.etaM.zeros();
   ptr += op_focei.neta;
   op_focei.etaS = mat(ptr, op_focei.neta, 1, false, true);
+  op_focei.etaS.zeros();
   ptr += op_focei.neta;
   op_focei.eta1SD = mat(ptr, op_focei.neta, 1, false, true);
+  op_focei.eta1SD.zeros();
 
   // Prefill to 0.1 or 10%
   std::fill_n(&op_focei.gVar[0], op_focei.gEtaGTransN, 0.1);
