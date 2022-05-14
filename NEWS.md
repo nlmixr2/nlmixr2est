@@ -1,4 +1,8 @@
-# nlmixr2est 1.0.0 -- new package
+# nlmixr2est 2.0.7
+
+- Export nmObjHandleControlObject
+
+# nlmixr2est 2.0.6 -- new package
 
 `nlmixr2est` contains the estimation functions within `nlmixr2`.
 

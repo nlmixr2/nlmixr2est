@@ -51,6 +51,7 @@ nmObjHandleModelObject.default <- function(model, env) {
 #' @param env fit environment
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
+#' @export
 nmObjHandleControlObject <- function(control, env) {
   on.exit({
     if (exists("control", envir=env)) {
