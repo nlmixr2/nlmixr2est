@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.6</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.7</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -45,10 +45,13 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="1.0.0" id="nlmixr2est-100--new-package">nlmixr2est 1.0.0 – new package<a class="anchor" aria-label="anchor" href="#nlmixr2est-100--new-package"></a></h2>
+<h2 class="pkg-version" data-toc-text="2.0.7" id="nlmixr2est-207">nlmixr2est 2.0.7<a class="anchor" aria-label="anchor" href="#nlmixr2est-207"></a></h2>
+<ul><li>Export nmObjHandleControlObject</li></ul></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="2.0.6" id="nlmixr2est-206--new-package">nlmixr2est 2.0.6 – new package<a class="anchor" aria-label="anchor" href="#nlmixr2est-206--new-package"></a></h2><p class="text-muted">CRAN release: 2022-05-12</p>
 <p><code>nlmixr2est</code> contains the estimation functions within <code>nlmixr2</code>.</p>
 <div class="section level3">
-<h3 id="focei-family-changes-1-0-0">FOCEI family changes<a class="anchor" aria-label="anchor" href="#focei-family-changes-1-0-0"></a></h3>
+<h3 id="focei-family-changes-2-0-6">FOCEI family changes<a class="anchor" aria-label="anchor" href="#focei-family-changes-2-0-6"></a></h3>
 <ul><li><p>Remove lower level <code>foceiFit</code> function. Focei, foce, fo, foi, and posthoc now directly takes rxode2 ui objects</p></li>
 <li><p>New error types are supported in focei including mixing theta and etas in residual errors and different types of proportional errors</p></li>
 <li><p>Different types of additive and proportional errors can be used for each endpoint using <code>+ combined1()</code> or <code>+ combined2()</code> otherwise it takes the supplied <code>addProp</code> option to figure out which type of combined model is run (by default <code>combined2()</code>)</p></li>
@@ -59,7 +62,7 @@
 <li><p>Objective function checks for infinite/NaN/NA values for the entire solving space and ensures no overflow occurs when calculating the inner hessian</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="saem-changes-1-0-0">SAEM changes<a class="anchor" aria-label="anchor" href="#saem-changes-1-0-0"></a></h3>
+<h3 id="saem-changes-2-0-6">SAEM changes<a class="anchor" aria-label="anchor" href="#saem-changes-2-0-6"></a></h3>
 <ul><li><p>mu referencing is no longer required for <code>saem</code>; Internally non mu-referenced values are converted to mu referenced values and the converted back when calculating the nlmixr2 object.</p></li>
 <li>
 <p><code>nlmixr2</code> forced the parameter ordering to (1) population effects,</p>
@@ -77,7 +80,7 @@
 <li><p><code><a href="../reference/saemControl.html">saemControl()</a></code> aligned between other methods.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="nlme-changes-1-0-0">nlme changes<a class="anchor" aria-label="anchor" href="#nlme-changes-1-0-0"></a></h3>
+<h3 id="nlme-changes-2-0-6">nlme changes<a class="anchor" aria-label="anchor" href="#nlme-changes-2-0-6"></a></h3>
 <ul><li><p><code>nlme</code> has been completely rewritten to directly run from the <code>rxode2</code> UI</p></li>
 <li><p><code>nlme</code> always tries to use mu-referencing (when available)</p></li>
 <li><p>Internally <code>nlme</code> now uses parallel processing for solving so it should be faster.</p></li>
@@ -88,13 +91,13 @@
 <li><p><code>rxode2</code> solving options are now saved in the <code>rxControl</code> part of the <code><a href="../reference/saemControl.html">saemControl()</a></code>. That is <code>nlmeControl(rxControl=rxControl(...))</code>; This fixes any conflicting option names as well as allowing alignment between the control structures in <code>focei</code>, <code>nlme</code> and <code>saem</code></p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="nlmixr2-object-change-1-0-0">nlmixr2 object change<a class="anchor" aria-label="anchor" href="#nlmixr2-object-change-1-0-0"></a></h3>
+<h3 id="nlmixr2-object-change-2-0-6">nlmixr2 object change<a class="anchor" aria-label="anchor" href="#nlmixr2-object-change-2-0-6"></a></h3>
 <ul><li><p>With <code>saem</code>, the nlmixr2 function now saves/compresses the <code>phiM</code> information. This means the gaussian and laplacian likelihoods can be calculated when you save the nlmixr object and then restore it later.</p></li>
 <li><p>The nlmixr2 object compresses infrequently used and removes many unneeded objects. Even with compression, the <code>saem</code> objects are often a bit bigger since they include the large <code>phiM</code> object.</p></li>
 <li><p><code>nlmixr2</code> now supports non-mu referenced ETAs in the <code>fit$parFixed</code> and <code>fit$parFixedDf</code></p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="nlmixr2-interface-change-1-0-0">nlmixr2 interface change<a class="anchor" aria-label="anchor" href="#nlmixr2-interface-change-1-0-0"></a></h3>
+<h3 id="nlmixr2-interface-change-2-0-6">nlmixr2 interface change<a class="anchor" aria-label="anchor" href="#nlmixr2-interface-change-2-0-6"></a></h3>
 <ul><li><p><code>nlmixr2</code> interface changed to use <code>rxode2</code> UI</p></li>
 <li><p><code>keep</code> and <code>drop</code> are added to <code>tableControl</code> to influence the end data-frame</p></li>
 <li><p><code>$simInfo</code> uses a quoted expression for <code>$rx</code> instead of a string</p></li>
@@ -102,32 +105,32 @@
 <li><p><code>nlmixr2</code> now allows etas that have initial omega estimates of zero to be dropped from the model (instead of issuing an error about a non-positive definite <code>$omega</code> matrix)</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="npde-changes-1-0-0">NPDE changes<a class="anchor" aria-label="anchor" href="#npde-changes-1-0-0"></a></h3>
+<h3 id="npde-changes-2-0-6">NPDE changes<a class="anchor" aria-label="anchor" href="#npde-changes-2-0-6"></a></h3>
 <ul><li>Fixed a bug where the number of simulations for a NPDE calculation are correctly passed by <code>addNpde(fit, table=tableControl(nsim=500))</code>
 </li></ul></div>
 <div class="section level3">
-<h3 id="vpc-changes-1-0-0">VPC changes<a class="anchor" aria-label="anchor" href="#vpc-changes-1-0-0"></a></h3>
+<h3 id="vpc-changes-2-0-6">VPC changes<a class="anchor" aria-label="anchor" href="#vpc-changes-2-0-6"></a></h3>
 <ul><li><p><code>vpc</code> function rewritten and split out to <code><a href="../reference/vpcSim.html">vpcSim()</a></code> and <code>vpcPlot()</code> (which is a replacement for <code>vpc()</code>).</p></li>
 <li><p>There were too many mismatches between <code><a href="https://rdrr.io/pkg/vpc/man/vpc.html" class="external-link">vpc::vpc</a></code> and <code><a href="https://rdrr.io/pkg/nlmixr/man/vpc.html" class="external-link">nlmixr::vpc</a></code> which caused inconsistencies in code based on load order of <code>vpc</code> and <code>nlmixr</code>. This way both coexist, and you can use the <code>vpc</code> simulation for other packages more easily (like <code>ggPMX</code>) without creating or summarizing data since <code>ggPMX</code> has its own methods for summarizing and creating plots.</p></li>
 <li><p>VPC now directly uses <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxode2::rxSolve</a></code></p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="augpred-changes-1-0-0">augPred() changes<a class="anchor" aria-label="anchor" href="#augpred-changes-1-0-0"></a></h3>
+<h3 id="augpred-changes-2-0-6">augPred() changes<a class="anchor" aria-label="anchor" href="#augpred-changes-2-0-6"></a></h3>
 <ul><li><p><code><a href="https://rdrr.io/pkg/nlme/man/augPred.html" class="external-link">augPred()</a></code> has been written to use the new fit object.</p></li>
 <li><p><code>nlmixr2AugPred</code> was changed to <code><a href="../reference/nlmixr2AugPredSolve.html">nlmixr2AugPredSolve()</a></code></p></li>
 <li><p><code>augPred</code> uses the new interface and supports multiple endpoints. The endpoint name is now always on the <code>plot(augPred(fit))</code>.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="getfitmethod-change-1-0-0">getFitMethod() change<a class="anchor" aria-label="anchor" href="#getfitmethod-change-1-0-0"></a></h3>
+<h3 id="getfitmethod-change-2-0-6">getFitMethod() change<a class="anchor" aria-label="anchor" href="#getfitmethod-change-2-0-6"></a></h3>
 <ul><li>Internally, fit estimation method is saved in <code>fit$est</code>, and now <code>getFitMethod(fit)</code> simply returns <code>fit$est</code>
 </li></ul></div>
 <div class="section level3">
-<h3 id="delete-methods-1-0-0">Delete methods<a class="anchor" aria-label="anchor" href="#delete-methods-1-0-0"></a></h3>
+<h3 id="delete-methods-2-0-6">Delete methods<a class="anchor" aria-label="anchor" href="#delete-methods-2-0-6"></a></h3>
 <ul><li><p>Many methods lower level utility functions have been deleted.</p></li>
 <li><p><code>nmDocx</code>, <code>nmLst</code> and <code>nmSave</code> have been removed.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-1-0-0">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-1-0-0"></a></h3>
+<h3 id="bug-fixes-2-0-6">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-2-0-6"></a></h3>
 <ul><li>Now will reset the cache when items cannot be loaded. In the past error messages like <code>function 'rx_0ba247452048de33b1ffb8af516714fc__calc_lhs' not provided by package 'rx_0ba247452048de33b1ffb8af516714fc_'</code> would cause the estimation to stop. Now <code><a href="https://nlmixr2.github.io/rxode2/reference/rxClean.html" class="external-link">rxode2::rxClean()</a></code> is run when this occurs.</li></ul></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
