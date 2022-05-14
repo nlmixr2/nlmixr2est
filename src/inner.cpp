@@ -254,8 +254,8 @@ typedef struct {
   double cholAccept;
   double resetEtaSize;
   int didEtaReset;
-  double resetThetaSize = R_PosInf;
-  double resetThetaFinalSize = R_PosInf;
+  double resetThetaSize = std::numeric_limits<double>::infinity();
+  double resetThetaFinalSize = std::numeric_limits<double>::infinity();
   int checkTheta;
   int *muRef = NULL;
   int muRefN;
@@ -1728,7 +1728,7 @@ static inline bool thetaReset0() {
     if (R_FINITE(op_focei.upper[ii])) {
       thetaUp[ii]= unscalePar(op_focei.upper, ii);
     } else {
-      thetaUp[ii] = R_PosInf;
+      thetaUp[ii] = std::numeric_limits<double>::infinity();
     }
   }
   double ref=0;
@@ -1777,9 +1777,13 @@ static inline bool thetaReset0() {
 }
 
 void thetaReset(double size){
+  if (std::isinf(size)) return;
   mat etaRes =  op_focei.eta1SD % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
+  double res=0;
   for (unsigned int j = etaRes.n_rows; j--;) {
-    if (std::fabs(etaRes(j, 0)) >= size) { // Says reset;
+    res = etaRes(j, 0);
+    res = res < 0 ? -res : res;
+    if (res >= size) { // Says reset;
       if (thetaReset0()) {
         if (op_focei.didEtaReset==1) {
           warning(_("mu-referenced Thetas were reset during optimization; (Can control by foceiControl(resetThetaP=.,resetThetaCheckPer=.,resetThetaFinalP=.))"));
@@ -1807,7 +1811,7 @@ void thetaResetObj(Environment e) {
         IntegerVector type = parHistData["type"];
         NumericVector obj = parHistData["objf"];
         int maxiter=-1, minObjId=-1;
-        double minObj = R_PosInf;
+        double minObj = std::numeric_limits<double>::infinity();
         for (int i = obj.size(); i--;) {
           if (type[i] == 5) {
             if (!ISNA(obj[i])) {
@@ -3160,7 +3164,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.epsilon=as<double>(foceiO["epsilon"]);
   op_focei.nsim=as<int>(foceiO["n1qn1nsim"]);
   op_focei.imp=0;
-  op_focei.resetThetaSize = R_PosInf;
+  op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
   // op_focei.printInner=as<int>(foceiO["printInner"]);
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
   op_focei.printOuter=as<int>(foceiO["print"]);
@@ -3191,7 +3195,7 @@ NumericVector foceiSetup_(const RObject &obj,
     }
   }
   if (muRef.size() == 0){
-    op_focei.resetThetaSize = R_PosInf;
+    op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
     op_focei.muRefN=0;
   } else{
     op_focei.muRefN=muRef.size();
@@ -3280,14 +3284,14 @@ NumericVector foceiSetup_(const RObject &obj,
     }
   }
   if (upper.isNull()){
-    std::fill_n(upperIn.begin(), totN, R_PosInf);
+    std::fill_n(upperIn.begin(), totN, std::numeric_limits<double>::infinity());
   } else {
     NumericVector upper1=as<NumericVector>(upper);
     if (upper1.size() == 1){
       std::fill_n(upperIn.begin(), totN, upper1[0]);
     } else if (upper1.size() < totN){
       std::copy(upper1.begin(), upper1.end(), upperIn.begin());
-      std::fill_n(upperIn.begin()+upper1.size(), totN - upper1.size(), R_PosInf);
+      std::fill_n(upperIn.begin()+upper1.size(), totN - upper1.size(), std::numeric_limits<double>::infinity());
     } else if (upper1.size() > totN){
       warning(_("upper bound is larger than the number of parameters being estimated"));
       std::copy(upper1.begin(), upper1.begin()+totN, upperIn.begin());
@@ -3389,7 +3393,7 @@ NumericVector foceiSetup_(const RObject &obj,
       // Upper and lower bound = 2
       op_focei.nbd[k]= 3 - op_focei.nbd[j];
     } else {
-      op_focei.upper[k] = R_PosInf;//std::numeric_limits<double>::max();
+      op_focei.upper[k] = std::numeric_limits<double>::infinity();//std::numeric_limits<double>::max();
     }
   }
   double mn = op_focei.initPar[op_focei.npars-1], mx=op_focei.initPar[op_focei.npars-1],mean=0, oN=0, oM=0,s=0;
@@ -4918,7 +4922,7 @@ NumericMatrix foceiCalcCov(Environment e){
         fInd->doChol=!(op_focei.cholSECov);
         fInd->doFD = 0;
       }
-      op_focei.resetEtaSize = R_PosInf; // Dont reset ETAs
+      op_focei.resetEtaSize = std::numeric_limits<double>::infinity(); // Dont reset ETAs
       op_focei.resetEtaSize=0; // Always reset ETAs.
       NumericVector fullT = e["fullTheta"];
       NumericVector fullT2(op_focei.ntheta);
