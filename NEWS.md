@@ -1,5 +1,8 @@
 # nlmixr2est 2.0.7
 
+- Use `.zeros()` for the matrices in armadillo in addition to relying
+  on `calloc` to give zero matrices.
+
 - Export nmObjHandleControlObject
 
 # nlmixr2est 2.0.6 -- new package
