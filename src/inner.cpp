@@ -107,7 +107,7 @@ typedef struct {
   List mvi;
   double *etaUpper = NULL;
   double *etaLower = NULL;
-  int *nbdInner = NULL;
+  arma::ivec nbdInner;
   double *geta = NULL;
   double *getahf =NULL;
   double *getahr = NULL;
@@ -135,8 +135,8 @@ typedef struct {
   unsigned int gEtaGTransN;
   // Where likelihood is saved.
 
-  int *etaTrans = NULL;
-  int *etaFD = NULL;
+  arma::ivec etaTrans;
+  arma::ivec etaFD;
   double eventFD;
   int predNeq;
   int eventType;
@@ -158,21 +158,21 @@ typedef struct {
   double derivSwitchTol;
   double lastOfv;
 
-  double *fullTheta = NULL;
-  double *theta = NULL;
+  arma::dvec fullTheta;
+  arma::dvec theta;
   double *thetaGrad = NULL;
-  double *initPar = NULL;
-  double *scaleC = NULL;
+  arma::dvec initPar;
+  arma::dvec scaleC;
   double scaleC0;
-  int *xPar = NULL;
+  arma::ivec xPar;
   NumericVector lowerIn;
   double *lower = NULL;
   NumericVector upperIn;
   double *upper = NULL;
   int *nbd = NULL;
 
-  int *fixedTrans = NULL;
-  int *thetaTrans = NULL;
+  arma::ivec fixedTrans;
+  arma::ivec thetaTrans;
 
   int scaleType;
   int normType;
@@ -367,12 +367,6 @@ std::vector<int> niterGrad;
 std::vector<int> gradType;
 
 extern "C" void rxOptionsFreeFocei(){
-
-  if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
-  op_focei.etaTrans=NULL;
-
-  if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.fullTheta = NULL;
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
   op_focei.etaUpper = NULL;
@@ -1608,7 +1602,7 @@ static inline int innerOpt1(int id, int likId) {
     char msg[100];
     fInd->badSolve = 0;
     lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-             op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
+             op_focei.etaUpper, &(op_focei.nbdInner[0]), &f, innerOptimF, innerOptimG,
              &fail, (void*)(&id), op_focei.factr,
              op_focei.pgtol, &fncount, &grcount,
              op_focei.maxInnerIterations, msg, 0, -1,
@@ -1719,7 +1713,7 @@ static inline bool thetaReset0() {
   LogicalVector adjustEta(op_focei.muRefN);
   bool doAdjust = false;
   for (int ii = op_focei.ntheta; ii--;){
-    thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
+    thetaIni[ii] = unscalePar(&(op_focei.fullTheta[0]), ii);
     if (R_FINITE(op_focei.lower[ii])){
       thetaDown[ii] = unscalePar(op_focei.lower, ii);
     } else {
@@ -2741,19 +2735,18 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   std::string thetaS;
   std::string etaS;
   std::string cur;
-  if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
-  op_focei.etaTrans    = R_Calloc(op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan), int); //[neta]
-  op_focei.nbdInner    = op_focei.etaTrans + op_focei.neta;
-  op_focei.xPar        = op_focei.nbdInner + op_focei.neta; // [ntheta+nomega]
-  op_focei.thetaTrans  = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
-  op_focei.fixedTrans  = op_focei.thetaTrans + op_focei.ntheta + op_focei.omegan; // [ntheta + nomega]
-  op_focei.etaFD       = op_focei.fixedTrans + op_focei.ntheta + op_focei.omegan; // [neta]
+  
+  op_focei.etaTrans    = arma::ivec(op_focei.neta, arma::fill::zeros); // [neta]
+  op_focei.nbdInner    = arma::ivec(op_focei.neta, arma::fill::zeros); // [neta]
+  op_focei.xPar        = arma::ivec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta+nomega]
+  op_focei.thetaTrans  = arma::ivec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta+nomega]
+  op_focei.fixedTrans  = arma::ivec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta + nomega]
+  op_focei.etaFD       = arma::ivec(op_focei.neta, arma::fill::zeros); // [neta]
 
-  if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan), double); // [ntheta+omegan]
-  op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
-  op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
-  op_focei.scaleC      = op_focei.initPar+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
+  op_focei.fullTheta   = arma::dvec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta+omegan]
+  op_focei.theta       = arma::dvec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta + omegan]
+  op_focei.initPar     = arma::dvec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta + omegan]
+  op_focei.scaleC      = arma::dvec(op_focei.ntheta+op_focei.omegan, arma::fill::zeros); // [ntheta + omegan]
 
   int neta = 0;
   unsigned int ntheta = 0;
@@ -3850,7 +3843,7 @@ void foceiLbfgsb3(Environment e){
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scalePar(&(op_focei.initPar[0]), k);
   }
   char msg[100];
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -3875,7 +3868,7 @@ void foceiLbfgsb(Environment e){
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scalePar(&(op_focei.initPar[0]), k);
   }
   char msg[100];
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -3897,7 +3890,7 @@ void foceiCustomFun(Environment e){
   NumericVector lower(op_focei.npars);
   NumericVector upper(op_focei.npars);
   for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+    x[k]=scalePar(&(op_focei.initPar[0]), k);
   }
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
@@ -3952,7 +3945,7 @@ Environment foceiOuter(Environment e){
   } else {
     NumericVector x(op_focei.npars);
     for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(op_focei.initPar, k);
+      x[k]=scalePar(&(op_focei.initPar[0]), k);
     }
     foceiOuterFinal(x.begin(), e);
     if (op_focei.maxInnerIterations == 0){
