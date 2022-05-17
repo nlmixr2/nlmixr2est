@@ -118,10 +118,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrPreprocessUi <- function(ui) {
-  ui <- rxode2::assertRxUi(ui)
-  if (exists("lstChr", ui)) {
-    .muRefDowngrade(ui)
-  }
+  ui <- rxode2::assertRxUi(ui
   .ret <- ui
   assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .zeroEtas <- .getZeroEtasFromModel(.ret)
