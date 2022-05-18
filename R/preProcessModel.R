@@ -118,7 +118,6 @@
 .nlmixrPreprocessUi <- function(ui) {
   ui <- rxode2::assertRxUi(ui)
   .ret <- ui
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .zeroEtas <- .getZeroEtasFromModel(.ret)
   if (length(.zeroEtas) > 0) {
     assignInMyNamespace(".nlmixrPureInputUi", .ret)
@@ -126,6 +125,5 @@
            paste(.zeroEtas, collapse=", ")))
     .ret <- .downgradeEtas(ui, zeroEtas=.zeroEtas)
   }
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .ret
 }
