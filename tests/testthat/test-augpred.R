@@ -122,9 +122,9 @@ nmTest({
         })
       }
 
-      cmt2fit.logn <- nlmixr2::nlmixr(cmt2, dat2, "saem",
+      cmt2fit.logn <- nlmixr(cmt2, dat2, "saem",
                                       control=list(print=0),
-                                      table=nlmixr2::tableControl(cwres=TRUE, npde=TRUE))
+                                      table=tableControl(cwres=TRUE, npde=TRUE))
 
       expect_error(augPred(cmt2fit.logn), NA)
 
