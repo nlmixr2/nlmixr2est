@@ -1,9 +1,11 @@
 nmTest({
 
-  .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+  .nlmixr <- function(...) {
+    rxode2::rxUnloadAll()
+    suppressMessages(suppressWarnings(nlmixr(...)))
+  }
   #.nlmixr <- function(...) nlmixr(...)
 
-  rxode2::rxUnloadAll()
 
   dat <- Wang2007
   dat$DV <- dat$Y
