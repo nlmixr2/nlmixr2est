@@ -1,13 +1,14 @@
-.saemNothingIsAMuRefCovariate <- FALSE
 #'  Determine if the parameter is a mu-referenced covariate
 #'
 #' @param expr Expression to check
 #' @param muRefCovariateDataFrame Mu Ref data frame
-#' @return A boolaen that tells if the expression is a mu-ref covariate
+#' @param noCovs Do not look for covariates
+#' @return A boolean that tells if the expression is a mu-ref
+#'   covariate
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParametersIsMuRefCovariate <- function(expr, muRefCovariateDataFrame) {
-  if (.saemNothingIsAMuRefCovariate) return(FALSE)
+.saemDropParametersIsMuRefCovariate <- function(expr, muRefCovariateDataFrame, noCovs=FALSE) {
+  if (noCovs) return(FALSE)
   if (length(expr) == 3) {
     if (identical(expr[[1]], quote(`*`))) {
       if (length(expr[[2]]) == 1 &&
@@ -32,10 +33,11 @@
 #' @param line Line to change
 #' @param muRefDataFrame Mu-referenced data frame
 #' @param muRefCovariateDataFrame Mu Referenced Covariates
+#' @param noCovs Do not look for covariates
 #' @return Remove mu-referenced etas and covariates
 #' @author Matthew L. Fidler
 #' @noRd
-.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame) {
+.saemDropParameters <- function(line, muRefDataFrame, muRefCovariateDataFrame, noCovs=FALSE) {
   f <- function(x) {
     if (is.name(x) || is.atomic(x)) {
       return(x)
@@ -45,10 +47,10 @@
         return(f(x[[2]]))
       }
       if (identical(x[[1]], quote(`+`))) {
-        if (.saemDropParametersIsMuRefCovariate(x[[2]], muRefCovariateDataFrame)) {
+        if (.saemDropParametersIsMuRefCovariate(x[[2]], muRefCovariateDataFrame, noCovs=noCovs)) {
           return(f(x[[3]]))
         }
-        if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame)) {
+        if (.saemDropParametersIsMuRefCovariate(x[[3]], muRefCovariateDataFrame, noCovs=noCovs)) {
           return(f(x[[2]]))
         }
         if (length(x[[2]]) == 1) {
@@ -74,15 +76,16 @@
 #' Drop mu referenced etas and covariates
 #'
 #' @param ui rxode2 ui
+#' @param noCovs Do not look for covariates
 #' @return model line expression with mu referenced information dropped.
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.saemDropMuRefFromModel <- function(ui) {
+.saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
   lapply(ui$lstExpr, function(line){
-    .saemDropParameters(line, .muRefDataFrame, .muRefFinal)
+    .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
   })
 }
 

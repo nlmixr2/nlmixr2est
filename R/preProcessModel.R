@@ -70,9 +70,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", TRUE)
-  on.exit(assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE))
-  .lst <- .saemDropMuRefFromModel(ui)
+  .lst <- .saemDropMuRefFromModel(ui, noCovs=TRUE)
   .model <- str2lang(
     paste0("model({",
            paste(vapply(lapply(.lst, .addBackInterestingMuEtas,
