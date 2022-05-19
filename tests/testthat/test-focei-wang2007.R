@@ -235,6 +235,8 @@ nmTest({
   }, .addModVals)
 
   skip_on_cran()
+  rxode2::rxUnloadAll() # don't do too much on windows because of dll overloading
+  skip_on_os("windows")
 
   ################################################################################
   # Power Model Tests
