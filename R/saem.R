@@ -378,6 +378,9 @@
   }
   .ph <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
   names(.ph) <- c("iter", .allThetaNames)
+  .cls <- class(.ph)
+  attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
+  class(.ph) <- .cls
   assign("parHist", .ph, envir=env)
 }
 #' Calculate the covariance term
