@@ -236,6 +236,12 @@ test_that("theo wt cov parsing", {
 
   f <- one.cmt()
 
+  expect_equal(f$muRefCovariateDataFrame,
+               structure(list(theta = "tcl", covariate = "wt", covariateParameter = "cl.wt"), row.names = c(NA, -1L), class = "data.frame"))
+
+  expect_equal(f$saemMuRefCovariateDataFrame,
+               structure(list(theta = "tcl", covariate = "wt", covariateParameter = "cl.wt"), row.names = c(NA, -1L), class = "data.frame"))
+
   expect_equal(f$saemModelPredReplaceLst,
                c(tka = "THETA[1] + ETA[1]",
                  tcl = "THETA[2] + ETA[2] + wt * THETA[4]",

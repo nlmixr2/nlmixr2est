@@ -95,7 +95,7 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+                              lstExpr=.saemDropMuRefFromModel(.f, noCovs=TRUE))
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlmixr nlme model, equivalent to saem rxode2 model"
 
