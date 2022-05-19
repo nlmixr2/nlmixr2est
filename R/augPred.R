@@ -74,25 +74,38 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
-  .params <- data.frame(t(fit$theta),fit$eta[, -1, drop = FALSE],
-                        t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  if (is.null(.omega)) {
+    .params <- data.frame(t(fit$theta),
+                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+    .params <- setNames(as.numeric(.params), names(.params))
+  } else {
+    .params <- data.frame(t(fit$theta),fit$eta[, -1, drop = FALSE],
+                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  }
+
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keep=c("DV", "CMT"), returnType="data.frame")
-  names(.sim) <- sub("sim", "ipred", names(.sim))
   # now do pred
-  .params <- c(t(fit$theta),t(rep(0, dim(.omega)[1])),
-               t(rep(0, dim(.sigma)[1])))
-  .params <- setNames(.params, c(names(fit$theta),
-                                 dimnames(.omega)[[2]],
-                                 dimnames(.sigma)[[2]]))
-  .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
-                           returnType="data.frame")
-  .sim$pred <- .sim2$sim
-  .stk <- stack(.sim[, c("ipred", "pred", "DV")])
+  if (is.null(.omega)) {
+    names(.sim) <- sub("sim", "pred", names(.sim))
+    .stk <- stack(.sim[, c("pred", "DV")])
+  } else {
+    names(.sim) <- sub("sim", "ipred", names(.sim))
+    .params <- c(t(fit$theta),t(rep(0, dim(.omega)[1])),
+                 t(rep(0, dim(.sigma)[1])))
+    .params <- setNames(.params, c(names(fit$theta),
+                                   dimnames(.omega)[[2]],
+                                   dimnames(.sigma)[[2]]))
+    .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
+                             returnType="data.frame")
+    .sim$pred <- .sim2$sim
+    .stk <- stack(.sim[, c("ipred", "pred", "DV")])
+  }
+
   .stk$id <- .sim$id
   .stk$time <- .sim$time
   .stk$cmt <- as.integer(.sim$CMT)
@@ -100,10 +113,14 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   class(.stk$cmt) <- "factor"
   .stk <- .stk[!is.na(.stk$values), ]
   class(.stk) <- c("nlmixr2AugPred", "data.frame")
-  levels(.stk$ind) <- sub("pred", "Population",
-                          sub("ipred", "Individual",
-                              sub("DV", "Observed", levels(.stk$ind))))
-
+  if (is.null(.omega)) {
+    levels(.stk$ind) <- sub("pred", "Population",
+                            sub("DV", "Observed", levels(.stk$ind)))
+  } else {
+    levels(.stk$ind) <- sub("pred", "Population",
+                            sub("ipred", "Individual",
+                                sub("DV", "Observed", levels(.stk$ind))))
+  }
   .stk$Endpoint <- factor(paste(.stk$cmt))
   .stk <- .stk[, names(.stk) != "cmt"]
   class(.stk) <- c("nlmixr2AugPred", "data.frame")

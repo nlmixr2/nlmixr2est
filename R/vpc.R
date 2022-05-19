@@ -7,6 +7,8 @@
 #' @param n Number of simulations
 #' @param pred Should predictions be added to the simulation
 #' @param seed Seed to set for the VPC simulation
+#' @param nretry Number of times to retry the simulation if there is
+#'   NA values in the simulation
 #' @return data frame of the VPC simulation
 #' @author Matthew L. Fidler
 #' @export
@@ -40,7 +42,7 @@
 #' head(vpcSim(fit, pred=TRUE))
 #'
 #' }
-vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
+vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009, nretry=50) {
   set.seed(seed)
   .si <- object$simInfo
   .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
@@ -58,7 +60,33 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009) {
   .si$dfObs <- NULL
   .si$returnType <- "data.frame.TBS"
   .sim <- do.call(rxode2::rxSolve, .si)
+  # now look for how many have missing values
+  .w <- which(is.na(.sim$ipred))
+  .nretry <- 0
+  while (length(.w) > 0 && .nretry < nretry) {
+    .w <- which(is.na(.sim$ipred))
+    .simIds <- unique(.sim$sim.id[.w])
+    .sim <- .sim[!(sim$sim.id %in% .simIds), ]
+    .sim$sim.id <- as.integer(factor(.sim$sim.id))
+    .mx <- max(.sim$sim.id)
+    .si$n <- n - .mx
+    .sim2 <- do.call(rxode2::rxSolve, .si)
+    .sim2$sim.id <- .sim2$sim.id + .mx
+    .sim <- rbind(.sim, .sim2)
+    .w <- which(is.na(.sim$ipred))
+    .nretry <- .nretry + 1
+  }
+  if (.nretry != 0) {
+    if (length(.w) == 0) {
+      warning("'NA' values in vpc or npde simulation, re-simulated until all simulations were successful",
+              call.=FALSE)
+    } else {
+      warning("'NA' values in vpc or npde simulation",
+              call.=FALSE)
+    }
+  }
   if (pred) {
+    .si$nsim <- n # restore for pred
     .si2 <- .si
     .si2$params <- c(
       .si$params, setNames(rep(0, dim(.si$omega)[1]), dimnames(.si$omega)[[2]]),

@@ -2907,34 +2907,29 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
                                2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
                                op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub, double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
-  op_focei.geta = op_focei.etaLower + op_focei.neta;
-  op_focei.goldEta = op_focei.geta + op_focei.gEtaGTransN;
-  op_focei.getahf = op_focei.goldEta + op_focei.gEtaGTransN;
-  op_focei.getahr = op_focei.getahf + op_focei.gEtaGTransN;
+  op_focei.geta     = op_focei.etaLower + op_focei.neta;
+  op_focei.goldEta  = op_focei.geta + op_focei.gEtaGTransN;
+  op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
+  op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
   op_focei.gsaveEta = op_focei.getahr + op_focei.gEtaGTransN;
-  op_focei.gG = op_focei.gsaveEta + op_focei.gEtaGTransN;
-  op_focei.gVar = op_focei.gG + op_focei.gEtaGTransN;
-  op_focei.gX = op_focei.gVar + op_focei.gEtaGTransN;
-  op_focei.glp = op_focei.gX + op_focei.gEtaGTransN;
+  op_focei.gG       = op_focei.gsaveEta + op_focei.gEtaGTransN;
+  op_focei.gVar     = op_focei.gG + op_focei.gEtaGTransN;
+  op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
+  op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
   op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(rx->nsub + 1)
-  op_focei.gZm = op_focei.gthetaGrad + op_focei.npars*(rx->nsub + 1); // nz
-  op_focei.ga  = op_focei.gZm + nz;//[op_focei.neta * rx->nall]
-  op_focei.gc  = op_focei.ga + op_focei.neta * rx->nall;//[op_focei.neta * rx->nall]
-  op_focei.gB  = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
-  op_focei.gH  = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.gH0  = op_focei.gB + op_focei.neta*op_focei.neta*rx->nsub; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.gVid = op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub;
-  double *ptr = op_focei.gB + rx->nall;
+  op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(rx->nsub + 1); // nz
+  op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * rx->nall]
+  op_focei.gc       = op_focei.ga + op_focei.neta * rx->nall;//[op_focei.neta * rx->nall]
+  op_focei.gB       = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
+  op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*rx->nsub]
+  op_focei.gH0      = op_focei.gB + op_focei.neta*op_focei.neta*rx->nsub; //[op_focei.neta*op_focei.neta*rx->nsub]
+  op_focei.gVid     = op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub;
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
-  op_focei.etaM = mat(ptr, op_focei.neta, 1, false, true);
-  op_focei.etaM.zeros();
-  ptr += op_focei.neta;
-  op_focei.etaS = mat(ptr, op_focei.neta, 1, false, true);
-  op_focei.etaS.zeros();
-  ptr += op_focei.neta;
-  op_focei.eta1SD = mat(ptr, op_focei.neta, 1, false, true);
-  op_focei.eta1SD.zeros();
+  op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
+  op_focei.etaS     = mat(op_focei.neta, 1, arma::fill::zeros);
+  op_focei.eta1SD   = mat(op_focei.neta, 1, arma::fill::zeros);
+  op_focei.n        = 1.0;
 
   // Prefill to 0.1 or 10%
   std::fill_n(&op_focei.gVar[0], op_focei.gEtaGTransN, 0.1);
@@ -3115,6 +3110,8 @@ NumericVector foceiSetup_(const RObject &obj,
         stop("The etaMat must have the same number of ETAs (cols) as the model.");
       }
       std::copy(etaMat1.begin(),etaMat1.end(),etaMat0.begin());
+    } else {
+      std::fill(etaMat0.begin(), etaMat0.end(), 0.0);
     }
   }
   List params(theta.size()+op_focei.neta);
@@ -6149,8 +6146,8 @@ Environment foceiFitCpp_(Environment e){
     }
     if (op_focei.neta != 0 && op_focei.maxOuterIterations > 0  && R_FINITE(op_focei.resetThetaFinalSize)) {
       focei_options *fop = &op_focei;
-      std::fill(op_focei.etaM.begin(),op_focei.etaM.end(), 0.0);
-      std::fill(op_focei.etaS.begin(),op_focei.etaS.end(), 0.0);
+      op_focei.etaM.zeros();
+      op_focei.etaS.zeros();
       double n = 1.0;
       for (int id=rx->nsub; id--;){
         focei_ind *fInd = &(inds_focei[id]);

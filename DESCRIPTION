@@ -5,7 +5,7 @@ Depends: R (>= 4.0), nlmixr2data
 Imports: Rcpp (>= 0.12.3), lbfgsb3c,
         dparser, methods, rex, minqa, Matrix,
         n1qn1 (>= 6.0.1-10),
-      	rxode2(>= 1.0.0), nlme, magrittr, backports, symengine
+      	rxode2(>= 2.0.7), nlme, magrittr, backports, symengine
 Suggests: 
     Rvmmin,
     broom.mixed,
@@ -77,7 +77,7 @@ Description: Fit and compare nonlinear mixed-effects models in differential
     (Wang, Hallow, and James 2015 <doi:10.1002/psp4.12052>).
 License: GPL (>=3)
 NeedsCompilation: yes
-LinkingTo: dparser(>= 0.1.8), rxode2(>= 1.0.0), RcppEigen (>= 0.3.3.3.0),
+LinkingTo: dparser(>= 0.1.8), rxode2(>= 2.0.7), RcppEigen (>= 0.3.3.3.0),
     lbfgsb3c, Rcpp, BH, StanHeaders(>= 2.18.0), RcppArmadillo (>= 0.5.600.2.0)
 URL: https://github.com/nlmixr2/nlmixr2est
 RoxygenNote: 7.1.2

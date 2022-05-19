@@ -1,9 +1,11 @@
 nmTest({
 
-  .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+  .nlmixr <- function(...) {
+    rxode2::rxUnloadAll()
+    suppressMessages(suppressWarnings(nlmixr(...)))
+  }
   #.nlmixr <- function(...) nlmixr(...)
 
-  rxode2::rxUnloadAll()
 
   dat <- Wang2007
   dat$DV <- dat$Y
@@ -233,6 +235,8 @@ nmTest({
   }, .addModVals)
 
   skip_on_cran()
+  rxode2::rxUnloadAll() # don't do too much on windows because of dll overloading
+  skip_on_os("windows")
 
   ################################################################################
   # Power Model Tests

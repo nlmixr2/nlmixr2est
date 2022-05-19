@@ -122,11 +122,39 @@ nmTest({
         })
       }
 
-      cmt2fit.logn <- nlmixr2::nlmixr(cmt2, dat2, "saem",
+      cmt2fit.logn <- nlmixr(cmt2, dat2, "saem",
                                       control=list(print=0),
-                                      table=nlmixr2::tableControl(cwres=TRUE, npde=TRUE))
+                                      table=tableControl(cwres=TRUE, npde=TRUE))
 
       expect_error(augPred(cmt2fit.logn), NA)
+
+  })
+
+  test_that("augPred with pop only data", {
+
+    one.cmt <- function() {
+      ini({
+        ## You may label each parameter with a comment
+        tka <- 0.45 # Log Ka
+        tcl <- log(c(0, 2.7, 100)) # Log Cl
+        ## This works with interactive models
+        ## You may also label the preceding line with label("label text")
+        tv <- 3.45; label("log V")
+        ## the label("Label name") works with all models
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei",
+                   table=tableControl(npde=TRUE))
+
+    expect_error(augPred(fit2), NA)
 
   })
 

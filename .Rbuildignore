@@ -1,3 +1,4 @@
+^vgcore.*$
 ^Meta$
 ^doc$
 ^docs$

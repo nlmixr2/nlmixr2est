@@ -160,27 +160,35 @@ nlmixr2Est0 <- function(env, ...) {
     .envReset$cacheReset <- FALSE
     .envReset$unload <- FALSE
     class(.envReset) <- class(env)
-    if (length(.envReset$reset) != 1) .envReset$reset <- TRUE
-    while (.envReset$reset) {
-      .envReset$reset <- FALSE
-      .envReset$ret <-try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE))
-      if (inherits(.envReset$ret, "try-error")) {
-        .msg <- attr(.envReset$ret, "condition")$message
+    if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, envir=.envReset)
+    while (get("reset", envir=.envReset)) {
+      assign("reset", FALSE, envir=.envReset)
+      assign("ret", try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE)), envir=.envReset)
+      if (inherits(get("ret", envir=.envReset), "try-error")) {
+        .msg <- attr(get("ret", envir=.envReset), "condition")$message
         if (regexpr("not provided by package", .msg) != -1) {
-          if (.envReset$cacheReset) {
+          if (get("cacheReset", envir=.envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
             stop(.msg, call.=FALSE)
           } else {
             # reset
-            rm(list=ls(envir = env, all.names = TRUE), envir=env)
-            lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
-              assign(item, get(item, envir = .envReset$env), envir = env)
-            })
+            if (is.environment(.envReset)) {
+              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              lapply(ls(envir = .envReset, all.names = TRUE), function(item) {
+                assign(item, get(item, envir = .envReset), envir = env)
+              })
+            } else if (is.environment(.envReset$env)) {
+              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+                assign(item, get(item, envir = .envReset$env), envir = env)
+              })
+            }
+
             gc()
             .minfo("try resetting cache")
             rxode2::rxClean()
-            .envReset$cacheReset <- TRUE
-            .envReset$reset <- TRUE
+            assign("cacheReset", TRUE, envir=.envReset)
+            assign("reset", TRUE, envir=.envReset)
             .msuccess("done")
           }
         } else if (regexpr("maximal number of DLLs reached", .msg) != -1) {
@@ -189,26 +197,33 @@ nlmixr2Est0 <- function(env, ...) {
             stop(.msg, call.=FALSE)
           } else {
             # reset
-            rm(list=ls(envir = env, all.names = TRUE), envir=env)
-            lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
-              assign(item, get(item, envir = .envReset$env), envir = env)
-            })
+            if (is.environment(.envReset)) {
+              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              lapply(ls(envir = .envReset, all.names = TRUE), function(item) {
+                assign(item, get(item, envir = .envReset), envir = env)
+              })
+            } else if (is.environment(.envReset$env)) {
+              rm(list=ls(envir = env, all.names = TRUE), envir=env)
+              lapply(ls(envir = .envReset$env, all.names = TRUE), function(item) {
+                assign(item, get(item, envir = .envReset$env), envir = env)
+              })
+            }
             gc()
             .minfo("try resetting cache and unloading all rxode2 models")
             try(rxode2::rxUnloadAll())
             rxode2::rxClean()
-            .envReset$unload <- TRUE
-            .envReset$reset <- TRUE
+            assign("unload", TRUE, envir=.envReset)
+            assign("reset", TRUE, envir=.envReset)
             .msuccess("done")
           }
         } else {
           stop(.msg, call.=FALSE)
         }
       }
-      if (length(.envReset$reset) != 1) .envReset$reset <- TRUE
+      if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, .envReset)
     }
   }
-  .lst <- .envReset$ret
+  .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
   if (is.environment(.ret)) {
     try(assign("warnings", .lst[[2]], .ret), silent=TRUE)

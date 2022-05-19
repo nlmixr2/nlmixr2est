@@ -70,9 +70,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", TRUE)
-  on.exit(assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE))
-  .lst <- .saemDropMuRefFromModel(ui)
+  .lst <- .saemDropMuRefFromModel(ui, noCovs=TRUE)
   .model <- str2lang(
     paste0("model({",
            paste(vapply(lapply(.lst, .addBackInterestingMuEtas,
@@ -119,11 +117,7 @@
 #' @noRd
 .nlmixrPreprocessUi <- function(ui) {
   ui <- rxode2::assertRxUi(ui)
-  if (exists("lstChr", ui)) {
-    .muRefDowngrade(ui)
-  }
   .ret <- ui
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .zeroEtas <- .getZeroEtasFromModel(.ret)
   if (length(.zeroEtas) > 0) {
     assignInMyNamespace(".nlmixrPureInputUi", .ret)
@@ -131,6 +125,5 @@
            paste(.zeroEtas, collapse=", ")))
     .ret <- .downgradeEtas(ui, zeroEtas=.zeroEtas)
   }
-  assignInMyNamespace(".saemNothingIsAMuRefCovariate", FALSE)
   .ret
 }

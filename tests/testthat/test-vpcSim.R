@@ -1,19 +1,9 @@
 nmTest({
   test_that("vpcSim retains column information", {
 
-    library(data.table)
-
     PKPDdata <- nlmixr2data::warfarin
-    data.table::setDT(PKPDdata)
-
-    data.table::setnames(PKPDdata, names(PKPDdata), toupper(names(PKPDdata)))
-
-    ## define MDV data items
-    PKPDdata[, MDV := ifelse(is.na(DV), 1, 0)]
-    PKPDdata[, MDV := ifelse(AMT > 0, 1, MDV)]
-    PKPDdata[,dvid:=ifelse(DVID == "cp", "central", "effect")]
-
-    data.table::setnames(PKPDdata,"DVID","DVIDold")
+    PKPDdata$dvid <- ifelse(PKPDdata$dvid == "cp", "central", "effect")
+    PKPDdata <- PKPDdata[, names(PKPDdata) != "DVID"]
 
     KA1tr1_PDimmemax1 <- function() {
       ini({
