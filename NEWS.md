@@ -10,6 +10,8 @@
 - `nlme` no longer sets options to treat all covariates as non
   mu-referenced covariates, but directly calls a function that can
   turn on or off the mu-reference covariate selection.
+  
+- `vpcSim` now tries to simulate IDs that didn't simulate correctly (with a warning)
 
 - Export nmObjHandleControlObject
 

@@ -66,7 +66,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009, nretry=
   while (length(.w) > 0 && .nretry < nretry) {
     .w <- which(is.na(.sim$ipred))
     .simIds <- unique(.sim$sim.id[.w])
-    .sim <- .sim[!(sim$sim.id %in% .simIds), ]
+    .sim <- .sim[!(.sim$sim.id %in% .simIds), ]
     .sim$sim.id <- as.integer(factor(.sim$sim.id))
     .mx <- max(.sim$sim.id)
     .si$n <- n - .mx
