@@ -47,6 +47,9 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="2.0.7" id="nlmixr2est-207">nlmixr2est 2.0.7<a class="anchor" aria-label="anchor" href="#nlmixr2est-207"></a></h2>
 <ul><li><p>Use <code>.zeros()</code> for the matrices in armadillo in addition to relying on <code>calloc</code> to give zero matrices.</p></li>
+<li><p>Fixed one uninitialized object</p></li>
+<li><p>Fix for <code>augPred</code> so it works on population only models</p></li>
+<li><p><code>nlme</code> no longer sets options to treat all covariates as non mu-referenced covariates, but directly calls a function that can turn on or off the mu-reference covariate selection.</p></li>
 <li><p>Export nmObjHandleControlObject</p></li>
 </ul></div>
     <div class="section level2">
