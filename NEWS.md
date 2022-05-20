@@ -2,6 +2,14 @@
 
 - Use `.zeros()` for the matrices in armadillo in addition to relying
   on `calloc` to give zero matrices.
+  
+- Fixed one uninitialized object
+
+- Fix for `augPred` so it works on population only models
+
+- `nlme` no longer sets options to treat all covariates as non
+  mu-referenced covariates, but directly calls a function that can
+  turn on or off the mu-reference covariate selection.
 
 - Export nmObjHandleControlObject
 
