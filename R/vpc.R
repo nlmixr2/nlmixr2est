@@ -106,7 +106,6 @@ vpcSim <- function(object, ..., keep=NULL, n=300, pred=FALSE, seed=1009, nretry=
 }
 #' Name the data and compartments
 #'
-#'
 #' @param object nlmixr2 fit object
 #' @param data dataset to name `dvid` and `cmt` columns to correspond with the model
 #' @return Updated object/data

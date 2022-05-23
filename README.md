@@ -1,23 +1,29 @@
+---
+output: github_document
+---
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
+
+
 
 # nlmixr2est: The core estimation routines for nlmixr2
 
 <!-- badges: start -->
-
 [![R build
 status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
+[![CRAN version](http://www.r-pkg.org/badges/version/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+[![CRAN total downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+[![CRAN total downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
+
 [![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
 <!-- badges: end -->
 
-The goal of nlmixr2est is to provide the nlmixr2 core estimation
-routines.
+The goal of nlmixr2est is to provide the nlmixr2 core estimation routines.
 
 ## Installation
 
-You can install the development version of nlmixr2est from
-[GitHub](https://github.com/) with:
+You can install the development version of nlmixr2est from [GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("remotes")
@@ -29,8 +35,10 @@ remotes::install_github("nlmixr2/nlmixr2est")
 
 For most people, using nlmixr2 directly would be likely easier.
 
-``` r
+
+```r
 library(nlmixr2est)
+#> Loading required package: nlmixr2data
 
 ## The basic model consiss of an ini block that has initial estimates
 one.compartment <- function() {
@@ -57,34 +65,34 @@ one.compartment <- function() {
 
 ## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
 fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
+#> 
+#>  
+#> 
 #> ℹ parameter labels from comments will be replaced by 'label()'
+#> 
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
-#> [====|====|====|>---------------------------------]  33%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
+#> rxode2 2.0.7 using 4 threads (see ?getRxThreads)
 #> Calculating covariance matrix
-#> >-------------------------------------------------]  01%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem predOnly model 0...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 2...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
+#> 
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
-#> → compress parHist in nlmixr2 object, save 9408
+#> → compress parHist in nlmixr2 object, save 9560
+#> → compress saem0 in nlmixr2 object, save 24688
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -95,8 +103,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>           setup covariance  saem table compress    other
-#> elapsed 0.00132   0.039003 3.589 0.067     0.03 1.257677
+#>            setup covariance  saem table compress    other
+#> elapsed 0.001189   0.007003 2.188 0.019    0.022 1.381808
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -125,8 +133,10 @@ print(fit)
 plot(fit)
 ```
 
-<img src="man/figures/README-example-1.png" width="100%" />
+<img src="man/figures/README-example-1.png" title="plot of chunk example" alt="plot of chunk example" width="100%" />
 
-``` r
+```r
 # does not give the standard goodness of fit plots
 ```
+
+
