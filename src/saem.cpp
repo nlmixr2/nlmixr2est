@@ -16,6 +16,8 @@
 #define _(String) (String)
 #endif
 
+#define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
+
 
 #ifndef __SAEM_CLASS_RCPP_HPP__
 #define __SAEM_CLASS_RCPP_HPP__
@@ -1815,6 +1817,7 @@ private:
   mat fsaveMat;
   vec cens;
   vec limit;
+  vec limitT;
   vec fsave;
 
   int DEBUG;
@@ -1844,12 +1847,16 @@ private:
       if (cens[j] == 0.0) {
         // M2 adds likelihood even when the observation is defined
         if (R_FINITE(lim) && !ISNA(lim)) {
-          DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf(((lim<fc[j])*2.0 - 1.0)*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
+          DYF(j) = DYF(j) - log(1.0 - PHI(((lim<fc[j])*2.0 - 1.0)*(lim - fc[j])/sqrt(r[j])));
         }
       } else if (cens[j] == 1.0 || cens[j] == -1.0) {
-        DYF(j) = log(0.5*(1+erf(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j])/M_SQRT2)));
         if (R_FINITE(lim) && !ISNA(lim)) {
-          DYF(j) = DYF(j) - log(1.0 - 0.5*(1.0 + erf((double)(cens[j])*(lim - fc[j])/sqrt(r[j])/M_SQRT2)));
+          double sd = sqrt(r[j]);
+          double cum1 = PHI(((double)(cens[j])*(dv[j]-fc[j]))/sd);
+          double cum2 = PHI((double)(cens[j])*(lim - fc[j])/sd);
+          DYF(j) = log(cum1-cum2) - log(1.0 - cum2);
+        } else {
+          DYF(j) = PHI(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j]));
         }
       }
     }
@@ -1893,9 +1900,10 @@ private:
         vec yt(fc.size());
         for (int i = fc.size(); i--;) {
           int cur = ix_endpnt(i);
-          fc(i)  = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          yt(i)  = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          fcT(i) = handleF(propT(cur), fs(i), fc(i), false, true);
+          limitT(i) = _powerD(limit(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          yt(i)     = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
         }
         gc = vecares + vecbres % abs(fcT); //make sure gc > 0
         gc.elem( find( gc == 0.0) ).fill(1);
@@ -1913,7 +1921,7 @@ private:
           DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
           break;
         }
-        doCens(DYF, cens, limit, fc, gc, mx.yM, distribution);
+        doCens(DYF, cens, limitT, fc, gc, mx.yM, distribution);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
