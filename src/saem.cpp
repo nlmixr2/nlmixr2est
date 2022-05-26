@@ -1838,12 +1838,9 @@ private:
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
-  void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv, int &distribution) {
+  void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
     for (int j = (int)cens.size(); j--;) {
       double lim = limit[j];
-      if (distribution == 4) {
-        lim = log(lim);
-      }
       if (cens[j] == 0.0) {
         // M2 adds likelihood even when the observation is defined
         if (R_FINITE(lim) && !ISNA(lim)) {
@@ -1921,7 +1918,7 @@ private:
           DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
           break;
         }
-        doCens(DYF, cens, limitT, fc, gc, mx.yM, distribution);
+        doCens(DYF, cens, limitT, fc, gc, mx.yM);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {

@@ -1,3 +1,9 @@
+# nlmixr2est 2.XXXXX
+
+- SAEM Censoring fixes:
+  - SAEM method M4 method equation bug fix
+  - Censoring limit changed to dTBS
+
 # nlmixr2est 2.0.7
 
 - Use `.zeros()` for the matrices in armadillo in addition to relying
