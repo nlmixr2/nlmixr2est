@@ -1853,7 +1853,7 @@ private:
           double cum2 = PHI((double)(cens[j])*(lim - fc[j])/sd);
           DYF(j) = log(cum1-cum2) - log(1.0 - cum2);
         } else {
-          DYF(j) = PHI(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j]));
+          DYF(j) = log(PHI(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j])));
         }
       }
     }
