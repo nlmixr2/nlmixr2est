@@ -13,6 +13,8 @@
 #define _(String) (String)
 #endif
 
+#define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
+
 #define NETAs 20
 #define NTHETAs 20
 #define NSUBs 100
@@ -38,6 +40,7 @@
 //#define _safe_zero(a) (a)
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 //#define _safe_sqrt(a) sqrt(a)
+#define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
 
 
 
@@ -672,23 +675,30 @@ static inline void likM2(focei_ind *fInd, double& limit, double&f, double &r) {
   if (R_FINITE(limit) && !ISNA(limit)) {
     // When limit < f, this is M2
     // When limit >=f, the limit is an upper limit (instead of lower limit)
-    fInd->llik += -log(1-0.5*(1+erf(((limit<f)*2-1)*(limit-f)/_safe_sqrt(r)/M_SQRT2)));
+    fInd->llik += -log(1.0-PHI(((limit<f)*2-1)*(limit-f)/_safe_sqrt(r)));
     if (op_focei.adjLik) {
       // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
-      fInd->llik -= 0.5*log(M_2PI);
+      //fInd->llik -= 0.5*log(M_2PI);
+      fInd->llik -= 0.918938533204672669541;
     }
   }
 }
 
 static inline void likCens(focei_ind *fInd, int &cens, double& limit, double&f, double& dv, double &r) {
-  fInd->llik += log(0.5*(1+erf(((double)(cens)*(dv-f))/_safe_sqrt(r)/M_SQRT2)));
   if (R_FINITE(limit)  && !ISNA(limit)){
-    fInd->llik += -log(1-0.5*(1+erf((double)(cens)*(limit-f)/_safe_sqrt(r)/M_SQRT2)));
-    if (op_focei.adjLik) {
-      // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
-      fInd->llik += 0.5*log(M_2PI);
-    }
+    double sd = _safe_sqrt(r);
+    double cum1 = PHI((double)(cens)*(dv-f)/sd);
+    double cum2 = PHI((double)(cens)*(limit-f)/sd);
+    fInd->llik += log(cum1-cum2)-log(1.0 - cum2);
+  } else {
+    fInd->llik += PHI((double)(cens)*(dv-f)/_safe_sqrt(r));
   }
+  if (op_focei.adjLik) {
+    // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
+    //fInd->llik += 0.5*log(M_2PI);
+    fInd->llik -= 0.918938533204672669541;
+  }
+
 }
 
 
@@ -940,7 +950,9 @@ double likInner0(double *eta, int id){
               likM2(fInd, limit, f, r);
               if (!op_focei.adjLik) {
                 // Add 0.5*log(2*pi)
-                fInd->llik += 0.5*log(M_2PI);
+                //fInd->llik += 0.5*log(M_2PI);
+                fInd->llik -= 0.918938533204672669541;
+
               }
             } else if (cens != 0) {
               likCens(fInd, cens, limit, f, dv, r);
@@ -1034,28 +1046,41 @@ double likInner0(double *eta, int id){
                       (-fpm*(double)(cens)/_safe_zero(rx_expr_2)-0.5*rp*rx_expr_0*(double)(cens)/_safe_zero(R_pow(r,1.5)*M_SQRT2))/(M_SQRT_PI*(1+erf(rx_expr_0*cens/_safe_zero(rx_expr_2))));
                   } else {
                     // M4 method
-                    // dv = lloq
-                    // logLik = log(phi((dv-f(x))/sqrt(g(x))))+log(phi((limit-f(x))/sqrt(g(x))))-log(1-phi((limit-f(x))/sqrt(g(x))))
-                    // > D(S("log(0.5*(1+erf( (dv-f(x))/sqrt(g(x)) /M_SQRT2)))+log(0.5*(1+erf( (limit-f(x))/sqrt(g(x)) /M_SQRT2)))-log(1-0.5*(1+erf( (limit-f(x))/sqrt(g(x)) /M_SQRT2)))"),"x")
-                    // (Add) 2.0*exp(-(dv - f(x))^2/(g(x)*M_SQRT2^2))*(-Derivative(f(x), x)/(sqrt(g(x))*M_SQRT2) + (-1/2)*Derivative(g(x), x)*(dv - f(x))/(g(x)^(3/2)*M_SQRT2))/(sqrt(pi)*(1 + erf((dv - f(x))/(sqrt(g(x))*M_SQRT2)))) + 1.0*exp(-(limit - f(x))^2/(g(x)*M_SQRT2^2))*(-Derivative(f(x), x)/(sqrt(g(x))*M_SQRT2) + (-1/2)*Derivative(g(x), x)*(limit - f(x))/(g(x)^(3/2)*M_SQRT2))/(sqrt(pi)*(1 - 0.5*(1 + erf((limit - f(x))/(sqrt(g(x))*M_SQRT2))))) + 2.0*exp(-(limit - f(x))^2/(g(x)*M_SQRT2^2))*(-Derivative(f(x), x)/(sqrt(g(x))*M_SQRT2) + (-1/2)*Derivative(g(x), x)*(limit - f(x))/(g(x)^(3/2)*M_SQRT2))/(sqrt(pi)*(1 + erf((limit - f(x))/(sqrt(g(x))*M_SQRT2))))
-                    // 2.0*exp(-(dv - f)^2/(r*M_SQRT2^2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(dv - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 + erf((dv - f)/(sqrt(r)*M_SQRT2)))) + 1.0*exp(-(limit - f)^2/(r*M_SQRT2^2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(limit - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 - 0.5*(1 + erf((limit - f)/(sqrt(r)*M_SQRT2))))) + 2.0*exp(-(limit - f)^2/(r*M_SQRT2^2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(limit - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 + erf((limit - f)/(sqrt(r)*M_SQRT2))))
-                    // 2.0*exp(-(dv - f)^2/(r*2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(dv - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 + erf((dv - f)/(sqrt(r)*M_SQRT2)))) + 1.0*exp(-(limit - f)^2/(r*2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(limit - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 - 0.5*(1 + erf((limit - f)/(sqrt(r)*M_SQRT2))))) + 2.0*exp(-(limit - f)^2/(r*2))*(-fpm/(sqrt(r)*M_SQRT2) + (-0.5)*rp*(limit - f)/(r^(1.5)*M_SQRT2))/(M_SQRT_PI*(1 + erf((limit - f)/(sqrt(r)*M_SQRT2))))
-                    double rx_expr_0=r*2;
-                    double rx_expr_1=dv-f;
-                    double rx_expr_2=_safe_sqrt(r);
-                    double rx_expr_3=R_pow(r,1.5);
-                    double rx_expr_4=limit-f;
-                    double rx_expr_5=-0.5*rp;
-                    double rx_expr_6=rx_expr_4*rx_expr_4;
-                    double rx_expr_7=rx_expr_2*M_SQRT2;
-                    double rx_expr_8=rx_expr_3*M_SQRT2;
-                    double rx_expr_9=rx_expr_5*rx_expr_4;
-                    double rx_expr_10=exp(-rx_expr_6/_safe_zero(rx_expr_0));
-                    double rx_expr_11=(rx_expr_4)/_safe_zero(rx_expr_7);
-                    double rx_expr_12=erf(rx_expr_11);
-                    double rx_expr_13=1+rx_expr_12;
-                    double rx_expr_14=rx_expr_9/_safe_zero(rx_expr_8);
-                    lp(i, 0)=2*exp(-(rx_expr_1*rx_expr_1)/_safe_zero(rx_expr_0))*(-fpm/_safe_zero(rx_expr_7)+rx_expr_5*(rx_expr_1)/_safe_zero(rx_expr_8))/(M_SQRT_PI*(1+erf((rx_expr_1)/_safe_zero(rx_expr_7))))+1*rx_expr_10*(-fpm/_safe_zero(rx_expr_7)+rx_expr_14)/_safe_zero(M_SQRT_PI*(1-0.5*(rx_expr_13)))+2*rx_expr_10*(-fpm/_safe_zero(rx_expr_7)+rx_expr_14)/_safe_zero(M_SQRT_PI*(rx_expr_13));
+                    /*
+> rxToSE("log(phi((dv-f)/sqrt(g))-phi((limit-f)/sqrt(g)))-log(1-phi(limit-f)/sqrt(g))")
+S("log(0.5*(1+erf(((dv-f(x))/sqrt(g(x)))/sqrt(2)))-0.5*(1+erf(((limit-f(x))/sqrt(g(x)))/sqrt(2))))-log(1-0.5*(1+erf((limit-f(x))/sqrt(2)))/sqrt(g(x)))")
+
+D(S("log(0.5*(1+erf(((dv-f(x))/sqrt(g(x)))/sqrt(2)))-0.5*(1+erf(((limit-f(x))/sqrt(g(x)))/sqrt(2))))-log(1-0.5*(1+erf((limit-f(x))/sqrt(2)))/sqrt(g(x)))"),"x")
+(Add)	-(0.25*Derivative(g(x), x)*(1 + erf((1/2)*sqrt(2)*(limit - f(x))))/g(x)^(3/2) + 0.5*sqrt(2)*exp((-1/2)*(limit - f(x))^2)*Derivative(f(x), x)/(sqrt(pi)*sqrt(g(x))))/(1 - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f(x))))/sqrt(g(x))) + (1.0*exp((-1/2)*(dv - f(x))^2/g(x))*((-1/2)*sqrt(2)*Derivative(f(x), x)/sqrt(g(x)) + (-1/4)*sqrt(2)*Derivative(g(x), x)*(dv - f(x))/g(x)^(3/2))/sqrt(pi) - 1.0*exp((-1/2)*(limit - f(x))^2/g(x))*((-1/2)*sqrt(2)*Derivative(f(x), x)/sqrt(g(x)) + (-1/4)*sqrt(2)*Derivative(g(x), x)*(limit - f(x))/g(x)^(3/2))/sqrt(pi))/(0.5*(1 + erf((1/2)*sqrt(2)*(dv - f(x))/sqrt(g(x)))) - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f(x))/sqrt(g(x)))))
+
+# Note that:
+#  - Derivative(g(x), x) = rp
+#  - Derivative(f(x), x) = fpm
+#  - f(x)                = f
+#  - g(x)                = r
+#
+(Add)	-(0.25*rp*(1 + erf((1/2)*sqrt(2)*(limit - f)))/r^(3/2) + 0.5*sqrt(2)*exp((-1/2)*(limit - f)^2)*fpm/(sqrt(pi)*sqrt(r)))/(1 - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f)))/sqrt(r)) + (1.0*exp((-1/2)*(dv - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*rp*(dv - f)/r^(3/2))/sqrt(pi) - 1.0*exp((-1/2)*(limit - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*rp*(limit - f)/r^(3/2))/sqrt(pi))/(0.5*(1 + erf((1/2)*sqrt(2)*(dv - f)/sqrt(r))) - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f)/sqrt(r))))
+
+x <- rxode2({ll=-(0.25*rp*(1 + erf((1/2)*sqrt(2)*(limit - f)))/r^(3/2) + 0.5*sqrt(2)*exp((-1/2)*(limit - f)^2)*fpm/(sqrt(pi)*sqrt(r)))/(1 - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f)))/sqrt(r)) + (1.0*exp((-1/2)*(dv - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*rp*(dv - f)/r^(3/2))/sqrt(pi) - 1.0*exp((-1/2)*(limit - f)^2/r)*((-1/2)*sqrt(2)*fpm/sqrt(r) + (-1/4)*sqrt(2)*rp*(limit - f)/r^(3/2))/sqrt(pi))/(0.5*(1 + erf((1/2)*sqrt(2)*(dv - f)/sqrt(r))) - 0.5*(1 + erf((1/2)*sqrt(2)*(limit - f)/sqrt(r))))})
+
+rxOptExpr(x)
+                    */
+                    double rx_expr_0 = dv-f;
+                    double rx_expr_1 = M_SQRT2;
+                    double rx_expr_2 =limit-f;
+                    double rx_expr_3 =R_pow(_as_dbleps(r),(1.5));
+                    double rx_expr_4 =sqrt(r);
+                    double rx_expr_5 = M_SQRT_PI;
+                    double rx_expr_6 =(0.5)*rx_expr_1;
+                    double rx_expr_7 =(-0.5)*rx_expr_1;
+                    double rx_expr_8 =(-0.25)*rx_expr_1;
+                    double rx_expr_9 =rx_expr_8*rp;
+                    double rx_expr_10 =rx_expr_7*fpm;
+                    double rx_expr_11 =rx_expr_6*(rx_expr_2);
+                    double rx_expr_13 =rx_expr_10/_safe_zero(rx_expr_4);
+                    double rx_expr_14 =erf(rx_expr_11);
+                    double rx_expr_15 =1+rx_expr_14;
+                    lp(i, 0) = -(0.25*rp*(rx_expr_15)/_safe_zero(rx_expr_3)+0.5*rx_expr_1*exp((-0.5)*((rx_expr_2)*(rx_expr_2)))*fpm/_safe_zero((rx_expr_5*rx_expr_4)))/_safe_zero((1-0.5*(rx_expr_15)/_safe_zero(rx_expr_4)))+(exp((-0.5)*((rx_expr_0)*(rx_expr_0))/_safe_zero(r))*(rx_expr_13+rx_expr_9*(rx_expr_0)/_safe_zero(rx_expr_3))/_safe_zero(rx_expr_5)-exp((-0.5)*((rx_expr_2)*(rx_expr_2))/_safe_zero(r))*(rx_expr_13+rx_expr_9*(rx_expr_2)/_safe_zero(rx_expr_3))/_safe_zero(rx_expr_5))/_safe_zero((0.5*(1+erf(rx_expr_6*(rx_expr_0)/_safe_zero(rx_expr_4)))-0.5*(1+erf(rx_expr_11/_safe_zero(rx_expr_4)))));
                   }
                 }
               }

@@ -1,5 +1,12 @@
 # nlmixr2est 2.XXXXX
 
+## M4 Censoring fixes
+
+- FOCEi censoring fixes:
+  - M4 method equation bug fix
+  - M4 method derivative change based on equation fix
+  - Censoring already dTBS
+
 - SAEM Censoring fixes:
   - SAEM method M4 method equation bug fix
   - Censoring limit changed to dTBS
