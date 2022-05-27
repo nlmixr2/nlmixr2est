@@ -1817,7 +1817,6 @@ private:
   mat fsaveMat;
   vec cens;
   vec limit;
-  vec limitT;
   vec fsave;
 
   int DEBUG;
@@ -1871,6 +1870,7 @@ private:
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
     vec gc;
+
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
@@ -1897,7 +1897,7 @@ private:
         vec yt(fc.size());
         for (int i = fc.size(); i--;) {
           int cur = ix_endpnt(i);
-          limitT(i) = _powerD(limit(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          //limitT(i) = _powerD(limit(i), lambda(cur), yj(cur), low(cur), hi(cur));
           fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
           yt(i)     = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
           fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
@@ -1918,7 +1918,7 @@ private:
           DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
           break;
         }
-        doCens(DYF, cens, limitT, fc, gc, mx.yM);
+        doCens(DYF, cens, limit, fc, gc, mx.yM);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
