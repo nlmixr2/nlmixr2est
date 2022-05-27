@@ -755,6 +755,9 @@ public:
       RSprintf("initialization successful\n");
     }
     fsaveMat = user_fn(phiM, evtM, optM);
+    limit = fsaveMat.col(2);
+    limitT = fsaveMat.col(2);
+    cens = fsaveMat.col(1);
     fsave = fsaveMat.col(0);
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
@@ -798,6 +801,7 @@ public:
         vec yt = yM;
         for (int i = ft.size(); i--;) {
           int cur = ix_endpnt(i);
+          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
           ft(i)   = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
           yt(i)   = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
           ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
@@ -812,6 +816,7 @@ public:
         g.elem( find(g > xmax)).fill(xmax);
 
         DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
+        doCens(DYF, cens, limitT, f, g, yM);
       } else if (distribution == 2){
         DYF(indioM)=-yM%log(f)+f;
       } else if (distribution == 3) {
@@ -1817,6 +1822,7 @@ private:
   mat fsaveMat;
   vec cens;
   vec limit;
+  vec limitT;
   vec fsave;
 
   int DEBUG;
@@ -1870,7 +1876,6 @@ private:
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
     vec gc;
-    vec limitT(limit.size());
 
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
@@ -1892,6 +1897,10 @@ private:
         }
 
         fcMat = user_fn(phiMc, mx.evtM, mx.optM);
+        limit = fcMat.col(2);
+        limitT = fcMat.col(2);
+        cens = fcMat.col(1);
+
         fc = fcMat.col(0);
         vec fcT(fc.size());
         fs = fc;
