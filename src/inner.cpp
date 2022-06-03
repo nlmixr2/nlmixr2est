@@ -13,11 +13,10 @@
 #define _(String) (String)
 #endif
 
+// Cumulative distribution function of a standardized normal distribution (mean
+// of zero, standard deviation of 1); x = (value - mean)/standard deviation
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
-#define NETAs 20
-#define NTHETAs 20
-#define NSUBs 100
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define innerOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
@@ -742,7 +741,7 @@ static inline double calcGradForEtaGeneral(double *eta,
                                            double *aEps,
                                            int cpar, int cid, int w) {
   // First try a gill difference
-  if (op_focei.eventType != 1) aEps[cpar] = op_focei.eventFD;  
+  if (op_focei.eventType != 1) aEps[cpar] = op_focei.eventFD;
   if (op_focei.eventType == 1 && aEps[cpar] == 0) {
     double hf, hphif, err, gillDf, gillDf2, gillErr;
     if (w == 0) {
@@ -865,7 +864,7 @@ rxOptExpr(x)
                     double rx_expr_22 =rx_expr_18/_safe_zero(rx_expr_4);
                     double rx_expr_23 =erf(rx_expr_20);
                     double rx_expr_24 =1+rx_expr_23;
-    return (-exp((-0.5)*((rx_expr_1)*(rx_expr_1))/_safe_zero(r))*(rx_expr_16+rx_expr_22)/_safe_zero(rx_expr_5)+exp((-0.5)*((rx_expr_0)*(rx_expr_0))/_safe_zero(r))*(rx_expr_16+rx_expr_9*(rx_expr_0)*cens/_safe_zero(rx_expr_4))/_safe_zero(rx_expr_5))/_safe_zero((-0.5*(rx_expr_24)+0.5*(1+erf(rx_expr_6*(rx_expr_0)*cens/_safe_zero(rx_expr_3)))))+exp((-0.5)*((rx_expr_1)*(rx_expr_1))/_safe_zero(r))*(rx_expr_16+rx_expr_22)/_safe_zero((rx_expr_5*(1-0.5*(rx_expr_24))));  
+    return (-exp((-0.5)*((rx_expr_1)*(rx_expr_1))/_safe_zero(r))*(rx_expr_16+rx_expr_22)/_safe_zero(rx_expr_5)+exp((-0.5)*((rx_expr_0)*(rx_expr_0))/_safe_zero(r))*(rx_expr_16+rx_expr_9*(rx_expr_0)*cens/_safe_zero(rx_expr_4))/_safe_zero(rx_expr_5))/_safe_zero((-0.5*(rx_expr_24)+0.5*(1+erf(rx_expr_6*(rx_expr_0)*cens/_safe_zero(rx_expr_3)))))+exp((-0.5)*((rx_expr_1)*(rx_expr_1))/_safe_zero(r))*(rx_expr_16+rx_expr_22)/_safe_zero((rx_expr_5*(1-0.5*(rx_expr_24))));
 }
 
 double likInner0(double *eta, int id){
