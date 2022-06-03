@@ -91,160 +91,46 @@
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
-    <dl><dt>seed</dt>
-<dd><p>Random Seed for SAEM step.  (Needs to be set for
-reproducibility.)  By default this is 99.</p></dd>
-<dt>nBurn</dt>
-<dd><p>Number of iterations in the first phase, ie the  MCMC/Stochastic Approximation
-steps. This is equivalent to Monolix's <code>K_0</code> or <code>K_b</code>.</p></dd>
-<dt>nEm</dt>
-<dd><p>Number of iterations in the Expectation-Maximization
-(EM) Step. This is equivalent to Monolix's <code>K_1</code>.</p></dd>
-<dt>nmc</dt>
-<dd><p>Number of Markov Chains. By default this is 3.  When
-you increase the number of chains the numerical integration by
-MC method will be more accurate at the cost of more
-computation.  In Monolix this is equivalent to <code>L</code>.</p></dd>
-<dt>nu</dt>
-<dd><p>This is a vector of 3 integers. They represent the
-    numbers of transitions of the three different kernels used in
-    the Hasting-Metropolis algorithm.  The default value is <code>c(2,2,2)</code>,
-    representing 40 for each transition initially (each value is
-    multiplied by 20).</p>
-<p>The first value represents the initial number of multi-variate
-    Gibbs samples are taken from a normal distribution.</p>
-<p>The second value represents the number of uni-variate, or multi-
-    dimensional random walk Gibbs samples are taken.</p>
-<p>The third value represents the number of bootstrap/reshuffling or
-    uni-dimensional random samples are taken.</p></dd>
-<dt>print</dt>
-<dd><p>The number it iterations that are completed before
-anything is printed to the console.  By default, this is 1.</p></dd>
-<dt>trace</dt>
-<dd><p>An integer indicating if you want to trace(1) the
-SAEM algorithm process.  Useful for debugging, but not for
-typical fitting.</p></dd>
-<dt>covMethod</dt>
-<dd><p>Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of each individual's
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).</p>
-<p>"<code>linFim</code>" Use the Linearized Fisher Information Matrix to calculate the covariance.</p>
-<p>"<code>fim</code>" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.</p>
-<p>"<code>r,s</code>" Uses the sandwich matrix to calculate the covariance, that is: \(R^-1 \times S \times R^-1\)</p>
-<p>"<code>r</code>" Uses the Hessian matrix to calculate the covariance as \(2\times R^-1\)</p>
-<p>"<code>s</code>" Uses the crossproduct matrix to calculate the covariance as \(4\times S^-1\)</p>
-<p>"" Does not calculate the covariance step.</p></dd>
-<dt>calcTables</dt>
-<dd><p>This boolean is to determine if the foceiFit
-will calculate tables. By default this is <code>TRUE</code></p></dd>
-<dt>logLik</dt>
-<dd><p>boolean indicating that log-likelihood should be
-calculate by Gaussian quadrature.</p></dd>
-<dt>nnodesGq</dt>
-<dd><p>number of nodes to use for the Gaussian
-quadrature when computing the likelihood with this method
-(defaults to 1, equivalent to the Laplaclian likelihood)</p></dd>
-<dt>nsdGq</dt>
-<dd><p>span (in SD) over which to integrate when computing
-the likelihood by Gaussian quadrature. Defaults to 3 (eg 3
-times the SD)</p></dd>
-<dt>optExpression</dt>
-<dd><p>Optimize the rxode2 expression to speed up
-calculation. By default this is turned on.</p></dd>
-<dt>adjObf</dt>
-<dd><p>is a boolean to indicate if the objective function
-should be adjusted to be closer to NONMEM's default objective
-function.  By default this is <code>TRUE</code></p></dd>
-<dt>sumProd</dt>
-<dd><p>Is a boolean indicating if the model should change
-multiplication to high precision multiplication and sums to
-high precision sums using the PreciseSums package.  By default
-this is <code>FALSE</code>.</p></dd>
-<dt>addProp</dt>
-<dd><p>specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).</p>
-<p>The combined1 error type can be described by the following equation:</p>
-<p>y = f + (a + b*f^c)*err</p>
-<p>The combined2 error model can be described by the following equation:</p>
-<p>y = f + sqrt(a^2 + b^2*(f^c)^2)*err</p>
-<p>Where:</p>
-<p>- y represents the observed value</p>
-<p>- f represents the predicted value</p>
-<p>- a  is the additive standard deviation</p>
-<p>- b is the proportional/power standard deviation</p>
-<p>- c is the power exponent (in the proportional case c=1)</p></dd>
-<dt>tol</dt>
-<dd><p>This is the tolerance for the regression models used
-for complex residual errors (ie add+prop etc)</p></dd>
-<dt>itmax</dt>
-<dd><p>This is the maximum number of iterations for the
-regression models used for complex residual errors.  The number
-of iterations is itmax*number of parameters</p></dd>
-<dt>type</dt>
-<dd><p>indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")</p></dd>
-<dt>powRange</dt>
-<dd><p>This indicates the range that powers can take for residual errors;  By default this is 10 indicating the range is c(-10, 10)</p></dd>
-<dt>lambdaRange</dt>
-<dd><p>This indicates the range that Box-Cox and Yeo-Johnson parameters are constrained to be;  The default is 3 indicating the range c(-3,3)</p></dd>
-<dt>odeRecalcFactor</dt>
-<dd><p>The ODE recalculation factor when ODE
-solving goes bad, this is the factor the rtol/atol is reduced</p></dd>
-<dt>maxOdeRecalc</dt>
-<dd><p>Maximum number of times to reduce the ODE
-tolerances and try to resolve the system if there was a bad
-ODE solve.</p></dd>
-<dt>perSa</dt>
-<dd><p>This is the percent of the time the `nBurn`
-iterations in phase runs runs a simulated annealing.</p></dd>
-<dt>perNoCor</dt>
-<dd><p>This is the percentage of the MCMC phase of the SAEM
-algorithm where the variance/covariance matrix has no
-correlations. By default this is 0.75 or 75<!-- % of the -->
-Monte-carlo iteration.</p></dd>
-<dt>perFixOmega</dt>
-<dd><p>This is the percentage of the `nBurn` phase
-where the omega values are unfixed to allow better exploration
-of the likelihood surface.  After this time, the omegas are
-fixed during optimization.</p></dd>
-<dt>perFixResid</dt>
-<dd><p>This is the percentage of the `nBurn` phase
-where the residual components are unfixed to allow better
-exploration of the likelihood surface.</p></dd>
-<dt>compress</dt>
-<dd><p>Should the object have compressed items</p></dd>
-<dt>rxControl</dt>
-<dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`</p></dd>
-<dt>sigdig</dt>
-<dd><p>Specifies the "significant digits" that the ode
-solving requests.  When specified this controls the relative and
-absolute tolerances of the ODE solvers.  By default the tolerance
-is <code>0.5*10^(-sigdig-2)</code> for regular ODEs. For the
-sensitivity equations and steady-state solutions the default is
-<code>0.5*10^(-sigdig-1.5)</code> (sensitivity changes only applicable
-for liblsoda).  By default this is unspecified (<code>NULL</code>) and uses
-the standard <code>atol</code>/<code>rtol</code>.</p></dd>
-<dt>sigdigTable</dt>
-<dd><p>Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.</p></dd>
-<dt>ci</dt>
-<dd><p>Confidence level for some tables.  By default this is
-0.95 or 95% confidence.</p></dd>
-<dt>muRefCov</dt>
-<dd><p>This controls if mu-referenced covariates in `saem`
-are handled differently than non mu-referenced covariates.  When
-`TRUE`, mu-referenced covariates have special handling.  When
-`FALSE` mu-referenced covariates are treated the same as any
-other input parameter.</p></dd>
-<dt>...</dt>
-<dd><p>Other arguments to control SAEM.</p></dd>
-</dl></div>
+    <p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+    </div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>List of options to be used in <code><a href="nlmixr2.html">nlmixr2</a></code> fit for
+    
+
+<p>List of options to be used in <code><a href="nlmixr2.html">nlmixr2</a></code> fit for
     SAEM.</p>
     </div>
     <div class="section level2">

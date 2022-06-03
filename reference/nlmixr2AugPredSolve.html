@@ -73,48 +73,20 @@
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
-    <dl><dt>fit</dt>
-<dd><p>Nlmixr2 fit object</p></dd>
-<dt>covsInterpolation</dt>
-<dd><p>specifies the interpolation method for
-time-varying covariates. When solving ODEs it often samples
-times outside the sampling time specified in <code>events</code>.
-When this happens, the time varying covariates are
-interpolated.  Currently this can be:</p><ul><li><p><code>"linear"</code> interpolation, which interpolates the covariate
-by solving the line between the observed covariates and extrapolating the new
-covariate value.</p></li>
-<li><p><code>"constant"</code> -- Last observation carried forward (the default).</p></li>
-<li><p><code>"NOCB"</code> -- Next Observation Carried Backward.  This is the same method
-that NONMEM uses.</p></li>
-<li><p><code>"midpoint"</code> Last observation carried forward to midpoint; Next observation
-carried backward to midpoint.</p></li>
-</ul></dd>
-<dt>minimum</dt>
-<dd><p>an optional lower limit for the primary
-   covariate. Defaults to <code>min(primary)</code>.</p></dd>
-<dt>maximum</dt>
-<dd><p>an optional upper limit for the primary
-   covariate. Defaults to <code>max(primary)</code>.</p></dd>
-<dt>length.out</dt>
-<dd><p>an optional integer with the number of primary
-   covariate values at which to evaluate the predictions.  Defaults to
-   51.</p></dd>
-<dt>...</dt>
-<dd><p>some methods for the generic may require additional
-   arguments.</p></dd>
-<dt>object</dt>
-<dd><p>a fitted model object from which predictions can be
-   extracted, using a <code>predict</code> method.</p></dd>
-<dt>primary</dt>
-<dd><p>an optional one-sided formula specifying the primary
-   covariate to be used to generate the augmented predictions. By
-   default, if a  covariate can be extracted from the data used to generate
-   <code>object</code> (using <code>getCovariate</code>), it will be used as
-   <code>primary</code>.</p></dd>
-</dl></div>
+    <p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+<p></p>
+    </div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>Stacked data.frame with observations, individual/population predictions.</p>
+    
+
+<p>Stacked data.frame with observations, individual/population predictions.</p>
     </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
