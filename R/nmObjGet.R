@@ -69,6 +69,15 @@ nmObjGet.default <- function(x, ...) {
   .ret
 }
 
+#'@rdname nmObjGet
+#' @export
+nmObjGet.modelName <- function(x, ...) {
+  .obj <- x[[1]]
+  .ui <- get("ui", .obj)
+  .ui$modelName
+}
+attr(nmObjGet.modelName, "desc") <- "name of the model used for nlmixr2 model fit"
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.cor <- function(x, ...) {
