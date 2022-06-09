@@ -1,6 +1,6 @@
 # nlmixr2est 2.XXXXX
 
-## M4 Censoring fixes
+## Censoring fixes
 
 - FOCEi censoring fixes:
   - M4 method equation bug fix
@@ -11,11 +11,13 @@
   - SAEM method M4 method equation bug fix
   - Censoring limit changed to dTBS
 
+- Censoring handling was unified
+
 # nlmixr2est 2.0.7
 
 - Use `.zeros()` for the matrices in armadillo in addition to relying
   on `calloc` to give zero matrices.
-  
+
 - Fixed one uninitialized object
 
 - Fix for `augPred` so it works on population only models
@@ -23,7 +25,7 @@
 - `nlme` no longer sets options to treat all covariates as non
   mu-referenced covariates, but directly calls a function that can
   turn on or off the mu-reference covariate selection.
-  
+
 - `vpcSim` now tries to simulate IDs that didn't simulate correctly (with a warning)
 
 - Export nmObjHandleControlObject
@@ -47,18 +49,18 @@
 
 - Focei model cache is now named `focei-md5Digest.qs` and uses `qs`
   compression/saving/loading.
-  
+
 - `foceiControl()` aligned between other methods.
 
 - `foceiControl(adjLik=TRUE)` uses the NONMEM-style objective function
   throughout.  `foceiControl(adjLik=FALSE)` uses the adjusted
   objective function throughout, and adjusts it back to the NONMEM
   objective function.
-  
+
 - Lag time and other between subject variability differences no longer
   calculate an ideal relative step size, but an absolute step size
   when using Gill differences (default)
-  
+
 - Objective function checks for infinite/NaN/NA values for the entire
   solving space and ensures no overflow occurs when calculating the
   inner hessian
@@ -101,13 +103,13 @@
 
 - Parameter history and printout now uses standard deviation for
   additive only components, matching the estimation of the components.
-  
+
 - `rxode2` solving options are now saved in the `rxControl` part of
   the `saemControl()`.  That is
   `saemControl(rxControl=rxControl(...))`; This fixes any conflicting
   option names as well as allowing alignment between the control
   structures in `focei`, `nlme` and `saem`
-  
+
 - `saemControl()` aligned between other methods.
 
 
