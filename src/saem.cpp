@@ -1846,7 +1846,7 @@ private:
 
   static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
     for (int j = (int)cens.size(); j--;) {
-      DFY(j) = doCensNormal1(cens[j], dv[j], limit[j], DFY(j), fc[j], r[j], 0);
+      DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
     }
   }
 

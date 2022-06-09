@@ -18,15 +18,15 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     if (R_FINITE(lim) && !ISNA(lim)) {
       // M4 method
       double sd = sqrt(r);
-      double cum1 = PHI(cens*(limDv-fj)/sd);
+      double cum1 = PHI(cens*(limDv-f)/sd);
       double cum2 = PHI(cens*(lim - f)/sd);
       return log(cum1-cum2) - log(1.0 - cum2) - adj;
     } else {
       // M3 method
-      return log(PHI(cens*(limDv-fc)/sqrt(r))) - adj;
+      return log(PHI(cens*(limDv-f)/sqrt(r))) - adj;
     }
   }
-  return NA_REAL;
+  return ll;
 }
 
 
