@@ -33,6 +33,9 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
   double adj = 0.918938533204672669541*((double)adjLik);
   if (isM2(cens, lim)) {
     // M2 adds likelihood even when the observation is defined
+    // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit
+    // So the negative represents the fact this is the denominator
+    // The M2 can also be applied for quantitation above the limit.
     return ll - log(1.0 - PHI(((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r))) - adj;
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
@@ -48,7 +51,19 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
   }
   return ll;
 }
-
+// Calculate the censoring derivative
+//
+// @param cens Censoring input value, can be -1, 0, or 1, based on the CENS column
+// @param limDv represents the limit captured in the DV column
+// @param lim represents the upper or lower limit based on the LIMIT column
+// @param dll is the derivative of the log-liklihood if this was not censored
+// @param f is the prediction
+// @param r is the variance estimate
+// @param df is the prediction derivative
+// @param dr is the variance derivative
+// @return the derivatives of  the log-likelihood considering any adjustments from censoring for a normal distribution
+//
+// @noRd
 static inline double dCensNormal1(double cens, double limDv, double lim,
                                   double dll,
                                   double f, double r,
