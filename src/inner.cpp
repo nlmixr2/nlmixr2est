@@ -1010,7 +1010,7 @@ double likInner0(double *eta, int id){
                   fpm = a(k, i);
                 }
                 double lpCur = -0.5 * err * fpm * B(k, 0);
-                lp(i, 0) = dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
+                lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
               }
               op->neq = oldNeq;
               // Eq #10
