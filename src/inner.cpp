@@ -4,6 +4,7 @@
 #include "armahead.h"
 #include "utilc.h"
 #include <lbfgsb3c.h>
+#include "censEst.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -681,24 +682,6 @@ static inline void likM2(focei_ind *fInd, double& limit, double&f, double &r) {
   }
 }
 
-static inline void likCens(focei_ind *fInd, int &cens, double& limit, double&f, double& dv, double &r) {
-  if (R_FINITE(limit)  && !ISNA(limit)){
-    double sd = _safe_sqrt(r);
-    double cum1 = PHI((double)(cens)*(dv-f)/sd);
-    double cum2 = PHI((double)(cens)*(limit-f)/sd);
-    fInd->llik += log(cum1-cum2)-log(1.0 - cum2);
-  } else {
-    fInd->llik += log(PHI((double)(cens)*(dv-f)/_safe_sqrt(r)));
-  }
-  if (op_focei.adjLik) {
-    // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
-    //fInd->llik += 0.5*log(M_2PI);
-    fInd->llik -= 0.918938533204672669541;
-  }
-
-}
-
-
 typedef void (*gill83fn_type)(double *fp, double *theta, int id);
 
 void gill83fnF(double *fp, double *theta, int);
@@ -1013,19 +996,9 @@ double likInner0(double *eta, int id){
           }
           if (op_focei.neta == 0) {
             lnr =_safe_log(r);
-            //llik <- -0.5 * sum(err ^ 2 / R + log(R));
-            if (cens == 0){
-              fInd->llik += err * err/_safe_zero(r) + lnr;
-              likM2(fInd, limit, f, r);
-              if (!op_focei.adjLik) {
-                // Add 0.5*log(2*pi)
-                //fInd->llik += 0.5*log(M_2PI);
-                fInd->llik -= 0.918938533204672669541;
-
-              }
-            } else if (cens != 0) {
-              likCens(fInd, cens, limit, f, dv, r);
-            }
+            double ll = err * err/_safe_zero(r) + lnr;
+            fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
+                                        (int)op_focei.adjLik);
           } else if (op_focei.fo == 1) {
             // FO
             B(k, 0) = err; // res
@@ -1122,16 +1095,8 @@ double likInner0(double *eta, int id){
               op->neq = oldNeq;
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
-              if (cens == 0){
-                fInd->llik += err * err/_safe_zero(r) + lnr;
-                likM2(fInd, limit, f, r);
-                if (!op_focei.adjLik) {
-                  // Add 0.5*log(2*pi)
-                  fInd->llik += 0.5*log(M_2PI);
-                }
-              } else if (cens != 0) {
-                likCens(fInd, cens, limit, f, dv, r);
-              }
+              double ll = err * err/_safe_zero(r) + lnr;
+              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
                 if (op_focei.etaFD[i]==0){
@@ -1171,16 +1136,8 @@ double likInner0(double *eta, int id){
               op->neq = oldNeq;
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
-              if (cens == 0){
-                fInd->llik += err * err/_safe_zero(r) + lnr;
-                likM2(fInd, limit, f, r);
-                if (!op_focei.adjLik) {
-                  // Add 0.5*log(2*pi)
-                  fInd->llik += 0.5*log(M_2PI);
-                }
-              } else {
-                likCens(fInd, cens, limit, f, dv, r);
-              }
+              double ll = err * err/_safe_zero(r) + lnr;
+              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
             }
           }
           // k--;
