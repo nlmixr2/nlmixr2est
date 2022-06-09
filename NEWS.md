@@ -5,6 +5,7 @@
 - FOCEi censoring fixes:
   - M4 method equation bug fix
   - M4 method derivative change based on equation fix
+  - M2 method added missing derivative 
   - Censoring already dTBS
 
 - SAEM Censoring fixes:
