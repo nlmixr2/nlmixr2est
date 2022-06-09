@@ -286,7 +286,7 @@
   "theta"="fixef",
   "varFix"="cov",
   "thetaMat"="cov",
-  "modelName"="model.name",
+  "model.name"="modelName",
   "dataName"="data.name",
   "saem.cfg"="saemCfg",
   "objf"="objective",

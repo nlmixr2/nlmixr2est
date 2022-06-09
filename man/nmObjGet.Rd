@@ -3,6 +3,7 @@
 \name{nmObjGet}
 \alias{nmObjGet}
 \alias{nmObjGet.default}
+\alias{nmObjGet.modelName}
 \alias{nmObjGet.cor}
 \alias{nmObjGet.omegaR}
 \alias{nmObjGet.dataSav}
@@ -39,6 +40,8 @@
 nmObjGet(x, ...)
 
 \method{nmObjGet}{default}(x, ...)
+
+\method{nmObjGet}{modelName}(x, ...)
 
 \method{nmObjGet}{cor}(x, ...)
 
