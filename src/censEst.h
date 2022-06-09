@@ -82,7 +82,6 @@ D(S("log(1-0.5*(1+erf(((f(x)-lim)/sqrt(r(x)))/sqrt(2))))"),"x")
       double rx_expr_1 =_safe_sqrt(r);
       double rx_expr_2 =(0.5)*rx_expr_0;
   return dll -exp((-0.5)*((-lim+f)*(-lim+f))/_safe_zero(r))*(rx_expr_2*df/_safe_zero(rx_expr_1)+(-0.25)*rx_expr_0*dr*(-lim+f)/_safe_zero(R_pow(_as_dbleps(r),(1.5))))/_safe_zero((M_SQRT_PI*(1-0.5*(1+erf(rx_expr_2*(-lim+f)/_safe_zero(rx_expr_1))))));
-
     }
   } else if (isM3orM4(cens)) {
     // M3 and M4 has no contribution based on the "normal" likelihood slope
@@ -168,7 +167,6 @@ rxOptExpr(x)
     }
   }
   return dll;
-  
 }
 
 #undef hasFiniteLimit
