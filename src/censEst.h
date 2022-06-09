@@ -174,5 +174,8 @@ rxOptExpr(x)
 #undef isM3orM4
 #undef PHI
 #undef _safe_zero
+#undef _safe_sqrt
+#undef _as_dbleps
+
 
 #endif // __CENSEST_H__
