@@ -65,9 +65,23 @@
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
-    <p></p>
-<p></p>
-    </div>
+    <dl><dt>model</dt>
+<dd><p>model list should have at least:</p>
+<p>- `predOnly` -- this is the prediction model with all the left
+   handed equations added so they will be added the table.  The
+   model should have `rx_pred_`, the model based prediction, as the
+   first defined lhs component.  The second component should be
+   `rx_r_`, the variance of the prediction.  These variables may
+   change based on distribution type.  In additional all
+   interesting calculated variables should be included.</p>
+<p>- `predNoLhs` -- This is the prediction model.  It only has the
+   prediction and no left handed equations.</p></dd>
+
+
+<dt>env</dt>
+<dd><p>Environment for the fit information</p></dd>
+
+</dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     

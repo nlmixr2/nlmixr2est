@@ -73,23 +73,99 @@
 
     <div class="section level2">
     <h2 id="arguments">Arguments<a class="anchor" aria-label="anchor" href="#arguments"></a></h2>
-    <p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-<p></p>
-    </div>
+    <dl><dt>npde</dt>
+<dd><p>When TRUE, request npde regardless of the algorithm used.</p></dd>
+
+
+<dt>cwres</dt>
+<dd><p>When TRUE, request CWRES and FOCEi likelihood
+regardless of the algorithm used.</p></dd>
+
+
+<dt>nsim</dt>
+<dd><p>represents the number of simulations.  For rxode2, if
+you supply single subject event tables (created with
+<code>[eventTable()]</code>)</p></dd>
+
+
+<dt>ties</dt>
+<dd><p>When `TRUE` jitter prediction-discrepancy points to discourage ties in cdf.</p></dd>
+
+
+<dt>censMethod</dt>
+<dd><p>Handle censoring method:</p>
+<p>- `"truncated-normal"` Simulates from a truncated normal distribution under the assumption of the model and censoring.</p>
+<p>- `"cdf"` Use the cdf-method for censoring with npde and use this for any other residuals (`cwres` etc)</p>
+<p>- `"omit"` omit the residuals for censoring</p></dd>
+
+
+<dt>seed</dt>
+<dd><p>an object specifying if and how the random number
+generator should be initialized</p></dd>
+
+
+<dt>cholSEtol</dt>
+<dd><p>The tolerance for the `rxode2::choleSE` function</p></dd>
+
+
+<dt>state</dt>
+<dd><p>is a Boolean indicating if `state` values will be included (default `TRUE`)</p></dd>
+
+
+<dt>lhs</dt>
+<dd><p>is a Boolean indicating if remaining `lhs` values will be included (default `TRUE`)</p></dd>
+
+
+<dt>eta</dt>
+<dd><p>is a Boolean indicating if `eta` values will be included (default `TRUE`)</p></dd>
+
+
+<dt>covariates</dt>
+<dd><p>is a Boolean indicating if covariates will be included (default `TRUE`)</p></dd>
+
+
+<dt>addDosing</dt>
+<dd><p>Boolean indicating if the solve should add rxode2
+EVID and related columns.  This will also include dosing
+information and estimates at the doses.  Be default, rxode2
+only includes estimates at the observations. (default
+<code>FALSE</code>). When <code>addDosing</code> is <code>NULL</code>, only
+include <code>EVID=0</code> on solve and exclude any model-times or
+<code>EVID=2</code>. If <code>addDosing</code> is <code>NA</code> the classic
+<code>rxode2</code> EVID events are returned. When <code>addDosing</code> is <code>TRUE</code>
+add the event information in NONMEM-style format; If
+<code>subsetNonmem=FALSE</code> rxode2 will also include extra event types
+(<code>EVID</code>) for ending infusion and modeled times:</p><ul><li><p><code>EVID=-1</code> when the modeled rate infusions are turned
+off (matches <code>rate=-1</code>)</p></li>
+<li><p><code>EVID=-2</code> When the modeled duration infusions are
+turned off (matches <code>rate=-2</code>)</p></li>
+<li><p><code>EVID=-10</code> When the specified <code>rate</code> infusions are
+turned off (matches <code>rate&gt;0</code>)</p></li>
+<li><p><code>EVID=-20</code> When the specified <code>dur</code> infusions are
+turned off (matches <code>dur&gt;0</code>)</p></li>
+<li><p><code>EVID=101,102,103,...</code> Modeled time where 101 is the
+first model time, 102 is the second etc.</p></li>
+</ul></dd>
+
+
+<dt>subsetNonmem</dt>
+<dd><p>subset to NONMEM compatible EVIDs only.  By
+default <code>TRUE</code>.</p></dd>
+
+
+<dt>cores</dt>
+<dd><p>Number of cores used in parallel ODE solving.  This
+is equivalent to calling <code><a href="https://nlmixr2.github.io/rxode2/reference/getRxThreads.html" class="external-link">setRxThreads()</a></code></p></dd>
+
+
+<dt>keep</dt>
+<dd><p>is the keep sent to the table</p></dd>
+
+
+<dt>drop</dt>
+<dd><p>is the dropped variables sent to the table</p></dd>
+
+</dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     
