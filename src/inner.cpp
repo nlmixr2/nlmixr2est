@@ -13,8 +13,6 @@
 #define _(String) (String)
 #endif
 
-// Cumulative distribution function of a standardized normal distribution (mean
-// of zero, standard deviation of 1); x = (value - mean)/standard deviation
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
