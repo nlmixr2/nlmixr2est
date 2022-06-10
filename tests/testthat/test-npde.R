@@ -44,6 +44,9 @@ nmTest({
 
     expect_true(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
 
+    expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
+
+
   })
 
 })
