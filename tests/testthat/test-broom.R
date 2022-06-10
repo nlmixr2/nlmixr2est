@@ -150,6 +150,7 @@ nmTest({
 
     expect_equal(td1, td2)
     expect_equal(td2, td3)
+
   })
 
   skip_on_cran()
@@ -160,6 +161,7 @@ nmTest({
     fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
 
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
+
       td <- broom.mixed::tidy(fitF, exponentiate = NA)
       check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
       expect_equal(
@@ -217,6 +219,7 @@ nmTest({
         expect_equal(td1, td2)
         expect_equal(td2, td3)
       }
+
       ##
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = NA)
       td1 <- td$estimate
@@ -346,6 +349,7 @@ nmTest({
   fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc")))
 
   test_that("tidy works on posthoc fit fits", {
+
     td <- broom.mixed::tidy(fitP, exponentiate = NA)
     check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
     expect_equal(td$term, c(
@@ -382,10 +386,12 @@ nmTest({
       0.45, 1, 3.45,
       0.774596669241483, 0.547722557505166, 0.316227766016838, 0.7
     ), tolerance = tol)
+
     expect_equal(setNames(td$std.error, NULL),
                  c(NA_real_, NA_real_, NA_real_, NA_real_, NA_real_, NA_real_, NA_real_),
                  tolerance = tol
                  )
+
     expect_equal(td$conf.low, c(
       NA_real_, NA_real_, NA_real_, NA_real_, NA_real_, NA_real_,
       NA_real_

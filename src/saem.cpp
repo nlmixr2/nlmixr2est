@@ -7,6 +7,7 @@
 #include <RcppArmadillo.h>
 #include <rxode2.h>
 #include "utilc.h"
+#include "censEst.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -1843,24 +1844,9 @@ private:
     mphi1.mprior_phiM = repmat(mprior_phi1,nmc,1);
   }
 
-  void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
+  static inline void doCens(mat &DYF, vec &cens, vec &limit, vec &fc, vec &r, const vec &dv) {
     for (int j = (int)cens.size(); j--;) {
-      double lim = limit[j];
-      if (cens[j] == 0.0) {
-        // M2 adds likelihood even when the observation is defined
-        if (R_FINITE(lim) && !ISNA(lim)) {
-          DYF(j) = DYF(j) - log(1.0 - PHI(((lim<fc[j])*2.0 - 1.0)*(lim - fc[j])/sqrt(r[j])));
-        }
-      } else if (cens[j] == 1.0 || cens[j] == -1.0) {
-        if (R_FINITE(lim) && !ISNA(lim)) {
-          double sd = sqrt(r[j]);
-          double cum1 = PHI(((double)(cens[j])*(dv[j]-fc[j]))/sd);
-          double cum2 = PHI((double)(cens[j])*(lim - fc[j])/sd);
-          DYF(j) = log(cum1-cum2) - log(1.0 - cum2);
-        } else {
-          DYF(j) = log(PHI(((double)(cens[j])*(dv[j]-fc[j]))/sqrt(r[j])));
-        }
-      }
+      DYF(j) = doCensNormal1(cens[j], dv[j], limit[j], DYF(j), fc[j], r[j], 0);
     }
   }
 
