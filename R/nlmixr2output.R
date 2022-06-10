@@ -84,7 +84,7 @@
   })
 }
 
-#' This gest the CV/SD for a single ETA
+#' This gets the CV/SD for a single ETA
 #'
 #'
 #' @param .eta Eta Name
@@ -536,7 +536,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # In the case of nlme, it estimates the whole covariance matrix, even if you don't want it to.
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
-  if (!is.null(.omega)) {
+  if (is.null(.omega)) {
+    assign("iniDf", .iniDf, envir=.ui)
+  } else {
     .lotri <- lotri::as.lotri(.iniDf)
     attr(.omega, "lotriEst") <- attr(.lotri, "lotriEst")
     class(.omega) <- class(.lotri)
