@@ -40,8 +40,6 @@
 //#define _safe_sqrt(a) sqrt(a)
 #define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
 
-
-
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
 #define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
 

@@ -1158,6 +1158,17 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiFitInternal <- function(.ret) {
+  if (exists("objective", .ret)) {
+    checkmate::assertNumeric(.ret$objective, len=1, any.missing=FALSE, .var.name="fitEnv$objective")
+  }
+  if (exists("etaObf", .ret)) {
+    checkmate::assertDataFrame(.ret$etaObf, .var.name="fitEnv$etaObf")
+    if (!(names(.ret$etaObf)[1] == "ID")) {
+      stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
+           call.=FALSE)
+    }
+    checkmate::assertInteger(.ret$etaObf$ID, any.missing=FALSE, min=1, .var.name="fitEnv$etaObj$ID")
+  }
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
