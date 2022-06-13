@@ -1,5 +1,9 @@
 # nlmixr2est 2.XXXXX
 
+## New features
+
+- Add `pd`/`npd` as an output as well as `npd`/`npde`
+
 ## Censoring fixes
 
 - FOCEi censoring fixes:
