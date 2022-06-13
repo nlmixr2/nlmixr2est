@@ -1159,7 +1159,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @noRd
 .foceiFitInternal <- function(.ret) {
   if (exists("objective", .ret)) {
-    checkmate::assertNumeric(.ret$objective, len=1, any.missing=FALSE, .var.name="fitEnv$objective")
+    checkmate::assertNumeric(.ret$objective, len=1, .var.name="fitEnv$objective")
   }
   if (exists("etaObf", .ret)) {
     checkmate::assertDataFrame(.ret$etaObf, .var.name="fitEnv$etaObf")
@@ -1432,7 +1432,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     # focei is available; add objective function
     .setOfvFo(.ret, "focei")
   }
-
   .ret
 }
 
