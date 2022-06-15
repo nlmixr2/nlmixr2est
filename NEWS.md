@@ -1,4 +1,4 @@
-# nlmixr2est 2.XXXXX
+# nlmixr2est 2.0.8
 
 ## New features
 
