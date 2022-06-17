@@ -181,8 +181,8 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   ret.ydsim = ret.matsim.rows(ret.obs);
   ret.varsim = cov(trans(ret.ydsim));
   Rcpp::wrap(wrap(ret.varsim));
-  ret.ymat = decorrelateNpdeMat(ret.varsim, ret.warn, id, tolChol);
-  ret.ymat2 = varNpdMat(ret.varsim);
+  ret.ymat = decorrelateNpdeMat(ret.varsim, ret.warn, id, tolChol); // pd= npd
+  ret.ymat2 = varNpdMat(ret.varsim); // pd2 = pd
   arma::mat ymatt = trans(ret.ymat);
   ret.ydsim.each_col() -= ret.epredt.elem(ret.obs);
   ret.ydsim2 = ret.ydsim;
@@ -293,6 +293,8 @@ calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
       ret.eres[j] = NA_REAL;
       ret.npde[j] = NA_REAL;
       ret.npd[j] = NA_REAL;
+      ret.pd[j] = NA_REAL;
+      ret.pd2[j] = NA_REAL;
     }
   }
   return ret;
@@ -402,11 +404,15 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
 
   SEXP npdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   SEXP npdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
+  SEXP pdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
+  SEXP pdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   SEXP epredSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   SEXP dvSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   SEXP eresSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   arma::vec npde(REAL(npdeSEXP), dvLen, false, true);
   arma::vec npd(REAL(npdSEXP), dvLen, false, true);
+  arma::vec pde(REAL(npdeSEXP), dvLen, false, true);
+  arma::vec pd(REAL(npdSEXP), dvLen, false, true);
   arma::vec epred(REAL(epredSEXP), dvLen, false, true);
   arma::vec dvf(REAL(dvSEXP), dvLen, false, true);
   arma::vec eres(REAL(eresSEXP), dvLen, false, true);
@@ -419,6 +425,8 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
                                        lambda, yj, hi, low);
     npde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.npde;
     npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
+    pde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.pd;
+    pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
     epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
     dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
     eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
@@ -513,12 +521,14 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
     Rf_warningcall(R_NilValue, _("npde decorrelation failed (return normalized prediction discrepancies) for %.1f%% id: %s"), rPD*100, sPD.c_str());
   }
   
-  List ret(4);
+  List ret(6);
   // epred, eres, npde, dv
   ret[0] = List::create(_["EPRED"]=epred);
   ret[1] = List::create(_["ERES"]=eres);
   ret[2] = List::create(_["NPDE"]=npde);
   ret[3] = List::create(_["NPD"]=npd);
+  ret[4] = List::create(_["PDE"]=pde);
+  ret[5] = List::create(_["PD"]=pd);
   SEXP ret2 = PROTECT(dfCbindList(wrap(ret))); pro++;
   UNPROTECT(pro);
   return List::create(dvf, ret2);

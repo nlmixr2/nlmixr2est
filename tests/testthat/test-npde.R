@@ -28,21 +28,27 @@ nmTest({
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
-    expect_false(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
+    expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
     suppressMessages(expect_error(addNpde(fit), NA))
-    expect_true(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
+    expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
+    .range1 <- range(fit$PDE)
+    .range2 <- range(fit$PD)
+    expect_true(.range1[1] > 0)
+    expect_true(.range2[1] > 0)
+    expect_true(.range1[2] < 1)
+    expect_true(.range2[2] < 1)
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
-    expect_false(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
+    expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
     fit2 <- suppressMessages(addNpde(fit, updateObject=FALSE))
-    expect_false(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
-    expect_true(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit2)))
+    expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
+    expect_true(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit2)))
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem",
                    table=tableControl(npde=TRUE))
 
-    expect_true(all(c("EPRED","ERES","NPDE","NPD") %in% names(fit)))
+    expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE","PD") %in% names(fit)))
 
   })
 
