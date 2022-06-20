@@ -129,10 +129,10 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
 
 #' @rdname nlmixr2AugPredSolve
 #' @export
-augPred.nlmixr2FitData <- memoise::memoise(function(object, primary = NULL, minimum = NULL, maximum = NULL,
+augPred.nlmixr2FitData <- function(object, primary = NULL, minimum = NULL, maximum = NULL,
                                                     length.out = 51, ...) {
   nlmixr2AugPredSolve(
     fit=object, minimum = minimum, maximum = maximum,
     length.out = length.out, ...
   )
-})
+}

@@ -208,6 +208,7 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
 tidy.nlmixr2FitCore <- function(x, ...) {
   rxode2::rxReq("tibble")
+  rxode2::rxReq("dplyr")
   .extra <- list(...)
   if (any(names(.extra) == "effects")) {
     .effects <- .extra$effects
