@@ -1,5 +1,6 @@
 test_that("between session saem ll works", {
 
+
   deparse(quote({
     library(nlmixr2est)
     rxode2::rxClean()
@@ -24,7 +25,7 @@ test_that("between session saem ll works", {
         linCmt() ~ add(add.sd)
       })
     }
-    fit <- nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0))
     saveRDS(fit, "fit.rds")
   })) -> src
 
@@ -39,6 +40,6 @@ test_that("between session saem ll works", {
     readRDS("fit.rds")
   })
 
-  expect_true(is.numeric(fit$objf))
+  expect_true(is.numeric(rds$objf))
 
 })
