@@ -38,6 +38,23 @@ nmTest({
     expect_true(.range1[2] < 1)
     expect_true(.range2[2] < 1)
 
+    .range1 <- range(fit$NPDE)
+    .range2 <- range(fit$NPD)
+    .range3 <- range(fit$ERES)
+
+    expect_true(.range1[1] < -2)
+    expect_true(.range2[1] < -2)
+    expect_true(.range3[1] < -2)
+    expect_true(.range1[2] > 2)
+    expect_true(.range2[2] > 2)
+    expect_true(.range3[2] > 2)
+
+    .range4 <- range(fit$EPRED)
+    expect_true(.range4[1] > -0.1)
+    expect_true(.range4[2] > 7)
+
+
+
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
