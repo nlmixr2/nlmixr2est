@@ -18,6 +18,11 @@
 
 - Censoring handling was unified
 
+## Internal changes
+
+- Added `ui$getSplitMuModel` which is used in `babelmixr2` and will be
+  used in the refined stepwise covariate selection of `nlmixr2extra`
+
 # nlmixr2est 2.0.7
 
 - Use `.zeros()` for the matrices in armadillo in addition to relying
