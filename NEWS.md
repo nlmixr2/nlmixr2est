@@ -23,6 +23,9 @@
 - Added `ui$getSplitMuModel` which is used in `babelmixr2` and will be
   used in the refined stepwise covariate selection of `nlmixr2extra`
 
+- Added work-around to remove `_nlmixr2est_RcppExport_registerCCallable`
+  since the registering of C callable are handled manually at the moment.
+
 # nlmixr2est 2.0.7
 
 - Use `.zeros()` for the matrices in armadillo in addition to relying
