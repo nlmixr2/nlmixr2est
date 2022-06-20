@@ -411,8 +411,8 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   SEXP eresSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
   arma::vec npde(REAL(npdeSEXP), dvLen, false, true);
   arma::vec npd(REAL(npdSEXP), dvLen, false, true);
-  arma::vec pde(REAL(npdeSEXP), dvLen, false, true);
-  arma::vec pd(REAL(npdSEXP), dvLen, false, true);
+  arma::vec pde(REAL(pdeSEXP), dvLen, false, true);
+  arma::vec pd(REAL(pdSEXP), dvLen, false, true);
   arma::vec epred(REAL(epredSEXP), dvLen, false, true);
   arma::vec dvf(REAL(dvSEXP), dvLen, false, true);
   arma::vec eres(REAL(eresSEXP), dvLen, false, true);
