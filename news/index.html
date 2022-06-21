@@ -51,6 +51,14 @@
 <ul><li>Add <code>pd</code>/<code>npd</code> as an output as well as <code>npd</code>/<code>npde</code>
 </li></ul></div>
 <div class="section level3">
+<h3 id="saem-bug-fix-2-0-8">SAEM bug fix<a class="anchor" aria-label="anchor" href="#saem-bug-fix-2-0-8"></a></h3>
+<ul><li>When loading a <code>nlmixr2</code> “saem” fit from another R session, <code>nlmixr2</code> will no longer crash with <code>fit$objf</code>
+</li></ul></div>
+<div class="section level3">
+<h3 id="npdenpd-fixes-2-0-8">NPDE/NPD fixes<a class="anchor" aria-label="anchor" href="#npdenpd-fixes-2-0-8"></a></h3>
+<ul><li>
+<code>NPDE</code> was identical to <code>NPD</code> even with correlated models, this was fixed (prior output was actually <code>NPDE</code>).</li></ul></div>
+<div class="section level3">
 <h3 id="censoring-fixes-2-0-8">Censoring fixes<a class="anchor" aria-label="anchor" href="#censoring-fixes-2-0-8"></a></h3>
 <ul><li>FOCEi censoring fixes:<ul><li>M4 method equation bug fix</li>
 <li>M4 method derivative change based on equation fix</li>
