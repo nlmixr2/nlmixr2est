@@ -193,18 +193,21 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   // sim < obs
   ret.tcomp = ret.ydsim;
   ret.tcomp2 = ret.ydsim2;
+
   for (unsigned int j = K; j--;) {
     for (unsigned int i = ret.ydsim.n_rows; i--;) {
       ret.tcomp(i, j) = ret.tcomp(i, j) < ret.ydobs[i];
       ret.tcomp2(i, j) = ret.tcomp2(i, j) < ret.ydobs2[i];
     }
   }
+
   arma::mat pdObs = mean(ret.tcomp, 1);
   arma::mat pdObs2 = mean(ret.tcomp2, 1);
+
   ret.pd = arma::mat(ret.matsim.n_rows, 1, fill::zeros);
   ret.pd2 = arma::mat(ret.matsim.n_rows, 1, fill::zeros);
   ret.pd.rows(ret.obs) = pdObs;
-  ret.pd2.rows(ret.obs) = pdObs;
+  ret.pd2.rows(ret.obs) = pdObs2;
 }
 
 static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit, int &censMethod, bool &doLimit,

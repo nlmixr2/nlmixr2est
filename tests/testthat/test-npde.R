@@ -42,12 +42,12 @@ nmTest({
     .range2 <- range(fit$NPD)
     .range3 <- range(fit$ERES)
 
-    expect_true(.range1[1] < -2)
-    expect_true(.range2[1] < -2)
-    expect_true(.range3[1] < -2)
-    expect_true(.range1[2] > 2)
-    expect_true(.range2[2] > 2)
-    expect_true(.range3[2] > 2)
+    expect_true(.range1[1] < -1.7)
+    expect_true(.range2[1] < -1.7)
+    expect_true(.range3[1] < -1.7)
+    expect_true(.range1[2] > 1.7)
+    expect_true(.range2[2] > 1.7)
+    expect_true(.range3[2] > 1.7)
 
     .range4 <- range(fit$EPRED)
     expect_true(.range4[1] > -0.1)
@@ -66,6 +66,40 @@ nmTest({
                    table=tableControl(npde=TRUE))
 
     expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE","PD") %in% names(fit)))
+
+  })
+
+  test_that("pheno", {
+
+    pheno <- function() {
+      ini({
+        tcl <- log(0.008) # typical value of clearance
+        tv <-  log(0.6)   # typical value of volume
+        ## var(eta.cl)
+        eta.cl + eta.v ~ c(1,
+                           0.01, 1) ## cov(eta.cl, eta.v), var(eta.v)
+        # interindividual variability on clearance and volume
+        add.err <- 0.1    # residual variability
+      })
+      model({
+        cl <- exp(tcl + eta.cl) # individual value of clearance
+        v <- exp(tv + eta.v)    # individual value of volume
+        ke <- cl / v            # elimination rate constant
+        d/dt(A1) = - ke * A1    # model differential equation
+        cp = A1 / v             # concentration in plasma
+        cp ~ add(add.err)       # define error model
+      })
+    }
+
+    fit <- nlmixr(pheno, pheno_sd, "saem", control=list(print=0), table=list(npde=TRUE))
+
+
+    # Since there is a correlation here the npde and npd
+
+    expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
+    expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
+
+
 
   })
 
