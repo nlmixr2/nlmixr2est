@@ -1,30 +1,40 @@
-# Comments from CRAN
+# Bugfix submission
 
-still uninitialized use plus memory leaks in the package's own code
-(and more in system libs which may reflect how they are used)
+## New features
 
-Please fix and resubmit.
+- Add `pd`/`npd` as an output as well as `npd`/`npde`
 
-# Response
+## SAEM bug fix
 
-Found the uninitialized value and retested everything using valgrind.
+- When loading a `nlmixr2` "saem" fit from another R session,
+  `nlmixr2` will no longer crash with `fit$objf`
 
-There were no uninitialized values on my system.  The following was the printout at the end:
+## NPDE/NPD fixes
 
-==20283== LEAK SUMMARY:
-==20283==    definitely lost: 0 bytes in 0 blocks
-==20283==    indirectly lost: 0 bytes in 0 blocks
-==20283==      possibly lost: 197,221 bytes in 6,400 blocks
-==20283==    still reachable: 879,637,475 bytes in 212,314 blocks
-==20283==                       of which reachable via heuristic:
-==20283==                         newarray           : 4,264 bytes in 1 blocks
-==20283==         suppressed: 0 bytes in 0 blocks
-==20283== Reachable blocks (those to which a pointer was found) are not shown.
-==20283== To see them, rerun with: --leak-check=full --show-leak-kinds=all
-==20283== 
-==20283== For lists of detected and suppressed errors, rerun with: -s
-==20283== ERROR SUMMARY: 304 errors from 304 contexts (suppressed: 0 from 0)
+- `NPDE` was identical to `NPD` even with correlated models, this was
+  fixed (prior output was actually `NPDE`).
 
+## Censoring fixes
 
-All of these memory issues came from udunits but not anything from
-within nlmixr2est.
+- FOCEi censoring fixes:
+  - M4 method equation bug fix
+  - M4 method derivative change based on equation fix
+  - M2 method added missing derivative 
+  - Censoring already dTBS
+
+- SAEM Censoring fixes:
+  - SAEM method M4 method equation bug fix
+  - Censoring limit changed to dTBS
+
+- Censoring handling was unified
+
+## Internal changes
+
+- Added `ui$getSplitMuModel` which is used in `babelmixr2` and will be
+  used in the refined stepwise covariate selection of `nlmixr2extra`
+
+- Added work-around to remove
+  `_nlmixr2est_RcppExport_registerCCallable` for the most recent
+  `Rcpp` since the registering of C callable are handled manually at
+  the moment.
+
