@@ -56,9 +56,7 @@ rxUiGet.saemCovars <- function(x, ...) {
 #attr(rxUiGet.saemInPars, "desc") <- "get saemn mu-referenced non-time varying covariates"
 
 #' @export
-rxUiGet.saemFunction <- function(x, ...) {
-  # This function depends on the number of time varying covariates in the data
-  .ui <- x[[1]]
+rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
   .mod <- rxode2::rxode2(rxUiGet.saemModel(x, ...))
   .fnPred <- bquote(function(a, b, c) {
     rxode2::rxLoad(.(.mod))
@@ -71,6 +69,16 @@ rxUiGet.saemFunction <- function(x, ...) {
     })
     .Call(`_nlmixr2est_saem_do_pred`, a, b, c)
   })
+  list(.mod, .fnPred)
+}
+
+#' @export
+rxUiGet.saemFunction <- function(x, ...) {
+  # This function depends on the number of time varying covariates in the data
+  .ui <- x[[1]]
+  .mod <- rxUiGet.saemFunctionModPredQuote(x, ...)
+  .fnPred <- .mod[[2]]
+  .mod <- .mod[[1]]
   .fn <- bquote(function(a, b, c) {
     rxode2::rxLoad(.(.mod))
     rxode2::rxLock(.(.mod))

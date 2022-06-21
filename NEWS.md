@@ -4,6 +4,16 @@
 
 - Add `pd`/`npd` as an output as well as `npd`/`npde`
 
+## SAEM bug fix
+
+- When loading a `nlmixr2` "saem" fit from another R session,
+  `nlmixr2` will no longer crash with `fit$objf`
+
+## NPDE/NPD fixes
+
+- `NPDE` was identical to `NPD` even with correlated models, this was
+  fixed (prior output was actually `NPDE`).
+
 ## Censoring fixes
 
 - FOCEi censoring fixes:

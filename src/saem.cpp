@@ -2085,6 +2085,19 @@ mv_t rxModelVarsS;
 
 void setupRx(List &opt, SEXP evt, SEXP evtM) {
   RObject obj = opt[".rx"];
+  bool doIni = false;
+  if (getRx_ == NULL) {
+    getRx_ = (getRxSolve_t) R_GetCCallable("rxode2","getRxSolve_");
+    getTimeS = (getTime_t) R_GetCCallable("rxode2", "getTime");
+    getRxLhs = (getRxLhs_t) R_GetCCallable("rxode2","getRxLhs");
+    sortIds = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
+    getUpdateInis = (getUpdateInis_t) R_GetCCallable("rxode2", "getUpdateInis");
+    saem_solve = (par_solve_t) R_GetCCallable("rxode2","par_solve");
+    iniSubjectE = (iniSubjectE_t) R_GetCCallable("rxode2","iniSubjectE");
+    rxGetIdS = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
+    rxModelVarsS = (mv_t)R_GetCCallable("rxode2", "_rxode2_rxModelVars_");
+    doIni=true;
+  }
   List mv = rxModelVarsS(obj);
   parNames = mv[RxMv_params];
 
@@ -2123,6 +2136,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   setupRx(opt, in_evt, in_evt);
   saem_lhs = getRxLhs();
   saem_inis = getUpdateInis();
+  _rx=getRx_();
   mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
   mat gMat = user_function(phi, evt, opt);
