@@ -1,6 +1,5 @@
 test_that("between session saem ll works", {
 
-
   deparse(quote({
     library(nlmixr2est) #nolint
     rxode2::rxClean()

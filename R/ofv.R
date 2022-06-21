@@ -85,15 +85,7 @@ setOfv <- function(x, type) {
         } else {
           stop("cannot switch objective function to '", type, "' type", call. = FALSE)
         }
-        .mod <- x$ui$saemFunctionModPredQuote
-        .saem <- x$saem
-        attr(.saem, "dopred") <- function(a, b, c) {
-          .Call(`_nlmixr2est_saem_do_pred`, a, b, c)
-        }
-        .cfg <- attr(.saem, "saem.cfg")
-        .cfg$opt$.rx <- .mod[[1]]
-        attr(.saem, "saem.cfg") <- .cfg
-        .saemObf <- calc.2LL(.saem, nnodes.gq = .nnode, nsd.gq = .nsd, x$phiM)
+        .saemObf <- calc.2LL(x$saem, nnodes.gq = .nnode, nsd.gq = .nsd, x$phiM)
         .llik <- -.saemObf / 2
         .nobs <- .env$nobs
         attr(.llik, "df") <- attr(get("logLik", .env), "df")
