@@ -20,16 +20,9 @@ extern void nelder_fn(S_fp func, int n, double *start, double *step,
 /* .Call calls */
 extern SEXP neldermead_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 /* extern SEXP n1qn1_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP); */
-extern SEXP _nlmixr2est_llik_binomial_c(SEXP, SEXP, SEXP);
 extern SEXP slice_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 
-extern SEXP _nlmixr2est_llik_poisson(SEXP, SEXP);
-extern SEXP _nlmixr2est_llik_normal(SEXP, SEXP);
-extern SEXP _nlmixr2est_llik_betabinomial(SEXP, SEXP, SEXP);
-extern SEXP _nlmixr2est_llik_student_t(SEXP, SEXP);
-extern SEXP _nlmixr2est_llik_beta(SEXP, SEXP);
 extern SEXP _nlmixr2est_lin_cmt_stan(SEXP , SEXP , SEXP , SEXP , SEXP , SEXP , SEXP , SEXP , SEXP);
-extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 
 // FOCEi
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
@@ -85,13 +78,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"neldermead_wrap",      (DL_FUNC) &neldermead_wrap,      11},
   /* {"n1qn1_wrap",           (DL_FUNC) &n1qn1_wrap,           13}, */
   {"_nlmixr2est_lin_cmt_stan",  (DL_FUNC) &_nlmixr2est_lin_cmt_stan,   9},
-  {"_nlmixr2est_llik_binomial_c", (DL_FUNC) &_nlmixr2est_llik_binomial_c,  3},
-  {"_nlmixr2est_llik_poisson",  (DL_FUNC) &_nlmixr2est_llik_poisson,   2},
-  {"_nlmixr2est_llik_normal",   (DL_FUNC) &_nlmixr2est_llik_normal,    2},
-  {"_nlmixr2est_llik_betabinomial", (DL_FUNC) &_nlmixr2est_llik_betabinomial, 3},
-  {"_nlmixr2est_llik_student_t",  (DL_FUNC) &_nlmixr2est_llik_student_t, 2},
-  {"_nlmixr2est_llik_beta",     (DL_FUNC) &_nlmixr2est_llik_beta, 2},
-  {"_nlmixr2est_llik_neg_binomial", (DL_FUNC) &_nlmixr2est_llik_neg_binomial, 2},
   {"slice_wrap",           (DL_FUNC) &slice_wrap,            7},
   {"_nlmixr2est_nlmixr2Parameters", (DL_FUNC) &_nlmixr2est_nlmixr2Parameters, 2},
   // FOCEi

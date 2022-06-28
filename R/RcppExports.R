@@ -128,34 +128,6 @@ lin_cmt_stan <- function(obs_time, dose_time, dose, Tinf, params, oralSEXP, infu
     .Call(`_nlmixr2est_lin_cmt_stan`, obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP)
 }
 
-llik_binomial_c <- function(y, N, params) {
-    .Call(`_nlmixr2est_llik_binomial_c`, y, N, params)
-}
-
-llik_poisson <- function(y, params) {
-    .Call(`_nlmixr2est_llik_poisson`, y, params)
-}
-
-llik_normal <- function(y, params) {
-    .Call(`_nlmixr2est_llik_normal`, y, params)
-}
-
-llik_betabinomial <- function(y, N, params) {
-    .Call(`_nlmixr2est_llik_betabinomial`, y, N, params)
-}
-
-llik_student_t <- function(y, params) {
-    .Call(`_nlmixr2est_llik_student_t`, y, params)
-}
-
-llik_beta <- function(y, params) {
-    .Call(`_nlmixr2est_llik_beta`, y, params)
-}
-
-llik_neg_binomial <- function(y, params) {
-    .Call(`_nlmixr2est_llik_neg_binomial`, y, params)
-}
-
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
