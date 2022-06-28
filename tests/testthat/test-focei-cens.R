@@ -150,15 +150,21 @@ nmTest({
 
     f.foceL <- suppressMessages(suppressWarnings(nlmixr(f, datL, "posthoc", control = list(interaction = FALSE))))
     expect_false(isTRUE(all.equal(f.foce$objf, f.foceL$objf)))
-
     ct(f.foceiL4, "M2 and M4 censoring")
 
 
     f.foceL4 <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE))))
     expect_false(isTRUE(all.equal(f.foce$objf, f.foceL4$objf)))
     expect_false(isTRUE(all.equal(f.foceL$objf, f.foceL4$objf)))
-
     ct(f.foceiL4, "M2 and M4 censoring")
+
+    upperDat <- datL4
+    names(upperDat)[4] <- "CENS"
+    names(upperDat)[5] <- "LIMIT"
+
+    f.foceL4u <- suppressMessages(suppressWarnings(nlmixr(f, datL4, "posthoc", control = list(interaction = FALSE))))
+
+    expect_equal(names(f.foceL4u), names(f.foceL4))
 
   })
 
