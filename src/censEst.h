@@ -1,6 +1,15 @@
 #ifndef __CENSEST_H__
 #define __CENSEST_H__
 
+#define STRICT_R_HEADER
+#include <stdio.h>
+#include <stdarg.h>
+#include <thread>
+#include <chrono>
+#include <R_ext/Rdynload.h>
+#include <RcppArmadillo.h>
+
+
 // Cumulative distribution function of a standardized normal distribution (mean
 // of zero, standard deviation of 1); x = (value - mean)/standard deviation
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
@@ -13,6 +22,22 @@
 #define _safe_sqrt(a) ((a) <= 0 ? sqrt(DBL_EPSILON) : sqrt(a))
 #define _as_dbleps(a) (fabs(a) < sqrt(DBL_EPSILON) ? ((a) < 0 ? -sqrt(DBL_EPSILON)  : sqrt(DBL_EPSILON)) : a)
 
+
+#define censFlagM2 1
+#define censFlagM3 2
+#define censFlagM4 4
+
+extern int globalCensFlag;
+
+static inline void updateCensFlag(int censMethod) {
+  if ((globalCensFlag & censMethod) == 0) {
+    globalCensFlag += censMethod;
+  }
+}
+
+static inline void resetCensFlag() {
+  globalCensFlag=0;
+}
 
 // This is the core censoring likelihood function for nlmixr2
 //
@@ -28,7 +53,7 @@
 //
 // @noRd
 static inline double doCensNormal1(double cens, double limDv, double lim, double ll,
-                                   double f, double r, int adjLik){
+                                   double f, double r, int adjLik) {
   // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
   double adj = 0.918938533204672669541*((double)adjLik);
   if (isM2(cens, lim)) {
@@ -36,6 +61,7 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit
     // So the negative represents the fact this is the denominator
     // The M2 can also be applied for quantitation above the limit.
+    updateCensFlag(censFlagM2);
     return ll - log(1.0 - PHI(((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r))) - adj;
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
@@ -43,9 +69,11 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
       double sd = sqrt(r);
       double cum1 = PHI(cens*(limDv-f)/sd);
       double cum2 = PHI(cens*(lim - f)/sd);
+      updateCensFlag(censFlagM4);
       return log(cum1-cum2) - log(1.0 - cum2) - adj;
     } else {
       // M3 method
+      updateCensFlag(censFlagM3);
       return log(PHI(cens*(limDv-f)/sqrt(r))) - adj;
     }
   }
@@ -192,5 +220,10 @@ rxOptExpr(x)
 #undef _safe_sqrt
 #undef _as_dbleps
 
+#undef censFlagM2
+#undef censFlagM3
+#undef censFlagM4
+
+SEXP censEstGetFactor();
 
 #endif // __CENSEST_H__

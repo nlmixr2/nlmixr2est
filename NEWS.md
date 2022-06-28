@@ -1,3 +1,14 @@
+# nlmixr2est 2.0.9
+
+# New features
+
+- What type(s) censoring (if any) is now stored in `fit$censInformation`
+
+# Censoring fixes
+
+ - Fixed bug where datasets with censoring that are not lower case `cens` and `limit` do not
+   produce the correct table output (#180)
+
 # nlmixr2est 2.0.8
 
 ## New features

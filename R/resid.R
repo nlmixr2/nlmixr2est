@@ -27,6 +27,25 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 #attr(nmObjGet.foceiThetaEtaParameters, "desc") <- "nmObjGet.foceiThetaEtaParameters"
 
+#' This adjusts the names in the IPRED data frame to calculate censoring output correctly
+#'
+#' @param df ipred data frame
+#'
+#' @return ipred data frame with lower names dv, evid, cens, and limit
+#'   in lower case (regardless of input)
+#'
+#' @author Matthew L. Fidler
+#' @noRd
+.residAdjustIpredNames <- function(df) {
+  for (.v in c("dv", "evid", "cens", "limit")) {
+    .w <- which(tolower(names(df)) == .v)
+    if (length(.w) == 1L) {
+      names(df)[.w] <- .v
+    }
+  }
+  df
+}
+
 
 #' Solve making sure that ID is dropped
 #'
@@ -137,9 +156,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (predOnly) {
     .ipredModel <- fit$ipredModel
   }
-  .ret <- list(ipred = .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
-                                       returnType="data.frame.TBS", keep=.keep, what="ipred",
-                                       addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=predOnly),
+  .ret <- list(ipred = .residAdjustIpredNames(
+    .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred,
+                    returnType="data.frame.TBS", keep=.keep, what="ipred",
+                    addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=predOnly)),
                pred = .foceiSolvePars(fit, .ipredModel, thetaEtaParameters$pred,returnType="data.frame", what="pred",
                                       addDosing=addDosing, subsetNonmem=subsetNonmem),
                etaLst=thetaEtaParameters$eta.lst)
@@ -195,16 +215,13 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     if (predOnly){
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
-      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
+      .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),
+                         c("CMT","cmt","Cmt", .state, .lhs))
       .Call(`_nlmixr2est_resCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
     } else {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
-      ## .stateSave <- vapply(.state, function(s){
-      ##   regexpr("^rx__sens_", s) == -1
-      ## }, logical(1), USE.NAMES=FALSE)
-      ## .state <- .state[.stateSave]
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$predOnly)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),c("CMT","cmt","Cmt", .state, .lhs))
       .Call(`_nlmixr2est_cwresCalc`, .prdLst, fit$omega,
@@ -260,9 +277,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .n <- length(.eta) - 1
     .thetas <- c(.thetas, setNames(rep(0, .n), paste0("ETA[", seq_len(.n), "]")))
   }
-  .ipred <- .foceiSolvePars(fit, fit$ipredModel, .thetas,
-                            returnType="data.frame.TBS", keep=.keep, what="ipred",
-                            addDosing=addDosing, subsetNonmem=subsetNonmem)
+  .ipred <- .residAdjustIpredNames(.foceiSolvePars(fit, fit$ipredModel, .thetas,
+                                                   returnType="data.frame.TBS", keep=.keep, what="ipred",
+                                                   addDosing=addDosing, subsetNonmem=subsetNonmem))
   if (!inherits(dv, "numeric")) {
     dv <- .ipred$dv
     table$doSim <- TRUE

@@ -5322,6 +5322,8 @@ void parHistData(Environment e, bool focei){
 
 void foceiFinalizeTables(Environment e){
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
+  e["censInformation"] = censEstGetFactor();
+  resetCensFlag();
   arma::mat cov;
   bool covExists = e.exists("cov");
   if (covExists){
