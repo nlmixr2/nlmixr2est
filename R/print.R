@@ -289,10 +289,10 @@ print.nlmixr2FitCore <- function(x, ...) {
         } else if (!.noEta) {
           if (.boundChar + 43 < .width) {
             cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ")"), "\n")
-            cat("    or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)", "\n")
+            cat(paste0("    or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)", "\n"))
           } else {
             cat(paste0("  Full BSV covariance (", crayon::bold$blue("$omega"), ")\n"))
-            cat("    or correlation (", crayon::bold$blue("$omegaR"), "; diagonals=SDs)\n")
+            cat(paste0("    or correlation (", crayon::bold$blue("$omegaR"), "; diagonals=SDs)\n"))
           }
         }
       }
