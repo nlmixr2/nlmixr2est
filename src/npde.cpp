@@ -114,7 +114,8 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
 // This is similar to a truncated normal BUT the truncated normal handles the range (low,hi)
 // so instead of updating the DV based on cdf method, simply use the truncated normal
 // we also don't need to back-calculate the simulated DV value
-static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit, int &censMethod, bool &doLimit,
+static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit,
+                                     int &censMethod, bool &doLimit,
                                      unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
   if (censMethod != CENS_CDF) return;
   // For left censoring NPDE the probability is already calculated with the current pd
