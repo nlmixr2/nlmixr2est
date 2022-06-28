@@ -254,10 +254,12 @@ print.nlmixr2FitCore <- function(x, ...) {
     }
     cat(paste(.pf, collapse = "\n"), "\n")
     ## Correlations
-    cat(paste0(
-      "  Covariance Type (", crayon::yellow(.bound), crayon::bold$blue("$covMethod"), "): ",
-      crayon::bold(x$covMethod), "\n"
-    ))
+    if(x$covMethod != "") {
+      cat(paste0(
+        "  Covariance Type (", crayon::yellow(.bound), crayon::bold$blue("$covMethod"), "): ",
+        crayon::bold(x$covMethod), "\n"
+      ))
+    }
     if (exists("covList", x$env)) {
       cat("    other calculated covs (", crayon::bold$blue("setCov()"), "): ",
         paste(crayon::bold(names(x$env$covList)), collapse = ", "),
@@ -307,6 +309,10 @@ print.nlmixr2FitCore <- function(x, ...) {
           crayon::bold$blue("$shrink")
         ), "\n")
       }
+      cat(paste0(
+        "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
+        as.character(x$censInformation), "\n"
+      ))
     }
 
     if (x$message != "") {
@@ -371,10 +377,13 @@ print.nlmixr2FitCore <- function(x, ...) {
   } else {
     .bound <- ""
   }
-  .c <- c(paste0(
-    "  Covariance Type (", .bound, "$covMethod): ",
-    x$covMethod
-  ))
+  .c <- NULL
+  if (x$covMethod != "") {
+    .c <- c(.c, paste0(
+      "  Covariance Type (", .bound, "$covMethod): ",
+      x$covMethod
+    ))
+  }
   if (is.na(get("objective", x$env))) {
     .c <- c(
       .c,
@@ -389,6 +398,9 @@ print.nlmixr2FitCore <- function(x, ...) {
       )
     )
   }
+  .c <- c(.c, paste0(
+    "  Censoring: ",
+    as.character(x$censInformation)))
   if (x$message != "") {
     .c <- c(
       .c, paste0("  Minimization message (", .bound, "$message): "),
