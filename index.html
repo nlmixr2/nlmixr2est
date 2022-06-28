@@ -92,110 +92,110 @@
 </h2>
 <p>You can install the development version of nlmixr2est from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># install.packages("remotes")</span>
-<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2data"</span><span class="op">)</span>
-<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/lotri"</span><span class="op">)</span>
-<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span>
-<span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2est"</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2data"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/lotri"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2est"</span><span class="op">)</span></span></code></pre></div>
 <p>For most people, using nlmixr2 directly would be likely easier.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/nlmixr2/nlmixr2est" class="external-link">nlmixr2est</a></span><span class="op">)</span>
-<span class="co">#&gt; Loading required package: nlmixr2data</span>
-
-<span class="co">## The basic model consiss of an ini block that has initial estimates</span>
-<span class="va">one.compartment</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span>
-  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini</a></span><span class="op">(</span><span class="op">{</span>
-    <span class="va">tka</span> <span class="op">&lt;-</span> <span class="fl">0.45</span> <span class="co"># Log Ka</span>
-    <span class="va">tcl</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="co"># Log Cl</span>
-    <span class="va">tv</span> <span class="op">&lt;-</span> <span class="fl">3.45</span>    <span class="co"># Log V</span>
-    <span class="va">eta.ka</span> <span class="op">~</span> <span class="fl">0.6</span>
-    <span class="va">eta.cl</span> <span class="op">~</span> <span class="fl">0.3</span>
-    <span class="va">eta.v</span> <span class="op">~</span> <span class="fl">0.1</span>
-    <span class="va">add.sd</span> <span class="op">&lt;-</span> <span class="fl">0.7</span>
-  <span class="op">}</span><span class="op">)</span>
-  <span class="co"># and a model block with the error sppecification and model specification</span>
-  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/model.html" class="external-link">model</a></span><span class="op">(</span><span class="op">{</span>
-    <span class="va">ka</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tka</span> <span class="op">+</span> <span class="va">eta.ka</span><span class="op">)</span>
-    <span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tcl</span> <span class="op">+</span> <span class="va">eta.cl</span><span class="op">)</span>
-    <span class="va">v</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tv</span> <span class="op">+</span> <span class="va">eta.v</span><span class="op">)</span>
-    <span class="va">d</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/stats/TDist.html" class="external-link">dt</a></span><span class="op">(</span><span class="va">depot</span><span class="op">)</span> <span class="op">=</span> <span class="op">-</span><span class="va">ka</span> <span class="op">*</span> <span class="va">depot</span>
-    <span class="va">d</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/stats/TDist.html" class="external-link">dt</a></span><span class="op">(</span><span class="va">center</span><span class="op">)</span> <span class="op">=</span> <span class="va">ka</span> <span class="op">*</span> <span class="va">depot</span> <span class="op">-</span> <span class="va">cl</span> <span class="op">/</span> <span class="va">v</span> <span class="op">*</span> <span class="va">center</span>
-    <span class="va">cp</span> <span class="op">=</span> <span class="va">center</span> <span class="op">/</span> <span class="va">v</span>
-    <span class="va">cp</span> <span class="op">~</span> <span class="fu">add</span><span class="op">(</span><span class="va">add.sd</span><span class="op">)</span>
-  <span class="op">}</span><span class="op">)</span>
-<span class="op">}</span>
-
-<span class="co">## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate</span>
-<span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.compartment</span>, <span class="va">theo_sd</span>,  est<span class="op">=</span><span class="st">"saem"</span>, <span class="fu"><a href="reference/saemControl.html">saemControl</a></span><span class="op">(</span>print<span class="op">=</span><span class="fl">0</span><span class="op">)</span><span class="op">)</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;  </span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ℹ parameter labels from comments will be replaced by 'label()'</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; → loading into symengine environment...</span>
-<span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span>
-<span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; → finding duplicate expressions in saem model...</span>
-<span class="co">#&gt; → optimizing duplicate expressions in saem model...</span>
-<span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; rxode2 2.0.7 using 4 threads (see ?getRxThreads)</span>
-<span class="co">#&gt; Calculating covariance matrix</span>
-<span class="co">#&gt; → loading into symengine environment...</span>
-<span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span>
-<span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; → finding duplicate expressions in saem predOnly model 0...</span>
-<span class="co">#&gt; → finding duplicate expressions in saem predOnly model 1...</span>
-<span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span>
-<span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span>
-<span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; → Calculating residuals/tables</span>
-<span class="co">#&gt; ✔ done</span>
-<span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span>
-<span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span>
-<span class="co">#&gt; → compress parHist in nlmixr2 object, save 9560</span>
-<span class="co">#&gt; → compress saem0 in nlmixr2 object, save 24688</span>
-
-<span class="co"># Since the fit is performed in `nlmixr2est` this code works</span>
-<span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span>
-<span class="co">#&gt; ── nlmixr SAEM OBJF by FOCEi approximation ──</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;  Gaussian/Laplacian Likelihoods: AIC() or $objf etc. </span>
-<span class="co">#&gt;  FOCEi CWRES &amp; Likelihoods: addCwres() </span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ── Time (sec $time): ──</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;            setup covariance  saem table compress    other</span>
-<span class="co">#&gt; elapsed 0.001189   0.007003 2.188 0.019    0.022 1.381808</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt;        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span>
-<span class="co">#&gt; tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span>
-<span class="co">#&gt; tcl       Log Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% </span>
-<span class="co">#&gt; tv         Log V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% </span>
-<span class="co">#&gt; add.sd           0.693                               0.693                     </span>
-<span class="co">#&gt;  </span>
-<span class="co">#&gt;   Covariance Type ($covMethod): linFim</span>
-<span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span>
-<span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span>
-<span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span>
-<span class="co">#&gt; </span>
-<span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span>
-<span class="co">#&gt; # A tibble: 132 × 19</span>
-<span class="co">#&gt;   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp</span>
-<span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;</span>
-<span class="co">#&gt; 1 1      0     0.74  0     0.74   0     0.74   1.07   0.103 -0.491 -0.0820  0   </span>
-<span class="co">#&gt; 2 1      0.25  2.84  3.27 -0.426  3.87 -1.03  -1.48   0.103 -0.491 -0.0820  3.87</span>
-<span class="co">#&gt; 3 1      0.57  6.57  5.85  0.723  6.82 -0.246 -0.356  0.103 -0.491 -0.0820  6.82</span>
-<span class="co">#&gt; # … with 129 more rows, and 7 more variables: depot &lt;dbl&gt;, center &lt;dbl&gt;,</span>
-<span class="co">#&gt; #   ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;, dosenum &lt;dbl&gt;</span>
-
-<span class="co"># But plots are in the helper package `nlmixr2plot`, and therefore:</span>
-<span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></code></pre></div>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/nlmixr2/nlmixr2est" class="external-link">nlmixr2est</a></span><span class="op">)</span></span>
+<span><span class="co">#&gt; Loading required package: nlmixr2data</span></span>
+<span></span>
+<span><span class="co">## The basic model consiss of an ini block that has initial estimates</span></span>
+<span><span class="va">one.compartment</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini</a></span><span class="op">(</span><span class="op">{</span></span>
+<span>    <span class="va">tka</span> <span class="op">&lt;-</span> <span class="fl">0.45</span> <span class="co"># Log Ka</span></span>
+<span>    <span class="va">tcl</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="co"># Log Cl</span></span>
+<span>    <span class="va">tv</span> <span class="op">&lt;-</span> <span class="fl">3.45</span>    <span class="co"># Log V</span></span>
+<span>    <span class="va">eta.ka</span> <span class="op">~</span> <span class="fl">0.6</span></span>
+<span>    <span class="va">eta.cl</span> <span class="op">~</span> <span class="fl">0.3</span></span>
+<span>    <span class="va">eta.v</span> <span class="op">~</span> <span class="fl">0.1</span></span>
+<span>    <span class="va">add.sd</span> <span class="op">&lt;-</span> <span class="fl">0.7</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span>  <span class="co"># and a model block with the error sppecification and model specification</span></span>
+<span>  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/model.html" class="external-link">model</a></span><span class="op">(</span><span class="op">{</span></span>
+<span>    <span class="va">ka</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tka</span> <span class="op">+</span> <span class="va">eta.ka</span><span class="op">)</span></span>
+<span>    <span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tcl</span> <span class="op">+</span> <span class="va">eta.cl</span><span class="op">)</span></span>
+<span>    <span class="va">v</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tv</span> <span class="op">+</span> <span class="va">eta.v</span><span class="op">)</span></span>
+<span>    <span class="va">d</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/stats/TDist.html" class="external-link">dt</a></span><span class="op">(</span><span class="va">depot</span><span class="op">)</span> <span class="op">=</span> <span class="op">-</span><span class="va">ka</span> <span class="op">*</span> <span class="va">depot</span></span>
+<span>    <span class="va">d</span><span class="op">/</span><span class="fu"><a href="https://rdrr.io/r/stats/TDist.html" class="external-link">dt</a></span><span class="op">(</span><span class="va">center</span><span class="op">)</span> <span class="op">=</span> <span class="va">ka</span> <span class="op">*</span> <span class="va">depot</span> <span class="op">-</span> <span class="va">cl</span> <span class="op">/</span> <span class="va">v</span> <span class="op">*</span> <span class="va">center</span></span>
+<span>    <span class="va">cp</span> <span class="op">=</span> <span class="va">center</span> <span class="op">/</span> <span class="va">v</span></span>
+<span>    <span class="va">cp</span> <span class="op">~</span> <span class="fu">add</span><span class="op">(</span><span class="va">add.sd</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="co">## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate</span></span>
+<span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.compartment</span>, <span class="va">theo_sd</span>,  est<span class="op">=</span><span class="st">"saem"</span>, <span class="fu"><a href="reference/saemControl.html">saemControl</a></span><span class="op">(</span>print<span class="op">=</span><span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;  </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ℹ parameter labels from comments will be replaced by 'label()'</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; → loading into symengine environment...</span></span>
+<span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; → finding duplicate expressions in saem model...</span></span>
+<span><span class="co">#&gt; → optimizing duplicate expressions in saem model...</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; rxode2 2.0.7 using 4 threads (see ?getRxThreads)</span></span>
+<span><span class="co">#&gt; Calculating covariance matrix</span></span>
+<span><span class="co">#&gt; → loading into symengine environment...</span></span>
+<span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 0...</span></span>
+<span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 1...</span></span>
+<span><span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span></span>
+<span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; → Calculating residuals/tables</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span></span>
+<span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span></span>
+<span><span class="co">#&gt; → compress parHist in nlmixr2 object, save 9560</span></span>
+<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 24688</span></span>
+<span></span>
+<span><span class="co"># Since the fit is performed in `nlmixr2est` this code works</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ── nlmixr SAEM OBJF by FOCEi approximation ──</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;  Gaussian/Laplacian Likelihoods: AIC() or $objf etc. </span></span>
+<span><span class="co">#&gt;  FOCEi CWRES &amp; Likelihoods: addCwres() </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;            setup covariance  saem table compress    other</span></span>
+<span><span class="co">#&gt; elapsed 0.001189   0.007003 2.188 0.019    0.022 1.381808</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span></span>
+<span><span class="co">#&gt; tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span></span>
+<span><span class="co">#&gt; tcl       Log Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% </span></span>
+<span><span class="co">#&gt; tv         Log V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% </span></span>
+<span><span class="co">#&gt; add.sd           0.693                               0.693                     </span></span>
+<span><span class="co">#&gt;  </span></span>
+<span><span class="co">#&gt;   Covariance Type ($covMethod): linFim</span></span>
+<span><span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span></span>
+<span><span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span></span>
+<span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span></span>
+<span><span class="co">#&gt; # A tibble: 132 × 19</span></span>
+<span><span class="co">#&gt;   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp</span></span>
+<span><span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt; 1 1      0     0.74  0     0.74   0     0.74   1.07   0.103 -0.491 -0.0820  0   </span></span>
+<span><span class="co">#&gt; 2 1      0.25  2.84  3.27 -0.426  3.87 -1.03  -1.48   0.103 -0.491 -0.0820  3.87</span></span>
+<span><span class="co">#&gt; 3 1      0.57  6.57  5.85  0.723  6.82 -0.246 -0.356  0.103 -0.491 -0.0820  6.82</span></span>
+<span><span class="co">#&gt; # … with 129 more rows, and 7 more variables: depot &lt;dbl&gt;, center &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;, dosenum &lt;dbl&gt;</span></span>
+<span></span>
+<span><span class="co"># But plots are in the helper package `nlmixr2plot`, and therefore:</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></code></pre></div>
 <p><img src="reference/figures/README-example-1.png" title="plot of chunk example" alt="plot of chunk example" width="100%"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span class="co"># does not give the standard goodness of fit plots</span></code></pre></div>
+<code class="sourceCode R"><span><span class="co"># does not give the standard goodness of fit plots</span></span></code></pre></div>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">
@@ -257,7 +257,7 @@
 
 <div class="pkgdown-footer-right">
   <p></p>
-<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.4.9000.</p>
+<p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.5.9000.</p>
 </div>
 
     </footer>
