@@ -113,10 +113,11 @@ BEGIN_RCPP
       censMethod = as<int>(opt["censMethod"]);
     }
   }
-  bool interestingLimits = censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt, pred, predt, cens, limit,
-  								   lambda, yj, low, hi, lowerLim, upperLim,
-  								   riv, doSim, censMethod);
-
+  bool interestingLimits = censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt,
+                                                                   pred, predt, cens, limit,
+                                                                   lambda, yj, low, hi,
+                                                                   lowerLim, upperLim,
+                                                                   riv, doSim, censMethod);
 
   arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
 
