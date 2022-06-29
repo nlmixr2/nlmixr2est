@@ -15,6 +15,7 @@
 #' k <- seq(0, n, by = 20)
 #'
 #' llikBinomial(k, n, pi/10)
+#'
 llikBinomial <- function(x, size, prob) {
   checkmate::assertIntegerish(x, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(size, lower=0, any.missing=FALSE)
@@ -25,4 +26,25 @@ llikBinomial <- function(x, size, prob) {
          call.=FALSE)
   }
   .Call(`_nlmixr2est_llikBinomialInternal`, .df$x, .df$size, .df$prob)
+}
+#' llik Normal exported from stan
+#'
+#' @param x observed values
+#' @param mean vector of means.
+#' @param sd vector of standard deviations.
+#' @return list with `fx` and the dbinom distribution and `J` the
+#'   Jacobian. This is what is used internally for estimation methods.
+#' @author Matthew L. Fidler
+#' @export
+#' @examples
+#'
+#' llikNormal(c(-0.2, 0, 0.2), mean=0, sd=1)
+#'
+llikNormal <- function(x, mean=0, sd=1) {
+  checkmate::assertNumeric(x, any.missing=FALSE)
+  checkmate::assertNumeric(mean, any.missing=FALSE)
+  checkmate::assertNumeric(sd, any.missing=FALSE)
+  .df <- data.frame(x=as.numeric(x), mean=as.numeric(mean), sd=as.numeric(sd))
+  .mat <- as.matrix(.df[-1, ])
+  .Call(`_nlmixr2est_llikNormalInternal`, .df$x, .mat)
 }

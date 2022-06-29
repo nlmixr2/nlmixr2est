@@ -28,6 +28,7 @@ n <- 2000
 k <- seq(0, n, by = 20)
 
 llikBinomial(k, n, pi/10)
+
 }
 \author{
 Wenping Wang, Matthew L. Fidler, Stan team
