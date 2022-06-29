@@ -57,7 +57,8 @@ struct poisson_llik {
   }
 };
 
-llikFxJ llik_poisson(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params) {
+llikFxJ llik_poisson(Eigen::Map<Eigen::VectorXd> y,
+                     Eigen::Map<Eigen::VectorXd> params) {
   poisson_llik f(y);
   Eigen::VectorXd fx;
   Eigen::Matrix<double, -1, -1> J;
@@ -94,7 +95,8 @@ struct normal_llik {
   }
 };
 
-llikFxJ llik_normal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params) {
+llikFxJ llik_normal(Eigen::Map<Eigen::VectorXd> y,
+                    Eigen::Map<Eigen::VectorXd> params) {
   normal_llik f(y);
   Eigen::VectorXd fx;
   Eigen::Matrix<double, -1, -1> J;
@@ -263,4 +265,64 @@ llikFxJ llik_neg_binomial(Eigen::Map<Eigen::VectorXd> y,
   ret.fx = fx;
   ret.J = J;
   return ret;
+}
+
+// Now export the R interface
+
+//[[Rcpp::export]]
+Rcpp::List llikBinomialInternal(Eigen::Map<Eigen::VectorXd> y,
+                                Eigen::Map<Eigen::VectorXd> N,
+                                Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_binomial_c(y, N, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+
+//[[Rcpp::export]]
+Rcpp::List llikPoissonInternal(Eigen::Map<Eigen::VectorXd> y,
+                               Eigen::Map<Eigen::VectorXd> params) {
+
+  llikFxJ ret = llik_poisson(y, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+
+//[[Rcpp::export]]
+Rcpp::List llikNormalInternal(Eigen::Map<Eigen::VectorXd> y,
+                              Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_normal(y, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+
+//[[Rcpp::export]]
+Rcpp::List llikBetaBinomialInternal(Eigen::Map<Eigen::VectorXd> y,
+                                    Eigen::Map<Eigen::VectorXd> N,
+                                    Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_betabinomial(y, N, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+
+//[[Rcpp::export]]
+Rcpp::List llikStudentTInternal(Eigen::Map<Eigen::VectorXd> y,
+                                Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_student_t(y, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+
+//[[Rcpp::export]]
+Rcpp::List llikBetaInternal(Eigen::Map<Eigen::VectorXd> y,
+                            Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_beta(y, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
+}
+//[[Rcpp::export]]
+Rcpp::List llikNegBinomialInternal(Eigen::Map<Eigen::VectorXd> y,
+                                   Eigen::Map<Eigen::VectorXd> params) {
+  llikFxJ ret = llik_neg_binomial(y, params);
+  return Rcpp::List::create(_["fx"]= ret.fx,
+                            _["J"] = ret.J);
 }

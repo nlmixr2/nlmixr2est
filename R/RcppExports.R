@@ -124,6 +124,34 @@ iBoxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_iBoxCox_`, x, lambda, yj)
 }
 
+llikBinomialInternal <- function(y, N, params) {
+    .Call(`_nlmixr2est_llikBinomialInternal`, y, N, params)
+}
+
+llikPoissonInternal <- function(y, params) {
+    .Call(`_nlmixr2est_llikPoissonInternal`, y, params)
+}
+
+llikNormalInternal <- function(y, params) {
+    .Call(`_nlmixr2est_llikNormalInternal`, y, params)
+}
+
+llikBetaBinomialInternal <- function(y, N, params) {
+    .Call(`_nlmixr2est_llikBetaBinomialInternal`, y, N, params)
+}
+
+llikStudentTInternal <- function(y, params) {
+    .Call(`_nlmixr2est_llikStudentTInternal`, y, params)
+}
+
+llikBetaInternal <- function(y, params) {
+    .Call(`_nlmixr2est_llikBetaInternal`, y, params)
+}
+
+llikNegBinomialInternal <- function(y, params) {
+    .Call(`_nlmixr2est_llikNegBinomialInternal`, y, params)
+}
+
 lin_cmt_stan <- function(obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP) {
     .Call(`_nlmixr2est_lin_cmt_stan`, obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP)
 }

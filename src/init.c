@@ -63,6 +63,16 @@ SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
 			  SEXP);
 
+SEXP _nlmixr2est_llikBinomialInternal(SEXP ySEXP, SEXP NSEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikBetaBinomialInternal(SEXP ySEXP, SEXP NSEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikPoissonInternal(SEXP ySEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikNormalInternal(SEXP ySEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikBetaBinomialInternal(SEXP ySEXP, SEXP NSEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikStudentTInternal(SEXP ySEXP, SEXP paramsSEXP);
+SEXP _nlmixr2est_llikBetaInternal(SEXP ySEXP, SEXP paramsSEXP);
+
+SEXP _nlmixr2est_llikNegBinomialInternal(SEXP ySEXP, SEXP paramsSEXP);
+
 static const R_CMethodDef CEntries[] = {
     {NULL, NULL, 0}
 };
@@ -116,6 +126,13 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_calcShrinkOnly", (DL_FUNC) &_nlmixr2est_calcShrinkOnly, 3},
   {"_nlmixr2est_popResFinal", (DL_FUNC) &_nlmixr2est_popResFinal, 1},
   {"_nlmixr2est_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2est_nlmixrExpandFdParNlme_, 2},
+  {"_nlmixr2est_llikBetaBinomialInternal", (DL_FUNC) &_nlmixr2est_llikBetaBinomialInternal, 3},
+  {"_nlmixr2est_llikBetaInternal", (DL_FUNC) &_nlmixr2est_llikBetaInternal, 2},
+  {"_nlmixr2est_llikBinomialInternal", (DL_FUNC) &_nlmixr2est_llikBinomialInternal, 3},
+  {"_nlmixr2est_llikNegBinomialInternal", (DL_FUNC) &_nlmixr2est_llikNegBinomialInternal, 2},
+  {"_nlmixr2est_llikNormalInternal", (DL_FUNC) &_nlmixr2est_llikNormalInternal, 2},
+  {"_nlmixr2est_llikPoissonInternal", (DL_FUNC) &_nlmixr2est_llikPoissonInternal, 2},
+  {"_nlmixr2est_llikStudentTInternal", (DL_FUNC) &_nlmixr2est_llikStudentTInternal, 2},
   {NULL, NULL, 0}
 };
 

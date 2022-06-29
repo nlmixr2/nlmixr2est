@@ -320,6 +320,92 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// llikBinomialInternal
+Rcpp::List llikBinomialInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> N, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikBinomialInternal(SEXP ySEXP, SEXP NSEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type N(NSEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikBinomialInternal(y, N, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikPoissonInternal
+Rcpp::List llikPoissonInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikPoissonInternal(SEXP ySEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikPoissonInternal(y, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikNormalInternal
+Rcpp::List llikNormalInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikNormalInternal(SEXP ySEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikNormalInternal(y, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikBetaBinomialInternal
+Rcpp::List llikBetaBinomialInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> N, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikBetaBinomialInternal(SEXP ySEXP, SEXP NSEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type N(NSEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikBetaBinomialInternal(y, N, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikStudentTInternal
+Rcpp::List llikStudentTInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikStudentTInternal(SEXP ySEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikStudentTInternal(y, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikBetaInternal
+Rcpp::List llikBetaInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikBetaInternal(SEXP ySEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikBetaInternal(y, params));
+    return rcpp_result_gen;
+END_RCPP
+}
+// llikNegBinomialInternal
+Rcpp::List llikNegBinomialInternal(Eigen::Map<Eigen::VectorXd> y, Eigen::Map<Eigen::VectorXd> params);
+RcppExport SEXP _nlmixr2est_llikNegBinomialInternal(SEXP ySEXP, SEXP paramsSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
+    Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
+    rcpp_result_gen = Rcpp::wrap(llikNegBinomialInternal(y, params));
+    return rcpp_result_gen;
+END_RCPP
+}
 // lin_cmt_stan
 SEXP lin_cmt_stan(Eigen::Map<Eigen::VectorXd> obs_time, Eigen::Map<Eigen::VectorXd> dose_time, Eigen::Map<Eigen::VectorXd> dose, Eigen::Map<Eigen::VectorXd> Tinf, Eigen::Map<Eigen::VectorXd> params, SEXP oralSEXP, SEXP infusionSEXP, SEXP ncmtSEXP, SEXP parameterizationSEXP);
 RcppExport SEXP _nlmixr2est_lin_cmt_stan(SEXP obs_timeSEXP, SEXP dose_timeSEXP, SEXP doseSEXP, SEXP TinfSEXP, SEXP paramsSEXP, SEXP oralSEXPSEXP, SEXP infusionSEXPSEXP, SEXP ncmtSEXPSEXP, SEXP parameterizationSEXPSEXP) {
