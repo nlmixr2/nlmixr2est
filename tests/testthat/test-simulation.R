@@ -1,6 +1,6 @@
 test_that("est='simulation'", {
 
-  model <- function(){
+  f <- function(){
     ini({
       lCl <- 1.6      #log Cl (L/hr)
       lVc <- log(90)  #log Vc (L)
@@ -22,13 +22,13 @@ test_that("est='simulation'", {
   }
 
   d_sim_prep <-
-    dplyr::tibble(
+    data.frame(
       AMT=c(10, rep(0, 10)),
       CMT=c("depot", rep("central", 10)),
       TIME=c(0, 0:9),
       ID=1
     )
 
-  expect_error(nlmixr(model, data=d_sim_prep, est="simulate"), NA)
+  expect_error(nlmixr(f, data=d_sim_prep, est="simulate"), NA)
 
 })
