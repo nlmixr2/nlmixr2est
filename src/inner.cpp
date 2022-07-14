@@ -709,7 +709,7 @@ static inline double calcGradForEtaGeneral(double *eta,
   // First try a gill difference
   if (op_focei.eventType != 1) aEps[cpar] = op_focei.eventFD;
   if (op_focei.eventType == 1 && aEps[cpar] == 0) {
-    double hf, hphif, err, gillDf, gillDf2, gillErr;
+    double hf, hphif, gillDf, gillDf2, gillErr;
     if (w == 0) {
       gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
              eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
@@ -727,7 +727,6 @@ static inline double calcGradForEtaGeneral(double *eta,
     double delta = aEps[cpar];
     focei_ind *fInd = &(inds_focei[cid]);
     rx_solving_options_ind *ind =  &(rx->subjects[cid]);
-    double fv;
     ind->par_ptr[op_focei.etaTrans[cpar]]+=delta;
     predOde(cid); // Assumes same order of parameters
     rxPred.calc_lhs(cid, fInd->curT, fInd->curS, // Solve space is smaller
@@ -852,15 +851,18 @@ double likInner0(double *eta, int id){
       int k = 0, kk=0;//ind->n_all_times - ind->ndoses - ind->nevid2 - 1;
       fInd->llik=0.0;
       fInd->tbsLik=0.0;
-      double f, err, r, fpm, fpm2, rp = 0,lnr, limit, dv,dv0, curT;
+      double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
       int oldNeq = op->neq;
       iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+      int dist=0, yj0=0, yj = 0;
       for (j = 0; j < ind->n_all_times; ++j){
         ind->idx=j;
         kk = ind->ix[j];
         curT = getTimeF(kk, ind);
         dv0 = ind->dv[kk];
+        yj = (int)(ind->yj);
+        _splitYj(&yj, &dist,  &yj0);
         if (isDose(ind->evid[kk])) {
           // ind->tlast = ind->all_times[ind->ix[ind->idx]];
           // Need to calculate for advan sensitivities
@@ -878,6 +880,8 @@ double likInner0(double *eta, int id){
           } else {
             rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
           }
+
+
           f = ind->lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
           if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
@@ -903,15 +907,23 @@ double likInner0(double *eta, int id){
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
-          r = ind->lhs[op_focei.neta + 1];
+          if (dist == rxDistributionNorm) {
+            r = ind->lhs[op_focei.neta + 1];
+          } else {
+            r = 1.0;
+          }
           if (r == 0.0) {
             r = 1.0;
           }
           if (op_focei.neta == 0) {
-            lnr =_safe_log(r);
-            double ll = err * err/_safe_zero(r) + lnr;
-            fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
-                                        (int)op_focei.adjLik);
+            if (dist == rxDistributionNorm) {
+              lnr =_safe_log(r);
+              double ll = err * err/_safe_zero(r) + lnr;
+              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
+                                          (int)op_focei.adjLik);
+            } else {
+              fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+            }
           } else if (op_focei.fo == 1) {
             // FO
             B(k, 0) = err; // res
@@ -934,7 +946,12 @@ double likInner0(double *eta, int id){
             op->neq = oldNeq;
             // Ci = fpm %*% omega %*% t(fpm) + Vi; Vi=diag(r)
           } else {
-            lnr =_safe_log(ind->lhs[op_focei.neta + 1]);
+            // For logLik simply use a for the gradient which is fpm
+            // This way, the dose-based etas use the same approach for
+            // normal and non-normal log likelikoods
+            // The err and r terms are garbgage, though
+            if (dist == rxDistributionNorm) lnr =_safe_log(ind->lhs[op_focei.neta + 1]);
+            else lnr = 0;
             // fInd->r(k, 0) = ind->lhs[op_focei.neta+1];
             // B(k, 0) = 2.0/ind->lhs[op_focei.neta+1];
             // lhs 0 = F
@@ -946,13 +963,12 @@ double likInner0(double *eta, int id){
               for (i = op_focei.neta; i--; ) {
                 if (predSolve || op_focei.etaFD[i]==0) {
                   fpm = a(k, i) = ind->lhs[i + 1]; // Almquist uses different a (see eq #15)
-                  rp  = ind->lhs[i + op_focei.neta + 2];
+                  rp  = (dist == rxDistributionNorm)*ind->lhs[i + op_focei.neta + 2];
                   c(k, i) = rp/_safe_zero(r);
                 }
               }
               // Cannot combine for loop with for loop above because
               // calc_lhs overwrites the lhs memory.
-              op->neq = op_focei.predNeq;
               op->neq = op_focei.predNeq;
               fInd->curT = curT;
               fInd->curS = getSolve(j);
@@ -963,7 +979,11 @@ double likInner0(double *eta, int id){
                   fInd->curF = f;
                   a(k, i) = fpm = calcGradForEtaF(eta, fInd->etahf, i, id);
                   fInd->curF = r;
-                  rp = calcGradForEtaR(eta, fInd->etahr, i, id);
+                  if (dist == rxDistributionNorm) {
+                    rp = calcGradForEtaR(eta, fInd->etahr, i, id);
+                  } else {
+                    rp = 0;
+                  }
                   if (fpm == 0.0) {
                     a(k, i) = fpm = sqrt(DBL_EPSILON);
                   }
@@ -973,7 +993,7 @@ double likInner0(double *eta, int id){
                   c(k, i) = rp/_safe_zero(r);
                 } else {
                   fpm = a(k, i);
-                  rp  = ind->lhs[i + op_focei.neta + 2];
+                  rp  = (dist == rxDistributionNorm)*ind->lhs[i + op_focei.neta + 2];
                   rp = c(k, i)*r;
                 }
                 // This is calculated at the end; That way it is
@@ -981,15 +1001,23 @@ double likInner0(double *eta, int id){
 
                 //lp is eq 12 in Almquist 2015
                 // .5*apply(eps*fp*B + .5*eps^2*B*c - c, 2, sum) - OMGAinv %*% ETA
-                double lpCur = 0.25 * err * err * B(k, 0) * c(k, i) -
+                if (dist == rxDistributionNorm) {
+                  double lpCur = 0.25 * err * err * B(k, 0) * c(k, i) -
                     0.5 * c(k, i) - 0.5 * err * fpm * B(k, 0);
-                lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
+                  lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
+                } else {
+                  lp(i, 0) += fpm;
+                }
               }
               op->neq = oldNeq;
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
-              double ll = err * err/_safe_zero(r) + lnr;
-              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+               if (dist == rxDistributionNorm) {
+                 double ll = err * err/_safe_zero(r) + lnr;
+                 fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+               } else {
+                 fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+               }
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
                 if (op_focei.etaFD[i]==0){
@@ -1007,14 +1035,22 @@ double likInner0(double *eta, int id){
                 } else {
                   fpm = a(k, i);
                 }
-                double lpCur = -0.5 * err * fpm * B(k, 0);
-                lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
+                if (dist == rxDistributionNorm) {
+                  double lpCur = -0.5 * err * fpm * B(k, 0);
+                  lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
+                } else {
+                  lp(i, 0) += fpm;
+                }
               }
               op->neq = oldNeq;
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
-              double ll = err * err/_safe_zero(r) + lnr;
-              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+              if (dist == rxDistributionNorm) {
+                double ll = err * err/_safe_zero(r) + lnr;
+                fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+              } else {
+                fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+              }
             }
           }
           // k--;
@@ -1029,6 +1065,7 @@ double likInner0(double *eta, int id){
         fInd->llik = -0.5*fInd->llik;
       } else if (op_focei.fo == 1) {
         if (cens != 0) stop("FO censoring not supported.");
+        if (dist != rxDistributionNorm) stop("Generalized llik for FO is not supported");
         mat Ci = a * op_focei.omega * trans(a) + Vid;
         mat cholCi = cholSE__(Ci, op_focei.cholSEtol);
         mat CiInv;
@@ -1587,7 +1624,7 @@ static inline bool isFixedTheta(int m) {
   unsigned int j;
   for (unsigned int k = op_focei.npars; k--;){
     j=op_focei.fixedTrans[k];
-    if (m == j) return false; // here the parameter is estimated
+    if (m == (int)j) return false; // here the parameter is estimated
   }
   return true; // here the parameter is fixed
 }
@@ -3349,7 +3386,6 @@ NumericVector foceiSetup_(const RObject &obj,
 LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
   if (e.exists("theta") && rxode2::rxIs(e["theta"], "data.frame") &&
       e.exists("omega") && e.exists("etaObf")) {
-    bool mixed = rxode2::rxIs(e["omega"], "matrix") && rxode2::rxIs(e["etaObf"], "data.frame");
     int nobs2=0;
     if (e.exists("nobs2")) {
       nobs2=as<int>(e["nobs2"]);
