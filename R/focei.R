@@ -294,12 +294,23 @@ rxGetDistributionFoceiLines.norm <- function(line) {
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
-  stop("t isn't supported yet")
+  env <- line[[1]]
+  pred1 <- line[[2]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+}
+
+#' @export
+rxGetDistributionFoceiLines.cauchy <- function(line) {
+  env <- line[[1]]
+  pred1 <- line[[2]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
 }
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
-  stop("Distribution not supported")
+  env <- line[[1]]
+  pred1 <- line[[2]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
 }
 
 #' @export
@@ -351,7 +362,11 @@ rxUiGet.foceiModel0 <- function(x, ...) {
   } else {
     .malert("loading into {.pkg symengine} environment...")
   }
-  rxode2::rxS(newmod, TRUE, promoteLinSens = promoteLinSens)
+  .ret <- rxode2::rxS(newmod, TRUE, promoteLinSens = promoteLinSens)
+  if (inherits(.ret$rx_r_, "numeric")) {
+    assign("rx_r_", symengine::S(as.character(.ret$rx_r_)), envir=.ret)
+  }
+  .ret
 }
 
 #' @export
