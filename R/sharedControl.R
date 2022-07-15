@@ -117,7 +117,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
+getValidNlmixrCtl.simulate <- getValidNlmixrCtl.rxSolve
 
 #' @rdname getValidNlmixrControl
 #' @export
