@@ -281,58 +281,65 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
 #' @author Matthew Fidler
 #' @keywords internal
 #' @export
-rxGetDistributionFoceiLines <- function(line) {
+rxGetDistributionFoceiLine <- function(line) {
   UseMethod("rxGetDistributionFoceiLines")
+}
+#' Get pred only options
+#'
+#' @param env  rxode2 environment option
+#' 
+#' @return  If the current method is requesting loglik instead of pred/r
+#'  (required for cwres)
+#' 
+#' @author Matthew L. Fidler
+#' 
+#' @noRd
+.getRxPredLlikOption <-function(env) {
+  .rxPredLlik <- TRUE
+  if (exists(".rxPredLlik", env)) {
+    if (inherits(env$.rxPredLlik, "logical")) {
+      .rxPredLlik <- FALSE
+    }
+  }
+  .rxPredLlik
 }
 
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
 }
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
 }
 
 #' @export
 rxGetDistributionFoceiLines.cauchy <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
 }
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
 }
 
 #' @export
 rxGetDistributionFoceiLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  lapply(seq_along(.predDf$cond), function(c){
+  lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createFoceiLineObject(line, c)
     rxGetDistributionFoceiLines(.mod)
   })
 }
-
-#' @export
-rxUiGet.foceiModel0 <- function(x, ...) {
-  .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
-                              prefixLines=.uiGetThetaEta(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE)
-}
-#attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
 
 .foceiPrune <- function(x, fullModel=TRUE) {
   .x <- x[[1]]
@@ -727,7 +734,13 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #' @export
 rxUiGet.focei <- function(x, ...) {
   .s <- rxUiGet.foceiEnv(x, ...)
-  .innerInternal(x[[1]], .s)
+  .ret <- .innerInternal(x[[1]], .s)
+  .ui <- x[[1]]
+  .predDf <- .ui$iniDf
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+    # require a predOnly model too.
+    .s2 <- rxode2::rxWithUiTemporaryVar(var, value, .ui, code)
+  }
 }
 #attr(rxUiGet.focei, "desc") <- "Get the FOCEi foceiModelList object"
 
