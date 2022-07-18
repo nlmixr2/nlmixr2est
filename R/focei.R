@@ -281,9 +281,11 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
 #' @author Matthew Fidler
 #' @keywords internal
 #' @export
-rxGetDistributionFoceiLine <- function(line) {
+rxGetDistributionFoceiLines <- function(line) {
   UseMethod("rxGetDistributionFoceiLines")
 }
+
+.rxPredLlik <- NULL
 #' Get pred only options
 #'
 #' @param env  rxode2 environment option
@@ -294,42 +296,39 @@ rxGetDistributionFoceiLine <- function(line) {
 #' @author Matthew L. Fidler
 #' 
 #' @noRd
-.getRxPredLlikOption <-function(env) {
-  .rxPredLlik <- TRUE
-  if (exists(".rxPredLlik", env)) {
-    if (inherits(env$.rxPredLlik, "logical")) {
-      .rxPredLlik <- FALSE
-    }
+.getRxPredLlikOption <-function() {
+  if (inherits(.rxPredLlik, "logical")) {
+    return(.rxPredLlik)
   }
-  .rxPredLlik
+  return(FALSE)
 }
 
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.cauchy <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption(env))
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
@@ -341,16 +340,36 @@ rxGetDistributionFoceiLines.rxUi <- function(line) {
   })
 }
 
+#' @export
+rxUiGet.foceiModel0 <- function(x, ...) {
+  .f <- x[[1]]
+  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
+                              prefixLines=.uiGetThetaEta(.f),
+                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              modelVars=TRUE,
+                              cmtLines=FALSE,
+                              dvidLine=FALSE)
+}
+#attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
+
 .foceiPrune <- function(x, fullModel=TRUE) {
   .x <- x[[1]]
   .x <- .x$foceiModel0[[-1]]
   .env <- new.env(parent = emptyenv())
   .env$.if <- NULL
   .env$.def1 <- NULL
-  if (fullModel) {
-    .malert("pruning branches ({.code if}/{.code else}) of full model...")
+  if (.getRxPredLlikOption()) {
+    if (fullModel) {
+      .malert(("pruning branches ({.code if}/{.code else}) of llik full model..."))
+    } else {
+      .malert("pruning branches ({.code if}/{.code else}) of llik model...")
+    }    
   } else {
-    .malert("pruning branches ({.code if}/{.code else})...")
+    if (fullModel) {
+      .malert(("pruning branches ({.code if}/{.code else}) of full model..."))
+    } else {
+      .malert("pruning branches ({.code if}/{.code else}) of model...")
+    }    
   }
   .ret <- rxode2::.rxPrune(.x, envir = .env)
   .mv <- rxode2::rxModelVars(.ret)
@@ -364,10 +383,18 @@ rxGetDistributionFoceiLines.rxUi <- function(line) {
 }
 
 .loadSymengine <- function(newmod, promoteLinSens = TRUE, fullModel = FALSE) {
-  if (fullModel) {
-    .malert("loading full model into {.pkg symengine} environment...")
+  if (.getRxPredLlikOption()) {
+    if (fullModel) {
+      .malert("loading full llik model into {.pkg symengine} environment...")
+    } else {
+      .malert("loading llik model into {.pkg symengine} environment...")
+    }
   } else {
-    .malert("loading into {.pkg symengine} environment...")
+    if (fullModel) {
+      .malert("loading full model into {.pkg symengine} environment...")
+    } else {
+      .malert("loading into {.pkg symengine} environment...")
+    }
   }
   .ret <- rxode2::rxS(newmod, TRUE, promoteLinSens = promoteLinSens)
   if (inherits(.ret$rx_r_, "numeric")) {
@@ -512,7 +539,10 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
     .msuccess("done")
   }
   if (optExpression) {
-    .s$..inner <- rxode2::rxOptExpr(.s$..inner, "inner model")
+    .s$..inner <- rxode2::rxOptExpr(.s$..inner,
+                                    ifelse(.getRxPredLlikOption(),
+                                           "inner llik model",
+                                           "inner model"))
   }
 }
 
@@ -656,7 +686,8 @@ rxUiGet.getEBEEnv <- function(x, ...) {
     .msuccess("done")
   }
   if (optExpression) {
-    .s$..pred <- rxode2::rxOptExpr(.s$..pred, "EBE model")
+    .s$..pred <- rxode2::rxOptExpr(.s$..pred,
+                                   ifelse(.getRxPredLlikOption(),"Llik EBE model","EBE model"))
   }
 }
 
@@ -702,7 +733,8 @@ rxUiGet.getEBEEnv <- function(x, ...) {
       .msuccess("done")
     }
     if (.optExpression) {
-      s$..pred.nolhs <- rxode2::rxOptExpr(s$..pred.nolhs, "FD model")
+      s$..pred.nolhs <- rxode2::rxOptExpr(s$..pred.nolhs,
+                                          ifelse(.getRxPredLlikOption(),"Llik FD model","FD model"))
     }
     s$..pred.nolhs <- paste(c(
       paste0("params(", paste(inner$params, collapse = ","), ")"),
@@ -712,10 +744,14 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   }
   .ret <- list(
     inner = inner,
-    predOnly = .toRx(s$..pred, "compiling EBE model..."),
+    predOnly = .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+                                      "compiling Llik EBE model...",
+                                      "compiling EBE model...")),
     extra.pars = s$..extraPars,
     outer = .toRx(s$..outer),
-    predNoLhs = .toRx(pred.opt, "compiling events FD model..."),
+    predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
+                                       "compiling events Llik FD model...",
+                                       "compiling events FD model...")),
     theta = NULL,
     ## warn=.zeroSens,
     pred.minus.dv = .predMinusDv,
@@ -733,14 +769,26 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.focei <- function(x, ...) {
-  .s <- rxUiGet.foceiEnv(x, ...)
-  .ret <- .innerInternal(x[[1]], .s)
   .ui <- x[[1]]
-  .predDf <- .ui$iniDf
+  # For t/cauchy/dnorm, predOnly model
+  assignInMyNamespace(".rxPredLlik", FALSE)
+  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  .s <- rxUiGet.foceiEnv(x, ...)
+  .ret <-  .innerInternal(.ui, .s)
+  .predDf <- .ui$predDf
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
-    # require a predOnly model too.
-    .s2 <- rxode2::rxWithUiTemporaryVar(var, value, .ui, code)
+    assignInMyNamespace(".rxPredLlik", TRUE)
+    .s <- rxUiGet.foceiEnv(x, ...)
+    .s2 <- .innerInternal(.ui, .s)
+    .w <- vapply(seq_along(.s2),
+                 function(i) {
+                   inherits(.s2[[i]], "rxode2")
+                 }, logical(1), USE.NAMES=FALSE)
+    .s2 <- .s2[.w]
+    names(.s2) <- paste0(names(.s2), "Llik")
+    .ret <- c(.ret, .s2)
   }
+  .ret
 }
 #attr(rxUiGet.focei, "desc") <- "Get the FOCEi foceiModelList object"
 
@@ -846,7 +894,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   if (!is.null(env$model$inner)) {
     .len0 <- length(env$model$inner$state)
     .len2 <- .len0 - .len
-    if (.len2 > 0){
+    if (.len2 > 0) {
       .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
       rxode2::rxAssignControlValue(ui, "rxControl", rxode2::rxControlUpdateSens(.rxControl, .len2, .len0))
     }
@@ -1038,7 +1086,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .i2 <- .i2[order(.i2$neta1), ]
-    vapply(seq_along(.i2$neta1), function(i){
+    vapply(seq_along(.i2$neta1), function(i) {
       if (.i2$fix[i]) return(-1L)
       .name <- .i2$name[i]
       .w <- which(.muRefDataFrame$eta == .name)
@@ -1200,7 +1248,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
-  if (getOption("nlmixr2.retryFocei", TRUE)){
+  if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
       assign("err", "", this.env)
       .ret0 <- tryCatch(
@@ -1322,7 +1370,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (is.null(.control)) {
     .control <- foceiControl()
   }
-  if (!inherits(.control, "foceiControl")){
+  if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   assign("control", .control, envir=.ui)
@@ -1510,7 +1558,7 @@ nlmixr2Est.posthoc <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   on.exit({
-    if (exists("control", envir=.ui)){
+    if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   })
@@ -1558,7 +1606,7 @@ nlmixr2Est.foi <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
   on.exit({
-    if (exists("control", envir=.ui)){
+    if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   })
@@ -1590,7 +1638,7 @@ nlmixr2Est.fo <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "fo", TRUE)
   rxode2::rxAssignControlValue(.ui, "boundTol", 0)
   on.exit({
-    if (exists("control", envir=.ui)){
+    if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   })
