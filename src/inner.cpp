@@ -5840,14 +5840,24 @@ Environment foceiFitCpp_(Environment e){
   bool doPredOnly = false;
   op_focei.canDoFD = false;
   if (model.containsElementNamed("inner")) {
-    RObject inner = model["inner"];
+    RObject inner;
+    if (model.containsElementNamed("innerLlik")) {
+      inner = model["innerLlik"];
+    } else {
+      inner = model["inner"];
+    }
     if (rxode2::rxIs(inner, "rxode2")) {
       foceiSetup_(inner, as<RObject>(e["dataSav"]),
                   as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
                   as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
                   e["control"]);
-      if (model.containsElementNamed("predNoLhs")){
-        RObject noLhs = model["predNoLhs"];
+      if (model.containsElementNamed("predNoLhs")) {
+        RObject noLhs;
+        if (model.containsElementNamed("predNoLhsLlik")) {
+          noLhs = model["predNoLhsLlik"];
+        } else {
+          noLhs = model["predNoLhs"];
+        }
         if (rxode2::rxIs(noLhs, "rxode2")) {
           List mvp = rxode2::rxModelVars_(noLhs);
           rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
@@ -5864,7 +5874,11 @@ Environment foceiFitCpp_(Environment e){
         std::copy(eventEta.begin(), eventEta.end(),&op_focei.etaFD[0]);
       }
     } else if (model.containsElementNamed("predOnly")){
-      inner = model["predOnly"];
+      if (model.containsElementNamed("predOnlyLlik")){
+        inner = model["predOnlyLlik"];
+      } else {
+        inner = model["predOnly"];
+      }
       if (rxode2::rxIs(inner, "rxode2")){
         foceiSetup_(inner, as<RObject>(e["dataSav"]),
                     as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
@@ -5888,7 +5902,12 @@ Environment foceiFitCpp_(Environment e){
     if (!model.containsElementNamed("predOnly")) {
       stop(_("with focei inner, 'model$predOnly' needs to be present in the environment"));
     }
-    RObject inner = model["predOnly"];
+    RObject inner;
+    if (model.containsElementNamed("predOnlyLlik")) {
+      inner = model["predOnlyLlik"];
+    } else {
+      inner = model["predOnly"];
+    }
     // foceiSetupTrans_(as<CharacterVector>(e[".params"]));
     if (!e.exists("dataSav")) {
       stop(_("without focei inner setup, this needs a data frame 'dataSav' in the environment"));
@@ -5917,7 +5936,6 @@ Environment foceiFitCpp_(Environment e){
     if (!e.exists("thetaNames")) {
       stop(_("without focei inner setup, this needs a character vector in the 'thetaNames' in the environment"));
     }
-
     if (rxode2::rxIs(inner, "rxode2")){
       foceiSetup_(inner, as<RObject>(e["dataSav"]),
                   as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
