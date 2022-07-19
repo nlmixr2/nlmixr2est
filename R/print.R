@@ -254,7 +254,9 @@ print.nlmixr2FitCore <- function(x, ...) {
     }
     cat(paste(.pf, collapse = "\n"), "\n")
     ## Correlations
-    if(x$covMethod != "") {
+    .covMethod <- x$covMethod
+    if (!checkmate::testCharacter(.covMethod, len=1)) .covMethod <- ""
+    if (.covMethod != "") {
       cat(paste0(
         "  Covariance Type (", crayon::yellow(.bound), crayon::bold$blue("$covMethod"), "): ",
         crayon::bold(x$covMethod), "\n"
