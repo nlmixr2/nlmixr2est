@@ -786,7 +786,9 @@ rxUiGet.focei <- function(x, ...) {
                  }, logical(1), USE.NAMES=FALSE)
     .s2 <- .s2[.w]
     names(.s2) <- paste0(names(.s2), "Llik")
+    .cls <- class(.ret)
     .ret <- c(.ret, .s2)
+    class(.ret) <-.cls
   }
   .ret
 }
@@ -1515,7 +1517,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #'@export
 nlmixr2Est.focei <- function(env, ...) {
   .ui <- env$ui
-  #rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
@@ -1532,7 +1533,6 @@ nlmixr2Est.focei <- function(env, ...) {
 #'@export
 nlmixr2Est.foce <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
@@ -1550,9 +1550,7 @@ nlmixr2Est.foce <- function(env, ...) {
 #'@export
 nlmixr2Est.posthoc <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'posthoc'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'posthoc'", .var.name=.ui$modelName)
-
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
