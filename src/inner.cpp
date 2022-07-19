@@ -922,7 +922,7 @@ double likInner0(double *eta, int id){
               fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
             } else {
-              fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+              fInd->llik += 0.5*f - 0.918938533204672669541*((double)op_focei.adjLik);
             }
           } else if (op_focei.fo == 1) {
             // FO
@@ -1006,7 +1006,7 @@ double likInner0(double *eta, int id){
                     0.5 * c(k, i) - 0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
                 } else {
-                  lp(i, 0) += fpm;
+                  lp(i, 0) += 0.5*fpm;
                 }
               }
               op->neq = oldNeq;
@@ -1016,7 +1016,7 @@ double likInner0(double *eta, int id){
                  double ll = err * err/_safe_zero(r) + lnr;
                  fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
                } else {
-                 fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+                 fInd->llik += 0.5*f - 0.918938533204672669541*((double)op_focei.adjLik);
                }
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
@@ -1039,7 +1039,7 @@ double likInner0(double *eta, int id){
                   double lpCur = -0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
                 } else {
-                  lp(i, 0) += fpm;
+                  lp(i, 0) += 0.5*fpm;
                 }
               }
               op->neq = oldNeq;
