@@ -948,7 +948,7 @@ foceiControl <- function(sigdig = 3, #
     outerOptFun <- outerOpt
     outerOpt <- -1L
   }
-  if (checkmate::testIntegerish(innerOpt, lower=1, upper=1, len=1)) {
+  if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
