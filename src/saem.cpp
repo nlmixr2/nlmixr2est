@@ -2027,6 +2027,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   mat g(_rx->nobs2, 3); // nobs EXCLUDING EVID=2
   int elt=0;
   bool hasNan = false;
+  unsigned int nNanWarn=0;
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = &(_rx->subjects[id]);
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
@@ -2084,6 +2085,7 @@ mv_t rxModelVarsS;
 
 void setupRx(List &opt, SEXP evt, SEXP evtM) {
   RObject obj = opt[".rx"];
+  bool doIni = false;
   if (getRx_ == NULL) {
     getRx_ = (getRxSolve_t) R_GetCCallable("rxode2","getRxSolve_");
     getTimeS = (getTime_t) R_GetCCallable("rxode2", "getTime");
@@ -2094,6 +2096,7 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
     iniSubjectE = (iniSubjectE_t) R_GetCCallable("rxode2","iniSubjectE");
     rxGetIdS = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
     rxModelVarsS = (mv_t)R_GetCCallable("rxode2", "_rxode2_rxModelVars_");
+    doIni=true;
   }
   List mv = rxModelVarsS(obj);
   parNames = mv[RxMv_params];

@@ -247,6 +247,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmixr2Hess_
+RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e, RObject gillInfoT);
+RcppExport SEXP _nlmixr2est_nlmixr2Hess_(SEXP thetaTSEXP, SEXP fTSEXP, SEXP eSEXP, SEXP gillInfoTSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type thetaT(thetaTSEXP);
+    Rcpp::traits::input_parameter< RObject >::type fT(fTSEXP);
+    Rcpp::traits::input_parameter< RObject >::type e(eSEXP);
+    Rcpp::traits::input_parameter< RObject >::type gillInfoT(gillInfoTSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmixr2Hess_(thetaT, fT, e, gillInfoT));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sqrtm
 NumericMatrix sqrtm(NumericMatrix m);
 RcppExport SEXP _nlmixr2est_sqrtm(SEXP mSEXP) {
@@ -408,20 +422,6 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type y(ySEXP);
     Rcpp::traits::input_parameter< Eigen::Map<Eigen::VectorXd> >::type params(paramsSEXP);
     rcpp_result_gen = Rcpp::wrap(llik_neg_binomial(y, params));
-    return rcpp_result_gen;
-END_RCPP
-}
-// nlmixr2Hess_
-RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e, RObject gillInfoT);
-RcppExport SEXP _nlmixr2est_nlmixr2Hess_(SEXP thetaTSEXP, SEXP fTSEXP, SEXP eSEXP, SEXP gillInfoTSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< RObject >::type thetaT(thetaTSEXP);
-    Rcpp::traits::input_parameter< RObject >::type fT(fTSEXP);
-    Rcpp::traits::input_parameter< RObject >::type e(eSEXP);
-    Rcpp::traits::input_parameter< RObject >::type gillInfoT(gillInfoTSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmixr2Hess_(thetaT, fT, e, gillInfoT));
     return rcpp_result_gen;
 END_RCPP
 }

@@ -83,6 +83,10 @@ nlmixr2ParHist_ <- function(md5) {
     .Call(`_nlmixr2est_nlmixr2ParHist_`, md5)
 }
 
+nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
+    .Call(`_nlmixr2est_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
+}
+
 #' Return the square root of general square matrix A
 #'
 #' @param m Matrix to take the square root of.
@@ -150,10 +154,6 @@ llik_beta <- function(y, params) {
 
 llik_neg_binomial <- function(y, params) {
     .Call(`_nlmixr2est_llik_neg_binomial`, y, params)
-}
-
-nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
-    .Call(`_nlmixr2est_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {

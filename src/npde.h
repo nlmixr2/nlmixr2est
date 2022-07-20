@@ -38,6 +38,7 @@ typedef struct {
   arma::mat ydsim;
   arma::mat ydsim2;
   arma::mat yobst;
+  arma::mat yobst2;
   arma::mat yobs;
   arma::mat ydobs;
   arma::mat ydobs2;

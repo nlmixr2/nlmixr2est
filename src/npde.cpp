@@ -141,9 +141,13 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::ivec &cens, arma
   default:
     return;
   }
-  // Now back-calculate the EPRED; Only based on the pd=pd2, not pde=pd
+  // Now back-calculate the EPRED
+  j = trunc(ret.pd[i]*K);
   j2 = trunc(ret.pd2[i]*K);
+  low = curRow[j];
   low2 = curRow[j2];
+  if (j+1 == K) hi = 2*low - curRow[j-1];
+  else hi = curRow[j+1];
   if (j2+1 == K) hi2 = 2*low2 - curRow[j2-1];
   else hi2 = curRow[j2+1];
   // check if this makes sense
