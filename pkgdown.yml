@@ -1,8 +1,8 @@
 pandoc: 2.7.3
-pkgdown: 2.0.5.9000
-pkgdown_sha: 1c29ed55626295ac6aabc615075be4edbedb88c0
+pkgdown: 2.0.6.9000
+pkgdown_sha: 956f076f661eb2de9413f64ea24a580cf444466d
 articles: {}
-last_built: 2022-07-15T19:22Z
+last_built: 2022-07-20T16:08Z
 urls:
   reference: https://nlmixr2.github.io/nlmixr2est/reference
   article: https://nlmixr2.github.io/nlmixr2est/articles
