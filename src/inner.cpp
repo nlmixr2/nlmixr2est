@@ -5,6 +5,7 @@
 #include "utilc.h"
 #include <lbfgsb3c.h>
 #include "censEst.h"
+#include "nearPD.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -84,7 +85,6 @@ extern "C" {
 
 typedef int (*iniSubjectI_t)(int solveid, int inLhs, rx_solving_options_ind *ind, rx_solving_options *op, rx_solve *rx,
                              t_update_inis u_inis);
-
 iniSubjectI_t iniSubjectI;
 
 
@@ -305,6 +305,8 @@ typedef struct {
   bool canDoFD  = false;
   bool adjLik = false;
   bool fallbackFD = false;
+  bool needOptimHess = false;
+  int optimHessType = 1;
 } focei_options;
 
 focei_options op_focei;
@@ -353,6 +355,7 @@ typedef struct {
   double curF;
   double curT;
   double *curS;
+  int nNonNormal = 0;
 } focei_ind;
 
 focei_ind *inds_focei = NULL;
@@ -850,6 +853,7 @@ double likInner0(double *eta, int id){
       // Calculate matricies
       int k = 0, kk=0;//ind->n_all_times - ind->ndoses - ind->nevid2 - 1;
       fInd->llik=0.0;
+      fInd->nNonNormal = 0;
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
@@ -922,7 +926,8 @@ double likInner0(double *eta, int id){
               fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
             } else {
-              fInd->llik += 0.5*f - 0.918938533204672669541*((double)op_focei.adjLik);
+              fInd->llik += f;
+              fInd->nNonNormal++;
             }
           } else if (op_focei.fo == 1) {
             // FO
@@ -1006,7 +1011,7 @@ double likInner0(double *eta, int id){
                     0.5 * c(k, i) - 0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
                 } else {
-                  lp(i, 0) += 0.5*fpm;
+                  lp(i, 0) += fpm;
                 }
               }
               op->neq = oldNeq;
@@ -1014,9 +1019,10 @@ double likInner0(double *eta, int id){
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
                if (dist == rxDistributionNorm) {
                  double ll = err * err/_safe_zero(r) + lnr;
-                 fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 fInd->llik += -0.5*doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
                } else {
-                 fInd->llik += 0.5*f - 0.918938533204672669541*((double)op_focei.adjLik);
+                 fInd->llik += f;
+                 fInd->nNonNormal++;
                }
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
@@ -1039,7 +1045,7 @@ double likInner0(double *eta, int id){
                   double lpCur = -0.5 * err * fpm * B(k, 0);
                   lp(i, 0) += dCensNormal1((double)cens, dv, limit, lpCur, f, r, fpm, rp);
                 } else {
-                  lp(i, 0) += 0.5*fpm;
+                  lp(i, 0) += fpm;
                 }
               }
               op->neq = oldNeq;
@@ -1047,9 +1053,10 @@ double likInner0(double *eta, int id){
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
               if (dist == rxDistributionNorm) {
                 double ll = err * err/_safe_zero(r) + lnr;
-                fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                fInd->llik += -0.5*doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
               } else {
-                fInd->llik += f - 0.918938533204672669541*((double)op_focei.adjLik);
+                fInd->llik += f;
+                fInd->nNonNormal++;
               }
             }
           }
@@ -1062,7 +1069,6 @@ double likInner0(double *eta, int id){
         }
       }
       if (op_focei.neta == 0) {
-        fInd->llik = -0.5*fInd->llik;
       } else if (op_focei.fo == 1) {
         if (cens != 0) stop("FO censoring not supported.");
         if (dist != rxDistributionNorm) stop("Generalized llik for FO is not supported");
@@ -1083,7 +1089,6 @@ double likInner0(double *eta, int id){
         mat rest =trans(B) * CiInv * B;
         lik += rest(0,0);
         // lik = -2*ll
-        fInd->llik = -0.5*lik;
         // if (cens == 0){
         // 	fInd->llik += err * err/_safe_zero(r) + lnr;
         // 	likM2(fInd, limit, f, r);
@@ -1091,7 +1096,6 @@ double likInner0(double *eta, int id){
         // 	likCens(fInd, cens, limit, f, dv, r);
         //       }
       } else {
-        fInd->llik = -0.5*fInd->llik;
         // Now finalize lp
         mat etam = arma::mat(op_focei.neta, 1);
         std::copy(&eta[0], &eta[0] + op_focei.neta, etam.begin()); // fill in etam
@@ -1101,6 +1105,9 @@ double likInner0(double *eta, int id){
         lp = -(lp - op_focei.omegaInv * etam);
         // Partially finalize #10
         fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * op_focei.omegaInv * etam));
+        if (fInd->nNonNormal && op_focei.adjLik) {
+          fInd->llik -= fInd->nNonNormal*0.918938533204672669541;
+        }
         // print(wrap(fInd->llik));
         std::copy(&eta[0], &eta[0] + op_focei.neta, &fInd->oldEta[0]);
         // for (int ssi = op_focei.neta; ssi--;){
@@ -1170,13 +1177,81 @@ double LikInner2(double *eta, int likId, int id){
     int k, l;
     mat tmp;
 
-    arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
-    // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
-    arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
-    // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
-
     // This is actually -H
-    if (op_focei.interaction){
+    if (op_focei.needOptimHess) {
+      arma::vec gr0(op_focei.neta);
+      std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
+      arma::vec gr1(op_focei.neta);
+      arma::vec gr2(op_focei.neta);
+      arma::vec gr3(op_focei.neta);
+      arma::vec gr4(op_focei.neta);
+
+      switch (op_focei.optimHessType) {
+      case 1: // central
+        for (k = op_focei.neta; k--;) {
+          //x + h
+          eta[k] += op_focei.hessEps;
+          lpInner(eta, &gr1[0], id);
+
+          // x - h
+          eta[k] -= 2*op_focei.hessEps;
+          lpInner(eta, &gr2[0], id);
+
+          // fill in the gradient for the row
+          H.col(k) = (gr1-gr2)/(2*op_focei.hessEps);
+          
+          // x
+          eta[k] += op_focei.hessEps;
+        }
+        break;
+      case 2: // stencil
+        for (k = op_focei.neta; k--;) {
+          //x +2h
+          eta[k] += 2*op_focei.hessEps;
+          lpInner(eta, &gr1[0], id);
+
+          // x+h
+          eta[k] -= op_focei.hessEps;
+          lpInner(eta, &gr2[0], id);
+
+          // x - h
+          eta[k] -= 2*op_focei.hessEps;
+          lpInner(eta, &gr3[0], id);
+
+          // x - h2
+          eta[k] -= op_focei.hessEps;
+          lpInner(eta, &gr4[0], id);
+
+          // fill in the gradient for the row
+          H.col(k) = (-gr1+8*gr2-8*gr3+gr4)/(12*op_focei.hessEps);
+          // x
+          eta[k] += 2*op_focei.hessEps;
+        }
+        break;
+      case 3: // forward
+        for (k = op_focei.neta; k--;) {
+          //x + h
+          eta[k] += op_focei.hessEps;
+          lpInner(eta, &gr1[0], id);
+
+          // fill in the gradient for the row
+          H.col(k) = (gr1-gr0)/(op_focei.hessEps);
+          
+          // x
+          eta[k] -= op_focei.hessEps;
+        }
+        break;
+      }
+      // symmetrize
+      H = 0.5*(H + H.t());
+      // Note that since the gradient includes omegaInv*etam,
+      // op_focei.omegaInv(k, l) shouldn't be added.
+    } else if (op_focei.interaction) {
+      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
+      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
+      // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
+
       arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
       // std::copy(&fInd->c[0], &fInd->c[0]+c.size(), c.begin());
       for (k = op_focei.neta; k--;){
@@ -1190,8 +1265,12 @@ double LikInner2(double *eta, int likId, int id){
         }
       }
     } else {
+      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
+      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
+      // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
       for (k = op_focei.neta; k--;){
-        for (l = k+1; l--;){
+        for (l = k+1; l--;) {
           // tmp = a.col(l) %  B % a.col(k);
           H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
             op_focei.omegaInv(k, l);
@@ -1202,9 +1281,12 @@ double LikInner2(double *eta, int likId, int id){
     }
     arma::mat H0(fInd->H0, op_focei.neta, op_focei.neta, false, true);
     k=0;
-    if (fInd->doChol){
+    if (!H.is_sympd()) {
+      H=nmNearPD(H);
+    }
+    if (fInd->doChol) {
       arma::mat Hout, Hin = H;
-      bool success = chol(Hout, H);
+      bool success = chol(Hout, Hin);
       if (!success) {
         return NA_REAL;
       }
@@ -3252,6 +3334,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
+  op_focei.needOptimHess = as<double>(foceiO["needOptimHess"]);
 
   op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
   op_focei.cholSECov=as<double>(foceiO["cholSECov"]);

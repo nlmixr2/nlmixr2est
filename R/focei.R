@@ -1375,6 +1375,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
+  .control$needOptimHess <- any(.ui$predDf$distribution != "norm")
   assign("control", .control, envir=.ui)
 }
 
@@ -1418,7 +1419,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .env$table <- env$table
   .data <- env$data
   .foceiPreProcessData(.data, .env, ui)
-  if (!is.null(.env$cov)){
+  if (!is.null(.env$cov)) {
     checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
                             row.names="strict", col.names="strict")
   }

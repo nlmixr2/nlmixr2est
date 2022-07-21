@@ -893,7 +893,7 @@ foceiControl <- function(sigdig = 3, #
                              "resetThetaSize", "resetThetaFinalSize",
                              "outerOptFun", "outerOptTxt", "skipCov",
                              "foceiMuRef", "predNeq", "nfixed", "nomega",
-                             "neta", "ntheta", "nF", "printTop"))]
+                             "neta", "ntheta", "nF", "printTop", "needOptimHess"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
