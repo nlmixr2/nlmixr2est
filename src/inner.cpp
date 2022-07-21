@@ -2079,6 +2079,49 @@ double foceiOfv(NumericVector theta){
   return foceiOfv0(&theta[0]);
 }
 
+void foceiPhi(Environment e) {
+  if (op_focei.neta==0) return;
+  List retH(rx->nsub);
+  List retC(rx->nsub);
+  if (e.exists("idLvl")) {
+    RObject idl = e["idLvl"];
+    retH.attr("names") = idl;
+    retC.attr("names") = idl;
+  }
+  bool doDimNames = false;
+  List dimn(2);
+  if (e.exists("etaNames")) {
+    doDimNames=true;
+    dimn[0] = e["etaNames"];
+    dimn[1] = e["etaNames"];
+  }
+  for (int j=rx->nsub; j--;){
+    focei_ind *fInd = &(inds_focei[j]);
+    arma::mat H(fInd->H, op_focei.neta, op_focei.neta, false, true);
+    RObject cur = wrap(H);
+    if (doDimNames) cur.attr("dimnames") = dimn;
+    retH[j] = cur;
+    arma::mat cov;
+    bool success  = inv_sympd(cov, H);
+    if (!success){
+      success = pinv(cov, H);
+      if (!success) {
+        retC[j] = NA_REAL;
+      } else {
+        cur = wrap(cov);
+        if (doDimNames) cur.attr("dimnames") = dimn;
+        retC[j] = cur;
+      }
+    } else {
+      cur = wrap(cov);
+      if (doDimNames) cur.attr("dimnames") = dimn;
+      retC[j] = cur;
+    }
+  }
+  e["phiH"] = retH;
+  e["phiC"] = retC;
+}
+
 SEXP foceiEtas(Environment e) {
   if (op_focei.neta==0) return R_NilValue;
   List ret(op_focei.neta+2);
@@ -3568,6 +3611,8 @@ void foceiOuterFinal(double *x, Environment e){
   } else {
     e["omega"] = getOmega();
     e["etaObf"] = foceiEtas(e);
+    // create phi object for standard errors
+    foceiPhi(e);
   }
   nlmixr2EnvSetup(e, fmin);
 }

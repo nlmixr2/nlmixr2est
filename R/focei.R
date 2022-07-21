@@ -1695,7 +1695,6 @@ nlmixr2Est.output <- function(env, ...) {
 #' - `$extra` Extra print information
 #' - `$method` Estimation method (for printing)
 #' - `$omega` Omega matrix
-#' - `$etaObf` Eta objective function data frame
 #' - `$theta` Is a theta data frame
 #' - `$model` a list of model information for table generation.  Needs a `predOnly` model
 #' - `$message` Message for display
