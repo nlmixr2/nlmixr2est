@@ -334,3 +334,17 @@ rxModelVarsS3.nlmixr2FitCore <- function(obj) {
 rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
   rxode2::rxModelVars(obj$ui)
 }
+
+#' C++ implementation of Matrix's nearPD
+#'
+#' With `ensureSymmetry` it makes sure it is symmetric by applying 0.5*(t(x) + x) before using nmNearPD
+#' 
+#' @inherit Matrix::nearPD
+#' 
+#' @export
+nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only.values = FALSE, ensureSymmetry=!isSymmetric(x), eig.tol = 1e-6, conv.tol = 1e-7, posd.tol = 1e-8, maxit = 100L, trace = FALSE) {
+  if (ensureSymmetry) {
+    x <- 0.5 * (t(x) + x)
+  }
+  .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only.values, eig.tol, conv.tol, posd.tol, maxit, trace)
+}

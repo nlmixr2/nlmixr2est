@@ -4,6 +4,18 @@
 
 - What type(s) censoring (if any) is now stored in `fit$censInformation`
 
+- Standard errors of `$etas` can now be obtained with `fit$phiSE`,
+  also available are `fit$phiRSE` (relative standard error),
+  `fit$phiH`, (individual hessian), `fit$phiC` (individual
+  covariances), `fit$phiR` (individual correlation matrices)
+  
+- Generalized likelihood estimation is now present in `nlmixr2est` for
+  `focei`, `foce` and `posthoc`
+  
+- `nmNearPD()` is a function you may use for nearest positive definite
+  matrix.  This is derived from `Matrix::nearPD()` but is implemented
+  in C/C++ to be used in (possibly threaded) optimization.
+
 # Censoring fixes
 
  - Fixed bug where datasets with censoring that are not lower case `cens` and `limit` do not

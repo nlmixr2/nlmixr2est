@@ -1,6 +1,5 @@
-//https://stackoverflow.com/questions/51490499/results-for-calculating-nearest-positive-definite-matrix-are-different-in-r-func/51492402#51492402
-// Modifications by M. Fidler
-// Contributors Ding Li, Ralf Stubner
+// https://github.com/cran/Matrix/blob/master/R/nearPD.R
+// Contributors Martin Maechler, Jens Oehlschlägel
 #define ARMA_DONT_PRINT_ERRORS
 #define STRICT_R_HEADER
 #include "armahead.h"
@@ -42,79 +41,76 @@ vec nmPmaxC(double a, vec b){
   return c;
 }
 
-mat nmNearPD(mat x, 
-             bool corr //= false
-             , bool keepDiag// = false
-             , bool do2eigen// = true  // if TRUE do a sfsmisc::posdefify() eigen step
-             , bool doSym// = false // symmetrize after tcrossprod()
-             , bool doDykstra// = true // do use Dykstra's correction
-             , bool only_values// = false // if TRUE simply return lambda[j].
-             , double eig_tol//   = 1e-6 // defines relative positiveness of eigenvalues compared to largest
-             , double conv_tol//  = 1e-7 // convergence tolerance for algorithm
-             , double posd_tol//  = 1e-8 // tolerance for enforcing positive definiteness
-             , int maxit//    = 100 // maximum number of iterations allowed
-             , bool trace// = false // set to TRUE (or 1 ..) to trace iterations
-             ){
+bool eig_symR(vec &d, mat &Q, mat &B) {
+  // This match's R style of eig_sym, to make translation easier
+  mat B2 = 0.5*(B+B.t());
+  bool ret = eig_sym(d, Q, B2);
+  if (!ret) return false;
+  d = reverse(d);
+  Q = fliplr(Q);
+  return true;
+}
+
+bool nmNearPD(mat &ret, mat x
+              , bool keepDiag// = false
+              , bool do2eigen// = true  // if TRUE do a sfsmisc::posdefify() eigen step
+              , bool doDykstra// = true // do use Dykstra's correction
+              , bool only_values// = false // if TRUE simply return lambda[j].
+              , double eig_tol//   = 1e-6 // defines relative positiveness of eigenvalues compared to largest
+              , double conv_tol//  = 1e-7 // convergence tolerance for algorithm
+              , double posd_tol//  = 1e-8 // tolerance for enforcing positive definiteness
+              , int maxit//    = 100 // maximum number of iterations allowed
+              , bool trace// = false // set to TRUE (or 1 ..) to trace iterations
+              ){
 
   int n = x.n_cols;
   vec diagX0;
   if(keepDiag) {
     diagX0 = x.diag();
   }
-  mat D_S;
-  if(doDykstra) {
-    //D_S should be like x, but filled with '0' -- following also works for 'Matrix':
-    D_S = x;
-    D_S.zeros(); //set all element
-  }
+  
+  mat D_S(n, n, arma::fill::zeros);
 
   mat X = x;
   int iter = 0 ;
   bool converged = false; 
   double conv = R_PosInf;
 
-
   mat Y;
   mat R;
   mat B;
+  
   while (iter < maxit && !converged) {
     Y = X;
-    if(doDykstra){
+    if (doDykstra) {
       R = Y - D_S;
     }
 
     vec d;
+    mat Qin;
     mat Q;
+    
+    
     if(doDykstra){
       B=R;
     }else{
       B=Y;
     }
-
-    eig_sym(d, Q, B);
+    
+    eig_symR(d, Q, B);
 
     // create mask from relative positive eigenvalues
-    uvec p= (d>eig_tol*d[1]);
+    uvec p= (d>eig_tol*d[0]);
     if(sum(p)==0){
       //stop("Matrix seems negative semi-definite")
-      break;
+      return false;
     }
 
-    // use p mask to only compute 'positive' part
-    uvec p_indexes(sum(p));
+    uvec fp = find(p);
 
-    int p_i_i=0;
-    for(unsigned int i=0;i<p.n_elem;i++){
-      if(p(i)) {
-        p_indexes(p_i_i)=i;
-        p_i_i++;
-      }
-    }
+    Q=Q.cols(fp);
 
-
-    Q=Q.cols(p_indexes);
-
-    X=nmMatVecSameLen(Q,nmRepEach(d.elem(p_indexes),Q.n_rows))*Q.t();
+    X=nmMatVecSameLen(Q,nmRepEach(d.elem(fp),Q.n_rows))*Q.t();
 
     // update Dykstra's correction D_S = \Delta S_k           
     if(doDykstra){
@@ -122,15 +118,9 @@ mat nmNearPD(mat x,
     }
 
     // project onto symmetric and possibly 'given diag' matrices:
-    if(doSym){
-      X = (X + X.t())/2;
-    }
+    X = 0.5*(X + X.t());
 
-    if(corr){
-
-      X.diag().ones(); //set diagnols as ones
-    } 
-    else if(keepDiag){
+    if(keepDiag){
       X.diag() = diagX0;
     } 
 
@@ -143,60 +133,60 @@ mat nmNearPD(mat x,
       Rcpp::Rcout << "iter " << iter <<" : #{p}= "<< sum(p) << std::endl;
     }
 
-    converged = (conv <= conv_tol);       
+    converged = (conv <= conv_tol); 
 
     // force symmetry is *NEVER* needed, we have symmetric X here!
     //X <- (X + t(X))/2
     if(do2eigen || only_values) {
       // begin from posdefify(sfsmisc)
+      eig_symR(d, Q, X);
 
-      eig_sym(d, Q, X);
-
-      double Eps = posd_tol * std::abs(d[n-1]);
-      if (d(0) < Eps) {
-        uvec d_comp = d < Eps;
-        for(unsigned int i=0; i < sum(d_comp); i++){
-          if(d_comp(i)){
-            d(i)=Eps;
-          }
-        }
-
-        // d[d < Eps] = Eps; //how to assign values likes this?
+      double Eps = posd_tol * std::abs(d[0]);
+      if (d(n-1) < Eps) {
+        d.elem(find(d < Eps)).fill(Eps);
+        
         if(!only_values) {
-
           vec o_diag = X.diag();
-          X = Q * (d *Q.t());
+          mat Q2 = Q.t();
+          for (unsigned int i = 0; i < n; ++i)  {
+            Q2.col(i) = d % Q2.col(i);
+          }
+          X = Q * Q2;
           vec D = sqrt(nmPmaxC(Eps, o_diag)/X.diag());
-          x=D * X * nmRepEach(D,  n);
+          mat DX(n, n);
+          mat D2(n, n);
+          for (unsigned int i = 0; i < n; ++i)  {
+            DX.col(i) = D % X.col(i);
+            D2.col(i) = D;
+          }
+          X = DX % D2;
+        }
+        if(only_values) {
+          ret = d;
+          return true;
+        }
+
+        // unneeded(?!): X <- (X + t(X))/2
+        if(keepDiag){
+          X.diag()= diagX0;
         }
       }
-      if(only_values) return(d);
-
-      // unneeded(?!): X <- (X + t(X))/2
-      if(corr) {
-        X.diag().ones(); //set diag as ones
-      }
-      else if(keepDiag){
-        X.diag()= diagX0;
-      } 
-
     } //end from posdefify(sfsmisc)
 
   }
 
-  // if(!converged){ //not converged
-  //   Rcpp::Rcout << "did not converge! " <<std::endl;
-  // }
+  if(!converged){ //not converged
+    return false;
+  }
 
-  return X;
+  ret = X;
+  return true;
 }
 
-//[[Rxpp::export]]
-RObject nmNearPD_(RObject x, 
-                  bool corr = false
+//[[Rcpp::export]]
+RObject nmNearPD_(RObject x
                   , bool keepDiag = false
                   , bool do2eigen = true  // if TRUE do a sfsmisc::posdefify() eigen step
-                  , bool doSym = false // symmetrize after tcrossprod()
                   , bool doDykstra = true // do use Dykstra's correction
                   , bool only_values = false // if TRUE simply return lambda[j].
                   , double eig_tol   = 1e-6 // defines relative positiveness of eigenvalues compared to largest
@@ -205,6 +195,22 @@ RObject nmNearPD_(RObject x,
                   , int maxit    = 100 // maximum number of iterations allowed
                   , bool trace = false // set to TRUE (or 1 ..) to trace iterations
                   ){
-  return wrap(nmNearPD(as<arma::mat>(x), corr, keepDiag, do2eigen, doSym,
-                       doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace));
+  arma::mat ret;
+  if (nmNearPD(ret, as<arma::mat>(x), keepDiag, do2eigen,
+               doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)) {
+    return wrap(ret);
+  } else {
+    stop("nearest PD calculation failed");
+  }
+  return R_NilValue;
+}
+
+bool chol_sym(mat &Hout, mat &Hin) {
+  mat H = 0.5*(Hin+Hin.t());
+  return chol(Hout, H);
+}
+
+bool inv_sym(mat &Hout, mat &Hin) {
+  mat H = 0.5*(Hin+Hin.t());
+  return inv_sympd(Hout, H);
 }

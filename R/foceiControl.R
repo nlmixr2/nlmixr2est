@@ -77,7 +77,18 @@
 #'     cannot be corrected to be non-positive definite try estimating
 #'     the Hessian on the unscaled parameter space.
 #'
-#' @param hessEps is a double value representing the epsilon for the Hessian calculation.
+#' @param hessEps is a double value representing the epsilon for the
+#'   Hessian calculation. This is used for the R matrix calculation
+#'   and when calculating the individual hessian numerically for
+#'   generalized log-likelihood estimation.
+#'
+#' @param optimHessType The hessian type for when calculating the
+#'   individual hessian by numeric differences (in generalized
+#'   log-likelihood estimation).  The options are "central",
+#'   "stencil", and "forward".  The central differences is what R's
+#'   `optimHess()` uses, and is the default.  Stencil is a 4 point
+#'   method for calculating numeric differences, and "forward" only
+#'   uses one additional point.
 #'
 #' @param centralDerivEps Central difference tolerances.  This is a
 #'     numeric vector of relative difference and absolute difference.
@@ -611,6 +622,7 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
+                         optimHessType = c("central", "stencil", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -850,6 +862,13 @@ foceiControl <- function(sigdig = 3, #
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
     scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
   }
+
+  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+    optimHessType <- as.integer(optimHessType)
+  } else {
+    .optimHessTypeIdx <- c("central" = 1L, "stencil" = 2L, "forward" = 3L)
+    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
+  }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
@@ -1088,6 +1107,7 @@ foceiControl <- function(sigdig = 3, #
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
+    optimHessType=optimHessType,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),

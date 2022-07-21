@@ -1282,11 +1282,14 @@ double LikInner2(double *eta, int likId, int id){
     arma::mat H0(fInd->H0, op_focei.neta, op_focei.neta, false, true);
     k=0;
     if (!H.is_sympd()) {
-      H=nmNearPD(H);
+      arma::mat H2;
+      if (nmNearPD(H2, H)) {
+        H=H2;
+      }
     }
     if (fInd->doChol) {
       arma::mat Hout, Hin = H;
-      bool success = chol(Hout, Hin);
+      bool success = chol_sym(Hout, Hin);
       if (!success) {
         return NA_REAL;
       }
@@ -2102,7 +2105,7 @@ void foceiPhi(Environment e) {
     if (doDimNames) cur.attr("dimnames") = dimn;
     retH[j] = cur;
     arma::mat cov;
-    bool success  = inv_sympd(cov, H);
+    bool success  = inv_sym(cov, H);
     if (!success){
       success = pinv(cov, H);
       if (!success) {
@@ -3373,6 +3376,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
+  op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
@@ -5090,7 +5094,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,re);
+                  success= chol_sym(H0, re);
                   if (success){
                     e["cholR"] = wrap(H0);
                     rstr = "|r|";
@@ -5181,7 +5185,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol(H0,re);
+                  success= chol_sym(H0,re);
                   if (success){
                     e["cholS"] = wrap(H0);
                     sstr = "|s|";

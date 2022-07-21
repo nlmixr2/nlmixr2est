@@ -82,6 +82,7 @@ Suggests:
     testthat,
     tibble,
     withr,
+    Matrix,
     xgxr
 LinkingTo: 
     BH,

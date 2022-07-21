@@ -123,7 +123,6 @@ nmObjGet.phiR <- function(x, ...) {
 }
 attr(nmObjGet.phiR, "desc") <- "correlation matrix of each individual's eta (if present)"
 
-
 #' @rdname nmObjGet
 #' @export
 nmObjGet.phiSE <- function(x, ...) {
@@ -140,6 +139,24 @@ nmObjGet.phiSE <- function(x, ...) {
   cbind(data.frame(ID=.id), .ret)
 }
 attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if present)"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.phiRSE <- function(x, ...) {
+  .obj <- x[[1]]
+  .phi <- .obj$phiC
+  .eta <- .obj$eta[,-1]
+  if (is.null(.phi)) return(NULL)
+  .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
+    .cov <- .phi[[i]]
+    sqrt(diag(.cov))/unlist(.eta[i,])*100
+  }, double(dim(.phi[[1]])[1]))))
+  names(.ret) <- paste0("rse(", names(.ret), ")%")
+  .id <- seq_along(.phi)
+  if (!is.null(names(.phi))) .id <- factor(.id, levels=names(.phi))
+  cbind(data.frame(ID=.id), .ret)
+}
+attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's eta (if present)"
 
 
 
