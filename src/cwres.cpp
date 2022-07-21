@@ -113,13 +113,18 @@ BEGIN_RCPP
       censMethod = as<int>(opt["censMethod"]);
     }
   }
+  arma::uvec normRelated(dv.size());
+  arma::uvec normIdx;
+  arma::uvec nonNormIdx;
   bool interestingLimits = censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt,
                                                                    pred, predt, cens, limit,
                                                                    lambda, yj, low, hi,
                                                                    lowerLim, upperLim,
-                                                                   riv, doSim, censMethod);
-
+                                                                   riv, doSim, censMethod,
+                                                                   normRelated, normIdx, nonNormIdx);
+  int ncalc2 = sum(normRelated); // This is the true cwres calculations
   arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
+  arma::ivec ID2 = ID.elem(normIdx);
 
   arma::mat fppm(ncalc,neta);
   arma::mat fpim(ncalc,neta);
@@ -140,8 +145,12 @@ BEGIN_RCPP
   etasDfFull.attr("row.names")=IntegerVector::create(NA_INTEGER,-ncalc);
   etasDfFull.attr("class") = "data.frame";
 
-  arma::mat V_fo_p = (fppm * omegaMat * fppm.t()); // From Mentre 2006 p. 352
-  arma::mat V_fo_i = (fpim * omegaMat * fpim.t()); // From Mentre 2006 p. 352
+  arma::mat fppm2 = fppm.rows(normIdx);
+  arma::mat fpim2 = fpim.rows(normIdx);
+
+
+  arma::mat V_fo_p = (fppm2 * omegaMat * fppm2.t()); // From Mentre 2006 p. 352
+  arma::mat V_fo_i = (fpim2 * omegaMat * fpim2.t()); // From Mentre 2006 p. 352
   // There seems to be a difference between how NONMEM and R/S types
   // of software calculate WRES.  Mentre 2006 states that the
   // Variance under the FO condition should only be diag(Vfo_full) + Sigma,
@@ -165,35 +174,61 @@ BEGIN_RCPP
   arma::vec Vfop = V_fo_p.diag();
   arma::vec Vfoi = V_fo_i.diag();
 
-  arma::vec dErr_dEta_i(ncalc);
-  arma::vec dErr_dEta_p(ncalc);
-  calculateCwresDerr(fppm, fpim, ID, etas, dErr_dEta_i, dErr_dEta_p, etasDfFull, nid, neta);
+  arma::vec dErr_dEta_i(ncalc2);
+  arma::vec dErr_dEta_p(ncalc2);
+  calculateCwresDerr(fppm2, fpim2, ID2, etas, dErr_dEta_i, dErr_dEta_p, etasDfFull, nid, neta);
 
-  arma::vec rest = dvt - predt;
+  arma::vec rest = dvt.elem(normIdx) - predt.elem(normIdx);
   arma::vec vsum = abs(Vfop+rpv);
   arma::vec wres = rest;
   arma::uvec vsum0 = find(vsum != 0);
   wres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
 
-  arma::vec cpredt = ipredt - dErr_dEta_i;
-  arma::vec crest = dvt - cpredt;
+  arma::vec cpredt = ipredt.elem(normIdx) - dErr_dEta_i;
+  arma::vec crest = dvt.elem(normIdx) - cpredt.elem(normIdx);
 
-  arma::vec cpred(cpredt.size());
-  arma::vec cres(crest.size());
-  for (unsigned int i = cres.size(); i--;){
-    cpred[i] = _powerDi(cpredt[i], lambda[i], (int)yj[i], low[i], hi[i]);
-    cres[i]  = dv[i] - cpred[i];
-    pred[i] = _powerDi(predt[i], lambda[i], (int)yj[i], low[i], hi[i]);
+  arma::vec cpred(dv.size());
+  arma::vec cres(dv.size());
+  
+  arma::vec crest2(dv.size());
+  arma::vec cpred2(dv.size());
+  
+  unsigned int j = 0;
+  for (unsigned int i = 0; i < cres.size(); ++i) {
+    int inYj = (int)yj[i];
+    int cyj, dist;
+    _splitYj(&inYj, &dist,  &cyj);
+    if (dist == rxDistributionNorm ||
+        dist == rxDistributionDnorm ||
+        dist == rxDistributionT ||
+        dist == rxDistributionCauchy) {
+      cpred[i] = _powerDi(cpredt[j], lambda[i], inYj, low[i], hi[i]);
+      cres[i]  = dv[i] - cpred[j];
+      pred[i] = _powerDi(predt[i], lambda[i], inYj, low[i], hi[i]);
+      crest2[i] = crest[j];
+      cpred2[i] = cpred[j];
+      j++;
+    } else {
+      cpred[i]  = NA_REAL;
+      cres[i]   = NA_REAL;
+      crest2[i] = NA_REAL;
+      cpred2[i] = NA_REAL;
+      // leave pred alone
+    }
   }
+  
   arma::vec res = dv - pred;
+  res.elem(nonNormIdx).fill(NA_REAL);
   vsum = Vfoi+riv;
   vsum0 = find(vsum != 0);
-  arma::vec cwres = crest;
+  arma::vec cwres = crest2;
   cwres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
   arma::uvec riv0 = find(riv!=0);
   arma::vec iwres=(dvt-ipredt);
   iwres.elem(riv0)/=sqrt(riv.elem(riv0));
+  iwres.elem(nonNormIdx).fill(NA_REAL);
   arma::vec ires = dv - ipred;
+  ires.elem(nonNormIdx).fill(NA_REAL);
 
   for (unsigned int j = ires.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
@@ -204,7 +239,7 @@ BEGIN_RCPP
       ipred[j]	= NA_REAL;
       ires[j]	= NA_REAL;
       iwres[j]	= NA_REAL;
-      cpred[j]	= NA_REAL;
+      cpred2[j]	= NA_REAL;
       cres[j]	= NA_REAL;
       cwres[j]	= NA_REAL;
     } else if (evid[j] != 0) {
@@ -231,7 +266,7 @@ BEGIN_RCPP
   nm[i] = "IPRED"; retDF[i++] = wrap(ipred);
   nm[i] = "IRES"; retDF[i++] = wrap(ires);
   nm[i] = "IWRES"; retDF[i++] = wrap(iwres);
-  nm[i] = "CPRED"; retDF[i++] = wrap(cpred);
+  nm[i] = "CPRED"; retDF[i++] = wrap(cpred2);
   nm[i] = "CRES"; retDF[i++] = wrap(cres);
   nm[i] = "CWRES"; retDF[i++] = wrap(cwres);
   if (interestingLimits) {
