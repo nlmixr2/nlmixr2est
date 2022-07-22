@@ -152,6 +152,8 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::mat fppm2 = fppm.rows(normIdx);
     arma::mat fpim2 = fpim.rows(normIdx);
 
+    arma::vec rpvNorm = rpv.elem(normIdx);
+    arma::vec rivNorm = riv.elem(normIdx);
 
     arma::mat V_fo_p = (fppm2 * omegaMat * fppm2.t()); // From Mentre 2006 p. 352
     arma::mat V_fo_i = (fpim2 * omegaMat * fpim2.t()); // From Mentre 2006 p. 352
@@ -182,22 +184,22 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec dErr_dEta_p(ncalc2);
     calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, nid);
     arma::vec rest = dvt.elem(normIdx) - predtNorm;
-    arma::vec vsum = abs(Vfop+rpv);
+    arma::vec vsum = abs(Vfop+rpvNorm);
     arma::vec wres = rest;
     arma::uvec vsum0 = find(vsum != 0);
     wres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
 
     arma::vec cpredt = ipredt.elem(normIdx) - dErr_dEta_i;
-    arma::vec crest = dvt.elem(normIdx) - cpredt.elem(normIdx);
+    arma::vec crest = dvt.elem(normIdx) - cpredt;
 
     arma::vec res = dvNorm - pred.elem(normIdx);
-    vsum = Vfoi+riv;
+    vsum = Vfoi+rivNorm;
     vsum0 = find(vsum != 0);
     arma::vec cwres = crest;
     cwres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
-    arma::uvec riv0 = find(riv!=0);
+    arma::uvec riv0 = find(rivNorm!=0);
     arma::vec iwres=(dvt.elem(normIdx)-ipredt.elem(normIdx));
-    iwres.elem(riv0)/=sqrt(riv.elem(riv0));
+    iwres.elem(riv0)/=sqrt(rivNorm.elem(riv0));
     arma::vec ires = dv.elem(normIdx) - ipred.elem(normIdx);
     arma::vec cpred(ires.size());
     arma::vec cres(ires.size());
