@@ -1,21 +1,15 @@
 #define STRICT_R_HEADER
+#include "res.h"
 #include "cwres.h"
 static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
                                       arma::ivec& ID, arma::mat &etas,
                                       arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
-                                      List &etasDfFull, int &nid, unsigned int &neta) {
+                                      int &nid) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
   int etaFulli = nid-1;
   double curEta=0.0;
   for (unsigned int j = fppm.n_rows; j--; ){
     if (lastId != ID[j]){
-      // Fill in full eta data frame
-      for (unsigned int i = neta; i--;){
-        curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-        NumericVector cur = etasDfFull[i];
-        std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
-      }
-      etaFulli--;
       // FIXME do it without copy?
       arma::vec tmp = fppm.rows(j+1, lastIndex) * trans(etas.row(lastCol));
       std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin()+j+1);
@@ -25,12 +19,6 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
       lastIndex=j;
       lastCol--;
       if (lastCol == 0){
-        // Finalize ETA
-        for (unsigned int i = neta; i--;){
-          curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-          NumericVector cur = etasDfFull[i];
-          std::fill_n(cur.begin(),lastIndex+1,curEta);
-        }
         // Finalize dErr_dEta
         arma::vec tmp = fppm.rows(0, lastIndex) * trans(etas.row(lastCol));
         std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin());
@@ -192,7 +180,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
 
     arma::vec dErr_dEta_i(ncalc2);
     arma::vec dErr_dEta_p(ncalc2);
-    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, etasDfFull, nid, neta);
+    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, nid);
     arma::vec rest = dvt.elem(normIdx) - predtNorm;
     arma::vec vsum = abs(Vfop+rpv);
     arma::vec wres = rest;
@@ -233,15 +221,9 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     cpredFinal.elem(nonNormIdx).fill(NA_REAL);
     cresFinal.elem(nonNormIdx).fill(NA_REAL); 
     cwresFinal.elem(nonNormIdx).fill(NA_REAL);
-  } else {
-    resFinal.fill(NA_REAL);  
-    wresFinal.fill(NA_REAL); 
-    iresFinal.fill(NA_REAL); 
-    iwresFinal.fill(NA_REAL);
-    cpredFinal.fill(NA_REAL);
-    cresFinal.fill(NA_REAL); 
-    cwresFinal.fill(NA_REAL);
   }
+  calculateDfFull(ID, etas, etasDfFull, nid, neta);
+
  
   for (unsigned int j = dv.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
@@ -265,7 +247,12 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
       cwresFinal[j]	= NA_REAL;
     }
   }
-  int ncol = 9;
+  int ncol;
+  if (ncalc2 != 0) {
+    ncol = 9;
+  } else {
+    ncol = 2;
+  }
   if (interestingLimits) {
     ncol += 3 + hasLimit;
   }
@@ -274,14 +261,18 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   int i=0;
   //nm[i] = "DV"; retDF[i++] = wrap(dv);
   nm[i] = "PRED"; retDF[i++] = wrap(pred);
-  nm[i] = "RES"; retDF[i++] = wrap(resFinal);
-  nm[i] = "WRES"; retDF[i++] = wrap(wresFinal);
+  if (ncalc2 != 0) {
+    nm[i] = "RES"; retDF[i++] = wrap(resFinal);
+    nm[i] = "WRES"; retDF[i++] = wrap(wresFinal);    
+  }
   nm[i] = "IPRED"; retDF[i++] = wrap(ipred);
-  nm[i] = "IRES"; retDF[i++] = wrap(iresFinal);
-  nm[i] = "IWRES"; retDF[i++] = wrap(iwresFinal);
-  nm[i] = "CPRED"; retDF[i++] = wrap(cpredFinal);
-  nm[i] = "CRES"; retDF[i++] = wrap(cresFinal);
-  nm[i] = "CWRES"; retDF[i++] = wrap(cwresFinal);
+  if (ncalc2 != 0) {
+    nm[i] = "IRES"; retDF[i++] = wrap(iresFinal);
+    nm[i] = "IWRES"; retDF[i++] = wrap(iwresFinal);
+    nm[i] = "CPRED"; retDF[i++] = wrap(cpredFinal);
+    nm[i] = "CRES"; retDF[i++] = wrap(cresFinal);
+    nm[i] = "CWRES"; retDF[i++] = wrap(cwresFinal);
+  }
   if (interestingLimits) {
     nm[i] = "CENS"; retDF[i++] = wrap(cens);
     if (hasLimit){
