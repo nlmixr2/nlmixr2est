@@ -796,16 +796,54 @@ rxUiGet.focei <- function(x, ...) {
 
 #' @export
 rxUiGet.foce <- function(x, ...) {
+  .ui <- x[[1]]
+  assignInMyNamespace(".rxPredLlik", FALSE)
+  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .s <- rxUiGet.foceEnv(x, ...)
-  .innerInternal(x[[1]], .s)
+  .ret <- .innerInternal(.ui, .s)
+  .predDf <- .ui$predDf
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+    assignInMyNamespace(".rxPredLlik", TRUE)
+    .s <- rxUiGet.foceEnv(x, ...)
+    .s2 <- .innerInternal(.ui, .s)
+    .w <- vapply(seq_along(.s2),
+                 function(i) {
+                   inherits(.s2[[i]], "rxode2")
+                 }, logical(1), USE.NAMES=FALSE)
+    .s2 <- .s2[.w]
+    names(.s2) <- paste0(names(.s2), "Llik")
+    .cls <- class(.ret)
+    .ret <- c(.ret, .s2)
+    class(.ret) <-.cls
+  }
+  .ret
 }
 #attr(rxUiGet.foce, "desc") <- "Get the FOCE foceiModelList object"
 
 
 #' @export
 rxUiGet.ebe <- function(x, ...) {
+  .ui <-x[[1]]
+  assignInMyNamespace(".rxPredLlik", FALSE)
+  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .s <- rxUiGet.getEBEEnv(x, ...)
-  .innerInternal(x[[1]], .s)
+  .ret <- .innerInternal(.ui, .s)
+  .predDf <- .ui$predDf
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+    assignInMyNamespace(".rxPredLlik", TRUE)
+    .s <- rxUiGet.getEBEEnv(x, ...)
+    .s2 <- .innerInternal(.ui, .s)
+    .w <- vapply(seq_along(.s2),
+                 function(i) {
+                   inherits(.s2[[i]], "rxode2")
+                 }, logical(1), USE.NAMES=FALSE)
+    .s2 <- .s2[.w]
+    names(.s2) <- paste0(names(.s2), "Llik")
+    .cls <- class(.ret)
+    .ret <- c(.ret, .s2)
+    class(.ret) <-.cls
+  }
+  .ret
 }
 #attr(rxUiGet.ebe, "desc") <- "Get the EBE foceiModelList object"
 
