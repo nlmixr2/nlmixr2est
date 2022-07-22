@@ -1089,6 +1089,7 @@ double likInner0(double *eta, int id){
         mat rest =trans(B) * CiInv * B;
         lik += rest(0,0);
         // lik = -2*ll
+        fInd->llik = -0.5*lik;
         // if (cens == 0){
         // 	fInd->llik += err * err/_safe_zero(r) + lnr;
         // 	likM2(fInd, limit, f, r);
@@ -3381,7 +3382,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
   op_focei.resetThetaFinalSize = as<double>(foceiO["resetThetaFinalSize"]);
-  op_focei.needOptimHess = as<double>(foceiO["needOptimHess"]);
+  op_focei.needOptimHess = as<bool>(foceiO["needOptimHess"]);
 
   op_focei.cholSEOpt=as<double>(foceiO["cholSEOpt"]);
   op_focei.cholSECov=as<double>(foceiO["cholSECov"]);
