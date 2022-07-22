@@ -1,5 +1,15 @@
 # nlmixr2est 2.0.9
 
+# Breaking changes
+
+
+## FOCEi
+
+ - Gill forward differences will not repeat now (by default), You can change back to prior behavior with `foceiControl(repeatGillMax=3)` 
+ 
+ - Number of sticky recalculation is reduced to 3; to have the old
+   behavior use `foceiControl(stickyRecalcN=5)`
+
 # New features
 
 - What type(s) censoring (if any) is now stored in `fit$censInformation`
