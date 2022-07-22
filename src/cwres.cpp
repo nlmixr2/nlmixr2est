@@ -1,9 +1,9 @@
 #define STRICT_R_HEADER
 #include "cwres.h"
 static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
-				      arma::ivec& ID, arma::mat &etas,
-				      arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
-				      List &etasDfFull, int &nid, unsigned int &neta) {
+                                      arma::ivec& ID, arma::mat &etas,
+                                      arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
+                                      List &etasDfFull, int &nid, unsigned int &neta) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
   int etaFulli = nid-1;
   double curEta=0.0;
@@ -11,9 +11,9 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
     if (lastId != ID[j]){
       // Fill in full eta data frame
       for (unsigned int i = neta; i--;){
-	curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-	NumericVector cur = etasDfFull[i];
-	std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
+        curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
+        NumericVector cur = etasDfFull[i];
+        std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
       }
       etaFulli--;
       // FIXME do it without copy?
@@ -25,29 +25,29 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
       lastIndex=j;
       lastCol--;
       if (lastCol == 0){
-	// Finalize ETA
-	for (unsigned int i = neta; i--;){
-	  curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-	  NumericVector cur = etasDfFull[i];
-	  std::fill_n(cur.begin(),lastIndex+1,curEta);
-	}
-	// Finalize dErr_dEta
-	arma::vec tmp = fppm.rows(0, lastIndex) * trans(etas.row(lastCol));
-	std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin());
-	tmp = fpim.rows(0, lastIndex) * trans(etas.row(lastCol));
-	std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin());
-	break;
+        // Finalize ETA
+        for (unsigned int i = neta; i--;){
+          curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
+          NumericVector cur = etasDfFull[i];
+          std::fill_n(cur.begin(),lastIndex+1,curEta);
+        }
+        // Finalize dErr_dEta
+        arma::vec tmp = fppm.rows(0, lastIndex) * trans(etas.row(lastCol));
+        std::copy(tmp.begin(),tmp.end(),dErr_dEta_p.begin());
+        tmp = fpim.rows(0, lastIndex) * trans(etas.row(lastCol));
+        std::copy(tmp.begin(),tmp.end(),dErr_dEta_i.begin());
+        break;
       }
     }
   }
 }
 
 extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
-				  SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
-				  SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
-				  SEXP cwresOpt) {
-BEGIN_RCPP
-  List ipredPredList = as<List>(ipredPredListSEXP);
+                                      SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
+                                      SEXP relevantLHSSEXP, SEXP stateSXP, SEXP covSXP, SEXP IDlabelSEXP,
+                                      SEXP cwresOpt) {
+  BEGIN_RCPP
+    List ipredPredList = as<List>(ipredPredListSEXP);
   if (ipredPredList.size() != 4) return R_NilValue; //Rcpp::stop("malformed cwres calc");
   List ipredL = ipredPredList[0];
   List predL  = ipredPredList[1];
@@ -295,8 +295,8 @@ BEGIN_RCPP
   retDF.attr("class") = "data.frame";
   calcShrinkFinalize(omegaMat, nid, etaLst, iwresFinal, evid, etaN2, 1);
   List retC = List::create(retDF, etasDfFull, getDfSubsetVars(ipredL, stateSXP),
-			   getDfSubsetVars(ebeL, relevantLHSSEXP),
-			   getDfSubsetVars(ebeL, covSXP));
+                           getDfSubsetVars(ebeL, relevantLHSSEXP),
+                           getDfSubsetVars(ebeL, covSXP));
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);
@@ -305,5 +305,5 @@ BEGIN_RCPP
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);
-END_RCPP
-}
+  END_RCPP
+    }
