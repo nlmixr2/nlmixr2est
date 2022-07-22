@@ -124,7 +124,6 @@ BEGIN_RCPP
                                                                    normRelated, normIdx, nonNormIdx);
   int ncalc2 = sum(normRelated); // This is the true cwres calculations
   arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
-  arma::ivec ID2 = ID.elem(normIdx);
 
   arma::mat fppm(ncalc,neta);
   arma::mat fpim(ncalc,neta);
@@ -145,111 +144,125 @@ BEGIN_RCPP
   etasDfFull.attr("row.names")=IntegerVector::create(NA_INTEGER,-ncalc);
   etasDfFull.attr("class") = "data.frame";
 
-  arma::mat fppm2 = fppm.rows(normIdx);
-  arma::mat fpim2 = fpim.rows(normIdx);
+  arma::vec resFinal(dv.size());
+  arma::vec wresFinal(dv.size());
+  arma::vec iresFinal(dv.size());
+  arma::vec iwresFinal(dv.size());
+  arma::vec cpredFinal(dv.size());
+  arma::vec cresFinal(dv.size());
+  arma::vec cwresFinal(dv.size());
 
-
-  arma::mat V_fo_p = (fppm2 * omegaMat * fppm2.t()); // From Mentre 2006 p. 352
-  arma::mat V_fo_i = (fpim2 * omegaMat * fpim2.t()); // From Mentre 2006 p. 352
-  // There seems to be a difference between how NONMEM and R/S types
-  // of software calculate WRES.  Mentre 2006 states that the
-  // Variance under the FO condition should only be diag(Vfo_full) + Sigma,
-  // but Hooker 2007 claims there is a
-  // diag(Vfo_full)+diag(dh/deta*Sigma*dh/deta).
-  // h = the additional error from the predicted function.
-  //
-  // In the nlmixr2/FOCEi implemented here, the variance of the err
-  // term is 1, or Sigma is a 1 by 1 matrix with one element (1)
-  //
-  // The dh/deta term would be the sd term, or sqrt(r), which means
-  // sqrt(r)*sqrt(r)=|r|.  Since r is positive, this would be r.
-  //
-  // Also according to Hooker, WRES is calculated under the FO
-  // assumption, where eta=0, eps=0 for this r term and Vfo term.
-  // However, conditional weighted residuals are calculated under
-  // the FOCE condition for the Vfo and the FO conditions for
-  // dh/deta
-  //
-
-  arma::vec Vfop = V_fo_p.diag();
-  arma::vec Vfoi = V_fo_i.diag();
-
-  arma::vec dErr_dEta_i(ncalc2);
-  arma::vec dErr_dEta_p(ncalc2);
-  calculateCwresDerr(fppm2, fpim2, ID2, etas, dErr_dEta_i, dErr_dEta_p, etasDfFull, nid, neta);
-
-  arma::vec rest = dvt.elem(normIdx) - predt.elem(normIdx);
-  arma::vec vsum = abs(Vfop+rpv);
-  arma::vec wres = rest;
-  arma::uvec vsum0 = find(vsum != 0);
-  wres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
-
-  arma::vec cpredt = ipredt.elem(normIdx) - dErr_dEta_i;
-  arma::vec crest = dvt.elem(normIdx) - cpredt.elem(normIdx);
-
-  arma::vec cpred(dv.size());
-  arma::vec cres(dv.size());
+  if (ncalc2 > 0) {
+    arma::vec hiNorm = hi.elem(normIdx);
+    arma::vec lowNorm = low.elem(normIdx);
+    arma::vec yjNorm = yj.elem(normIdx);
+    arma::vec lambdaNorm = lambda.elem(normIdx);
+    arma::vec dvNorm = dv.elem(normIdx);
+    arma::vec predtNorm = predt.elem(normIdx);
+    arma::ivec IDnorm = ID.elem(normIdx);
   
-  arma::vec crest2(dv.size());
-  arma::vec cpred2(dv.size());
-  
-  unsigned int j = 0;
-  for (unsigned int i = 0; i < cres.size(); ++i) {
-    int inYj = (int)yj[i];
-    int cyj, dist;
-    _splitYj(&inYj, &dist,  &cyj);
-    if (dist == rxDistributionNorm ||
-        dist == rxDistributionDnorm ||
-        dist == rxDistributionT ||
-        dist == rxDistributionCauchy) {
-      cpred[i] = _powerDi(cpredt[j], lambda[i], inYj, low[i], hi[i]);
-      cres[i]  = dv[i] - cpred[j];
-      pred[i] = _powerDi(predt[i], lambda[i], inYj, low[i], hi[i]);
-      crest2[i] = crest[j];
-      cpred2[i] = cpred[j];
-      j++;
-    } else {
-      cpred[i]  = NA_REAL;
-      cres[i]   = NA_REAL;
-      crest2[i] = NA_REAL;
-      cpred2[i] = NA_REAL;
-      // leave pred alone
+    arma::mat fppm2 = fppm.rows(normIdx);
+    arma::mat fpim2 = fpim.rows(normIdx);
+
+
+    arma::mat V_fo_p = (fppm2 * omegaMat * fppm2.t()); // From Mentre 2006 p. 352
+    arma::mat V_fo_i = (fpim2 * omegaMat * fpim2.t()); // From Mentre 2006 p. 352
+    // There seems to be a difference between how NONMEM and R/S types
+    // of software calculate WRES.  Mentre 2006 states that the
+    // Variance under the FO condition should only be diag(Vfo_full) + Sigma,
+    // but Hooker 2007 claims there is a
+    // diag(Vfo_full)+diag(dh/deta*Sigma*dh/deta).
+    // h = the additional error from the predicted function.
+    //
+    // In the nlmixr2/FOCEi implemented here, the variance of the err
+    // term is 1, or Sigma is a 1 by 1 matrix with one element (1)
+    //
+    // The dh/deta term would be the sd term, or sqrt(r), which means
+    // sqrt(r)*sqrt(r)=|r|.  Since r is positive, this would be r.
+    //
+    // Also according to Hooker, WRES is calculated under the FO
+    // assumption, where eta=0, eps=0 for this r term and Vfo term.
+    // However, conditional weighted residuals are calculated under
+    // the FOCE condition for the Vfo and the FO conditions for
+    // dh/deta
+    //
+
+    arma::vec Vfop = V_fo_p.diag();
+    arma::vec Vfoi = V_fo_i.diag();
+
+    arma::vec dErr_dEta_i(ncalc2);
+    arma::vec dErr_dEta_p(ncalc2);
+    calculateCwresDerr(fppm2, fpim2, IDnorm, etas, dErr_dEta_i, dErr_dEta_p, etasDfFull, nid, neta);
+    arma::vec rest = dvt.elem(normIdx) - predtNorm;
+    arma::vec vsum = abs(Vfop+rpv);
+    arma::vec wres = rest;
+    arma::uvec vsum0 = find(vsum != 0);
+    wres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
+
+    arma::vec cpredt = ipredt.elem(normIdx) - dErr_dEta_i;
+    arma::vec crest = dvt.elem(normIdx) - cpredt.elem(normIdx);
+
+    arma::vec res = dvNorm - pred.elem(normIdx);
+    vsum = Vfoi+riv;
+    vsum0 = find(vsum != 0);
+    arma::vec cwres = crest;
+    cwres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
+    arma::uvec riv0 = find(riv!=0);
+    arma::vec iwres=(dvt.elem(normIdx)-ipredt.elem(normIdx));
+    iwres.elem(riv0)/=sqrt(riv.elem(riv0));
+    arma::vec ires = dv.elem(normIdx) - ipred.elem(normIdx);
+    arma::vec cpred(ires.size());
+    arma::vec cres(ires.size());
+    for (unsigned int i = 0; i < cres.size(); ++i) {
+      cpred[i] = _powerDi(cpredt[i], lambdaNorm[i], yjNorm[i], lowNorm[i], hiNorm[i]);
+      cres[i]  = dvNorm[i] - cpred[i];
+      pred[i] = _powerDi(predtNorm[i], lambdaNorm[i], yjNorm[i], lowNorm[i], hiNorm[i]);
     }
+    resFinal.elem(normIdx)   = res;
+    wresFinal.elem(normIdx)  = wres;
+    iresFinal.elem(normIdx)  = ires;
+    iwresFinal.elem(normIdx) = iwres;
+    cpredFinal.elem(normIdx) = cpred;
+    cresFinal.elem(normIdx)  = cres;
+    cwresFinal.elem(normIdx) = cwres;
+    // fill rest with na
+    resFinal.elem(nonNormIdx).fill(NA_REAL);  
+    wresFinal.elem(nonNormIdx).fill(NA_REAL); 
+    iresFinal.elem(nonNormIdx).fill(NA_REAL); 
+    iwresFinal.elem(nonNormIdx).fill(NA_REAL);
+    cpredFinal.elem(nonNormIdx).fill(NA_REAL);
+    cresFinal.elem(nonNormIdx).fill(NA_REAL); 
+    cwresFinal.elem(nonNormIdx).fill(NA_REAL);
+  } else {
+    resFinal.fill(NA_REAL);  
+    wresFinal.fill(NA_REAL); 
+    iresFinal.fill(NA_REAL); 
+    iwresFinal.fill(NA_REAL);
+    cpredFinal.fill(NA_REAL);
+    cresFinal.fill(NA_REAL); 
+    cwresFinal.fill(NA_REAL);
   }
-  
-  arma::vec res = dv - pred;
-  res.elem(nonNormIdx).fill(NA_REAL);
-  vsum = Vfoi+riv;
-  vsum0 = find(vsum != 0);
-  arma::vec cwres = crest2;
-  cwres.elem(vsum0) /= sqrt(vsum.elem(vsum0));
-  arma::uvec riv0 = find(riv!=0);
-  arma::vec iwres=(dvt-ipredt);
-  iwres.elem(riv0)/=sqrt(riv.elem(riv0));
-  iwres.elem(nonNormIdx).fill(NA_REAL);
-  arma::vec ires = dv - ipred;
-  ires.elem(nonNormIdx).fill(NA_REAL);
-
-  for (unsigned int j = ires.size(); j--; ) {
+ 
+  for (unsigned int j = dv.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
-      dv[j]	= NA_REAL;
-      pred[j]	= NA_REAL;
-      res[j]	= NA_REAL;
-      wres[j]	= NA_REAL;
-      ipred[j]	= NA_REAL;
-      ires[j]	= NA_REAL;
-      iwres[j]	= NA_REAL;
-      cpred2[j]	= NA_REAL;
-      cres[j]	= NA_REAL;
-      cwres[j]	= NA_REAL;
+      dv[j]         = NA_REAL;
+      pred[j]       = NA_REAL;
+      resFinal[j]	= NA_REAL;
+      wresFinal[j]	= NA_REAL;
+      ipred[j]      = NA_REAL;
+      iresFinal[j]	= NA_REAL;
+      iwresFinal[j]	= NA_REAL;
+      cpredFinal[j]	= NA_REAL;
+      cresFinal[j]	= NA_REAL;
+      cwresFinal[j]	= NA_REAL;
     } else if (evid[j] != 0) {
       dv[j]	= NA_REAL;
-      res[j]	= NA_REAL;
-      wres[j]	= NA_REAL;
-      ires[j]	= NA_REAL;
-      iwres[j]	= NA_REAL;
-      cres[j]	= NA_REAL;
-      cwres[j]	= NA_REAL;
+      resFinal[j]	= NA_REAL;
+      wresFinal[j]	= NA_REAL;
+      iresFinal[j]	= NA_REAL;
+      iwresFinal[j]	= NA_REAL;
+      cresFinal[j]	= NA_REAL;
+      cwresFinal[j]	= NA_REAL;
     }
   }
   int ncol = 9;
@@ -261,14 +274,14 @@ BEGIN_RCPP
   int i=0;
   //nm[i] = "DV"; retDF[i++] = wrap(dv);
   nm[i] = "PRED"; retDF[i++] = wrap(pred);
-  nm[i] = "RES"; retDF[i++] = wrap(res);
-  nm[i] = "WRES"; retDF[i++] = wrap(wres);
+  nm[i] = "RES"; retDF[i++] = wrap(resFinal);
+  nm[i] = "WRES"; retDF[i++] = wrap(wresFinal);
   nm[i] = "IPRED"; retDF[i++] = wrap(ipred);
-  nm[i] = "IRES"; retDF[i++] = wrap(ires);
-  nm[i] = "IWRES"; retDF[i++] = wrap(iwres);
-  nm[i] = "CPRED"; retDF[i++] = wrap(cpred2);
-  nm[i] = "CRES"; retDF[i++] = wrap(cres);
-  nm[i] = "CWRES"; retDF[i++] = wrap(cwres);
+  nm[i] = "IRES"; retDF[i++] = wrap(iresFinal);
+  nm[i] = "IWRES"; retDF[i++] = wrap(iwresFinal);
+  nm[i] = "CPRED"; retDF[i++] = wrap(cpredFinal);
+  nm[i] = "CRES"; retDF[i++] = wrap(cresFinal);
+  nm[i] = "CWRES"; retDF[i++] = wrap(cwresFinal);
   if (interestingLimits) {
     nm[i] = "CENS"; retDF[i++] = wrap(cens);
     if (hasLimit){
@@ -280,7 +293,7 @@ BEGIN_RCPP
   retDF.names() = nm;
   retDF.attr("row.names") = IntegerVector::create(NA_INTEGER,-ncalc);
   retDF.attr("class") = "data.frame";
-  calcShrinkFinalize(omegaMat, nid, etaLst, iwres, evid, etaN2, 1);
+  calcShrinkFinalize(omegaMat, nid, etaLst, iwresFinal, evid, etaN2, 1);
   List retC = List::create(retDF, etasDfFull, getDfSubsetVars(ipredL, stateSXP),
 			   getDfSubsetVars(ebeL, relevantLHSSEXP),
 			   getDfSubsetVars(ebeL, covSXP));

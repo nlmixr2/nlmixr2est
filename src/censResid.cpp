@@ -115,8 +115,12 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
       }
     } else if (dist == rxDistributionT ||
                dist == rxDistributionCauchy) {
+      ipred[i]= _powerDi(ipredt[i], lambda[i], (int)yj[i], low[i], hi[i]);
+      pred[i]= _powerDi(predt[i], lambda[i], (int)yj[i], low[i], hi[i]);
       normRelated[i] = 1;
     } else {
+      ipred[i]= -2*ipredt[i];
+      pred[i]= -2*predt[i];
       normRelated[i] = 0;
     }
   }
