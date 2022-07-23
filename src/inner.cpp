@@ -913,16 +913,16 @@ double likInner0(double *eta, int id){
           }
           if (dist == rxDistributionNorm) {
             r = ind->lhs[op_focei.neta + 1];
+            if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
+              r = 1.0;
+            }
           } else {
-            r = 1.0;
-          }
-          if (r == 0.0) {
             r = 1.0;
           }
           if (op_focei.neta == 0) {
             if (dist == rxDistributionNorm) {
-              lnr =_safe_log(r);
-              double ll = err * err/_safe_zero(r) + lnr;
+              double ll = err/r;
+              ll =  -0.5 * ll * ll - log(r);
               fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
             } else {
@@ -1069,6 +1069,9 @@ double likInner0(double *eta, int id){
         }
       }
       if (op_focei.neta == 0) {
+        if (fInd->nNonNormal && op_focei.adjLik) {
+          fInd->llik -= fInd->nNonNormal*0.918938533204672669541;
+        }
       } else if (op_focei.fo == 1) {
         if (cens != 0) stop("FO censoring not supported.");
         if (dist != rxDistributionNorm) stop("Generalized llik for FO is not supported");
