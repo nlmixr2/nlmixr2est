@@ -6,10 +6,8 @@
 \usage{
 nmNearPD(
   x,
-  corr = FALSE,
   keepDiag = FALSE,
   do2eigen = TRUE,
-  doSym = FALSE,
   doDykstra = TRUE,
   only.values = FALSE,
   ensureSymmetry = !isSymmetric(x),
@@ -26,9 +24,6 @@ nmNearPD(
     covariance matrix.  If \code{x} is not symmetric (and
     \code{ensureSymmetry} is not false), \code{\link[Matrix]{symmpart}(x)} is used.}
 
-\item{corr}{logical indicating if the matrix should be a
-    \emph{correlation} matrix.}
-
 \item{keepDiag}{logical, generalizing \code{corr}: if \code{TRUE}, the
     resulting matrix should have the same diagonal
     (\code{\link{diag}(x)}) as the input matrix.}
@@ -36,9 +31,6 @@ nmNearPD(
 \item{do2eigen}{logical indicating if a
     \code{\link[sfsmisc]{posdefify}()} eigen step should be applied to
     the result of the Higham algorithm.}
-
-\item{doSym}{logical indicating if \code{X <- (X + t(X))/2} should be
-    done, after \code{X <- tcrossprod(Qd, Q)}; some doubt if this is necessary.}
 
 \item{doDykstra}{logical indicating if Dykstra's correction should be
     used; true by default.  If false, the algorithm is basically the
@@ -83,7 +75,7 @@ If \code{only.values = TRUE}, a numeric vector of eigenvalues of the
   \item{converged}{logical indicating if iterations converged.}
 }
 \description{
-With `ensureSymmetry` it makes sure it is symmetric by applying 0.5*(t(x) + x) befor nmNearPD
+With `ensureSymmetry` it makes sure it is symmetric by applying 0.5*(t(x) + x) before using nmNearPD
 }
 \details{
 This implements the algorithm of Higham (2002), and then (if

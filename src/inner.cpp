@@ -1071,7 +1071,7 @@ double likInner0(double *eta, int id){
       }
       if (op_focei.neta == 0) {
         if (fInd->nNonNormal && op_focei.adjLik) {
-          fInd->llik -= fInd->nNonNormal*0.918938533204672669541;
+          fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
         }
       } else if (op_focei.fo == 1) {
         if (cens != 0) stop("FO censoring not supported.");
@@ -1111,7 +1111,7 @@ double likInner0(double *eta, int id){
         // Partially finalize #10
         fInd->llik = -trace(fInd->llik - 0.5*(etam.t() * op_focei.omegaInv * etam));
         if (fInd->nNonNormal && op_focei.adjLik) {
-          fInd->llik -= fInd->nNonNormal*0.918938533204672669541;
+          fInd->llik -= fInd->nNonNormal*M_LN_SQRT_2PI;
         }
         // print(wrap(fInd->llik));
         std::copy(&eta[0], &eta[0] + op_focei.neta, &fInd->oldEta[0]);

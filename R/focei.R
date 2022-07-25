@@ -352,6 +352,20 @@ rxUiGet.foceiModel0 <- function(x, ...) {
 }
 #attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
 
+#' @export
+rxUiGet.foceiModel0ll <- function(x, ...) {
+  assignInMyNamespace(".rxPredLlik", TRUE)
+  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  .f <- x[[1]]
+  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
+                              prefixLines=.uiGetThetaEta(.f),
+                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              modelVars=TRUE,
+                              cmtLines=FALSE,
+                              dvidLine=FALSE)
+}
+
+
 .foceiPrune <- function(x, fullModel=TRUE) {
   .x <- x[[1]]
   .x <- .x$foceiModel0[[-1]]

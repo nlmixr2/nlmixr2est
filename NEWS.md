@@ -9,6 +9,10 @@
  
  - Number of sticky recalculation is reduced to 4; to have the old
    behavior use `foceiControl(stickyRecalcN=5)`
+   
+ - `n2ll` has been changed to `ll` to specify individual
+   log-likelihoods.  This was only used in simulation and was not
+   documented.
 
 # New features
 
