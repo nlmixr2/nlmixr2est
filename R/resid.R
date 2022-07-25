@@ -277,6 +277,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .n <- length(.eta) - 1
     .thetas <- c(.thetas, setNames(rep(0, .n), paste0("ETA[", seq_len(.n), "]")))
   }
+  .pars <- fit$ipredModel$params
+  .cmt <- which(tolower(.pars) == "cmt")
+  if (length(.cmt) == 1) {
+    .cmt <-.pars[.cmt]
+    .keep <- c(.cmt, .keep)
+  }
   .ipred <- .residAdjustIpredNames(.foceiSolvePars(fit, fit$ipredModel, .thetas,
                                                    returnType="data.frame.TBS", keep=.keep, what="ipred",
                                                    addDosing=addDosing, subsetNonmem=subsetNonmem))

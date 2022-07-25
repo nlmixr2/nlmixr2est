@@ -922,7 +922,8 @@ double likInner0(double *eta, int id){
           if (op_focei.neta == 0) {
             if (dist == rxDistributionNorm) {
               double ll = err/r;
-              ll =  -0.5 * ll * ll - log(r);
+              //r = variance
+              ll =  -0.5 * ll * ll - 0.5*log(r);
               fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
             } else {
@@ -1018,8 +1019,8 @@ double likInner0(double *eta, int id){
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
                if (dist == rxDistributionNorm) {
-                 double ll = err * err/_safe_zero(r) + lnr;
-                 fInd->llik += -0.5*doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
+                 fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
                } else {
                  fInd->llik += f;
                  fInd->nNonNormal++;
@@ -1052,8 +1053,8 @@ double likInner0(double *eta, int id){
               // Eq #10
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
               if (dist == rxDistributionNorm) {
-                double ll = err * err/_safe_zero(r) + lnr;
-                fInd->llik += -0.5*doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
+                fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
               } else {
                 fInd->llik += f;
                 fInd->nNonNormal++;
