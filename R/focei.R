@@ -642,6 +642,27 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   }
 }
 
+#' @export
+rxUiGet.predDfFocei <- function(x, ...) {
+  .ui <- x[[1]]
+  if (exists(".predDfFocei", envir=.ui)) {
+    get(".predDfFocei", envir=.ui)
+  } else {
+    .predDf <- .ui$predDf
+    if (all(.predDf$distribution == "norm")) {
+      assign(".predDfFocei,", .predDf, envir=.ui)
+      .predDf
+    } else {
+      .w <- which(.predDf$distribution == "norm")
+      if (length(.w) > 0) {
+        .predDf$distribution[.w] <- "dnorm"
+      }
+      assign(".predDfFocei", .predDf, envir=.ui)
+      .predDf
+    }
+  }
+}
+
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE,
                             optExpression = TRUE) {
@@ -789,7 +810,7 @@ rxUiGet.focei <- function(x, ...) {
   on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
-  .predDf <- .ui$predDf
+  .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     assignInMyNamespace(".rxPredLlik", TRUE)
     .s <- rxUiGet.foceiEnv(x, ...)
@@ -815,7 +836,7 @@ rxUiGet.foce <- function(x, ...) {
   on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
-  .predDf <- .ui$predDf
+  .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     assignInMyNamespace(".rxPredLlik", TRUE)
     .s <- rxUiGet.foceEnv(x, ...)
@@ -842,7 +863,7 @@ rxUiGet.ebe <- function(x, ...) {
   on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
-  .predDf <- .ui$predDf
+  .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     assignInMyNamespace(".rxPredLlik", TRUE)
     .s <- rxUiGet.getEBEEnv(x, ...)
@@ -1427,7 +1448,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
-  .control$needOptimHess <- any(.ui$predDf$distribution != "norm")
+  .control$needOptimHess <- any(.ui$predDfFocei$distribution != "norm")
   assign("control", .control, envir=.ui)
 }
 
