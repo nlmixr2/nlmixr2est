@@ -25,19 +25,17 @@ test_that("test focei llik", {
 
   f <- nlmixr(one.cmt, theo_sd, "focei")
   expect_true("CWRES" %in% names(f))
-  
+
   of1 <-f$objf
   etaMat1 <- as.matrix(f$eta[,-1])
   theta1 <- f$theta
   omega1 <- f$omega
-
   etaO1 <- f$etaObf
-  
+
   f <- nlmixr(one.cmt, theo_sd, "foce")
   expect_true("CWRES" %in% names(f))
 
   of2 <- f$objf
-
   etaMat2 <- as.matrix(f$eta[,-1])
   theta2 <- f$theta
   omega2 <- f$omega
@@ -75,14 +73,14 @@ test_that("test focei llik", {
 
   
 
-  ## one.cmt.ll %>%
-  ##   ini(theta1) %>%
-  ##   ini(omega1) ->
-  ##   one.cmt.ll
+  one.cmt.ll %>%
+    ini(theta1) %>%
+    ini(omega1) ->
+    one.cmt.ll
 
-  ## foceiControl(etaMat=etaMat1, maxInnerIterations=0)
-  
-  f <- try(nlmixr(one.cmt.ll, theo_sd, "focei"))
+  f <- try(nlmixr(one.cmt.ll, theo_sd, "focei",
+                  control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                       maxOuterIterations=0)))
   
   expect_false(inherits(f, "try-error"))
   expect_equal(-2*f$ll, f$IPRED)
@@ -90,12 +88,19 @@ test_that("test focei llik", {
 
   expect_equal(f$objf, of1)
 
-  f <- try(nlmixr(one.cmt.ll, theo_sd, "foce"))
+  one.cmt.ll %>%
+    ini(theta2) %>%
+    ini(omega2) ->
+    one.cmt.ll
+
+
+  f <- try(nlmixr(one.cmt.ll, theo_sd, "foce",
+                  control=foceiControl(etaMat=etaMat2, maxInnerIterations=0,
+                                       maxOuterIterations=0)))
   
   expect_false(inherits(f, "try-error"))
   expect_equal(-2*f$ll, f$IPRED)
   expect_false("CWRES" %in% names(f))
-
   expect_equal(f$objf, of2)
   
   # no etas test
@@ -120,6 +125,9 @@ test_that("test focei llik", {
 
   f <- nlmixr(one.cmt.noeta, theo_sd, "focei")
 
+  of1 <-f$objf
+  theta1 <- f$theta
+
   one.cmt.ll.noeta <- function() {
     ini({
       ## You may label each parameter with a comment
@@ -136,19 +144,29 @@ test_that("test focei llik", {
       cl <- exp(tcl)
       v <- exp(tv)
       cp <- linCmt()
-      ll(err) <- -log(add.sd*sqrt(2*pi))-0.5*((DV-cp)/add.sd)^2
+      ll(err) ~ -log(add.sd) - 0.5*log(2*pi) - 0.5*((DV-cp)/add.sd)^2
     })
   }
 
-  f <- nlmixr(one.cmt.ll.noeta, theo_sd, "focei")
+  one.cmt.ll.noeta %>%
+    ini(theta1) ->
+    one.cmt.ll.noeta
+  
+  f <- nlmixr(one.cmt.ll.noeta, theo_sd, "focei",
+              control=foceiControl(maxOuterIterations=0))
 
-  pk.turnover.emax3 <- function() {
+  expect_equal(of1, f$objf)
+
+
+  pk.turnover.emax3.n1 <- function() {
     ini({
       tktr <- log(1)
       tka <- log(1)
       tcl <- log(0.1)
       tv <- log(10)
       ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
       prop.err <- 0.1
@@ -160,18 +178,19 @@ test_that("test focei llik", {
       te0 <- log(100)
       ##
       eta.emax ~ .5
+      eta.ec50  ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
       ##
       pdadd.err <- 10
     })
     model({
-      ktr <- exp(tktr)
-      ka <- exp(tka)
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
       cl <- exp(tcl + eta.cl)
       v <- exp(tv + eta.v)
       emax = expit(temax+eta.emax)
-      ec50 =  exp(tec50)
+      ec50 =  exp(tec50 + eta.ec50)
       kout = exp(tkout + eta.kout)
       e0 = exp(te0 + eta.e0)
       ##
@@ -187,12 +206,19 @@ test_that("test focei llik", {
       d/dt(effect) = kin*PD -kout*effect
       ##
       cp = center / v
-      cp ~ prop(prop.err) + add(pkadd.err)
-      error ~ add(pdadd.err) + dnorm()
+      cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
+      effect ~ add(pdadd.err) + dnorm() | pca
     })
   }
 
-  f <- nlmixr(pk.turnover.emax3, nlmixr2data::warfarin, "focei")
+  f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei")
+  
+  of1 <-f$objf
+  etaMat1 <- as.matrix(f$eta[,-1])
+  theta1 <- f$theta
+  omega1 <- f$omega
+  etaO1 <- f$etaObf
+
 
   pk.turnover.emax3.ll <- function() {
     ini({
@@ -201,6 +227,8 @@ test_that("test focei llik", {
       tcl <- log(0.1)
       tv <- log(10)
       ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
       eta.cl ~ 2
       eta.v ~ 1
       prop.err <- 0.1
@@ -212,18 +240,19 @@ test_that("test focei llik", {
       te0 <- log(100)
       ##
       eta.emax ~ .5
+      eta.ec50  ~ .5
       eta.kout ~ .5
       eta.e0 ~ .5
       ##
       pdadd.err <- 10
     })
     model({
-      ktr <- exp(tktr)
-      ka <- exp(tka)
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
       cl <- exp(tcl + eta.cl)
       v <- exp(tv + eta.v)
       emax = expit(temax+eta.emax)
-      ec50 =  exp(tec50)
+      ec50 =  exp(tec50 + eta.ec50)
       kout = exp(tkout + eta.kout)
       e0 = exp(te0 + eta.e0)
       ##
@@ -239,12 +268,22 @@ test_that("test focei llik", {
       d/dt(effect) = kin*PD -kout*effect
       ##
       cp = center / v
-      cp ~ prop(prop.err) + add(pkadd.err)
-      ll(pca) ~ -log(pdadd.err*sqrt(2*pi))-0.5*((DV-effect)/pdadd.err)^2
+      cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
+      ll(pca) ~ -log(pdadd.err)-0.5*((DV-effect)/pdadd.err)^2 - 0.5*log(2*pi)
     })
   }
+
+  pk.turnover.emax3.ll %>%
+    ini(theta1) %>%
+    ini(omega1) ->
+    pk.turnover.emax3.ll
+
     
-  f <- nlmixr(pk.turnover.emax3, nlmixr2data::warfarin, "focei")
+  f <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+              control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                   maxOuterIterations=0))
+
+  expect_equal(f$objf, of1)
 
   f1 <- f %>% dplyr::filter(CMT != "pca")
   f2 <- f %>% dplyr::filter(CMT == "pca")
@@ -255,33 +294,7 @@ test_that("test focei llik", {
     expect_true(all(is.na(f2[[i]])))
   }
 
-  f <- nlmixr(pk.turnover.emax3, nlmixr2data::warfarin, "foce")
-
-  f2 <- f %>% dplyr::filter(CMT == "pca")
-  f1 <- f %>% dplyr::filter(CMT != "pca")
-
-
-  for (i in c("RES", "WRES", "IRES", "IWRES", "RES", "WRES",
-              "IRES", "IWRES", "CPRED", "CRES", "CWRES")) {
-    expect_false(any(is.na(f1[[i]])))
-    expect_true(all(is.na(f2[[i]])))
-  }
-
-  pk.turnover.emax3.noeta <- pk.turnover.emax3 %>%
-    model(cl <-exp(tcl)) %>%
-    model(v <- exp(tv)) %>%
-    model(emax <- expit(temax)) %>%
-    model(kout <- exp(tkout)) %>%
-    model(e0 <- exp(te0)) %>%
-    ini(pkadd.err=fix(0.001))
-
-  f <- nlmixr(pk.turnover.emax3.noeta, nlmixr2data::warfarin, "focei")
-
-
-  f2 <- f %>% dplyr::filter(CMT == "pca")
-  f1 <- f %>% dplyr::filter(CMT != "pca")
-
-
+  
   for (i in c("IRES", "IWRES")) {
     expect_false(any(is.na(f1[[i]])))
     expect_true(all(is.na(f2[[i]])))

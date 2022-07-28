@@ -268,7 +268,7 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "rxGetDistributionFoceiLines")
   .ret
 }
@@ -307,28 +307,36 @@ rxGetDistributionFoceiLines <- function(line) {
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
+  .errNum <- line[[3]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                               rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
+  .errNum <- line[[3]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                               rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.cauchy <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
+  .errNum <- line[[3]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                               rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, rxPredLlik=.getRxPredLlikOption())
+  .errNum <- line[[3]]
+  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                               rxPredLlik=.getRxPredLlikOption())
 }
 
 #' @export
@@ -975,6 +983,29 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     }
   }
 }
+#' Assign the number of log likelihood items that need to be allocated
+#'
+#' @param ui rxode2 ui
+#' @param env optimization environment
+#' @return Nothing called for side effects.  Will update env$rxControl
+#'   to have the maximum number of llik items in the model set.
+#' @author Matthew L. Fidler
+#' @noRd
+.foceiOptEnvAssignNllik <- function(ui, env) {
+  .maxLl <- max(vapply(seq_along(env$model), function(i) {
+    .model <- env$model[[i]]
+    if (inherits(.model, "rxode2")) {
+      return(rxode2:::rxModelVars(.model)$flags["nLlik"])
+    } else {
+      return(0L)
+    }
+  }, integer(1), USE.NAMES=FALSE))
+  if (.maxLl > 0) {
+    .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+    .rxControl$nLlikAlloc <- .maxLl
+    rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
+  }
+}
 
 #'  This sets up the initial omega/eta estimates and the boundaries for the whole system
 #'
@@ -1223,6 +1254,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     #env$model <- rxUiGet.ebe(list(ui))
   #}
   .foceiOptEnvAssignTol(ui, env)
+  .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
   .foceiOptEnvSetupTransformIndexs(ui, env)

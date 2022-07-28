@@ -5895,20 +5895,32 @@ void foceiFinalizeTables(Environment e){
                          _["BIC"] = as<double>(e["BIC"]), _["Log-likelihood"]=as<double>(e["logLik"]));
   }
   if (op_focei.neta == 0){
-    objDf.attr("row.names") = CharacterVector::create("Pop");
+    if (op_focei.needOptimHess) {
+      objDf.attr("row.names") = CharacterVector::create("lPop");
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("Pop");
+    }
     e["ofvType"] = "Pop";
   } else if (op_focei.fo == 1){
     objDf.attr("row.names") = CharacterVector::create("FO");
     e["ofvType"] = "fo";
   } else if (op_focei.interaction){
-    objDf.attr("row.names") = CharacterVector::create("FOCEi");
+    if (op_focei.needOptimHess) {
+      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
+    }
     e["ofvType"] = "focei";
   } else if (e.exists("ofvType")) {
     std::string ofvType = as<std::string>(e["ofvType"]);
     objDf.attr("row.names") = ofvType;
     e["ofvType"]= ofvType;
   } else {
-    objDf.attr("row.names") = CharacterVector::create("FOCE");
+    if (op_focei.needOptimHess) {
+      objDf.attr("row.names") = CharacterVector::create("lFOCE");
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("FOCE");
+    }
     e["ofvType"] = "foce";
   }
   objDf.attr("class") = "data.frame";
