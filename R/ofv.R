@@ -9,17 +9,12 @@
     .foceiControl$calcTables <- FALSE
     .foceiControl$covMethod <- 0L
     .foceiControl$compress <- FALSE
-    if (any(fit$ui$predDf != "norm")) {
-      .prefix <-"l"
-    } else {
-      .prefix <- ""
-    }
     if (.type == "focei") {
       .foceiControl$interaction <- TRUE
-      .rn <- paste0(.prefix, "FOCEi")
+      .rn <- "FOCEi"
     } else if (.type == "foce") {
       .foceiControl$interaction <- FALSE
-      .rn <- paste0(.prefix, "FOCE")
+      .rn <- "FOCE"
     } else {
       .foceiControl$interaction <- FALSE
       .foceiControl$fo <- TRUE
