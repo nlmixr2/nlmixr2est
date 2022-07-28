@@ -1206,6 +1206,7 @@ double LikInner2(double *eta, int likId, int id){
         lpInner(eta, &grPH[0], id);
         if (op_focei.optimHessType == 3) { // forward
           H.col(k) = (grPH-gr0)/h;
+          eta[k] -= h;
           continue;
         }
 
@@ -1214,6 +1215,7 @@ double LikInner2(double *eta, int likId, int id){
         lpInner(eta, &grMH[0], id);
         if (op_focei.optimHessType == 1) {
           // central
+          eta[k] += h;
           H.col(k) = (grPH-grMH)/(2.0*h);
           continue;
         }
