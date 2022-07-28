@@ -88,7 +88,7 @@
 #'   "stencil", and "forward".  The central differences is what R's
 #'   `optimHess()` uses, and is the default.  Stencil is a 4 point
 #'   method for calculating numeric differences, and "forward" only
-#'   uses one additional point.
+#'   uses one additional point (fastest and least accurate).
 #'
 #' @param centralDerivEps Central difference tolerances.  This is a
 #'     numeric vector of relative difference and absolute difference.

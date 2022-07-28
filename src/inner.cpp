@@ -1186,66 +1186,50 @@ double LikInner2(double *eta, int likId, int id){
     if (op_focei.needOptimHess) {
       arma::vec gr0(op_focei.neta);
       std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
-      arma::vec gr1(op_focei.neta);
-      arma::vec gr2(op_focei.neta);
-      arma::vec gr3(op_focei.neta);
-      arma::vec gr4(op_focei.neta);
+      
+      arma::vec grPH(op_focei.neta);
+      arma::vec grMH(op_focei.neta);
+      
+      arma::vec grP2H(op_focei.neta);
+      arma::vec grM2H(op_focei.neta);
 
-      switch (op_focei.optimHessType) {
-      case 1: // central
-        for (k = op_focei.neta; k--;) {
-          //x + h
-          eta[k] += op_focei.hessEps;
-          lpInner(eta, &gr1[0], id);
-
-          // x - h
-          eta[k] -= 2*op_focei.hessEps;
-          lpInner(eta, &gr2[0], id);
-
-          // fill in the gradient for the row
-          H.col(k) = (gr1-gr2)/(2*op_focei.hessEps);
-          
-          // x
-          eta[k] += op_focei.hessEps;
+      double h = 0;
+      
+      for (k = op_focei.neta; k--;) {
+        h = eta[k]*op_focei.hessEps;
+        if (dabs(eta[k])< sqrt(DBL_EPSILON/7e-07)) {
+          h += op_focei.hessEps;
         }
-        break;
-      case 2: // stencil
-        for (k = op_focei.neta; k--;) {
-          //x +2h
-          eta[k] += 2*op_focei.hessEps;
-          lpInner(eta, &gr1[0], id);
-
-          // x+h
-          eta[k] -= op_focei.hessEps;
-          lpInner(eta, &gr2[0], id);
-
-          // x - h
-          eta[k] -= 2*op_focei.hessEps;
-          lpInner(eta, &gr3[0], id);
-
-          // x - h2
-          eta[k] -= op_focei.hessEps;
-          lpInner(eta, &gr4[0], id);
-
-          // fill in the gradient for the row
-          H.col(k) = (-gr1+8*gr2-8*gr3+gr4)/(12*op_focei.hessEps);
-          // x
-          eta[k] += 2*op_focei.hessEps;
+        
+        // x + h
+        eta[k] += h;
+        lpInner(eta, &grPH[0], id);
+        if (op_focei.optimHessType == 3) { // forward
+          H.col(k) = (grPH-gr0)/h;
+          continue;
         }
-        break;
-      case 3: // forward
-        for (k = op_focei.neta; k--;) {
-          //x + h
-          eta[k] += op_focei.hessEps;
-          lpInner(eta, &gr1[0], id);
 
-          // fill in the gradient for the row
-          H.col(k) = (gr1-gr0)/(op_focei.hessEps);
-          
-          // x
-          eta[k] -= op_focei.hessEps;
+        // x - h
+        eta[k] -= 2*h;
+        lpInner(eta, &grMH[0], id);
+        if (op_focei.optimHessType == 1) {
+          // central
+          H.col(k) = (grPH-grMH)/(2.0*h);
+          continue;
         }
-        break;
+
+        // x - 2*h
+        eta[k] -= h;
+        lpInner(eta, &grM2H[0], id);
+
+        //x + 2*h
+        eta[k] += 4*h;
+        lpInner(eta, &grP2H[0], id);
+
+        H.col(k) = (-grP2H + 8.0*grPH - 8.0*grMH + grM2H)/(12.0*h);
+
+        // x
+        eta[k] -= 2*h;
       }
       // symmetrize
       H = 0.5*(H + H.t());
