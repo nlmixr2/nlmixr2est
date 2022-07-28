@@ -5908,7 +5908,7 @@ void foceiFinalizeTables(Environment e){
     if (op_focei.needOptimHess) {
       objDf.attr("row.names") = CharacterVector::create("lFOCEi");
     } else {
-      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
+      objDf.attr("row.names") = CharacterVector::create("FOCEi");
     }
     e["ofvType"] = "focei";
   } else if (e.exists("ofvType")) {
