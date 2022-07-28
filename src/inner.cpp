@@ -219,7 +219,6 @@ typedef struct {
   double *aEps = NULL;
   double *rEpsC = NULL;
   double *aEpsC = NULL;
-
   //
   double factr;
   double pgtol;
@@ -356,6 +355,7 @@ typedef struct {
   double curT;
   double *curS;
   int nNonNormal = 0;
+  int nObs = 0;
 } focei_ind;
 
 focei_ind *inds_focei = NULL;
@@ -852,8 +852,9 @@ double likInner0(double *eta, int id){
       // RSprintf("ID: %d; Solve #2: %f\n", id, ind->solve[2]);
       // Calculate matricies
       int k = 0, kk=0;//ind->n_all_times - ind->ndoses - ind->nevid2 - 1;
-      fInd->llik=0.0;
+      fInd->llik = 0.0;
       fInd->nNonNormal = 0;
+      fInd->nObs = 0;
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
@@ -926,9 +927,11 @@ double likInner0(double *eta, int id){
               ll =  -0.5 * ll * ll - 0.5*log(r);
               fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
+              fInd->nObs++;
             } else {
               fInd->llik += f;
               fInd->nNonNormal++;
+              fInd->nObs++;
             }
           } else if (op_focei.fo == 1) {
             // FO
@@ -1021,9 +1024,11 @@ double likInner0(double *eta, int id){
                if (dist == rxDistributionNorm) {
                  double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
                  fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 fInd->nObs++;
                } else {
                  fInd->llik += f;
                  fInd->nNonNormal++;
+                 fInd->nObs++;
                }
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
@@ -1055,9 +1060,11 @@ double likInner0(double *eta, int id){
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
                 fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                fInd->nObs++;
               } else {
                 fInd->llik += f;
                 fInd->nNonNormal++;
+                fInd->nObs++;
               }
             }
           }
@@ -1206,6 +1213,7 @@ double LikInner2(double *eta, int likId, int id){
         lpInner(eta, &grPH[0], id);
         if (op_focei.optimHessType == 3) { // forward
           H.col(k) = (grPH-gr0)/h;
+          eta[k] -= h;
           continue;
         }
 
@@ -1215,6 +1223,7 @@ double LikInner2(double *eta, int likId, int id){
         if (op_focei.optimHessType == 1) {
           // central
           H.col(k) = (grPH-grMH)/(2.0*h);
+          eta[k] += h;
           continue;
         }
 
@@ -2075,10 +2084,12 @@ void foceiPhi(Environment e) {
   if (op_focei.neta==0) return;
   List retH(rx->nsub);
   List retC(rx->nsub);
+  List retNobs(rx->nsub);
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
-    retH.attr("names") = idl;
-    retC.attr("names") = idl;
+    retH.attr("names")    = idl;
+    retC.attr("names")    = idl;
+    retNobs.attr("names") = idl;
   }
   bool doDimNames = false;
   List dimn(2);
@@ -2093,6 +2104,7 @@ void foceiPhi(Environment e) {
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
     retH[j] = cur;
+    retNobs[j] = fInd->nObs;
     arma::mat cov;
     bool success  = inv_sym(cov, H);
     if (!success){
@@ -2112,6 +2124,7 @@ void foceiPhi(Environment e) {
   }
   e["phiH"] = retH;
   e["phiC"] = retC;
+  e["phiNobs"] = retNobs;
 }
 
 SEXP foceiEtas(Environment e) {
