@@ -129,6 +129,7 @@ typedef struct {
   double *gVid = NULL;
 
   double *likSav = NULL;
+  double *llikObsFull = NULL;
 
   // Integer of ETAs
   unsigned int gEtaGTransN;
@@ -340,6 +341,8 @@ typedef struct {
   double *H;
   double *H0;
   double *Vid;
+
+  double *llikObs;
 
   double tbsLik;
 
@@ -860,6 +863,7 @@ double likInner0(double *eta, int id){
       int oldNeq = op->neq;
       iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
       int dist=0, yj0=0, yj = 0;
+      double *llikObs = fInd->llikObs;
       for (j = 0; j < ind->n_all_times; ++j){
         ind->idx=j;
         kk = ind->ix[j];
@@ -868,6 +872,7 @@ double likInner0(double *eta, int id){
         yj = (int)(ind->yj);
         _splitYj(&yj, &dist,  &yj0);
         if (isDose(ind->evid[kk])) {
+          llikObs[kk] = NA_REAL;
           // ind->tlast = ind->all_times[ind->ix[ind->idx]];
           // Need to calculate for advan sensitivities
           if (predSolve) {
@@ -924,9 +929,12 @@ double likInner0(double *eta, int id){
               double ll = err/r;
               //r = variance
               ll =  -0.5 * ll * ll - 0.5*log(r);
-              fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r,
+              ll = doCensNormal1((double)cens, dv, limit, ll, f, r,
                                           (int)op_focei.adjLik);
+              llikObs[kk] = ll;
+              fInd->llik += ll;
             } else {
+              llikObs[kk] = f;
               fInd->llik += f;
               fInd->nNonNormal++;
             }
@@ -1020,8 +1028,11 @@ double likInner0(double *eta, int id){
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
                if (dist == rxDistributionNorm) {
                  double ll = -0.5 * err * err/_safe_zero(r) - 0.5 * lnr;
-                 fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 ll = doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                 llikObs[kk] = ll;
+                 fInd->llik +=  ll;
                } else {
+                 llikObs[kk] = f;
                  fInd->llik += f;
                  fInd->nNonNormal++;
                }
@@ -1054,8 +1065,11 @@ double likInner0(double *eta, int id){
               //llik <- -0.5 * sum(err ^ 2 / R + log(R));
               if (dist == rxDistributionNorm) {
                 double ll = -0.5 * err * err/_safe_zero(r) -0.5 * lnr;
-                fInd->llik += doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                ll =doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
+                llikObs[kk] = ll;
+                fInd->llik +=  ll;
               } else {
+                llikObs[kk] = f;
                 fInd->llik += f;
                 fInd->nNonNormal++;
               }
@@ -2897,12 +2911,14 @@ static inline void foceiSetupNoEta_(){
   op_focei.gEtaGTransN=(op_focei.neta)*rx->nsub;
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
-  op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN, double);
+  op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN + rx->nall, double);
+  op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [rx->nall]
   op_focei.mGthetaGrad = true;
   focei_ind *fInd;
-  int jj = 0;
+  int jj = 0, iLO=0;
   for (int i = rx->nsub; i--;){
     fInd = &(inds_focei[i]);
+    rx_solving_options_ind *ind = &(rx->subjects[i]);
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD=0;
     // ETA ini
@@ -2925,6 +2941,9 @@ static inline void foceiSetupNoEta_(){
     fInd->mode = 1;
     fInd->uzm = 1;
     fInd->doEtaNudge=0;
+    // llikObs
+    fInd->llikObs = &op_focei.llikObsFull[iLO];
+    iLO += ind->n_all_times;
   }
   op_focei.alloc=true;
 }
@@ -2941,7 +2960,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
   op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*9+ op_focei.npars*(rx->nsub + 1)+nz+
                                2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                               op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub, double);
+                               op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub + rx->nall,
+                               double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
   op_focei.goldEta  = op_focei.geta + op_focei.gEtaGTransN;
@@ -2959,7 +2979,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gB       = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
   op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*rx->nsub]
   op_focei.gH0      = op_focei.gB + op_focei.neta*op_focei.neta*rx->nsub; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.gVid     = op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub;
+  op_focei.llikObsFull =   op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub; // [rx->nall]
+  op_focei.gVid     = op_focei.gH0 + rx->nall;
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -2972,7 +2993,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
 
 
-  unsigned int i, j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0;
+  unsigned int i, j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
   focei_ind *fInd;
   for (i = rx->nsub; i--;){
     fInd = &(inds_focei[i]);
@@ -2994,6 +3015,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->Vid = &op_focei.gVid[iVid];
     iH += op_focei.neta*op_focei.neta;
     iVid += (ind->n_all_times - ind->ndoses - ind->nevid2)*(ind->n_all_times - ind->ndoses - ind->nevid2);
+    fInd->llikObs = &op_focei.llikObsFull[iLO];
+    iLO += ind->n_all_times;
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
@@ -3258,7 +3281,8 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.skipCovN) std::copy(skipCov1.begin(),skipCov1.end(),op_focei.skipCov); //
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
-  op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars + rx->nsub, double);
+  op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
+                             rx->nsub, double);
   op_focei.gillDf2 = op_focei.gillDf+totN;
   op_focei.gillErr = op_focei.gillDf2+totN;
   op_focei.rEps=op_focei.gillErr + totN;
@@ -3267,7 +3291,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.aEpsC = op_focei.rEpsC + totN;
   op_focei.lower = op_focei.aEpsC + totN;
   op_focei.upper = op_focei.lower +op_focei.npars;
-  op_focei.likSav = op_focei.upper + op_focei.npars;//[rx->nsub]
+  op_focei.likSav      = op_focei.upper + op_focei.npars;//[rx->nsub]
 
   if (op_focei.nF2 != 0){
     // Restore Gill information
@@ -5377,6 +5401,13 @@ NumericMatrix foceiCalcCov(Environment e){
   return ret;
 }
 
+void addLlikObs(Environment e) {
+  rx = getRx();
+  NumericVector llikObs(rx->nall);
+  std::copy(&op_focei.llikObsFull[0], &op_focei.llikObsFull[0] + rx->nall, llikObs.begin());
+  e["llikObs"] = llikObs;
+}
+
 void parHistData(Environment e, bool focei){
   if (!e.exists("method") && iterType.size() > 0) {
     CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
@@ -5478,6 +5509,7 @@ void parHistData(Environment e, bool focei){
     e["parHistData"] = ret;
   }
 }
+
 
 void foceiFinalizeTables(Environment e){
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
@@ -5886,6 +5918,7 @@ void foceiFinalizeTables(Environment e){
     } else {
       objDf.attr("row.names") = CharacterVector::create("Pop");
     }
+    addLlikObs(e);
     e["ofvType"] = "Pop";
   } else if (op_focei.fo == 1){
     objDf.attr("row.names") = CharacterVector::create("FO");
@@ -5896,6 +5929,7 @@ void foceiFinalizeTables(Environment e){
     } else {
       objDf.attr("row.names") = CharacterVector::create("FOCEi");
     }
+    addLlikObs(e);
     e["ofvType"] = "focei";
   } else if (e.exists("ofvType")) {
     std::string ofvType = as<std::string>(e["ofvType"]);
@@ -5907,6 +5941,7 @@ void foceiFinalizeTables(Environment e){
     } else {
       objDf.attr("row.names") = CharacterVector::create("FOCE");
     }
+    addLlikObs(e);
     e["ofvType"] = "foce";
   }
   objDf.attr("class") = "data.frame";

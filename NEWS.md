@@ -11,7 +11,7 @@
    behavior use `foceiControl(stickyRecalcN=5)`
    
  - `n2ll` has been changed to `ll` to specify individual
-   log-likelihoods.  This was only used in simulation and was not
+   log-likelihoods.  This was only used in simulation and was not well
    documented.
 
 # New features
@@ -29,6 +29,22 @@
 - `nmNearPD()` is a function you may use for nearest positive definite
   matrix.  This is derived from `Matrix::nearPD()` but is implemented
   in C/C++ to be used in (possibly threaded) optimization.
+  
+- Individual Hessians can be accessed by `$phiH`, covariance by
+  `$phiC`, eta standard errors by `$phiSE` and eta RSEs can be
+  accessed by `$phiRSE`.  There are `eta` aliases for these as well
+  (`$etaH`, `$etaC`, `$etaSE`, and `$etaRSE`).
+  
+- Can now access the individual point's contribution to the overall
+  likelihood when merging to the original dataset. These merges can be
+  accessed with `$dataMergeFull`, `$dataMergeLeft`, `$dataMergeRight`,
+  and `$dataMergeInner`.  The columns with the individual data column
+  is `nlmixrLlikObs`.
+  
+  To calculate the total `focei`/`foce` objective function, the sum of the
+  likelihoods still need to be adjusted by the omega/eta contribution,
+  and the individual Hessians, and possibly the NONMEM objective
+  function offset constant
 
 # Censoring fixes
 

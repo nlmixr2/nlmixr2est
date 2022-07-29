@@ -196,6 +196,9 @@ nmObjGet.idLvl <- function(x, ...){
   .env      <- obj$env
   .origData <- obj$origData
   .origData$nlmixrRowNums <- seq_along(.origData[, 1])
+  if (exists("llikObs", obj$env)) {
+      .origData$nlmixrLlikObs <- obj$env$llikObs
+  }
   .fitData <- as.data.frame(obj)
   if (is.null(.fitData$EVID)) .fitData$EVID <- 0
   if (is.null(.fitData$AMT))  .fitData$AMT  <- 0
