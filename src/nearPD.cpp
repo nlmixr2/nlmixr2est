@@ -44,6 +44,7 @@ vec nmPmaxC(double a, vec b){
 bool eig_symR(vec &d, mat &Q, mat &B) {
   // This match's R style of eig_sym, to make translation easier
   mat B2 = 0.5*(B+B.t());
+  if (!B2.is_symmetric()) return false;
   bool ret = eig_sym(d, Q, B2);
   if (!ret) return false;
   d = reverse(d);
@@ -97,7 +98,9 @@ bool nmNearPD(mat &ret, mat x
       B=Y;
     }
     
-    eig_symR(d, Q, B);
+    if (!eig_symR(d, Q, B)) {
+      return false;
+    }
 
     // create mask from relative positive eigenvalues
     uvec p= (d>eig_tol*d[0]);
@@ -139,7 +142,9 @@ bool nmNearPD(mat &ret, mat x
     //X <- (X + t(X))/2
     if(do2eigen || only_values) {
       // begin from posdefify(sfsmisc)
-      eig_symR(d, Q, X);
+      if (!eig_symR(d, Q, X)) {
+        return false;
+      }
 
       double Eps = posd_tol * std::abs(d[0]);
       if (d(n-1) < Eps) {
@@ -207,10 +212,12 @@ RObject nmNearPD_(RObject x
 
 bool chol_sym(mat &Hout, mat &Hin) {
   mat H = 0.5*(Hin+Hin.t());
+  if (!H.is_symmetric()) return false;
   return chol(Hout, H);
 }
 
 bool inv_sym(mat &Hout, mat &Hin) {
   mat H = 0.5*(Hin+Hin.t());
+  if (!H.is_symmetric()) return false;
   return inv_sympd(Hout, H);
 }
