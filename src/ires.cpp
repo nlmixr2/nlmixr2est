@@ -62,17 +62,28 @@ BEGIN_RCPP
 
   arma::vec pred(ipred.size());
   arma::vec predt = ipredt;
+  
+  arma::uvec normRelated(dv.size());
+  arma::uvec normIdx;
+  arma::uvec nonNormIdx;
 
-  bool interestingLimits = censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt, pred, predt, cens, limit,
-  								   lambda, yj, low, hi, lowerLim, upperLim,
-  								   riv, doSim, censMethod);
+  bool interestingLimits =
+    censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt, pred, predt, cens, limit,
+                                            lambda, yj, low, hi, lowerLim, upperLim,
+                                            riv, doSim, censMethod,
+                                            normRelated, normIdx, nonNormIdx);
+
+  int ncalc2 = sum(normRelated); // This is the true cwres calculations
 
   arma::ivec ID(INTEGER(ipredL[0]), ncalc, false, true);
 
   arma::vec iwres=(dvt-ipredt);
-  uvec riv0 = find(riv!=0); 
+  uvec riv0 = find(riv!=0);
   iwres.elem(riv0) /= sqrt(riv.elem(riv0));
+  iwres.elem(nonNormIdx).fill(NA_REAL);
+
   arma::vec ires = dv - ipred;
+  ires.elem(nonNormIdx).fill(NA_REAL);
 
   for (unsigned int j = ires.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
@@ -86,7 +97,12 @@ BEGIN_RCPP
       iwres[j]	= NA_REAL;
     }
   }
-  int ncol = 3;
+  int ncol;
+  if (ncalc2 == 0) {
+    ncol = 1;
+  } else {
+    ncol = 3;
+  }
   if (interestingLimits) {
     ncol += 3 + hasLimit;
   }
@@ -94,8 +110,10 @@ BEGIN_RCPP
   CharacterVector nm(ncol);
   int i=0;
   nm[i] = "IPRED"; retDF[i++] = wrap(ipred);
-  nm[i] = "IRES"; retDF[i++] = wrap(ires);
-  nm[i] = "IWRES"; retDF[i++] = wrap(iwres);
+  if (ncalc2 != 0) {
+    nm[i] = "IRES"; retDF[i++] = wrap(ires);
+    nm[i] = "IWRES"; retDF[i++] = wrap(iwres);
+  }
   if (interestingLimits) {
     nm[i] = "CENS"; retDF[i++] = wrap(cens);
     if (hasLimit){

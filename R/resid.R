@@ -212,7 +212,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .Call(`_nlmixr2est_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
           .prdLst$ipred$cens, .prdLst$ipred$limit, table)
   } else {
-    if (predOnly){
+    if (predOnly) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
       .lhs <- setdiff(unique(.getRelevantLhs(fit, keep, .prdLst$ipred)), .state)
       .params <- setdiff(intersect(names(fit$dataSav),fit$predOnlyModel$params),
@@ -276,6 +276,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (inherits(.eta, "data.frame")) {
     .n <- length(.eta) - 1
     .thetas <- c(.thetas, setNames(rep(0, .n), paste0("ETA[", seq_len(.n), "]")))
+  }
+  .pars <- fit$ipredModel$params
+  .cmt <- which(tolower(.pars) == "cmt")
+  if (length(.cmt) == 1) {
+    .cmt <-.pars[.cmt]
+    .keep <- c(.cmt, .keep)
   }
   .ipred <- .residAdjustIpredNames(.foceiSolvePars(fit, fit$ipredModel, .thetas,
                                                    returnType="data.frame.TBS", keep=.keep, what="ipred",

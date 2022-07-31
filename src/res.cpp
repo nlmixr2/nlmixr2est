@@ -13,7 +13,7 @@
 
 
 void calculateDfFull(arma::ivec& ID, arma::mat &etas,
-		     List &etasDfFull, int &nid, unsigned int &neta) {
+                     List &etasDfFull, int &nid, unsigned int &neta) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
   int etaFulli = nid-1;
   double curEta=0.0;
@@ -21,22 +21,22 @@ void calculateDfFull(arma::ivec& ID, arma::mat &etas,
     if (lastId != ID[j]){
       // Fill in full eta data frame
       for (unsigned int i = neta; i--;){
-	curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-	NumericVector cur = etasDfFull[i];
-	std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
+        curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
+        NumericVector cur = etasDfFull[i];
+        std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
       }
       etaFulli--;
       lastId=ID[j];
       lastIndex=j;
       lastCol--;
       if (lastCol == 0){
-	// Finalize ETA
-	for (unsigned int i = neta; i--;){
-	  curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
-	  NumericVector cur = etasDfFull[i];
-	  std::fill_n(cur.begin(),lastIndex+1,curEta);
-	}
-	break;
+        // Finalize ETA
+        for (unsigned int i = neta; i--;){
+          curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
+          NumericVector cur = etasDfFull[i];
+          std::fill_n(cur.begin(),lastIndex+1,curEta);
+        }
+        break;
       }
     }
   }
@@ -106,18 +106,18 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
   }
   CharacterVector nm = as<CharacterVector>(nmS);
   const char *badNames[28] = {"IPRED", "IRES", "IWRES", "CENS", "LIMIT",
-			      "lowerLim", "upperLim","PRED", "RES", "CPRED",
-			      "CRES", "CWRES", "EPRED", "ERES", "NPDE",
-			      "ID", "RESETNO", "EVID", "CMT", "SS",
-			      "RATE", "DUR", "II", "TIME", "rxLambda",
-			      "rxYj", "rxLow", "rxHi"};
+    "lowerLim", "upperLim","PRED", "RES", "CPRED",
+    "CRES", "CWRES", "EPRED", "ERES", "NPDE",
+    "ID", "RESETNO", "EVID", "CMT", "SS",
+    "RATE", "DUR", "II", "TIME", "rxLambda",
+    "rxYj", "rxLow", "rxHi"};
   for (unsigned int i = 0; i < nm.size(); ++i) {
     for (unsigned int j = 0; j < 28; ++j) {
       if (!strcmp(badNames[j], CHAR(nm[i]))) {
-	std::string cur = as<std::string>(nm[i]);
-	cur += "." + what;
-	Rf_warning("change model defined '%s' to '%s' in table (conflicts with reserved names)", CHAR(nm[i]), cur.c_str());
-	nm[i] = cur;
+        std::string cur = as<std::string>(nm[i]);
+        cur += "." + what;
+        Rf_warning("change model defined '%s' to '%s' in table (conflicts with reserved names)", CHAR(nm[i]), cur.c_str());
+        nm[i] = cur;
       }
     }
   }
@@ -179,11 +179,11 @@ void dfSetStateLhsOps(List& in, List& opt) {
 }
 
 extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
-				SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
-				SEXP relevantLHSSEXP,  SEXP stateSXP, SEXP covSEXP, SEXP IDlabelSEXP,
-				SEXP resOpt) {
-BEGIN_RCPP
-  List ipredPredList = as<List>(ipredPredListSEXP);
+                                    SEXP etasDfSEXP, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn,
+                                    SEXP relevantLHSSEXP,  SEXP stateSXP, SEXP covSEXP, SEXP IDlabelSEXP,
+                                    SEXP resOpt) {
+  BEGIN_RCPP
+    List ipredPredList = as<List>(ipredPredListSEXP);
   if (ipredPredList.size() !=3) return R_NilValue;
   List ipredL = ipredPredList[0];
   List predL = ipredPredList[1];
@@ -251,9 +251,14 @@ BEGIN_RCPP
     }
   }
 
+  arma::uvec normRelated(dv.size());
+  arma::uvec normIdx;
+  arma::uvec nonNormIdx;
+
   bool interestingLimits = censTruncatedMvnReturnInterestingLimits(dv, dvt, ipred, ipredt, pred, predt, cens, limit,
-  								   lambda, yj, low, hi, lowerLim, upperLim,
-  								   riv, doSim, censMethod);
+                                                                   lambda, yj, low, hi, lowerLim, upperLim,
+                                                                   riv, doSim, censMethod,
+                                                                   normRelated, normIdx, nonNormIdx);
 
 
   arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
@@ -275,13 +280,24 @@ BEGIN_RCPP
   calculateDfFull(ID, etas, etasDfFull, nid, neta);
 
   for (unsigned int i = pred.size(); i--;){
-    pred[i] = _powerDi(predt[i], lambda[i], (int)yj[i], low[i], hi[i]);
+    int cyj, dist, yj0 = (int)yj[i];
+    _splitYj(&yj0, &dist,  &cyj);
+    if (dist == rxDistributionNorm ||
+        dist == rxDistributionT ||
+        dist == rxDistributionCauchy ||
+        dist == rxDistributionDnorm) {
+      pred[i] = _powerDi(predt[i], lambda[i], yj0, low[i], hi[i]);
+    }
   }
   arma::vec res = dv - pred;
+  res.elem(nonNormIdx).fill(NA_REAL);
   arma::uvec riv0 = find(riv != 0);
   arma::vec iwres=(dvt-ipredt);
   iwres.elem(riv0) /= sqrt(riv.elem(riv0));
+  iwres.elem(nonNormIdx).fill(NA_REAL);
+  
   arma::vec ires = dv - ipred;
+  ires.elem(nonNormIdx).fill(NA_REAL);
 
   for (unsigned int j = ires.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
@@ -324,9 +340,9 @@ BEGIN_RCPP
   calcShrinkFinalize(omegaMat, nid, etaLst, iwres, evid, etaN2, 1);
 
   List retC = List::create(retDF, etasDfFull,
-			   getDfSubsetVars(ipredL, stateSXP),
-			   getDfSubsetVars(ipredL, relevantLHSSEXP),
-			   getDfSubsetVars(ipredL, covSEXP));
+                           getDfSubsetVars(ipredL, stateSXP),
+                           getDfSubsetVars(ipredL, relevantLHSSEXP),
+                           getDfSubsetVars(ipredL, covSEXP));
   dfSetStateLhsOps(retC, opt);
   retC = dfCbindList(wrap(retC));
   List ret(4);
@@ -335,45 +351,45 @@ BEGIN_RCPP
   ret[2] = retC;
   ret[3] = etaLst;
   return wrap(ret);
-END_RCPP
-}
+  END_RCPP
+    }
 
 
 
 extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
-BEGIN_RCPP
- List l = as<List>(inList);
- if (l.size() != 2) return R_NilValue;
- if (Rf_isNull(l[1])) {
-   // Only resid in 1
-   List l1 = l[0];
-   if (l1.size() != 4) return R_NilValue;
-   List retC = List::create(l1[1],
-			    List::create(_["DV"] = l1[0]),
-			    l1[2]);
-   return(List::create(_["resid"]=dfCbindList(wrap(retC)),
-		       _["shrink"]=l1[3]));
- }
- List l1 = l[0];
- List l2 = l[1];
- List shrinkage;
- List finalLst(3);
- // Regardless of whcih method of CENS imputation, updated DV is in the first element
- NumericVector dv = l1[0];
- List l4;
- if (l1.size() == 2 && l2.size() == 4) {
-   l4 = l2;
-   l2 = l1;
- } else if (l1.size() == 4 && l2.size() == 2) {
-   l4 = l1; // l2 remains the same
- } else {
-   return R_NilValue;
- }
- List retC = List::create(l4[1],
-			  List::create(_["DV"] = dv),
-			  l2[1],
-			  l4[2]);
- return List::create(_["resid"]=dfCbindList(wrap(retC)),
-		     _["shrink"]=l4[3]);
-END_RCPP  
-}
+  BEGIN_RCPP
+    List l = as<List>(inList);
+  if (l.size() != 2) return R_NilValue;
+  if (Rf_isNull(l[1])) {
+    // Only resid in 1
+    List l1 = l[0];
+    if (l1.size() != 4) return R_NilValue;
+    List retC = List::create(l1[1],
+                             List::create(_["DV"] = l1[0]),
+                             l1[2]);
+    return(List::create(_["resid"]=dfCbindList(wrap(retC)),
+                        _["shrink"]=l1[3]));
+  }
+  List l1 = l[0];
+  List l2 = l[1];
+  List shrinkage;
+  List finalLst(3);
+  // Regardless of whcih method of CENS imputation, updated DV is in the first element
+  NumericVector dv = l1[0];
+  List l4;
+  if (l1.size() == 2 && l2.size() == 4) {
+    l4 = l2;
+    l2 = l1;
+  } else if (l1.size() == 4 && l2.size() == 2) {
+    l4 = l1; // l2 remains the same
+  } else {
+    return R_NilValue;
+  }
+  List retC = List::create(l4[1],
+                           List::create(_["DV"] = dv),
+                           l2[1],
+                           l4[2]);
+  return List::create(_["resid"]=dfCbindList(wrap(retC)),
+                      _["shrink"]=l4[3]);
+  END_RCPP  
+    }

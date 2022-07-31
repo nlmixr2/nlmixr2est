@@ -320,6 +320,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nmNearPD_
+RObject nmNearPD_(RObject x, bool keepDiag, bool do2eigen, bool doDykstra, bool only_values, double eig_tol, double conv_tol, double posd_tol, int maxit, bool trace);
+RcppExport SEXP _nlmixr2est_nmNearPD_(SEXP xSEXP, SEXP keepDiagSEXP, SEXP do2eigenSEXP, SEXP doDykstraSEXP, SEXP only_valuesSEXP, SEXP eig_tolSEXP, SEXP conv_tolSEXP, SEXP posd_tolSEXP, SEXP maxitSEXP, SEXP traceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type x(xSEXP);
+    Rcpp::traits::input_parameter< bool >::type keepDiag(keepDiagSEXP);
+    Rcpp::traits::input_parameter< bool >::type do2eigen(do2eigenSEXP);
+    Rcpp::traits::input_parameter< bool >::type doDykstra(doDykstraSEXP);
+    Rcpp::traits::input_parameter< bool >::type only_values(only_valuesSEXP);
+    Rcpp::traits::input_parameter< double >::type eig_tol(eig_tolSEXP);
+    Rcpp::traits::input_parameter< double >::type conv_tol(conv_tolSEXP);
+    Rcpp::traits::input_parameter< double >::type posd_tol(posd_tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
+    Rcpp::traits::input_parameter< bool >::type trace(traceSEXP);
+    rcpp_result_gen = Rcpp::wrap(nmNearPD_(x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace));
+    return rcpp_result_gen;
+END_RCPP
+}
 // lin_cmt_stan
 SEXP lin_cmt_stan(Eigen::Map<Eigen::VectorXd> obs_time, Eigen::Map<Eigen::VectorXd> dose_time, Eigen::Map<Eigen::VectorXd> dose, Eigen::Map<Eigen::VectorXd> Tinf, Eigen::Map<Eigen::VectorXd> params, SEXP oralSEXP, SEXP infusionSEXP, SEXP ncmtSEXP, SEXP parameterizationSEXP);
 RcppExport SEXP _nlmixr2est_lin_cmt_stan(SEXP obs_timeSEXP, SEXP dose_timeSEXP, SEXP doseSEXP, SEXP TinfSEXP, SEXP paramsSEXP, SEXP oralSEXPSEXP, SEXP infusionSEXPSEXP, SEXP ncmtSEXPSEXP, SEXP parameterizationSEXPSEXP) {

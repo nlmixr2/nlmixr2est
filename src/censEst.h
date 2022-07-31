@@ -55,7 +55,7 @@ static inline void resetCensFlag() {
 static inline double doCensNormal1(double cens, double limDv, double lim, double ll,
                                    double f, double r, int adjLik) {
   // Subtract log(2*pi)/2 since this is the likelihood instead of the liklihood missing 0.5*log(2*pi)
-  double adj = 0.918938533204672669541*((double)adjLik);
+  double adj = M_LN_SQRT_2PI*((double)adjLik);
   if (isM2(cens, lim)) {
     // M2 adds likelihood even when the observation is defined
     // Note the ll is the numerator of equation 1 in Beal 2001, Ways to fit a PK model with some data below the quantification limit

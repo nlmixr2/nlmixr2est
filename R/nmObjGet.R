@@ -106,6 +106,62 @@ attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
 
 #' @rdname nmObjGet
 #' @export
+nmObjGet.phiR <- function(x, ...) {
+  .obj <- x[[1]]
+  .phi <- .obj$phiC
+  if (is.null(.phi)) return(NULL)
+  .ret <- lapply(seq_along(.phi), function(i) {
+    .cov <- .phi[[i]]
+    .sd2 <- sqrt(diag(.cov))
+    .cor <- stats::cov2cor(.cov)
+    dimnames(.cor) <- dimnames(.cov)
+    diag(.cor) <- .sd2
+    .cor
+  })
+  names(.ret) <- names(.phi)
+  .ret
+}
+attr(nmObjGet.phiR, "desc") <- "correlation matrix of each individual's eta (if present)"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.phiSE <- function(x, ...) {
+  .obj <- x[[1]]
+  .phi <- .obj$phiC
+  if (is.null(.phi)) return(NULL)
+  .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
+    .cov <- .phi[[i]]
+    sqrt(diag(.cov))
+  }, double(dim(.phi[[1]])[1]))))
+  names(.ret) <- paste0("se(", names(.ret), ")")
+  .id <- seq_along(.phi)
+  if (!is.null(names(.phi))) .id <- factor(.id, levels=names(.phi))
+  cbind(data.frame(ID=.id), .ret)
+}
+attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if present)"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.phiRSE <- function(x, ...) {
+  .obj <- x[[1]]
+  .phi <- .obj$phiC
+  .eta <- .obj$eta[,-1]
+  if (is.null(.phi)) return(NULL)
+  .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
+    .cov <- .phi[[i]]
+    sqrt(diag(.cov))/unlist(.eta[i,])*100
+  }, double(dim(.phi[[1]])[1]))))
+  names(.ret) <- paste0("rse(", names(.ret), ")%")
+  .id <- seq_along(.phi)
+  if (!is.null(names(.phi))) .id <- factor(.id, levels=names(.phi))
+  cbind(data.frame(ID=.id), .ret)
+}
+attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's eta (if present)"
+
+
+
+#' @rdname nmObjGet
+#' @export
 nmObjGet.dataSav <- function(x, ...){
   .obj <- x[[1]]
   .objEnv <- .obj$env
@@ -140,6 +196,9 @@ nmObjGet.idLvl <- function(x, ...){
   .env      <- obj$env
   .origData <- obj$origData
   .origData$nlmixrRowNums <- seq_along(.origData[, 1])
+  if (exists("llikObs", obj$env)) {
+      .origData$nlmixrLlikObs <- obj$env$llikObs
+  }
   .fitData <- as.data.frame(obj)
   if (is.null(.fitData$EVID)) .fitData$EVID <- 0
   if (is.null(.fitData$AMT))  .fitData$AMT  <- 0
