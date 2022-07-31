@@ -44,7 +44,7 @@
   To calculate the total `focei`/`foce` objective function, the sum of the
   likelihoods still need to be adjusted by the omega/eta contribution,
   and the individual Hessians, and possibly the NONMEM objective
-  function offset constant
+  function offset constant.
 
 # Censoring fixes
 

@@ -119,8 +119,8 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
       pred[i]= _powerDi(predt[i], lambda[i], (int)yj[i], low[i], hi[i]);
       normRelated[i] = 1;
     } else {
-      ipred[i]= -2*ipredt[i];
-      pred[i]= -2*predt[i];
+      ipred[i]= ipredt[i];
+      pred[i]= predt[i];
       normRelated[i] = 0;
     }
   }

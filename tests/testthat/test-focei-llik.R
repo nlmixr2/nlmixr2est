@@ -71,8 +71,6 @@ test_that("test focei llik", {
     })
   }
 
-  
-
   one.cmt.ll %>%
     ini(theta1) %>%
     ini(omega1) ->
@@ -92,7 +90,6 @@ test_that("test focei llik", {
     ini(theta2) %>%
     ini(omega2) ->
     one.cmt.ll
-
 
   f <- try(nlmixr(one.cmt.ll, theo_sd, "foce",
                   control=foceiControl(etaMat=etaMat2, maxInnerIterations=0,
@@ -157,7 +154,6 @@ test_that("test focei llik", {
 
   expect_equal(of1, f$objf)
 
-
   pk.turnover.emax3.n1 <- function() {
     ini({
       tktr <- log(1)
@@ -182,7 +178,7 @@ test_that("test focei llik", {
       eta.kout ~ .5
       eta.e0 ~ .5
       ##
-      pdadd.err <- 10
+      pdadd.err <- 1
     })
     model({
       ktr <- exp(tktr + eta.ktr)
@@ -213,11 +209,11 @@ test_that("test focei llik", {
 
   f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei")
   
-  of1 <-f$objf
+  of1     <- f$objf
   etaMat1 <- as.matrix(f$eta[,-1])
-  theta1 <- f$theta
-  omega1 <- f$omega
-  etaO1 <- f$etaObf
+  theta1  <- f$theta
+  omega1  <- f$omega
+  etaO1   <- f$etaObf
 
 
   pk.turnover.emax3.ll <- function() {
@@ -244,7 +240,7 @@ test_that("test focei llik", {
       eta.kout ~ .5
       eta.e0 ~ .5
       ##
-      pdadd.err <- 10
+      pdadd.err <- c(0, 10)
     })
     model({
       ktr <- exp(tktr + eta.ktr)
@@ -269,21 +265,71 @@ test_that("test focei llik", {
       ##
       cp = center / v
       cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
-      ll(pca) ~ -log(pdadd.err)-0.5*((DV-effect)/pdadd.err)^2 - 0.5*log(2*pi)
+      ll(pca) ~ -log(pdadd.err) - 0.5*log(2*pi) - 0.5 * ((DV - effect) / pdadd.err)^2
     })
   }
-
+        
   pk.turnover.emax3.ll %>%
     ini(theta1) %>%
     ini(omega1) ->
     pk.turnover.emax3.ll
 
-    
-  f <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
               control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
-                                   maxOuterIterations=0))
+                                   maxOuterIterations=0, optimHessType="stencil"))
 
-  expect_equal(f$objf, of1)
+  expect_equal(f$omega, f2$omega)
+  expect_equal(f$theta, f2$theta)
+  expect_equal(f$eta, f2$eta)
+
+  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+              control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                   maxOuterIterations=0, optimHessType="forward"))
+
+  expect_equal(f$omega, f2$omega)
+  expect_equal(f$theta, f2$theta)
+  expect_equal(f$eta, f2$eta)
+
+  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+              control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                   maxOuterIterations=0, optimHessType="central"))
+  
+  expect_equal(f$omega, f2$omega)
+  expect_equal(f$theta, f2$theta)
+  expect_equal(f$eta, f2$eta)
+
+
+  fll <- f$dataMergeFull %>%
+    dplyr::select(ID, time, nlmixrLlikObs, IPRED, dvid) %>%
+    dplyr::rename(lf1=nlmixrLlikObs, f1=IPRED) %>%
+    dplyr::mutate(rn=seq_along(time)) %>%
+    dplyr::as_tibble(.)
+
+  f2ll <- f2$dataMergeFull %>%
+    dplyr::select(ID, time, nlmixrLlikObs, IPRED) %>%
+    dplyr::rename(lf2=nlmixrLlikObs, f2=IPRED) %>%
+    dplyr::mutate(rn=seq_along(time)) %>%
+    dplyr::as_tibble(.)
+
+  fll <- merge(fll, f2ll) %>%
+    dplyr::arrange(rn)
+
+  summary(abs(fll$lf1-fll$lf2))
+
+  fll[which(abs(fll$lf1-fll$lf2) > 1),]
+
+  f2$etaObf %>%
+    dplyr::select(ID,OBJI) %>%
+    dplyr::rename(OBJI2=OBJI) %>%
+    merge(f$etaObf) ->
+    f3
+
+  f3 %>%
+    dplyr::filter(OBJI2 != OBJI) %>%
+    dplyr::select(ID, OBJI, OBJI2) %>%
+    dplyr::mutate(diff = (OBJI-OBJI2))
+    
+  expect_equal(round(f2$objf), round(of1))
 
   f1 <- f %>% dplyr::filter(CMT != "pca")
   f2 <- f %>% dplyr::filter(CMT == "pca")
