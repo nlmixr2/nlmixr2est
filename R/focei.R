@@ -263,7 +263,7 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
 
 # This handles the errors for focei
 .createFoceiLineObject <- function(x, line) {
-  .predDf <- get("predDf", x)
+  .predDf <- rxUiGet.predDfFocei(list(x, TRUE))
   if (line > nrow(.predDf)) {
     return(NULL)
   }
@@ -341,7 +341,7 @@ rxGetDistributionFoceiLines.default  <- function(line) {
 
 #' @export
 rxGetDistributionFoceiLines.rxUi <- function(line) {
-  .predDf <- get("predDf", line)
+  .predDf <- rxUiGet.predDfFocei(list(line, TRUE))
   lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createFoceiLineObject(line, c)
     rxGetDistributionFoceiLines(.mod)
