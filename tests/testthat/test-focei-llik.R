@@ -26,11 +26,11 @@ test_that("test focei llik", {
   f <- nlmixr(one.cmt, theo_sd, "focei")
   expect_true("CWRES" %in% names(f))
 
-  of1 <-f$objf
+  of1     <- f$objf
   etaMat1 <- as.matrix(f$eta[,-1])
-  theta1 <- f$theta
-  omega1 <- f$omega
-  etaO1 <- f$etaObf
+  theta1  <- f$theta
+  omega1  <- f$omega
+  etaO1   <- f$etaObf
 
   f <- nlmixr(one.cmt, theo_sd, "foce")
   expect_true("CWRES" %in% names(f))
@@ -81,7 +81,7 @@ test_that("test focei llik", {
                                        maxOuterIterations=0)))
   
   expect_false(inherits(f, "try-error"))
-  expect_equal(-2*f$ll, f$IPRED)
+  expect_equal(f$ll, f$IPRED)
   expect_false("CWRES" %in% names(f))
 
   expect_equal(f$objf, of1)
@@ -96,7 +96,7 @@ test_that("test focei llik", {
                                        maxOuterIterations=0)))
   
   expect_false(inherits(f, "try-error"))
-  expect_equal(-2*f$ll, f$IPRED)
+  expect_equal(f$ll, f$IPRED)
   expect_false("CWRES" %in% names(f))
   expect_equal(f$objf, of2)
   
@@ -154,7 +154,62 @@ test_that("test focei llik", {
 
   expect_equal(of1, f$objf)
 
+  
+
   pk.turnover.emax3.n1 <- function() {
+    ini({
+      tktr <- log(1)
+      tka <- log(1)
+      tcl <- log(0.1)
+      tv <- log(10)
+      ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
+      eta.cl ~ 2
+      eta.v ~ 1
+      prop.err <- 0.1
+      pkadd.err <- 0.1
+      ##
+      temax <- logit(0.8)
+      tec50 <- log(0.5)
+      tkout <- log(0.05)
+      te0 <- log(100)
+      ##
+      eta.emax ~ .5
+      eta.ec50  ~ .5
+      eta.kout ~ .5
+      eta.e0 ~ .5
+      ##
+      pdadd.err <- 1
+    })
+    model({
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      emax = expit(temax+eta.emax)
+      ec50 =  exp(tec50 + eta.ec50)
+      kout = exp(tkout + eta.kout)
+      e0 = exp(te0 + eta.e0)
+      ##
+      DCP = center/v
+      PD=1-emax*DCP/(ec50+DCP)
+      ##
+      effect(0) = e0
+      kin = e0*kout
+      ##
+      d/dt(depot) = -ktr * depot
+      d/dt(gut) =  ktr * depot -ka * gut
+      d/dt(center) =  ka * gut - cl / v * center
+      d/dt(effect) = kin*PD -kout*effect
+      ##
+      cp = center / v
+      cp ~ prop(prop.err) + add(pkadd.err)
+      effect ~ add(pdadd.err) + dnorm() | pca
+    })
+  }
+
+  pk.turnover.emax3.n2 <- function() {
     ini({
       tktr <- log(1)
       tka <- log(1)
@@ -207,6 +262,15 @@ test_that("test focei llik", {
     })
   }
 
+  f <- nlmixr2(pk.turnover.emax3.n1)
+  f2 <- nlmixr2(pk.turnover.emax3.n2)
+
+  expect_equal(f$foceiModel0, f2$foceiModel0)
+
+  expect_equal(f$foceModel0, f2$foceModel0)
+
+  skip_on_cran()
+  
   f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei")
   
   of1     <- f$objf
@@ -297,42 +361,13 @@ test_that("test focei llik", {
   expect_equal(f$omega, f2$omega)
   expect_equal(f$theta, f2$theta)
   expect_equal(f$eta, f2$eta)
-
-
-  fll <- f$dataMergeFull %>%
-    dplyr::select(ID, time, nlmixrLlikObs, IPRED, dvid) %>%
-    dplyr::rename(lf1=nlmixrLlikObs, f1=IPRED) %>%
-    dplyr::mutate(rn=seq_along(time)) %>%
-    dplyr::as_tibble(.)
-
-  f2ll <- f2$dataMergeFull %>%
-    dplyr::select(ID, time, nlmixrLlikObs, IPRED) %>%
-    dplyr::rename(lf2=nlmixrLlikObs, f2=IPRED) %>%
-    dplyr::mutate(rn=seq_along(time)) %>%
-    dplyr::as_tibble(.)
-
-  fll <- merge(fll, f2ll) %>%
-    dplyr::arrange(rn)
-
-  summary(abs(fll$lf1-fll$lf2))
-
-  fll[which(abs(fll$lf1-fll$lf2) > 1),]
-
-  f2$etaObf %>%
-    dplyr::select(ID,OBJI) %>%
-    dplyr::rename(OBJI2=OBJI) %>%
-    merge(f$etaObf) ->
-    f3
-
-  f3 %>%
-    dplyr::filter(OBJI2 != OBJI) %>%
-    dplyr::select(ID, OBJI, OBJI2) %>%
-    dplyr::mutate(diff = (OBJI-OBJI2))
     
   expect_equal(round(f2$objf), round(of1))
 
-  f1 <- f %>% dplyr::filter(CMT != "pca")
-  f2 <- f %>% dplyr::filter(CMT == "pca")
+  fll <- f2
+
+  f1 <- fll %>% dplyr::filter(CMT != "pca")
+  f2 <- fll %>% dplyr::filter(CMT == "pca")
 
   for (i in c("RES", "WRES", "IRES", "IWRES", "RES", "WRES",
               "IRES", "IWRES", "CPRED", "CRES", "CWRES")) {
