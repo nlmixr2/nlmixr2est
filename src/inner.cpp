@@ -5530,7 +5530,7 @@ void foceiFinalizeTables(Environment e){
     arma::vec eigval;
     arma::mat eigvec;
 
-    eig_sym(eigval, eigvec, cov);
+    eig_sym2(eigval, eigvec, cov);
     e["eigen"] = eigval;
     e["eigenVec"] = eigvec;
     unsigned int k=0;
