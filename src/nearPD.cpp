@@ -222,7 +222,6 @@ bool inv_sym(mat &Hout, mat &Hin) {
   return inv_sympd(Hout, H);
 }
 
-
 bool eig_sym2(vec &d, mat &Q, mat &B) {
   // This match's R style of eig_sym, to make translation easier
   mat B2 = 0.5*(B+B.t());
