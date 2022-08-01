@@ -226,5 +226,6 @@ bool inv_sym(mat &Hout, mat &Hin) {
 bool eig_sym2(vec &d, mat &Q, mat &B) {
   // This match's R style of eig_sym, to make translation easier
   mat B2 = 0.5*(B+B.t());
-  return bool eig_sym(d, Q, B2);
+  if (!B2.is_symmetric()) return false;
+  return eig_sym(d, Q, B2);
 }

@@ -8,6 +8,7 @@
 #include <rxode2.h>
 #include "utilc.h"
 #include "censEst.h"
+#include "nearPD.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
