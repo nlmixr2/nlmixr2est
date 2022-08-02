@@ -675,12 +675,12 @@ void updateTheta(double *theta){
 
 arma::mat cholSE__(arma::mat A, double tol);
 
-typedef void (*gill83fn_type)(double *fp, double *theta, int id);
+typedef void (*gill83fn_type)(double *fp, double *theta, int id, int foceiGill);
 
-void gill83fnF(double *fp, double *theta, int);
+void gill83fnF(double *fp, double *theta, int, int foceiGill);
 int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double *theta, int cpar, double epsR, int K, double gillStep,
-           double fTol, int cid, gill83fn_type gill83fn);
+           double fTol, int cid, gill83fn_type gill83fn, int foceiGill);
 
 gill83fn_type gill83fnG = &gill83fnF;
 
@@ -703,11 +703,11 @@ static inline void gill83pred(double *fp, double *eta, int cid, int w) {
   *fp = ind->lhs[w];
 }
 
-void gill83etaR(double *fp, double *eta, int cid) {
-  gill83pred(fp, eta, cid, 1);
+void gill83etaR(double *fp, double *eta, int cid, int foceiGill) {
+  gill83pred(fp, eta, cid, op_focei.neta + 1);
 }
 
-void gill83etaF(double *fp, double *eta, int cid) {
+void gill83etaF(double *fp, double *eta, int cid, int foceiGill) {
   gill83pred(fp, eta, cid, 0);
 }
 
@@ -721,11 +721,11 @@ static inline double calcGradForEtaGeneral(double *eta,
     if (w == 0) {
       gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
              eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-             cid, gill83etaF);
+             cid, gill83etaF, 0);
     } else {
       gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
              eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-             cid, gill83etaR);
+             cid, gill83etaR, 0);
     }
     if (hf == 0) hf = op_focei.eventFD;
     aEps[cpar]  = hf;
@@ -2246,7 +2246,6 @@ static inline double phiB(double f, double fn, double h){
 }
 
 // Call R function for gill83
-int foceiGill=1;
 double gillF=NA_REAL;
 int gillThetaN=0;
 Environment gillRfnE_;
@@ -2268,7 +2267,7 @@ double gillRfn(double *theta){
   }
 }
 
-static inline void gill83tickStep(int &k, int &K) {
+static inline void gill83tickStep(int &k, int &K, int foceiGill) {
   if (foceiGill == 1 && op_focei.slow) {
     if (k < K) {
       op_focei.cur += (K-k);
@@ -2277,7 +2276,7 @@ static inline void gill83tickStep(int &k, int &K) {
   }
 }
 
-void gill83fnF(double *fp, double *theta, int) {
+void gill83fnF(double *fp, double *theta, int, int foceiGill) {
   if (foceiGill == 1) {
     updateTheta(theta);
     *fp = foceiOfv0(theta);
@@ -2286,8 +2285,6 @@ void gill83fnF(double *fp, double *theta, int) {
     *fp = gillRfn(theta);
   }
 }
-
-
 
 // *hf is the forward difference final estimate
 // *hphif is central difference final estimate (when switching from forward to central differences)
@@ -2305,16 +2302,13 @@ void gill83fnF(double *fp, double *theta, int) {
 //         5 -- df2 increases rapidly as h decreases
 int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
            double *theta, int cpar, double epsR, int K, double gillStep,
-           double fTol, int cid, gill83fn_type gill83fn) {
+           double fTol, int cid, gill83fn_type gill83fn, int foceiGill) {
   if (foceiGill == 1) op_focei.calcGrad=1;
 
   double f , x, hbar, h0, fp, fn=NA_REAL, phif, phib, phic, phicc = 0, phi, Chf, Chb,
     Ch, hs, hphi, hk, tmp, ehat, lasth, lastht=NA_REAL, lastfpt=NA_REAL, phict=NA_REAL;
   if (foceiGill == 1) {
     f = op_focei.lastOfv;
-  } else if (foceiGill == 2) {
-    focei_ind *fInd = &(inds_focei[cid]);
-    f = fInd->curF;
   } else {
     f = gillF;
   }
@@ -2327,10 +2321,10 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   h0 = gillStep*hbar;
   lasth=h0;
   theta[cpar] = x + h0;
-  gill83fn(&fp, theta, cid);
+  gill83fn(&fp, theta, cid, foceiGill);
 
   theta[cpar] = x-h0;
-  gill83fn(&fn, theta, cid);
+  gill83fn(&fn, theta, cid, foceiGill);
 
   phif = phiF(f, fp, h0);
   phib = phiB(f, fn, h0);
@@ -2371,9 +2365,9 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   // Compute the associated finite difference estimates and their
   // relative condition errors.
   theta[cpar] = x + hk;
-  gill83fn(&fp, theta, cid);
+  gill83fn(&fp, theta, cid, foceiGill);
   theta[cpar] = x-hk;
-  gill83fn(&fn, theta, cid);
+  gill83fn(&fn, theta, cid, foceiGill);
   phif = phiF(f, fp, hk);
   phib = phiB(f, fn, hk);
   phic = phiC(fp, fn, hk);
@@ -2408,9 +2402,9 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   // Compute the associated finite difference estimates and their
   // relative condition errors.
   theta[cpar] = x + hk;
-  gill83fn(&fp, theta, cid);
+  gill83fn(&fp, theta, cid, foceiGill);
   theta[cpar] = x-hk;
-  gill83fn(&fn, theta, cid);
+  gill83fn(&fn, theta, cid, foceiGill);
   phif = phiF(f, fp, hk);
   phib = phiB(f, fn, hk);
   tmp=phic;
@@ -2452,17 +2446,16 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   *df2 = phi;
   *hf = 2*_safe_sqrt(epsA/fabs(phi));
   theta[cpar] = x + *hf;
-  gill83fn(&fp, theta, cid);
+  gill83fn(&fp, theta, cid, foceiGill);
   // Restore theta
   theta[cpar] = x;
   if (foceiGill == 1) updateTheta(theta);
-  else if (foceiGill == 2) updateEta(theta, cid);
   *df = phiF(f, fp, *hf);
   *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
   *hphif=hphi;
   ehat = fabs(*df-phicc);
   if (max2(*ef, ehat) <= 0.5*(*df)){
-    gill83tickStep(k, K);
+    gill83tickStep(k, K, foceiGill);
     return 1;
   } else {
     // warning("The finite difference derivative err more than 50%% of the slope; Consider a different starting point.");
@@ -2482,7 +2475,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
       // *df = 0.0; // Doesn't move.
       *hphif=phict;
     }
-    gill83tickStep(k, K);
+    gill83tickStep(k, K, foceiGill);
     return 2;
   }
  FD6: // Check unsatisfactory cases
@@ -2492,13 +2485,13 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     *hf = pow(DBL_EPSILON, 0.25);//hbar;
     // *df=phic;
     theta[cpar] = x + *hf;
-    gill83fn(&fp, theta, cid);
+    gill83fn(&fp, theta, cid, foceiGill);
     *df = phiF(f, fp, *hf);
     *df2=0;
     // *df = 0.0; // Doesn't move.
     *hphif=_safe_sqrt(h0);
     // warning("The surface around the initial estimate is nearly constant in one parameter grad=0.  Consider a different starting point.");
-    gill83tickStep(k, K);
+    gill83tickStep(k, K, foceiGill);
     return 3;
   }
   if (Ch > 0.1){ // Odd or nearly linear.
@@ -2508,7 +2501,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
     *ef = 2*epsA/(*hf);
     *hphif=hphi;
     // warning("The surface odd or nearly linear for one parameter; Check your function.");
-    gill83tickStep(k, K);
+    gill83tickStep(k, K, foceiGill);
     return 4;
   }
   // f'' is increasing rapidly as h decreases
@@ -2518,7 +2511,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   *hphif=hphi;
   *ef = (*hf)*fabs(phi)/2+2*epsA/(*hf);
   // warning("The surface around the initial estimate is highly irregular in at least one parameter.  Consider a different starting point.");
-  gill83tickStep(k, K);
+  gill83tickStep(k, K, foceiGill);
   return 5;
 }
 
@@ -2548,18 +2541,18 @@ void numericGrad(double *theta, double *g){
     for (int cpar = op_focei.npars; cpar--;){
       op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                       theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                      -1, gill83fnG);
+                                      -1, gill83fnG, 1);
       err = 1/(std::fabs(theta[cpar])+1);
       if (op_focei.gillDf[cpar] == 0){
         op_focei.scaleC[cpar]=op_focei.scaleC0;
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                         theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                        -1, gill83fnG);
+                                        -1, gill83fnG, 1);
         if (op_focei.gillDf[cpar] == 0){
           op_focei.scaleC[cpar]=1/op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                          -1, gill83fnG);
+                                          -1, gill83fnG, 1);
         }
       }
       // h=aEps*(|x|+1)/sqrt(1+fabs(f));
@@ -2685,18 +2678,18 @@ void numericGrad(double *theta, double *g){
             // Add a a Gill difference with zero gradient
             op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                             theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                            -1, gill83fnG);
+                                            -1, gill83fnG, 1);
             err = 1/(std::fabs(theta[cpar])+1);
             if (op_focei.gillDf[cpar] == 0){
               op_focei.scaleC[cpar]=op_focei.scaleC0;
               op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                               theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                              -1, gill83fnG);
+                                              -1, gill83fnG, 1);
               if (op_focei.gillDf[cpar] == 0){
                 op_focei.scaleC[cpar]=1/op_focei.scaleC0;
                 op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                                 theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                                -1, gill83fnG);
+                                                -1, gill83fnG, 1);
               }
             }
             // h=aEps*(|x|+1)/sqrt(1+fabs(f));
@@ -2775,18 +2768,18 @@ void numericGrad(double *theta, double *g){
         // Add a a Gill difference with zero gradient
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                         theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                        -1, gill83fnG);
+                                        -1, gill83fnG, 1);
         err = 1/(std::fabs(theta[cpar])+1);
         if (op_focei.gillDf[cpar] == 0){
           op_focei.scaleC[cpar]=op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                          -1, gill83fnG);
+                                          -1, gill83fnG, 1);
           if (op_focei.gillDf[cpar] == 0){
             op_focei.scaleC[cpar]=1/op_focei.scaleC0;
             op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                             theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                            -1, gill83fnG);
+                                            -1, gill83fnG, 1);
           }
         }
         // h=aEps*(|x|+1)/sqrt(1+fabs(f));
@@ -4082,7 +4075,6 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
   gillRfnE_=envir;
   double *theta;
   theta = &args[0];
-  foceiGill=0;
   NumericVector hfN(args.size());
   NumericVector hphifN(args.size());
   NumericVector gillDfN(args.size());
@@ -4105,7 +4097,7 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
       retN[i] = gill83(&hfN[i], &hphifN[i], &gillDfN[i], &gillDf2N[i], &gillErrN[i],
                        theta, i, gillRtol, gillK, gillStep,
                        gillFtol,
-                       -1, gill83fnG) + 1;
+                       -1, gill83fnG, 1) + 1;
       double err=1/(std::fabs(theta[i])+1);
       aEps[i]  = hfN[i]*err;
       rEps[i]  = hfN[i]*err;
@@ -4129,7 +4121,6 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
       rEpsC[i]  = NA_REAL;
     }
   }
-  foceiGill=1;
   List df(11);
   retN.attr("levels") = CharacterVector::create("Not Assessed","Good","High Grad Error",
                                                 "Constant Grad","Odd/Linear Grad",
@@ -5087,7 +5078,7 @@ NumericMatrix foceiCalcCov(Environment e){
           if (op_focei.gillKcov != 0){
             op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                              &theta[0], cpar, op_focei.hessEps, op_focei.gillKcov, op_focei.gillStepCov, op_focei.gillFtolCov,
-                                             -1, gill83fnG);
+                                             -1, gill83fnG, 1);
             // h=aEps*(|x|+1)/sqrt(1+fabs(f));
             // h*sqrt(1+fabs(f))/(|x|+1) = aEps
             // let err=2*sqrt(epsA/(1+f))
