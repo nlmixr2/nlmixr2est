@@ -359,6 +359,7 @@ typedef struct {
   double curT;
   double *curS;
   int nNonNormal = 0;
+  int nObs=0;
 } focei_ind;
 
 focei_ind *inds_focei = NULL;
@@ -857,6 +858,7 @@ double likInner0(double *eta, int id){
       int k = 0, kk=0;//ind->n_all_times - ind->ndoses - ind->nevid2 - 1;
       fInd->llik=0.0;
       fInd->nNonNormal = 0;
+      fInd->nObs = 0;
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
@@ -933,10 +935,12 @@ double likInner0(double *eta, int id){
                                           (int)op_focei.adjLik);
               llikObs[kk] = ll;
               fInd->llik += ll;
+              fInd->nObs++;
             } else {
               llikObs[kk] = f;
               fInd->llik += f;
               fInd->nNonNormal++;
+              fInd->nObs++;
             }
           } else if (op_focei.fo == 1) {
             // FO
@@ -1031,10 +1035,12 @@ double likInner0(double *eta, int id){
                  ll = doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
                  llikObs[kk] = ll;
                  fInd->llik +=  ll;
+                 fInd->nObs++;
                } else {
                  llikObs[kk] = f;
                  fInd->llik += f;
                  fInd->nNonNormal++;
+                 fInd->nObs++;
                }
             } else if (op_focei.interaction == 0){
               for (i = op_focei.neta; i--; ){
@@ -1068,10 +1074,12 @@ double likInner0(double *eta, int id){
                 ll =doCensNormal1((double)cens, dv, limit, ll, f, r, (int) op_focei.adjLik);
                 llikObs[kk] = ll;
                 fInd->llik +=  ll;
+                fInd->nObs++;
               } else {
                 llikObs[kk] = f;
                 fInd->llik += f;
                 fInd->nNonNormal++;
+                fInd->nObs++;
               }
             }
           }
@@ -1265,21 +1273,21 @@ double LikInner2(double *eta, int likId, int id){
           H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
                             c.col(l) % c.col(k)) +
             op_focei.omegaInv(k, l);
-          if (std::isinf(H(k, l))) return NA_REAL;
+          if (!R_finite(H(k, l))) return NA_REAL;
           H(l, k) = H(k, l);
         }
       }
     } else {
-      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
       // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
-      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
+      arma::mat B(fInd->B, fInd->nObs, 1, false, true);
       // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
       for (k = op_focei.neta; k--;){
         for (l = k+1; l--;) {
           // tmp = a.col(l) %  B % a.col(k);
           H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
             op_focei.omegaInv(k, l);
-          if (std::isinf(H(k, l))) return NA_REAL;
+          if (!R_finite(H(k, l))) return NA_REAL;
           H(l, k) = H(k, l);
         }
       }
@@ -2110,7 +2118,7 @@ void foceiPhi(Environment e) {
     if (doDimNames) cur.attr("dimnames") = dimn;
     retH[j] = cur;
     arma::mat cov;
-    bool success  = inv_sym(cov, H);
+    bool success  = inv(cov, H);
     if (!success){
       success = pinv(cov, H);
       if (!success) {
@@ -5109,7 +5117,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol_sym(H0, re);
+                  success= chol(H0, re);
                   if (success){
                     e["cholR"] = wrap(H0);
                     rstr = "|r|";
@@ -5200,7 +5208,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 mat im = arma::imag(H1);
                 mat re = arma::real(H1);
                 if (!arma::any(arma::any(im,0))){
-                  success= chol_sym(H0,re);
+                  success= chol(H0,re);
                   if (success){
                     e["cholS"] = wrap(H0);
                     sstr = "|s|";
