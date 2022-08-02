@@ -110,6 +110,7 @@ typedef struct {
   double *geta = NULL;
   double *getahf =NULL;
   double *getahr = NULL;
+  double *getahh = NULL;
   double *goldEta = NULL;
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
@@ -320,6 +321,7 @@ typedef struct {
   double *eta; // Eta includes the ID number for the patient
   double *etahf;
   double *etahr;
+  double *etahh; 
   //
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
@@ -2996,7 +2998,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*rx->nsub;
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
-  op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*9+ op_focei.npars*(rx->nsub + 1)+nz+
+  op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(rx->nsub + 1)+nz+
                                2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
                                op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub + rx->nall,
                                double);
@@ -3005,7 +3007,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.goldEta  = op_focei.geta + op_focei.gEtaGTransN;
   op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
   op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
-  op_focei.gsaveEta = op_focei.getahr + op_focei.gEtaGTransN;
+  op_focei.getahh   = op_focei.getahr + op_focei.gEtaGTransN;
+  op_focei.gsaveEta = op_focei.getahh + op_focei.gEtaGTransN;
   op_focei.gG       = op_focei.gsaveEta + op_focei.gEtaGTransN;
   op_focei.gVar     = op_focei.gG + op_focei.gEtaGTransN;
   op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
@@ -3042,6 +3045,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->eta = &op_focei.geta[j];
     fInd->etahf = &op_focei.getahf[j];
     fInd->etahr = &op_focei.getahr[j];
+    fInd->etahh = &op_focei.getahh[j];
     fInd->oldEta = &op_focei.goldEta[j];
     fInd->saveEta = &op_focei.gsaveEta[j];
     fInd->g = &op_focei.gG[j];
