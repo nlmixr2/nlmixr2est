@@ -759,13 +759,13 @@ static inline double calcGradForEtaGeneral(double *eta,
 static inline double calcGradForEtaF(double *eta,
                                      double *aEps,
                                      int cpar, int cid) {
-  return calcGradForEtaGeneral(eta,aEps, cpar, cid, 0);
+  return calcGradForEtaGeneral(eta, aEps, cpar, cid, 0);
 }
 
 static inline double calcGradForEtaR(double *eta,
                                      double *aEps,
                                      int cpar, int cid) {
-  return calcGradForEtaGeneral(eta,aEps, cpar, cid, 1);
+  return calcGradForEtaGeneral(eta, aEps, cpar, cid, op_focei.neta + 1);
 }
 
 double likInner0(double *eta, int id){
