@@ -251,6 +251,7 @@ typedef struct {
   int interaction;
   double cholSEtol;
   double hessEps;
+  double hessEpsInner;
   double cholAccept;
   double resetEtaSize;
   int didEtaReset;
@@ -1211,52 +1212,88 @@ double LikInner2(double *eta, int likId, int id){
       
       arma::vec grPH(op_focei.neta);
       arma::vec grMH(op_focei.neta);
+
+      arma::mat hPH(op_focei.neta, op_focei.neta);
+      arma::mat hMH(op_focei.neta, op_focei.neta);
       
       arma::vec grP2H(op_focei.neta);
       arma::vec grM2H(op_focei.neta);
 
+      arma::mat hP2H(op_focei.neta, op_focei.neta);
+      arma::mat hM2H(op_focei.neta, op_focei.neta);
+
+      arma::vec hv(op_focei.neta);
+
       double h = 0;
-      
+
+      int curType = op_focei.optimHessType;
+
+      // https://v8doc.sas.com/sashtml/ormp/chap5/sect28.htm
+      // But switch when needed (and use stencil)
+      double hessEps = op_focei.hessEpsInner;
       for (k = op_focei.neta; k--;) {
-        h = eta[k]*op_focei.hessEps;
-        if (dabs(eta[k])< sqrt(DBL_EPSILON/7e-07)) {
-          h += op_focei.hessEps;
+        h = eta[k]*hessEps;
+        if (fabs(eta[k])< sqrt(DBL_EPSILON/7e-07)) {
+          h += hessEps;
         }
+        
+        hv(k) = h;
         
         // x + h
         eta[k] += h;
+        // If the forward difference hasn't been calculated, calculate it.
         lpInner(eta, &grPH[0], id);
+        hPH.col(k) = grPH;
         if (op_focei.optimHessType == 3) { // forward
-          H.col(k) = (grPH-gr0)/h;
           eta[k] -= h;
-          continue;
+          break;
         }
 
         // x - h
         eta[k] -= 2*h;
+        
         lpInner(eta, &grMH[0], id);
+        hMH.col(k) = grMH;
+        
         if (op_focei.optimHessType == 1) {
           // central
           eta[k] += h;
-          H.col(k) = (grPH-grMH)/(2.0*h);
           continue;
         }
-
+        // Calculate if not calculated stencil before
         // x - 2*h
         eta[k] -= h;
         lpInner(eta, &grM2H[0], id);
+        hM2H.col(k) = grM2H;
 
         //x + 2*h
         eta[k] += 4*h;
         lpInner(eta, &grP2H[0], id);
 
-        H.col(k) = (-grP2H + 8.0*grPH - 8.0*grMH + grM2H)/(12.0*h);
+        hP2H.col(k) = grP2H;
 
         // x
         eta[k] -= 2*h;
       }
-      // symmetrize
-      H = 0.5*(H + H.t());
+      for (int i = 0; i < op_focei.neta; ++i) {
+        for (int j = i; j < op_focei.neta; ++j) {
+          switch (curType) {
+          case 1: // central
+            H(i, j) = H(j, i) = (hPH(i, j) - hMH(i, j))/(4.0*hv(j)) +
+              (hPH(j, i) - hMH(j, i))/(4.0*hv(i));
+            break;
+          case 3: // forward
+            H(i, j) = H(j, i) = (hPH(i, j) - gr0(i))/(2.0*hv(i)) +
+              (hPH(j, i) - gr0(j))/(2.0*hv(j));
+            break;
+          default: // stencil
+            // (-grP2H + 8.0*grPH - 8.0*grMH + grM2H)/(12.0*h);
+            H(i, j) = H(j, i) = (-hP2H(i, j) + 8.0*hPH(i, j) - 8.0*hMH(i, j) + hM2H(i, j))/(24.0*hv(i)) +
+              (-hP2H(j, i) + 8.0*hPH(j, i) - 8.0*hMH(j, i) + hM2H(j, i))/(24.0*hv(j));
+            break;
+          }
+        }
+      }
       // Note that since the gradient includes omegaInv*etam,
       // op_focei.omegaInv(k, l) shouldn't be added.
     } else if (op_focei.interaction) {
@@ -3399,6 +3436,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
+  op_focei.hessEpsInner=as<double>(foceiO["hessEpsInner"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);

@@ -27,6 +27,7 @@ foceiControl(
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "r", "s", ""),
   hessEps = (.Machine$double.eps)^(1/3),
+  hessEpsInner = 7e-07,
   optimHessType = c("central", "stencil", "forward"),
   eventFD = sqrt(.Machine$double.eps),
   eventType = c("gill", "central", "forward"),
@@ -340,8 +341,10 @@ derivatives while calculating the covariance components
 }}
 
 \item{hessEps}{is a double value representing the epsilon for the
-Hessian calculation. This is used for the R matrix calculation
-and when calculating the individual hessian numerically for
+Hessian calculation. This is used for the R matrix calculation.}
+
+\item{hessEpsInner}{is a double value representing the epsilon for the Hessian matrix.
+This is used when calculating the individual hessian numerically for
 generalized log-likelihood estimation.}
 
 \item{optimHessType}{The hessian type for when calculating the
@@ -350,7 +353,7 @@ log-likelihood estimation).  The options are "central",
 "stencil", and "forward".  The central differences is what R's
 `optimHess()` uses, and is the default.  Stencil is a 4 point
 method for calculating numeric differences, and "forward" only
-uses one additional point.}
+uses one additional point (fastest and least accurate).}
 
 \item{eventFD}{Finite difference step for forward or central
 difference estimation of event-based gradients}
