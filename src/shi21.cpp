@@ -18,7 +18,18 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tp1(idx) += h;
   arma::vec f4 = f(tp4, id);
   f1 = f(tp1, id);
-  return fabs(f4(idx)-4*f1(idx)+3*f0(idx))/(8.0*ef);
+  arma::vec all = abs(f4-4*f1+3*f0)/(8.0*ef);
+  if (all.size() == 1) {
+    return all(0);
+  }
+  // Return geometric mean
+  all = log(all);
+  double sum = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    sum += all[j];
+  }
+  return (exp(sum/((double)all.size())));
+
 }
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
@@ -28,7 +39,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   // q=2, alpha=4, r=3
   // s = 0, 1
   // w = -1, 1
-  h = nm2divSqrt3*sqrt(ef);
+  if (h == 0) {
+    h = nm2divSqrt3*sqrt(ef);
+  }
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
 
@@ -76,7 +89,17 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   arma::vec fp3 = f(tp3, id);
   fm1 = f(tm1, id);
   arma::vec fm3 = f(tm3, id);
-  return fabs(fp3(idx)-3*fp1(idx)+3*fm1(idx)-fm3(idx))/(8.0*ef);  
+  arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
+  if (fm3.size() == 1) {
+    return all(0);
+  }
+  // Return geometric mean
+  all = log(all);
+  double sum = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    sum += all[j];
+  }
+  return (exp(sum/((double)all.size())));
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
@@ -87,8 +110,10 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   // weights = -0.5, 0.5
   // s = -1, 1
   // Equation 3.3
-  // 
-  h = pow(3*ef, 0.3333333333333333333333); // maybe a different value?
+  //
+  if (h == 0) {
+    h = pow(ef, 0.3333333333333333333333); 
+  }
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
 
