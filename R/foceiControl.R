@@ -613,6 +613,17 @@
 #' @seealso \code{\link{optim}}
 #' @seealso \code{\link[n1qn1]{n1qn1}}
 #' @seealso \code{\link[rxode2]{rxSolve}}
+#' @references
+#'
+#' Gill, P.E., Murray, W., Saunders, M.A., & Wright,
+#' M.H. (1983). Computing Forward-Difference Intervals for Numerical
+#' Optimization. Siam Journal on Scientific and Statistical Computing,
+#' 4, 310-321.
+#'
+#' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
+#' Finite-Difference Interval Estimation for Noisy Derivative-Free
+#' Optimization.
+#' 
 #' @export
 foceiControl <- function(sigdig = 3, #
                          ...,

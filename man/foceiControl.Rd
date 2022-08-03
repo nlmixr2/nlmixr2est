@@ -720,6 +720,16 @@ unscaled problem.  The covariance step is performed on the
 unscaled problem, so the condition number of that matrix may not
 be reflective of the scaled problem's condition-number.
 }
+\references{
+Gill, P.E., Murray, W., Saunders, M.A., & Wright,
+M.H. (1983). Computing Forward-Difference Intervals for Numerical
+Optimization. Siam Journal on Scientific and Statistical Computing,
+4, 310-321.
+
+Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
+Finite-Difference Interval Estimation for Noisy Derivative-Free
+Optimization.
+}
 \seealso{
 \code{\link{optim}}
 
