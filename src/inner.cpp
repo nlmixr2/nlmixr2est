@@ -1235,10 +1235,10 @@ double LikInner2(double *eta, int likId, int id){
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
                                         gr0, grPH, id, k,
-                                        7e-7, //double ef = 7e-7,
+                                        op_focei.hessEpsInner, //double ef = 7e-7,
                                         1.5,  //double rl = 1.5,
                                         6.0,  //double ru = 6.0);;
-                                        15);  //maxiter=15
+                                        20);  //maxiter=15
 
           H.col(k) = grPH;
           continue;
@@ -1250,11 +1250,11 @@ double LikInner2(double *eta, int likId, int id){
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
                                         gr0, grPH, id, k,
-                                        7e-7, // ef,
+                                        op_focei.hessEpsInner, // ef,
                                         1.5,//double rl = 1.5,
                                         6.0,//double ru = 6.0,
-                                        4.0,//double nu = 8.0);
-                                        15); // maxiter
+                                        8.0,//double nu = 8.0);
+                                        20); // maxiter
           H.col(k) = grPH;
           continue;
         } else {
@@ -1310,12 +1310,6 @@ double LikInner2(double *eta, int likId, int id){
       }
       // symmetrize
       H = 0.5*(H + H.t());
-      if (!H.is_finite()) {
-        arma::vec etah(fInd->etahh, op_focei.neta);
-        print(wrap(etah));
-        print(wrap(H));
-        stop("non finite H");
-      }
       // Note that since the gradient includes omegaInv*etam,
       // op_focei.omegaInv(k, l) shouldn't be added.      
     } else {
@@ -3435,7 +3429,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
-  op_focei.hessEpsInner=as<double>(foceiO["hessEpsInner"]);
+  op_focei.hessEpsInner=as<double>(rxControl[Rxc_atolSens]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);

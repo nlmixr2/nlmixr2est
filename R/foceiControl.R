@@ -80,10 +80,6 @@
 #' @param hessEps is a double value representing the epsilon for the
 #'   Hessian calculation. This is used for the R matrix calculation.
 #'
-#' @param hessEpsInner is a double value representing the epsilon for the Hessian matrix.
-#'   This is used when calculating the individual hessian numerically for
-#'   generalized log-likelihood estimation.
-#'
 #' @param optimHessType The hessian type for when calculating the
 #'   individual hessian by numeric differences (in generalized
 #'   log-likelihood estimation).  The options are "central",
@@ -624,7 +620,6 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
-                         hessEpsInner=7e-7,
                          optimHessType = c("central", "stencil", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
@@ -819,7 +814,6 @@ foceiControl <- function(sigdig = 3, #
   optGillF <- as.integer(optGillF)
 
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
-  checkmate::assertNumeric(hessEpsInner, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
   checkmate::assertNumeric(eventFD, lower=0, any.missing=FALSE, len=1)
 
@@ -1111,7 +1105,6 @@ foceiControl <- function(sigdig = 3, #
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
-    hessEpsInner = as.double(hessEpsInner),
     optimHessType=optimHessType,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),

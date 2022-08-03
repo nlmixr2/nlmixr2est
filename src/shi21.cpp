@@ -25,6 +25,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, int maxiter) {
   // Algorithm 2.1 in paper
+  // q=2, alpha=4, r=3
+  // s = 0, 1
+  // w = -1, 1
   h = nm2divSqrt3*sqrt(ef);
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
@@ -83,6 +86,8 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   // Algorithm 3.1
   // weights = -0.5, 0.5
   // s = -1, 1
+  // Equation 3.3
+  // 
   h = pow(3*ef, 0.3333333333333333333333); // maybe a different value?
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
