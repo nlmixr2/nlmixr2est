@@ -6,6 +6,7 @@
 #include <lbfgsb3c.h>
 #include "censEst.h"
 #include "nearPD.h"
+#include "shi21.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -1183,6 +1184,13 @@ double likInner(NumericVector eta, int id = 1){
   return llik;
 }
 
+// This is needed for shi21 h optimization
+arma::vec getGradForOptimHess(arma::vec &t, int id) {
+  arma::vec ret(op_focei.neta);
+  lpInner(&t[0], &ret[0], id);
+  return ret;
+}
+
 
 double LikInner2(double *eta, int likId, int id){
   focei_ind *fInd = &(inds_focei[id]);
@@ -1205,11 +1213,10 @@ double LikInner2(double *eta, int likId, int id){
     }
     // Calculate lik first to calculate components for Hessian
     // Hessian
-    mat H(fInd->H, op_focei.neta, op_focei.neta, false, true);
+    mat H(op_focei.neta, op_focei.neta);
     H.zeros();
     int k, l;
     mat tmp;
-
     // This is actually -H
     if (op_focei.needOptimHess) {
       arma::vec gr0(op_focei.neta);
@@ -1217,108 +1224,100 @@ double LikInner2(double *eta, int likId, int id){
       
       arma::vec grPH(op_focei.neta);
       arma::vec grMH(op_focei.neta);
-
-      arma::mat hPH(op_focei.neta, op_focei.neta);
-      arma::mat hMH(op_focei.neta, op_focei.neta);
       
       arma::vec grP2H(op_focei.neta);
       arma::vec grM2H(op_focei.neta);
 
-      arma::mat hP2H(op_focei.neta, op_focei.neta);
-      arma::mat hM2H(op_focei.neta, op_focei.neta);
-
-      arma::vec hv(op_focei.neta);
-
       double h = 0;
 
-      int curType = op_focei.optimHessType;
-
-      // https://v8doc.sas.com/sashtml/ormp/chap5/sect28.htm
-      // But switch when needed (and use stencil)
-      double hessEps = op_focei.hessEpsInner;
       for (k = op_focei.neta; k--;) {
-        h = eta[k]*hessEps;
-        if (fabs(eta[k])< sqrt(DBL_EPSILON/7e-07)) {
-          h += hessEps;
+        if (op_focei.optimHessType == 3 && fInd->etahh[k] == 0.0) {
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        7e-7, //double ef = 7e-7,
+                                        1.5,  //double rl = 1.5,
+                                        6.0,  //double ru = 6.0);;
+                                        15);  //maxiter=15
+
+          H.col(k) = grPH;
+          continue;
+        } else {
+          h = fInd->etahh[k];
         }
-        
-        hv(k) = h;
-        
+        if (op_focei.optimHessType == 1 && fInd->etahh[k] == 0.0) {
+          // Central
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        7e-7, // ef,
+                                        1.5,//double rl = 1.5,
+                                        6.0,//double ru = 6.0,
+                                        4.0,//double nu = 8.0);
+                                        15); // maxiter
+          H.col(k) = grPH;
+          continue;
+        } else {
+          h = fInd->etahh[k];
+        }
         // x + h
         eta[k] += h;
-        // If the forward difference hasn't been calculated, calculate it.
         lpInner(eta, &grPH[0], id);
-        hPH.col(k) = grPH;
-        if (op_focei.optimHessType == 3) { // forward
+        bool forwardFinite =  grPH.is_finite();
+        if (op_focei.optimHessType == 3 && forwardFinite) { // forward
+          H.col(k) = (grPH-gr0)/h;
           eta[k] -= h;
-          break;
+          continue;
         }
 
         // x - h
         eta[k] -= 2*h;
-        
         lpInner(eta, &grMH[0], id);
-        hMH.col(k) = grMH;
-        
-        if (op_focei.optimHessType == 1) {
+        bool backwardFinite = grMH.is_finite();
+        if (op_focei.optimHessType == 1 &&
+            forwardFinite && backwardFinite) {
           // central
+          eta[k] += h;
+          H.col(k) = (grPH-grMH)/(2.0*h);
+          continue;
+        }
+        if (forwardFinite && !backwardFinite) {
+          // forward difference
+          H.col(k) = (grPH-gr0)/h;
           eta[k] += h;
           continue;
         }
-        // Calculate if not calculated stencil before
+        if (!forwardFinite && backwardFinite) {
+          // backward difference
+          H.col(k) = (gr0-grMH)/h;
+          print(wrap(H.col(k)));
+          eta[k] += h;
+          continue;
+        }
+        stop("need stencil shi21 method");
         // x - 2*h
         eta[k] -= h;
         lpInner(eta, &grM2H[0], id);
-        hM2H.col(k) = grM2H;
 
         //x + 2*h
         eta[k] += 4*h;
         lpInner(eta, &grP2H[0], id);
 
-        hP2H.col(k) = grP2H;
+        H.col(k) = (-grP2H + 8.0*grPH - 8.0*grMH + grM2H)/(12.0*h);
 
         // x
         eta[k] -= 2*h;
       }
-      for (int i = 0; i < op_focei.neta; ++i) {
-        for (int j = i; j < op_focei.neta; ++j) {
-          switch (curType) {
-          case 1: // central
-            H(i, j) = H(j, i) = (hPH(i, j) - hMH(i, j))/(4.0*hv(j)) +
-              (hPH(j, i) - hMH(j, i))/(4.0*hv(i));
-            break;
-          case 3: // forward
-            H(i, j) = H(j, i) = (hPH(i, j) - gr0(i))/(2.0*hv(i)) +
-              (hPH(j, i) - gr0(j))/(2.0*hv(j));
-            break;
-          default: // stencil
-            // (-grP2H + 8.0*grPH - 8.0*grMH + grM2H)/(12.0*h);
-            H(i, j) = H(j, i) = (-hP2H(i, j) + 8.0*hPH(i, j) - 8.0*hMH(i, j) + hM2H(i, j))/(24.0*hv(i)) +
-              (-hP2H(j, i) + 8.0*hPH(j, i) - 8.0*hMH(j, i) + hM2H(j, i))/(24.0*hv(j));
-            break;
-          }
-        }
+      // symmetrize
+      H = 0.5*(H + H.t());
+      if (!H.is_finite()) {
+        arma::vec etah(fInd->etahh, op_focei.neta);
+        print(wrap(etah));
+        print(wrap(H));
+        stop("non finite H");
       }
       // Note that since the gradient includes omegaInv*etam,
-      // op_focei.omegaInv(k, l) shouldn't be added.
-    } else if (op_focei.interaction) {
-      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
-      // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
-      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
-      // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
-
-      arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
-      // std::copy(&fInd->c[0], &fInd->c[0]+c.size(), c.begin());
-      for (k = op_focei.neta; k--;){
-        for (l = k+1; l--;){
-          // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
-          H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
-                            c.col(l) % c.col(k)) +
-            op_focei.omegaInv(k, l);
-          if (!R_finite(H(k, l))) return NA_REAL;
-          H(l, k) = H(k, l);
-        }
-      }
+      // op_focei.omegaInv(k, l) shouldn't be added.      
     } else {
       arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
       // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
@@ -1334,7 +1333,7 @@ double LikInner2(double *eta, int likId, int id){
         }
       }
     }
-    arma::mat H0(fInd->H0, op_focei.neta, op_focei.neta, false, true);
+    arma::mat H0(op_focei.neta, op_focei.neta);
     k=0;
     if (!H.is_sympd()) {
       arma::mat H2;
@@ -1352,6 +1351,9 @@ double LikInner2(double *eta, int likId, int id){
     } else {
       H0=cholSE__(H, op_focei.cholSEtol);
     }
+    std::copy(H.begin(), H.end(), fInd->H);
+    std::copy(H0.begin(), H0.end(), fInd->H0);
+
     // - sum(log(H.diag()));
     for (unsigned int j = H0.n_rows; j--;){
       lik -= _safe_log(H0(j,j));

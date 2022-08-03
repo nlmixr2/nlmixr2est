@@ -10,13 +10,12 @@
 #include "shi21.h"
 
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
-            arma::vec &f0, arma::vec &f1) {
+            arma::vec &f0, arma::vec &f1, double &l, double &u) {
 
   arma::vec tp4 = t;
   arma::vec tp1 = t;
   tp4(idx) += 4*h;
   tp1(idx) += h;
-  
   arma::vec f4 = f(tp4, id);
   f1 = f(tp1, id);
   return fabs(f4(idx)-4*f1(idx)+3*f0(idx))/(8.0*ef);
@@ -24,15 +23,22 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
-                    double ef, double rl, double ru) {
+                    double ef, double rl, double ru, int maxiter) {
   // Algorithm 2.1 in paper
   h = nm2divSqrt3*sqrt(ef);
+  double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
 
   arma::vec f1(f0.size());
-
+  
+  int iter=0;
   while(true) {
-    rcur = shiRF(h, f, ef, t, id, idx, f0, f1);
+    iter++;
+    if (iter > maxiter) {
+      h = h0;
+      break;
+    }
+    rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
     if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
@@ -54,7 +60,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
 }
 
 double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
-            arma::vec &fp1, arma::vec &fm1) {
+             arma::vec &fp1, arma::vec &fm1, double &l, double &u) {
   arma::vec tp3 = t;
   arma::vec tp1 = t;
   arma::vec tm3 = t;
@@ -72,18 +78,26 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
-                    double ef, double rl, double ru, double nu) {
+                    double ef, double rl, double ru, double nu,
+                    int maxiter) {
   // Algorithm 3.1
   // weights = -0.5, 0.5
   // s = -1, 1
-  h = pow(3*ef,0.3333333333333333333333); // maybe a different value?
+  h = pow(3*ef, 0.3333333333333333333333); // maybe a different value?
+  double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
 
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
 
+  int iter=0;
   while(true) {
-    rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1);
+    iter++;
+    if (iter > maxiter) {
+      h = h0;
+      break;
+    }
+    rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u);
     if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
