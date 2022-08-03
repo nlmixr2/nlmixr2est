@@ -82,15 +82,31 @@
 #'
 #' @param optimHessType The hessian type for when calculating the
 #'   individual hessian by numeric differences (in generalized
-#'   log-likelihood estimation).  The options are "central",
-#'   "stencil", and "forward".  The central differences is what R's
-#'   `optimHess()` uses, and is the default.  Stencil is a 4 point
-#'   method for calculating numeric differences, and "forward" only
-#'   uses one additional point (fastest and least accurate).
+#'   log-likelihood estimation).  The options are "central", and
+#'   "forward".  The central differences is what R's `optimHess()`
+#'   uses.  However, this takes longer in optimization, so forward is
+#'   used (while optimizing the forward difference step size with a
+#'   modified Shi21 method).  The Shi21 cannot be changed for the
+#'   Gill83 algorithm with the optimHess in a generalized likelihood
+#'   problem.
 #'
+#' @param useShi21 Use the Shi21 step size optimization algortihm
+#'   instead of the Gill83 step size algorithm.
+#'
+#' @param shi21maxOuter The maximum number of steps for the
+#'   optimization of the forward-difference step size.
+#' 
+#' @param shi21maxInner The maximum number of steps for the
+#'   optimization of the individual Hessian matrices in the
+#'   generalized likelihood problem.
+#' 
+#' @param shi21maxFD The maximum number of steps for the optimization
+#'   of the forward difference step size when using dosing events (lag
+#'   time, modeled duration/rate and bioavailability)
+#' 
 #' @param centralDerivEps Central difference tolerances.  This is a
-#'     numeric vector of relative difference and absolute difference.
-#'     The central/forward difference step size h is calculated as:
+#'   numeric vector of relative difference and absolute difference.
+#'   The central/forward difference step size h is calculated as:
 #'
 #'         \code{h = abs(x)*derivEps[1] + derivEps[2]}
 #'
@@ -620,7 +636,7 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
-                         optimHessType = c("central", "stencil", "forward"),
+                         optimHessType = c("forward", "central"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -672,6 +688,10 @@ foceiControl <- function(sigdig = 3, #
                          reltol = NULL, #
                          resetHessianAndEta = FALSE, #
                          stateTrim = Inf, #
+                         useShi21 = TRUE,
+                         shi21maxOuter = 4L,
+                         shi21maxInner = 20L,
+                         shi21maxFD=20L,
                          gillK = 10L, #
                          gillStep = 4, #
                          gillFtol = 0, #
@@ -864,7 +884,7 @@ foceiControl <- function(sigdig = 3, #
   if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
-    .optimHessTypeIdx <- c("central" = 1L, "stencil" = 2L, "forward" = 3L)
+    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
@@ -1072,6 +1092,10 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
 
+  checkmate::assertLogical(useShi21, any.missing=FALSE, len=1)
+  checkmate::assertCount(shi21maxOuter, positive=TRUE)
+  checkmate::assertCount(shi21maxInner, positive=TRUE)
+  checkmate::assertCount(shi21maxFD, positive=TRUE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1175,7 +1199,11 @@ foceiControl <- function(sigdig = 3, #
     rxControl=rxControl,
     genRxControl=genRxControl,
     skipCov=.skipCov,
-    fallbackFD=fallbackFD
+    fallbackFD=fallbackFD,
+    useShi21=useShi21,
+    shi21maxOuter=shi21maxOuter,
+    shi21maxInner=shi21maxInner,
+    shi21maxFD=shi21maxFD
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",

@@ -27,8 +27,7 @@ foceiControl(
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "r", "s", ""),
   hessEps = (.Machine$double.eps)^(1/3),
-  hessEpsInner = 7e-07,
-  optimHessType = c("central", "stencil", "forward"),
+  optimHessType = c("forward", "central"),
   eventFD = sqrt(.Machine$double.eps),
   eventType = c("gill", "central", "forward"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
@@ -71,6 +70,10 @@ foceiControl(
   reltol = NULL,
   resetHessianAndEta = FALSE,
   stateTrim = Inf,
+  useShi21 = TRUE,
+  shi21maxOuter = 4L,
+  shi21maxInner = 20L,
+  shi21maxFD = 20L,
   gillK = 10L,
   gillStep = 4,
   gillFtol = 0,
@@ -343,17 +346,15 @@ derivatives while calculating the covariance components
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
 
-\item{hessEpsInner}{is a double value representing the epsilon for the Hessian matrix.
-This is used when calculating the individual hessian numerically for
-generalized log-likelihood estimation.}
-
 \item{optimHessType}{The hessian type for when calculating the
 individual hessian by numeric differences (in generalized
-log-likelihood estimation).  The options are "central",
-"stencil", and "forward".  The central differences is what R's
-`optimHess()` uses, and is the default.  Stencil is a 4 point
-method for calculating numeric differences, and "forward" only
-uses one additional point (fastest and least accurate).}
+log-likelihood estimation).  The options are "central", and
+"forward".  The central differences is what R's `optimHess()`
+uses.  However, this takes longer in optimization, so forward is
+used (while optimizing the forward difference step size with a
+modified Shi21 method).  The Shi21 cannot be changed for the
+Gill83 algorithm with the optimHess in a generalized likelihood
+problem.}
 
 \item{eventFD}{Finite difference step for forward or central
 difference estimation of event-based gradients}
@@ -362,8 +363,8 @@ difference estimation of event-based gradients}
 "gill", "central" or "forward"}
 
 \item{centralDerivEps}{Central difference tolerances.  This is a
-    numeric vector of relative difference and absolute difference.
-    The central/forward difference step size h is calculated as:
+  numeric vector of relative difference and absolute difference.
+  The central/forward difference step size h is calculated as:
 
         \code{h = abs(x)*derivEps[1] + derivEps[2]}}
 
@@ -525,6 +526,20 @@ individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
+
+\item{useShi21}{Use the Shi21 step size optimization algortihm
+instead of the Gill83 step size algorithm.}
+
+\item{shi21maxOuter}{The maximum number of steps for the
+optimization of the forward-difference step size.}
+
+\item{shi21maxInner}{The maximum number of steps for the
+optimization of the individual Hessian matrices in the
+generalized likelihood problem.}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
 
 \item{gillK}{The total number of possible steps to determine the
 optimal forward/central difference step size per parameter (by

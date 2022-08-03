@@ -254,6 +254,10 @@ typedef struct {
   double cholSEtol;
   double hessEps;
   double hessEpsInner;
+  bool useShi21;
+  int shi21maxOuter;
+  int shi21maxInner;
+  int shi21maxFD;
   double cholAccept;
   double resetEtaSize;
   int didEtaReset;
@@ -714,6 +718,21 @@ void gill83etaF(double *fp, double *eta, int cid, int foceiGill) {
   gill83pred(fp, eta, cid, 0);
 }
 
+
+// This is needed for shi21 h optimization
+arma::vec shi21etaR(arma::vec &eta, int id) {
+  arma::vec ret(1);
+  gill83etaR(ret.memptr(), eta.memptr(), id, 0);
+  return ret;
+}
+
+// This is needed for shi21 h optimization
+arma::vec shi21etaF(arma::vec &eta, int id) {
+  arma::vec ret(1);
+  gill83etaF(ret.memptr(), eta.memptr(), id, 0);
+  return ret;
+}
+
 static inline double calcGradForEtaGeneral(double *eta,
                                            double *aEps,
                                            int cpar, int cid, int w) {
@@ -721,15 +740,43 @@ static inline double calcGradForEtaGeneral(double *eta,
   if (op_focei.eventType != 1) aEps[cpar] = op_focei.eventFD;
   if (op_focei.eventType == 1 && aEps[cpar] == 0) {
     rx_solving_options_ind *ind =  &(rx->subjects[cid]);
-    double hf, hphif, gillDf, gillDf2, gillErr;
-    if (w == 0) {
-      gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
-             eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-             cid, gill83etaF, 0, ind->lhs[w]);
+    double hf = 0, gillDf = 0;
+    if (op_focei.useShi21) {
+      arma::vec t(eta, op_focei.neta);
+      arma::vec f0(1);
+      f0(0) = ind->lhs[w];
+      arma::vec gr(1);
+      gr(0) = 0;
+      double h = 0;
+      if (w == 0) {
+        hf = shi21Forward(shi21etaF, t, h,
+                          f0, gr, cid, cpar,
+                          op_focei.hessEpsInner, //double ef = 7e-7,
+                          1.5,  //double rl = 1.5,
+                          6.0,  //double ru = 6.0);;
+                          op_focei.shi21maxFD);  //maxiter=15
+        gillDf = gr(0);
+      } else {
+        hf = shi21Forward(shi21etaR, t, h,
+                          f0, gr, cid, cpar,
+                          op_focei.hessEpsInner, //double ef = 7e-7,
+                          1.5,  //double rl = 1.5,
+                          6.0,  //double ru = 6.0);;
+                          op_focei.shi21maxFD);  //maxiter=15
+        gillDf = gr(0);
+      }
     } else {
-      gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
-             eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-             cid, gill83etaR, 0, ind->lhs[w]);
+      double hphif, gillDf2, gillErr;
+      if (w == 0) {
+        gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
+               eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+               cid, gill83etaF, 0, ind->lhs[w]);
+      } else {
+        gill83(&hf, &hphif, &gillDf, &gillDf2, &gillErr,
+               eta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+               cid, gill83etaR, 0, ind->lhs[w]);
+      }
+
     }
     if (hf == 0) hf = op_focei.eventFD;
     aEps[cpar]  = hf;
@@ -1231,34 +1278,30 @@ double LikInner2(double *eta, int likId, int id){
       double h = 0;
 
       for (k = op_focei.neta; k--;) {
-        if (op_focei.optimHessType == 3 && fInd->etahh[k] == 0.0) {
+        h = fInd->etahh[k];
+        if (op_focei.optimHessType == 3 && h == 0) {
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
                                         gr0, grPH, id, k,
                                         op_focei.hessEpsInner, //double ef = 7e-7,
                                         1.5,  //double rl = 1.5,
                                         6.0,  //double ru = 6.0);;
-                                        20);  //maxiter=15
-
+                                        op_focei.shi21maxInner);  //maxiter=15
           H.col(k) = grPH;
           continue;
-        } else {
-          h = fInd->etahh[k];
         }
-        if (op_focei.optimHessType == 1 && fInd->etahh[k] == 0.0) {
+        if (op_focei.optimHessType == 1 && h == 0) {
           // Central
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
                                         gr0, grPH, id, k,
                                         op_focei.hessEpsInner, // ef,
                                         1.5,//double rl = 1.5,
-                                        6.0,//double ru = 6.0,
-                                        8.0,//double nu = 8.0);
-                                        20); // maxiter
+                                        4.5,//double ru = 4.5,
+                                        3.0,//double nu = 8.0);
+                                        op_focei.shi21maxInner); // maxiter
           H.col(k) = grPH;
           continue;
-        } else {
-          h = fInd->etahh[k];
         }
         // x + h
         eta[k] += h;
@@ -2277,6 +2320,15 @@ static inline void gill83tickStep(int &k, int &K, int foceiGill) {
   }
 }
 
+// This is needed for shi21 h optimization
+arma::vec shi21fnF(arma::vec &theta, int id) {
+  updateTheta(theta.memptr());
+  arma::vec ret(1);
+  ret(0) = foceiOfv0(theta.memptr());
+  if (op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+  return ret;
+}
+
 void gill83fnF(double *fp, double *theta, int, int foceiGill) {
   if (foceiGill == 1) {
     updateTheta(theta);
@@ -2518,7 +2570,49 @@ void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
   op_focei.curGill=0;
-  if ((op_focei.repeatGill == 1 || op_focei.nF + op_focei.nF2 == 1) && op_focei.gillK > 0){
+  if (op_focei.useShi21 && op_focei.nF + op_focei.nF2 == 1) {
+    clock_t t = clock() - op_focei.t0;
+    int finalSlow = (op_focei.printOuter == 1) &&
+      ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
+    int maxiter = op_focei.shi21maxOuter;
+    op_focei.totTick = op_focei.npars * maxiter * 2;
+    op_focei.slow = (op_focei.printOuter == 1) &&
+      ((double)t)/CLOCKS_PER_SEC*op_focei.totTick >= op_focei.gradProgressOfvTime;
+    // Use Shi Difference
+    if (op_focei.slow) {
+      RSprintf(_("calculate Shi21 Difference and optimize forward difference step size:\n"));
+      op_focei.t0 = clock();
+      op_focei.cur=0;
+      op_focei.curTick=0;
+    }
+    arma::vec grFinal(1);
+    arma::vec f0(1);
+    f0(0) = op_focei.lastOfv;
+    arma::vec armaTheta(op_focei.npars);
+    std::copy(theta, theta+op_focei.npars, armaTheta.begin());
+    double h = 0;
+    for (int cpar = op_focei.npars; cpar--;){
+      op_focei.calcGrad=1;
+      op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
+                                         f0, grFinal, 0, cpar,
+                                         op_focei.hessEpsInner*2.0, //double ef = 7e-7,
+                                         1.5,  //double rl = 1.5,
+                                         6.0,  //double ru = 6.0);;
+                                         maxiter);  //maxiter=15
+      op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
+      
+      if (op_focei.slow) op_focei.curTick = par_progress(op_focei.cur, (cpar+1)*maxiter*2, op_focei.curTick, 1, op_focei.t0, 0);
+      g[cpar] = grFinal(0);
+    }
+    if (op_focei.slow) {
+      op_focei.cur=op_focei.totTick;
+      op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+      RSprintf("\n");
+    }
+    op_focei.calcGrad=0;
+    op_focei.curGill=2;
+    op_focei.slow = finalSlow;
+  } else if ((op_focei.repeatGill == 1 || op_focei.nF + op_focei.nF2 == 1) && op_focei.gillK > 0){
     clock_t t = clock() - op_focei.t0;
     op_focei.slow = (op_focei.printOuter == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
@@ -3430,6 +3524,10 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsInner=as<double>(rxControl[Rxc_atolSens]);
+  op_focei.useShi21 = as<bool>(foceiO["useShi21"]);
+  op_focei.shi21maxOuter = as<int>(foceiO["shi21maxOuter"]);
+  op_focei.shi21maxInner = as<int>(foceiO["shi21maxInner"]);
+  op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
@@ -3845,8 +3943,10 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   int finalize=0, i = 0;
   niterGrad.push_back(niter.back());
   if (op_focei.derivMethod == 0){
-    if (op_focei.curGill){
+    if (op_focei.curGill == 1){
       gradType.push_back(1);
+    } else if (op_focei.curGill == 2){
+      gradType.push_back(5);
     } else if (op_focei.mixDeriv){
       gradType.push_back(2);
     } else{
@@ -3870,6 +3970,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
       case 4:
         RSprintf("|\033[4m    C| Central Diff. |");
         break;
+      case 5:
+        RSprintf("|\033[4m    S|   Shi21 Diff. |");
+        break;
       }
     } else {
       switch(gradType.back()){
@@ -3884,6 +3987,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
         break;
       case 4:
         RSprintf("|    C| Central Diff. |");
+        break;
+      case 5:
+        RSprintf("|    S|   Shi21 Diff. |");
         break;
       }
     }
@@ -5074,9 +5180,27 @@ NumericMatrix foceiCalcCov(Environment e){
           theta[k] = op_focei.fullTheta[j];
         }
         std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
+        arma::vec f0(1);
+        f0(0) = op_focei.lastOfv;
+        arma::vec grf(1);
+        grf(0) = 0;
+
+        arma::vec armaTheta(op_focei.npars);
+        std::copy(&theta[0], &theta[0] + op_focei.npars, armaTheta.begin());
+        double h = 0;
         for (int cpar = op_focei.npars; cpar--;){
           err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
-          if (op_focei.gillKcov != 0){
+          if (op_focei.useShi21) {
+            op_focei.calcGrad=1;
+            h = op_focei.aEps[cpar];
+            op_focei.aEpsC[cpar] = shi21Central(shi21fnF, armaTheta, h,
+                                                f0, grf, 0, cpar,
+                                                op_focei.hessEpsInner*2.0, //double ef = 7e-7,
+                                                1.5,  //double rl = 1.5,
+                                                4.0,  //double ru = 6.0);;
+                                                3.0, // nu
+                                                op_focei.shi21maxOuter);  //maxiter=15
+          } if (op_focei.gillKcov != 0){
             op_focei.gillRetC[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                              &theta[0], cpar, op_focei.hessEps, op_focei.gillKcov, op_focei.gillStepCov, op_focei.gillFtolCov,
                                              -1, gill83fnG, 1, op_focei.lastOfv);
