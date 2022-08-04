@@ -2649,11 +2649,14 @@ void numericGrad(double *theta, double *g){
     op_focei.slow = finalSlow;
   } else if ((op_focei.repeatGill == 1 || op_focei.nF == 1) && op_focei.gillK > 0){
     clock_t t = clock() - op_focei.t0;
-    op_focei.slow = (op_focei.printOuter == 1) &&
+    int finalSlow = (op_focei.printOuter == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
+
     op_focei.repeatGill=0;
     op_focei.reducedTol2=0;
     double hf, hphif, err;
+    op_focei.slow = (op_focei.printOuter == 1) &&
+      ((double)t)/CLOCKS_PER_SEC*op_focei.npars * op_focei.gillK >= op_focei.gradProgressOfvTime;
     if (op_focei.slow){
       op_focei.cur = 0;
       op_focei.totTick = op_focei.npars * op_focei.gillK;
@@ -2713,6 +2716,7 @@ void numericGrad(double *theta, double *g){
       op_focei.reducedTol2=0;
     }
     op_focei.curGill=1;
+    op_focei.slow = finalSlow;
   } else {
     if(op_focei.slow){
       op_focei.t0 = clock();
