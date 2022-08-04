@@ -32,14 +32,13 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (all.size() == 1) {
     return all(0);
   }
-  // Return geometric mean
-  all = log(all);
+  // Return harmonic mean
+  all = 1.0/all;
   double sum = 0.0;
   for (unsigned int j = all.size(); j--;) {
     sum += all[j];
   }
-  return (exp(sum/((double)all.size())));
-
+  return (((double)all.size())/sum);
 }
 
 double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
@@ -124,13 +123,13 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (fm3.size() == 1) {
     return all(0);
   }
-  // Return geometric mean
-  all = log(all);
+  // Return harmonic mean
+  all = 1.0/all;
   double sum = 0.0;
   for (unsigned int j = all.size(); j--;) {
     sum += all[j];
   }
-  return (exp(sum/((double)all.size())));
+  return (((double)all.size())/sum);
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
