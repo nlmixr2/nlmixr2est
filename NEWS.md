@@ -5,7 +5,8 @@
 
 ## FOCEi
 
- - Gill forward differences will not repeat now (by default), You can change back to prior behavior with `foceiControl(repeatGillMax=3)` 
+ - Gill forward differences will not repeat now (by default), You can
+   change back to prior behavior with `foceiControl(repeatGillMax=3)`
  
  - Number of sticky recalculation is reduced to 4; to have the old
    behavior use `foceiControl(stickyRecalcN=5)`
@@ -22,6 +23,13 @@
   also available are `fit$phiRSE` (relative standard error),
   `fit$phiH`, (individual hessian), `fit$phiC` (individual
   covariances), `fit$phiR` (individual correlation matrices)
+  
+- Can also use Shi 2021 differences in addition to Gill differences.
+  In our tests (using the same datasets as CPT) these produced worse
+  estimates than the Gill 1983, though it is unclear why since it
+  should be a faster more accurate method.  A modified version is used
+  in calculating the individual Hessians of numerically for the
+  generalized likelihood approach.
   
 - Generalized likelihood estimation is now present in `nlmixr2est` for
   `focei`, `foce` and `posthoc`
