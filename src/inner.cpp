@@ -1172,10 +1172,10 @@ double likInner0(double *eta, int id){
         // lik = -2*ll
         fInd->llik = -0.5*lik;
         // if (cens == 0){
-        // 	fInd->llik += err * err/_safe_zero(r) + lnr;
-        // 	likM2(fInd, limit, f, r);
+        //  fInd->llik += err * err/_safe_zero(r) + lnr;
+        //  likM2(fInd, limit, f, r);
         //       } else {
-        // 	likCens(fInd, cens, limit, f, dv, r);
+        //  likCens(fInd, cens, limit, f, dv, r);
         //       }
       } else {
         // Now finalize lp
@@ -1703,26 +1703,26 @@ static inline int innerOpt1(int id, int likId) {
     // if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
     //   // did not converge
     //   if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
-    // 	std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
-    // 	fail=0;
-    // 	lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-    // 		 op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
-    // 		 &fail, (void*)(&id), op_focei.factr,
-    // 		 op_focei.pgtol, &fncount, &grcount,
-    // 		 op_focei.maxInnerIterations, msg, 0, -1,
-    // 		 op_focei.abstol, op_focei.reltol, fInd->g);
-    // 	if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
-    // 	  std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
-    // 	  lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
-    // 		 op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
-    // 		 &fail, (void*)(&id), op_focei.factr,
-    // 		 op_focei.pgtol, &fncount, &grcount,
-    // 		 op_focei.maxInnerIterations, msg, 0, -1,
-    // 		 op_focei.abstol, op_focei.reltol, fInd->g);
-    // 	  if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
-    // 	    std::fill_n(fInd->x, fop->neta, 0);
-    // 	  }
-    // 	}
+    //  std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
+    //  fail=0;
+    //  lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
+    //       op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
+    //       &fail, (void*)(&id), op_focei.factr,
+    //       op_focei.pgtol, &fncount, &grcount,
+    //       op_focei.maxInnerIterations, msg, 0, -1,
+    //       op_focei.abstol, op_focei.reltol, fInd->g);
+    //  if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
+    //    std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
+    //    lbfgsb3C(npar, op_focei.lmm, fInd->x, op_focei.etaLower,
+    //       op_focei.etaUpper, op_focei.nbdInner, &f, innerOptimF, innerOptimG,
+    //       &fail, (void*)(&id), op_focei.factr,
+    //       op_focei.pgtol, &fncount, &grcount,
+    //       op_focei.maxInnerIterations, msg, 0, -1,
+    //       op_focei.abstol, op_focei.reltol, fInd->g);
+    //    if (fail != 6 && fail != 7 && fail != 8 && fail != 27){
+    //      std::fill_n(fInd->x, fop->neta, 0);
+    //    }
+    //  }
     //   }
     // }
   }
@@ -3444,11 +3444,11 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.calcGrad=0;
 
   // Outer options
-  op_focei.outerOpt	=as<int>(foceiO["outerOpt"]);
+  op_focei.outerOpt =as<int>(foceiO["outerOpt"]);
   // lbfgsb options
-  op_focei.factr	= as<double>(foceiO["lbfgsFactr"]);
-  op_focei.pgtol	= as<double>(foceiO["lbfgsPgtol"]);
-  op_focei.lmm		= as<int>(foceiO["lbfgsLmm"]);
+  op_focei.factr    = as<double>(foceiO["lbfgsFactr"]);
+  op_focei.pgtol    = as<double>(foceiO["lbfgsPgtol"]);
+  op_focei.lmm      = as<int>(foceiO["lbfgsLmm"]);
   op_focei.covDerivMethod = as<int>(foceiO["covDerivMethod"]);
   int type = TYPEOF(foceiO["covMethod"]);
   if (type == INTSXP || type == REALSXP) {
@@ -4602,25 +4602,25 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
     // Check for bad grad
     if (std::isnan(g[i]) ||  ISNA(g[i]) || !R_FINITE(g[i])){
       if (doForward){
-      	// Switch to Backward difference method
-      	// op_focei.mixDeriv=1;
-      	theta[i] = cur - delta;
+        // Switch to Backward difference method
+        // op_focei.mixDeriv=1;
+        theta[i] = cur - delta;
         par[0] = theta;
         tmp0 = as<double>(doCall(_["what"] = cFun, _["args"]=par, _["envir"]=cEnvir));
-      	g[i] = (f0-tmp0)/(delta);
+        g[i] = (f0-tmp0)/(delta);
         isMixed=true;
       } else {
-      	// We are using the central difference AND there is an NA in one of the terms
-      	// g[cpar] = (tmp0-tmp)/(2*delta);
-      	// op_focei.mixDeriv=1;
+        // We are using the central difference AND there is an NA in one of the terms
+        // g[cpar] = (tmp0-tmp)/(2*delta);
+        // op_focei.mixDeriv=1;
         isMixed=true;
-      	if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
-      	  // Backward
-      	  g[i] = (f0-tmp)/delta;
-      	} else {
-      	  // Forward
-      	  g[i] = (tmp0-f0)/delta;
-      	}
+        if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
+          // Backward
+          g[i] = (f0-tmp)/delta;
+        } else {
+          // Forward
+          g[i] = (tmp0-f0)/delta;
+        }
       }
     }
   }
