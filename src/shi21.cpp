@@ -17,7 +17,17 @@ double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tp4(idx) += 4*h;
   tp1(idx) += h;
   arma::vec f4 = f(tp4, id);
+  bool finiteF4 = f4.is_finite();
   f1 = f(tp1, id);
+  bool finiteF1 = f1.is_finite();
+  if (!finiteF4 && finiteF1) {
+    // F4 isn't finite, but F1 is finite
+    return -4.0;
+  } else if (finiteF4 && !finiteF1) {
+    return -1.0;
+  } else if (!finiteF4 && !finiteF1) {
+    return -14.0;
+  }
   arma::vec all = abs(f4-4*f1+3*f0)/(8.0*ef);
   if (all.size() == 1) {
     return all(0);
@@ -43,19 +53,40 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
     h = nm2divSqrt3*sqrt(ef);
   }
   double h0=h;
-  double l = 0, u = R_PosInf, rcur = NA_REAL;
+  double l = 0, u = R_PosInf, rcur = NA_REAL, tmp;
 
   arma::vec f1(f0.size());
-  
+  double lasth = h;
   int iter=0;
+  
   while(true) {
     iter++;
     if (iter > maxiter) {
-      h = h0;
       break;
     }
     rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
-    if (rcur < rl) {
+    lasth = h;
+    if (rcur == -4.0) {
+      // t + 4*h has problems
+      // t + 1*h does not
+      // hnew = t + 2.5*hold
+      tmp = 4*h;
+      if (tmp < u) u = tmp;
+      h = 2.5/4*h;
+      continue;
+    } else if (rcur == -1.0) {
+      // t + 4*h does not have problems
+      // t + 1*h has problems
+      h = 1.5*h;
+      continue;
+    } else if (rcur == -14.0) {
+      // t + 4*h has problems
+      // t + 1*h has problems
+      h = lasth;
+      // Calculate gradient again
+      rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
+      break;
+    } else if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
       u = h;

@@ -1385,36 +1385,34 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         .ret$control$etaMat <- .thetaReset$etaMat
         .ret$control$maxInnerIterations <- .thetaReset$maxInnerIterations
         .ret$control$nF <- .thetaReset$nF
-        .ret$control$gillRetC <- .thetaReset$gillRetC
-        .ret$control$gillRet <- .thetaReset$gillRet
-        .ret$control$gillRet <- .thetaReset$gillRet
-        .ret$control$gillDf <- .thetaReset$gillDf
-        .ret$control$gillDf2 <- .thetaReset$gillDf2
-        .ret$control$gillErr <- .thetaReset$gillErr
-        .ret$control$rEps <- .thetaReset$rEps
-        .ret$control$aEps <- .thetaReset$aEps
-        .ret$control$rEpsC <- .thetaReset$rEpsC
-        .ret$control$aEpsC <- .thetaReset$aEpsC
+        #.ret$control$gillRetC <- .thetaReset$gillRetC
+        #.ret$control$gillRet <- .thetaReset$gillRet
+        #.ret$control$gillRet <- .thetaReset$gillRet
+        #.ret$control$gillDf <- .thetaReset$gillDf
+        #.ret$control$gillDf2 <- .thetaReset$gillDf2
+        #.ret$control$gillErr <- .thetaReset$gillErr
+        #.ret$control$rEps <- .thetaReset$rEps
+        #.ret$control$aEps <- .thetaReset$aEps
+        #.ret$control$rEpsC <- .thetaReset$rEpsC
+        #.ret$control$aEpsC <- .thetaReset$aEpsC
         .ret$control$c1 <- .thetaReset$c1
         .ret$control$c2 <- .thetaReset$c2
         if (this.env$zeroOuter) {
           message("Posthoc reset")
           .ret$control$maxOuterIterations <- 0L
         } else if (this.env$zeroGrad) {
-          message("Theta reset (zero gradient values); Switch to bobyqa")
+          message("Theta reset (zero/bad gradient values); Switch to bobyqa")
           rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
         } else {
           message("Theta reset (ETA drift)")
         }
-      }
-      if (this.env$err != "") {
+      } else if (this.env$err != "") {
         stop(this.env$err)
       } else {
         return(.ret0)
       }
-
     }
   } else {
     foceiFitCpp_(.ret)
