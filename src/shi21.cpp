@@ -115,7 +115,6 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tm3(idx)  -= 3*h;
   tm1(idx)  -= h;
   fp1 = f(tp1, id);
-  f1 = f(tp1, id);
   arma::vec fp3 = f(tp3, id);
   fm1 = f(tm1, id);
   arma::vec fm3 = f(tm3, id);
@@ -137,9 +136,8 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
     }
     return (((double)all.size())/sum);
   } else {
-    return -1.0; 
+    return -1.0;
  }
-
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
@@ -156,7 +154,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   }
   double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
-  double lasth = h;
+  double hlast = h;
 
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
@@ -176,7 +174,8 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
           !finiteFm3 && !finiteFp3) {
         h = hlast;
         // Calculate gradient again
-        rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
+        rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
+                     finiteFp1, finiteFp3, finiteFm1, finiteFm3);
         break;
       }
       if (!finiteFm1 || !finiteFp1) {
@@ -194,6 +193,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     } else {
       break;
     }
+    hlast = h;
     if (!R_finite(u)) {
       h = nu*h;
     } else if (l == 0) {

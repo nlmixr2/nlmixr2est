@@ -90,15 +90,28 @@
 #'   Gill83 algorithm with the optimHess in a generalized likelihood
 #'   problem.
 #'
-#' @param useShi21 Use the Shi21 step size optimization algortihm
-#'   instead of the Gill83 step size algorithm.
+#' @param optimHessCovType The hessian type for when calculating the
+#'   individual hessian by numeric differences (in generalized
+#'   log-likelihood estimation).  The options are "central", and
+#'   "forward".  The central differences is what R's `optimHess()`
+#'   uses.  While this takes longer in optimization, it is more
+#'   accurate, so for calculating the covariance and final likelihood,
+#'   the central differences are used. This also uses the modified
+#'   Shi21 method
 #'
 #' @param shi21maxOuter The maximum number of steps for the
-#'   optimization of the forward-difference step size.
+#'   optimization of the forward-difference step size.  When not zero,
+#'   use this instead of Gill differences.
 #' 
 #' @param shi21maxInner The maximum number of steps for the
 #'   optimization of the individual Hessian matrices in the
-#'   generalized likelihood problem.
+#'   generalized likelihood problem. When 0, un-optimized finite differences
+#'   are used.
+#'
+#' @param shi21maxInnerCov The maximum number of steps for the
+#'   optimization of the individual Hessian matrices in the
+#'   generalized likelihood problem for the covariance step. When 0,
+#'   un-optimized finite differences are used.
 #' 
 #' @param shi21maxFD The maximum number of steps for the optimization
 #'   of the forward difference step size when using dosing events (lag
@@ -648,6 +661,7 @@ foceiControl <- function(sigdig = 3, #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
                          optimHessType = c("forward", "central"),
+                         optimHessCovType=c("central", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -699,9 +713,9 @@ foceiControl <- function(sigdig = 3, #
                          reltol = NULL, #
                          resetHessianAndEta = FALSE, #
                          stateTrim = Inf, #
-                         useShi21 = FALSE,
-                         shi21maxOuter = 20L,
-                         shi21maxInner = 20L,
+                         shi21maxOuter = 0L,
+                         shi21maxInner = 40L,
+                         shi21maxInnerCov = 40L,
                          shi21maxFD=20L,
                          gillK = 10L, #
                          gillStep = 4, #
@@ -777,6 +791,7 @@ foceiControl <- function(sigdig = 3, #
   }
 
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
 
@@ -897,6 +912,13 @@ foceiControl <- function(sigdig = 3, #
   } else {
     .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
+  }
+
+  if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+    optimHessCovType <- as.integer(optimHessCovType)
+  } else {
+    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
+    optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
@@ -1103,9 +1125,9 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
 
-  checkmate::assertLogical(useShi21, any.missing=FALSE, len=1)
   checkmate::assertCount(shi21maxOuter, positive=TRUE)
   checkmate::assertCount(shi21maxInner, positive=TRUE)
+  checkmate::assertCount(shi21maxInnerCov, positive=TRUE)
   checkmate::assertCount(shi21maxFD, positive=TRUE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
@@ -1141,6 +1163,7 @@ foceiControl <- function(sigdig = 3, #
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
     optimHessType=optimHessType,
+    optimHessCovType=optimHessCovType,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),
@@ -1211,9 +1234,9 @@ foceiControl <- function(sigdig = 3, #
     genRxControl=genRxControl,
     skipCov=.skipCov,
     fallbackFD=fallbackFD,
-    useShi21=useShi21,
     shi21maxOuter=shi21maxOuter,
     shi21maxInner=shi21maxInner,
+    shi21maxInnerCov=shi21maxInnerCov,
     shi21maxFD=shi21maxFD
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {

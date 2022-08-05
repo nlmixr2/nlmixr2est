@@ -257,9 +257,9 @@ typedef struct {
   double cholSEtol;
   double hessEps;
   double hessEpsInner;
-  bool useShi21;
   int shi21maxOuter;
   int shi21maxInner;
+  int shi21maxInnerCov;
   int shi21maxFD;
   double cholAccept;
   double resetEtaSize;
@@ -318,6 +318,7 @@ typedef struct {
   bool fallbackFD = false;
   bool needOptimHess = false;
   int optimHessType = 1;
+  int optimHessCovType = 1;
 } focei_options;
 
 focei_options op_focei;
@@ -744,7 +745,7 @@ static inline double calcGradForEtaGeneral(double *eta,
   if (op_focei.eventType == 1 && aEps[cpar] == 0) {
     rx_solving_options_ind *ind =  &(rx->subjects[cid]);
     double hf = 0, gillDf = 0;
-    if (op_focei.useShi21) {
+    if (op_focei.shi21maxFD != 0) {
       arma::vec t(eta, op_focei.neta);
       arma::vec f0(1);
       f0(0) = ind->lhs[w];
@@ -2607,7 +2608,7 @@ void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
   op_focei.curGill=0;
-  if (op_focei.useShi21 && op_focei.nF == 1) {
+  if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.printOuter == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
@@ -3471,9 +3472,10 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsInner=as<double>(rxControl[Rxc_atolSens]);
-  op_focei.useShi21 = as<bool>(foceiO["useShi21"]);
   op_focei.shi21maxOuter = as<int>(foceiO["shi21maxOuter"]);
   op_focei.shi21maxInner = as<int>(foceiO["shi21maxInner"]);
+  op_focei.shi21maxInnerCov = as<int>(foceiO["shi21maxInnerCov"]);
+  op_focei.optimHessCovType=as<int>(foceiO["optimHessCovType"]);
   op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
@@ -3687,9 +3689,9 @@ void foceiOuterFinal(double *x, Environment e){
   // This will give reproducible likelihoods with fd events
   std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
-  // Switch to central for testing
-  //op_focei.optimHessType = 1;
-
+  op_focei.optimHessType = op_focei.optimHessCovType;
+  op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
+  
   double fmin = foceiOfv0(x);
 
   NumericVector theta(op_focei.ntheta);
@@ -5146,7 +5148,7 @@ NumericMatrix foceiCalcCov(Environment e){
         double h = 0;
         for (int cpar = op_focei.npars; cpar--;){
           err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
-          if (op_focei.useShi21) {
+          if (op_focei.shi21maxOuter != 0) {
             op_focei.calcGrad=1;
             h = op_focei.aEps[cpar];
             op_focei.aEpsC[cpar] = shi21Central(shi21fnF, armaTheta, h,
