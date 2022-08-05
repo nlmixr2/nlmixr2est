@@ -1125,10 +1125,10 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
 
-  checkmate::assertCount(shi21maxOuter, positive=TRUE)
-  checkmate::assertCount(shi21maxInner, positive=TRUE)
-  checkmate::assertCount(shi21maxInnerCov, positive=TRUE)
-  checkmate::assertCount(shi21maxFD, positive=TRUE)
+  checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
