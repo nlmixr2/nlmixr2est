@@ -202,13 +202,13 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
         // central difference
         calcGrad = true;
         gr = (fp1-fm1)/(2*h);
-        lasth = h;
+        hlast = h;
       }
       continue;
     } else {
       calcGrad = true;
       gr = (fp1-fm1)/(2*h);
-      lasth = h;      
+      hlast = h;      
     }
     if (rcur < rl) {
       l = h;
@@ -343,7 +343,7 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
   while(true) {
     iter++;
     if (iter > maxiter) {
-      h = lasth;
+      h = hlast;
       break;
     }
     rcur = shiRS(h, f, ef, t, id, idx,
@@ -385,7 +385,7 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
       if (!calcGrad) {
         calcGrad = true;
         gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
-        lasth = h;
+        hlast = h;
       }
       continue;
     } else {
