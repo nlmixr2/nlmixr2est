@@ -3684,6 +3684,12 @@ void foceiOuterFinal(double *x, Environment e){
   // reset the optimal step size to have reproducible likelihoods with
   // generalized log-likelihood focei
   std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+  // This will give reproducible likelihoods with fd events
+  std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
+  std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
+  // Switch to central for testing
+  //op_focei.optimHessType = 1;
+
   double fmin = foceiOfv0(x);
 
   NumericVector theta(op_focei.ntheta);
