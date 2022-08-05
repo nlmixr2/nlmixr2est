@@ -1307,6 +1307,19 @@ double LikInner2(double *eta, int likId, int id){
           H.col(k) = grPH;
           continue;
         }
+        if (op_focei.optimHessType == 2 && h == 0) {
+          // Stencil
+          arma::vec t(eta, op_focei.neta);
+          fInd->etahh[k] = shi21Stencil(getGradForOptimHess, t, h,
+                                        gr0, grPH, id, k,
+                                        op_focei.hessEpsInner, // ef,
+                                        1.5,//double rl = 1.5,
+                                        4.0,//double ru = 4.0,
+                                        4.0,//double nu = 8.0);
+                                        op_focei.shi21maxInner); // maxiter
+          H.col(k) = grPH;
+          continue;
+        }
         // x + h
         eta[k] += h;
         lpInner(eta, &grPH[0], id);
@@ -1339,6 +1352,31 @@ double LikInner2(double *eta, int likId, int id){
           H.col(k) = (gr0-grMH)/h;
           print(wrap(H.col(k)));
           eta[k] += h;
+          continue;
+        }
+        // We know that x \pm h is finite at this point (and we are using stencil)
+        // Stencil
+        // x+2h
+        eta[k] += 3*h;
+        lpInner(eta, &grP2H[0], id);
+        forwardFinite =  grP2H.is_finite();
+        // x-2h
+        eta[k] -= 4*h;
+        lpInner(eta, &grM2H[0], id);
+        backwardFinite =  grM2H.is_finite();
+        // reset to x
+        eta[k] += 2*h;
+        if (forwardFinite && backwardFinite) {
+          // full stencil
+          H.col(k) = (grM2H-8*grMH+8*grPH-grP2H)/(12.0*h);
+          continue;
+        }
+        if (forwardFinite && !backwardFinite) {
+          H.col(k) = (-2.0*grMH - 3.0*gr0 +  6.0*grPH - grP2H)/(6.0*h);
+          continue;
+        }
+        if (!forwardFinite && backwardFinite) {
+          H.col(k) = (grM2H - 6.0*grMH+3.0*gr0+2.0*grPH)/(6.0*h);
           continue;
         }
       }

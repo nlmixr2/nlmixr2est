@@ -79,8 +79,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       // t + 4*h has problems
       // t + 1*h has problems
       h = lasth;
-      // Calculate gradient again
-      rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
+      // Use last calculated gradient
       break;
     } else if (rcur < rl) {
       l = h;
@@ -96,9 +95,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
     } else {
       h = (l + u)/2.0;
     }
+    // Need f1 from shiRF to compute forward difference
+    gr = (f1-f0)/h;
   }
-  // Need f1 from shiRF to compute forward difference
-  gr = (f1-f0)/h;
   return h;
 }
 
@@ -150,7 +149,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   // Equation 3.3
   //
   if (h == 0) {
-    h = pow(ef, 0.3333333333333333333333); 
+    h = pow(3.0*ef, 0.3333333333333333333333); 
   }
   double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
@@ -169,21 +168,19 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     }
     rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
                  finiteFp1, finiteFp3, finiteFm1, finiteFm3);
-    if (rcur == 1.0) {
+    if (rcur == -1.0) {
       if (!finiteFm1 && !finiteFp1 &&
           !finiteFm3 && !finiteFp3) {
         h = hlast;
-        // Calculate gradient again
-        rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
-                     finiteFp1, finiteFp3, finiteFm1, finiteFm3);
+        // Use last calculated gradient
         break;
       }
       if (!finiteFm1 || !finiteFp1) {
         // hnew*3 = hold*0.5
-        tmp = h*0.5/3.0;
+        h = h*0.5/3.0;
       } else if (!finiteFm3 || !finiteFp3) {
         // hnew*3 = hold*2
-        tmp = h*2.0/3.0;
+        h = h*2.0/3.0;
       }
       continue;
     }  else if (rcur < rl) {
@@ -201,8 +198,135 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     } else {
       h = (l + u)/2.0;
     }
+    // Need f1 from shiRF to compute forward difference
+    gr = (fp1 - fm1)/(2*h);
   }
-  // Need f1 from shiRF to compute forward difference
-  gr = (fp1 - fm1)/(2*h);
   return h;
+}
+
+double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
+             arma::vec &fp1, arma::vec &fm1,
+             arma::vec &fp2, arma::vec &fm2, 
+             double &l, double &u,
+             bool &finiteFp1, bool &finiteFp2, bool &finiteFp4,
+             bool &finiteFm1, bool &finiteFm2, bool &finiteFm4) {
+  arma::vec tp4 = t;
+  arma::vec tp2 = t;
+  arma::vec tp1 = t;
+  arma::vec tm4 = t;
+  arma::vec tm2 = t;
+  arma::vec tm1 = t;
+  tp4(idx) += 4*h;
+  tp2(idx) += 2*h;
+  tp1(idx) += h;
+  tp4(idx) -= 4*h;
+  tp2(idx) -= 2*h;
+  tp1(idx) -= h;
+
+  fp1 = f(tp1, id);
+  fp2 = f(tp2, id);
+  arma::vec fp4 = f(tp4, id);
+  fm1 = f(tm1, id);
+  fm2 = f(tm2, id);
+  arma::vec fm4 = f(tm2, id);
+  // alpha = 2
+  // s = (-2, -1, 1, 2)
+  // w = (1/12, -2/3, 2/3, -1/12) = c(1/12, -8/12, 8/12, -1/12)
+  // alpha*s = (-4, -2, 2 -4)
+  // alpha*w = (4/12, -32/12, 32/12, -4/12)
+  // derivative = (1*f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
+  // alpha*f(x+s*alpha) = 4*f(x-4h)-32*f(x-2h)+32*f(x+2h)-4*f(x+4h)
+  // derivative - alpha*f(x+s*alpha)
+  // -4*f(x-4h) + 33*f(x-2h)-8*f(x-h)+8*f(x+h)-33*f(x+2h)+4*f(x+4h)
+  // ||w|| = 324
+  // 324*12=3888
+  finiteFp1 = fp1.is_finite();
+  finiteFp2 = fp2.is_finite();
+  finiteFp4 = fp4.is_finite();
+  finiteFm1 = fm1.is_finite();
+  finiteFm2 = fm2.is_finite();
+  finiteFm4 = fm4.is_finite();
+  if (finiteFp1 && finiteFp2 && finiteFp4 &&
+      finiteFm1 && finiteFm2 && finiteFm4) {
+    arma::vec all = abs(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4)/(3888.0*ef);
+    if (fm4.size() == 1) {
+      return all(0);
+    }
+    // Return harmonic mean
+    all = 1.0/all;
+    double sum = 0.0;
+    for (unsigned int j = all.size(); j--;) {
+      sum += all[j];
+    }
+    return (((double)all.size())/sum);
+  } else {
+    return(-1.0);
+  }
+}
+
+double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
+                    arma::vec &f0, arma::vec &gr, int id, int idx,
+                    double ef, double rl, double ru, double nu,
+                    int maxiter) {
+// exp((3/10)*log(5/2)+(1/10)*log(13))=
+// 1.701282120455891888611
+// 1.701282120455891888611*pow(er, 0.2)
+  if (h == 0) {
+    h = 1.701282120455891888611*pow(ef, 0.2); 
+  }
+  double h0=h, tmp = h;
+  double l = 0, u = R_PosInf, rcur = NA_REAL;
+  double hlast = h;
+
+  arma::vec fp1(f0.size());
+  arma::vec fm1(f0.size());
+  
+  arma::vec fp2(f0.size());
+  arma::vec fm2(f0.size());
+
+  int iter=0;
+  bool finiteFp1 = true, finiteFp2 = true, finiteFp4 = true,
+    finiteFm1=true, finiteFm2=true,  finiteFm4=true;
+  while(true) {
+    iter++;
+    if (iter > maxiter) {
+      break;
+    }
+    rcur = shiRS(h, f, ef, t, id, idx,
+                 fp1, fm1, fp2, fm2, l, u,
+                 finiteFp1, finiteFp2, finiteFp4,
+                 finiteFm1, finiteFm2, finiteFm4);
+    if (rcur == -1.0) {
+      if (!finiteFm1 && !finiteFp1 &&
+          !finiteFm2 && !finiteFp2 &&
+          !finiteFm4 && !finiteFp4) {
+        h = hlast;
+        // Calculate gradient again
+        break;
+      }
+      if (!finiteFm1 || !finiteFp1) {
+        // hnew*4 = hold*0.5
+        h = h*0.5/4.0;
+      } else if (!finiteFm2 || !finiteFp2) {
+        // hnew*4 = hold*1.5
+        h = h*1.5/4.0;
+      } else if (!finiteFm4 || !finiteFp4) {
+        // hnew*4 = hold*3.5
+        h = h*3.5/4.0;
+      }
+      continue;
+    }
+    hlast = h;
+    if (!R_finite(u)) {
+      h = nu*h;
+    } else if (l == 0) {
+      h = h/nu;
+    } else {
+      h = (l + u)/2.0;
+    }
+    // derivative = (f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
+    gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+  }
+  return h;
+
 }

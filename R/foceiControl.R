@@ -659,8 +659,8 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
-                         optimHessType = c("central", "forward"),
-                         optimHessCovType=c("central", "forward"),
+                         optimHessType = c("central", "stencil", "forward"),
+                         optimHessCovType=c("stencil", "central", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
@@ -909,14 +909,14 @@ foceiControl <- function(sigdig = 3, #
   if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
-    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
+    .optimHessTypeIdx <- c("central" = 1L, "stencil"=2L, "forward" = 3L)
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
   if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     optimHessCovType <- as.integer(optimHessCovType)
   } else {
-    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
+    .optimHessCovTypeIdx <- c("central" = 1L, "stencil"=2L, "forward" = 3L)
     optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
