@@ -3681,6 +3681,9 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
 }
 
 void foceiOuterFinal(double *x, Environment e){
+  // reset the optimal step size to have reproducible likelihoods with
+  // generalized log-likelihood focei
+  std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
   double fmin = foceiOfv0(x);
 
   NumericVector theta(op_focei.ntheta);
