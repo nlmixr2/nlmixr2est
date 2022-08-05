@@ -68,8 +68,6 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
       // t + 4*h has problems
       // t + 1*h does not
       // hnew = t + 2.5*hold
-      tmp = 4*h;
-      if (tmp < u) u = tmp;
       h = 2.5/4*h;
       continue;
     } else if (rcur == -1.0) {
@@ -105,7 +103,9 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
 }
 
 double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
-             arma::vec &fp1, arma::vec &fm1, double &l, double &u) {
+             arma::vec &fp1, arma::vec &fm1, double &l, double &u,
+             bool &finiteFp1, bool &finiteFp3,
+             bool &finiteFm1, bool &finiteFm3) {
   arma::vec tp3 = t;
   arma::vec tp1 = t;
   arma::vec tm3 = t;
@@ -115,20 +115,31 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tm3(idx)  -= 3*h;
   tm1(idx)  -= h;
   fp1 = f(tp1, id);
+  f1 = f(tp1, id);
   arma::vec fp3 = f(tp3, id);
   fm1 = f(tm1, id);
   arma::vec fm3 = f(tm3, id);
-  arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
-  if (fm3.size() == 1) {
-    return all(0);
-  }
-  // Return harmonic mean
-  all = 1.0/all;
-  double sum = 0.0;
-  for (unsigned int j = all.size(); j--;) {
-    sum += all[j];
-  }
-  return (((double)all.size())/sum);
+  finiteFp1 = fp1.is_finite();
+  finiteFp3 = fp3.is_finite();
+  finiteFm1 = fp1.is_finite();
+  finiteFm3 = fp3.is_finite();
+  if (finiteFp1 && finiteFp3 &&
+      finiteFm3 && finite) {
+    arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
+    if (fm3.size() == 1) {
+      return all(0);
+    }
+    // Return harmonic mean
+    all = 1.0/all;
+    double sum = 0.0;
+    for (unsigned int j = all.size(); j--;) {
+      sum += all[j];
+    }
+    return (((double)all.size())/sum);
+  } else {
+    return -1.0; 
+ }
+
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
@@ -143,21 +154,40 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   if (h == 0) {
     h = pow(ef, 0.3333333333333333333333); 
   }
-  double h0=h;
+  double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
+  double lasth = h;
 
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
 
   int iter=0;
+  bool finiteFp1 = true, finiteFp3 = true,
+    finiteFm1=true, finiteFm3=true;
   while(true) {
     iter++;
     if (iter > maxiter) {
-      h = h0;
       break;
     }
-    rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u);
-    if (rcur < rl) {
+    rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
+                 finiteFp1, finiteFp3, finiteFm1, finiteFm3);
+    if (rcur == 1.0) {
+      if (!finiteFm1 && !finiteFp1 &&
+          !finiteFm3 && !finiteFp3) {
+        h = hlast;
+        // Calculate gradient again
+        rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
+        break;
+      }
+      if (!finiteFm1 || !finiteFp1) {
+        // hnew*3 = hold*0.5
+        tmp = h*0.5/3.0;
+      } else if (!finiteFm3 || !finiteFp3) {
+        // hnew*3 = hold*2
+        tmp = h*2.0/3.0;
+      }
+      continue;
+    }  else if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
       u = h;
