@@ -64,6 +64,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
     }
     rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
     lasth = h;
+    gr = (f1-f0)/h;
     if (rcur == -4.0) {
       // t + 4*h has problems
       // t + 1*h does not
@@ -95,8 +96,6 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
     } else {
       h = (l + u)/2.0;
     }
-    // Need f1 from shiRF to compute forward difference
-    gr = (f1-f0)/h;
   }
   return h;
 }
@@ -114,29 +113,42 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tm3(idx)  -= 3*h;
   tm1(idx)  -= h;
   fp1 = f(tp1, id);
-  arma::vec fp3 = f(tp3, id);
-  fm1 = f(tm1, id);
-  arma::vec fm3 = f(tm3, id);
   finiteFp1 = fp1.is_finite();
-  finiteFp3 = fp3.is_finite();
-  finiteFm1 = fp1.is_finite();
-  finiteFm3 = fp3.is_finite();
-  if (finiteFp1 && finiteFp3 &&
-      finiteFm3 && finite) {
-    arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
-    if (fm3.size() == 1) {
-      return all(0);
-    }
-    // Return harmonic mean
-    all = 1.0/all;
-    double sum = 0.0;
-    for (unsigned int j = all.size(); j--;) {
-      sum += all[j];
-    }
-    return (((double)all.size())/sum);
-  } else {
+  if (!finiteFp1) {
+    finiteFm1 = true;
+    finiteFp3 = true;
+    finiteFm3 = true;
     return -1.0;
- }
+  }
+  fm1 = f(tm1, id);
+  finiteFm1 = fp1.is_finite();
+  if (!finiteFm1) {
+    finiteFp3 = true;
+    finiteFm3 = true;
+    return -1.0;
+  }
+  arma::vec fp3 = f(tp3, id);
+  finiteFp3 = fp3.is_finite();
+  if (!finiteFp3) {
+    finiteFp3 = true;
+    return -1.0;
+  }
+  arma::vec fm3 = f(tm3, id);
+  finiteFm3 = fp3.is_finite();
+  if (!finiteFm3) {
+    return -1.0;
+  }
+  arma::vec all = abs(fp3-3*fp1+3*fm1-fm3)/(8.0*ef);
+  if (fm3.size() == 1) {
+    return all(0);
+  }
+  // Return harmonic mean
+  all = 1.0/all;
+  double sum = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    sum += all[j];
+  }
+  return (((double)all.size())/sum);
 }
 
 double shi21Central(shi21fn_type f, arma::vec &t, double &h,
@@ -160,37 +172,51 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 
   int iter=0;
   bool finiteFp1 = true, finiteFp3 = true,
-    finiteFm1=true, finiteFm3=true;
+    finiteFm1=true, finiteFm3=true, calcGrad=false;
   while(true) {
     iter++;
     if (iter > maxiter) {
+      h=hlast;
       break;
     }
     rcur = shiRC(h, f, ef, t, id, idx, fp1, fm1, l, u,
                  finiteFp1, finiteFp3, finiteFm1, finiteFm3);
+    // Need f1 from shiRF to compute forward difference
     if (rcur == -1.0) {
-      if (!finiteFm1 && !finiteFp1 &&
-          !finiteFm3 && !finiteFp3) {
-        h = hlast;
-        // Use last calculated gradient
-        break;
-      }
-      if (!finiteFm1 || !finiteFp1) {
+      if (!finiteFp1) {
         // hnew*3 = hold*0.5
         h = h*0.5/3.0;
-      } else if (!finiteFm3 || !finiteFp3) {
-        // hnew*3 = hold*2
-        h = h*2.0/3.0;
+        continue;
+      } else if (!finiteFm1) {
+        if (!calcGrad) {
+          // forward difference
+          calcGrad = true;
+          gr = (fp1-f0)/h;
+        }
+        h = h*0.5/3.0;
+        continue;
+      }
+      // hnew*3 = hold*2
+      h = h*2.0/3.0;
+      if (!calcGrad) {
+        // central difference
+        calcGrad = true;
+        gr = (fp1-fm1)/(2*h);
+        lasth = h;
       }
       continue;
-    }  else if (rcur < rl) {
+    } else {
+      calcGrad = true;
+      gr = (fp1-fm1)/(2*h);
+      lasth = h;      
+    }
+    if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
       u = h;
     } else {
       break;
     }
-    hlast = h;
     if (!R_finite(u)) {
       h = nu*h;
     } else if (l == 0) {
@@ -198,8 +224,6 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     } else {
       h = (l + u)/2.0;
     }
-    // Need f1 from shiRF to compute forward difference
-    gr = (fp1 - fm1)/(2*h);
   }
   return h;
 }
@@ -224,11 +248,50 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   tp1(idx) -= h;
 
   fp1 = f(tp1, id);
-  fp2 = f(tp2, id);
-  arma::vec fp4 = f(tp4, id);
+  finiteFp1 = fp1.is_finite();
+  if (!finiteFp1) {
+    finiteFp2 = true;
+    finiteFp4 = true;
+    finiteFm1 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
   fm1 = f(tm1, id);
+  finiteFm1 = fm1.is_finite();
+  if (!finiteFm1) {
+    finiteFp2 = true;
+    finiteFp4 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  fp2 = f(tp2, id);
+  finiteFp2 = fp2.is_finite();
+  if (!finiteFm1) {
+    finiteFp4 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
   fm2 = f(tm2, id);
+  finiteFm2 = fm2.is_finite();
+  if (!finiteFm2) {
+    finiteFp4 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  arma::vec fp4 = f(tp4, id);
+  finiteFp4 = fp2.is_finite();
+  if (!finiteFp4) {
+    finiteFm4 = true;
+    return -1.0;
+  }
   arma::vec fm4 = f(tm2, id);
+  finiteFm4 = fp2.is_finite();
+  if (!finiteFp4) {
+    return -1.0;
+  }
   // alpha = 2
   // s = (-2, -1, 1, 2)
   // w = (1/12, -2/3, 2/3, -1/12) = c(1/12, -8/12, 8/12, -1/12)
@@ -240,28 +303,17 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   // -4*f(x-4h) + 33*f(x-2h)-8*f(x-h)+8*f(x+h)-33*f(x+2h)+4*f(x+4h)
   // ||w|| = 324
   // 324*12=3888
-  finiteFp1 = fp1.is_finite();
-  finiteFp2 = fp2.is_finite();
-  finiteFp4 = fp4.is_finite();
-  finiteFm1 = fm1.is_finite();
-  finiteFm2 = fm2.is_finite();
-  finiteFm4 = fm4.is_finite();
-  if (finiteFp1 && finiteFp2 && finiteFp4 &&
-      finiteFm1 && finiteFm2 && finiteFm4) {
-    arma::vec all = abs(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4)/(3888.0*ef);
-    if (fm4.size() == 1) {
-      return all(0);
-    }
-    // Return harmonic mean
-    all = 1.0/all;
-    double sum = 0.0;
-    for (unsigned int j = all.size(); j--;) {
-      sum += all[j];
-    }
-    return (((double)all.size())/sum);
-  } else {
-    return(-1.0);
+  arma::vec all = abs(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4)/(3888.0*ef);
+  if (fm4.size() == 1) {
+    return all(0);
   }
+  // Return harmonic mean
+  all = 1.0/all;
+  double sum = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    sum += all[j];
+  }
+  return (((double)all.size())/sum);
 }
 
 double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
@@ -286,10 +338,12 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
 
   int iter=0;
   bool finiteFp1 = true, finiteFp2 = true, finiteFp4 = true,
-    finiteFm1=true, finiteFm2=true,  finiteFm4=true;
+    finiteFm1=true, finiteFm2=true,  finiteFm4=true,
+    calcGrad = false;
   while(true) {
     iter++;
     if (iter > maxiter) {
+      h = lasth;
       break;
     }
     rcur = shiRS(h, f, ef, t, id, idx,
@@ -297,26 +351,57 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
                  finiteFp1, finiteFp2, finiteFp4,
                  finiteFm1, finiteFm2, finiteFm4);
     if (rcur == -1.0) {
-      if (!finiteFm1 && !finiteFp1 &&
-          !finiteFm2 && !finiteFp2 &&
-          !finiteFm4 && !finiteFp4) {
-        h = hlast;
-        // Calculate gradient again
-        break;
-      }
-      if (!finiteFm1 || !finiteFp1) {
+      // pick new h and try to calculate a gradient if needed.
+      if (!finiteFp1) {
         // hnew*4 = hold*0.5
         h = h*0.5/4.0;
-      } else if (!finiteFm2 || !finiteFp2) {
+        continue;
+      } else if (!finiteFm1) {
+        if (!calcGrad) {
+          // forward difference
+          calcGrad = true;
+          gr = (fp1-f0)/h;
+        }
+        h = h*0.5/4.0;
+        continue;
+      } else if (!finiteFp2) {
         // hnew*4 = hold*1.5
+        if (!calcGrad) {
+          calcGrad = true;
+          gr = (fp1-fm1)/(2*h);
+        }
         h = h*1.5/4.0;
-      } else if (!finiteFm4 || !finiteFp4) {
-        // hnew*4 = hold*3.5
-        h = h*3.5/4.0;
+        continue;
+      } else if (!finiteFm2) {
+        if (!calcGrad) {
+          calcGrad = true;
+          gr = (-2.0*fm1 - 3.0*f0 + 6.0*fp1 - fp2)/(6.0*h);
+        }
+        h = h*1.5/4.0;
+        continue;
+      }
+      // hnew*4 = hold*3.5
+      h = h*3.5/4.0;
+      if (!calcGrad) {
+        calcGrad = true;
+        gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+        lasth = h;
       }
       continue;
+    } else {
+      // derivative = (f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
+      // save good gradient and good h
+      calcGrad = true;
+      gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+      hlast = h;
     }
-    hlast = h;
+    if (rcur < rl) {
+      l = h;
+    } else if (rcur > ru) {
+      u = h;
+    } else {
+      break;
+    }
     if (!R_finite(u)) {
       h = nu*h;
     } else if (l == 0) {
@@ -324,9 +409,6 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
     } else {
       h = (l + u)/2.0;
     }
-    // derivative = (f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
-    gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
   }
   return h;
-
 }
