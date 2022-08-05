@@ -43,6 +43,18 @@ nlmixr2Version <- function() {
 
 .nlmixr2objectName <- NULL
 
+#' Allows external methods (like those in nlmixr2) to assign object name
+#'
+#' @param x String or null for assigning a nlmixr object name
+#' @return nothing called for side effects
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
+.nlmixr2objectNameAssign <- function(x) {
+  assignInMyNamespace(".nlmixr2objectName",x)
+  invisible()
+}
+
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
