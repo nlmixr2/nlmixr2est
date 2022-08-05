@@ -84,11 +84,10 @@
 #'   individual hessian by numeric differences (in generalized
 #'   log-likelihood estimation).  The options are "central", and
 #'   "forward".  The central differences is what R's `optimHess()`
-#'   uses.  However, this takes longer in optimization, so forward is
-#'   used (while optimizing the forward difference step size with a
-#'   modified Shi21 method).  The Shi21 cannot be changed for the
-#'   Gill83 algorithm with the optimHess in a generalized likelihood
-#'   problem.
+#'   uses and is the default for this method. (Though the "forward" is
+#'   faster and still reasonable for most cases).  The Shi21 cannot be
+#'   changed for the Gill83 algorithm with the optimHess in a
+#'   generalized likelihood problem.
 #'
 #' @param optimHessCovType The hessian type for when calculating the
 #'   individual hessian by numeric differences (in generalized
@@ -660,7 +659,7 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          hessEps = (.Machine$double.eps)^(1 / 3), #
-                         optimHessType = c("forward", "central"),
+                         optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
                          eventType = c("gill", "central", "forward"), #
