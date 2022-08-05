@@ -339,8 +339,8 @@ test_that("test focei llik", {
     pk.turnover.emax3.ll
 
   f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
-              control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
-                                   maxOuterIterations=0, optimHessType="stencil"))
+               control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                    maxOuterIterations=0, optimHessType="central"))
 
   expect_equal(f$omega, f2$omega)
   expect_equal(f$theta, f2$theta)
@@ -353,16 +353,8 @@ test_that("test focei llik", {
   expect_equal(f$omega, f2$omega)
   expect_equal(f$theta, f2$theta)
   expect_equal(f$eta, f2$eta)
-
-  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
-              control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
-                                   maxOuterIterations=0, optimHessType="central"))
-  
-  expect_equal(f$omega, f2$omega)
-  expect_equal(f$theta, f2$theta)
-  expect_equal(f$eta, f2$eta)
     
-  expect_equal(round(f2$objf), round(of1))
+  expect_equal(f2$objf, of1)
 
   fll <- f2
 
