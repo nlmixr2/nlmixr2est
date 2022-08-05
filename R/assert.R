@@ -56,7 +56,8 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
   .needed <- c("OBJF", "AIC", "BIC", "Log-likelihood")
   .diff <- setdiff(.needed, .name)
   if (length(.diff) > 0) {
-    stop("need additional information for objective function data frame row: '", paste(.diff, collapse="', '"), "'",
+    stop("need additional information for objective function data frame row: '",
+         paste(.diff, collapse="', '"), "'",
          call.=FALSE)
   }
   .w <- which(.name == "Condition Number")
@@ -75,6 +76,9 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
     .cn <- NA
   }
   .df1 <- df[, .needed]
+  if (length(.df1[, 1]) == 0) {
+    stop("missing objective function in objective function data frame", call.=FALSE)
+  }
   if (is.na(.df1[, 1])) {
     .df1 <- NA
     if (!allowNa) stop("missing objective function in objective function data frame", call.=FALSE)
