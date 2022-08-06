@@ -3729,7 +3729,6 @@ void foceiOuterFinal(double *x, Environment e){
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
-  
   double fmin = foceiOfv0(x);
 
   NumericVector theta(op_focei.ntheta);
