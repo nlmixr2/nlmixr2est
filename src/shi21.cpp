@@ -9,23 +9,23 @@
 #include "shi21.h"
 
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
-            arma::vec &f0, arma::vec &f1, double &l, double &u) {
+             arma::vec &f0, arma::vec &f1, double &l, double &u,
+             bool &finiteF1, bool &finiteF4) {
 
   arma::vec tp4 = t;
   arma::vec tp1 = t;
   tp4(idx) += 4*h;
   tp1(idx) += h;
-  arma::vec f4 = f(tp4, id);
-  bool finiteF4 = f4.is_finite();
   f1 = f(tp1, id);
-  bool finiteF1 = f1.is_finite();
-  if (!finiteF4 && finiteF1) {
-    // F4 isn't finite, but F1 is finite
-    return -4.0;
-  } else if (finiteF4 && !finiteF1) {
+  finiteF1 = f1.is_finite();
+  if (!finiteF1) {
+    finiteF4 = true;
     return -1.0;
-  } else if (!finiteF4 && !finiteF1) {
-    return -14.0;
+  }
+  arma::vec f4 = f(tp4, id);
+  finiteF4 = f4.is_finite();
+  if (!finiteF4) {
+    return -1.0;
   }
   arma::vec all = abs(f4-4*f1+3*f0)/(8.0*ef);
   if (all.size() == 1) {
@@ -56,33 +56,34 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   arma::vec f1(f0.size());
   double lasth = h;
   int iter=0;
+
+  bool finiteF1 = true, finiteF4 = true, calcGrad = false;
   
   while(true) {
     iter++;
     if (iter > maxiter) {
+      h = lasth;
       break;
     }
-    rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u);
-    lasth = h;
-    gr = (f1-f0)/h;
-    if (rcur == -4.0) {
-      // t + 4*h has problems
-      // t + 1*h does not
-      // hnew = t + 2.5*hold
-      h = 2.5/4*h;
+    rcur = shiRF(h, f, ef, t, id, idx, f0, f1, l, u,
+                 finiteF1, finiteF4);
+    if (rcur == -1) {
+      if (!finiteF1) {
+        // hnew = t + 2.5*hold
+        h = 0.5*h;
+        continue;
+      }
+      h = 3.5*h;
+      if (!calcGrad) {
+        lasth = h;
+        gr = (f1-f0)/h;
+      }
       continue;
-    } else if (rcur == -1.0) {
-      // t + 4*h does not have problems
-      // t + 1*h has problems
-      h = 1.5*h;
-      continue;
-    } else if (rcur == -14.0) {
-      // t + 4*h has problems
-      // t + 1*h has problems
-      h = lasth;
-      // Use last calculated gradient
-      break;
-    } else if (rcur < rl) {
+    } else {
+      lasth = h;
+      gr = (f1-f0)/h;
+    }
+    if (rcur < rl) {
       l = h;
     } else if (rcur > ru) {
       u = h;
