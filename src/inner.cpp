@@ -286,7 +286,9 @@ typedef struct {
   double covSmall;
   int didGill;
   int smatNorm;
+  int smatNormLlik;
   int rmatNorm;
+  int rmatNormLlik;
   int covGillF;
   int optGillF;
   int mixDeriv;
@@ -1283,7 +1285,7 @@ double LikInner2(double *eta, int likId, int id){
 
       for (k = op_focei.neta; k--;) {
         h = fInd->etahh[k];
-        if (op_focei.optimHessType == 3 && h == 0) {
+        if (op_focei.optimHessType == 3 && h <= 0) {
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
                                         gr0, grPH, id, k,
@@ -1294,7 +1296,7 @@ double LikInner2(double *eta, int likId, int id){
           H.col(k) = grPH;
           continue;
         }
-        if (op_focei.optimHessType == 1 && h == 0) {
+        if (op_focei.optimHessType == 1 && h <= 0) {
           // Central
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
@@ -1307,7 +1309,7 @@ double LikInner2(double *eta, int likId, int id){
           H.col(k) = grPH;
           continue;
         }
-        if (op_focei.optimHessType == 2 && h == 0) {
+        if (op_focei.optimHessType == 2 && h <= 0) {
           // Stencil
           arma::vec t(eta, op_focei.neta);
           fInd->etahh[k] = shi21Stencil(getGradForOptimHess, t, h,
@@ -3546,7 +3548,9 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.abstol=as<double>(foceiO["abstol"]);
   op_focei.reltol=as<double>(foceiO["reltol"]);
   op_focei.smatNorm=as<int>(foceiO["smatNorm"]);
+  op_focei.smatNormLlik=as<int>(foceiO["smatNormLlik"]);
   op_focei.rmatNorm=as<int>(foceiO["rmatNorm"]);
+  op_focei.rmatNormLlik=as<int>(foceiO["rmatNormLlik"]);
   op_focei.covGillF=as<int>(foceiO["covGillF"]);
   op_focei.optGillF=as<int>(foceiO["optGillF"]);
   op_focei.covSmall = as<double>(foceiO["covSmall"]);
@@ -3724,6 +3728,9 @@ void foceiOuterFinal(double *x, Environment e){
   // reset the optimal step size to have reproducible likelihoods with
   // generalized log-likelihood focei
   std::fill_n(op_focei.getahh, op_focei.gEtaGTransN, 0.0);
+  // for (int i = op_focei.gEtaGTransN; i--;){
+  //   op_focei.getahh[i] = -op_focei.getahh[i];
+  // }
   // This will give reproducible likelihoods with fd events
   std::fill_n(op_focei.getahf, op_focei.gEtaGTransN, 0.0);
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
@@ -4990,8 +4997,12 @@ int foceiS(double *theta, Environment e){
       }
     }
   }
+  bool smatNorm = op_focei.smatNorm;
+  if (op_focei.needOptimHess) {
+    smatNorm = op_focei.smatNormLlik;
+  }
   for (cpar = npars; cpar--;){
-    if (op_focei.smatNorm){
+    if (smatNorm){
       if (doForward){
         delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar])/_safe_sqrt(1+std::fabs(min2(op_focei.initObjective, op_focei.lastOfv)));
       } else {
@@ -5184,7 +5195,11 @@ NumericMatrix foceiCalcCov(Environment e){
         std::copy(&theta[0], &theta[0] + op_focei.npars, armaTheta.begin());
         double h = 0;
         for (int cpar = op_focei.npars; cpar--;){
-          err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
+          if (op_focei.needOptimHess) {
+            err = op_focei.rmatNormLlik ? 1/(std::fabs(theta[cpar])+1) : 1;
+          } else {
+            err = op_focei.rmatNorm ? 1/(std::fabs(theta[cpar])+1) : 1;
+          }
           if (op_focei.shi21maxOuter != 0) {
             op_focei.calcGrad=1;
             h = op_focei.aEps[cpar];

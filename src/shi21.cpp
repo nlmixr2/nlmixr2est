@@ -49,6 +49,8 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   // w = -1, 1
   if (h == 0) {
     h = nm2divSqrt3*sqrt(ef);
+  } else {
+    h = fabs(h);
   }
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL, tmp;
@@ -161,8 +163,10 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   // s = -1, 1
   // Equation 3.3
   //
-  if (h == 0) {
+  if (h == 0.0) {
     h = pow(3.0*ef, 0.3333333333333333333333); 
+  } else {
+    h = fabs(h);
   }
   double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
@@ -326,6 +330,8 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
 // 1.701282120455891888611*pow(er, 0.2)
   if (h == 0) {
     h = 1.701282120455891888611*pow(ef, 0.2); 
+  } else {
+    h = fabs(h);
   }
   double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;

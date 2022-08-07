@@ -479,8 +479,16 @@
 #' @param rmatNorm A parameter to normalize gradient step size by the
 #'     parameter value during the calculation of the R matrix
 #'
+#' @param rmatNormLlik A parameter to normalize gradient step size by
+#'   the parameter value during the calculation of the R matrix if you
+#'   are using generalized log-likelihood Hessian matrix.
+#'
 #' @param smatNorm A parameter to normalize gradient step size by the
 #'     parameter value during the calculation of the S matrix
+#'
+#' @param smatNormLlik A parameter to normalize gradient step size by
+#'   the parameter value during the calculation of the S matrix if you
+#'   are using the generalized log-likelihood.
 #'
 #' @param covGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
@@ -715,7 +723,7 @@ foceiControl <- function(sigdig = 3, #
                          stateTrim = Inf, #
                          shi21maxOuter = 0L,
                          shi21maxInner = 20L,
-                         shi21maxInnerCov =40L,
+                         shi21maxInnerCov =20L,
                          shi21maxFD=20L,
                          gillK = 10L, #
                          gillStep = 4, #
@@ -725,7 +733,9 @@ foceiControl <- function(sigdig = 3, #
                          gillStepCov = 2, #
                          gillFtolCov = 0, #
                          rmatNorm = TRUE, #
+                         rmatNormLlik= FALSE, #
                          smatNorm = TRUE, #
+                         smatNormLlik = FALSE,
                          covGillF = TRUE, #
                          optGillF = TRUE, #
                          covSmall = 1e-5, #
@@ -846,10 +856,18 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
   }
   rmatNorm <- as.integer(rmatNorm)
+  if (!checkmate::testIntegerish(rmatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(rmatNormLlik, any.missing=FALSE, len=1)
+  }
+  rmatNormLlik <- as.integer(rmatNormLlik)
   if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
   }
   smatNorm <- as.integer(smatNorm)
+  if (!checkmate::testIntegerish(smatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(smatNormLlik, any.missing=FALSE, len=1)
+  }
+  smatNormLlik <- as.integer(smatNormLlik)
   if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
   }
@@ -1204,7 +1222,9 @@ foceiControl <- function(sigdig = 3, #
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
     rmatNorm = rmatNorm,
+    rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,
+    smatNormLlik = smatNormLlik,
     covGillF = covGillF,
     optGillF = optGillF,
     gillFtol = as.double(gillFtol),
