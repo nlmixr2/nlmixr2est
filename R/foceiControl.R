@@ -667,7 +667,9 @@ foceiControl <- function(sigdig = 3, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
                          # norm of weights = 1/0.225
-                         hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+                         #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+                         hessEps =(.Machine$double.eps)^(1/3),
+                         hessEpsLlik =(.Machine$double.eps)^(1/3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
                          eventFD = sqrt(.Machine$double.eps), #
@@ -730,8 +732,11 @@ foceiControl <- function(sigdig = 3, #
                          gillFtol = 0, #
                          gillRtol = sqrt(.Machine$double.eps), #
                          gillKcov = 10L, #
+                         gillKcovLlik = 20L,
+                         gillStepCovLlik = 3,
                          gillStepCov = 2, #
                          gillFtolCov = 0, #
+                         gillFtolCovLlik = 0, #
                          rmatNorm = TRUE, #
                          rmatNormLlik= FALSE, #
                          smatNorm = TRUE, #
@@ -846,10 +851,13 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertIntegerish(gillK, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(gillKcov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(gillKcovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillStep, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillStepCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillStepCovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillFtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillFtolCovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
   if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
@@ -878,6 +886,7 @@ foceiControl <- function(sigdig = 3, #
   optGillF <- as.integer(optGillF)
 
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
   checkmate::assertNumeric(eventFD, lower=0, any.missing=FALSE, len=1)
 
@@ -1180,6 +1189,7 @@ foceiControl <- function(sigdig = 3, #
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
+    hessEpsLlik = as.double(hessEpsLlik),
     optimHessType=optimHessType,
     optimHessCovType=optimHessCovType,
     cholAccept = as.double(cholAccept),
@@ -1211,9 +1221,11 @@ foceiControl <- function(sigdig = 3, #
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),
+    gillKcovLlik = as.integer(gillKcovLlik),
     gillRtol = as.double(gillRtol),
     gillStep = as.double(gillStep),
     gillStepCov = as.double(gillStepCov),
+    gillStepCovLlik = as.double(gillStepCovLlik),
     scaleType = scaleType,
     normType = normType,
     scaleC = scaleC,
@@ -1229,6 +1241,7 @@ foceiControl <- function(sigdig = 3, #
     optGillF = optGillF,
     gillFtol = as.double(gillFtol),
     gillFtolCov = as.double(gillFtolCov),
+    gillFtolCovLlik = as.double(gillFtolCovLlik),
     covSmall = as.double(covSmall),
     adjLik = adjLik,
     gradTrim = as.double(gradTrim),
