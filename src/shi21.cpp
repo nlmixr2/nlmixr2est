@@ -308,6 +308,194 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   // -4*f(x-4h) + 33*f(x-2h)-8*f(x-h)+8*f(x+h)-33*f(x+2h)+4*f(x+4h)
   // ||w|| = 324
   // 324*12=3888
+  arma::vec all = abs(h*(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4))/(3888.0*ef);
+  if (fm4.size() == 1) {
+    return all(0);
+  }
+  // Return harmonic mean
+  all = 1.0/all;
+  double sum = 0.0;
+  for (unsigned int j = all.size(); j--;) {
+    sum += all[j];
+  }
+  return (((double)all.size())/sum);
+}
+
+double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
+                    arma::vec &f0, arma::vec &gr, int id, int idx,
+                    double ef, double rl, double ru, double nu,
+                    int maxiter) {
+// exp((3/10)*log(5/2)+(1/10)*log(13))=
+// 1.701282120455891888611
+// 1.701282120455891888611*pow(er, 0.2)
+  if (h == 0) {
+    h = 1.701282120455891888611*pow(ef, 0.2); 
+  } else {
+    h = fabs(h);
+  }
+  double h0=h, tmp = h;
+  double l = 0, u = R_PosInf, rcur = NA_REAL;
+  double hlast = h;
+
+  arma::vec fp1(f0.size());
+  arma::vec fm1(f0.size());
+  
+  arma::vec fp2(f0.size());
+  arma::vec fm2(f0.size());
+
+  int iter=0;
+  bool finiteFp1 = true, finiteFp2 = true, finiteFp4 = true,
+    finiteFm1=true, finiteFm2=true,  finiteFm4=true,
+    calcGrad = false;
+  while(true) {
+    iter++;
+    if (iter > maxiter) {
+      h = hlast;
+      break;
+    }
+    rcur = shiRS(h, f, ef, t, id, idx,
+                 fp1, fm1, fp2, fm2, l, u,
+                 finiteFp1, finiteFp2, finiteFp4,
+                 finiteFm1, finiteFm2, finiteFm4);
+    if (rcur == -1.0) {
+      // pick new h and try to calculate a gradient if needed.
+      if (!finiteFp1) {
+        // hnew*4 = hold*0.5
+        h = h*0.5/4.0;
+        continue;
+      } else if (!finiteFm1) {
+        if (!calcGrad) {
+          // forward difference
+          calcGrad = true;
+          gr = (fp1-f0)/h;
+        }
+        h = h*0.5/4.0;
+        continue;
+      } else if (!finiteFp2) {
+        // hnew*4 = hold*1.5
+        if (!calcGrad) {
+          calcGrad = true;
+          gr = (fp1-fm1)/(2*h);
+        }
+        h = h*1.5/4.0;
+        continue;
+      } else if (!finiteFm2) {
+        if (!calcGrad) {
+          calcGrad = true;
+          gr = (-2.0*fm1 - 3.0*f0 + 6.0*fp1 - fp2)/(6.0*h);
+        }
+        h = h*1.5/4.0;
+        continue;
+      }
+      // hnew*4 = hold*3.5
+      h = h*3.5/4.0;
+      if (!calcGrad) {
+        calcGrad = true;
+        gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+        hlast = h;
+      }
+      continue;
+    } else {
+      // derivative = (f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
+      // save good gradient and good h
+      calcGrad = true;
+      gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+      hlast = h;
+    }
+    if (rcur < rl) {
+      l = h;
+    } else if (rcur > ru) {
+      u = h;
+    } else {
+      break;
+    }
+    if (!R_finite(u)) {
+      h = nu*h;
+    } else if (l == 0) {
+      h = h/nu;
+    } else {
+      h = (l + u)/2.0;
+    }
+  }
+  return h;
+}
+
+
+double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
+             arma::vec &fp1, arma::vec &fm1,
+             arma::vec &fp2, arma::vec &fm2, 
+             double &l, double &u,
+             bool &finiteFp1, bool &finiteFp2, bool &finiteFp4,
+             bool &finiteFm1, bool &finiteFm2, bool &finiteFm4) {
+  arma::vec tp4 = t;
+  arma::vec tp2 = t;
+  arma::vec tp1 = t;
+  arma::vec tm4 = t;
+  arma::vec tm2 = t;
+  arma::vec tm1 = t;
+  tp4(idx) += 4*h;
+  tp2(idx) += 2*h;
+  tp1(idx) += h;
+  tp4(idx) -= 4*h;
+  tp2(idx) -= 2*h;
+  tp1(idx) -= h;
+
+  fp1 = f(tp1, id);
+  finiteFp1 = fp1.is_finite();
+  if (!finiteFp1) {
+    finiteFp2 = true;
+    finiteFp4 = true;
+    finiteFm1 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  fm1 = f(tm1, id);
+  finiteFm1 = fm1.is_finite();
+  if (!finiteFm1) {
+    finiteFp2 = true;
+    finiteFp4 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  fp2 = f(tp2, id);
+  finiteFp2 = fp2.is_finite();
+  if (!finiteFm1) {
+    finiteFp4 = true;
+    finiteFm2 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  fm2 = f(tm2, id);
+  finiteFm2 = fm2.is_finite();
+  if (!finiteFm2) {
+    finiteFp4 = true;
+    finiteFm4 = true;
+    return -1.0;
+  }
+  arma::vec fp4 = f(tp4, id);
+  finiteFp4 = fp2.is_finite();
+  if (!finiteFp4) {
+    finiteFm4 = true;
+    return -1.0;
+  }
+  arma::vec fm4 = f(tm2, id);
+  finiteFm4 = fp2.is_finite();
+  if (!finiteFp4) {
+    return -1.0;
+  }
+  // alpha = 2
+  // s = (-2, -1, 1, 2)
+  // w = (1/12, -2/3, 2/3, -1/12) = c(1/12, -8/12, 8/12, -1/12)
+  // alpha*s = (-4, -2, 2 -4)
+  // alpha*w = (4/12, -32/12, 32/12, -4/12)
+  // derivative = (1*f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
+  // alpha*f(x+s*alpha) = 4*f(x-4h)-32*f(x-2h)+32*f(x+2h)-4*f(x+4h)
+  // derivative - alpha*f(x+s*alpha)
+  // -4*f(x-4h) + 33*f(x-2h)-8*f(x-h)+8*f(x+h)-33*f(x+2h)+4*f(x+4h)
+  // ||w|| = 324
+  // 324*12=3888
   arma::vec all = abs(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4)/(3888.0*ef);
   if (fm4.size() == 1) {
     return all(0);
