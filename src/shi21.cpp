@@ -3,6 +3,7 @@
 //
 // https://arxiv.org/pdf/2110.06380.pdf
 
+
 #define ARMA_DONT_PRINT_ERRORS
 #define STRICT_R_HEADER
 #include "armahead.h"
@@ -321,6 +322,7 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   return (((double)all.size())/sum);
 }
 
+
 double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, double nu,
@@ -421,7 +423,8 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
 }
 
 
-double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
+double shiRD2(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
+              arma::vec &f0,
              arma::vec &fp1, arma::vec &fm1,
              arma::vec &fp2, arma::vec &fm2, 
              double &l, double &u,
@@ -485,18 +488,7 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   if (!finiteFp4) {
     return -1.0;
   }
-  // alpha = 2
-  // s = (-2, -1, 1, 2)
-  // w = (1/12, -2/3, 2/3, -1/12) = c(1/12, -8/12, 8/12, -1/12)
-  // alpha*s = (-4, -2, 2 -4)
-  // alpha*w = (4/12, -32/12, 32/12, -4/12)
-  // derivative = (1*f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
-  // alpha*f(x+s*alpha) = 4*f(x-4h)-32*f(x-2h)+32*f(x+2h)-4*f(x+4h)
-  // derivative - alpha*f(x+s*alpha)
-  // -4*f(x-4h) + 33*f(x-2h)-8*f(x-h)+8*f(x+h)-33*f(x+2h)+4*f(x+4h)
-  // ||w|| = 324
-  // 324*12=3888
-  arma::vec all = abs(-4*fm4 + 33*fm2 - 8*fm1 + 8*fp1 - 33*fp2 + 4*fp4)/(3888.0*ef);
+  arma::vec all = abs(h*(-4*fp2+64*fp1-60*f0+64*fm1-4*fm2-(-fp4+16*fp2-30*f0+16*fp2-fp4)))/(50388.48*ef);
   if (fm4.size() == 1) {
     return all(0);
   }
@@ -509,7 +501,7 @@ double shiRS(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
   return (((double)all.size())/sum);
 }
 
-double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
+double shi21D2(shi21fn_type f, arma::vec &t, double &h,
                     arma::vec &f0, arma::vec &gr, int id, int idx,
                     double ef, double rl, double ru, double nu,
                     int maxiter) {
@@ -541,10 +533,10 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
       h = hlast;
       break;
     }
-    rcur = shiRS(h, f, ef, t, id, idx,
-                 fp1, fm1, fp2, fm2, l, u,
-                 finiteFp1, finiteFp2, finiteFp4,
-                 finiteFm1, finiteFm2, finiteFm4);
+    rcur = shiRD2(h, f, ef, t, id, idx,
+                  f0, fp1, fm1, fp2, fm2, l, u,
+                  finiteFp1, finiteFp2, finiteFp4,
+                  finiteFm1, finiteFm2, finiteFm4);
     if (rcur == -1.0) {
       // pick new h and try to calculate a gradient if needed.
       if (!finiteFp1) {
@@ -552,25 +544,20 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
         h = h*0.5/4.0;
         continue;
       } else if (!finiteFm1) {
-        if (!calcGrad) {
-          // forward difference
-          calcGrad = true;
-          gr = (fp1-f0)/h;
-        }
         h = h*0.5/4.0;
         continue;
       } else if (!finiteFp2) {
         // hnew*4 = hold*1.5
         if (!calcGrad) {
           calcGrad = true;
-          gr = (fp1-fm1)/(2*h);
+          gr = (fm1-2*f0+fp1)/(h*h);
         }
         h = h*1.5/4.0;
         continue;
       } else if (!finiteFm2) {
         if (!calcGrad) {
           calcGrad = true;
-          gr = (-2.0*fm1 - 3.0*f0 + 6.0*fp1 - fp2)/(6.0*h);
+          gr = (fm1-2*f0+fp1)/(h*h);
         }
         h = h*1.5/4.0;
         continue;
@@ -579,7 +566,7 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
       h = h*3.5/4.0;
       if (!calcGrad) {
         calcGrad = true;
-        gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+        gr = (-fm2+16*fm1-30*f0+16*fp1-fp2)/(12.0*h*h);
         hlast = h;
       }
       continue;
@@ -587,7 +574,7 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
       // derivative = (f(x-2h)-8*f(x-h)+8*f(x+h)-f(x+2h))/(12*h)
       // save good gradient and good h
       calcGrad = true;
-      gr = (fm2-8*fm1+8*fp1-fp2)/(12.0*h);
+      gr = (-fm2+16*fm1-30*f0+16*fp1-fp2)/(12.0*h*h);
       hlast = h;
     }
     if (rcur < rl) {
@@ -607,3 +594,4 @@ double shi21Stencil(shi21fn_type f, arma::vec &t, double &h,
   }
   return h;
 }
+
