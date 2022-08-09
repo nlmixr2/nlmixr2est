@@ -120,8 +120,10 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   rxode2::rxUnloadAll()
   assignInMyNamespace(".nlmixr2Time", proc.time())
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
-  if (inherits(.objectName, "try-error")) .objectName
-  assignInMyNamespace(".nlmixr2objectName", .objectName)
+  if (inherits(.objectName, "try-error")) .objectName <- "object"
+  if (!identical(.objectName, "object")) {
+    assignInMyNamespace(".nlmixr2objectName", .objectName)
+  }
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
@@ -165,7 +167,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- rxode2::rxode(object)
   if (!is.null(.nlmixr2objectName)) {
-    assign("modelName", .nlmixr2objectName, envir=.uif)
+    if (!identical(.nlmixr2objectName, "object")) {
+      assign("modelName", .nlmixr2objectName, envir=.uif)
+    }
   }
   .missingData <- FALSE
   if (is.null(data)) {
