@@ -4870,6 +4870,10 @@ int foceiCalcR(Environment e){
     double parScaleI=1.0, parScaleJ=1.0;
     for (i=op_focei.npars; i--;){
       epsI = (std::fabs(theta[i])*op_focei.rEpsC[i] + op_focei.aEpsC[i]);
+      // > (45/12)^(1/5)
+      // [1] 1.302585542348676073132
+      // based on central error to stencil error which is closer to optimal for this difference
+      epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
       ti = theta[i];
       theta[i] = ti + 2*epsI;
       updateTheta(theta.begin());
@@ -4901,6 +4905,7 @@ int foceiCalcR(Environment e){
       H(i,i)=fnscale*(-f1+16*f2-30*op_focei.lastOfv+16*f3-f4)/(12*epsI*epsI*parScaleI*parScaleI);
       for (j = i; j--;){
         epsJ = (std::fabs(theta[j])*op_focei.rEpsC[j] + op_focei.aEpsC[j]);
+        epsI = (std::fabs(theta[i])*op_focei.rEpsC[i] + op_focei.aEpsC[i]);
         // eps = sqrt(epsI*epsJ);// 0.5*epsI+0.5*epsJ;
         // epsI = eps;
         // epsJ = eps;
