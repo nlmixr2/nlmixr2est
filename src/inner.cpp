@@ -1003,43 +1003,39 @@ double likInner0(double *eta, int id){
               hEta = curEta;
               hEta[ii] += fInd->etahf[ii];
               grPH = shi21EtaF(hEta, id);
-
+              bool useForward = false;
               if (op_focei.eventType == 3) {
-                etaGradF.col(ii) = calcGradForward(f0, grPH,  fInd->etahf[ii]);
+                // if this isn't true try backward
+                if (grPH.is_finite()) {
+                  useForward = true;
+                  etaGradF.col(ii) = calcGradForward(f0, grPH,  fInd->etahf[ii]);
+                }
               }
-              if (op_focei.eventType == 2 ||
-                  op_focei.eventType == 1) {
+              if (!useForward) {
                 // stencil or central
                 hEta = curEta;
                 hEta[ii] -= fInd->etahf[ii];
                 grMH = shi21EtaF(hEta, id);
-
-                if (op_focei.eventType == 2) {
-                  // central
-                  etaGradF.col(ii) = calcGradCentral(grMH, f0, grPH,  fInd->etahf[ii]);
-                }
+                // central
+                etaGradF.col(ii) = calcGradCentral(grMH, f0, grPH,  fInd->etahf[ii]);
               }
-
               if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
                 // etaGradR
                 hEta = curEta;
                 hEta[ii] += fInd->etahr[ii];
                 grPH = shi21EtaR(hEta, id);
+                useForward = false;
                 if (op_focei.eventType == 3) {
-                  etaGradR.col(ii) = calcGradForward(r0, grPH,  fInd->etahr[ii]);
+                  if (grPH.is_finite()) {
+                    useForward = true;
+                    etaGradR.col(ii) = calcGradForward(r0, grPH,  fInd->etahr[ii]);                    
+                  }
                 }
-
-                if (op_focei.eventType == 2 ||
-                    op_focei.eventType == 1) {
-                  // stencil or central
+                if (!useForward) {
                   hEta = curEta;
                   hEta[ii] -= fInd->etahr[ii];
                   grMH = shi21EtaR(hEta, id);
-
-                  if (op_focei.eventType == 2) {
-                    // central
-                    etaGradR.col(ii) = calcGradCentral(grMH, r0, grPH,  fInd->etahr[ii]);
-                  }
+                  etaGradR.col(ii) = calcGradCentral(grMH, r0, grPH,  fInd->etahr[ii]);
                 }
               }
             }
