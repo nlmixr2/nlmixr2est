@@ -556,11 +556,8 @@
 #'     estimates, randomly sample new parameter estimates and restart
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
-#' @param eventFD Finite difference step for forward or central
-#'     difference estimation of event-based gradients
-#'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "gill", "central" or "forward"
+#'   "central" or "forward"
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -672,8 +669,7 @@ foceiControl <- function(sigdig = 3, #
                          hessEpsLlik =(.Machine$double.eps)^(1/2.5),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
-                         eventFD = sqrt(.Machine$double.eps), #
-                         eventType = c("gill", "central", "forward"), #
+                         eventType = c("central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -888,7 +884,6 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
-  checkmate::assertNumeric(eventFD, lower=0, any.missing=FALSE, len=1)
 
   checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
   lbfgsLmm <- as.integer(lbfgsLmm)
@@ -937,20 +932,20 @@ foceiControl <- function(sigdig = 3, #
   if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     optimHessType <- as.integer(optimHessType)
   } else {
-    .optimHessTypeIdx <- c("central" = 1L, "stencil"=2L, "forward" = 3L)
+    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
   if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     optimHessCovType <- as.integer(optimHessCovType)
   } else {
-    .optimHessCovTypeIdx <- c("central" = 1L, "stencil"=2L, "forward" = 3L)
+    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
-    .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
+    .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
@@ -1257,7 +1252,6 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
-    eventFD = eventFD,
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
