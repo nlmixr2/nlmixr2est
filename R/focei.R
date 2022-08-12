@@ -995,7 +995,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   .maxLl <- max(vapply(seq_along(env$model), function(i) {
     .model <- env$model[[i]]
     if (inherits(.model, "rxode2")) {
-      return(rxode2:::rxModelVars(.model)$flags["nLlik"])
+      return(rxode2::rxModelVars(.model)$flags["nLlik"])
     } else {
       return(0L)
     }
