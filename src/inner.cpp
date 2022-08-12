@@ -1431,7 +1431,21 @@ double LikInner2(double *eta, int likId, int id){
       // symmetrize
       H = 0.5*(H + H.t());
       // Note that since the gradient includes omegaInv*etam,
-      // op_focei.omegaInv(k, l) shouldn't be added.      
+      // op_focei.omegaInv(k, l) shouldn't be added.
+    } else if (op_focei.interaction) {
+      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
+      arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      for (k = op_focei.neta; k--;){
+        for (l = k+1; l--;){
+          // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
+          H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
+                            c.col(l) % c.col(k)) +
+            op_focei.omegaInv(k, l);
+          if (!R_finite(H(k, l))) return NA_REAL;
+          H(l, k) = H(k, l);
+        }
+      }
     } else {
       arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
       // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
