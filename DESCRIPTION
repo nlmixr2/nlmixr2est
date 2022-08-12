@@ -83,7 +83,8 @@ Suggests:
     tibble,
     withr,
     Matrix,
-    xgxr
+    xgxr,
+    sfsmisc
 LinkingTo: 
     BH,
     dparser (>= 0.1.8),
