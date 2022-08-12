@@ -82,7 +82,6 @@ Suggests:
     testthat,
     tibble,
     withr,
-    Matrix,
     xgxr,
     sfsmisc
 LinkingTo: 
