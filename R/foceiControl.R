@@ -80,6 +80,11 @@
 #' @param hessEps is a double value representing the epsilon for the
 #'   Hessian calculation. This is used for the R matrix calculation.
 #'
+#' @param hessEpsLlik is a double value representing the epsilon for
+#'   the Hessian calculation when doing focei generalized
+#'   log-likelihood estimation.  This is used for the R matrix
+#'   calculation.
+#'
 #' @param optimHessType The hessian type for when calculating the
 #'   individual hessian by numeric differences (in generalized
 #'   log-likelihood estimation).  The options are "central", and
@@ -300,6 +305,12 @@
 #'     determined.  Otherwise this is the optimal step size
 #'     determined.
 #'
+#' @param gillKcovLlik The total number of possible steps to determine
+#'   the optimal forwad/central difference step per parameter when
+#'   using the generalized focei log-likelihood method (by the Gill
+#'   1986 method).  If 0, no optimal step size is
+#'   determined. Otherwise this is the optimal step size is determined
+#'
 #' @param gillRtol The relative tolerance used for Gill 1983
 #'     determination of optimal step size.
 #'
@@ -472,9 +483,16 @@
 #'     initial estimate by.  So each iteration during the covariance
 #'     step is equal to the new step size = (prior step size)*gillStepCov
 #'
+#'
+#' @param gillStepCovLlik Same as above but during generalized focei
+#'   log-likelihood
+#'
 #' @param gillFtolCov The gillFtol is the gradient error tolerance
 #'     that is acceptable before issuing a warning/error about the
 #'     gradient estimates during the covariance step.
+#'
+#' @param gillFtolCovLlik Same as above but applied during generalized
+#'   log-likelihood estimation.
 #'
 #' @param rmatNorm A parameter to normalize gradient step size by the
 #'     parameter value during the calculation of the R matrix
