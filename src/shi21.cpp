@@ -7,7 +7,6 @@
 // https://github.com/cran/lmomco/blob/8558903cdcdf6ce0640822a8f6ee7caf07ebd451/R/harmonic.mean.R
 // https://rdrr.io/cran/lmomco/man/harmonic.mean.html
 
-
 #define ARMA_DONT_PRINT_ERRORS
 #define STRICT_R_HEADER
 #include "armahead.h"
@@ -16,7 +15,6 @@
 double shiRF(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &idx,
              arma::vec &f0, arma::vec &f1, double &l, double &u,
              bool &finiteF1, bool &finiteF4) {
-
   arma::vec tp4 = t;
   arma::vec tp1 = t;
   tp4(idx) += 4*h;
@@ -70,13 +68,10 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   }
   double h0=h;
   double l = 0, u = R_PosInf, rcur = NA_REAL, tmp;
-
   arma::vec f1(f0.size());
   double lasth = h;
   int iter=0;
-
   bool finiteF1 = true, finiteF4 = true, calcGrad = false;
-  
   while(true) {
     iter++;
     if (iter > maxiter) {

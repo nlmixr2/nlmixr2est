@@ -289,7 +289,7 @@ print.nlmixr2FitCore <- function(x, ...) {
           cat("  Correlations in between subject variability (BSV) matrix:\n")
           .getCorPrint(x$omegaR)
         }
-        if (.boundChar * 2 + 70 < .width & !.noEta) {
+        if (.boundChar * 2 + 70 < .width && !.noEta) {
           cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ") or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)"), "\n")
         } else if (!.noEta) {
           if (.boundChar + 43 < .width) {
@@ -301,7 +301,7 @@ print.nlmixr2FitCore <- function(x, ...) {
           }
         }
       }
-      if (.boundChar + 74 < .width & !.noEta) {
+      if (.boundChar + 74 < .width && !.noEta) {
         cat(paste0(
           "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
           crayon::yellow(.bound), crayon::bold$blue("$shrink")

@@ -404,7 +404,7 @@ nmObjGet.saemEvtMDf <- function(x, ...) {
   .nmc <- nmObjGet.saemNmc(x, ...)
   if (is.na(.nmc)) stop("cannot figure out the number of mcmc simulations", call.=FALSE)
   .evt <- nmObjGet.saemEvtDf(x, ...)
-  .evtM <- .evt[rep(1:dim(.evt)[1], .nmc), ]
+  .evtM <- .evt[rep(seq_len(dim(.evt)[1]), .nmc), ]
   .evtM$ID <- cumsum(c(FALSE, diff(.evtM$ID) != 0))
   .evtM
 }

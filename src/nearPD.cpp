@@ -63,81 +63,62 @@ bool nmNearPD(mat &ret, mat x
               , int maxit//    = 100 // maximum number of iterations allowed
               , bool trace// = false // set to TRUE (or 1 ..) to trace iterations
               ){
-
   int n = x.n_cols;
   vec diagX0;
-  if(keepDiag) {
+  if (keepDiag) {
     diagX0 = x.diag();
   }
-  
   mat D_S(n, n, arma::fill::zeros);
-
   mat X = x;
   int iter = 0 ;
   bool converged = false; 
   double conv = R_PosInf;
-
   mat Y;
   mat R;
   mat B;
-  
   while (iter < maxit && !converged) {
     Y = X;
     if (doDykstra) {
       R = Y - D_S;
     }
-
     vec d;
     mat Qin;
     mat Q;
-    
-    
-    if(doDykstra){
+    if(doDykstra) {
       B=R;
-    }else{
+    } else {
       B=Y;
     }
-    
     if (!eig_symR(d, Q, B)) {
       return false;
     }
 
     // create mask from relative positive eigenvalues
     uvec p= (d>eig_tol*d[0]);
-    if(sum(p)==0){
+    if (sum(p)==0) {
       //stop("Matrix seems negative semi-definite")
       return false;
     }
-
     uvec fp = find(p);
-
     Q=Q.cols(fp);
-
     X=nmMatVecSameLen(Q,nmRepEach(d.elem(fp),Q.n_rows))*Q.t();
-
     // update Dykstra's correction D_S = \Delta S_k           
-    if(doDykstra){
+    if (doDykstra) {
       D_S = X - R;
     }
-
     // project onto symmetric and possibly 'given diag' matrices:
     X = 0.5*(X + X.t());
-
-    if(keepDiag){
+    if (keepDiag) {
       X.diag() = diagX0;
     } 
-
     conv = norm(Y-X,"inf")/norm(Y,"inf");
-
     iter = iter + 1;
-    if (trace){
+    if (trace) {
       // cat(sprintf("iter %3d : #{p}=%d, ||Y-X|| / ||Y||= %11g\n",
       // iter, sum(p), conv))
       Rcpp::Rcout << "iter " << iter <<" : #{p}= "<< sum(p) << std::endl;
     }
-
     converged = (conv <= conv_tol); 
-
     // force symmetry is *NEVER* needed, we have symmetric X here!
     //X <- (X + t(X))/2
     if(do2eigen || only_values) {
@@ -145,12 +126,10 @@ bool nmNearPD(mat &ret, mat x
       if (!eig_symR(d, Q, X)) {
         return false;
       }
-
       double Eps = posd_tol * std::abs(d[0]);
       if (d(n-1) < Eps) {
         d.elem(find(d < Eps)).fill(Eps);
-        
-        if(!only_values) {
+        if (!only_values) {
           vec o_diag = X.diag();
           mat Q2 = Q.t();
           for (unsigned int i = 0; i < n; ++i)  {
@@ -166,24 +145,21 @@ bool nmNearPD(mat &ret, mat x
           }
           X = DX % D2;
         }
-        if(only_values) {
+        if (only_values) {
           ret = d;
           return true;
         }
 
         // unneeded(?!): X <- (X + t(X))/2
-        if(keepDiag){
+        if (keepDiag) {
           X.diag()= diagX0;
         }
       }
     } //end from posdefify(sfsmisc)
-
   }
-
   if(!converged){ //not converged
     return false;
   }
-
   ret = X;
   return true;
 }
