@@ -47,8 +47,10 @@ nmObjGetData.dataNormInfo <- function(x, ...) {
   .ui <- .fit$ui
   .datSav <- .fit$dataSav
   .predDf <-.ui$predDf
-  .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
-        .datSav$CMT, .predDf$distribution, .predDf$cmt)
+  .ret <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+                .datSav$CMT, .predDf$distribution, .predDf$cmt)
+  .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
+  .ret
 }
 
 ##' @export

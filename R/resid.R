@@ -202,6 +202,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
 
   if (npde) {
+    .ni <- fit$dataNormInfo
     .sim <- vpcSim(fit, n = table$nsim, seed = table$seed,
                    addDosing=addDosing, subsetNonmem=subsetNonmem)
     .w <- which(names(.sim) == "ipred")
@@ -209,8 +210,23 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .w <- which(names(.sim) == "sim")
     .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
     .sim <- .sim[, .n0]
-    .Call(`_nlmixr2est_npdeCalc`, .sim, .prdLst$ipred$dv, .prdLst$ipred$evid,
-          .prdLst$ipred$cens, .prdLst$ipred$limit, table)
+    .ipred <- .prdLst$ipred
+    .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
+    .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
+    .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid,
+                  .prdLst$ipred$cens, .prdLst$ipred$limit, table)
+    .df <- data.frame(nlmixrRowNums=.prdLst$ipred$nlmixrRowNums)
+    .ret1 <- .ret[[1]]
+    .ret2 <- .ret[[2]]
+    .ret2$nlmixrRowNums <- .ipred$nlmixrRowNums
+    .ret2 <- merge(.df, .ret2, all.x=TRUE, by="nlmixrRowNums")
+    .ret2 <- .ret2[,names(.ret2) != "nlmixrRowNums"]
+    .ret1 <- as.data.frame(.ret1)
+    .ret1$nlmixrRowNums <- .ipred$nlmixrRowNums
+    .ret1 <- merge(.df, .ret1, all.x=TRUE, by="nlmixrRowNums")
+    .ret1 <- .ret1[,names(.ret1) != "nlmixrRowNums"]
+    .ret1 <- as.matrix(.ret1)
+    list(.ret1, .ret2)
   } else {
     if (predOnly) {
       .state <- c(fit$predOnlyModel$state, fit$predOnlyModel$stateExtra)
