@@ -15,6 +15,10 @@ nlmixrExpandFdParNlme_ <- function(state, vars) {
     .Call(`_nlmixr2est_nlmixrExpandFdParNlme_`, state, vars)
 }
 
+filterNormalLikeAndDoses <- function(inCmt, inDistribution, inDistCmt) {
+    .Call(`_nlmixr2est_filterNormalLikeAndDoses`, inCmt, inDistribution, inDistCmt)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }

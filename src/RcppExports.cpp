@@ -62,6 +62,19 @@ RcppExport SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP stateSEXP, SEXP varsSEXP
     UNPROTECT(1);
     return rcpp_result_gen;
 }
+// filterNormalLikeAndDoses
+List filterNormalLikeAndDoses(IntegerVector& inCmt, IntegerVector& inDistribution, IntegerVector& inDistCmt);
+RcppExport SEXP _nlmixr2est_filterNormalLikeAndDoses(SEXP inCmtSEXP, SEXP inDistributionSEXP, SEXP inDistCmtSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector& >::type inCmt(inCmtSEXP);
+    Rcpp::traits::input_parameter< IntegerVector& >::type inDistribution(inDistributionSEXP);
+    Rcpp::traits::input_parameter< IntegerVector& >::type inDistCmt(inDistCmtSEXP);
+    rcpp_result_gen = Rcpp::wrap(filterNormalLikeAndDoses(inCmt, inDistribution, inDistCmt));
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {

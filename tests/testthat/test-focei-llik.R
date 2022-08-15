@@ -269,8 +269,6 @@ test_that("test focei llik", {
 
   expect_equal(f$foceModel0, f2$foceModel0)
 
-  skip_on_cran()
-  
   f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei")
   
   of1     <- f$objf

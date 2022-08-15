@@ -41,6 +41,16 @@ nmObjGetData <- function(x, ...) {
   UseMethod("nmObjGetData")
 }
 
+#' @export
+nmObjGetData.dataNormInfo <- function(x, ...) {
+  .fit <- x[[1]]
+  .ui <- .fit$ui
+  .datSav <- .fit$dataSav
+  .predDf <-.ui$predDf
+  .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+        .datSav$CMT, .predDf$distribution, .predDf$cmt)
+}
+
 ##' @export
 nmObjGetData.default <- function(x, ...) {
   NULL
