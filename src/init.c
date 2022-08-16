@@ -80,8 +80,15 @@ SEXP _saemResidF(SEXP v);
 
 SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP, SEXP);
 
+//SEXP _nlmixr2est_nmNearPD_()
+SEXP _nlmixr2est_nmNearPD_(SEXP, SEXP, SEXP, SEXP, SEXP,
+                           SEXP, SEXP, SEXP, SEXP, SEXP);
+
+SEXP _nlmixr2est_filterNormalLikeAndDoses(SEXP, SEXP, SEXP);
+
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_freeFocei", (DL_FUNC) &_nlmixr2est_freeFocei, 0},
+  {"_nlmixr2est_filterNormalLikeAndDoses", (DL_FUNC) &_nlmixr2est_filterNormalLikeAndDoses, 3},
   {"neldermead_wrap",      (DL_FUNC) &neldermead_wrap,      11},
   /* {"n1qn1_wrap",           (DL_FUNC) &n1qn1_wrap,           13}, */
   {"_nlmixr2est_lin_cmt_stan",  (DL_FUNC) &_nlmixr2est_lin_cmt_stan,   9},
@@ -130,6 +137,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_calcShrinkOnly", (DL_FUNC) &_nlmixr2est_calcShrinkOnly, 3},
   {"_nlmixr2est_popResFinal", (DL_FUNC) &_nlmixr2est_popResFinal, 1},
   {"_nlmixr2est_nlmixrExpandFdParNlme_", (DL_FUNC) &_nlmixr2est_nlmixrExpandFdParNlme_, 2},
+  {"_nlmixr2est_nmNearPD_", (DL_FUNC) &_nlmixr2est_nmNearPD_, 10},
   {NULL, NULL, 0}
 };
 

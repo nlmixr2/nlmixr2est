@@ -173,7 +173,8 @@ print.nlmixr2FitCore <- function(x, ...) {
     cat(cli::cli_format_method({
       .h2(paste0(
         crayon::bold$blue("nlmix"),
-        crayon::bold$red("r"), " ",
+        crayon::bold$red(paste0("r", ifelse(use.utf(), "\u00B2"), "")), " ",
+        crayon::bold(ifelse(any(x$ui$predDf$distribution != "norm"), "log-likelihood ", "")),
         crayon::bold$yellow(x$method),
         x$extra, x$posthoc
       ))
@@ -288,7 +289,7 @@ print.nlmixr2FitCore <- function(x, ...) {
           cat("  Correlations in between subject variability (BSV) matrix:\n")
           .getCorPrint(x$omegaR)
         }
-        if (.boundChar * 2 + 70 < .width & !.noEta) {
+        if (.boundChar * 2 + 70 < .width && !.noEta) {
           cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ") or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)"), "\n")
         } else if (!.noEta) {
           if (.boundChar + 43 < .width) {
@@ -300,7 +301,7 @@ print.nlmixr2FitCore <- function(x, ...) {
           }
         }
       }
-      if (.boundChar + 74 < .width & !.noEta) {
+      if (.boundChar + 74 < .width && !.noEta) {
         cat(paste0(
           "  Distribution stats (mean/skewness/kurtosis/p-value) available in ",
           crayon::yellow(.bound), crayon::bold$blue("$shrink")

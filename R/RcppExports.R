@@ -15,6 +15,10 @@ nlmixrExpandFdParNlme_ <- function(state, vars) {
     .Call(`_nlmixr2est_nlmixrExpandFdParNlme_`, state, vars)
 }
 
+filterNormalLikeAndDoses <- function(inCmt, inDistribution, inDistCmt) {
+    .Call(`_nlmixr2est_filterNormalLikeAndDoses`, inCmt, inDistribution, inDistCmt)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
@@ -122,6 +126,10 @@ boxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
 
 iBoxCox_ <- function(x = 1L, lambda = 1, yj = 0L) {
     .Call(`_nlmixr2est_iBoxCox_`, x, lambda, yj)
+}
+
+nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only_values = FALSE, eig_tol = 1e-6, conv_tol = 1e-7, posd_tol = 1e-8, maxit = 100L, trace = FALSE) {
+    .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
 }
 
 lin_cmt_stan <- function(obs_time, dose_time, dose, Tinf, params, oralSEXP, infusionSEXP, ncmtSEXP, parameterizationSEXP) {

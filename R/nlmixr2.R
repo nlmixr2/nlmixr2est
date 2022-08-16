@@ -41,6 +41,20 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
+.nlmixr2objectName <- NULL
+
+#' Allows external methods (like those in nlmixr2) to assign object name
+#'
+#' @param x String or null for assigning a nlmixr object name
+#' @return nothing called for side effects
+#' @author Matthew L. Fidler
+#' @export
+#' @keywords internal
+.nlmixr2objectNameAssign <- function(x) {
+  assignInMyNamespace(".nlmixr2objectName",x)
+  invisible()
+}
+
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -105,6 +119,11 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
   assignInMyNamespace(".nlmixr2Time", proc.time())
+  .objectName <- try(as.character(substitute(object)), silent=TRUE)
+  if (inherits(.objectName, "try-error")) .objectName <- "object"
+  if (!identical(.objectName, "object")) {
+    assignInMyNamespace(".nlmixr2objectName", .objectName)
+  }
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
@@ -146,12 +165,12 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
                              save = NULL, envir = parent.frame()) {
   on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-
-  .modelName <- try(as.character(substitute(object)), silent=TRUE)
-  if (inherits(.modelName, "try-error")) .modelName <- NULL
   .uif <- rxode2::rxode(object)
-  assign("modelName", .modelName, envir=.uif)
-
+  if (!is.null(.nlmixr2objectName)) {
+    if (!identical(.nlmixr2objectName, "object")) {
+      assign("modelName", .nlmixr2objectName, envir=.uif)
+    }
+  }
   .missingData <- FALSE
   if (is.null(data)) {
     .missingData <- TRUE

@@ -82,7 +82,8 @@ Suggests:
     testthat,
     tibble,
     withr,
-    xgxr
+    xgxr,
+    sfsmisc
 LinkingTo: 
     BH,
     dparser (>= 0.1.8),
@@ -97,4 +98,4 @@ Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
-RoxygenNote: 7.2.0
+RoxygenNote: 7.2.1

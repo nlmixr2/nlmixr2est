@@ -77,11 +77,53 @@
 #'     cannot be corrected to be non-positive definite try estimating
 #'     the Hessian on the unscaled parameter space.
 #'
-#' @param hessEps is a double value representing the epsilon for the Hessian calculation.
+#' @param hessEps is a double value representing the epsilon for the
+#'   Hessian calculation. This is used for the R matrix calculation.
 #'
+#' @param hessEpsLlik is a double value representing the epsilon for
+#'   the Hessian calculation when doing focei generalized
+#'   log-likelihood estimation.  This is used for the R matrix
+#'   calculation.
+#'
+#' @param optimHessType The hessian type for when calculating the
+#'   individual hessian by numeric differences (in generalized
+#'   log-likelihood estimation).  The options are "central", and
+#'   "forward".  The central differences is what R's `optimHess()`
+#'   uses and is the default for this method. (Though the "forward" is
+#'   faster and still reasonable for most cases).  The Shi21 cannot be
+#'   changed for the Gill83 algorithm with the optimHess in a
+#'   generalized likelihood problem.
+#'
+#' @param optimHessCovType The hessian type for when calculating the
+#'   individual hessian by numeric differences (in generalized
+#'   log-likelihood estimation).  The options are "central", and
+#'   "forward".  The central differences is what R's `optimHess()`
+#'   uses.  While this takes longer in optimization, it is more
+#'   accurate, so for calculating the covariance and final likelihood,
+#'   the central differences are used. This also uses the modified
+#'   Shi21 method
+#'
+#' @param shi21maxOuter The maximum number of steps for the
+#'   optimization of the forward-difference step size.  When not zero,
+#'   use this instead of Gill differences.
+#' 
+#' @param shi21maxInner The maximum number of steps for the
+#'   optimization of the individual Hessian matrices in the
+#'   generalized likelihood problem. When 0, un-optimized finite differences
+#'   are used.
+#'
+#' @param shi21maxInnerCov The maximum number of steps for the
+#'   optimization of the individual Hessian matrices in the
+#'   generalized likelihood problem for the covariance step. When 0,
+#'   un-optimized finite differences are used.
+#' 
+#' @param shi21maxFD The maximum number of steps for the optimization
+#'   of the forward difference step size when using dosing events (lag
+#'   time, modeled duration/rate and bioavailability)
+#' 
 #' @param centralDerivEps Central difference tolerances.  This is a
-#'     numeric vector of relative difference and absolute difference.
-#'     The central/forward difference step size h is calculated as:
+#'   numeric vector of relative difference and absolute difference.
+#'   The central/forward difference step size h is calculated as:
 #'
 #'         \code{h = abs(x)*derivEps[1] + derivEps[2]}
 #'
@@ -263,6 +305,12 @@
 #'     determined.  Otherwise this is the optimal step size
 #'     determined.
 #'
+#' @param gillKcovLlik The total number of possible steps to determine
+#'   the optimal forwad/central difference step per parameter when
+#'   using the generalized focei log-likelihood method (by the Gill
+#'   1986 method).  If 0, no optimal step size is
+#'   determined. Otherwise this is the optimal step size is determined
+#'
 #' @param gillRtol The relative tolerance used for Gill 1983
 #'     determination of optimal step size.
 #'
@@ -435,15 +483,30 @@
 #'     initial estimate by.  So each iteration during the covariance
 #'     step is equal to the new step size = (prior step size)*gillStepCov
 #'
+#'
+#' @param gillStepCovLlik Same as above but during generalized focei
+#'   log-likelihood
+#'
 #' @param gillFtolCov The gillFtol is the gradient error tolerance
 #'     that is acceptable before issuing a warning/error about the
 #'     gradient estimates during the covariance step.
 #'
+#' @param gillFtolCovLlik Same as above but applied during generalized
+#'   log-likelihood estimation.
+#'
 #' @param rmatNorm A parameter to normalize gradient step size by the
 #'     parameter value during the calculation of the R matrix
 #'
+#' @param rmatNormLlik A parameter to normalize gradient step size by
+#'   the parameter value during the calculation of the R matrix if you
+#'   are using generalized log-likelihood Hessian matrix.
+#'
 #' @param smatNorm A parameter to normalize gradient step size by the
 #'     parameter value during the calculation of the S matrix
+#'
+#' @param smatNormLlik A parameter to normalize gradient step size by
+#'   the parameter value during the calculation of the S matrix if you
+#'   are using the generalized log-likelihood.
 #'
 #' @param covGillF Use the Gill calculated optimal Forward difference
 #'     step size for the instead of the central difference step size
@@ -511,11 +574,8 @@
 #'     estimates, randomly sample new parameter estimates and restart
 #'     the problem.  This is similar to 'PsN' resampling.
 #'
-#' @param eventFD Finite difference step for forward or central
-#'     difference estimation of event-based gradients
-#'
 #' @param eventType Event gradient type for dosing events; Can be
-#'   "gill", "central" or "forward"
+#'   "central" or "forward"
 #'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
@@ -588,6 +648,17 @@
 #' @seealso \code{\link{optim}}
 #' @seealso \code{\link[n1qn1]{n1qn1}}
 #' @seealso \code{\link[rxode2]{rxSolve}}
+#' @references
+#'
+#' Gill, P.E., Murray, W., Saunders, M.A., & Wright,
+#' M.H. (1983). Computing Forward-Difference Intervals for Numerical
+#' Optimization. Siam Journal on Scientific and Statistical Computing,
+#' 4, 310-321.
+#'
+#' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
+#' Finite-Difference Interval Estimation for Noisy Derivative-Free
+#' Optimization.
+#' 
 #' @export
 foceiControl <- function(sigdig = 3, #
                          ...,
@@ -610,9 +681,13 @@ foceiControl <- function(sigdig = 3, #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
-                         hessEps = (.Machine$double.eps)^(1 / 3), #
-                         eventFD = sqrt(.Machine$double.eps), #
-                         eventType = c("gill", "central", "forward"), #
+                         # norm of weights = 1/0.225
+                         #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
+                         hessEps =(.Machine$double.eps)^(1/3),
+                         hessEpsLlik =(.Machine$double.eps)^(1/2.5),
+                         optimHessType = c("central", "forward"),
+                         optimHessCovType=c("central", "forward"),
+                         eventType = c("central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -662,15 +737,24 @@ foceiControl <- function(sigdig = 3, #
                          reltol = NULL, #
                          resetHessianAndEta = FALSE, #
                          stateTrim = Inf, #
+                         shi21maxOuter = 0L,
+                         shi21maxInner = 20L,
+                         shi21maxInnerCov =20L,
+                         shi21maxFD=20L,
                          gillK = 10L, #
                          gillStep = 4, #
                          gillFtol = 0, #
                          gillRtol = sqrt(.Machine$double.eps), #
                          gillKcov = 10L, #
+                         gillKcovLlik = 20L,
+                         gillStepCovLlik = 4.5,
                          gillStepCov = 2, #
                          gillFtolCov = 0, #
+                         gillFtolCovLlik = 0, #
                          rmatNorm = TRUE, #
+                         rmatNormLlik= FALSE, #
                          smatNorm = TRUE, #
+                         smatNormLlik = FALSE,
                          covGillF = TRUE, #
                          optGillF = TRUE, #
                          covSmall = 1e-5, #
@@ -686,8 +770,8 @@ foceiControl <- function(sigdig = 3, #
                          seed = 42, #
                          resetThetaCheckPer = 0.1, #
                          etaMat = NULL, #
-                         repeatGillMax = 3,#
-                         stickyRecalcN = 5, #
+                         repeatGillMax = 1,#
+                         stickyRecalcN = 4, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
@@ -737,6 +821,7 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertNumeric(epsilon, lower=0, finite=TRUE, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(maxInnerIterations, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(maxOuterIterations, lower=0, any.missing=FALSE, len=1)
 
   if (is.null(n1qn1nsim)) {
@@ -780,20 +865,31 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertIntegerish(gillK, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(gillKcov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(gillKcovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillStep, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillStepCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillStepCovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillFtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillFtolCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(gillFtolCovLlik, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(gillRtol, lower=0, len=1, any.missing=FALSE, finite=TRUE)
   # gillRtolCov is calculated in the `inner.cpp`
   if (!checkmate::testIntegerish(rmatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(rmatNorm, any.missing=FALSE, len=1)
   }
   rmatNorm <- as.integer(rmatNorm)
+  if (!checkmate::testIntegerish(rmatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(rmatNormLlik, any.missing=FALSE, len=1)
+  }
+  rmatNormLlik <- as.integer(rmatNormLlik)
   if (!checkmate::testIntegerish(smatNorm, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(smatNorm, any.missing=FALSE, len=1)
   }
   smatNorm <- as.integer(smatNorm)
+  if (!checkmate::testIntegerish(smatNormLlik, lower=0, upper=1, any.missing=FALSE, len=1)) {
+    checkmate::assertLogical(smatNormLlik, any.missing=FALSE, len=1)
+  }
+  smatNormLlik <- as.integer(smatNormLlik)
   if (!checkmate::testIntegerish(covGillF, lower=0, upper=1, any.missing=FALSE, len=1)) {
     checkmate::assertLogical(covGillF, any.missing=FALSE, len=1)
   }
@@ -804,8 +900,8 @@ foceiControl <- function(sigdig = 3, #
   optGillF <- as.integer(optGillF)
 
   checkmate::assertNumeric(hessEps, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(hessEpsLlik, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(centralDerivEps, lower=0, any.missing=FALSE, len=2)
-  checkmate::assertNumeric(eventFD, lower=0, any.missing=FALSE, len=1)
 
   checkmate::assertIntegerish(lbfgsLmm, lower=1L, any.missing=FALSE, len=1)
   lbfgsLmm <- as.integer(lbfgsLmm)
@@ -850,10 +946,24 @@ foceiControl <- function(sigdig = 3, #
     .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
     scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
   }
+
+  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+    optimHessType <- as.integer(optimHessType)
+  } else {
+    .optimHessTypeIdx <- c("central" = 1L, "forward" = 3L)
+    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
+  }
+
+  if (checkmate::testIntegerish(optimHessCovType, len=1, lower=1, upper=3, any.missing=FALSE)) {
+    optimHessCovType <- as.integer(optimHessCovType)
+  } else {
+    .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
+    optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
+  }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
-    .eventTypeIdx <- c("gill" = 1L, "central" = 2L, "forward" = 3L)
+    .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
 
@@ -893,7 +1003,7 @@ foceiControl <- function(sigdig = 3, #
                              "resetThetaSize", "resetThetaFinalSize",
                              "outerOptFun", "outerOptTxt", "skipCov",
                              "foceiMuRef", "predNeq", "nfixed", "nomega",
-                             "neta", "ntheta", "nF", "printTop"))]
+                             "neta", "ntheta", "nF", "printTop", "needOptimHess"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -1055,6 +1165,10 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
 
+  checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1088,6 +1202,9 @@ foceiControl <- function(sigdig = 3, #
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
+    hessEpsLlik = as.double(hessEpsLlik),
+    optimHessType=optimHessType,
+    optimHessCovType=optimHessCovType,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),
@@ -1117,9 +1234,11 @@ foceiControl <- function(sigdig = 3, #
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),
+    gillKcovLlik = as.integer(gillKcovLlik),
     gillRtol = as.double(gillRtol),
     gillStep = as.double(gillStep),
     gillStepCov = as.double(gillStepCov),
+    gillStepCovLlik = as.double(gillStepCovLlik),
     scaleType = scaleType,
     normType = normType,
     scaleC = scaleC,
@@ -1128,11 +1247,14 @@ foceiControl <- function(sigdig = 3, #
     scaleC0 = as.double(scaleC0),
     outerOptTxt = .outerOptTxt,
     rmatNorm = rmatNorm,
+    rmatNormLlik = rmatNormLlik,
     smatNorm = smatNorm,
+    smatNormLlik = smatNormLlik,
     covGillF = covGillF,
     optGillF = optGillF,
     gillFtol = as.double(gillFtol),
     gillFtolCov = as.double(gillFtolCov),
+    gillFtolCovLlik = as.double(gillFtolCovLlik),
     covSmall = as.double(covSmall),
     adjLik = adjLik,
     gradTrim = as.double(gradTrim),
@@ -1148,7 +1270,6 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
-    eventFD = eventFD,
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
@@ -1157,7 +1278,11 @@ foceiControl <- function(sigdig = 3, #
     rxControl=rxControl,
     genRxControl=genRxControl,
     skipCov=.skipCov,
-    fallbackFD=fallbackFD
+    fallbackFD=fallbackFD,
+    shi21maxOuter=shi21maxOuter,
+    shi21maxInner=shi21maxInner,
+    shi21maxInnerCov=shi21maxInnerCov,
+    shi21maxFD=shi21maxFD
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",

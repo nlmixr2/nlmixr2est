@@ -62,6 +62,19 @@ RcppExport SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP stateSEXP, SEXP varsSEXP
     UNPROTECT(1);
     return rcpp_result_gen;
 }
+// filterNormalLikeAndDoses
+List filterNormalLikeAndDoses(IntegerVector& inCmt, IntegerVector& inDistribution, IntegerVector& inDistCmt);
+RcppExport SEXP _nlmixr2est_filterNormalLikeAndDoses(SEXP inCmtSEXP, SEXP inDistributionSEXP, SEXP inDistCmtSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< IntegerVector& >::type inCmt(inCmtSEXP);
+    Rcpp::traits::input_parameter< IntegerVector& >::type inDistribution(inDistributionSEXP);
+    Rcpp::traits::input_parameter< IntegerVector& >::type inDistCmt(inDistCmtSEXP);
+    rcpp_result_gen = Rcpp::wrap(filterNormalLikeAndDoses(inCmt, inDistribution, inDistCmt));
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {
@@ -317,6 +330,26 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
     Rcpp::traits::input_parameter< int >::type yj(yjSEXP);
     rcpp_result_gen = Rcpp::wrap(iBoxCox_(x, lambda, yj));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nmNearPD_
+RObject nmNearPD_(RObject x, bool keepDiag, bool do2eigen, bool doDykstra, bool only_values, double eig_tol, double conv_tol, double posd_tol, int maxit, bool trace);
+RcppExport SEXP _nlmixr2est_nmNearPD_(SEXP xSEXP, SEXP keepDiagSEXP, SEXP do2eigenSEXP, SEXP doDykstraSEXP, SEXP only_valuesSEXP, SEXP eig_tolSEXP, SEXP conv_tolSEXP, SEXP posd_tolSEXP, SEXP maxitSEXP, SEXP traceSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type x(xSEXP);
+    Rcpp::traits::input_parameter< bool >::type keepDiag(keepDiagSEXP);
+    Rcpp::traits::input_parameter< bool >::type do2eigen(do2eigenSEXP);
+    Rcpp::traits::input_parameter< bool >::type doDykstra(doDykstraSEXP);
+    Rcpp::traits::input_parameter< bool >::type only_values(only_valuesSEXP);
+    Rcpp::traits::input_parameter< double >::type eig_tol(eig_tolSEXP);
+    Rcpp::traits::input_parameter< double >::type conv_tol(conv_tolSEXP);
+    Rcpp::traits::input_parameter< double >::type posd_tol(posd_tolSEXP);
+    Rcpp::traits::input_parameter< int >::type maxit(maxitSEXP);
+    Rcpp::traits::input_parameter< bool >::type trace(traceSEXP);
+    rcpp_result_gen = Rcpp::wrap(nmNearPD_(x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace));
     return rcpp_result_gen;
 END_RCPP
 }

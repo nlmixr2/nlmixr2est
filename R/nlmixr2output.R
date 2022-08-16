@@ -291,7 +291,12 @@
   "saem.cfg"="saemCfg",
   "objf"="objective",
   "OBJF"="objective",
-  "theta"="fixef"
+  "theta"="fixef",
+  "etaR"="phiR",
+  "etaH"="phiH",
+  "etaC"="phiC",
+  "etaSE"="phiSE",
+  "etaRSE"="phiRSE"
 )
 
 #' @export

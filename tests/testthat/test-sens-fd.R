@@ -31,11 +31,15 @@ nmTest({
 
   .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
 
+  meth <- "focei"
+
   testIt <- function(meth) {
 
-    test_that(sprintf("finite difference %s, gill", meth), {
+    test_that(sprintf("finite difference %s, central", meth), {
+      
       fit <- .nlmixr(f, dat2, est=meth,
-                     control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="gill"))
+                     control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="central"))
+      
       expect_false(all(fit$eta$etaF == 0))
     })
 
@@ -44,6 +48,7 @@ nmTest({
                      control = foceiControl(maxOuterIterations = 0, covMethod = "", eventType="forward"))
       expect_false(all(fit$eta$etaF == 0))
     })
+
     invisible()
   }
 

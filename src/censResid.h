@@ -29,12 +29,14 @@ static inline double truncnorm(double mean, double sd, double low, double hi){
 }
 
 bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
-					     arma::vec& ipred, arma::vec &ipredt,
-					     arma::vec& pred, arma::vec &predt,
-					     arma::ivec &cens, arma::vec &limit,
-					     arma::vec& lambda, arma::vec &yj, arma::vec& low, arma::vec& hi,
-					     arma::vec &lowerLim, arma::vec &upperLim, arma::vec &ri,
-					     bool &doSim, int& censMethod);
+                                             arma::vec& ipred, arma::vec &ipredt,
+                                             arma::vec& pred, arma::vec &predt,
+                                             arma::ivec &cens, arma::vec &limit,
+                                             arma::vec& lambda, arma::vec &yj, arma::vec& low, arma::vec& hi,
+                                             arma::vec &lowerLim, arma::vec &upperLim, arma::vec &ri,
+                                             bool &doSim, int& censMethod,
+                                             arma::uvec &normRelated, arma::uvec &normIdx,
+                                             arma::uvec &nonNormIdx);
 
 #endif
 

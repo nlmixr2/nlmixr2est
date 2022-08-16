@@ -6,6 +6,9 @@
 \alias{nmObjGet.modelName}
 \alias{nmObjGet.cor}
 \alias{nmObjGet.omegaR}
+\alias{nmObjGet.phiR}
+\alias{nmObjGet.phiSE}
+\alias{nmObjGet.phiRSE}
 \alias{nmObjGet.dataSav}
 \alias{nmObjGet.idLvl}
 \alias{nmObjGet.saemTransformedData}
@@ -46,6 +49,12 @@ nmObjGet(x, ...)
 \method{nmObjGet}{cor}(x, ...)
 
 \method{nmObjGet}{omegaR}(x, ...)
+
+\method{nmObjGet}{phiR}(x, ...)
+
+\method{nmObjGet}{phiSE}(x, ...)
+
+\method{nmObjGet}{phiRSE}(x, ...)
 
 \method{nmObjGet}{dataSav}(x, ...)
 
