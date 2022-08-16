@@ -1,7 +1,7 @@
 nmTest({
   test_that("test focei llik", {
     # dnorm() works
-
+ 
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -154,9 +154,7 @@ nmTest({
                 control=foceiControl(maxOuterIterations=0))
 
     expect_equal(of1, f$objf)
-
     
-
     pk.turnover.emax3.n1 <- function() {
       ini({
         tktr <- log(1)
