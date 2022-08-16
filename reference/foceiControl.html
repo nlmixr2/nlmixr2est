@@ -74,8 +74,10 @@
 <span>  covDerivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  hessEps <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
-<span>  eventFD <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>,</span>
-<span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gill"</span>, <span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  hessEpsLlik <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">2.5</span><span class="op">)</span>,</span>
+<span>  optimHessType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  optimHessCovType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  centralDerivEps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">20</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  lbfgsLmm <span class="op">=</span> <span class="fl">7L</span>,</span>
 <span>  lbfgsPgtol <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -116,15 +118,24 @@
 <span>  reltol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  resetHessianAndEta <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  stateTrim <span class="op">=</span> <span class="cn">Inf</span>,</span>
+<span>  shi21maxOuter <span class="op">=</span> <span class="fl">0L</span>,</span>
+<span>  shi21maxInner <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  shi21maxInnerCov <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  shi21maxFD <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  gillK <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  gillStep <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  gillFtol <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  gillRtol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>,</span>
 <span>  gillKcov <span class="op">=</span> <span class="fl">10L</span>,</span>
+<span>  gillKcovLlik <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  gillStepCovLlik <span class="op">=</span> <span class="fl">4.5</span>,</span>
 <span>  gillStepCov <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  gillFtolCov <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  gillFtolCovLlik <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  rmatNorm <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  rmatNormLlik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  smatNorm <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  smatNormLlik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  covGillF <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  optGillF <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  covSmall <span class="op">=</span> <span class="fl">1e-05</span>,</span>
@@ -140,8 +151,8 @@
 <span>  seed <span class="op">=</span> <span class="fl">42</span>,</span>
 <span>  resetThetaCheckPer <span class="op">=</span> <span class="fl">0.1</span>,</span>
 <span>  etaMat <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  repeatGillMax <span class="op">=</span> <span class="fl">3</span>,</span>
-<span>  stickyRecalcN <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>  repeatGillMax <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  stickyRecalcN <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  gradProgressOfvTime <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  addProp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"combined2"</span>, <span class="st">"combined1"</span><span class="op">)</span>,</span>
 <span>  badSolveObjfAdj <span class="op">=</span> <span class="fl">100</span>,</span>
@@ -364,23 +375,48 @@ derivatives while calculating the covariance components
 
 
 <dt>hessEps</dt>
-<dd><p>is a double value representing the epsilon for the Hessian calculation.</p></dd>
+<dd><p>is a double value representing the epsilon for the
+Hessian calculation. This is used for the R matrix calculation.</p></dd>
 
 
-<dt>eventFD</dt>
-<dd><p>Finite difference step for forward or central
-difference estimation of event-based gradients</p></dd>
+<dt>hessEpsLlik</dt>
+<dd><p>is a double value representing the epsilon for
+the Hessian calculation when doing focei generalized
+log-likelihood estimation.  This is used for the R matrix
+calculation.</p></dd>
+
+
+<dt>optimHessType</dt>
+<dd><p>The hessian type for when calculating the
+individual hessian by numeric differences (in generalized
+log-likelihood estimation).  The options are "central", and
+"forward".  The central differences is what R's `optimHess()`
+uses and is the default for this method. (Though the "forward" is
+faster and still reasonable for most cases).  The Shi21 cannot be
+changed for the Gill83 algorithm with the optimHess in a
+generalized likelihood problem.</p></dd>
+
+
+<dt>optimHessCovType</dt>
+<dd><p>The hessian type for when calculating the
+individual hessian by numeric differences (in generalized
+log-likelihood estimation).  The options are "central", and
+"forward".  The central differences is what R's `optimHess()`
+uses.  While this takes longer in optimization, it is more
+accurate, so for calculating the covariance and final likelihood,
+the central differences are used. This also uses the modified
+Shi21 method</p></dd>
 
 
 <dt>eventType</dt>
 <dd><p>Event gradient type for dosing events; Can be
-"gill", "central" or "forward"</p></dd>
+"central" or "forward"</p></dd>
 
 
 <dt>centralDerivEps</dt>
 <dd><p>Central difference tolerances.  This is a
-    numeric vector of relative difference and absolute difference.
-    The central/forward difference step size h is calculated as:</p>
+  numeric vector of relative difference and absolute difference.
+  The central/forward difference step size h is calculated as:</p>
 <p><code>h = abs(x)*derivEps[1] + derivEps[2]</code></p></dd>
 
 
@@ -611,6 +647,32 @@ option <code>resetEtaP</code>.</p></dd>
 <dd><p>Trim state amounts/concentrations to this value.</p></dd>
 
 
+<dt>shi21maxOuter</dt>
+<dd><p>The maximum number of steps for the
+optimization of the forward-difference step size.  When not zero,
+use this instead of Gill differences.</p></dd>
+
+
+<dt>shi21maxInner</dt>
+<dd><p>The maximum number of steps for the
+optimization of the individual Hessian matrices in the
+generalized likelihood problem. When 0, un-optimized finite differences
+are used.</p></dd>
+
+
+<dt>shi21maxInnerCov</dt>
+<dd><p>The maximum number of steps for the
+optimization of the individual Hessian matrices in the
+generalized likelihood problem for the covariance step. When 0,
+un-optimized finite differences are used.</p></dd>
+
+
+<dt>shi21maxFD</dt>
+<dd><p>The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)</p></dd>
+
+
 <dt>gillK</dt>
 <dd><p>The total number of possible steps to determine the
 optimal forward/central difference step size per parameter (by
@@ -644,6 +706,19 @@ no optimal step size is determined.  Otherwise this is the
 optimal step size determined.</p></dd>
 
 
+<dt>gillKcovLlik</dt>
+<dd><p>The total number of possible steps to determine
+the optimal forwad/central difference step per parameter when
+using the generalized focei log-likelihood method (by the Gill
+1986 method).  If 0, no optimal step size is
+determined. Otherwise this is the optimal step size is determined</p></dd>
+
+
+<dt>gillStepCovLlik</dt>
+<dd><p>Same as above but during generalized focei
+log-likelihood</p></dd>
+
+
 <dt>gillStepCov</dt>
 <dd><p>When looking for the optimal forward difference
 step size, this is This is the step size to increase the
@@ -657,14 +732,31 @@ that is acceptable before issuing a warning/error about the
 gradient estimates during the covariance step.</p></dd>
 
 
+<dt>gillFtolCovLlik</dt>
+<dd><p>Same as above but applied during generalized
+log-likelihood estimation.</p></dd>
+
+
 <dt>rmatNorm</dt>
 <dd><p>A parameter to normalize gradient step size by the
 parameter value during the calculation of the R matrix</p></dd>
 
 
+<dt>rmatNormLlik</dt>
+<dd><p>A parameter to normalize gradient step size by
+the parameter value during the calculation of the R matrix if you
+are using generalized log-likelihood Hessian matrix.</p></dd>
+
+
 <dt>smatNorm</dt>
 <dd><p>A parameter to normalize gradient step size by the
 parameter value during the calculation of the S matrix</p></dd>
+
+
+<dt>smatNormLlik</dt>
+<dd><p>A parameter to normalize gradient step size by
+the parameter value during the calculation of the S matrix if you
+are using the generalized log-likelihood.</p></dd>
 
 
 <dt>covGillF</dt>
@@ -844,6 +936,16 @@ start near zero, scaling for these parameters do not make sense.</p>
 unscaled problem.  The covariance step is performed on the
 unscaled problem, so the condition number of that matrix may not
 be reflective of the scaled problem's condition-number.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
+    <p>Gill, P.E., Murray, W., Saunders, M.A., &amp; Wright,
+M.H. (1983). Computing Forward-Difference Intervals for Numerical
+Optimization. Siam Journal on Scientific and Statistical Computing,
+4, 310-321.</p>
+<p>Shi, H.M., Xie, Y., Xuan, M.Q., &amp; Nocedal, J. (2021). Adaptive
+Finite-Difference Interval Estimation for Noisy Derivative-Free
+Optimization.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

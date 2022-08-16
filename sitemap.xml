@@ -43,6 +43,9 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc>
   </url>
   <url>
@@ -122,6 +125,9 @@
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmGetDistributionSaemLines.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmNearPD.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGet.html</loc>
