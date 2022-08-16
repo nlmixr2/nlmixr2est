@@ -269,7 +269,8 @@ nmTest({
     expect_equal(f$foceModel0, f2$foceModel0)
 
     f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
-                control=foceiControl(covMethod = ""))
+                control=foceiControl(covMethod = "",
+                                     maxOuterIterations=0))
     
     of1     <- f$objf
     etaMat1 <- as.matrix(f$eta[,-1])
