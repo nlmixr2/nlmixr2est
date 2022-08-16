@@ -42,11 +42,18 @@ nmObjGetData <- function(x, ...) {
 }
 
 #' @export
-nmObjGetData.dataNormInfo <- function(x, ...) {
+nmObjGet.dataNormInfo <- function(x, ...) {
   .fit <- x[[1]]
   .ui <- .fit$ui
   .datSav <- .fit$dataSav
   .predDf <-.ui$predDf
+  if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
+    return(list(filter=rep(TRUE, length(.datSav[,1])),
+                 nnorm=length(.datSav[,1]),
+                 nlik=0,
+                 nother=0,
+                 nlmixrRowNums=.datSav$nlmixrRowNums))
+  }
   .ret <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
                 .datSav$CMT, .predDf$distribution, .predDf$cmt)
   .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
@@ -174,7 +181,7 @@ attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's e
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.dataSav <- function(x, ...){
+nmObjGet.dataSav <- function(x, ...) {
   .obj <- x[[1]]
   .objEnv <- .obj$env
   if (exists("dataSav", .objEnv)) return(get("dataSav", envir=.objEnv))

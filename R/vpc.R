@@ -60,8 +60,11 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {
     .lst <- object$dataNormInfo
+    .data <- .data[.data$nlmixrRowNums %in% .lst$nlmixrRowNums,]
+    .data <- .data[order(.data$nlmixrRowNums), ]
     stopifnot(length(.lst$filter) == length(.data$nlmixrRowNums))
     if (.lst$nnorm == 0L) {
+      print(.lst)
       stop("need normal data for vpcSim (or use normRelated=FALSE)")
     }
     .data <- .data[.lst$filter, ]

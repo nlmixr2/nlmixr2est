@@ -15,7 +15,7 @@ test_that("proper table outputs", {
     CRPZERO = 5
   )
 
-  f <- function(){
+  f <- function() {
     ini({
       # thetas
       theta1  <- c(0.387)     # Add err PK
@@ -91,7 +91,9 @@ test_that("proper table outputs", {
 
  .addTable <- function(...) suppressMessages(suppressWarnings(addTable(...)))
 
-  tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
+ tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
+
+ 
   expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
   expect_true(all(!is.na(tab1$CMT)))
   expect_s3_class(tab1$CMT, "factor")
