@@ -226,13 +226,12 @@ nlmixr2Est0 <- function(env, ...) {
   .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
   if (is.environment(.ret)) {
-    try(assign("warnings", .lst[[2]], .ret), silent=TRUE)
+    try(assign("runInfo", .lst[[2]], .ret), silent=TRUE)
   } else {
-    try(assign("warnings", .lst[[2]], .ret$env), silent=TRUE)
+    try(assign("runInfo", .lst[[2]], .ret$env), silent=TRUE)
   }
   if (!is.null(.nlmixrPureInputUi)) {
     .nlmixrEstUpdatesOrigModel(.ret)
   }
-  lapply(.lst[[2]], warning, call.=FALSE)
   .ret
 }
