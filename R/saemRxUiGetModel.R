@@ -113,7 +113,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -142,13 +142,20 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
-}
-
-#' @export
 nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
+  .rx <- line[[1]]
+  .pred1 <- line[[2]]
+  .errNum <- line[[3]]
+  lapply(rxode2::.handleSingleErrTypeNormOrTFoceiBase(.rx, .pred1, .errNum, rxPredLlik=TRUE),
+         function(x) {
+           if (identical(x[[1]], quote(`~`)) &&
+                 identical(x[[2]], quote(`rx_pred_`))) {
+             .ret <- x
+             .ret[[1]] <- quote(`<-`)
+             return(.ret)
+           }
+           x
+         })
 }
 
 #' @export
