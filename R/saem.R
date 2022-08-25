@@ -202,7 +202,6 @@
                         inits=.inits,
                         mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
                         rxControl=rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()),
-                        distribution="normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
@@ -221,7 +220,8 @@
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
-                        resFixed=ui$saemResFixed)
+                        resFixed=ui$saemResFixed,
+                        distribution=ui$saemDistribution)
     .print <- rxode2::rxGetControl(ui, "print", 1)
     if (inherits(.print, "numeric")) {
       .cfg$print <- as.integer(.print)
@@ -254,7 +254,7 @@
   if (is.null(.control)) {
     .control <- saemControl()
   }
-  if (!inherits(.control, "saemControl")){
+  if (!inherits(.control, "saemControl")) {
     .control <- do.call(nlmixr2est::saemControl, .control)
   }
   assign("control", .control, envir=.ui)
@@ -757,7 +757,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
