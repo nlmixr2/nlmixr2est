@@ -5168,7 +5168,7 @@ NumericMatrix foceiCalcCov(Environment e){
           op_focei.upper[k]=unscalePar(op_focei.upper,k);
         }
       }
-      if (op_focei.boundTol > 0){
+      if (op_focei.needOptimHess == 0 && op_focei.boundTol > 0){
         // Subtract omegan so that Omega boundaries are not counted.
         for (k = op_focei.npars-op_focei.omegan; k--;){
           if (op_focei.nbd[k] != 0){
