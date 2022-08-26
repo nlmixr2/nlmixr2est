@@ -161,7 +161,8 @@ nmGetDistributionSaemLines.default  <- function(line) {
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
-  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .iniDf <- .x$saemIniDf
+  .names <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
@@ -258,7 +259,7 @@ rxUiGet.loadPruneSaemPred <- function(x, ...) {
 #' @export
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
-  .iniDf <- .ui$iniDf
+  .iniDf <- .ui$saemIniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
   .ret <- .saemParamsToEstimateLlik(.ret, x)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
@@ -338,7 +339,7 @@ rxUiGet.saemModel <- function(x, ...) {
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .ui <- x[[1]]
-  .iniDf <- .ui$iniDf
+  .iniDf <- .ui$saemIniDf
   .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
   .thetaValue <- setNames(paste0("THETA[", .thetaNames$ntheta, "]"), .thetaNames$name)
   if (length(.ui$nonMuEtas) > 0) {
