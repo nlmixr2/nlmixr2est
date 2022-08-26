@@ -124,3 +124,9 @@ rxUiGet.saemModelNeedsLlik <- function(x, ...) {
   }
   lines
 }
+
+#' @export
+rxUiGet.saemDistribution <- function(x, ...) {
+  if (rxUiGet.saemModelNeedsLlik(x, ...)) return(2L)
+  1L
+}

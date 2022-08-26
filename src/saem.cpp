@@ -1721,8 +1721,10 @@ public:
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
-      g2 = vcsig2.elem(resKeep);
-      pl = join_cols(pl, g2);
+      if (distribution == 1) {
+        g2 = vcsig2.elem(resKeep);
+        pl = join_cols(pl, g2);        
+      }
       par_hist.row(kiter) = pl.t();
       if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
         RSprintf("%03d: ", kiter+1);

@@ -730,9 +730,3 @@ rxUiGet.saemAddProp <- function(x, ...) {
   .addProp
 }
 #attr(rxUiGet.saemParHistThetaKeep, "desc") <- "Get the saem addProp integer vector"
-
-#' @export
-rxUiGet.saemDistribution <- function(x, ...) {
-  if (rxUiGet.saemModelNeedsLlik(x, ...)) return(2L)
-  1L
-}
