@@ -105,11 +105,11 @@ rxUiGet.saemErrMu <- function(x, ...) {
              return(str2lang(paste0(.name, "<- expit(rx_err_", i,
                                     "_, ", .low, ", ", .hi, ")")))
            } else if (is.finite(.low) && !is.finite(.hi)) {
-             return(str2lang(paste0(.name, "<- ", .low, " + exp(rx_err_", i, ")")))
+             return(str2lang(paste0(.name, "<- ", .low, " + exp(rx_err_", i, "_)")))
            } else if (!is.finite(.low) && is.finite(.hi)) {
-             return(str2lang(paste0(.name, "<- ", .hi, " - exp(rx_err_", i, ")")))
+             return(str2lang(paste0(.name, "<- ", .hi, " - exp(rx_err_", i, "_)")))
            } else if (!is.finite(.low) && !is.finite(.hi)) {
-             return(str2lang(paste0(.name, "<- rx_err_", i, ")")))
+             return(str2lang(paste0(.name, "<- rx_err_", i, "_)")))
            }
          })
 }
