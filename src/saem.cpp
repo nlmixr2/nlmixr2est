@@ -713,7 +713,7 @@ public:
         sigma2[b] = max(bres(b)*bres(b), 1.0);
       }
       statrese[b] = 0.0;
-    }
+    }      
 
     print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
@@ -1666,53 +1666,55 @@ public:
       mpost_phi.cols(i0)=mprior_phi0;
 
       //FIXME: chg according to multiple endpnts; need to chg dim(par_hist)
-      for (int b=0; b<nendpnt; ++b) {
-        int offset = res_offset[b];
-        switch ((int)(res_mod(b))) {
-        case rmAdd:
-          vcsig2[offset] = ares(b);//sigma2[b];
-          // because of old translation use variance
-          break;
-        case rmProp:
-          vcsig2[offset] = bres(b);
-          break;
-        case rmPow:
-          vcsig2[offset]     = bres(b);
-          vcsig2[offset + 1] = cres(b);
-          break;
-        case rmAddProp:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          break;
-        case rmAddPow:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = cres(b);
-          break;
-        case rmAddLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = lres(b);
-          break;
-        case rmPropLam:
-          vcsig2[offset]   = bres(b);
-          vcsig2[offset+1] = lres(b);
-          break;
-        case rmPowLam:
-          vcsig2[offset]   = bres(b);
-          vcsig2[offset+1] = cres(b);
-          vcsig2[offset+2] = lres(b);
-          break;
-        case rmAddPropLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = lres(b);
-          break;
-        case rmAddPowLam:
-          vcsig2[offset]   = ares(b);
-          vcsig2[offset+1] = bres(b);
-          vcsig2[offset+2] = cres(b);
-          vcsig2[offset+3] = lres(b);
-          break;
+      if (distribution == 1) {
+        for (int b=0; b<nendpnt; ++b) {
+          int offset = res_offset[b];
+          switch ((int)(res_mod(b))) {
+          case rmAdd:
+            vcsig2[offset] = ares(b);//sigma2[b];
+            // because of old translation use variance
+            break;
+          case rmProp:
+            vcsig2[offset] = bres(b);
+            break;
+          case rmPow:
+            vcsig2[offset]     = bres(b);
+            vcsig2[offset + 1] = cres(b);
+            break;
+          case rmAddProp:
+            vcsig2[offset]   = ares(b);
+            vcsig2[offset+1] = bres(b);
+            break;
+          case rmAddPow:
+            vcsig2[offset]   = ares(b);
+            vcsig2[offset+1] = bres(b);
+            vcsig2[offset+2] = cres(b);
+            break;
+          case rmAddLam:
+            vcsig2[offset]   = ares(b);
+            vcsig2[offset+1] = lres(b);
+            break;
+          case rmPropLam:
+            vcsig2[offset]   = bres(b);
+            vcsig2[offset+1] = lres(b);
+            break;
+          case rmPowLam:
+            vcsig2[offset]   = bres(b);
+            vcsig2[offset+1] = cres(b);
+            vcsig2[offset+2] = lres(b);
+            break;
+          case rmAddPropLam:
+            vcsig2[offset]   = ares(b);
+            vcsig2[offset+1] = bres(b);
+            vcsig2[offset+2] = lres(b);
+            break;
+          case rmAddPowLam:
+            vcsig2[offset]   = ares(b);
+            vcsig2[offset+1] = bres(b);
+            vcsig2[offset+2] = cres(b);
+            vcsig2[offset+3] = lres(b);
+            break;
+          }
         }
       }
       Plambda(ilambda1) = Plambda1;
@@ -1737,7 +1739,6 @@ public:
     }//kiter
     phiFile.close();
   }
-
 
 private:
 
