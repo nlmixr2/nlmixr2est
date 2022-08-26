@@ -130,3 +130,19 @@ rxUiGet.saemDistribution <- function(x, ...) {
   if (rxUiGet.saemModelNeedsLlik(x, ...)) return(2L)
   1L
 }
+
+.saemParamsToEstimateLlik <- function(pars, x) {
+  if (!rxUiGet.saemModelNeedsLlik(x, ...)) return(pars)
+  c(rxUiGet.saemErrMuNames(x, ...), pars)
+}
+
+.saemFixedLlik <- function(dft, x) {
+  if (!rxUiGet.saemModelNeedsLlik(x, ...)) return(dft)
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  c(setNames(.iniErr$fix, rxUiGet.saemErrMuNames(x, ...)), dft)
+}
+
+.saemInitThetaLlik <- function(est, x) {
+  if (!rxUiGet.saemModelNeedsLlik(x, ...)) return(est)
+  c(rxUiGet.saemErrMuEst(x, ...), est)
+}

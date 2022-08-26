@@ -132,10 +132,7 @@ rxUiGet.saemFixed <- function(x, ...) {
   .fixError <- .dft[!is.na(.dft$err), ]
   .dft <- .dft[is.na(.dft$err), ]
   .dft <- setNames(.dft$fix, paste(.dft$name))
-  if (rxUiGet.saemModelNeedsLlik(x, ...)) {
-    .iniErr <- rxUiGet.saemErrDf(x, ...)
-    .dft <- c(setNames(.iniErr$fix, rxUiGet.saemErrMuNames(x, ...)), .dft)
-  }
+  .dft <- .saemFixedLlik(dft, x)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .dft
@@ -622,9 +619,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .iniDf <- .ui$iniDf
   .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
                    .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
-  if (rxUiGet.saemModelNeedsLlik(x, ...)) {
-    .est <- c(rxUiGet.saemErrMuEst(x, ...), .est)
-  }
+  .est <- .saemInitThetaLlik(.est, x)  
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]

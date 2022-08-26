@@ -260,9 +260,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
-  if (rxUiGet.saemModelNeedsLlik(x, ...)) {
-    .ret <- c(rxUiGet.saemErrMuNames(x, ...), .ret)
-  }
+  .ret <- .saemParamsToEstimateLlik(.ret, x)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret
