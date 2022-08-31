@@ -74,8 +74,7 @@ rxUiGet.saemErrMuEst <- function(x, ...) {
                return(.est)
              }
            }, numeric(1), USE.NAMES=FALSE),
-    rxUiGet.saemErrMuNames(x, ...)
-    )
+    rxUiGet.saemErrMuNames(x, ...))
 }
 
 #' @export
@@ -172,15 +171,17 @@ rxUiGet.saemIniDf <- function(x, ...) {
   .names <- rxUiGet.saemErrMuNames(x, ...)
   .est <- rxUiGet.saemErrMuEst(x, ...)
   .fix <- rxUiGet.saemErrMuFix(x, ...)
+  .theta$ntheta <- .theta$ntheta + .maxTheta
   do.call("rbind",
-          c(list(.theta),
-            lapply(seq_along(.names), function(i) {
-              data.frame(ntheta=.maxTheta+i, neta1=NA_real_, neta2=NA_real_,
-                         name=.names[i], lower=-Inf, est=.est[i], upper=Inf,
-                         fix=.fix[i], label=NA_character_, backTransform=NA_character_,
-                         condition=NA_character_, err=NA_character_)
-            }),
-            list(.eta)))
+          c(lapply(seq_along(.names),
+                   function(i) {
+                     data.frame(ntheta=.maxTheta+i, neta1=NA_real_, neta2=NA_real_,
+                                name=.names[i], lower=-Inf, est=.est[i], upper=Inf,
+                                fix=.fix[i], label=NA_character_, backTransform=NA_character_,
+                                condition=NA_character_, err=NA_character_)
+                   }),
+          list(.theta),
+          list(.eta)))
 }
 
 #' @export

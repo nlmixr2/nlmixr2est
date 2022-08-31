@@ -55,7 +55,6 @@ int _saemIncreaseTol=0;
 int _saemIncreasedTol2=0;
 double _saemOdeRecalcFactor = 1.0;
 int _saemMaxOdeRecalc = 0;
-
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
 
@@ -1029,7 +1028,7 @@ public:
       }
       //CHECK the following seg on b & yptr & fptr
       if (distribution == 1) { // residual downhill simplex
-        for(int b=0; b<nendpnt; ++b) {
+        for (int b=0; b<nendpnt; ++b) {
           double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
           int offsetR = res_offset[b];
           _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
@@ -2007,7 +2006,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
-	ind->par_ptr[_j] = _phi(_i, k++);
+        ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
   }
@@ -2036,35 +2035,35 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       ind->idx=j;
       double curT = getTimeS(ind->ix[ind->idx], ind);
       if (isDose(ind->evid[ind->ix[ind->idx]])){
-	// Need to calculate for advan sensitivities
-	saem_lhs((int)id, curT,
-		 getSolve(j), ind->lhs);
+        // Need to calculate for advan sensitivities
+        saem_lhs((int)id, curT,
+                 getSolve(j), ind->lhs);
       } else if (ind->evid[ind->ix[ind->idx]] == 0) {
-	saem_lhs((int)id, curT,
-		 getSolve(j), ind->lhs);
-	double cur = ind->lhs[0];
-	if (std::isnan(cur)) {
-	  cur = 1.0e99;
-	  hasNan = true;
-	  // NumericVector par(nPar);
-	  // for (int _j = 0; _j < nPar; _j++){
-	  //   par[_j] = ind->par_ptr[_j];
-	  // }
-	  // par.names() = parNames;
-	  // Rcpp::print(par);
-	}
-	g(elt, 0) = cur;
-	if (_rx->cens) {
-	  g(elt, 1) = ind->cens[ind->ix[ind->idx]];
-	} else {
-	  g(elt, 1) = 0;
-	}
-	if (_rx->limit) {
-	  g(elt, 2) = ind->limit[ind->ix[ind->idx]];
-	} else {
-	  g(elt, 2) = R_NegInf;
-	}
-	elt++;
+        saem_lhs((int)id, curT,
+                 getSolve(j), ind->lhs);
+        double cur = ind->lhs[0];
+        if (std::isnan(cur)) {
+          cur = 1.0e99;
+          hasNan = true;
+          // NumericVector par(nPar);
+          // for (int _j = 0; _j < nPar; _j++){
+          //   par[_j] = ind->par_ptr[_j];
+          // }
+          // par.names() = parNames;
+          // Rcpp::print(par);
+        }
+        g(elt, 0) = cur;
+        if (_rx->cens) {
+          g(elt, 1) = ind->cens[ind->ix[ind->idx]];
+        } else {
+          g(elt, 1) = 0;
+        }
+        if (_rx->limit) {
+          g(elt, 2) = ind->limit[ind->ix[ind->idx]];
+        } else {
+          g(elt, 2) = R_NegInf;
+        }
+        elt++;
       } // evid=2 does not need to be calculated
     }
   }
@@ -2079,6 +2078,111 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   }
   return g;
 }
+
+mat _opt_phi;
+mat _opt_evt;
+List _opt_opt;
+
+//[[Rcpp::export]]
+double saem_user_opt_ll_fun(NumericVector &resParsNV) {
+  vec _resPars = as<vec>(resParsNV);
+  mat _phi = _opt_phi;
+  mat _evt = _opt_evt;
+  List _opt = _opt_opt;
+  // yp has all the observations in the dataset
+  rx_solving_options_ind *ind;
+  rx_solving_options *op = _rx->op;
+  vec _id = _evt.col(0);
+  int _Nnlmixr2=(int)(_id.max()+1);
+  SEXP paramUpdate = _opt["paramUpdate"];
+  int *doParam = INTEGER(paramUpdate);
+  int nPar = Rf_length(paramUpdate);
+  // Fill in subject parameter information
+  for (int _i = 0; _i < _Nnlmixr2; ++_i) {
+    ind = &(_rx->subjects[_i]);
+    ind->solved = -1;
+    // ind->par_ptr
+    int k=0;
+    for (int _j = _resPars.size(); _j < nPar; _j++){
+      if (doParam[_j] == 1) {
+        ind->par_ptr[_j] = _phi(_i, k++);
+      }
+    }
+    for (int _j = 0; _j < _resPars.size(); _j++) {
+      if (doParam[_j] == 1) {
+        ind->par_ptr[_j] = _resPars[_j];
+      }
+    }
+  }
+  _rx->op->badSolve = 0;
+  saem_solve(_rx); // Solve the complete system (possibly in parallel)
+  int j=0;
+  while (_rx->op->badSolve && j < _saemMaxOdeRecalc){
+    _saemIncreaseTol=1;
+    rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
+    _rx->op->badSolve = 0;
+    saem_solve(_rx);
+    j++;
+  }
+  if (j != 0) {
+    // Not thread safe
+    rxode2::atolRtolFactor_(pow(_saemOdeRecalcFactor, -j));
+  }
+  mat g(_rx->nobs2, 3); // nobs EXCLUDING EVID=2
+  int elt=0;
+  bool hasNan = false;
+  unsigned int nNanWarn=0;
+  double ret = 0;
+  for (int id = 0; id < _Nnlmixr2; ++id) {
+    ind = &(_rx->subjects[id]);
+    iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
+    for (int j = 0; j < ind->n_all_times; ++j){
+      ind->idx=j;
+      double curT = getTimeS(ind->ix[ind->idx], ind);
+      if (isDose(ind->evid[ind->ix[ind->idx]])){
+        // Need to calculate for advan sensitivities
+        saem_lhs((int)id, curT,
+                 getSolve(j), ind->lhs);
+      } else if (ind->evid[ind->ix[ind->idx]] == 0) {
+        saem_lhs((int)id, curT,
+                 getSolve(j), ind->lhs);
+        double cur = ind->lhs[0];
+        if (std::isnan(cur)) {
+          cur = 1.0e99;
+          hasNan = true;
+        }
+        ret += cur;
+      } // evid=2 does not need to be calculated
+    }
+  }
+  if (op->stiff == 2) { // liblsoda
+    // Order by the overall solve time
+    // Should it be done every time? Every x times?
+    sortIds(_rx, 0);
+  }
+  if (hasNan && !_warnAtolRtol) {
+    RSprintf("NaN in prediction; Consider: relax atol & rtol; change initials; change seed; change structural model\n  warning only issued once per problem\n");
+    _warnAtolRtol = true;
+  }
+  return ret;
+}
+
+
+void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi, const mat &_evt, const List &_opt,
+                            vec &pas, unsigned int &kiter) {
+  _opt_phi = _phi;
+  _opt_evt = _evt;
+  _opt_opt = _opt;
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  Function newuoa = nlmixr2[".newuoa"];
+  int n = _resPars.size();
+  List ret = newuoa(_["par"] = _resPars, _["fn"] = nlmixr2["saem_user_opt_ll_fun"],
+                    _["control"]=List::create(_["rhoend"]=_saemTol,
+                                              _["maxfun"]=_saemItmax*n*n));
+  _resPars =  _resPars + pas(kiter)*(as<vec>(ret["x"]) - _resPars);
+}
+
 
 typedef SEXP(*mv_t)(SEXP);
 
@@ -2120,12 +2224,12 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
       stop("params must be non-nil");
     }
     rxode2::rxSolve_(obj, odeO,
-     		    R_NilValue,//const Nullable<CharacterVector> &specParams =
-     		    R_NilValue,//const Nullable<List> &extraArgs =
-     		    pars,//const RObject &params =
-     		    ev,//const RObject &events =
-     		    R_NilValue, // inits
-     		    1);//const int setupOnly = 0
+                     R_NilValue,//const Nullable<CharacterVector> &specParams =
+                     R_NilValue,//const Nullable<List> &extraArgs =
+                     pars,//const RObject &params =
+                     ev,//const RObject &events =
+                     R_NilValue, // inits
+                     1);//const int setupOnly = 0
   } else {
     stop("cannot find rxode2 model");
   }
