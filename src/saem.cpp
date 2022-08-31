@@ -36,6 +36,10 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
 			  int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
 			  int *iprint);
 
+void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi,
+                            const mat &_evt, const List &_opt,
+                            vec &pas, unsigned int &kiter);
+
 double *_saemYptr;
 double *_saemFptr;
 int _saemLen;
@@ -798,7 +802,6 @@ public:
       }
 
       vec f = fsave;
-      fsave = f;
       if (distribution == 1){
         // REprintf("dist=1\n");
         vec ft = f;
@@ -812,7 +815,7 @@ public:
           ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
         }
         // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-        // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
+        // focei g = sqrt(eff^2 * prop.sd^2 + add.sd^2)
         // This does not match focei's definition of add+prop
         vec g;
         g = vecares + vecbres % abs(ftT); //make sure g > 0
@@ -1653,8 +1656,10 @@ public:
         vecares = ares(ix_endpnt);
         vecbres = bres(ix_endpnt);
         if (DEBUG>0) Rcout << "par update successful\n";
-      } // end residual downhill simplex
-
+        // end residual downhill simplex
+      } else if (distribution == 2) {
+        saem_user_opt_ll_resid(__resLlMod, phiM, evtM, optM, pas, kiter);
+      }
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
       DDb=-D11/nmc-D2/nmc;
