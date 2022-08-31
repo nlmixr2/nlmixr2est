@@ -229,6 +229,7 @@
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
+    .cfg$resLlMod <- numeric(0)
     .cfg$low <- ui$saemLow
     .cfg$hi <- ui$saemHi
     .cfg$propT <- ui$saemPropT

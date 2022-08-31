@@ -626,7 +626,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .iniDf <- .ui$saemIniDf
   .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
                    .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
-  .est <- .saemInitThetaLlik(.est, x)  
+  .est <- .saemInitThetaLlik(.est, x)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]

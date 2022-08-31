@@ -58,6 +58,9 @@ int _saemMaxOdeRecalc = 0;
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
 
+arma::vec __resLlMod;
+
+
 // res_mod defines
 #define rmAdd 1
 #define rmProp 2
@@ -685,6 +688,7 @@ public:
     bres = as<vec>(x["bres"]);
     cres = as<vec>(x["cres"]);
     lres = as<vec>(x["lres"]);
+    __resLlMod = as<vec>(x["resLlMod"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
     // REprintf("yj\n");
@@ -1989,6 +1993,7 @@ rxGetId_t rxGetIdS;
 
 CharacterVector parNames;
 
+
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
@@ -2004,7 +2009,12 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     ind->solved = -1;
     // ind->par_ptr
     int k=0;
-    for (int _j = 0; _j < nPar; _j++){
+    for (int _j = 0; _j < __resLlMod.size(); ++_j) {
+      if (doParam[_j] == 1) {
+        ind->par_ptr[_j] = __resLlMod[_j];
+      }
+    }
+    for (int _j = __resLlMod.size(); _j < nPar; _j++){
       if (doParam[_j] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
       }
@@ -2103,6 +2113,7 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
     ind->solved = -1;
     // ind->par_ptr
     int k=0;
+    // The structure of this is c(llikRes, otherPars)
     for (int _j = _resPars.size(); _j < nPar; _j++){
       if (doParam[_j] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
