@@ -131,6 +131,11 @@ nmObjGet.phiR <- function(x, ...) {
   if (is.null(.phi)) return(NULL)
   .ret <- lapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
+    .d <- diag(.cov)
+    if (any(.d == 0) || any(!is.finite(.d))) {
+      .d1 <- length(.d)
+      return(matrix(rep(NA, .d1*.d1), .d1, .d1))
+    }
     .sd2 <- sqrt(diag(.cov))
     .cor <- stats::cov2cor(.cov)
     dimnames(.cor) <- dimnames(.cov)
@@ -150,11 +155,13 @@ nmObjGet.phiSE <- function(x, ...) {
   if (is.null(.phi)) return(NULL)
   .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
-    sqrt(diag(.cov))
+    suppressWarnings(sqrt(diag(.cov)))
   }, double(dim(.phi[[1]])[1]))))
   names(.ret) <- paste0("se(", names(.ret), ")")
   .id <- seq_along(.phi)
-  if (!is.null(names(.phi))) .id <- factor(.id, levels=names(.phi))
+  if (!is.null(names(.phi))) {
+    .id <- names(.phi)
+  }
   cbind(data.frame(ID=.id), .ret)
 }
 attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if present)"
@@ -168,11 +175,13 @@ nmObjGet.phiRSE <- function(x, ...) {
   if (is.null(.phi)) return(NULL)
   .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
-    sqrt(diag(.cov))/unlist(.eta[i,])*100
+    suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,])*100)
   }, double(dim(.phi[[1]])[1]))))
   names(.ret) <- paste0("rse(", names(.ret), ")%")
   .id <- seq_along(.phi)
-  if (!is.null(names(.phi))) .id <- factor(.id, levels=names(.phi))
+  if (!is.null(names(.phi))) {
+    .id <- names(.phi)
+  }
   cbind(data.frame(ID=.id), .ret)
 }
 attr(nmObjGet.phiRSE, "desc") <- "relative standard error of each individual's eta (if present)"

@@ -6,8 +6,7 @@
 // Harmonic mean correction see:
 // https://github.com/cran/lmomco/blob/8558903cdcdf6ce0640822a8f6ee7caf07ebd451/R/harmonic.mean.R
 // https://rdrr.io/cran/lmomco/man/harmonic.mean.html
-
-#define ARMA_DONT_PRINT_ERRORS
+#define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
 #include "shi21.h"

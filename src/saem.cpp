@@ -819,10 +819,8 @@ public:
 
         DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
         doCens(DYF, cens, limitT, f, g, yM);
-      } else if (distribution == 2){
-        DYF(indioM)=-yM%log(f)+f;
-      } else if (distribution == 3) {
-        DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
+      } else if (distribution == 2) {
+        DYF(indioM)=f;
       }
       else {
         RSprintf("unknown distribution (id=%d)\n", distribution);
@@ -1030,627 +1028,629 @@ public:
         Gamma2_phi0=diagmat(dGamma2_phi0);                         //CHK
       }
       //CHECK the following seg on b & yptr & fptr
-      for(int b=0; b<nendpnt; ++b) {
-        double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
-        int offsetR = res_offset[b];
-        _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
-        switch (res_mod(b)) {
-        case rmAdd:
-          {
-            if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
-              ares(b) = resValue[offsetR];
-            } else {
-              ares(b) = sqrt(sig2);
-            }
-          }
-          break;
-        case rmProp:
-          {
-            if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
-              bres(b) = resValue[offsetR];
-            } else {
-              if (sig2 == 0) sig2 = 1;
-              bres(b) = sqrt(sig2);
-            }
-          }
-          break;
-        case rmAddProp:
-          {
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            // yptr = ysb.memptr();
-            // fptr = fsb.memptr();
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=2;
-            double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
-            double step[2]={-.2, -.2};
-
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
+      if (distribution == 1) { // residual downhill simplex
+        for(int b=0; b<nendpnt; ++b) {
+          double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
+          int offsetR = res_offset[b];
+          _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
+          switch (res_mod(b)) {
+          case rmAdd:
+            {
+              if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
                 ares(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(ares(b)));
               } else {
-                start[curi++] = sqrt(fabs(ares(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 1] == 1) {
-                bres(b) = resValue[offsetR + 1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
+                ares(b) = sqrt(sig2);
               }
             }
-
-            // f = sum((ytr-ft)/g);
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp=addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemFn = obj;
-            _saemStep = step;
-            _saemStart=start;
-            _saemOpt(n, pxmin);
-            // Adjust back
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+            break;
+          case rmProp:
+            {
+              if (resFixed[offsetR] == 1 && kiter > (unsigned int)(nb_fixResid)) {
+                bres(b) = resValue[offsetR];
+              } else {
+                if (sig2 == 0) sig2 = 1;
+                bres(b) = sqrt(sig2);
               }
-              if (resFixed[offsetR + 1] == 0) {
-                double ab12 = pxmin[curi++];
+            }
+            break;
+          case rmAddProp:
+            {
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              // yptr = ysb.memptr();
+              // fptr = fsb.memptr();
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=2;
+              double start[2]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b)))};                  //force are & bres to be positive
+              double step[2]={-.2, -.2};
+
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  ares(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(ares(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(ares(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 1] == 1) {
+                  bres(b) = resValue[offsetR + 1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+              }
+
+              // f = sum((ytr-ft)/g);
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp=addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemFn = obj;
+              _saemStep = step;
+              _saemStart=start;
+              _saemOpt(n, pxmin);
+              // Adjust back
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 1] == 0) {
+                  double ab12 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+                }
+              } else {
+                double ab02 = pxmin[0];
+                double ab12 = pxmin[1];
+                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
                 bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
               }
-            } else {
-              double ab02 = pxmin[0];
-              double ab12 = pxmin[1];
-              ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-              bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
             }
+            break;
+          case rmAddPow:
+            { // add + pow
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              // yptr = ysb.memptr();
+              // fptr = fsb.memptr();
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(3);
+              double *pxmin = xmin.memptr();
+              int n=3;
+
+              // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
+              double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
+              double step[3]={-.2, -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  ares(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(ares(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(ares(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 1] == 1) {
+                  bres(b) = resValue[offsetR + 1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 2] == 1) {
+                  cres(b) = resValue[offsetR + 2];
+                  _saemFixedIdx[2] = 1;
+                  _saemFixedValue[2] = toPowEst(cres(b));
+                } else {
+                  start[curi++] = toPowEst(cres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objC;
+              _saemOpt(n, pxmin);
+              // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 1] == 0) {
+                  double ab12 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 2] == 0) {
+                  cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[curi++]) - cres(b));    //force are & bres to be positive
+                }
+              } else {
+                ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
+                bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
+                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
+              }
+            }
+            break;
+          case rmPow:
+            { // power
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=2;
+              double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
+              double step[2]={ -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  bres(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 1] == 1) {
+                  cres(b) = resValue[offsetR + 1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = toPowEst(cres(b));
+                } else {
+                  start[curi++] = toPowEst(cres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp =addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objD;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 1] == 0) {
+                  double ab12 = pxmin[curi++];
+                  cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
+                }
+              } else {
+                bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
+                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));      //force are & bres to be positive
+              }
+            }
+            break;
+          case rmAddLam:
+            { // additive + lambda
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=2;
+              double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+              double step[2]={ -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  ares(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(ares(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(ares(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 1] == 1) {
+                  lres(b) = resValue[offsetR + 1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = toLambdaEst(lres(b));
+                } else {
+                  start[curi++] = toLambdaEst(lres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objE;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 1] == 0) {
+                  double ab12 = pxmin[curi++];
+                  lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
+                }
+              } else {
+                ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+                lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
+              }
+            }
+            break;
+          case rmPropLam:
+            { // prop + lambda
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=2;
+              double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+              double step[2]={ -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  bres(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 1] == 1) {
+                  lres(b) = resValue[offsetR + 1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = toLambdaEst(lres(b));
+                } else {
+                  start[curi++] = toLambdaEst(lres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objF;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 1] == 0) {
+                  double ab12 = pxmin[curi++];
+                  lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
+                }
+              } else {
+                bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+                lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
+              }
+            }
+            break;
+          case rmPowLam:
+            { // pow + lambda
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=3;
+              double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+              double step[3]={ -.2, -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  bres(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR+1] == 1) {
+                  cres(b) = resValue[offsetR+1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = toPowEst(cres(b));
+                } else {
+                  start[curi++] = toPowEst(cres(b));
+                  n++;
+                }
+                if (resFixed[offsetR + 2] == 1) {
+                  lres(b) = resValue[offsetR + 2];
+                  _saemFixedIdx[2] = 1;
+                  _saemFixedValue[2] = toLambdaEst(lres(b));
+                } else {
+                  start[curi++] = toLambdaEst(lres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objG;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR+1] == 0) {
+                  double ab02 = pxmin[curi++];
+                  cres(b) = cres(b) + pas(kiter)*(toPow(ab02) - cres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 2] == 0) {
+                  double ab12 = pxmin[curi++];
+                  lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
+                }
+              } else {
+                bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
+                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
+                lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+              }
+            }
+            break;
+          case rmAddPropLam:
+            { // add + prop + lambda
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=3;
+              double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
+              double step[3]={ -.2, -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  ares(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(ares(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(ares(b)));
+                  n++;
+                }
+                if (resFixed[offsetR+1] == 1) {
+                  bres(b) = resValue[offsetR+1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR + 2] == 1) {
+                  lres(b) = resValue[offsetR + 2];
+                  _saemFixedIdx[2] = 1;
+                  _saemFixedValue[2] = toLambdaEst(lres(b));
+                } else {
+                  start[curi++] = toLambdaEst(lres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objH;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR+1] == 0) {
+                  double ab02 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 2] == 0) {
+                  double ab12 = pxmin[curi++];
+                  lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
+                }
+              } else {
+                ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+                bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+                lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
+              }
+            }
+            break;
+          case rmAddPowLam:
+            { // add + pow + lambda
+              uvec idx;
+              idx = find(ix_endpnt==b);
+              vec ysb, fsb;
+
+              ysb = ysM(idx);
+              fsb = fsM(idx);
+
+              //len = ysb.n_elem;                                        //CHK: needed by nelder
+              vec xmin(2);
+              double *pxmin = xmin.memptr();
+              int n=4;
+              double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
+              double step[4]={ -.2, -.2, -.2, -.2};
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                n = 0;
+                int curi=0;
+                if (resFixed[offsetR] == 1) {
+                  ares(b) = resValue[offsetR];
+                  _saemFixedIdx[0] = 1;
+                  _saemFixedValue[0] = sqrt(fabs(ares(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(ares(b)));
+                  n++;
+                }
+                if (resFixed[offsetR+1] == 1) {
+                  bres(b) = resValue[offsetR+1];
+                  _saemFixedIdx[1] = 1;
+                  _saemFixedValue[1] = sqrt(fabs(bres(b)));
+                } else {
+                  start[curi++] = sqrt(fabs(bres(b)));
+                  n++;
+                }
+                if (resFixed[offsetR+2] == 1) {
+                  cres(b) = resValue[offsetR+2];
+                  _saemFixedIdx[2] = 1;
+                  _saemFixedValue[2] = toPowEst(cres(b));
+                } else {
+                  start[curi++] = toPowEst(cres(b));
+                  n++;
+                }
+                if (resFixed[offsetR + 3] == 1) {
+                  lres(b) = resValue[offsetR + 3];
+                  _saemFixedIdx[3] = 1;
+                  _saemFixedValue[3] = toLambdaEst(lres(b));
+                } else {
+                  start[curi++] = toLambdaEst(lres(b));
+                  n++;
+                }
+              }
+              _saemYptr = ysb.memptr();
+              _saemFptr = fsb.memptr();
+              _saemLen  = ysb.n_elem;
+              _saemYj   = yj(b);
+              _saemPropT = propT(b);
+              _saemAddProp = addProp(b);
+              _saemLambda = lambda(b);
+              _saemLow = low(b);
+              _saemHi = hi(b);
+              _saemStep = step;
+              _saemStart = start;
+              _saemFn = objI;
+              _saemOpt(n, pxmin);
+              if (kiter > (unsigned int)(nb_fixResid)) {
+                int curi = 0;
+                if (resFixed[offsetR] == 0) {
+                  double ab02 = pxmin[curi++];
+                  ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR+1] == 0) {
+                  double ab02 = pxmin[curi++];
+                  bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 2] == 0) {
+                  double ab12 = pxmin[curi++];
+                  cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
+                }
+                if (resFixed[offsetR + 3] == 0) {
+                  double ab12 = pxmin[curi++];
+                  lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
+                }
+              } else {
+                ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
+                bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
+                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
+                lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
+              }
+            }
+            break;
           }
-          break;
-        case rmAddPow:
-          { // add + pow
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            // yptr = ysb.memptr();
-            // fptr = fsb.memptr();
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(3);
-            double *pxmin = xmin.memptr();
-            int n=3;
-
-            // REprintf("ares: %f bres: %f cres: %f\n", ares(b), bres(b), cres(b));
-            double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b))}; //force are & bres to be positive
-            double step[3]={-.2, -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                ares(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(ares(b)));
-              } else {
-                start[curi++] = sqrt(fabs(ares(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 1] == 1) {
-                bres(b) = resValue[offsetR + 1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 2] == 1) {
-                cres(b) = resValue[offsetR + 2];
-                _saemFixedIdx[2] = 1;
-                _saemFixedValue[2] = toPowEst(cres(b));
-              } else {
-                start[curi++] = toPowEst(cres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objC;
-            _saemOpt(n, pxmin);
-            // REprintf("\tares: %f bres: %f cres: %f\n", pxmin[0], pxmin[1], pxmin[2]);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 1] == 0) {
-                double ab12 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab12*ab12 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 2] == 0) {
-                cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[curi++]) - cres(b));    //force are & bres to be positive
-              }
-            } else {
-              ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b)); //force ares & bres to be positive
-              bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b)); //force ares & bres to be positive
-              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));
-            }
-          }
-          break;
-        case rmPow:
-          { // power
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=2;
-            double start[2]={sqrt(fabs(bres(b))), toPowEst(cres(b))};                  //force are & bres to be positive
-            double step[2]={ -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                bres(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 1] == 1) {
-                cres(b) = resValue[offsetR + 1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = toPowEst(cres(b));
-              } else {
-                start[curi++] = toPowEst(cres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp =addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objD;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 1] == 0) {
-                double ab12 = pxmin[curi++];
-                cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
-              }
-            } else {
-              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
-              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));      //force are & bres to be positive
-            }
-          }
-          break;
-        case rmAddLam:
-          { // additive + lambda
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=2;
-            double start[2]={sqrt(fabs(ares(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-            double step[2]={ -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                ares(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(ares(b)));
-              } else {
-                start[curi++] = sqrt(fabs(ares(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 1] == 1) {
-                lres(b) = resValue[offsetR + 1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = toLambdaEst(lres(b));
-              } else {
-                start[curi++] = toLambdaEst(lres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objE;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 1] == 0) {
-                double ab12 = pxmin[curi++];
-                lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
-              }
-            } else {
-              ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));   //force are & bres to be positive
-            }
-          }
-          break;
-        case rmPropLam:
-          { // prop + lambda
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=2;
-            double start[2]={sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-            double step[2]={ -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                bres(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 1] == 1) {
-                lres(b) = resValue[offsetR + 1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = toLambdaEst(lres(b));
-              } else {
-                start[curi++] = toLambdaEst(lres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objF;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 1] == 0) {
-                double ab12 = pxmin[curi++];
-                lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
-              }
-            } else {
-              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[1]) - lres(b));            //force are & bres to be positive
-            }
-          }
-          break;
-        case rmPowLam:
-          { // pow + lambda
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=3;
-            double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-            double step[3]={ -.2, -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                bres(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR+1] == 1) {
-                cres(b) = resValue[offsetR+1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = toPowEst(cres(b));
-              } else {
-                start[curi++] = toPowEst(cres(b));
-                n++;
-              }
-              if (resFixed[offsetR + 2] == 1) {
-                lres(b) = resValue[offsetR + 2];
-                _saemFixedIdx[2] = 1;
-                _saemFixedValue[2] = toLambdaEst(lres(b));
-              } else {
-                start[curi++] = toLambdaEst(lres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objG;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR+1] == 0) {
-                double ab02 = pxmin[curi++];
-                cres(b) = cres(b) + pas(kiter)*(toPow(ab02) - cres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 2] == 0) {
-                double ab12 = pxmin[curi++];
-                lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
-              }
-            } else {
-              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
-              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-            }
-          }
-          break;
-        case rmAddPropLam:
-          { // add + prop + lambda
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=3;
-            double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
-            double step[3]={ -.2, -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                ares(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(ares(b)));
-              } else {
-                start[curi++] = sqrt(fabs(ares(b)));
-                n++;
-              }
-              if (resFixed[offsetR+1] == 1) {
-                bres(b) = resValue[offsetR+1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR + 2] == 1) {
-                lres(b) = resValue[offsetR + 2];
-                _saemFixedIdx[2] = 1;
-                _saemFixedValue[2] = toLambdaEst(lres(b));
-              } else {
-                start[curi++] = toLambdaEst(lres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objH;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR+1] == 0) {
-                double ab02 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 2] == 0) {
-                double ab12 = pxmin[curi++];
-                lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
-              }
-            } else {
-              ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-              bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[2]) - lres(b));            //force are & bres to be positive
-            }
-          }
-          break;
-        case rmAddPowLam:
-          { // add + pow + lambda
-            uvec idx;
-            idx = find(ix_endpnt==b);
-            vec ysb, fsb;
-
-            ysb = ysM(idx);
-            fsb = fsM(idx);
-
-            //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
-            double *pxmin = xmin.memptr();
-            int n=4;
-            double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
-            double step[4]={ -.2, -.2, -.2, -.2};
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              n = 0;
-              int curi=0;
-              if (resFixed[offsetR] == 1) {
-                ares(b) = resValue[offsetR];
-                _saemFixedIdx[0] = 1;
-                _saemFixedValue[0] = sqrt(fabs(ares(b)));
-              } else {
-                start[curi++] = sqrt(fabs(ares(b)));
-                n++;
-              }
-              if (resFixed[offsetR+1] == 1) {
-                bres(b) = resValue[offsetR+1];
-                _saemFixedIdx[1] = 1;
-                _saemFixedValue[1] = sqrt(fabs(bres(b)));
-              } else {
-                start[curi++] = sqrt(fabs(bres(b)));
-                n++;
-              }
-              if (resFixed[offsetR+2] == 1) {
-                cres(b) = resValue[offsetR+2];
-                _saemFixedIdx[2] = 1;
-                _saemFixedValue[2] = toPowEst(cres(b));
-              } else {
-                start[curi++] = toPowEst(cres(b));
-                n++;
-              }
-              if (resFixed[offsetR + 3] == 1) {
-                lres(b) = resValue[offsetR + 3];
-                _saemFixedIdx[3] = 1;
-                _saemFixedValue[3] = toLambdaEst(lres(b));
-              } else {
-                start[curi++] = toLambdaEst(lres(b));
-                n++;
-              }
-            }
-            _saemYptr = ysb.memptr();
-            _saemFptr = fsb.memptr();
-            _saemLen  = ysb.n_elem;
-            _saemYj   = yj(b);
-            _saemPropT = propT(b);
-            _saemAddProp = addProp(b);
-            _saemLambda = lambda(b);
-            _saemLow = low(b);
-            _saemHi = hi(b);
-            _saemStep = step;
-            _saemStart = start;
-            _saemFn = objI;
-            _saemOpt(n, pxmin);
-            if (kiter > (unsigned int)(nb_fixResid)) {
-              int curi = 0;
-              if (resFixed[offsetR] == 0) {
-                double ab02 = pxmin[curi++];
-                ares(b) = ares(b) + pas(kiter)*(ab02*ab02 - ares(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR+1] == 0) {
-                double ab02 = pxmin[curi++];
-                bres(b) = bres(b) + pas(kiter)*(ab02*ab02 - bres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 2] == 0) {
-                double ab12 = pxmin[curi++];
-                cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
-              }
-              if (resFixed[offsetR + 3] == 0) {
-                double ab12 = pxmin[curi++];
-                lres(b) = lres(b) + pas(kiter)*(toLambda(ab12) - lres(b));    //force are & bres to be positive
-              }
-            } else {
-              ares(b) = ares(b) + pas(kiter)*(pxmin[0]*pxmin[0] - ares(b));    //force are & bres to be positive
-              bres(b) = bres(b) + pas(kiter)*(pxmin[1]*pxmin[1] - bres(b));    //force are & bres to be positive
-              cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[2]) - cres(b));    //force are & bres to be positive
-              lres(b) = lres(b) + pas(kiter)*(toLambda(pxmin[3]) - lres(b));            //force are & bres to be positive
-            }
-          }
-          break;
+          sigma2[b] = sig2;                                          //CHK: sigma2[] use
+          if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
+          if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
         }
-        sigma2[b] = sig2;                                          //CHK: sigma2[] use
-        if (sigma2[b]>1.0e99) sigma2[b] = 1.0e99;
-        if (std::isnan(sigma2[b])) sigma2[b] = 1.0e99;
-      }
-      vecares = ares(ix_endpnt);
-      vecbres = bres(ix_endpnt);
-      if (DEBUG>0) Rcout << "par update successful\n";
+        vecares = ares(ix_endpnt);
+        vecbres = bres(ix_endpnt);
+        if (DEBUG>0) Rcout << "par update successful\n";
+      } // end residual downhill simplex
 
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
@@ -1909,10 +1909,7 @@ private:
           DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
           break;
         case 2:
-          DYF(mx.indioM)=-mx.yM%log(fc)+fc;
-          break;
-        case 3:
-          DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
+          DYF(mx.indioM)=fc;
           break;
         }
         doCens(DYF, cens, limitT, fc, gc, mx.yM);
