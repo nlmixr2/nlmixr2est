@@ -60,6 +60,12 @@ nmObjGet.dataNormInfo <- function(x, ...) {
   .ret
 }
 
+
+#' @export
+nmObjGet.warnings <-function(x, ...) {
+  get("runInfo", x[[1]])
+}
+
 ##' @export
 nmObjGetData.default <- function(x, ...) {
   NULL

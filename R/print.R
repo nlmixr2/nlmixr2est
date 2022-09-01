@@ -312,6 +312,10 @@ print.nlmixr2FitCore <- function(x, ...) {
           crayon::bold$blue("$shrink")
         ), "\n")
       }
+      if (length(x$runInfo) > 0) {
+        cat(paste0("  Information about run found in (", crayon::yellow(.bound),
+                   crayon::bold$blue("$runInfo"), ")\n"))
+      }
       cat(paste0(
         "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
         as.character(x$censInformation), "\n"
@@ -404,6 +408,9 @@ print.nlmixr2FitCore <- function(x, ...) {
   .c <- c(.c, paste0(
     "  Censoring: ",
     as.character(x$censInformation)))
+  if (length(x$runInfo) > 0) {
+    .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo)"))
+  }
   if (x$message != "") {
     .c <- c(
       .c, paste0("  Minimization message (", .bound, "$message): "),
