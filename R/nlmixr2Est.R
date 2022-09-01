@@ -29,6 +29,7 @@ nlmixr2Est <- function(env, ...) {
   } else if (!inherits(get("ui", envir=env), "rxUi")) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
   }
+ assign("ui", .cloneEnv(get("ui", envir=env)), envir=env)
   if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)
   } else if (!inherits(get("data", envir=env), "data.frame")) {

@@ -2,7 +2,7 @@
   .cls <- attr(env, "class")
   .env <- new.env(parent = emptyenv())
   for (.x in ls(env, all.names=TRUE)) {
-    if (is.environment(get(.x, env))){
+    if (is.environment(get(.x, env))) {
       assign(.x, .cloneEnv(get(.x, env)), .env)
     } else {
       assign(.x, get(.x, env), .env)
