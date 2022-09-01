@@ -1,5 +1,5 @@
 // [[Rcpp::plugins(openmp)]]
-#define ARMA_DONT_PRINT_ERRORS
+#define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
 #include "utilc.h"
