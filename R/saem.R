@@ -9,6 +9,11 @@
   .opt$estimate
 }
 
+.saemLlOpt1 <- function(p1) {
+  .opt <- stats::nlm(saem_user_opt_ll_fun, p1)
+  .opt$estimate
+}
+
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1

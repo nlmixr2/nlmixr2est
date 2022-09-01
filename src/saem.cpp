@@ -1903,29 +1903,28 @@ private:
 
         fc = fcMat.col(0);
         vec fcT(fc.size());
-        fs = fc;
         vec yt(fc.size());
-        for (int i = fc.size(); i--;) {
-          int cur = ix_endpnt(i);
-          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
-          fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          yt(i)     = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
-        }
-        gc = vecares + vecbres % abs(fcT); //make sure gc > 0
-        gc.elem( find( gc == 0.0) ).fill(1);
-        gc.elem( find( gc < double_xmin) ).fill(double_xmin);
-        gc.elem( find( gc > xmax) ).fill(xmax);
-
+        fs = fc;
         switch (distribution) {
         case 1:
+          for (int i = fc.size(); i--;) {
+            int cur = ix_endpnt(i);
+            limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
+            fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            yt(i)     = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
+          }
+          gc = vecares + vecbres % abs(fcT); //make sure gc > 0
+          gc.elem( find( gc == 0.0) ).fill(1);
+          gc.elem( find( gc < double_xmin) ).fill(double_xmin);
+          gc.elem( find( gc > xmax) ).fill(xmax);
           DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
+          doCens(DYF, cens, limitT, fc, gc, mx.yM);
           break;
         case 2:
           DYF(mx.indioM)=fc;
           break;
         }
-        doCens(DYF, cens, limitT, fc, gc, mx.yM);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
@@ -2020,8 +2019,8 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     for (int _j = 0; _j < nRes; ++_j) {
       ind->par_ptr[_j] = __resLlMod[_j];
     }
-    for (int _j = nRes; _j < nPar; _j++){
-      if (doParam[_j - nRes] == 1) {
+    for (int _j = 0; _j < nPar; _j++){
+      if (doParam[_j] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
@@ -2099,11 +2098,9 @@ mat _opt_phi;
 mat _opt_evt;
 List _opt_opt;
 
-//[[Rcpp::export]]
-double saem_user_opt_ll_fun(NumericVector &resParsNV) {
-  vec _resPars = as<vec>(resParsNV);
-  mat _phi = _opt_phi;
-  mat _evt = _opt_evt;
+double saem_user_opt_ll_fun_(arma::vec _resPars) {
+  mat  _phi = _opt_phi;
+  mat  _evt = _opt_evt;
   List _opt = _opt_opt;
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
@@ -2115,20 +2112,23 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
   int nPar = Rf_length(paramUpdate);
   // Fill in subject parameter information
   int nResPars = _resPars.size();
+  //NumericVector checkPars(nPar);
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = &(_rx->subjects[_i]);
     ind->solved = -1;
     // ind->par_ptr
     int k=0;
     // The structure of this is c(llikRes, otherPars)
-    for (int _j = nResPars; _j < nPar; _j++){
-      if (doParam[_j - nResPars] == 1) {
+    for (int _j = 0; _j < nResPars; _j++) {
+      ind->par_ptr[_j] = _resPars[_j];
+    }
+    for (int _j = 0; _j < nPar; _j++) {
+      if (doParam[_j] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
-    for (int _j = 0; _j < _resPars.size(); _j++) {
-      ind->par_ptr[_j] = _resPars[_j];
-    }
+    //std::copy(ind->par_ptr, ind->par_ptr+ nPar, checkPars.begin());
+    //Rcpp::print(wrap(checkPars));
   }
   _rx->op->badSolve = 0;
   saem_solve(_rx); // Solve the complete system (possibly in parallel)
@@ -2165,7 +2165,7 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
         if (R_finite(cur)) {
           ret += cur;
         } else {
-          ret  += 1.0e99;
+          ret += -10;
           hasNan = true;
         }
       } // evid=2 does not need to be calculated
@@ -2180,7 +2180,20 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
     RSprintf("NaN in prediction; Consider: relax atol & rtol; change initials; change seed; change structural model\n  warning only issued once per problem\n");
     _warnAtolRtol = true;
   }
-  return ret;
+  return -2*ret;
+}
+
+//[[Rcpp::export]]
+double saem_user_opt_ll_fun(NumericVector &resParsNV) {
+  vec _resPars = as<vec>(resParsNV);
+  return saem_user_opt_ll_fun_(as<vec>(resParsNV));
+}
+
+void saem_user_opt_ll_resid_obj(double *ab, double *fx) {
+  int n = __resLlMod.size();
+  arma::vec resPars(n);
+  std::copy(ab, ab + n, resPars.begin());
+  *fx = saem_user_opt_ll_fun_(resPars);
 }
 
 void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi, const mat &_evt, const List &_opt,
@@ -2188,14 +2201,33 @@ void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi, const mat &_evt, con
   _opt_phi = _phi;
   _opt_evt = _evt;
   _opt_opt = _opt;
-  Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Function newuoa = nlmixr2[".newuoa"];
   int n = _resPars.size();
-  List ret = newuoa(_["par"] = _resPars, _["fn"] = nlmixr2["saem_user_opt_ll_fun"],
-                    _["control"]=List::create(_["rhoend"]=_saemTol,
-                                              _["maxfun"]=_saemItmax*n*n));
-  _resPars =  _resPars + pas(kiter)*(as<vec>(ret["x"]) - _resPars);
+  if (n == 0) return;
+  if (n == 1) {
+    // Use R's optimize for unidimensional optimization
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
+    Function optimize1 = nlmixr2[".saemLlOpt1"];
+    _resPars =  _resPars + pas(kiter)*(as<vec>(optimize1(_resPars)) - _resPars);
+  } else {
+    int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
+    double ynewlo;
+    arma::vec pxmin = _resPars;
+    double *in = _resPars.memptr();
+    double *out = pxmin.memptr();
+    nelder_fn(saem_user_opt_ll_resid_obj, n, in, _saemStep,
+              itmax, _saemTol, 1.0, 2.0, .5, &iconv, &it,
+              &nfcall, &ynewlo, out, &iprint);
+    _resPars =  _resPars + pas(kiter)*(pxmin - _resPars);
+    return;
+    // Try Newoua
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
+    Function newuoa = nlmixr2[".saemLlOptNewUoa"];
+    arma::vec ret = as<arma::vec>(newuoa(_["par"] = _resPars, _["rhoend"]=_saemTol,
+                                         _["maxfun"]=_saemItmax*n*n));
+    _resPars =  _resPars + pas(kiter)*(ret - _resPars);
+  }
 }
 
 
