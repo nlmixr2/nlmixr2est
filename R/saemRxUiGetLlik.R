@@ -1,5 +1,6 @@
 #' @export
 rxUiGet.saemErrDf <- function(x, ...) {
+  if (!rxUiGet.saemModelNeedsLlik(x, ...)) return(NULL)
   .x <- x[[1]]
   .w <- !is.na(.x$iniDf$ntheta) & !is.na(.x$iniDf$err)
   if (length(.w) == 0L) return(NULL)
