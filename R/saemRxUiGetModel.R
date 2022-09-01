@@ -297,7 +297,9 @@ rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
   .ui <- x[[1]]
-  .par <- c(rxUiGet.saemParamsToEstimateCov(x, ...), .ui$covariates)
+  .par <- c(rxUiGet.saemErrMuNames(x, ...),
+            rxUiGet.saemParamsToEstimateCov(x, ...),
+            .ui$covariates)
   paste0("params(", paste(.par, collapse=","), ")")
 }
 attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"

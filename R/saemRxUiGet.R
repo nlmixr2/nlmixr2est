@@ -589,12 +589,9 @@ rxUiGet.saemLogEta <- function(x, ...) {
   .ce <- .ui$muRefCurEval
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
-  .log2 <- rxUiGet.saemErrMuEstLog(x, ...)
   vapply(.thetas, function(x) {
     .w <- which(.ce$parameter == x)
     if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
-    .w <- which(names(.log2) == x)
-    if (length(.w) == 1L) return(.log2[.w])
     FALSE
   }, logical(1),USE.NAMES=TRUE)
 }

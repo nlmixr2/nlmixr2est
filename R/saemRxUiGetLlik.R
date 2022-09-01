@@ -14,50 +14,9 @@ rxUiGet.saemErrMuNames <- function(x, ...) {
 }
 
 #' @export
-rxUiGet.saemErrMuEst <- function(x, ...) {
+rxUiGet.saemResLlMod <- function(x, ...) {
   .iniErr <- rxUiGet.saemErrDf(x, ...)
-  if (is.null(.iniErr)) return(NULL)
-  setNames(
-    vapply(seq_along(.iniErr$est),
-           function(i) {
-             .low <- .iniErr$lower[i]
-             .hi <- .iniErr$upper[i]
-             .est <- .iniErr$est[i]
-             if (!is.finite(.low) && !is.finite(.hi)) {
-               return(logit(.est, .low, .hi))
-             } else if (is.finite(.low) && !is.finite(.hi)) {
-               return(log(.est - .low))
-             } else if (!is.finite(.low) && is.finite(.hi)) {
-               return(log(.low - .est))
-             } else if (!is.finite(.low) && !is.finite(.hi)) {
-               return(.est)
-             }
-           }, numeric(1), USE.NAMES=FALSE),
-    rxUiGet.saemErrMuNames(x, ...)
-    )
-}
-
-#' @export
-rxUiGet.saemErrMuEstLog <- function(x, ...) {
-  .iniErr <- rxUiGet.saemErrDf(x, ...)
-  if (is.null(.iniErr)) return(NULL)
-  setNames(
-    vapply(seq_along(.iniErr$est),
-           function(i) {
-             .low <- .iniErr$lower[i]
-             .hi <- .iniErr$upper[i]
-             if (is.finite(.low) && !is.finite(.hi) && .low == 0) {
-               return(TRUE)
-             }
-             FALSE
-           }, logical(1), USE.NAMES=FALSE),
-  rxUiGet.saemErrMuNames(x, ...))
-}
-
-#' @export
-rxUiGet.saemErrMuEst <- function(x, ...) {
-  .iniErr <- rxUiGet.saemErrDf(x, ...)
-  if (is.null(.iniErr)) return(NULL)
+  if (is.null(.iniErr)) return(numeric(0))
   setNames(
     vapply(seq_along(.iniErr$est),
            function(i) {
