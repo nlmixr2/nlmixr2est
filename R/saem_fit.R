@@ -113,7 +113,8 @@
                        perNoCor=0.75,
                        perFixOmega=0.5,
                        perFixResid=0.75,
-                       resFixed) {
+                       resFixed,
+                       resLlMod) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -583,8 +584,10 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
+  cfg$resLlMod <- resLlMod
   cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) +
-                                         ifelse(distribution==2L, 0, sum(1L - resFixed)))
+                                         ifelse(distribution==2L, length(resLlMod),
+                                                sum(1L - resFixed)))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

@@ -221,7 +221,8 @@
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
-                        distribution=ui$saemDistribution)
+                        distribution=ui$saemDistribution,
+                        resLlMod=ui$saemResLlMod)
     .print <- rxode2::rxGetControl(ui, "print", 1)
     if (inherits(.print, "numeric")) {
       .cfg$print <- as.integer(.print)
@@ -229,7 +230,6 @@
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
-    .cfg$resLlMod <- ui$saemResLlMod
     .cfg$low <- ui$saemLow
     .cfg$hi <- ui$saemHi
     .cfg$propT <- ui$saemPropT

@@ -1734,6 +1734,8 @@ public:
       if (distribution == 1) {
         g2 = vcsig2.elem(resKeep);
         pl = join_cols(pl, g2);        
+      } else {
+        pl = join_cols(pl,__resLlMod);
       }
       par_hist.row(kiter) = pl.t();
       if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
@@ -2008,19 +2010,18 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   SEXP paramUpdate = _opt["paramUpdate"];
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
+  int nRes = __resLlMod.size();
   // Fill in subject parameter information
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = &(_rx->subjects[_i]);
     ind->solved = -1;
     // ind->par_ptr
     int k=0;
-    for (int _j = 0; _j < __resLlMod.size(); ++_j) {
-      if (doParam[_j] == 1) {
-        ind->par_ptr[_j] = __resLlMod[_j];
-      }
+    for (int _j = 0; _j < nRes; ++_j) {
+      ind->par_ptr[_j] = __resLlMod[_j];
     }
-    for (int _j = __resLlMod.size(); _j < nPar; _j++){
-      if (doParam[_j] == 1) {
+    for (int _j = nRes; _j < nPar; _j++){
+      if (doParam[_j - nRes] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
@@ -2113,21 +2114,20 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
   // Fill in subject parameter information
+  int nResPars = _resPars.size();
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = &(_rx->subjects[_i]);
     ind->solved = -1;
     // ind->par_ptr
     int k=0;
     // The structure of this is c(llikRes, otherPars)
-    for (int _j = _resPars.size(); _j < nPar; _j++){
-      if (doParam[_j] == 1) {
+    for (int _j = nResPars; _j < nPar; _j++){
+      if (doParam[_j - nResPars] == 1) {
         ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
     for (int _j = 0; _j < _resPars.size(); _j++) {
-      if (doParam[_j] == 1) {
-        ind->par_ptr[_j] = _resPars[_j];
-      }
+      ind->par_ptr[_j] = _resPars[_j];
     }
   }
   _rx->op->badSolve = 0;
@@ -2144,7 +2144,6 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
     // Not thread safe
     rxode2::atolRtolFactor_(pow(_saemOdeRecalcFactor, -j));
   }
-  mat g(_rx->nobs2, 3); // nobs EXCLUDING EVID=2
   int elt=0;
   bool hasNan = false;
   unsigned int nNanWarn=0;
@@ -2163,11 +2162,12 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
         saem_lhs((int)id, curT,
                  getSolve(j), ind->lhs);
         double cur = ind->lhs[0];
-        if (std::isnan(cur)) {
-          cur = 1.0e99;
+        if (R_finite(cur)) {
+          ret += cur;
+        } else {
+          ret  += 1.0e99;
           hasNan = true;
         }
-        ret += cur;
       } // evid=2 does not need to be calculated
     }
   }
@@ -2182,7 +2182,6 @@ double saem_user_opt_ll_fun(NumericVector &resParsNV) {
   }
   return ret;
 }
-
 
 void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi, const mat &_evt, const List &_opt,
                             vec &pas, unsigned int &kiter) {
