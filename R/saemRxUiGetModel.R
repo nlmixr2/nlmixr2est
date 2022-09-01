@@ -84,7 +84,7 @@
 .saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
-  lapply(ui$lstExpr, function(line){
+  lapply(ui$lstExpr, function(line) {
     .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
   })
 }
@@ -113,7 +113,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -122,7 +122,7 @@ nmGetDistributionSaemLines <- function(line) {
 #' @export
 nmGetDistributionSaemLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  lapply(seq_along(.predDf$cond), function(c){
+  lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createSaemLineObject(line, c)
     nmGetDistributionSaemLines(.mod)
   })
@@ -142,13 +142,20 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
-}
-
-#' @export
 nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
+  .rx <- line[[1]]
+  .pred1 <- line[[2]]
+  .errNum <- line[[3]]
+  lapply(rxode2::.handleSingleErrTypeNormOrTFoceiBase(.rx, .pred1, .errNum, rxPredLlik=TRUE),
+         function(x) {
+           if (identical(x[[1]], quote(`~`)) &&
+                 identical(x[[2]], quote(`rx_pred_`))) {
+             .ret <- x
+             .ret[[1]] <- quote(`<-`)
+             return(.ret)
+           }
+           x
+         })
 }
 
 #' @export
@@ -161,30 +168,157 @@ rxUiGet.saemParamsLine <- function(x, ...) {
 }
 
 #' @export
+rxUiGet.saemErrDf <- function(x, ...) {
+  .x <- x[[1]]
+  .w <- !is.na(.x$iniDf$ntheta) & !is.na(.x$iniDf$err)
+  if (length(.w) == 0L) return(NULL)
+  .x$iniDf[.w, ]
+}
+
+#' @export
+rxUiGet.saemErrMuNames <- function(x, ...) {
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  if (is.null(.iniErr)) return(NULL)
+  paste0("rx_err_", seq_along(.iniErr$name), "_")
+}
+
+#' @export
+rxUiGet.saemErrMuEst <- function(x, ...) {
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  if (is.null(.iniErr)) return(NULL)
+  setNames(
+    vapply(seq_along(.iniErr$est),
+           function(i) {
+             .low <- .iniErr$lower[i]
+             .hi <- .iniErr$upper[i]
+             .est <- .iniErr$est[i]
+             if (!is.finite(.low) && !is.finite(.hi)) {
+               return(logit(.est, .low, .hi))
+             } else if (is.finite(.low) && !is.finite(.hi)) {
+               return(log(.est - .low))
+               return(str2lang(paste0(.name, "<- ", .low, " + exp(rx_err_", i, ")")))
+             } else if (!is.finite(.low) && is.finite(.hi)) {
+               return(log(.low - .est))
+             } else if (!is.finite(.low) && !is.finite(.hi)) {
+               return(.est)
+             }
+           }, numeric(1), USE.NAMES=FALSE),
+    rxUiGet.saemErrMuNames(x, ...)
+    )
+}
+
+#' @export
+rxUiGet.saemErrMuEstLog <- function(x, ...) {
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  if (is.null(.iniErr)) return(NULL)
+  setNames(
+    vapply(seq_along(.iniErr$est),
+           function(i) {
+             .low <- .iniErr$lower[i]
+             .hi <- .iniErr$upper[i]
+             if (is.finite(.low) && !is.finite(.hi) && .low == 0) {
+               return(TRUE)
+             }
+             FALSE
+           }, logical(1), USE.NAMES=FALSE),
+  rxUiGet.saemErrMuNames(x, ...))
+}
+
+#' @export
+rxUiGet.saemErrMuEst <- function(x, ...) {
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  if (is.null(.iniErr)) return(NULL)
+  setNames(
+    vapply(seq_along(.iniErr$est),
+           function(i) {
+             .low <- .iniErr$lower[i]
+             .hi <- .iniErr$upper[i]
+             .est <- .iniErr$est[i]
+             if (!is.finite(.low) && !is.finite(.hi)) {
+               return(logit(.est, .low, .hi))
+             } else if (is.finite(.low) && !is.finite(.hi)) {
+               return(log(.est - .low))
+               return(str2lang(paste0(.name, "<- ", .low, " + exp(rx_err_", i, ")")))
+             } else if (!is.finite(.low) && is.finite(.hi)) {
+               return(log(.low - .est))
+             } else if (!is.finite(.low) && !is.finite(.hi)) {
+               return(.est)
+             }
+           }, numeric(1), USE.NAMES=FALSE),
+    rxUiGet.saemErrMuNames(x, ...)
+    )
+}
+
+#' @export
+rxUiGet.saemErrMu <- function(x, ...) {
+  .iniErr <- rxUiGet.saemErrDf(x, ...)
+  if (is.null(.iniErr)) return(NULL)
+  lapply(seq_along(.iniErr$est),
+         function(i) {
+           .name <- .iniErr$name[i]
+           .low <- .iniErr$lower[i]
+           .hi <- .iniErr$upper[i]
+           if (!is.finite(.low) && !is.finite(.hi)) {
+             return(str2lang(paste0(.name, "<- expit(rx_err_", i,
+                                    "_, ", .low, ", ", .hi, ")")))
+           } else if (is.finite(.low) && !is.finite(.hi)) {
+             return(str2lang(paste0(.name, "<- ", .low, " + exp(rx_err_", i, ")")))
+           } else if (!is.finite(.low) && is.finite(.hi)) {
+             return(str2lang(paste0(.name, "<- ", .hi, " - exp(rx_err_", i, ")")))
+           } else if (!is.finite(.low) && !is.finite(.hi)) {
+             return(str2lang(paste0(.name, "<- rx_err_", i, ")")))
+           }
+         })
+}
+
+#' @export
+rxUiGet.saemModelNeedsLlik <- function(x, ...) {
+  .ui <- x[[1]]
+  .ret <- any(.ui$predDf$distribution != "norm")
+  if (.ret) return(.ret)
+  # FIXME: check for complicated error expressions
+  FALSE
+}
+
+.saemIntegrateErrMu <- function(ui, lines) {
+  if (ui$saemModelNeedsLlik) {
+    .ref <- ui$saemErrMu
+    .ret <- lines
+    .ret[[2]] <- as.call(c(list(quote(`{`)),
+                           .ref,
+                           lapply(seq_along(lines[[2]])[-1], function(i) {
+                             lines[[2]][[i]]
+                           })))
+    return(.ret)
+  }
+  lines
+}
+
+#' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
-                              paramsLine=NA,
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  .saemIntegrateErrMu(.f,
+                      rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
+                                                  paramsLine=NA,
+                                                  modelVars=TRUE,
+                                                  cmtLines=FALSE,
+                                                  dvidLine=FALSE,
+                                                  lstExpr=.saemDropMuRefFromModel(.f)))
 }
 #attr(rxUiGet.saemModel0, "desc") <- "saem initial model"
 
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  .saemIntegrateErrMu(.f,
+                      rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
+                                                  paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                                                  modelVars=TRUE,
+                                                  cmtLines=FALSE,
+                                                  dvidLine=FALSE,
+                                                  lstExpr=.saemDropMuRefFromModel(.f)))
 }
 # attr(rxUiGet.saemModel0, "desc") <- "saem predOnly for use in calculating residuals with focei engine"
-
-
 
 #' Load the saem model into symengine
 #'
@@ -253,6 +387,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  if (rxUiGet.saemModelNeedsLlik(x, ...)) {
+    .ret <- c(rxUiGet.saemErrMuNames(x, ...), .ret)
+  }
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret

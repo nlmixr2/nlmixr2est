@@ -27,7 +27,7 @@
 #' @param mcmc a list of various mcmc options
 #' @param ODEopt optional ODE solving options
 #' @param seed seed for random number generator
-#' @param distribution one of c("normal","poisson","binomial")
+#' @param distribution either 1L for saem normal or 2L for log-likelihood
 #' @param fixed a character vector of fixed effect only parameters (no random effects attached) to be fixed
 #' @param DEBUG Integer determining if debugging is enabled
 #' @param type indicates the type of optimization for the residuals; Can be one of c("nelder-mead", "newuoa")
@@ -100,7 +100,7 @@
 .configsaem <- function(model, data, inits,
                        mcmc = list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2)),
                        rxControl = list(atol = 1e-6, rtol = 1e-4, method = "lsoda", maxeval = 100000),
-                       distribution = c("normal", "poisson", "binomial"),
+                       distribution = 1L,
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
@@ -125,9 +125,6 @@
   rxControl <- do.call(rxode2::rxControl, rxControl)
   # mcmc=list(niter=c(200,300), nmc=3, nu=c(2,2,2));ODEopt = list(atol=1e-6, rtol=1e-4, stiff=1, transit_abs=0);distribution=c("normal","poisson","binomial");seed=99;data=dat;distribution=1;fixed=NULL
   set.seed(seed)
-  distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
-  distribution <- match.arg(distribution)
-  distribution <- distribution.idx[distribution]
   .data <- data
   ## rxode2::rxTrans(data, model)
   data <- list(nmdat = data)
