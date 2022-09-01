@@ -1760,7 +1760,6 @@ nlmixr2Est.fo <- function(env, ...) {
 #'@export
 nlmixr2Est.output <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
 
   .foceiFamilyControl(env, ...)
