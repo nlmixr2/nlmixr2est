@@ -14,6 +14,17 @@
   .opt$estimate
 }
 
+.saemLlOptNewUoa <- function(par, rhoend, maxfun) {
+  .ctl <- list(npt = length(par) * 2 + 1,
+               rhobeg = 0.2,
+               rhoend = rhoend,
+               maxfun = maxfun,
+               iprint = 0L)
+  .ret <- minqa::newuoa(par, saem_user_opt_ll_fun,
+                        control = .ctl)
+  .ret$par
+}
+
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1

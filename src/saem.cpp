@@ -61,9 +61,7 @@ double _saemOdeRecalcFactor = 1.0;
 int _saemMaxOdeRecalc = 0;
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
-
 arma::vec __resLlMod;
-
 
 // res_mod defines
 #define rmAdd 1
@@ -2165,7 +2163,6 @@ double saem_user_opt_ll_fun_(arma::vec _resPars) {
         if (R_finite(cur)) {
           ret += cur;
         } else {
-          ret += -10;
           hasNan = true;
         }
       } // evid=2 does not need to be calculated
@@ -2203,23 +2200,13 @@ void saem_user_opt_ll_resid(vec &_resPars, const mat &_phi, const mat &_evt, con
   _opt_opt = _opt;
   int n = _resPars.size();
   if (n == 0) return;
-  if (n == 1) {
+  if (n == 0) {
     // Use R's optimize for unidimensional optimization
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function optimize1 = nlmixr2[".saemLlOpt1"];
     _resPars =  _resPars + pas(kiter)*(as<vec>(optimize1(_resPars)) - _resPars);
   } else {
-    int iconv, it, nfcall, iprint=0, itmax=_saemItmax*n;
-    double ynewlo;
-    arma::vec pxmin = _resPars;
-    double *in = _resPars.memptr();
-    double *out = pxmin.memptr();
-    nelder_fn(saem_user_opt_ll_resid_obj, n, in, _saemStep,
-              itmax, _saemTol, 1.0, 2.0, .5, &iconv, &it,
-              &nfcall, &ynewlo, out, &iprint);
-    _resPars =  _resPars + pas(kiter)*(pxmin - _resPars);
-    return;
     // Try Newoua
     Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");

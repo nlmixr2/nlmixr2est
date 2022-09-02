@@ -267,7 +267,7 @@
                                            list(id),
                                            unique)[, -1, drop = FALSE])
   }
-  if (!is.null(covariables)){
+  if (!is.null(covariables)) {
     if (length(covariables) == N * data$N.covar) {
       dim(covariables) <- c(N, data$N.covar)
     } else {
@@ -316,7 +316,8 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  dat <- .as.data.frame(dat[, -6])
+  dat <- .as.data.frame(dat)
+
   names(dat) <- toupper(names(dat))
   dat$ID <- as.integer(dat$ID)
 
