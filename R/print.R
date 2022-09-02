@@ -313,8 +313,13 @@ print.nlmixr2FitCore <- function(x, ...) {
         ), "\n")
       }
       if (length(x$runInfo) > 0) {
-        cat(paste0("  Information about run found in (", crayon::yellow(.bound),
-                   crayon::bold$blue("$runInfo"), ")\n"))
+        cat(paste0("  Information about run found (", crayon::yellow(.bound),
+                   crayon::bold$blue("$runInfo"), "):\n"))
+        lapply(x$runInfo, function(msg) {
+          cat("  ", cli::cli_format_method({
+            cli::cli_li(msg)
+          }), "\n")
+        })
       }
       cat(paste0(
         "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
@@ -409,7 +414,8 @@ print.nlmixr2FitCore <- function(x, ...) {
     "  Censoring: ",
     as.character(x$censInformation)))
   if (length(x$runInfo) > 0) {
-    .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo)"))
+    .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo):"),
+            paste0("    ", x$runInfo))
   }
   if (x$message != "") {
     .c <- c(
