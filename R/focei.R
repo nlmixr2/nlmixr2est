@@ -750,14 +750,14 @@ rxUiGet.predDfFocei <- function(x, ...) {
   }
   for (.v in s$..eventVars) {
     .vars <- as.character(get(.v, envir = s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", .vars))$params
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
     for (.v2 in .vars) {
-      .reg <- rex::rex(start, "ETA_", capture(any_numbers), "_", end)
+      .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
       if (regexpr(.reg, .v2) != -1) {
         .num <- as.numeric(sub(.reg, "\\1", .v2))
         .eventEta[.num] <- 1L
       }
-      .reg <- rex::rex(start, "THETA_", capture(any_numbers), "_", end)
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
       if (regexpr(.reg, .v2) != -1) {
         .num <- as.numeric(sub(.reg, "\\1", .v2))
         .eventTheta[.num] <- 1L
