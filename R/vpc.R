@@ -59,13 +59,18 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .data <- .si$events
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {
-    .lst <- object$dataNormInfo
-    stopifnot(length(.lst$filter) == length(.data$nlmixrRowNums))
-    if (.lst$nnorm == 0L) {
-      print(.lst)
-      stop("need normal data for vpcSim (or use normRelated=FALSE)")
+    .ui <- object$ui
+    .predDf <-.ui$predDf
+    if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
+    } else {
+      .lst <- object$dataNormInfo
+      stopifnot(length(.lst$filter) == length(.data$nlmixrRowNums))
+      if (.lst$nnorm == 0L) {
+        print(.lst)
+        stop("need normal data for vpcSim (or use normRelated=FALSE)")
+      }
+      .data <- .data[.lst$filter, ]
     }
-    .data <- .data[.lst$filter, ]
   }
   .si$events <- .data
   .si$thetaMat <- NULL
