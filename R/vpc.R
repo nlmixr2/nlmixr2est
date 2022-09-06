@@ -67,7 +67,6 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
                     .data$CMT, .predDf$distribution, .predDf$cmt)
       .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
       if (.lst$nnorm == 0L) {
-        #print(.lst)
         stop("need normal data for vpcSim (or use normRelated=FALSE)")
       }
       .data <- .data[.lst$filter, ]
