@@ -63,14 +63,14 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .predDf <-.ui$predDf
     if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
-      .lst <- object$dataNormInfo
-      stopifnot(length(.lst$filter) == length(.data$nlmixrRowNums))
+      .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+                    .data$CMT, .predDf$distribution, .predDf$cmt)
+      .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
       if (.lst$nnorm == 0L) {
-        print(.lst)
+        #print(.lst)
         stop("need normal data for vpcSim (or use normRelated=FALSE)")
       }
       .data <- .data[.lst$filter, ]
-    }
   }
   .si$events <- .data
   .si$thetaMat <- NULL
@@ -185,13 +185,19 @@ vpcNameDataCmts <- function(object, data) {
 #' @param object nlmixr fit object
 #' @param sim vpc simulation object
 #' @param extra extra data from original fit to add
+#' @param fullData is the full data (possibly modified); This is used
+#'   for the vpc tad calculation
 #' @return Expanded data frame with extra pieces added
 #' @author Matthew L. Fidler
 #' @export
 #' @keywords internal
-vpcSimExpand <- function(object, sim, extra) {
+vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
   if (is.null(extra)) return(sim)
-  .fullData <- object$origData
+  if (is.null(fullData)) {
+    .fullData <- object$origData
+  } else {
+    .fullData <- fullData
+  }
   .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
   .extra <- extra[extra %in% names(.fullData)]
   .extra <- extra[!(extra %in% names(sim))]
