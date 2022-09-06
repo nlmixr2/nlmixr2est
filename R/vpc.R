@@ -59,13 +59,18 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .data <- .si$events
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {
-    .lst <- object$dataNormInfo
-    stopifnot(length(.lst$filter) == length(.data$nlmixrRowNums))
-    if (.lst$nnorm == 0L) {
-      print(.lst)
-      stop("need normal data for vpcSim (or use normRelated=FALSE)")
+    .ui <- object$ui
+    .predDf <-.ui$predDf
+    if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
+    } else {
+      .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+                    .data$CMT, .predDf$distribution, .predDf$cmt)
+      .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
+      if (.lst$nnorm == 0L) {
+        stop("need normal data for vpcSim (or use normRelated=FALSE)")
+      }
+      .data <- .data[.lst$filter, ]
     }
-    .data <- .data[.lst$filter, ]
   }
   .si$events <- .data
   .si$thetaMat <- NULL
@@ -144,7 +149,9 @@ vpcNameDataCmts <- function(object, data) {
     .dvidF[.i] <- paste(.info$cond[.i])
   }
   if (length(.wdvid) == 1) {
-    if (inherits(data[[.wdvid]], "numeric")) data[[.wdvid]] <- as.integer(data[[.wdvid]])
+    if (inherits(data[[.wdvid]], "numeric")) {
+      data[[.wdvid]] <- as.integer(data[[.wdvid]])
+    }
     if (!inherits(data[[.wdvid]], "factor") &&
           inherits(data[[.wdvid]], "integer")) {
       .tmp <- data[[.wdvid]]
@@ -156,7 +163,9 @@ vpcNameDataCmts <- function(object, data) {
     }
   }
   if (length(.wcmt) == 1) {
-    if (inherits(data[[.wcmt]], "numeric")) data[[.wcmt]] <- as.integer(data[[.wcmt]])
+    if (inherits(data[[.wcmt]], "numeric")) {
+      data[[.wcmt]] <- as.integer(data[[.wcmt]])
+    }
     if (!inherits(data[[.wcmt]], "factor") &&
           inherits(data[[.wcmt]], "integer")) {
       .tmp <- data[[.wcmt]]
@@ -176,13 +185,19 @@ vpcNameDataCmts <- function(object, data) {
 #' @param object nlmixr fit object
 #' @param sim vpc simulation object
 #' @param extra extra data from original fit to add
+#' @param fullData is the full data (possibly modified); This is used
+#'   for the vpc tad calculation
 #' @return Expanded data frame with extra pieces added
 #' @author Matthew L. Fidler
 #' @export
 #' @keywords internal
-vpcSimExpand <- function(object, sim, extra) {
+vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
   if (is.null(extra)) return(sim)
-  .fullData <- object$origData
+  if (is.null(fullData)) {
+    .fullData <- object$origData
+  } else {
+    .fullData <- fullData
+  }
   .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
   .extra <- extra[extra %in% names(.fullData)]
   .extra <- extra[!(extra %in% names(sim))]
@@ -205,45 +220,4 @@ vpcSimExpand <- function(object, sim, extra) {
 #' @keywords internal
 .nlmixr2estLastPredSimulationInfo <- function() {
   .lastPredSimulationInfo
-}
-
-#' Setup Observation data for VPC
-#'
-#' @param fit nlmixr2 fit
-#' @param data replacement data
-#' @return List with `namesObs`, `namesObsLower`, `obs` and `obsCols`
-#' @author Matthew L. Fidler
-#' @noRd
-.vpcUiSetupObservationData <- function(fit, data=NULL) {
-  if (!is.null(data)) {
-    .obs <- data
-  } else {
-    .obs <- fit$origData
-  }
-  .no <- names(.obs)
-  .nol <- tolower(.no)
-  .wo <- which(.nol == "id")
-  if (length(.wo) != 1) {
-    stop("cannot find 'id' in original dataset",
-         call.=FALSE)
-  }
-  .obsCols <- list(id=.no[.wo])
-  .wo <- which(.nol == "dv")
-  if (length(.wo) != 1) {
-    stop("cannot find 'dv' in original dataset",
-         call.=FALSE)
-  }
-  .obsCols <- c(.obsCols,
-                list(dv=.no[.wo]))
-  .wo <- which(.nol == "time")
-  if (length(.wo) != 1) {
-    stop("cannot find 'time' in original dataset",
-         call.=FALSE)
-  }
-  .obsCols <- c(.obsCols,
-                list(idv=.no[.wo]))
-  list(namesObs=.no,
-       namesObsLower=.nol,
-       obs=.obs,
-       obsCols=.obsCols)
 }

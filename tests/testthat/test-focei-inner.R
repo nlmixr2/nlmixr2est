@@ -1,5 +1,35 @@
 nmTest({
 
+  test_that("focei complex event info", {
+    
+    pheno <- function() {
+      ini({
+        tcl <- log(0.008) # typical value of clearance
+        tv <-  log(0.6)   # typical value of volume
+        max_dose <- 5
+        ## var(eta.cl)
+        eta.cl + eta.v ~ c(1, 
+                           0.01, 1) ## cov(eta.cl, eta.v), var(eta.v)
+        # interindividual variability on clearance and volume
+        add.err <- 0.1    # residual variability
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        fest <- max_dose/DOSE
+        if (fest > 1) fest <- 1 # error is here
+        d/dt(A1) = - ke * A1
+        f(A1) <- fest
+        cp = A1 / v
+        cp ~ add(add.err)
+      })
+    }
+
+    f <- pheno()
+    expect_error(f$foceiModel, NA)
+    
+  })
+
   test_that("Inner test", {
     ev <- eventTable() %>%
       add.sampling(c(
