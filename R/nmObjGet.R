@@ -42,6 +42,28 @@ nmObjGetData <- function(x, ...) {
 }
 
 #' @export
+nmObjGetData.dataLloq <- function(x, ...) {
+  .fit <- x[[1]]
+  .df <- as.data.frame(.fit)
+  if (!any(names(.df) == "CENS")) return(NULL)
+  if (!any(names(.df) == "upperLim")) return(NULL)
+  .w <- which(.df$CENS == 1)
+  if (length(.w) == 0) return(NULL)
+  mean(.df$upperLim[.w])
+}
+
+#' @export
+nmObjGetData.dataUloq <- function(x, ...) {
+  .fit <- x[[1]]
+  .df <- as.data.frame(.fit)
+  if (!any(names(.df) == "CENS")) return(NULL)
+  if (!any(names(.df) == "lowerLim")) return(NULL)
+  .w <- which(.df$CENS == -1)
+  if (length(.w) == 0) return(NULL)
+  mean(.df$lowerLim[.w])
+}
+
+#' @export
 nmObjGet.dataNormInfo <- function(x, ...) {
   .fit <- x[[1]]
   .ui <- .fit$ui
@@ -59,7 +81,6 @@ nmObjGet.dataNormInfo <- function(x, ...) {
   .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
   .ret
 }
-
 
 #' @export
 nmObjGet.warnings <-function(x, ...) {
