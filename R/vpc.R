@@ -71,6 +71,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
         stop("need normal data for vpcSim (or use normRelated=FALSE)")
       }
       .data <- .data[.lst$filter, ]
+    }
   }
   .si$events <- .data
   .si$thetaMat <- NULL
