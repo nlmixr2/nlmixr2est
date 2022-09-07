@@ -9,12 +9,27 @@
   .ret <- obj
   .tmp <- .ret[[2]]
   .idx <- NULL
+  .idxDvid <- NULL
   .tmp <- lapply(seq(2, length(.tmp)), function(i) {
     if (identical(.tmp[[i]][[1]], quote(`cmt`))) {
       .idx <<- i - 1
     }
+    if (identical(.tmp[[i]][[1]], quote(`dvid`))) {
+      .idxDvid <<- i - 1
+    }
     .tmp[[i]]
   })
+  if (is.null(.idx) && !is.null(.idxDvid)) {
+    # use dvid() instead of cmt()
+    .idx <- .idxDvid
+  } else if (is.null(.idx) && is.null(.idxDvid)) {
+    # simply append to the end.
+    .ret[[2]] <- as.call(c(list(quote(`{`)),
+                           .tmp,
+                           list(str2lang("tad <- tad()"))))
+    return(.ret)
+
+  }
   .ret[[2]] <- as.call(lapply(seq(1, length(.tmp)+2), function(i) {
     if (i == 1) {
       quote(`{`)
