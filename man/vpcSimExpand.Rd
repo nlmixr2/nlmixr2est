@@ -4,7 +4,7 @@
 \alias{vpcSimExpand}
 \title{Expand a VPC simulation}
 \usage{
-vpcSimExpand(object, sim, extra)
+vpcSimExpand(object, sim, extra, fullData = NULL)
 }
 \arguments{
 \item{object}{nlmixr fit object}
@@ -12,6 +12,9 @@ vpcSimExpand(object, sim, extra)
 \item{sim}{vpc simulation object}
 
 \item{extra}{extra data from original fit to add}
+
+\item{fullData}{is the full data (possibly modified); This is used
+for the vpc tad calculation}
 }
 \value{
 Expanded data frame with extra pieces added
