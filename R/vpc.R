@@ -63,6 +63,13 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .predDf <-.ui$predDf
     if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
+      if (is.null(.data$CMT)) {
+        .ds <- object$dataSav
+        .data$nlmixrRowNums <- seq_along(.data[,1])
+        .ds <- .ds[, c("CMT", "nlmixrRowNums")]
+        .data <- merge(.data, .ds, by ="nlmixrRowNums")
+        .data <- .data[order(.data$nlmixrRowNums),names(.data) != "nlmixrRowNums"]
+      }
       .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
                     .data$CMT, .predDf$distribution, .predDf$cmt)
       .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
