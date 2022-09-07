@@ -29,7 +29,6 @@ nlmixr2Est <- function(env, ...) {
   } else if (!inherits(get("ui", envir=env), "rxUi")) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
   }
- assign("ui", .cloneEnv(get("ui", envir=env)), envir=env)
   if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)
   } else if (!inherits(get("data", envir=env), "data.frame")) {
@@ -126,6 +125,7 @@ nlmixr2Est0 <- function(env, ...) {
   if (!exists("missingTable", envir=env)) {
     assign("missingTable", TRUE, envir=env)
   }
+  assign("ui", env$ui$fun(), envir=env) # re-evaluate so it doesn't overwrite inital ui
   .doIt <- TRUE
   if (is.null(get("missingTable", envir=env))) {
   } else if (get("missingTable", envir=env)) {
@@ -152,7 +152,7 @@ nlmixr2Est0 <- function(env, ...) {
   .envReset$reset <- TRUE
   if (!getOption("nlmixr2.resetCache", TRUE)) {
     .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
-  } else{
+  } else {
     .envReset$reset <- TRUE
     .envReset$env <- new.env(parent=emptyenv())
     lapply(ls(envir = env, all.names = TRUE), function(item) {
