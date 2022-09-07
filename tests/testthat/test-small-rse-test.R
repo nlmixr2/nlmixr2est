@@ -32,6 +32,7 @@ test_that("rse for focei does not inflate", {
 
   f <- nlmixr2(u002, dat, "focei", control=foceiControl(print=0))
 
-  expect_true(f$parFixedDf["lVc", "SE"] < 0.29)
+  expect_true(f$parFixedDf["lVc", "SE"] < 0.029)
+  
   
 })
