@@ -4928,7 +4928,7 @@ int foceiCalcR(Environment e){
       // > (45/12)^(1/5)
       // [1] 1.302585542348676073132
       // based on central error to stencil error which is closer to optimal for this difference
-      epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
+      // epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
       ti = theta[i];
       theta[i] = ti + 2*epsI;
       updateTheta(theta.begin());
