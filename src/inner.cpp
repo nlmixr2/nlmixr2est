@@ -5038,7 +5038,8 @@ int foceiCalcR(Environment e){
 }
 
 // Necessary for S-matrix calculation
-int foceiS(double *theta, Environment e){
+int foceiS(double *theta, Environment e, bool &hasZero){
+  hasZero = false;
   rx = getRx();
   op_focei.calcGrad=1;
   rx = getRx();
@@ -5090,9 +5091,22 @@ int foceiS(double *theta, Environment e){
     theta[cpar] = cur + delta;
     updateTheta(theta);
     for (gid = rx->nsub; gid--;){
-      if (!innerOpt1(gid,2)) return 0;
-      if (doForward){
-        fInd = &(inds_focei[gid]);
+      fInd = &(inds_focei[gid]);
+      fInd->thetaGrad[cpar] = NA_REAL;
+      if (!innerOpt1(gid,2)) {
+        if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+        theta[cpar] = cur - delta;
+        updateTheta(theta);
+        if (!innerOpt1(gid,2)) {
+          hasZero = true;
+          fInd->thetaGrad[cpar] = 0;
+          //return 0;
+        }
+        theta[cpar] = cur + delta;
+        updateTheta(theta);
+        // backward instead of forward
+        fInd->thetaGrad[cpar] = (op_focei.likSav[gid] - fInd->lik[2])/delta;
+      } else if (doForward){
         fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
       }
     }
@@ -5101,9 +5115,16 @@ int foceiS(double *theta, Environment e){
       theta[cpar] = cur - delta;
       updateTheta(theta);
       for (gid = rx->nsub; gid--;){
-        if (!innerOpt1(gid,1)) return 0;
         fInd = &(inds_focei[gid]);
-        fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+        if (ISNA(fInd->thetaGrad[cpar])) {
+          if (!innerOpt1(gid,1)) {
+            // forward only
+            fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
+          } else {
+            // central
+            fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+          }
+        }
       }
     }
     theta[cpar] = cur;
@@ -5422,8 +5443,10 @@ NumericMatrix foceiCalcCov(Environment e){
             j=op_focei.fixedTrans[k];
             theta[k] = op_focei.fullTheta[j];
           }
+          bool sHasZero = false;
           if (!e.exists("cholS")){
-            foceiS(&theta[0], e);
+            foceiS(&theta[0], e, sHasZero);
+            if (sHasZero) sstr="s0";
           } else {
             op_focei.cur += op_focei.npars;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
@@ -5440,7 +5463,11 @@ NumericMatrix foceiCalcCov(Environment e){
                 }
               }
               if (isPd){
-                sstr="s+";
+                if (sHasZero) {
+                  sstr="s0+";
+                } else {
+                  sstr="s+";
+                }
                 checkSandwich = true;
               }
             }
@@ -5457,7 +5484,11 @@ NumericMatrix foceiCalcCov(Environment e){
                   success= chol(H0,re);
                   if (success){
                     e["cholS"] = wrap(H0);
-                    sstr = "|s|";
+                    if (sHasZero) {
+                      sstr = "|s0|";
+                    } else {
+                      sstr = "|s|";
+                    }
                     checkSandwich = true;
                     isPd = true;
                   }
@@ -5595,8 +5626,17 @@ NumericMatrix foceiCalcCov(Environment e){
               warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
             }
-            if (sstr == "|s|"){
+            if (sstr == "s0"){
+              warning(_("S had problems solving"));
+              doWarn=true;
+            } else if (sstr == "|s0|"){
+              warning(_("S had problems solving and final S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
+              doWarn=true;
+            } else if (sstr == "|s|"){
               warning(_("S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
+              doWarn=true;
+            } else if (sstr == "s0+"){
+              warning(_("S had problem solving and S matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
             } else if (sstr == "s+"){
               warning(_("S matrix non-positive definite but corrected (because of cholAccept)"));

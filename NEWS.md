@@ -15,6 +15,13 @@
    log-likelihoods.  This was only used in simulation and was not well
    documented.
 
+ - The `S` matrix calculation was made a bit more robust to errors in
+   individual gradients.  When there are errors in the individual
+   gradient calculation, assume the gradient is `0` (changes the
+   matrix type).  In the tests cases, using `s0` with a sandwich
+   matrix is slightly better RSE estimate than using a simple `r` matrix for
+   covariates.
+
 # New features
 
 - What type(s) censoring (if any) is now stored in `fit$censInformation`
