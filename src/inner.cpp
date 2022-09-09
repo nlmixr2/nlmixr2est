@@ -5352,7 +5352,7 @@ NumericMatrix foceiCalcCov(Environment e){
 
         bool isPd;
         std::string rstr = "r";
-        bool checkSandwich = false;
+        bool checkSandwich = false, checkSandwich2 = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 2) {
           // R matrix based covariance
           arma::mat cholR;
@@ -5512,21 +5512,28 @@ NumericMatrix foceiCalcCov(Environment e){
               if (op_focei.covMethod == 1){
                 e["covRS"] = Rinv * S *Rinv;
                 arma::mat covRS = as<arma::mat>(e["covRS"]);
-                if (checkSandwich){
-                  mat Sinv;
-                  bool success;
-                  success = inv(Sinv, trimatu(cholS));
-                  if (!success){
-                    warning(_("S matrix seems singular; Using pseudo-inverse"));
-                    Sinv = pinv(trimatu(cholS));
+                mat Sinv;
+                bool success;
+                success = inv(Sinv, trimatu(cholS));
+                if (!success){
+                  warning(_("S matrix seems singular; Using pseudo-inverse"));
+                  Sinv = pinv(trimatu(cholS));
+                }
+                Sinv = Sinv * Sinv.t();
+                e["covS"]= 4 * Sinv;
+                if (!checkSandwich) {
+                  bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
+                  if (covRSsmall) {
+                    checkSandwich2 = true;
                   }
-                  Sinv = Sinv * Sinv.t();
-                  e["covS"]= 4 * Sinv;
-                  if (rstr == "r"){
+
+                }
+                if (checkSandwich || checkSandwich2){
+                  if (!checkSandwich2 && rstr == "r"){
                     // Use covR
                     e["cov"] = as<NumericMatrix>(e["covR"]);
                     op_focei.covMethod=2;
-                  } else if (sstr == "s"){
+                  } else if (!checkSandwich2 && sstr == "s"){
                     // use covS
                     e["cov"] = as<NumericMatrix>(e["covS"]);
                     op_focei.covMethod=3;
@@ -5542,14 +5549,15 @@ NumericMatrix foceiCalcCov(Environment e){
                     double  covSd= sum(covS.diag());
                     if ((covRSsmall && covSsmall && covRsmall)){
                       e["cov"] = covRS;
-                    } else if (covRSsmall && !covSsmall && covRsmall) {
-                      e["cov"] = covS;
-                      op_focei.covMethod=3;
                     } else if (covRSsmall && covSsmall && !covRsmall) {
                       e["cov"] = covR;
                       op_focei.covMethod=2;
+                    } else if (covRSsmall && !covSsmall && covRsmall) {
+                      e["cov"] = covS;
+                      op_focei.covMethod=3;
                     } else if (covRSd > covRd){
                       // SE(RS) > SE(R)
+                      REprintf("here!!!");
                       if (covRd > covSd){
                         // SE(R) > SE(S)
                         e["cov"] = covS;
@@ -5612,6 +5620,9 @@ NumericMatrix foceiCalcCov(Environment e){
           NumericMatrix ret;
           return ret;
         } else {
+          if (sHasZero) {
+            warning(_("S matrix had problems solving for some subject and parameters"));
+          }
           if (op_focei.covMethod == 1){
             bool doWarn=false;
             if (rstr == "|r|"){
@@ -5620,9 +5631,6 @@ NumericMatrix foceiCalcCov(Environment e){
             } else if (rstr == "r+"){
               warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
-            }
-            if (sHasZero) {
-              warning(_("S matrix had problems solving for some subject and parameters"));
             }
             if (sstr == "|s|"){
               warning(_("S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));

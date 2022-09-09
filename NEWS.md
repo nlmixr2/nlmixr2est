@@ -27,6 +27,11 @@
    patients/subject combinations that do not have sufficient data, we
    will add the following to the run information: `S matrix had
    problems solving for some subject and parameters`.
+ 
+ - The `r,s` covariance matrix will now also check for unreasonably
+   small values (controlled by `foceiControl(covSmall=...)`) and
+   select a different covariance estimate method even when the "r" and
+   "s" matrices are calculated "correctly".
 
 # New features
 
