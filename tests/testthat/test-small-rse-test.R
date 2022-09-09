@@ -26,13 +26,14 @@ test_that("rse for focei does not inflate", {
       cp ~ prop(prop.err)
     })
   }
+  
   datr <- nlmixr2data::Bolus_1CPT
   dat <- datr[datr$SD == 0, ]
   dat <- dat[, names(dat) != "SS"]
 
   f <- nlmixr2(u002, dat, "focei", control=foceiControl(print=0))
 
-  expect_true(f$parFixedDf["lVc", "SE"] < 0.029)
+  expect_true(f$parFixedDf["lVc", "SE"] < 0.032)
   
   
 })

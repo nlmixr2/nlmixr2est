@@ -5039,11 +5039,16 @@ int foceiCalcR(Environment e){
 
 // Necessary for S-matrix calculation
 int foceiS(double *theta, Environment e, bool &hasZero){
+  int npars = op_focei.npars;
+  int oldCalcGrad = op_focei.calcGrad;
+  op_focei.calcGrad = 1;
+  arma::vec gfull(npars);
+  numericGrad(theta, gfull.memptr());
+  op_focei.calcGrad = oldCalcGrad;
   hasZero = false;
   rx = getRx();
   op_focei.calcGrad=1;
   rx = getRx();
-  int npars = op_focei.npars;
   int cpar, gid;
   double cur, delta;
   focei_ind *fInd;
@@ -5099,8 +5104,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         updateTheta(theta);
         if (!innerOpt1(gid,2)) {
           hasZero = true;
-          fInd->thetaGrad[cpar] = 0;
-          //return 0;
+          fInd->thetaGrad[cpar] =  gfull[cpar];
         }
         theta[cpar] = cur + delta;
         updateTheta(theta);
@@ -5436,6 +5440,7 @@ NumericMatrix foceiCalcCov(Environment e){
         arma::mat cholS;
         int origCov = op_focei.covMethod;
         std::string sstr="s";
+        bool sHasZero = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 3) {
           arma::vec theta(op_focei.npars);
           unsigned int j, k;
@@ -5443,10 +5448,8 @@ NumericMatrix foceiCalcCov(Environment e){
             j=op_focei.fixedTrans[k];
             theta[k] = op_focei.fullTheta[j];
           }
-          bool sHasZero = false;
           if (!e.exists("cholS")){
             foceiS(&theta[0], e, sHasZero);
-            if (sHasZero) sstr="s0";
           } else {
             op_focei.cur += op_focei.npars;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
@@ -5463,11 +5466,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 }
               }
               if (isPd){
-                if (sHasZero) {
-                  sstr="s0+";
-                } else {
-                  sstr="s+";
-                }
+                sstr="s+";
                 checkSandwich = true;
               }
             }
@@ -5484,11 +5483,7 @@ NumericMatrix foceiCalcCov(Environment e){
                   success= chol(H0,re);
                   if (success){
                     e["cholS"] = wrap(H0);
-                    if (sHasZero) {
-                      sstr = "|s0|";
-                    } else {
-                      sstr = "|s|";
-                    }
+                    sstr = "|s|";
                     checkSandwich = true;
                     isPd = true;
                   }
@@ -5626,17 +5621,11 @@ NumericMatrix foceiCalcCov(Environment e){
               warning(_("R matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
             }
-            if (sstr == "s0"){
-              warning(_("S had problems solving"));
-              doWarn=true;
-            } else if (sstr == "|s0|"){
-              warning(_("S had problems solving and final S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
-              doWarn=true;
-            } else if (sstr == "|s|"){
+            if (sHasZero) {
+              warning(_("S matrix had problems solving for some subject and parameters"));
+            }
+            if (sstr == "|s|"){
               warning(_("S matrix non-positive definite but corrected by S = sqrtm(S%%*%%S)"));
-              doWarn=true;
-            } else if (sstr == "s0+"){
-              warning(_("S had problem solving and S matrix non-positive definite but corrected (because of cholAccept)"));
               doWarn=true;
             } else if (sstr == "s+"){
               warning(_("S matrix non-positive definite but corrected (because of cholAccept)"));
@@ -5662,6 +5651,9 @@ NumericMatrix foceiCalcCov(Environment e){
               }
             }
           } else if (op_focei.covMethod == 3){
+            if (sHasZero) {
+              warning(_("S matrix had problems solving for some subject and parameters"));
+            }
             e["covMethod"] = wrap(sstr);
             if (origCov != 2){
               if (checkSandwich){
