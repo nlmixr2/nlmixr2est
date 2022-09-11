@@ -5075,6 +5075,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   if (op_focei.needOptimHess) {
     smatNorm = op_focei.smatNormLlik;
   }
+  double sInfoPer = npars * rx->nsub;
   for (cpar = npars; cpar--;){
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
@@ -5104,6 +5105,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         updateTheta(theta);
         if (!innerOpt1(gid,2)) {
           hasZero = true;
+          sInfoPer -= 1.0;
           fInd->thetaGrad[cpar] =  gfull[cpar];
         }
         theta[cpar] = cur + delta;
@@ -5152,6 +5154,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   e["S.pd"] =  cholSE0(cholS, SE, S, op_focei.cholSEtol);
   e["S.E"] =  wrap(SE);
   e["cholS"] = wrap(cholS);
+  e["Sper"] = sInfoPer / (npars * rx->nsub);
   return 1;
 }
 //' Return the square root of general square matrix A
