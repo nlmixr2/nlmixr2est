@@ -5149,12 +5149,17 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   // According to https://github.com/cran/nmw/blob/59478fcc91f368bb3bbc23e55d8d1d5d53726a4b/R/Objs.R
   S=S*0.25;
   e["S0"] = wrap(S);
+  sInfoPer = sInfoPer / (npars * rx->nsub);
+  e["Sper"] = sInfoPer;
+  // fixme hard coded
+  if (sInfoPer < 0.7) {
+    return 0;
+  }
   arma::mat cholS;
   arma::mat SE;
   e["S.pd"] =  cholSE0(cholS, SE, S, op_focei.cholSEtol);
   e["S.E"] =  wrap(SE);
   e["cholS"] = wrap(cholS);
-  e["Sper"] = sInfoPer / (npars * rx->nsub);
   return 1;
 }
 //' Return the square root of general square matrix A
