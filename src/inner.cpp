@@ -1165,7 +1165,7 @@ double likInner0(double *eta, int id){
             // FIXME faster initialization via copy or elm
             // RSprintf("id: %d k: %d j: %d\n", id, k, j);
             B(k, 0) = 2.0/_safe_zero(r);
-            if (op_focei.interaction == 1) {
+            if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
               for (i = op_focei.neta; i--; ) {
                 if (predSolve || op_focei.etaFD[i]==1) {
                   fpm = a(k, i) = etaGradF(k, i);
@@ -1208,7 +1208,7 @@ double likInner0(double *eta, int id){
                  fInd->nNonNormal++;
                  fInd->nObs++;
                }
-            } else if (op_focei.interaction == 0){
+            } else if (op_focei.interaction == 0 || op_focei.needOptimHess) {
               for (i = op_focei.neta; i--; ){
                 if (predSolve || op_focei.etaFD[i]==1) {
                   a(k, i) = fpm = etaGradF(k, i);
@@ -1432,7 +1432,7 @@ double LikInner2(double *eta, int likId, int id){
       H = 0.5*(H + H.t());
       // Note that since the gradient includes omegaInv*etam,
       // op_focei.omegaInv(k, l) shouldn't be added.
-    } else if (op_focei.interaction) {
+    } else if (op_focei.interaction == 1) { // here the optimHess requirement is taken care of above
       arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
       arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
       arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
@@ -6279,7 +6279,8 @@ void foceiFinalizeTables(Environment e){
     e["ofvType"]= ofvType;
   } else {
     if (op_focei.needOptimHess) {
-      objDf.attr("row.names") = CharacterVector::create("lFOCE");
+      // There is no focei since the whole expression has a derivative  (ie focei)
+      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
     } else {
       objDf.attr("row.names") = CharacterVector::create("FOCE");
     }
@@ -6304,7 +6305,7 @@ void foceiFinalizeTables(Environment e){
     } else if (op_focei.fo == 1){
       e["extra"] = "";
       e["skipTable"] = LogicalVector::create(true);
-    } else if (op_focei.interaction){
+    } else if (op_focei.interaction == 1 || op_focei.needOptimHess){
       if(op_focei.useColor){
         e["extra"] = "\033[31;1mi\033[0m";
       } else {
