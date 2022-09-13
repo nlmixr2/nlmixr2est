@@ -312,20 +312,22 @@ print.nlmixr2FitCore <- function(x, ...) {
           crayon::bold$blue("$shrink")
         ), "\n")
       }
-      if (length(x$runInfo) > 0) {
-        cat(paste0("  Information about run found (", crayon::yellow(.bound),
-                   crayon::bold$blue("$runInfo"), "):\n"))
-        lapply(x$runInfo, function(msg) {
-          cat("  ", cli::cli_format_method({
-            cli::cli_li(msg)
-          }), "\n")
-        })
-      }
-      cat(paste0(
-        "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
-        as.character(x$censInformation), "\n"
-      ))
     }
+
+    if (length(x$runInfo) > 0) {
+      cat(paste0("  Information about run found (", crayon::yellow(.bound),
+                 crayon::bold$blue("$runInfo"), "):\n"))
+      lapply(x$runInfo, function(msg) {
+        cat("  ", cli::cli_format_method({
+          cli::cli_li(msg)
+        }), "\n")
+      })
+    }
+    cat(paste0(
+      "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
+      as.character(x$censInformation), "\n"
+    ))
+
 
     if (x$message != "") {
       cat(paste0("  Minimization message (", crayon::yellow(.bound), crayon::bold$blue("$message"), "): "), "\n")
