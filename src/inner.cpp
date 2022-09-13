@@ -3665,16 +3665,36 @@ NumericVector foceiSetup_(const RObject &obj,
         mn = min2(op_focei.initPar[k],mn);
         mx = max2(op_focei.initPar[k],mx);
       }
-      op_focei.c1 = (mx+mn)/2;
-      op_focei.c2 = (mx-mn)/2;
+      if (mx == mn) {
+        warning(_("all parameters are the same value, switch to length normType"));
+        for (unsigned int k = op_focei.npars-1; k--;){
+          len += op_focei.initPar[k]*op_focei.initPar[k];
+        }
+        op_focei.c1 = 0;
+        op_focei.c2 = _safe_sqrt(len);
+        op_focei.normType = 5;
+      } else {
+        op_focei.c1 = (mx+mn)/2;
+        op_focei.c2 = (mx-mn)/2;
+      }
       break;
     case 2: // Rescaling (min-max normalization)
       for (k = op_focei.npars-1; k--;){
         mn = min2(op_focei.initPar[k],mn);
         mx = max2(op_focei.initPar[k],mx);
       }
-      op_focei.c1 = mn;
-      op_focei.c2 = (mx-mn);
+      if (mx == mn) {
+        warning(_("all parameters are the same value, switch to length normType"));
+        for (unsigned int k = op_focei.npars-1; k--;){
+          len += op_focei.initPar[k]*op_focei.initPar[k];
+        }
+        op_focei.c1 = 0;
+        op_focei.c2 = _safe_sqrt(len);
+        op_focei.normType = 5;
+      } else {
+        op_focei.c1 = mn;
+        op_focei.c2 = (mx-mn);
+      }
       break;
     case 3: // Mean normalization
       for (k = op_focei.npars-1; k--;){
@@ -3683,8 +3703,18 @@ NumericVector foceiSetup_(const RObject &obj,
         oN++;
         mean += (op_focei.initPar[k]-mean)/oN;
       }
-      op_focei.c1 = mean;
-      op_focei.c2 = (mx-mn);
+      if (mx == mn) {
+        warning(_("all parameters are the same value, switch to length normType"));
+        for (unsigned int k = op_focei.npars-1; k--;){
+          len += op_focei.initPar[k]*op_focei.initPar[k];
+        }
+        op_focei.c1 = 0;
+        op_focei.c2 = _safe_sqrt(len);
+        op_focei.normType = 5;
+      } else {
+        op_focei.c1 = mean;
+        op_focei.c2 = (mx-mn);
+      }
       break;
     case 4: // Standardization
       for (k = op_focei.npars-1; k--;){
@@ -3695,8 +3725,18 @@ NumericVector foceiSetup_(const RObject &obj,
         mean += (op_focei.initPar[k]-mean)/oN;
         s += (op_focei.initPar[k]-mean)*(op_focei.initPar[k]-oM);
       }
-      op_focei.c1 = mean;
-      op_focei.c2 = _safe_sqrt(s/(oN-1));
+      if (mx == mn) {
+        warning("all parameters are the same value, switch to length norm type");
+        for (unsigned int k = op_focei.npars-1; k--;){
+          len += op_focei.initPar[k]*op_focei.initPar[k];
+        }
+        op_focei.c1 = 0;
+        op_focei.c2 = _safe_sqrt(len);
+        op_focei.normType = 5;
+      } else {
+        op_focei.c1 = mean;
+        op_focei.c2 = _safe_sqrt(s/(oN-1));
+      }
       break;
     case 5: // Normalize to length.
       for (unsigned int k = op_focei.npars-1; k--;){
@@ -3711,7 +3751,7 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.c2 = 1;
       break;
     default:
-      stop("Unrecognized normalization (normType=%d)",op_focei.normType);
+      stop("unrecognized normalization (normType=%d)",op_focei.normType);
     }
 
   }
