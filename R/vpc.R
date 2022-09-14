@@ -1,44 +1,4 @@
 .lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
-#' Get normally related data for nlmixr2 
-#'
-#' 
-#' @param object nlmixr2 fit
-#' @param data Data to apply the filter to or NULL to use the fit data
-#' @return merged dataset with only the normally related items
-#' @author Matthew L. Fidler
-#' @details
-#' This is used for the vpc family of functions and for plotting normal data only
-#' @export 
-nlmixrNormData <- function(object, data=NULL) {
-  .ui <- object$ui
-  .predDf <-.ui$predDf
-  if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
-    .data <- object$dataMergeRight
-  } else {
-    if (is.null(data)) {
-      .lst <- .dataMergeStub(object)
-      .data <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
-    } else {
-      .data <- as.data.frame(data)
-    }
-    if (is.null(.data$CMT)) {
-      .ds <- object$dataSav
-      .data$nlmixrRowNums <- seq_along(.data[,1])
-      .ds <- .ds[, c("CMT", "nlmixrRowNums")]
-      .data <- merge(.data, .ds, by ="nlmixrRowNums")
-      .data <- .data[order(.data$nlmixrRowNums),names(.data) != "nlmixrRowNums"]
-    }
-    .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
-                  .data$CMT, .predDf$distribution, .predDf$cmt)
-    .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
-    if (.lst$nnorm == 0L) {
-      stop("need normal data")
-    }
-    .data <- .data[.lst$filter, ]
-  }
-  .data
-}
-
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
@@ -103,7 +63,20 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .predDf <-.ui$predDf
     if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
-      .data <- nlmixrNormData(object, .data)
+      if (is.null(.data$CMT)) {
+        .ds <- object$dataSav
+        .data$nlmixrRowNums <- seq_along(.data[,1])
+        .ds <- .ds[, c("CMT", "nlmixrRowNums")]
+        .data <- merge(.data, .ds, by ="nlmixrRowNums")
+        .data <- .data[order(.data$nlmixrRowNums),names(.data) != "nlmixrRowNums"]
+      }
+      .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+                    .data$CMT, .predDf$distribution, .predDf$cmt)
+      .lst$nlmixrRowNums <- .data[.lst$filter, "nlmixrRowNums"]
+      if (.lst$nnorm == 0L) {
+        stop("need normal data for vpcSim (or use normRelated=FALSE)")
+      }
+      .data <- .data[.lst$filter, ]
     }
   }
   .si$events <- .data

@@ -64,6 +64,25 @@ nmObjGetData.dataUloq <- function(x, ...) {
 }
 
 #' @export
+nmObjGet.dataNormInfo <- function(x, ...) {
+  .fit <- x[[1]]
+  .ui <- .fit$ui
+  .datSav <- .fit$dataSav
+  .predDf <-.ui$predDf
+  if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
+    return(list(filter=rep(TRUE, length(.datSav[,1])),
+                 nnorm=length(.datSav[,1]),
+                 nlik=0,
+                 nother=0,
+                 nlmixrRowNums=.datSav$nlmixrRowNums))
+  }
+  .ret <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
+                .datSav$CMT, .predDf$distribution, .predDf$cmt)
+  .ret$nlmixrRowNums <- .datSav[.ret$filter, "nlmixrRowNums"]
+  .ret
+}
+
+#' @export
 nmObjGet.warnings <-function(x, ...) {
   get("runInfo", x[[1]])
 }
