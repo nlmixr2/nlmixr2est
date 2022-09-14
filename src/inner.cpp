@@ -976,7 +976,7 @@ double likInner0(double *eta, int id){
                                                op_focei.shi21maxFD); // maxiter
               }
               etaGradF.col(ii) = grETA;
-              if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
+              if (op_focei.interaction == 1) {
                 switch(op_focei.eventType) {
                 case 2: //central
                   fInd->etahr[ii] = shi21Central(shi21EtaR, curEta, h,
@@ -1019,7 +1019,7 @@ double likInner0(double *eta, int id){
                 // central
                 etaGradF.col(ii) = calcGradCentral(grMH, f0, grPH,  fInd->etahf[ii]);
               }
-              if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
+              if (op_focei.interaction == 1) {
                 // etaGradR
                 hEta = curEta;
                 hEta[ii] += fInd->etahr[ii];
@@ -6266,11 +6266,7 @@ void foceiFinalizeTables(Environment e){
     objDf.attr("row.names") = CharacterVector::create("FO");
     e["ofvType"] = "fo";
   } else if (op_focei.interaction){
-    if (op_focei.needOptimHess) {
-      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
-    } else {
-      objDf.attr("row.names") = CharacterVector::create("FOCEi");
-    }
+    objDf.attr("row.names") = CharacterVector::create("FOCEi");
     addLlikObs(e);
     e["ofvType"] = "focei";
   } else if (e.exists("ofvType")) {
@@ -6279,7 +6275,7 @@ void foceiFinalizeTables(Environment e){
     e["ofvType"]= ofvType;
   } else {
     if (op_focei.needOptimHess) {
-      objDf.attr("row.names") = CharacterVector::create("lFOCE");
+      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
     } else {
       objDf.attr("row.names") = CharacterVector::create("FOCE");
     }
@@ -6304,7 +6300,7 @@ void foceiFinalizeTables(Environment e){
     } else if (op_focei.fo == 1){
       e["extra"] = "";
       e["skipTable"] = LogicalVector::create(true);
-    } else if (op_focei.interaction){
+    } else if (op_focei.interaction || op_focei.needOptimHess){
       if(op_focei.useColor){
         e["extra"] = "\033[31;1mi\033[0m";
       } else {

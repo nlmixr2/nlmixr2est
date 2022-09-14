@@ -1479,6 +1479,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   .control$needOptimHess <- any(.ui$predDfFocei$distribution != "norm")
+  if (.control$needOptimHess) {
+    .control$interaction <- 0L
+  }
   assign("control", .control, envir=.ui)
 }
 
