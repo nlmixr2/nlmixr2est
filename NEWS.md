@@ -2,7 +2,6 @@
 
 # Breaking changes
 
-
 ## FOCEi
 
  - Gill forward differences will not repeat now (by default), You can
@@ -26,7 +25,10 @@
    for the population will still be generated. When there is some
    patients/subject combinations that do not have sufficient data, we
    will add the following to the run information: `S matrix had
-   problems solving for some subject and parameters`.
+   problems solving for some subject and parameters`. The `S` matrix
+   calculation will still fail if the percentage of parameters that
+   are being reset is lower than `foceiControl(smatPer=0.6)` or
+   whatever you specify.
  
  - The `r,s` covariance matrix will now also check for unreasonably
    small values (controlled by `foceiControl(covSmall=...)`) and
