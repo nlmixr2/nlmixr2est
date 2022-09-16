@@ -324,6 +324,7 @@ typedef struct {
   bool needOptimHess = false;
   int optimHessType = 1;
   int optimHessCovType = 1;
+  double smatPer;
 } focei_options;
 
 focei_options op_focei;
@@ -3627,6 +3628,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.predNeq = as<int>(foceiO["predNeq"]);
   op_focei.gradProgressOfvTime = as<double>(foceiO["gradProgressOfvTime"]);
   op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
+  op_focei.smatPer = as<double>(foceiO["smatPer"]);
   op_focei.initObj=0;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
@@ -5192,7 +5194,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   sInfoPer = sInfoPer / (npars * rx->nsub);
   e["Sper"] = sInfoPer;
   // fixme hard coded
-  if (sInfoPer < 0.7) {
+  if (sInfoPer < op_focei.smatPer) {
     return 0;
   }
   arma::mat cholS;
