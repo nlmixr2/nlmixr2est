@@ -74,7 +74,7 @@
 <span>  covDerivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
 <span>  hessEps <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
-<span>  hessEpsLlik <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">2.5</span><span class="op">)</span>,</span>
+<span>  hessEpsLlik <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  optimHessType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  optimHessCovType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
@@ -127,15 +127,15 @@
 <span>  gillFtol <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  gillRtol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>,</span>
 <span>  gillKcov <span class="op">=</span> <span class="fl">10L</span>,</span>
-<span>  gillKcovLlik <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  gillKcovLlik <span class="op">=</span> <span class="fl">10L</span>,</span>
 <span>  gillStepCovLlik <span class="op">=</span> <span class="fl">4.5</span>,</span>
 <span>  gillStepCov <span class="op">=</span> <span class="fl">2</span>,</span>
 <span>  gillFtolCov <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  gillFtolCovLlik <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  rmatNorm <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  rmatNormLlik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  rmatNormLlik <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  smatNorm <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  smatNormLlik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  smatNormLlik <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  covGillF <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  optGillF <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  covSmall <span class="op">=</span> <span class="fl">1e-05</span>,</span>
@@ -159,7 +159,8 @@
 <span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  rxControl <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  fallbackFD <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>  fallbackFD <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  smatPer <span class="op">=</span> <span class="fl">0.6</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -915,6 +916,14 @@ If not specified, then it matches the significant digits in the
 <dt>fallbackFD</dt>
 <dd><p>Fallback to the finite differences if the
 sensitivity equations do not solve.</p></dd>
+
+
+<dt>smatPer</dt>
+<dd><p>A percentage representing the number of failed
+parameter gradients for each individual (which are replaced with
+the overall gradient for the parameter) out of the total number
+of gradients parameters (ie `ntheta*nsub`) before the S matrix is
+considered to be a bad matrix.</p></dd>
 
 </dl></div>
     <div class="section level2">
