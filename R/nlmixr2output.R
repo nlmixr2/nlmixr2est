@@ -544,6 +544,8 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   if (is.null(.omega)) {
     assign("iniDf", .iniDf, envir=.ui)
   } else {
+    .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
+    .fixComps <- setNames(.fixComps$fix, .fixComps$name)
     .lotri <- lotri::as.lotri(.iniDf)
     attr(.omega, "lotriEst") <- attr(.lotri, "lotriEst")
     class(.omega) <- class(.lotri)
@@ -554,6 +556,10 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .names <- names(.iniDf)
     .iniDf <- rbind(.iniDf1, .iniDf2)
     .iniDf <- .iniDf[, .names]
+    for (.n in names(.fixComps)) {
+      .w  <- which(.iniDf$name == .n)
+      if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
+    }
     assign("iniDf", .iniDf, envir=.ui)
   }
 }
