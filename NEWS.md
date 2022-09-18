@@ -2,7 +2,6 @@
 
 # Breaking changes
 
-
 ## FOCEi
 
  - Gill forward differences will not repeat now (by default), You can
@@ -14,6 +13,27 @@
  - `n2ll` has been changed to `ll` to specify individual
    log-likelihoods.  This was only used in simulation and was not well
    documented.
+ 
+## FOCEi covariance calculation
+
+ - The `S` matrix calculation was made a bit more robust to errors in
+   individual gradients.  When there are errors in the individual
+   gradient calculation, assume the gradient is the same as the
+   overall gradient.  In the tests cases, were reasonable using this
+   adjusted S matrix.  This means if some individuals do not have very
+   much data to support a specific parameter, a `S` matrix calculation
+   for the population will still be generated. When there is some
+   patients/subject combinations that do not have sufficient data, we
+   will add the following to the run information: `S matrix had
+   problems solving for some subject and parameters`. The `S` matrix
+   calculation will still fail if the percentage of parameters that
+   are being reset is lower than `foceiControl(smatPer=0.6)` or
+   whatever you specify.
+ 
+ - The `r,s` covariance matrix will now also check for unreasonably
+   small values (controlled by `foceiControl(covSmall=...)`) and
+   select a different covariance estimate method even when the "r" and
+   "s" matrices are calculated "correctly".
 
 # New features
 

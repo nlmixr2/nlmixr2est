@@ -324,6 +324,7 @@ typedef struct {
   bool needOptimHess = false;
   int optimHessType = 1;
   int optimHessCovType = 1;
+  double smatPer;
 } focei_options;
 
 focei_options op_focei;
@@ -976,7 +977,7 @@ double likInner0(double *eta, int id){
                                                op_focei.shi21maxFD); // maxiter
               }
               etaGradF.col(ii) = grETA;
-              if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
+              if (op_focei.interaction == 1) {
                 switch(op_focei.eventType) {
                 case 2: //central
                   fInd->etahr[ii] = shi21Central(shi21EtaR, curEta, h,
@@ -1019,7 +1020,7 @@ double likInner0(double *eta, int id){
                 // central
                 etaGradF.col(ii) = calcGradCentral(grMH, f0, grPH,  fInd->etahf[ii]);
               }
-              if (op_focei.interaction == 1 && !op_focei.needOptimHess) {
+              if (op_focei.interaction == 1) {
                 // etaGradR
                 hEta = curEta;
                 hEta[ii] += fInd->etahr[ii];
@@ -3627,6 +3628,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.predNeq = as<int>(foceiO["predNeq"]);
   op_focei.gradProgressOfvTime = as<double>(foceiO["gradProgressOfvTime"]);
   op_focei.fallbackFD = as<int>(foceiO["fallbackFD"]);
+  op_focei.smatPer = as<double>(foceiO["smatPer"]);
   op_focei.initObj=0;
   op_focei.lastOfv=std::numeric_limits<double>::max();
   for (unsigned int k = op_focei.npars; k--;){
@@ -4968,7 +4970,7 @@ int foceiCalcR(Environment e){
       // > (45/12)^(1/5)
       // [1] 1.302585542348676073132
       // based on central error to stencil error which is closer to optimal for this difference
-      epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
+      // epsI = pow(epsI, 3.0/5.0)*1.302585542348676073132;
       ti = theta[i];
       theta[i] = ti + 2*epsI;
       updateTheta(theta.begin());
@@ -5078,11 +5080,17 @@ int foceiCalcR(Environment e){
 }
 
 // Necessary for S-matrix calculation
-int foceiS(double *theta, Environment e){
+int foceiS(double *theta, Environment e, bool &hasZero){
+  int npars = op_focei.npars;
+  int oldCalcGrad = op_focei.calcGrad;
+  op_focei.calcGrad = 1;
+  arma::vec gfull(npars);
+  numericGrad(theta, gfull.memptr());
+  op_focei.calcGrad = oldCalcGrad;
+  hasZero = false;
   rx = getRx();
   op_focei.calcGrad=1;
   rx = getRx();
-  int npars = op_focei.npars;
   int cpar, gid;
   double cur, delta;
   focei_ind *fInd;
@@ -5109,6 +5117,7 @@ int foceiS(double *theta, Environment e){
   if (op_focei.needOptimHess) {
     smatNorm = op_focei.smatNormLlik;
   }
+  double sInfoPer = npars * rx->nsub;
   for (cpar = npars; cpar--;){
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
@@ -5130,9 +5139,22 @@ int foceiS(double *theta, Environment e){
     theta[cpar] = cur + delta;
     updateTheta(theta);
     for (gid = rx->nsub; gid--;){
-      if (!innerOpt1(gid,2)) return 0;
-      if (doForward){
-        fInd = &(inds_focei[gid]);
+      fInd = &(inds_focei[gid]);
+      fInd->thetaGrad[cpar] = NA_REAL;
+      if (!innerOpt1(gid,2)) {
+        if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+        theta[cpar] = cur - delta;
+        updateTheta(theta);
+        if (!innerOpt1(gid,2)) {
+          hasZero = true;
+          sInfoPer -= 1.0;
+          fInd->thetaGrad[cpar] =  gfull[cpar];
+        }
+        theta[cpar] = cur + delta;
+        updateTheta(theta);
+        // backward instead of forward
+        fInd->thetaGrad[cpar] = (op_focei.likSav[gid] - fInd->lik[2])/delta;
+      } else if (doForward){
         fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
       }
     }
@@ -5141,9 +5163,16 @@ int foceiS(double *theta, Environment e){
       theta[cpar] = cur - delta;
       updateTheta(theta);
       for (gid = rx->nsub; gid--;){
-        if (!innerOpt1(gid,1)) return 0;
         fInd = &(inds_focei[gid]);
-        fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+        if (ISNA(fInd->thetaGrad[cpar])) {
+          if (!innerOpt1(gid,1)) {
+            // forward only
+            fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
+          } else {
+            // central
+            fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+          }
+        }
       }
     }
     theta[cpar] = cur;
@@ -5162,6 +5191,12 @@ int foceiS(double *theta, Environment e){
   // According to https://github.com/cran/nmw/blob/59478fcc91f368bb3bbc23e55d8d1d5d53726a4b/R/Objs.R
   S=S*0.25;
   e["S0"] = wrap(S);
+  sInfoPer = sInfoPer / (npars * rx->nsub);
+  e["Sper"] = sInfoPer;
+  // fixme hard coded
+  if (sInfoPer < op_focei.smatPer) {
+    return 0;
+  }
   arma::mat cholS;
   arma::mat SE;
   e["S.pd"] =  cholSE0(cholS, SE, S, op_focei.cholSEtol);
@@ -5367,7 +5402,7 @@ NumericMatrix foceiCalcCov(Environment e){
 
         bool isPd;
         std::string rstr = "r";
-        bool checkSandwich = false;
+        bool checkSandwich = false, checkSandwich2 = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 2) {
           // R matrix based covariance
           arma::mat cholR;
@@ -5455,6 +5490,7 @@ NumericMatrix foceiCalcCov(Environment e){
         arma::mat cholS;
         int origCov = op_focei.covMethod;
         std::string sstr="s";
+        bool sHasZero = false;
         if (op_focei.covMethod == 1 || op_focei.covMethod == 3) {
           arma::vec theta(op_focei.npars);
           unsigned int j, k;
@@ -5463,7 +5499,7 @@ NumericMatrix foceiCalcCov(Environment e){
             theta[k] = op_focei.fullTheta[j];
           }
           if (!e.exists("cholS")){
-            foceiS(&theta[0], e);
+            foceiS(&theta[0], e, sHasZero);
           } else {
             op_focei.cur += op_focei.npars;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
@@ -5526,21 +5562,28 @@ NumericMatrix foceiCalcCov(Environment e){
               if (op_focei.covMethod == 1){
                 e["covRS"] = Rinv * S *Rinv;
                 arma::mat covRS = as<arma::mat>(e["covRS"]);
-                if (checkSandwich){
-                  mat Sinv;
-                  bool success;
-                  success = inv(Sinv, trimatu(cholS));
-                  if (!success){
-                    warning(_("S matrix seems singular; Using pseudo-inverse"));
-                    Sinv = pinv(trimatu(cholS));
+                mat Sinv;
+                bool success;
+                success = inv(Sinv, trimatu(cholS));
+                if (!success){
+                  warning(_("S matrix seems singular; Using pseudo-inverse"));
+                  Sinv = pinv(trimatu(cholS));
+                }
+                Sinv = Sinv * Sinv.t();
+                e["covS"]= 4 * Sinv;
+                if (!checkSandwich) {
+                  bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
+                  if (covRSsmall) {
+                    checkSandwich2 = true;
                   }
-                  Sinv = Sinv * Sinv.t();
-                  e["covS"]= 4 * Sinv;
-                  if (rstr == "r"){
+
+                }
+                if (checkSandwich || checkSandwich2){
+                  if (!checkSandwich2 && rstr == "r"){
                     // Use covR
                     e["cov"] = as<NumericMatrix>(e["covR"]);
                     op_focei.covMethod=2;
-                  } else if (sstr == "s"){
+                  } else if (!checkSandwich2 && sstr == "s"){
                     // use covS
                     e["cov"] = as<NumericMatrix>(e["covS"]);
                     op_focei.covMethod=3;
@@ -5556,14 +5599,15 @@ NumericMatrix foceiCalcCov(Environment e){
                     double  covSd= sum(covS.diag());
                     if ((covRSsmall && covSsmall && covRsmall)){
                       e["cov"] = covRS;
-                    } else if (covRSsmall && !covSsmall && covRsmall) {
-                      e["cov"] = covS;
-                      op_focei.covMethod=3;
                     } else if (covRSsmall && covSsmall && !covRsmall) {
                       e["cov"] = covR;
                       op_focei.covMethod=2;
+                    } else if (covRSsmall && !covSsmall && covRsmall) {
+                      e["cov"] = covS;
+                      op_focei.covMethod=3;
                     } else if (covRSd > covRd){
                       // SE(RS) > SE(R)
+                      REprintf("here!!!");
                       if (covRd > covSd){
                         // SE(R) > SE(S)
                         e["cov"] = covS;
@@ -5626,6 +5670,9 @@ NumericMatrix foceiCalcCov(Environment e){
           NumericMatrix ret;
           return ret;
         } else {
+          if (sHasZero) {
+            warning(_("S matrix had problems solving for some subject and parameters"));
+          }
           if (op_focei.covMethod == 1){
             bool doWarn=false;
             if (rstr == "|r|"){
@@ -5662,6 +5709,9 @@ NumericMatrix foceiCalcCov(Environment e){
               }
             }
           } else if (op_focei.covMethod == 3){
+            if (sHasZero) {
+              warning(_("S matrix had problems solving for some subject and parameters"));
+            }
             e["covMethod"] = wrap(sstr);
             if (origCov != 2){
               if (checkSandwich){
@@ -6218,11 +6268,7 @@ void foceiFinalizeTables(Environment e){
     objDf.attr("row.names") = CharacterVector::create("FO");
     e["ofvType"] = "fo";
   } else if (op_focei.interaction){
-    if (op_focei.needOptimHess) {
-      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
-    } else {
-      objDf.attr("row.names") = CharacterVector::create("FOCEi");
-    }
+    objDf.attr("row.names") = CharacterVector::create("FOCEi");
     addLlikObs(e);
     e["ofvType"] = "focei";
   } else if (e.exists("ofvType")) {
@@ -6231,7 +6277,7 @@ void foceiFinalizeTables(Environment e){
     e["ofvType"]= ofvType;
   } else {
     if (op_focei.needOptimHess) {
-      objDf.attr("row.names") = CharacterVector::create("lFOCE");
+      objDf.attr("row.names") = CharacterVector::create("lFOCEi");
     } else {
       objDf.attr("row.names") = CharacterVector::create("FOCE");
     }
@@ -6256,7 +6302,7 @@ void foceiFinalizeTables(Environment e){
     } else if (op_focei.fo == 1){
       e["extra"] = "";
       e["skipTable"] = LogicalVector::create(true);
-    } else if (op_focei.interaction){
+    } else if (op_focei.interaction || op_focei.needOptimHess){
       if(op_focei.useColor){
         e["extra"] = "\033[31;1mi\033[0m";
       } else {

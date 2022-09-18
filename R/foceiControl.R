@@ -622,6 +622,12 @@
 #' @param fallbackFD Fallback to the finite differences if the
 #'   sensitivity equations do not solve.
 #'
+#' @param smatPer A percentage representing the number of failed
+#'   parameter gradients for each individual (which are replaced with
+#'   the overall gradient for the parameter) out of the total number
+#'   of gradients parameters (ie `ntheta*nsub`) before the S matrix is
+#'   considered to be a bad matrix.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -684,7 +690,8 @@ foceiControl <- function(sigdig = 3, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          hessEps =(.Machine$double.eps)^(1/3),
-                         hessEpsLlik =(.Machine$double.eps)^(1/2.5),
+                         #hessEpsLlik =(1/0.225*.Machine$double.eps)^(1/4),
+                         hessEpsLlik =(.Machine$double.eps)^(1/3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
                          eventType = c("central", "forward"), #
@@ -746,15 +753,19 @@ foceiControl <- function(sigdig = 3, #
                          gillFtol = 0, #
                          gillRtol = sqrt(.Machine$double.eps), #
                          gillKcov = 10L, #
-                         gillKcovLlik = 20L,
+                         #gillKcovLlik = 20L,
+                         gillKcovLlik = 10L,
                          gillStepCovLlik = 4.5,
+                         #gillStepCovLlik = 2,
                          gillStepCov = 2, #
                          gillFtolCov = 0, #
                          gillFtolCovLlik = 0, #
                          rmatNorm = TRUE, #
-                         rmatNormLlik= FALSE, #
+                         #rmatNormLlik= FALSE, #
+                         rmatNormLlik= TRUE, #
                          smatNorm = TRUE, #
-                         smatNormLlik = FALSE,
+                         ## smatNormLlik = FALSE,
+                         smatNormLlik = TRUE,
                          covGillF = TRUE, #
                          optGillF = TRUE, #
                          covSmall = 1e-5, #
@@ -778,7 +789,8 @@ foceiControl <- function(sigdig = 3, #
                          compress=TRUE, #
                          rxControl=NULL,
                          sigdigTable=NULL,
-                         fallbackFD=FALSE) { #
+                         fallbackFD=FALSE,
+                         smatPer=0.6) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1169,6 +1181,8 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+
+  checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1282,7 +1296,8 @@ foceiControl <- function(sigdig = 3, #
     shi21maxOuter=shi21maxOuter,
     shi21maxInner=shi21maxInner,
     shi21maxInnerCov=shi21maxInnerCov,
-    shi21maxFD=shi21maxFD
+    shi21maxFD=shi21maxFD,
+    smatPer=smatPer
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
