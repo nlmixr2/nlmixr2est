@@ -126,7 +126,12 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .sim$pred <- .sim2$sim
   }
   .sim <- vpcNameDataCmts(object, .sim)
-  class(.sim) <- c("nlmixr2vpcSim", class(.sim))
+  .cls <- c("nlmixr2vpcSim", class(.sim))
+  .fit <- object
+  .cls0 <- c("rxHidden", class(.fit))
+  class(.fit) <- .cls0
+  attr(.cls, "fit") <- .fit
+  class(.sim) <- .cls
   return(.sim)
 }
 #' Name the data and compartments
