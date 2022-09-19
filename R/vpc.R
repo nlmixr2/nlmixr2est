@@ -129,6 +129,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .cls <- c("nlmixr2vpcSim", class(.sim))
   .fit <- object
   .cls0 <- c("rxHidden", class(.fit))
+  attr(.cls0, ".foceiEnv") <- attr(class(.fit), ".foceiEnv")
   class(.fit) <- .cls0
   attr(.cls, "fit") <- .fit
   class(.sim) <- .cls
