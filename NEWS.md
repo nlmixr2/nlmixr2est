@@ -73,11 +73,18 @@
   likelihoods still need to be adjusted by the omega/eta contribution,
   and the individual Hessians, and possibly the NONMEM objective
   function offset constant.
-
+  
 # Censoring fixes
 
  - Fixed bug where datasets with censoring that are not lower case `cens` and `limit` do not
    produce the correct table output (#180)
+
+# FOCEi updates
+
+- Resets now scale properly when a value is simulated outside the limit
+- Models with zero gradients on the first step now switch to `bobyqa`
+  by default.  With this, it is more important to examine the model
+  parameters and fits for plausibility.
 
 # nlmixr2est 2.0.8
 
