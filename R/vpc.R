@@ -150,6 +150,9 @@ vpcNameDataCmts <- function(object, data) {
   if (is.null(.info)) {
     return(invisible(data))
   }
+  if (length(.info$cond) == 1L) {
+    return(invisible(data))
+  }
   .state0 <- rxode2::rxModelVars(object$ui)$state
   .maxCmt <- max(.info$cmt)
   .cmtF <- character(max(length(.state0), .maxCmt))
