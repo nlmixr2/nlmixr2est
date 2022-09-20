@@ -68,7 +68,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
         .data$nlmixrRowNums <- seq_along(.data[,1])
         .ds <- .ds[, c("CMT", "nlmixrRowNums")]
         .data <- merge(.data, .ds, by ="nlmixrRowNums")
-        .data <- .data[order(.data$nlmixrRowNums),names(.data) != "nlmixrRowNums"]
+        .data <- .data[order(.data$nlmixrRowNums),]
       }
       .lst <- .Call(`_nlmixr2est_filterNormalLikeAndDoses`,
                     .data$CMT, .predDf$distribution, .predDf$cmt)
