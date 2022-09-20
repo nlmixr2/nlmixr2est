@@ -15,6 +15,7 @@ nlmixr2Validate <- function(type = NULL, skipOnCran=TRUE) {
         return(invisible())
       }
     }
+    gc()
     rxode2::rxUnloadAll()
     return(force(type))
   }

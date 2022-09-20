@@ -125,6 +125,11 @@ nlmixr2Est0 <- function(env, ...) {
   if (!exists("missingTable", envir=env)) {
     assign("missingTable", TRUE, envir=env)
   }
+  if (inherits(env$ui, "rxUi")) {
+    .modelName <- env$ui$modelName
+    assign("ui", env$ui$fun(), envir=env) # re-evaluate so it doesn't overwrite inital ui
+    assign("modelName", .modelName, envir=env$ui)
+  }
   .doIt <- TRUE
   if (is.null(get("missingTable", envir=env))) {
   } else if (get("missingTable", envir=env)) {
@@ -151,7 +156,7 @@ nlmixr2Est0 <- function(env, ...) {
   .envReset$reset <- TRUE
   if (!getOption("nlmixr2.resetCache", TRUE)) {
     .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
-  } else{
+  } else {
     .envReset$reset <- TRUE
     .envReset$env <- new.env(parent=emptyenv())
     lapply(ls(envir = env, all.names = TRUE), function(item) {
