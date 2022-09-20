@@ -1405,6 +1405,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
           rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
+          .ret$control$outerOptTxt <- "bobyqa"
         } else {
           message("Theta reset (ETA drift)")
         }
@@ -1418,6 +1419,29 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     foceiFitCpp_(.ret)
   }
 }
+
+.nlmixrCheckFoceiEnvironment <- function(ret) {
+  checkmate::assertDataFrame(ret$dataSav, .var.name="focei$dataSav")
+  checkmate::assertNumeric(ret$thetaIni, any.missing=FALSE,
+                           null.ok=TRUE, .var.name="focei$thetaIni")
+  checkmate::assertLogical(ret$skipCov, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$skipCov")
+  if (!inherits(ret$rxInv, "rxSymInvCholEnv")) {
+    stop("focei$rxInv needs to be of class'rxSymInvCholEnv'",
+         call.=FALSE)
+  }
+  checkmate::assertNumeric(ret$lower, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$lower")
+  checkmate::assertNumeric(ret$upper, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$upper")
+  checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
+                          any.missing=FALSE, .var.name="focei$etaMat")
+  if (!inherits(ret$control, "foceiControl")) {
+    stop("focei$control must be a focei control object",
+         call.=FALSE)
+  }
+}
+
 #'  Restart the estimation if it wasn't successful by moving the parameters (randomly)
 #'
 #' @param .ret0 Fit
@@ -1431,27 +1455,36 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .est0 <- .ret$thetaIni
   lower <- .ret$lower
   upper <- .ret$upper
-
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
+    .draw <- TRUE
+    if (attr(.ret0, "condition")$message == "Evaluation error: On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\").") {
+        message("Changing to \"bobyqa\"")
+        rxode2::rxReq("minqa")
+        .ret$control$outerOpt <- -1L
+        .ret$control$outerOptFun <- .bobyqa
+        .ret$control$outerOptTxt <- "bobyqa"
+        #.ret$control$outerOptTxt <- "bobyqa"
+        .draw <- FALSE
+    }
     ## Maybe change scale?
     message(sprintf("Restart %s", .n))
     .ret$control$nF <- 0
     .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
-    .estNew <- sapply(
+    .estNew <- vapply(
       seq_along(.est0),
       function(.i) {
-        if (.ret$thetaFixed[.i]) {
+        if (!.draw || .ret$thetaFixed[.i]) {
           return(.est0[.i])
         } else if (.estNew[.i] < lower[.i]) {
-          return(lower + (.Machine$double.eps)^(1 / 7))
+          return(lower[.i] + (.Machine$double.eps)^(1 / 7))
         } else if (.estNew[.i] > upper[.i]) {
-          return(upper - (.Machine$double.eps)^(1 / 7))
+          return(upper[.i] - (.Machine$double.eps)^(1 / 7))
         } else {
           return(.estNew[.i])
         }
-      }
-    )
-    .ret$thetaIni <- .estNew
+      }, numeric(1), USE.NAMES=FALSE)
+    .ret$thetaIni <- setNames(.estNew, names(.est0))
+    .nlmixrCheckFoceiEnvironment(.ret)
     if (getOption("nlmixr2.retryFocei", TRUE)) {
       .ret0 <- try(.foceiFitInternal(.ret))
     } else {
