@@ -1418,6 +1418,29 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     foceiFitCpp_(.ret)
   }
 }
+
+.nlmixrCheckFoceiEnvironment <- function(ret) {
+  checkmate::assertDataFrame(ret$dataSav, .var.name="focei$dataSav")
+  checkmate::assertNumeric(ret$thetaIni, any.missing=FALSE,
+                           null.ok=TRUE, .var.name="focei$thetaIni")
+  checkmate::assertLogical(ret$skipCov, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$skipCov")
+  if (!inherits(ret$rxInv, "rxSymInvCholEnv")) {
+    stop("focei$rxInv needs to be of class'rxSymInvCholEnv'",
+         call.=FALSE)
+  }
+  checkmate::assertNumeric(ret$lower, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$lower")
+  checkmate::assertNumeric(ret$upper, null.ok=TRUE,
+                           any.missing=FALSE, .var.name="focei$upper")
+  checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
+                          any.missing=FALSE, .var.name="focei$etaMat")
+  if (!inherits(ret$control, "foceiControl")) {
+    stop("focei$control must be a focei control object",
+         call.=FALSE)
+  }
+}
+
 #'  Restart the estimation if it wasn't successful by moving the parameters (randomly)
 #'
 #' @param .ret0 Fit
@@ -1437,21 +1460,21 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     message(sprintf("Restart %s", .n))
     .ret$control$nF <- 0
     .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
-    .estNew <- sapply(
+    .estNew <- vapply(
       seq_along(.est0),
       function(.i) {
         if (.ret$thetaFixed[.i]) {
           return(.est0[.i])
         } else if (.estNew[.i] < lower[.i]) {
-          return(lower + (.Machine$double.eps)^(1 / 7))
+          return(lower[.i] + (.Machine$double.eps)^(1 / 7))
         } else if (.estNew[.i] > upper[.i]) {
-          return(upper - (.Machine$double.eps)^(1 / 7))
+          return(upper[.i] - (.Machine$double.eps)^(1 / 7))
         } else {
           return(.estNew[.i])
         }
-      }
-    )
-    .ret$thetaIni <- .estNew
+      }, numeric(1), USE.NAMES=FALSE)
+    .ret$thetaIni <- setNames(.estNew, names(.est0))
+    .nlmixrCheckFoceiEnvironment(.ret)
     if (getOption("nlmixr2.retryFocei", TRUE)) {
       .ret0 <- try(.foceiFitInternal(.ret))
     } else {

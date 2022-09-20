@@ -2029,7 +2029,7 @@ void thetaReset(double size){
   }
 }
 
-void thetaResetZero(){
+void thetaResetZero() {
   thetaReset0();
   warning(_("thetas were reset during optimization because of a zero gradient"));
   stop("theta reset0");
