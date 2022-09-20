@@ -6357,10 +6357,17 @@ Environment foceiFitCpp_(Environment e){
       inner = model["inner"];
     }
     if (rxode2::rxIs(inner, "rxode2")) {
-      foceiSetup_(inner, as<RObject>(e["dataSav"]),
-                  as<NumericVector>(e["thetaIni"]), e["thetaFixed"], e["skipCov"],
-                  as<RObject>(e["rxInv"]), e["lower"], e["upper"], e["etaMat"],
-                  e["control"]);
+      RObject _dataSav = as<RObject>(e["dataSav"]);
+      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+      Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
+      Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
+      RObject _rxInv = e["rxInv"];
+      Nullable<NumericVector> _lower = as<Nullable<NumericVector>> (e["lower"]);
+      Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
+      Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
+      Nullable<List> _control = as<Nullable<List>>(e["control"]);
+      foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
+                  _rxInv, _lower, _upper, _etaMat, _control);
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
         if (model.containsElementNamed("predNoLhsLlik")) {
