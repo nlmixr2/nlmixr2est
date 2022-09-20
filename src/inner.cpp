@@ -5283,6 +5283,9 @@ NumericMatrix foceiCalcCov(Environment e){
       }
       op_focei.resetEtaSize = std::numeric_limits<double>::infinity(); // Dont reset ETAs
       op_focei.resetEtaSize=0; // Always reset ETAs.
+      if (!e.exists("fullTheta")) {
+        stop("focei environment requires 'fullTheta'");
+      }
       NumericVector fullT = e["fullTheta"];
       NumericVector fullT2(op_focei.ntheta);
       std::copy(fullT.begin(), fullT.begin()+fullT2.size(), fullT2.begin());

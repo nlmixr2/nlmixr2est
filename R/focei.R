@@ -1405,6 +1405,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
           rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
+          .ret$control$outerOptTxt <- "bobyqa"
         } else {
           message("Theta reset (ETA drift)")
         }
@@ -1454,8 +1455,17 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .est0 <- .ret$thetaIni
   lower <- .ret$lower
   upper <- .ret$upper
-
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
+    .draw <- TRUE
+    if (attr(.ret0, "condition")$message == "Evaluation error: On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\").") {
+        message("Changing to \"bobyqa\"")
+        rxode2::rxReq("minqa")
+        .ret$control$outerOpt <- -1L
+        .ret$control$outerOptFun <- .bobyqa
+        .ret$control$outerOptTxt <- "bobyqa"
+        #.ret$control$outerOptTxt <- "bobyqa"
+        .draw <- FALSE
+    }
     ## Maybe change scale?
     message(sprintf("Restart %s", .n))
     .ret$control$nF <- 0
@@ -1463,7 +1473,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .estNew <- vapply(
       seq_along(.est0),
       function(.i) {
-        if (.ret$thetaFixed[.i]) {
+        if (!.draw || .ret$thetaFixed[.i]) {
           return(.est0[.i])
         } else if (.estNew[.i] < lower[.i]) {
           return(lower[.i] + (.Machine$double.eps)^(1 / 7))
