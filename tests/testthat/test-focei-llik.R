@@ -362,7 +362,7 @@ nmTest({
     f1 <- fll %>% dplyr::filter(CMT != "pca")
     f2 <- fll %>% dplyr::filter(CMT == "pca")
 
-    for (i in c("RES", "WRES", "IRES", "IWRES", "RES", "WRES",
+    for (i in c("RES", "WRES", "IRES", "IWRES", "WRES",
                 "IRES", "IWRES", "CPRED", "CRES", "CWRES",
                 "EPRED", "ERES", "NPDE", "NPD",
                 "PDE", "PD")) {

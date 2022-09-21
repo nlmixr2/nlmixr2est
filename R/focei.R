@@ -1463,7 +1463,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         .ret$control$outerOpt <- -1L
         .ret$control$outerOptFun <- .bobyqa
         .ret$control$outerOptTxt <- "bobyqa"
-        #.ret$control$outerOptTxt <- "bobyqa"
         .draw <- FALSE
     }
     ## Maybe change scale?
