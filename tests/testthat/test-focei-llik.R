@@ -154,226 +154,235 @@ nmTest({
                 control=foceiControl(maxOuterIterations=0))
 
     expect_equal(of1, f$objf)
-    
-    pk.turnover.emax3.n1 <- function() {
-      ini({
-        tktr <- log(1)
-        tka <- log(1)
-        tcl <- log(0.1)
-        tv <- log(10)
-        ##
-        eta.ktr ~ 1
-        eta.ka ~ 1
-        eta.cl ~ 2
-        eta.v ~ 1
-        prop.err <- 0.1
-        pkadd.err <- 0.1
-        ##
-        temax <- logit(0.8)
-        tec50 <- log(0.5)
-        tkout <- log(0.05)
-        te0 <- log(100)
-        ##
-        eta.emax ~ .5
-        eta.ec50  ~ .5
-        eta.kout ~ .5
-        eta.e0 ~ .5
-        ##
-        pdadd.err <- 1
-      })
-      model({
-        ktr <- exp(tktr + eta.ktr)
-        ka <- exp(tka + eta.ka)
-        cl <- exp(tcl + eta.cl)
-        v <- exp(tv + eta.v)
-        emax = expit(temax+eta.emax)
-        ec50 =  exp(tec50 + eta.ec50)
-        kout = exp(tkout + eta.kout)
-        e0 = exp(te0 + eta.e0)
-        ##
-        DCP = center/v
-        rPD=1-emax*DCP/(ec50+DCP)
-        ##
-        effect(0) = e0
-        kin = e0*kout
-        ##
-        d/dt(depot) = -ktr * depot
-        d/dt(gut) =  ktr * depot -ka * gut
-        d/dt(center) =  ka * gut - cl / v * center
-        d/dt(effect) = kin*rPD -kout*effect
-        ##
-        cp = center / v
-        cp ~ prop(prop.err) + add(pkadd.err)
-        effect ~ add(pdadd.err) + dnorm() | pca
-      })
-    }
-
-    pk.turnover.emax3.n2 <- function() {
-      ini({
-        tktr <- log(1)
-        tka <- log(1)
-        tcl <- log(0.1)
-        tv <- log(10)
-        ##
-        eta.ktr ~ 1
-        eta.ka ~ 1
-        eta.cl ~ 2
-        eta.v ~ 1
-        prop.err <- 0.1
-        pkadd.err <- 0.1
-        ##
-        temax <- logit(0.8)
-        tec50 <- log(0.5)
-        tkout <- log(0.05)
-        te0 <- log(100)
-        ##
-        eta.emax ~ .5
-        eta.ec50  ~ .5
-        eta.kout ~ .5
-        eta.e0 ~ .5
-        ##
-        pdadd.err <- 1
-      })
-      model({
-        ktr <- exp(tktr + eta.ktr)
-        ka <- exp(tka + eta.ka)
-        cl <- exp(tcl + eta.cl)
-        v <- exp(tv + eta.v)
-        emax = expit(temax+eta.emax)
-        ec50 =  exp(tec50 + eta.ec50)
-        kout = exp(tkout + eta.kout)
-        e0 = exp(te0 + eta.e0)
-        ##
-        DCP = center/v
-        rPD=1-emax*DCP/(ec50+DCP)
-        ##
-        effect(0) = e0
-        kin = e0*kout
-        ##
-        d/dt(depot) = -ktr * depot
-        d/dt(gut) =  ktr * depot -ka * gut
-        d/dt(center) =  ka * gut - cl / v * center
-        d/dt(effect) = kin*rPD -kout*effect
-        ##
-        cp = center / v
-        cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
-        effect ~ add(pdadd.err) + dnorm() | pca
-      })
-    }
-
-    f <- nlmixr2(pk.turnover.emax3.n1)
-    f2 <- nlmixr2(pk.turnover.emax3.n2)
-
-    expect_equal(f$foceiModel0, f2$foceiModel0)
-
-    expect_equal(f$foceModel0, f2$foceModel0)
-
-    f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
-                control=foceiControl(covMethod = "",
-                                     maxOuterIterations=0))
-    
-    of1     <- f$objf
-    etaMat1 <- as.matrix(f$eta[,-1])
-    theta1  <- f$theta
-    omega1  <- f$omega
-    etaO1   <- f$etaObf
-
-
-    pk.turnover.emax3.ll <- function() {
-      ini({
-        tktr <- log(1)
-        tka <- log(1)
-        tcl <- log(0.1)
-        tv <- log(10)
-        ##
-        eta.ktr ~ 1
-        eta.ka ~ 1
-        eta.cl ~ 2
-        eta.v ~ 1
-        prop.err <- 0.1
-        pkadd.err <- 0.1
-        ##
-        temax <- logit(0.8)
-        tec50 <- log(0.5)
-        tkout <- log(0.05)
-        te0 <- log(100)
-        ##
-        eta.emax ~ .5
-        eta.ec50  ~ .5
-        eta.kout ~ .5
-        eta.e0 ~ .5
-        ##
-        pdadd.err <- c(0, 10)
-      })
-      model({
-        ktr <- exp(tktr + eta.ktr)
-        ka <- exp(tka + eta.ka)
-        cl <- exp(tcl + eta.cl)
-        v <- exp(tv + eta.v)
-        emax = expit(temax+eta.emax)
-        ec50 =  exp(tec50 + eta.ec50)
-        kout = exp(tkout + eta.kout)
-        e0 = exp(te0 + eta.e0)
-        ##
-        DCP = center/v
-        rPD=1-emax*DCP/(ec50+DCP)
-        ##
-        effect(0) = e0
-        kin = e0*kout
-        ##
-        d/dt(depot) = -ktr * depot
-        d/dt(gut) =  ktr * depot -ka * gut
-        d/dt(center) =  ka * gut - cl / v * center
-        d/dt(effect) = kin*rPD -kout*effect
-        ##
-        cp = center / v
-        cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
-        ll(pca) ~ -log(pdadd.err) - 0.5*log(2*pi) - 0.5 * ((DV - effect) / pdadd.err)^2
-      })
-    }
-    
-    pk.turnover.emax3.ll %>%
-      ini(theta1) %>%
-      ini(omega1) ->
-      pk.turnover.emax3.ll
-
-    f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
-                 control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
-                                      maxOuterIterations=0,
-                                      optimHessType="central"))
-
-    expect_equal(f$omega, f2$omega)
-    expect_equal(f$theta, f2$theta)
-    expect_equal(f$eta, f2$eta)
-
-    f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
-                 control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
-                                      maxOuterIterations=0,
-                                      optimHessType="forward"))
-
-    expect_equal(f$omega, f2$omega)
-    expect_equal(f$theta, f2$theta)
-    expect_equal(f$eta, f2$eta)
-    
-    expect_equal(f2$objf, of1)
-
-    fll <- addNpde(f2)
-
-    f1 <- fll %>% dplyr::filter(CMT != "pca")
-    f2 <- fll %>% dplyr::filter(CMT == "pca")
-
-    for (i in c("RES", "WRES", "IRES", "IWRES", "WRES",
-                "IRES", "IWRES", "CPRED", "CRES", "CWRES",
-                "EPRED", "ERES", "NPDE", "NPD",
-                "PDE", "PD")) {
-      expect_false(any(is.na(f1[[i]])))
-      expect_true(all(is.na(f2[[i]])))
-    }
-
-    for (i in c("IRES", "IWRES")) {
-      expect_false(any(is.na(f1[[i]])))
-      expect_true(all(is.na(f2[[i]])))
-    }
-    
   })
+  
+  
+  pk.turnover.emax3.n1 <- function() {
+    ini({
+      tktr <- log(1)
+      tka <- log(1)
+      tcl <- log(0.1)
+      tv <- log(10)
+      ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
+      eta.cl ~ 2
+      eta.v ~ 1
+      prop.err <- 0.1
+      pkadd.err <- 0.1
+      ##
+      temax <- logit(0.8)
+      tec50 <- log(0.5)
+      tkout <- log(0.05)
+      te0 <- log(100)
+      ##
+      eta.emax ~ .5
+      eta.ec50  ~ .5
+      eta.kout ~ .5
+      eta.e0 ~ .5
+      ##
+      pdadd.err <- 1
+    })
+    model({
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      emax = expit(temax+eta.emax)
+      ec50 =  exp(tec50 + eta.ec50)
+      kout = exp(tkout + eta.kout)
+      e0 = exp(te0 + eta.e0)
+      ##
+      DCP = center/v
+      rPD=1-emax*DCP/(ec50+DCP)
+      ##
+      effect(0) = e0
+      kin = e0*kout
+      ##
+      d/dt(depot) = -ktr * depot
+      d/dt(gut) =  ktr * depot -ka * gut
+      d/dt(center) =  ka * gut - cl / v * center
+      d/dt(effect) = kin*rPD -kout*effect
+      ##
+      cp = center / v
+      cp ~ prop(prop.err) + add(pkadd.err)
+      effect ~ add(pdadd.err) + dnorm() | pca
+    })
+  }
+
+  pk.turnover.emax3.n2 <- function() {
+    ini({
+      tktr <- log(1)
+      tka <- log(1)
+      tcl <- log(0.1)
+      tv <- log(10)
+      ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
+      eta.cl ~ 2
+      eta.v ~ 1
+      prop.err <- 0.1
+      pkadd.err <- 0.1
+      ##
+      temax <- logit(0.8)
+      tec50 <- log(0.5)
+      tkout <- log(0.05)
+      te0 <- log(100)
+      ##
+      eta.emax ~ .5
+      eta.ec50  ~ .5
+      eta.kout ~ .5
+      eta.e0 ~ .5
+      ##
+      pdadd.err <- 1
+    })
+    model({
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      emax = expit(temax+eta.emax)
+      ec50 =  exp(tec50 + eta.ec50)
+      kout = exp(tkout + eta.kout)
+      e0 = exp(te0 + eta.e0)
+      ##
+      DCP = center/v
+      rPD=1-emax*DCP/(ec50+DCP)
+      ##
+      effect(0) = e0
+      kin = e0*kout
+      ##
+      d/dt(depot) = -ktr * depot
+      d/dt(gut) =  ktr * depot -ka * gut
+      d/dt(center) =  ka * gut - cl / v * center
+      d/dt(effect) = kin*rPD -kout*effect
+      ##
+      cp = center / v
+      cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
+      effect ~ add(pdadd.err) + dnorm() | pca
+    })
+  }
+
+  f <- nlmixr2(pk.turnover.emax3.n1)
+  f2 <- nlmixr2(pk.turnover.emax3.n2)
+
+  expect_equal(f$foceiModel0, f2$foceiModel0)
+
+  expect_equal(f$foceModel0, f2$foceModel0)
+
+  f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
+              control=foceiControl(covMethod = "",
+                                   maxOuterIterations=0))
+  
+  of1     <- f$objf
+  etaMat1 <- as.matrix(f$eta[,-1])
+  theta1  <- f$theta
+  omega1  <- f$omega
+  etaO1   <- f$etaObf
+
+
+  pk.turnover.emax3.ll <- function() {
+    ini({
+      tktr <- log(1)
+      tka <- log(1)
+      tcl <- log(0.1)
+      tv <- log(10)
+      ##
+      eta.ktr ~ 1
+      eta.ka ~ 1
+      eta.cl ~ 2
+      eta.v ~ 1
+      prop.err <- 0.1
+      pkadd.err <- 0.1
+      ##
+      temax <- logit(0.8)
+      tec50 <- log(0.5)
+      tkout <- log(0.05)
+      te0 <- log(100)
+      ##
+      eta.emax ~ .5
+      eta.ec50  ~ .5
+      eta.kout ~ .5
+      eta.e0 ~ .5
+      ##
+      pdadd.err <- c(0, 10)
+    })
+    model({
+      ktr <- exp(tktr + eta.ktr)
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      emax = expit(temax+eta.emax)
+      ec50 =  exp(tec50 + eta.ec50)
+      kout = exp(tkout + eta.kout)
+      e0 = exp(te0 + eta.e0)
+      ##
+      DCP = center/v
+      rPD=1-emax*DCP/(ec50+DCP)
+      ##
+      effect(0) = e0
+      kin = e0*kout
+      ##
+      d/dt(depot) = -ktr * depot
+      d/dt(gut) =  ktr * depot -ka * gut
+      d/dt(center) =  ka * gut - cl / v * center
+      d/dt(effect) = kin*rPD -kout*effect
+      ##
+      cp = center / v
+      cp ~ prop(prop.err) + add(pkadd.err) + dnorm()
+      ll(pca) ~ -log(pdadd.err) - 0.5*log(2*pi) - 0.5 * ((DV - effect) / pdadd.err)^2
+    })
+  }
+  
+  pk.turnover.emax3.ll %>%
+    ini(theta1) %>%
+    ini(omega1) ->
+    pk.turnover.emax3.ll
+
+  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+               control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                    maxOuterIterations=0,
+                                    optimHessType="forward"))
+
+  test_that("same values for omega, theta and eta, forward", {
+    expect_equal(f$omega, f2$omega)
+    expect_equal(f$theta, f2$theta)
+    expect_equal(f$eta, f2$eta)    
+  })
+
+  f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+               control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
+                                    maxOuterIterations=0,
+                                    optimHessType="central"))
+
+  test_that("same values for omega, theta and eta, central", {
+    expect_equal(f$omega, f2$omega)
+    expect_equal(f$theta, f2$theta)
+    expect_equal(f$eta, f2$eta)
+  })
+
+
+  test_that("objective values are equal for mixed ll", {
+    expect_equal(f2$objf, of1)
+  })
+
+  fll <- addNpde(f2)
+  fnorm <- addNpde(f)
+
+  f1 <- fll %>% dplyr::filter(CMT != "pca")
+  f1norm <- fnorm %>% dplyr::filter(CMT != "pca")
+  f2 <- fll %>% dplyr::filter(CMT == "pca")
+
+  for (i in c("RES", "WRES", "IRES", "IWRES", "WRES",
+              "IWRES", "CPRED", "CRES", "CWRES",
+              "EPRED", "ERES", "NPDE", "NPD",
+              "PDE", "PD")) {
+    test_that(paste0("res: ", i), {
+      expect_false(any(is.na(f1[[i]])))
+      expect_true(all(is.na(f2[[i]])))
+      if (!(i %in% c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD"))) {
+        expect_equal(f1[[i]], f1norm[[i]])
+      }
+    })
+  }
 })
