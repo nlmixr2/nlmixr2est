@@ -380,7 +380,9 @@ nmTest({
     test_that(paste0("res: ", i), {
       expect_false(any(is.na(f1[[i]])))
       expect_true(all(is.na(f2[[i]])))
-      expect_equal(f1[[i]], f1norm[[i]])
+      if (!(i %in% c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD"))) {
+        expect_equal(f1[[i]], f1norm[[i]])
+      }
     })
   }
 })
