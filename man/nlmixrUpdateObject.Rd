@@ -2,7 +2,7 @@
 % Please edit documentation in R/nlmixrUpdateObject.R
 \name{nlmixrUpdateObject}
 \alias{nlmixrUpdateObject}
-\title{Update the nlmix2 object with new fit information}
+\title{Update the nlmixr2 object with new fit information}
 \usage{
 nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 }
@@ -19,7 +19,7 @@ nlmixrUpdateObject(fit, objName, envir, origFitEnv = NULL)
 Nothing, called for side effects
 }
 \description{
-Update the nlmix2 object with new fit information
+Update the nlmixr2 object with new fit information
 }
 \author{
 Matthew L. Fidler

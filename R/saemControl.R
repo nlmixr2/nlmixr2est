@@ -59,7 +59,7 @@
 #'
 #' @param nnodesGq number of nodes to use for the Gaussian
 #'     quadrature when computing the likelihood with this method
-#'     (defaults to 1, equivalent to the Laplaclian likelihood)
+#'     (defaults to 1, equivalent to the Laplacian likelihood)
 #'
 #' @param nsdGq span (in SD) over which to integrate when computing
 #'     the likelihood by Gaussian quadrature. Defaults to 3 (eg 3

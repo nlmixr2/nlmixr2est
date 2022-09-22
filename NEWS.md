@@ -256,7 +256,7 @@
 ## nlmixr2 object change
 
 - With `saem`, the nlmixr2 function now saves/compresses the `phiM`
-  information.  This means the gaussian and laplacian likelihoods can
+  information.  This means the gaussian and Laplacians likelihoods can
   be calculated when you save the nlmixr object and then restore it
   later.
 

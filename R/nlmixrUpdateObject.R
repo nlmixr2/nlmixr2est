@@ -1,4 +1,4 @@
-#' Update the nlmix2 object with new fit information
+#' Update the nlmixr2 object with new fit information
 #'
 #' @param fit nlmixr2 fit object to update in the environment
 #' @param objName Name of the object
