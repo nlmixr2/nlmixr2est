@@ -1,8 +1,8 @@
-# nlmixr2est 2.0.9
+# nlmixr2est 2.1.0
 
-# Breaking changes
+## Breaking changes
 
-## FOCEi
+### FOCEi
 
  - Gill forward differences will not repeat now (by default), You can
    change back to prior behavior with `foceiControl(repeatGillMax=3)`
@@ -14,7 +14,7 @@
    log-likelihoods.  This was only used in simulation and was not well
    documented.
  
-## FOCEi covariance calculation
+### FOCEi covariance calculation
 
  - The `S` matrix calculation was made a bit more robust to errors in
    individual gradients.  When there are errors in the individual
@@ -35,7 +35,7 @@
    select a different covariance estimate method even when the "r" and
    "s" matrices are calculated "correctly".
 
-# New features
+## New features
 
 - What type(s) censoring (if any) is now stored in `fit$censInformation`
 
@@ -74,12 +74,12 @@
   and the individual Hessians, and possibly the NONMEM objective
   function offset constant.
   
-# Censoring fixes
+## Censoring fixes
 
  - Fixed bug where datasets with censoring that are not lower case `cens` and `limit` do not
    produce the correct table output (#180)
 
-# FOCEi updates
+## FOCEi updates
 
 - Resets now scale properly when a value is simulated outside the limit
 - Models with zero gradients on the first step now switch to `bobyqa`
