@@ -12,7 +12,9 @@
    
  - `n2ll` has been changed to `ll` to specify individual
    log-likelihoods.  This was only used in simulation and was not well
-   documented.
+   documented. 
+   
+ - Generalized log-likelihood is only supported with `rxode2` `2.0.8` or later.
  
 ### FOCEi covariance calculation
 
