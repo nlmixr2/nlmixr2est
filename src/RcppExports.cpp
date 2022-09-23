@@ -75,6 +75,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxode2hasLlik
+LogicalVector rxode2hasLlik();
+RcppExport SEXP _nlmixr2est_rxode2hasLlik() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(rxode2hasLlik());
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {

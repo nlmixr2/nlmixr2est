@@ -47,3 +47,9 @@ List filterNormalLikeAndDoses(IntegerVector& inCmt, IntegerVector& inDistributio
                       _["nlik"]=nlik,
                       _["nother"]=nother);
 }
+
+
+//[[Rcpp::export]]
+LogicalVector rxode2hasLlik() {
+  return LogicalVector::create(rxHasFoceiLlik);
+}
