@@ -159,7 +159,8 @@ rxUiGet.saemFixed <- function(x, ...) {
 #' @export
 rxUiGet.saemEtaTrans <- function(x, ...) {
   .ui <- x[[1]]
-  .etas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .iniDf <- .ui$iniDf
+  .etas <- .iniDf[!is.na(.iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .muRefDataFrame <- .ui$muRefDataFrame
@@ -176,6 +177,7 @@ rxUiGet.saemEtaTrans <- function(x, ...) {
   }, integer(1), USE.NAMES=FALSE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
+
 #' @export
 rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -436,7 +438,8 @@ rxUiGet.saemResValue <- function(x, ...) {
 #' @export
 rxUiGet.saemEtaNames <- function(x, ...) {
   .ui <- x[[1]]
-  .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .iniDf <- .ui$iniDf
+  .etaNames <- .iniDf[!is.na(.iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2, "name"]
   ## .etaTrans <- rxUiGet.saemOmegaTrans(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -453,7 +456,8 @@ rxUiGet.saemEtaNames <- function(x, ...) {
 #' @export
 rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
   .ui <- x[[1]]
-  .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .iniDf <-.ui$iniDf
+  .etaNames <- .iniDf[!is.na(.iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2,]
   .names <- rxUiGet.saemEtaNames(x, ...)
   vapply(.names, function(etaName){
@@ -482,7 +486,11 @@ rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...))
+  if (rxUiGet.saemModelNeedsLlik(x, ...)) {
+    c(.plambda, rxUiGet.saemParHistEtaNames(x, ...))
+  } else {
+    c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...))    
+  }
 }
 
 #' @export
@@ -585,7 +593,7 @@ rxUiGet.saemLogEta <- function(x, ...) {
     .w <- which(.ce$parameter == x)
     if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
     FALSE
-  }, logical(1))
+  }, logical(1),USE.NAMES=TRUE)
 }
 #attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
 
@@ -625,7 +633,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
   .ret <- vapply(seq_along(.logEta),
-                  function(i){
+                  function(i) {
                     .isEta <- any(.names[i] %in% .etaNames)
                     if (.logEta[i]) {
                       if (.isEta) {
@@ -695,7 +703,8 @@ rxUiGet.saemInit <- function(x, ...) {
 rxUiGet.saemThetaDataFrame <- function(x, ...) {
   .ui <- x[[1]]
   .theta <- .ui$theta
-  .fixed <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "fix"]
+  .iniDf <-.ui$iniDf
+  .fixed <- .iniDf[!is.na(.iniDf$ntheta), "fix"]
   data.frame(lower= -Inf, theta=.theta, fixed=.fixed, upper=Inf, row.names=names(.theta))
 }
 #attr(rxUiGet.saemThetaDataFrame, "desc") <- "Get theta data frame"

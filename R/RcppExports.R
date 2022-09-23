@@ -168,6 +168,10 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+saem_user_opt_ll_fun <- function(resParsNV) {
+    .Call(`_nlmixr2est_saem_user_opt_ll_fun`, resParsNV)
+}
+
 saem_do_pred <- function(in_phi, in_evt, in_opt) {
     .Call(`_nlmixr2est_saem_do_pred`, in_phi, in_evt, in_opt)
 }

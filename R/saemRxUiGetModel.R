@@ -84,7 +84,7 @@
 .saemDropMuRefFromModel <- function(ui, noCovs=FALSE) {
   .muRefFinal <- ui$saemMuRefCovariateDataFrame
   .muRefDataFrame <- ui$muRefDataFrame
-  lapply(ui$lstExpr, function(line){
+  lapply(ui$lstExpr, function(line) {
     .saemDropParameters(line, .muRefDataFrame, .muRefFinal, noCovs=noCovs)
   })
 }
@@ -113,7 +113,7 @@ nmGetDistributionSaemLines <- function(line) {
     return(NULL)
   }
   .predLine <- .predDf[line, ]
-  .ret <- list(x, .predLine)
+  .ret <- list(x, .predLine, line)
   class(.ret) <- c(paste(.predLine$distribution), "nmGetDistributionSaemLines")
   .ret
 }
@@ -122,7 +122,7 @@ nmGetDistributionSaemLines <- function(line) {
 #' @export
 nmGetDistributionSaemLines.rxUi <- function(line) {
   .predDf <- get("predDf", line)
-  lapply(seq_along(.predDf$cond), function(c){
+  lapply(seq_along(.predDf$cond), function(c) {
     .mod <- .createSaemLineObject(line, c)
     nmGetDistributionSaemLines(.mod)
   })
@@ -142,19 +142,27 @@ nmGetDistributionSaemLines.norm <- function(line) {
 }
 
 #' @export
-nmGetDistributionSaemLines.t <- function(line) {
-  stop("t isn't supported yet")
-}
-
-#' @export
 nmGetDistributionSaemLines.default  <- function(line) {
-  stop("Distribution not supported")
+  .rx <- line[[1]]
+  .pred1 <- line[[2]]
+  .errNum <- line[[3]]
+  lapply(rxode2::.handleSingleErrTypeNormOrTFoceiBase(.rx, .pred1, .errNum, rxPredLlik=TRUE),
+         function(x) {
+           if (identical(x[[1]], quote(`~`)) &&
+                 identical(x[[2]], quote(`rx_pred_`))) {
+             .ret <- x
+             .ret[[1]] <- quote(`<-`)
+             return(.ret)
+           }
+           x
+         })
 }
 
 #' @export
 rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
-  .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
+  .iniDf <- .x$iniDf
+  .names <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
@@ -163,28 +171,28 @@ rxUiGet.saemParamsLine <- function(x, ...) {
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
-                              paramsLine=NA,
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  .saemIntegrateErrMu(.f,
+                      rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
+                                                  paramsLine=NA,
+                                                  modelVars=TRUE,
+                                                  cmtLines=FALSE,
+                                                  dvidLine=FALSE,
+                                                  lstExpr=.saemDropMuRefFromModel(.f)))
 }
 #attr(rxUiGet.saemModel0, "desc") <- "saem initial model"
 
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE,
-                              lstExpr=.saemDropMuRefFromModel(.f))
+  .saemIntegrateErrMu(.f,
+                      rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
+                                                  paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                                                  modelVars=TRUE,
+                                                  cmtLines=FALSE,
+                                                  dvidLine=FALSE,
+                                                  lstExpr=.saemDropMuRefFromModel(.f)))
 }
 # attr(rxUiGet.saemModel0, "desc") <- "saem predOnly for use in calculating residuals with focei engine"
-
-
 
 #' Load the saem model into symengine
 #'
@@ -289,7 +297,9 @@ rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
   .ui <- x[[1]]
-  .par <- c(rxUiGet.saemParamsToEstimateCov(x, ...), .ui$covariates)
+  .par <- c(rxUiGet.saemErrMuNames(x, ...),
+            rxUiGet.saemParamsToEstimateCov(x, ...),
+            .ui$covariates)
   paste0("params(", paste(.par, collapse=","), ")")
 }
 attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
