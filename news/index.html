@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.8</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.0</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -44,7 +44,44 @@
       <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/HEAD/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
-    <div class="section level2"><h2 class="pkg-version" data-toc-text="2.0.9" id="nlmixr2est-209">nlmixr2est 2.0.9<a class="anchor" aria-label="anchor" href="#nlmixr2est-209"></a></h2></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="2.1.0" id="nlmixr2est-210">nlmixr2est 2.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-210"></a></h2>
+<div class="section level3">
+<h3 id="breaking-changes-2-1-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-2-1-0"></a></h3>
+<div class="section level4">
+<h4 id="focei-2-1-0">FOCEi<a class="anchor" aria-label="anchor" href="#focei-2-1-0"></a></h4>
+<ul><li><p>Gill forward differences will not repeat now (by default), You can change back to prior behavior with <code>foceiControl(repeatGillMax=3)</code></p></li>
+<li><p>Number of sticky recalculation is reduced to 4; to have the old behavior use <code>foceiControl(stickyRecalcN=5)</code></p></li>
+<li><p><code>n2ll</code> has been changed to <code>ll</code> to specify individual log-likelihoods. This was only used in simulation and was not well documented.</p></li>
+</ul></div>
+<div class="section level4">
+<h4 id="focei-covariance-calculation-2-1-0">FOCEi covariance calculation<a class="anchor" aria-label="anchor" href="#focei-covariance-calculation-2-1-0"></a></h4>
+<ul><li><p>The <code>S</code> matrix calculation was made a bit more robust to errors in individual gradients. When there are errors in the individual gradient calculation, assume the gradient is the same as the overall gradient. In the tests cases, were reasonable using this adjusted S matrix. This means if some individuals do not have very much data to support a specific parameter, a <code>S</code> matrix calculation for the population will still be generated. When there is some patients/subject combinations that do not have sufficient data, we will add the following to the run information: <code>S matrix had problems solving for some subject and parameters</code>. The <code>S</code> matrix calculation will still fail if the percentage of parameters that are being reset is lower than <code>foceiControl(smatPer=0.6)</code> or whatever you specify.</p></li>
+<li><p>The <code>r,s</code> covariance matrix will now also check for unreasonably small values (controlled by <code>foceiControl(covSmall=...)</code>) and select a different covariance estimate method even when the “r” and “s” matrices are calculated “correctly”.</p></li>
+</ul></div>
+</div>
+<div class="section level3">
+<h3 id="new-features-2-1-0">New features<a class="anchor" aria-label="anchor" href="#new-features-2-1-0"></a></h3>
+<ul><li><p>What type(s) censoring (if any) is now stored in <code>fit$censInformation</code></p></li>
+<li><p>Standard errors of <code>$etas</code> can now be obtained with <code>fit$phiSE</code>, also available are <code>fit$phiRSE</code> (relative standard error), <code>fit$phiH</code>, (individual hessian), <code>fit$phiC</code> (individual covariances), <code>fit$phiR</code> (individual correlation matrices)</p></li>
+<li><p>Can also use Shi 2021 differences in addition to Gill differences. In our tests (using the same datasets as CPT) these produced worse estimates than the Gill 1983, though it is unclear why since it should be a faster more accurate method. A modified version is used in calculating the individual Hessians of numerically for the generalized likelihood approach.</p></li>
+<li><p>Generalized likelihood estimation is now present in <code>nlmixr2est</code> for <code>focei</code>, <code>foce</code> and <code>posthoc</code></p></li>
+<li><p><code><a href="../reference/nmNearPD.html">nmNearPD()</a></code> is a function you may use for nearest positive definite matrix. This is derived from <code><a href="https://rdrr.io/pkg/Matrix/man/nearPD.html" class="external-link">Matrix::nearPD()</a></code> but is implemented in C/C++ to be used in (possibly threaded) optimization.</p></li>
+<li><p>Individual Hessians can be accessed by <code>$phiH</code>, covariance by <code>$phiC</code>, eta standard errors by <code>$phiSE</code> and eta RSEs can be accessed by <code>$phiRSE</code>. There are <code>eta</code> aliases for these as well (<code>$etaH</code>, <code>$etaC</code>, <code>$etaSE</code>, and <code>$etaRSE</code>).</p></li>
+<li>
+<p>Can now access the individual point’s contribution to the overall likelihood when merging to the original dataset. These merges can be accessed with <code>$dataMergeFull</code>, <code>$dataMergeLeft</code>, <code>$dataMergeRight</code>, and <code>$dataMergeInner</code>. The columns with the individual data column is <code>nlmixrLlikObs</code>.</p>
+<p>To calculate the total <code>focei</code>/<code>foce</code> objective function, the sum of the likelihoods still need to be adjusted by the omega/eta contribution, and the individual Hessians, and possibly the NONMEM objective function offset constant.</p>
+</li>
+</ul></div>
+<div class="section level3">
+<h3 id="censoring-fixes-2-1-0">Censoring fixes<a class="anchor" aria-label="anchor" href="#censoring-fixes-2-1-0"></a></h3>
+<ul><li>Fixed bug where datasets with censoring that are not lower case <code>cens</code> and <code>limit</code> do not produce the correct table output (<a href="https://github.com/nlmixr2/nlmixr2est/issues/180" class="external-link">#180</a>)</li></ul></div>
+<div class="section level3">
+<h3 id="focei-updates-2-1-0">FOCEi updates<a class="anchor" aria-label="anchor" href="#focei-updates-2-1-0"></a></h3>
+<ul><li>Resets now scale properly when a value is simulated outside the limit</li>
+<li>Models with zero gradients on the first step now switch to <code>bobyqa</code> by default. With this, it is more important to examine the model parameters and fits for plausibility.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="2.0.8" id="nlmixr2est-208">nlmixr2est 2.0.8<a class="anchor" aria-label="anchor" href="#nlmixr2est-208"></a></h2><p class="text-muted">CRAN release: 2022-06-22</p>
 <div class="section level3">
