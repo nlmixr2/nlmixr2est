@@ -308,35 +308,51 @@ rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
   pred1 <- line[[2]]
   .errNum <- line[[3]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                               rxPredLlik=.getRxPredLlikOption())
+  if (rxode2hasLlik()) {
+    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                 rxPredLlik=.getRxPredLlikOption())
+  } else {
+    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
+  }
 }
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
-  env <- line[[1]]
-  pred1 <- line[[2]]
-  .errNum <- line[[3]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                               rxPredLlik=.getRxPredLlikOption())
+  if (rxode2hasLlik()) { 
+    env <- line[[1]]
+    pred1 <- line[[2]]
+    .errNum <- line[[3]]
+    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                 rxPredLlik=.getRxPredLlikOption())
+  } else {
+    stop("t is not supported", call.=FALSE)
+  }
 }
 
 #' @export
 rxGetDistributionFoceiLines.cauchy <- function(line) {
-  env <- line[[1]]
-  pred1 <- line[[2]]
-  .errNum <- line[[3]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                               rxPredLlik=.getRxPredLlikOption())
+  if (rxode2hasLlik()) { 
+    env <- line[[1]]
+    pred1 <- line[[2]]
+    .errNum <- line[[3]]
+    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                 rxPredLlik=.getRxPredLlikOption())
+  } else {
+    stop("t is not supported", call.=FALSE)
+  }
 }
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
-  env <- line[[1]]
-  pred1 <- line[[2]]
-  .errNum <- line[[3]]
-  rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                               rxPredLlik=.getRxPredLlikOption())
+  if (rxode2hasLlik()) { 
+    env <- line[[1]]
+    pred1 <- line[[2]]
+    .errNum <- line[[3]]
+    rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
+                                                 rxPredLlik=.getRxPredLlikOption())
+  } else {
+    stop("unknown distribution", call.=FALSE)
+  }
 }
 
 #' @export
@@ -992,18 +1008,20 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiOptEnvAssignNllik <- function(ui, env) {
-  .maxLl <- max(vapply(seq_along(env$model), function(i) {
-    .model <- env$model[[i]]
-    if (inherits(.model, "rxode2")) {
-      return(rxode2::rxModelVars(.model)$flags["nLlik"])
-    } else {
-      return(0L)
-    }
-  }, integer(1), USE.NAMES=FALSE))
-  if (.maxLl > 0) {
-    .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-    .rxControl$nLlikAlloc <- .maxLl
-    rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
+  if (rxode2hasLlik()) {
+    .maxLl <- max(vapply(seq_along(env$model), function(i) {
+      .model <- env$model[[i]]
+      if (inherits(.model, "rxode2")) {
+        return(rxode2::rxModelVars(.model)$flags["nLlik"])
+      } else {
+        return(0L)
+      }
+    }, integer(1), USE.NAMES=FALSE))
+    if (.maxLl > 0) {
+      .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+      .rxControl$nLlikAlloc <- .maxLl
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
+    }    
   }
 }
 
@@ -1657,6 +1675,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 nlmixr2Est.focei <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
+  }
 
   .foceiFamilyControl(env, ...)
   on.exit({
@@ -1673,6 +1694,9 @@ nlmixr2Est.focei <- function(env, ...) {
 nlmixr2Est.foce <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
+  }
 
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
@@ -1796,6 +1820,9 @@ nlmixr2Est.fo <- function(env, ...) {
 nlmixr2Est.output <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
+  if (!rxode2hasLlik()) {
+    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
+  }
 
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)

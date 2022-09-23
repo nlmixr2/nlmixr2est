@@ -19,6 +19,10 @@ filterNormalLikeAndDoses <- function(inCmt, inDistribution, inDistCmt) {
     .Call(`_nlmixr2est_filterNormalLikeAndDoses`, inCmt, inDistribution, inDistCmt)
 }
 
+rxode2hasLlik <- function() {
+    .Call(`_nlmixr2est_rxode2hasLlik`)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
