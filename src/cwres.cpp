@@ -203,10 +203,11 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec ires = dv.elem(normIdx) - ipred.elem(normIdx);
     arma::vec cpred(ires.size());
     arma::vec cres(ires.size());
+    arma::vec predNorm(ires.size());
     for (unsigned int i = 0; i < cres.size(); ++i) {
       cpred[i] = _powerDi(cpredt[i], lambdaNorm[i], yjNorm[i], lowNorm[i], hiNorm[i]);
       cres[i]  = dvNorm[i] - cpred[i];
-      pred[i] = _powerDi(predtNorm[i], lambdaNorm[i], yjNorm[i], lowNorm[i], hiNorm[i]);
+      predNorm[i] = _powerDi(predtNorm[i], lambdaNorm[i], yjNorm[i], lowNorm[i], hiNorm[i]);
     }
     resFinal.elem(normIdx)   = res;
     wresFinal.elem(normIdx)  = wres;
@@ -215,6 +216,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     cpredFinal.elem(normIdx) = cpred;
     cresFinal.elem(normIdx)  = cres;
     cwresFinal.elem(normIdx) = cwres;
+    pred.elem(normIdx)  = predNorm;
     // fill rest with na
     resFinal.elem(nonNormIdx).fill(NA_REAL);  
     wresFinal.elem(nonNormIdx).fill(NA_REAL); 

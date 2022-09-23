@@ -134,7 +134,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' @return list with ipred and pred datasets
 #' @author Matthew Fidler
 #' @noRd
-.foceiPredIpredList <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters, keep=NULL, predOnly=is.null(fit$innerModel),
+.foceiPredIpredList <- function(fit, data=fit$dataSav,
+                                thetaEtaParameters=fit$foceiThetaEtaParameters,
+                                keep=NULL,
+                                predOnly=is.null(fit$innerModel),
                                 addDosing=FALSE, subsetNonmem=TRUE) {
   keep <- unique(c(keep, "nlmixrRowNums"))
   if (!predOnly && is.null(fit$innerModel)) {
