@@ -1,7 +1,11 @@
 # Submission to allow log-likelihood estimation
 
-Note checked with win-builder and ubuntu development R as well as
-windows, mac and linux current release.
+- Note checked with win-builder and ubuntu development R as well as
+  windows, mac and linux current release.
+  
+- CRAN issues with `anonymous non-C-compatible type given name for
+  linkage purposes by typedef declaration; add a tag name here` where
+  changed to simple `C++` structures to suppress the "significant" warning.
 
 ## Breaking changes
 
@@ -16,6 +20,11 @@ windows, mac and linux current release.
  - `n2ll` has been changed to `ll` to specify individual
    log-likelihoods.  This was only used in simulation and was not well
    documented.
+   
+ - log-likelihood requires a more recent version of `rxode2`.  Since
+   it takes a while to compile, this version was made compatible with
+   the old version of rxode2 while compilation issues will be
+   addressed later.
  
 ### FOCEi covariance calculation
 

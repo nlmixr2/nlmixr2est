@@ -101,7 +101,7 @@ extern void lin_cmt_stanC(double *obs_timeD, const int nobs, double *dose_timeD,
 List _rxInv;
 
 // These are focei inner options
-typedef struct {
+struct focei_options {
   //
   // std::string estStr;
   // std::string gradStr;
@@ -325,11 +325,11 @@ typedef struct {
   int optimHessType = 1;
   int optimHessCovType = 1;
   double smatPer;
-} focei_options;
+};
 
 focei_options op_focei;
 
-typedef struct {
+struct focei_ind {
   int nInnerF;
   int nInnerG;
   double lik[3]; // lik[0] = liklihood; For central difference: lik[1] = lower lik[2] = upper
@@ -378,7 +378,7 @@ typedef struct {
   double *curS;
   int nNonNormal = 0;
   int nObs=0;
-} focei_ind;
+};
 
 focei_ind *inds_focei = NULL;
 
@@ -432,8 +432,7 @@ extern "C" void rxOptionsFreeFocei(){
 void freeFocei(){
   rxOptionsFreeFocei();
 }
-
-typedef struct {
+struct rxSolveF {
   //
   // std::string estStr;
   // std::string gradStr;
@@ -452,7 +451,7 @@ typedef struct {
   int global_mf = 22;
   int global_debug = 0;
   int neq = NA_INTEGER;
-} rxSolveF;
+} ;
 
 rxSolveF rxInner;
 rxSolveF rxPred;
