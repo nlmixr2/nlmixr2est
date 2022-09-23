@@ -25,8 +25,7 @@
 typedef const char *(*rxGetId2_t)(int id);
 extern rxGetId2_t rxGetId2;
 
-
-typedef struct {
+struct calcNpdeInfoId {
   arma::mat matsim;
   arma::umat namat;
   arma::mat epredt;
@@ -50,7 +49,7 @@ typedef struct {
   arma::mat npd;
   arma::mat eres;
   unsigned int warn = 0;
-} calcNpdeInfoId;
+};
 
 extern "C" {
 #endif
