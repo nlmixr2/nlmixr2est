@@ -25,7 +25,8 @@
       .call <- expr[[3]]
       .char <- as.character(expr[[2]])
       .callName <- as.character(.call[[1]])
-      if (length(.call[[2]]) == 1) {
+      if (length(.call) <= 1) {
+      } else if (length(.call[[2]]) == 1) {
         .w <- which(muRefCurEval$parameter == as.character(.call[[2]]))
         if (length(.w) == 1L) {
           if (muRefCurEval$curEval[.w] == .callName) {
