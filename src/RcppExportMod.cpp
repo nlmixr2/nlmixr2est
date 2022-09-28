@@ -26,36 +26,35 @@ neldermead_wrap(SEXP fcallSEXP, SEXP rhoSEXP, SEXP nparSEXP, SEXP startSEXP, SEX
                 SEXP iprintSEXP)
 {
 BEGIN_RCPP
+  if (TYPEOF(rhoSEXP) != ENVSXP) stop("'rho' must be an environment");
+ ev = new Rcpp::EvalStandard(fcallSEXP, rhoSEXP);    // assign R function and environment
+ int i, Iconv, Itnum, Nfcall, Itmax, iprint;
+ double ftol_rel, rcoef, ecoef, ccoef;
+ double Start[99], Xmin[99], Ynewlo, Step[99];
 
-    ev = new Rcpp::EvalStandard(fcallSEXP, rhoSEXP);    // assign R function and environment
-    int i, Iconv, Itnum, Nfcall, Itmax, iprint;
-    double ftol_rel, rcoef, ecoef, ccoef;
-    double Start[99], Xmin[99], Ynewlo, Step[99];
+ NPAR = INTEGER(nparSEXP)[0];
+ for (i=0; i<NPAR; i++) Start[i] = REAL(startSEXP)[i];
+ for (i=0; i<NPAR; i++) Step[i]  = REAL(stepSEXP )[i];
+ Itmax = INTEGER(itmaxSEXP)[0];
+ ftol_rel = REAL(ftol_relSEXP)[0];
+ rcoef = REAL(rcoefSEXP)[0];
+ ecoef = REAL(ecoefSEXP)[0];
+ ccoef = REAL(ccoefSEXP)[0];
+ iprint = INTEGER(iprintSEXP)[0];
 
-    NPAR = INTEGER(nparSEXP)[0];
-    for (i=0; i<NPAR; i++) Start[i] = REAL(startSEXP)[i];
-    for (i=0; i<NPAR; i++) Step[i]  = REAL(stepSEXP )[i];
-    Itmax = INTEGER(itmaxSEXP)[0];
-    ftol_rel = REAL(ftol_relSEXP)[0];
-	rcoef = REAL(rcoefSEXP)[0];
-	ecoef = REAL(ecoefSEXP)[0];
-    ccoef = REAL(ccoefSEXP)[0];
-    iprint = INTEGER(iprintSEXP)[0];
+ nelder_fn(nmfn_wrap, NPAR, Start, Step,
+           Itmax, ftol_rel, rcoef, ecoef, ccoef,
+           &Iconv, &Itnum, &Nfcall, &Ynewlo, Xmin,
+           &iprint);
+ //Rcpp::Rcout <<ev->getNbEvals() <<std::endl;
 
-    nelder_fn(nmfn_wrap, NPAR, Start, Step,
-            Itmax, ftol_rel, rcoef, ecoef, ccoef,
-            &Iconv, &Itnum, &Nfcall, &Ynewlo, Xmin,
-            &iprint);
-  //Rcpp::Rcout <<ev->getNbEvals() <<std::endl;
-
- 	Rcpp::NumericVector par(NPAR);
-    for (i=0; i<NPAR; i++) par[i]  = Xmin[i];
-	return Rcpp::List::create(Rcpp::Named("convergence") = Iconv,
-	                          Rcpp::Named("Itnum") = Itnum,
-	                          Rcpp::Named("iter") = Nfcall,
-	                          Rcpp::Named("value") = Ynewlo,
-	                          Rcpp::Named("par") = par);
-
+ Rcpp::NumericVector par(NPAR);
+ for (i=0; i<NPAR; i++) par[i]  = Xmin[i];
+ return Rcpp::List::create(Rcpp::Named("convergence") = Iconv,
+                           Rcpp::Named("Itnum") = Itnum,
+                           Rcpp::Named("iter") = Nfcall,
+                           Rcpp::Named("value") = Ynewlo,
+                           Rcpp::Named("par") = par);
 END_RCPP
 }
 

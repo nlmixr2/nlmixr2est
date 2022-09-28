@@ -264,7 +264,12 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
 #' @return a list of ...
 #' @export
 nmsimplex <- function(start, fr, rho = NULL, control = list()) {
-  if (is.null(rho)) rho <- environment(fr)
+  if (!is.environment(rho)) {
+    if (!is.null(rho)) {
+      warning("improper argument for 'rho'", call.=FALSES)
+    }
+    rho <- environment(fr)
+  }
   step <- -.2 * start
 
   con <- list(maxeval = 999, reltol = 1e-6, rcoeff = 1., ecoeff = 2., ccoeff = .5, trace = FALSE)
