@@ -266,7 +266,7 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
 nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   if (!is.environment(rho)) {
     if (!is.null(rho)) {
-      warning("improper argument for 'rho'", call.=FALSES)
+      warning("improper argument for 'rho'", call.=FALSE)
     }
     rho <- environment(fr)
   }
