@@ -127,7 +127,9 @@ nlmixr2Est0 <- function(env, ...) {
   }
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
-    assign("ui", env$ui$fun(), envir=env) # re-evaluate so it doesn't overwrite inital ui
+    assign("ui",
+           rxode2::rxUiDecompress(env$ui$fun()),
+           envir=env) # re-evaluate so it doesn't overwrite inital ui
     assign("modelName", .modelName, envir=env$ui)
   }
   .doIt <- TRUE

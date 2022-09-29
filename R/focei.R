@@ -1662,6 +1662,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         rm(list=.item, envir=.env)
       }
     }
+    assign("ui", rxode2::rxCompress(.env$ui), envir=.env)
   })
   if (any(names(.ret) == "CWRES") && regexpr("^fo", est) == -1) {
     # focei is available; add objective function
