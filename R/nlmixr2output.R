@@ -542,7 +542,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
   if (is.null(.omega)) {
-    assign("iniDf", .iniDf, envir=.ui)
+    assign("finalIniDf", .iniDf, envir=x$env)
   } else {
     .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
     .fixComps <- setNames(.fixComps$fix, .fixComps$name)
@@ -560,6 +560,6 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       .w  <- which(.iniDf$name == .n)
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
-    assign("iniDf", .iniDf, envir=.ui)
+    assign("finalIniDf", .iniDf, envir = x$env)
   }
 }

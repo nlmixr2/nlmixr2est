@@ -30,5 +30,8 @@ test_that("input ui doesn't change", {
                 control=list(print=0))
 
   expect_equal(est0, ui$iniDf$est)
+  expect_equal(est0, fit$iniUi$iniDf$est)
+  expect_false(isTRUE(all.equal(est0, fit$ui$iniDf$est)))
+  expect_equal(fit$ui$iniDf, fit$finalUi$iniDf)
 
 })

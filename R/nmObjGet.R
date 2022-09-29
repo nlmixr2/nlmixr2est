@@ -64,6 +64,31 @@ nmObjGetData.dataUloq <- function(x, ...) {
 }
 
 #' @export
+nmObjGet.iniUi <- function(x, ...) {
+  .x <- x[[1]]
+  .iniUi <- get("ui", .x)
+  if (is.null(.iniUi)) return(NULL)
+  .modelName <- .iniUi$modelName
+  .ui <- .iniUi$fun()
+  assign("modelName", .modelName, envir=.ui)
+  .ui
+}
+
+#' @export
+nmObjGet.ui <- function(x, ...) {
+  .x <- x[[1]]
+  .ui <- nmObjGet.iniUi(x, ...)
+  if (exists("finalIniDf", .x)) {
+    assign("iniDf", get("finalIniDf", .x), envir=.ui)
+  }
+  .ui
+}
+
+#' @export
+nmObjGet.finalUi <- nmObjGet.ui
+
+
+#' @export
 nmObjGet.dataNormInfo <- function(x, ...) {
   .fit <- x[[1]]
   .ui <- .fit$ui

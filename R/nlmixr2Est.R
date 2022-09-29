@@ -68,7 +68,7 @@ nlmixr2Est.default <- function(env, ...) {
 .nlmixrEstUpdatesOrigModel <- function(ret) {
   .ui <- try(ret$ui)
   if (inherits(.ui, "rxUi")) {
-    .final <- .nlmixrPureInputUi
+    .final <- .cloneEnv(.nlmixrPureInputUi)
     .finalIni <- .final$iniDf
     .iniDf <- .ui$iniDf
     .theta <- .iniDf[is.na(.iniDf$neta1), ]
