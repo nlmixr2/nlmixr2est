@@ -519,9 +519,8 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 #' @noRd
 .nlmixr2FitUpdateParams <- function(x) {
   # Update initial estimates to match current initial estimates
-  .ui <- x$ui
+  .ui <- get("ui", x)
   .iniDf <- .ui$iniDf
-
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {
@@ -542,7 +541,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
   if (is.null(.omega)) {
-    assign("finalIniDf", .iniDf, envir=x$env)
+    assign("finalIniDf", .iniDf, envir=x)
   } else {
     .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
     .fixComps <- setNames(.fixComps$fix, .fixComps$name)
@@ -560,6 +559,6 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       .w  <- which(.iniDf$name == .n)
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
-    assign("finalIniDf", .iniDf, envir = x$env)
+    assign("finalIniDf", .iniDf, envir = x)
   }
 }
