@@ -78,6 +78,7 @@ nmObjGet.iniUi <- function(x, ...) {
 nmObjGet.ui <- function(x, ...) {
   .x <- x[[1]]
   .ui <- nmObjGet.iniUi(x, ...)
+  if (is.null(.ui)) return(NULL)
   if (exists("finalIniDf", .x)) {
     assign("iniDf", get("finalIniDf", .x), envir=.ui)
   }
