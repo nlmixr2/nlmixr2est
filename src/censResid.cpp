@@ -39,9 +39,19 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
             } else {
               dvt[i] = ipredt[i];
             }
-            dv[i] =_powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
-          } else {
+            if (!R_finite(ipredt[i])) {
+              normRelated[i] = 0;
+            }
+            if (R_finite(dvt[i])) {
+              dv[i] =_powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
+            } else {
+              normRelated[i] = 0;
+            }
+          } else if (R_finite(dv[i])) {
             dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
+          } else {
+            dvt[i] =NA_REAL;
+            normRelated[i] = 0;
           }
         } else {
           // (-Inf, dv)
@@ -58,7 +68,15 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
             } else {
               dvt[i] = ipredt[i];
             }
-            dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
+            if (!R_finite(ipredt[i])) {
+              normRelated[i] = 0;
+            }
+            if (R_finite(dvt[i])) {
+              dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
+            } else {
+              dv[i] = NA_REAL;
+              normRelated[i] = 0;
+            }
           } else {
             dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
           }
@@ -74,6 +92,9 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
           interestingLim=true;
           lowerLim[i] = dv[i];
           upperLim[i] = limit[i];
+          if (!R_finite(ipredt[i])) {
+            normRelated[i] = 0;
+          }
           if (doSim && (censMethod == CENS_TNORM || censMethod == CENS_IPRED || censMethod == CENS_PRED)) {
             if (censMethod == CENS_TNORM) {
               dvt[i] = truncnorm(ipredt[i], sd, lim0TBS, lim1TBS);
@@ -82,9 +103,16 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
             } else {
               dvt[i] = ipredt[i];
             }
-            dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
-          } else {
+            if (R_finite(dvt[i])) {
+              dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
+            } else {
+              normRelated[i] = 0;
+            }
+          } else if (R_finite(dv[i])) {
             dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
+          } else {
+            dvt[i] = NA_REAL;
+            normRelated[i] = 0;
           }
         } else {
           // (dv, Inf)
@@ -93,6 +121,9 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
           interestingLim=true;
           lowerLim[i] = dv[i];
           upperLim[i] = R_PosInf;
+          if (!R_finite(ipredt[i])) {
+            normRelated[i] = 0;
+          }
           if (doSim && (censMethod == CENS_TNORM || censMethod == CENS_IPRED || censMethod == CENS_PRED)) {
             if (censMethod == CENS_TNORM) {
               dvt[i] = truncnorm(ipredt[i], sd, lim1TBS, R_PosInf);
@@ -101,23 +132,40 @@ bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
             } else {
               dvt[i] = ipredt[i];
             }
-            dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
-          } else {
+            if (R_finite(dvt[i])) {
+              dv[i] = _powerDi(dvt[i], lambda[i], (int) yj[i], low[i], hi[i]);
+            } else {
+              dv[i] = NA_REAL;
+              normRelated[i] = 0;
+            }
+          } else if (R_finite(dv[i])) {
             dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
+          } else {
+            dvt[i] = NA_REAL;
+            normRelated[i] = 0;
           }
         }
         break;
       case 0:
         lowerLim[i] = NA_REAL;
         upperLim[i] = NA_REAL;
-        dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
+        if (R_finite(dv[i])) {
+          dvt[i] = _powerD(dv[i], lambda[i], (int)yj[i], low[i], hi[i]);
+        } else {
+          dvt[i] = NA_REAL;
+          normRelated[i] = 0;
+        }
         break;
       }
     } else if (dist == rxDistributionT ||
                dist == rxDistributionCauchy) {
       ipred[i]= _powerDi(ipredt[i], lambda[i], (int)yj[i], low[i], hi[i]);
       pred[i]= _powerDi(predt[i], lambda[i], (int)yj[i], low[i], hi[i]);
-      normRelated[i] = 1;
+      if (R_finite(ipredt[i])) {
+              normRelated[i] = 1;
+      } else {
+        normRelated[i] = 0;
+      }
     } else {
       ipred[i]= ipredt[i];
       pred[i]= predt[i];

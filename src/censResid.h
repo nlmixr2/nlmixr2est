@@ -11,21 +11,24 @@
 #if defined(__cplusplus)
 
 static inline double truncnorm(double mean, double sd, double low, double hi){
-  NumericMatrix sigma(1,1);
-  sigma(0,0)=sd;
-  SEXP ret =rxode2::rxRmvnSEXP(wrap(IntegerVector::create(1)),
-			      wrap(NumericVector::create(mean)),
-			      wrap(sigma),
-			      wrap(NumericVector::create(low)),
-			      wrap(NumericVector::create(hi)),
-			      wrap(IntegerVector::create(1)),
-			      wrap(LogicalVector::create(false)),
-			      wrap(LogicalVector::create(false)),
-			      wrap(NumericVector::create(0.4)),
-			      wrap(NumericVector::create(2.05)),
-			      wrap(NumericVector::create(1e-10)),
-			      wrap(IntegerVector::create(100)));
-  return REAL(ret)[0];
+  if (R_finite(mean) && R_finite(sd)) {
+    NumericMatrix sigma(1,1);
+    sigma(0,0)=sd;
+    SEXP ret =rxode2::rxRmvnSEXP(wrap(IntegerVector::create(1)),
+                                 wrap(NumericVector::create(mean)),
+                                 wrap(sigma),
+                                 wrap(NumericVector::create(low)),
+                                 wrap(NumericVector::create(hi)),
+                                 wrap(IntegerVector::create(1)),
+                                 wrap(LogicalVector::create(false)),
+                                 wrap(LogicalVector::create(false)),
+                                 wrap(NumericVector::create(0.4)),
+                                 wrap(NumericVector::create(2.05)),
+                                 wrap(NumericVector::create(1e-10)),
+                                 wrap(IntegerVector::create(100)));
+    return REAL(ret)[0];
+  }
+  return NA_REAL;
 }
 
 bool censTruncatedMvnReturnInterestingLimits(arma::vec& dv, arma::vec& dvt,
