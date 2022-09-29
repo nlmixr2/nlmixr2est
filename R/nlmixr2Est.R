@@ -113,6 +113,11 @@ nlmixr2Est.default <- function(env, ...) {
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
   rxode2::rxUnloadAll()
+  .ui <- rxode2::rxUiDecompress(env$ui)
+  assign("ui", .ui, envir=env)
+  on.exit({
+    assign("ui", rxode2::rxUiCompress(env$ui), envir=env)
+  })
   if (!exists("missingTable", envir=env)) {
     assign("missingTable", FALSE, envir=env)
   }
