@@ -23,6 +23,28 @@ nmObjGet <- function(x, ...) {
   UseMethod("nmObjGet")
 }
 
+#' @export
+nmObjGet.iniUi <- function(x, ...) {
+  .env <- x[[1]]
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  .iniDf <- get("iniDf0", envir=.env)
+  if (is.null(.iniDf)) return(NULL)
+  assign("iniDf", .iniDf, envir=.ui)
+  rxode2::rxUiCompress(.ui)
+}
+attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
+
+#' @export
+nmObjGet.finalUi <- function(x, ...) {
+  .env <- x[[1]]
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  rxode2::rxUiCompress(.ui)
+}
+attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
+
+#' @export
+nmObjGet.ui <- nmObjGet.finalUi
+
 #' Get an item from a nlmixr2FitData object
 #'
 #' @param x A specialized list with:
