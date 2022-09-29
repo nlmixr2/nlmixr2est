@@ -119,6 +119,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
   assignInMyNamespace(".nlmixr2Time", proc.time())
+  assignInMyNamespace(".finalUiCompressed", FALSE)
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
@@ -156,6 +157,7 @@ nlmixr <- nlmixr2
   assignInMyNamespace(".nlmixr2pipeControl", NULL)
   assignInMyNamespace(".nlmixr2pipeTable", NULL)
   assignInMyNamespace(".nlmixr2pipeEst", NULL)
+  assignInMyNamespace(".finalUiCompressed", TRUE)
   rxode2::rxSetCovariateNamesForPiping(NULL)
 }
 
@@ -165,7 +167,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
                              save = NULL, envir = parent.frame()) {
   on.exit(.nlmixr2clearPipe())
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
-  .uif <- rxode2::rxode(object)
+  .uif <- rxode2::rxode2(object)
   .uif <- rxode2::rxUiDecompress(.uif)
   if (!is.null(.nlmixr2objectName)) {
     if (!identical(.nlmixr2objectName, "object")) {

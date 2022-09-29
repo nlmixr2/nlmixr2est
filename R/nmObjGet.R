@@ -34,11 +34,16 @@ nmObjGet.iniUi <- function(x, ...) {
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 
+.finalUiCompressed <- TRUE
 #' @export
 nmObjGet.finalUi <- function(x, ...) {
   .env <- x[[1]]
   .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
-  rxode2::rxUiCompress(.ui)
+  if (.finalUiCompressed) {
+    rxode2::rxUiCompress(.ui)
+  } else {
+    rxode2::rxUiDecompress(.ui)
+  }
 }
 attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
 
