@@ -104,6 +104,10 @@ nmObjGet.default <- function(x, ...) {
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
   .ui <- get("ui", envir=.env)
+  .ui <- rxode2::rxUiDecompress(.ui)
+  on.exit({
+    assign("ui", rxode2::rxUiCompress(.ui), envir=.env)
+  })
   .ctl <- nmObjGetControl(.createEstObject(x[[1]]), ...)
   if (!is.null(.ctl)) {
     assign("control", .ctl, envir=.ui)
