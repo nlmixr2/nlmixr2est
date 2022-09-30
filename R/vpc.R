@@ -47,6 +47,8 @@
 vpcSim <- function(object, ..., keep=NULL, n=300,
                    pred=FALSE, seed=1009, nretry=50,
                    normRelated=TRUE) {
+  assignInMyNamespace(".finalUiCompressed", FALSE)
+  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
   set.seed(seed)
   .si <- object$simInfo
   .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
@@ -144,6 +146,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
 #' @keywords internal
 #' @export
 vpcNameDataCmts <- function(object, data) {
+  assignInMyNamespace(".finalUiCompressed", FALSE)
+  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
   .wdvid <- which(tolower(names(data)) == "dvid")
   .wcmt <- which(tolower(names(data)) == "cmt")
   .info <- get("predDf", object$ui)
