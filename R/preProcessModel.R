@@ -117,7 +117,7 @@
 #' @noRd
 .nlmixrPreprocessUi <- function(ui) {
   ui <- rxode2::assertRxUi(ui)
-  .ret <- ui
+  .ret <- rxode2::rxUiDecompress(ui)
   .zeroEtas <- .getZeroEtasFromModel(.ret)
   if (length(.zeroEtas) > 0) {
     assignInMyNamespace(".nlmixrPureInputUi", rxode2::rxUiDecompress(.ret))
