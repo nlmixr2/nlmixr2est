@@ -355,7 +355,7 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
 .sigma <- function(x) {
   .ret <- x$nlme
   if (is.null(.ret)) {
-    if (exists("uif", envir = x$env)) {
+    if (exists("ui", envir = x$env)) {
       .df <- as.data.frame(x$uif$ini)
       .errs <- paste(.df[which(!is.na(.df$err)), "name"])
       return(fixef(x)[.errs])
@@ -521,7 +521,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
   .iniDf <- .ui$iniDf
-
+  assign("iniDf0", .iniDf, envir=x)
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {

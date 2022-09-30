@@ -23,6 +23,33 @@ nmObjGet <- function(x, ...) {
   UseMethod("nmObjGet")
 }
 
+#' @export
+nmObjGet.iniUi <- function(x, ...) {
+  .env <- x[[1]]
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  .iniDf <- get("iniDf0", envir=.env)
+  if (is.null(.iniDf)) return(NULL)
+  assign("iniDf", .iniDf, envir=.ui)
+  rxode2::rxUiCompress(.ui)
+}
+attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
+
+.finalUiCompressed <- TRUE
+#' @export
+nmObjGet.finalUi <- function(x, ...) {
+  .env <- x[[1]]
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  if (.finalUiCompressed) {
+    rxode2::rxUiCompress(.ui)
+  } else {
+    rxode2::rxUiDecompress(.ui)
+  }
+}
+attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
+
+#' @export
+nmObjGet.ui <- nmObjGet.finalUi
+
 #' Get an item from a nlmixr2FitData object
 #'
 #' @param x A specialized list with:
@@ -104,6 +131,10 @@ nmObjGet.default <- function(x, ...) {
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
   .ui <- get("ui", envir=.env)
+  .ui <- rxode2::rxUiDecompress(.ui)
+  on.exit({
+    assign("ui", rxode2::rxUiCompress(.ui), envir=.env)
+  })
   .ctl <- nmObjGetControl(.createEstObject(x[[1]]), ...)
   if (!is.null(.ctl)) {
     assign("control", .ctl, envir=.ui)
