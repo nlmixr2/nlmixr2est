@@ -1882,6 +1882,7 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
   if (!inherits(ui, "rxUi")) {
     stop("the first argument needs to be from rxode2 ui", call.=FALSE)
   }
+  ui <- rxode2::rxUiDecompress(ui)
   if (inherits(env, "environment")) {
     assign("foceiEnv", env, envir=ui)
   }
