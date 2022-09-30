@@ -47,10 +47,12 @@
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
+  assignInMyNamespace(".finalUiCompressed", FALSE)
+  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
   assertNlmixrFitData(object)
   if (any(names(object) == "NPDE")) {
-      warning("already contains NPDE", call.=FALSE)
-      return(object)
+    warning("already contains NPDE", call.=FALSE)
+    return(object)
   }
   checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
   nlmixrWithTiming("NPDE", {
