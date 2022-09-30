@@ -1776,9 +1776,11 @@ nlmixr2Est.foi <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ...)
   .objDf <- .ret$objDf
   .ui <- .ret$ui
+  assign("control", .control, envir=.ui)
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 1L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  env$skipTable <- FALSE
   .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="foi")
   .addObjDfToReturn(.ret, .objDf)
   .ret
@@ -1808,6 +1810,7 @@ nlmixr2Est.fo <- function(env, ...) {
   .ret <- .foceiFamilyReturn(env, .ui, ...)
   .objDf <- .ret$objDf
   .ui <- .ret$ui
+  assign("control", .control, envir=.ui)
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
