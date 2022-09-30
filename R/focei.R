@@ -1702,7 +1702,7 @@ nlmixr2Est.foce <- function(env, ...) {
   .foceiFamilyControl(env, ...)
   rxode2::rxAssignControlValue(.ui, "interaction", 0L)
   on.exit({
-    if (exists("control", envir=.ui)){
+    if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   })

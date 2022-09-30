@@ -543,6 +543,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   .omega <- x$omega
   if (is.null(.omega)) {
     assign("iniDf", .iniDf, envir=.ui)
+    assign("ui", .ui, envir=x)
   } else {
     .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
     .fixComps <- setNames(.fixComps$fix, .fixComps$name)
@@ -561,5 +562,6 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
     assign("iniDf", .iniDf, envir=.ui)
+    assign("ui", .ui, envir=x)
   }
 }
