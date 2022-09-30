@@ -48,6 +48,12 @@ nmObjGet.finalUi <- function(x, ...) {
 attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
 
 #' @export
+nmObjGet.finalUiEnv <- function(x, ...) {
+  .env <- x[[1]]
+  .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+}
+
+#' @export
 nmObjGet.ui <- nmObjGet.finalUi
 
 #' Get an item from a nlmixr2FitData object
