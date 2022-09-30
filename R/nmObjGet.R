@@ -34,7 +34,28 @@ nmObjGet.iniUi <- function(x, ...) {
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 
+
 .finalUiCompressed <- TRUE
+
+#' Set if the nlmixr2 object will return a compressed ui
+#'
+#' 
+#' @param type is a boolean indicating if the compressed ui will be
+#'   returned (`TRUE`) or not be returned (`FALSE`)
+#' @return invisible logical type
+#' @author Matthew L. Fidler
+#' @export
+#' @examples
+#' 
+#' nmObjUiSetCompressed(FALSE) # now the $ui will return an environment
+#' nmObjUiSetCompressed(TRUE) # now the $ui will return a compressed value
+#' 
+nmObjUiSetCompressed <- function(type) {
+  checkmate::assertLogical(type,len=1, any.missing=FALSE)
+  assignInMyNamespace(".finalUiCompressed", type)
+  invisible(type)
+}
+
 #' @export
 nmObjGet.finalUi <- function(x, ...) {
   .env <- x[[1]]

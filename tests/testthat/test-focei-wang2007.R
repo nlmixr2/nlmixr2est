@@ -113,8 +113,6 @@ nmTest({
           expect_equal(setNames(ret, NULL), setNames(val, NULL), tolerance=1e-3)
         })
     }
-    rxode2::rxUnloadAll()
-    gc()
     return(invisible(ret))
   }
 
