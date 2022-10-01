@@ -1822,7 +1822,7 @@ nlmixr2Est.fo <- function(env, ...) {
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.output <- function(env, ...) {
-  .ui <- env$ui
+  .ui <- rxode2::rxUiDecompress(get(env, "ui"))
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
   if (!rxode2hasLlik()) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
@@ -1882,16 +1882,14 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
   if (!inherits(ui, "rxUi")) {
     stop("the first argument needs to be from rxode2 ui", call.=FALSE)
   }
-  ui <- rxode2::rxUiDecompress(ui)
   if (inherits(env, "environment")) {
     assign("foceiEnv", env, envir=ui)
   }
   if (!inherits(data, "data.frame")) {
     stop("the 'data' argument must be a data.frame", call.=FALSE)
   }
-
   .env <- new.env(parent=emptyenv())
-  .env$ui <- ui
+  .env$ui <- rxode2::rxUiDecompress(ui)
   .env$data <- data
   .env$control <- control
   .env$table <- table
