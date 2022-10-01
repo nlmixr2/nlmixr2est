@@ -1822,7 +1822,7 @@ nlmixr2Est.fo <- function(env, ...) {
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.output <- function(env, ...) {
-  .ui <- rxode2::rxUiDecompress(get(env, "ui"))
+  .ui <- env$ui
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
   if (!rxode2hasLlik()) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'output'", .var.name=.ui$modelName)
@@ -1876,12 +1876,15 @@ nlmixr2Est.output <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @export
 nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, env=NULL, est="none") {
+  assignInMyNamespace(".finalUiCompressed", FALSE)
+  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
   if (inherits(ui, "function")) {
     ui <- rxode2::rxode2(ui)
   }
   if (!inherits(ui, "rxUi")) {
     stop("the first argument needs to be from rxode2 ui", call.=FALSE)
   }
+  ui <- rxode2::rxUiDecompress(ui)
   if (inherits(env, "environment")) {
     assign("foceiEnv", env, envir=ui)
   }
@@ -1889,7 +1892,7 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
     stop("the 'data' argument must be a data.frame", call.=FALSE)
   }
   .env <- new.env(parent=emptyenv())
-  .env$ui <- rxode2::rxUiDecompress(ui)
+  assign("ui", ui, envir=.env)
   .env$data <- data
   .env$control <- control
   .env$table <- table
