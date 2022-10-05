@@ -95,6 +95,8 @@
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2data"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/lotri"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2ll"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2parse"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2est"</span><span class="op">)</span></span></code></pre></div>
 <p>For most people, using nlmixr2 directly would be likely easier.</p>
@@ -127,38 +129,40 @@
 <span></span>
 <span><span class="co">## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate</span></span>
 <span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.compartment</span>, <span class="va">theo_sd</span>,  est<span class="op">=</span><span class="st">"saem"</span>, <span class="fu"><a href="reference/saemControl.html">saemControl</a></span><span class="op">(</span>print<span class="op">=</span><span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;  </span></span>
-<span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ℹ parameter labels from comments will be replaced by 'label()'</span></span>
-<span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
 <span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem model...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem model...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; rxode2 2.0.7 using 4 threads (see ?getRxThreads)</span></span>
+<span><span class="co">#&gt; rxode2 2.0.9 using 4 threads (see ?getRxThreads)</span></span>
 <span><span class="co">#&gt; Calculating covariance matrix</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
 <span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 0...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 1...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span></span>
+<span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; → Calculating residuals/tables</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
 <span><span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span></span>
 <span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span></span>
 <span><span class="co">#&gt; → compress parHist in nlmixr2 object, save 9560</span></span>
-<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 24688</span></span>
+<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 27072</span></span>
 <span></span>
 <span><span class="co"># Since the fit is performed in `nlmixr2est` this code works</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ── nlmixr SAEM OBJF by FOCEi approximation ──</span></span>
+<span><span class="co">#&gt; ── nlmixr² SAEM OBJF by FOCEi approximation ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;  Gaussian/Laplacian Likelihoods: AIC() or $objf etc. </span></span>
 <span><span class="co">#&gt;  FOCEi CWRES &amp; Likelihoods: addCwres() </span></span>
@@ -166,7 +170,7 @@
 <span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;            setup covariance  saem table compress    other</span></span>
-<span><span class="co">#&gt; elapsed 0.001189   0.007003 2.188 0.019    0.022 1.381808</span></span>
+<span><span class="co">#&gt; elapsed 0.002816   0.032008 7.414  0.05     0.06 4.536176</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -180,6 +184,7 @@
 <span><span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span></span>
 <span><span class="co">#&gt;   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) </span></span>
 <span><span class="co">#&gt;   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink </span></span>
+<span><span class="co">#&gt;   Censoring ($censInformation): No censoring</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Fit Data (object is a modified tibble): ──</span></span>
 <span><span class="co">#&gt; # A tibble: 132 × 19</span></span>
@@ -193,7 +198,7 @@
 <span></span>
 <span><span class="co"># But plots are in the helper package `nlmixr2plot`, and therefore:</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></code></pre></div>
-<p><img src="reference/figures/README-example-1.png" title="plot of chunk example" alt="plot of chunk example" width="100%"></p>
+<p><img src="reference/figures/README-example-1.png" width="100%"></p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># does not give the standard goodness of fit plots</span></span></code></pre></div>
 </div>
