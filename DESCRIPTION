@@ -92,7 +92,8 @@ LinkingTo:
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen (>= 0.3.3.3.0),
     rxode2 (>= 2.0.7),
-    StanHeaders (>= 2.18.0)
+    StanHeaders (>= 2.18.0),
+    rxode2parse
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8
