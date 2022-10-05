@@ -54,7 +54,7 @@ SEXP _nlmixr2est_foceiCalcCov(SEXP);
 SEXP _nlmixr2est_foceiFitCpp_(SEXP);
 SEXP _nlmixr2est_boxCox_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_iBoxCox_(SEXP, SEXP, SEXP);
-SEXP _nlmixr2est_freeFocei();
+SEXP _nlmixr2est_freeFocei(void);
 SEXP _nlmixr2est_nlmixr2Gill83_(SEXP, SEXP, SEXP, SEXP, SEXP,
 			   SEXP, SEXP, SEXP, SEXP);
 
@@ -86,7 +86,7 @@ SEXP _nlmixr2est_nmNearPD_(SEXP, SEXP, SEXP, SEXP, SEXP,
 
 SEXP _nlmixr2est_filterNormalLikeAndDoses(SEXP, SEXP, SEXP);
 
-SEXP _nlmixr2est_rxode2hasLlik();
+SEXP _nlmixr2est_rxode2hasLlik(void);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},
@@ -152,7 +152,7 @@ void R_init_nlmixr2est(DllInfo *dll)
   R_forceSymbols(dll,FALSE);
 }
 
-void rxOptionsFreeFocei();
+void rxOptionsFreeFocei(void);
 void R_unload_nlmixr2est(DllInfo *info){
   rxOptionsFreeFocei();
 }
