@@ -6,6 +6,9 @@
 - CRAN issues with `anonymous non-C-compatible type given name for
   linkage purposes by typedef declaration; add a tag name here` where
   changed to simple `C++` structures to suppress the "significant" warning.
+  
+- Also linkage from 'rxode2' to be strict removing the clang error
+  messages
 
 ## Breaking changes
 
