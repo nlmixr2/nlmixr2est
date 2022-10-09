@@ -32,6 +32,7 @@ remotes::install_github("nlmixr2/nlmixr2data")
 remotes::install_github("nlmixr2/lotri")
 remotes::install_github("nlmixr2/rxode2ll")
 remotes::install_github("nlmixr2/rxode2parse")
+remotes::install_github("nlmixr2/rxode2random")
 remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2est")
 ```
@@ -96,7 +97,7 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
 #> → compress parHist in nlmixr2 object, save 9560
-#> → compress saem0 in nlmixr2 object, save 27072
+#> → compress saem0 in nlmixr2 object, save 28728
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -108,7 +109,7 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem table compress    other
-#> elapsed 0.002816   0.032008 7.414  0.05     0.06 4.536176
+#> elapsed 0.001443   0.009009 3.158 0.025    0.019 1.509548
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
