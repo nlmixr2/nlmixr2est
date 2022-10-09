@@ -84,6 +84,7 @@ Suggests:
     withr,
     xgxr,
     sfsmisc,
+    rxode2parse,
     rxode2random
 LinkingTo: 
     BH,
