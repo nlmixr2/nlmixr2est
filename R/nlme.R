@@ -463,7 +463,7 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   if (.nTv != 0) {
     .tv <- names(.et)[-seq(1, 6)]
   }
-  .nlme <- .collectWarnings(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
+  .nlme <- .collectWarn(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
   .ret$nlme <- .nlme[[1]]
   .ret$message <- NULL
   lapply(.nlme[[2]], function(x){
