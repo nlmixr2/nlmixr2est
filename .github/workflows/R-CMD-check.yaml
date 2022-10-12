@@ -121,8 +121,11 @@ jobs:
       - name: Install development rxode2parse
         run: remotes::install_github("nlmixr2/rxode2parse")
         shell: Rscript {0}
-      - name: Install development rxode2parse
+      - name: Install development rxode2random
         run: remotes::install_github("nlmixr2/rxode2random")
+        shell: Rscript {0}
+      - name: Install development rxode2et
+        run: remotes::install_github("nlmixr2/rxode2et")
         shell: Rscript {0}
       - name: Install development rxode2
         run: remotes::install_github("nlmixr2/rxode2")

@@ -1,6 +1,8 @@
 ## utils.R: population PK/PD modeling library
 ##
-## Copyright (C) 2014 - 2016  Wenping Wang
+## Copyright (C) 2014 - 2016  Wenping Wang,
+##  Portions (c) Matt Fidler and rest of the nlmixr2 team.
+##  The authorship is always up to date on git
 ##
 ## This file is part of nlmixr2.
 ##
@@ -126,7 +128,7 @@ nsis <- function() { ## build installer...
 }
 # ########################################################################
 
-# .collectWarnings --------------------------------------------------------
+# .collectWarn --------------------------------------------------------
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
@@ -138,7 +140,7 @@ nsis <- function() { ## build installer...
 #'     the expression and a list of warning messages
 #' @author Matthew L. Fidler
 #' @noRd
-.collectWarnings <- function(expr, lst = FALSE) {
+.collectWarn <- function(expr, lst = FALSE) {
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
     ws <- c()
     this.env <- environment()

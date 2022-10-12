@@ -159,7 +159,7 @@ nlmixr2Est0 <- function(env, ...) {
   .envReset <- new.env(parent=emptyenv())
   .envReset$reset <- TRUE
   if (!getOption("nlmixr2.resetCache", TRUE)) {
-    .envReset$ret <- .collectWarnings(nlmixr2Est(env, ...), lst = TRUE)
+    .envReset$ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE)
   } else {
     .envReset$reset <- TRUE
     .envReset$env <- new.env(parent=emptyenv())
@@ -172,7 +172,7 @@ nlmixr2Est0 <- function(env, ...) {
     if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, envir=.envReset)
     while (get("reset", envir=.envReset)) {
       assign("reset", FALSE, envir=.envReset)
-      assign("ret", try(.collectWarnings(nlmixr2Est(env, ...), lst = TRUE)), envir=.envReset)
+      assign("ret", try(.collectWarn(nlmixr2Est(env, ...), lst = TRUE)), envir=.envReset)
       if (inherits(get("ret", envir=.envReset), "try-error")) {
         .msg <- attr(get("ret", envir=.envReset), "condition")$message
         if (regexpr("not provided by package", .msg) != -1) {
