@@ -84,45 +84,72 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     stop("cannot solve with `model` NULL", call.=FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  .res <- .foceiSolveWithId(model, pars, fit$dataSav,
-                            returnType = returnType,
-                            atol = fit$atol[1], rtol = fit$rtol[1],
-                            maxsteps = fit$maxstepsOde,
-                            hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
-                            maxordn = fit$maxordn,
-                            maxords = fit$maxords, method = fit$methodOde,
-                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
-  rxode2::rxSolveFree()
-  if (any(is.na(.res$rx_pred_)) && fit$methodOde == 2L) {
-    .res <- .foceiSolveWithId(model, pars, fit$dataSav,
-                              returnType = returnType,
-                              atol = fit$atol[1], rtol = fit$rtol[1],
-                              maxsteps = fit$maxstepsOde * 2,
-                              hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
-                              maxordn = fit$maxordn,
-                              maxords = fit$maxords, method = "lsoda",
-                              keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
-    rxode2::rxSolveFree()
-    if (any(is.na(.res$rx_pred_))) {
+  # The numeric versions are at
+  # https://github.com/nlmixr2/rxode2/blob/7e27a7842ca0b5dd849ea75833bc7c34be729e31/R/rxsolve.R#L804,
+  # but keeping them in sync will be fragile.  Only using the character
+  # versions.
+  currentOdeMethod <- fit$methodOde
+  allOdeMethods <-
+    setdiff(
+      eval(formals(rxode2::rxSolve)$method),
+      # ignore indLin for now
+      "indLin"
+    )
+  # Fallback methods based on discussion in
+  # https://github.com/nlmixr2/nlmixr2est/issues/254
+  if (currentOdeMethod %in% "dop853") {
+    allOdeMethods <- "liblsoda"
+  } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
+    allOdeMethods <- "dop853"
+  } # otherwise, use all the methods
+  odeMethods <-
+    append(
+      list(currentOdeMethod),
+      as.list(setdiff(allOdeMethods, currentOdeMethod))
+    )
+  startHmax <- fit$hmax
+  startMaxStepsOde <- fit$maxstepsOde
+  failedMethods <- character()
+  isFirstFit <- TRUE
+  recalc <- TRUE
+  while (recalc & length(odeMethods) > 0) {
+    # Iterate through ODE methods
+    recalcN <- 0
+    currentOdeMethod <- odeMethods[[1]]
+    odeMethods <- odeMethods[-1]
+    currentHmax <- fit$hmax
+    currentMaxStepsOde <- fit$maxStepsOde
+    while (recalc & recalcN < fit$control$stickyRecalcN) {
+      # Iterate down Hmax and up Max Steps
       .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = fit$atol[1], rtol = fit$rtol[1],
-                                maxsteps = fit$maxstepsOde * 2,
-                                hmin = fit$hmin, hmax = fit$hmax / 2, hini = fit$hini,
+                                maxsteps = currentMaxStepsOde,
+                                hmin = fit$hmin, hmax = currentHmax, hini = fit$hini,
                                 maxordn = fit$maxordn,
-                                maxords = fit$maxords, method = "dop853",
+                                maxords = fit$maxords, method = currentOdeMethod,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
-      if (any(is.na(.res$rx_pred_))) {
-        warning("Problems solving ", what, " liblsoda, lsoda and dop853")
-      } else {
-        warning("Problems solving ", what, " liblsoda and lsoda switched to dop853")
-      }
-    } else {
-      warning("Problems solving ", what, " liblsoda switched to lsoda")
+      recalcN <- recalcN + 1
+      currentHmax <- currentHmax / 2
+      currentMaxStepsOde <- currentMaxStepsOde * 2
+      recalc <- any(is.na(.res$rx_pred_))
+    }
+    if (recalc) {
+      failedMethods <- c(failedMethods, currentOdeMethod)
+    }
+    if (isFirstFit) {
+      isFirstFit <- FALSE
+      .resFirst <- .res
     }
   }
-  return(.res)
+  if (recalc) {
+    .res <- .resFirst
+    warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from the first method")
+  } else if (length(failedMethods) > 0) {
+    warning("Problems solving ", what, " with ", paste(failedMethods, collapse = ", "), ", returning results from ", currentOdeMethod)
+  }
+  .res
 }
 
 #' Create a ipred/pred list from the focei style model
