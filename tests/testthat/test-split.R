@@ -104,3 +104,26 @@ test_that("test split", {
   mod <- PK_1cmt()
   expect_error(mod$getSplitMuModel, NA)
 })
+
+
+test_that("non mu-referenced split works correctly", {
+  f <- function() {
+    ini({
+      tke <- 0.5
+      eta.ke ~ 0.04
+      prop.sd <- sqrt(0.1)
+    })
+    model({
+      ke <- tke * exp(eta.ke)
+      ipre <- 10 * exp(-ke * t)
+      f2 <- ipre / (ipre + 5)
+      f3 <- f2 * 3
+      lipre <- log(ipre)
+      ipre ~ prop(prop.sd)
+    })
+  }
+
+  ui <- f()
+
+  expect_error(ui$getSplitMuModel, NA)
+})

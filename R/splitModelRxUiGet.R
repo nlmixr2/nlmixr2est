@@ -86,6 +86,11 @@
   }
 }
 
+.isCurEvalEncodedFunction <- function(curEval) {
+  if (any(curEval == c("*", "/", "^", "**", "+", "-", ""))) return(FALSE)
+  TRUE
+}
+
 #' This creates a mu-referenced expression block like NONMEM's PK block
 #'
 #' @param var Variable defined in model
@@ -110,11 +115,13 @@
   } else {
     stop("duplicate/missing parameter in `muRefCurEval`", call.=FALSE)
   }
-  str2lang(paste0(var, "<-", .curEval, ifelse(.curEval == "", "", "("),
+  .encFun <- .isCurEvalEncodedFunction(.curEval)
+  str2lang(paste0(var, "<-", ifelse(.encFun, .curEval, ""),
+                  ifelse(.encFun, "(", ""),
                   est,
                   ifelse(is.na(.low), "", paste0(",", .low)),
                   ifelse(is.na(.hi), "", paste0(",", .hi)),
-                  ifelse(.curEval == "", "", ")")))
+                  ifelse(.encFun, ")", "")))
 }
 
 #' @export
