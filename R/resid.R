@@ -89,6 +89,13 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   # but keeping them in sync will be fragile.  Only using the character
   # versions.
   currentOdeMethod <- fit$methodOde
+  if (!inherits(currentOdeMethod, "character")) {
+    cur <- as.integer(currentOdeMethod)+1L
+    attr(cur, "levels") <- c("dop853", "lsoda", "liblsoda", "indLin")
+    attr(cur, "class") <- "factor"
+    currentOdeMethod <- as.character(cur)
+    print(currentOdeMethod)
+  }
   allOdeMethods <-
     setdiff(
       eval(formals(rxode2::rxSolve)$method),
@@ -107,33 +114,38 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       list(currentOdeMethod),
       as.list(setdiff(allOdeMethods, currentOdeMethod))
     )
-  startHmax <- fit$hmax
-  startMaxStepsOde <- fit$maxstepsOde
   failedMethods <- character()
   isFirstFit <- TRUE
   recalc <- TRUE
+  maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
+  recalcFactor <- fit$foceiControl$odeRecalcFactor
   while (recalc & length(odeMethods) > 0) {
     # Iterate through ODE methods
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
-    currentHmax <- fit$hmax
-    currentMaxStepsOde <- fit$maxStepsOde
-    while (recalc & recalcN < fit$control$stickyRecalcN) {
-      # Iterate down Hmax and up Max Steps
+    .atol <- fit$atol[1]
+    .rtol <- fit$rtol[1]
+    while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
+      # Iterate up atol/rtol
       .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
-                                atol = fit$atol[1], rtol = fit$rtol[1],
-                                maxsteps = currentMaxStepsOde,
-                                hmin = fit$hmin, hmax = currentHmax, hini = fit$hini,
+                                atol = .atol, rtol = .rtol,
+                                maxsteps = fit$maxstepsOde*ifelse(isFirstFit, 1, 2),
+                                hmin = fit$hmin, hmax = fit$hmax/*ifelse(isFirstFit, 1, 2), hini = fit$hini,
                                 maxordn = fit$maxordn,
                                 maxords = fit$maxords, method = currentOdeMethod,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
       recalcN <- recalcN + 1
-      currentHmax <- currentHmax / 2
-      currentMaxStepsOde <- currentMaxStepsOde * 2
       recalc <- any(is.na(.res$rx_pred_))
+      if (recalc) {
+        .atol <- min(.atol*recalcFactor, maxAtolRtol)
+        .rtol <- min(.rtol*recalcFactor, maxAtolRtol)
+        if (.atol == maxAtolRtol && .rtol == maxAtolRtol) {
+          recalcN <- fit$foceiControl$stickyRecalcN + 1
+        }
+      }
     }
     if (recalc) {
       failedMethods <- c(failedMethods, currentOdeMethod)
