@@ -94,7 +94,6 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     attr(cur, "levels") <- c("dop853", "lsoda", "liblsoda", "indLin")
     attr(cur, "class") <- "factor"
     currentOdeMethod <- as.character(cur)
-    print(currentOdeMethod)
   }
   allOdeMethods <-
     setdiff(
@@ -126,19 +125,21 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     odeMethods <- odeMethods[-1]
     .atol <- fit$atol[1]
     .rtol <- fit$rtol[1]
+    ## message(currentOdeMethod)
     while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
+      ## message("\t", .atol, " ", .rtol)
       .res <- .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = .atol, rtol = .rtol,
-                                maxsteps = fit$maxstepsOde*ifelse(isFirstFit, 1, 2),
-                                hmin = fit$hmin, hmax = fit$hmax/*ifelse(isFirstFit, 1, 2), hini = fit$hini,
-                                maxordn = fit$maxordn,
-                                maxords = fit$maxords, method = currentOdeMethod,
+                                maxsteps = fit$maxstepsOde,
+                                hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                                maxordn = fit$maxordn, maxords = fit$maxords,
+                                method = rxode2::odeMethodToInt(currentOdeMethod),
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
-      recalcN <- recalcN + 1
       recalc <- any(is.na(.res$rx_pred_))
+      recalcN <- recalcN + 1
       if (recalc) {
         .atol <- min(.atol*recalcFactor, maxAtolRtol)
         .rtol <- min(.rtol*recalcFactor, maxAtolRtol)
