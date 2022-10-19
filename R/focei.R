@@ -1317,7 +1317,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @keywords internal
 #' @export
 .foceiPreProcessData <- function(data, env, ui) {
-  env$origData <- data
+  env$origData <- as.data.frame(data)
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
       if (any(x == .covNames)) {
