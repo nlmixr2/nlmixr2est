@@ -9,6 +9,8 @@
   
 - Also linkage from 'rxode2' to be strict removing the clang error
   messages
+  
+- Changed to work with new version of 'rxode2', 2.0.9
 
 ## Breaking changes
 
