@@ -1326,15 +1326,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         return(toupper(x))
       }
   }, character(1))
-  if (is.null(data$ID)) stop('"ID" not found in data')
-  if (is.null(data$DV)) stop('"DV" not found in data')
+  requiredCols <- c("ID", "DV", "TIME", .covNames)
+  checkmate::assert_names(names(data), must.include = requiredCols)
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
-  for (.v in c("TIME", "AMT", "DV", .covNames)) {
-    if (!any(names(data) == .v)) {
-      stop("missing '", .v, "' in data", call.=FALSE)
-    }
+  for (.v in requiredCols) {
     data[[.v]] <- as.double(data[[.v]])
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
