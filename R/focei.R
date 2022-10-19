@@ -289,12 +289,12 @@ rxGetDistributionFoceiLines <- function(line) {
 #' Get pred only options
 #'
 #' @param env  rxode2 environment option
-#' 
+#'
 #' @return  If the current method is requesting loglik instead of pred/r
 #'  (required for cwres)
-#' 
+#'
 #' @author Matthew L. Fidler
-#' 
+#'
 #' @noRd
 .getRxPredLlikOption <-function() {
   if (inherits(.rxPredLlik, "logical")) {
@@ -318,7 +318,7 @@ rxGetDistributionFoceiLines.norm <- function(line) {
 
 #' @export
 rxGetDistributionFoceiLines.t <- function(line) {
-  if (rxode2hasLlik()) { 
+  if (rxode2hasLlik()) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
@@ -331,7 +331,7 @@ rxGetDistributionFoceiLines.t <- function(line) {
 
 #' @export
 rxGetDistributionFoceiLines.cauchy <- function(line) {
-  if (rxode2hasLlik()) { 
+  if (rxode2hasLlik()) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
@@ -344,7 +344,7 @@ rxGetDistributionFoceiLines.cauchy <- function(line) {
 
 #' @export
 rxGetDistributionFoceiLines.default  <- function(line) {
-  if (rxode2hasLlik()) { 
+  if (rxode2hasLlik()) {
     env <- line[[1]]
     pred1 <- line[[2]]
     .errNum <- line[[3]]
@@ -401,13 +401,13 @@ rxUiGet.foceiModel0ll <- function(x, ...) {
       .malert(("pruning branches ({.code if}/{.code else}) of llik full model..."))
     } else {
       .malert("pruning branches ({.code if}/{.code else}) of llik model...")
-    }    
+    }
   } else {
     if (fullModel) {
       .malert(("pruning branches ({.code if}/{.code else}) of full model..."))
     } else {
       .malert("pruning branches ({.code if}/{.code else}) of model...")
-    }    
+    }
   }
   .ret <- rxode2::.rxPrune(.x, envir = .env)
   .mv <- rxode2::rxModelVars(.ret)
@@ -1021,7 +1021,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
       .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
       .rxControl$nLlikAlloc <- .maxLl
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
-    }    
+    }
   }
 }
 
@@ -1326,18 +1326,15 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         return(toupper(x))
       }
   }, character(1))
-  if (is.null(data$ID)) stop('"ID" not found in data')
-  if (is.null(data$DV)) stop('"DV" not found in data')
+  requiredCols <- c("ID", "DV", "TIME", .covNames)
+  checkmate::assert_names(names(data), must.include = requiredCols)
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
-  for (.v in c("TIME", "AMT", "DV", .covNames)) {
-    if (!any(names(data) == .v)) {
-      stop("missing '", .v, "' in data", call.=FALSE)
-    }
+  for (.v in requiredCols) {
     data[[.v]] <- as.double(data[[.v]])
   }
-  data$nlmixrRowNums <- seq_along(data[, 1])
+  data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
   .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
                          addCmt=TRUE, dropUnits=TRUE,
