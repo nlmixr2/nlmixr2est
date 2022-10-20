@@ -1,6 +1,7 @@
 # nlmixr2est (development version)
 
-- Fixes for
+- Fixes `$dataMergeInner` so that observation-based log-likelihoods
+  work with infusions.  Should fix tests with `ggPMX`
 
 # nlmixr2est 2.1.0
 
