@@ -256,11 +256,11 @@ attr(nmObjGet.phiSE, "desc") <- "standard error of each individual's eta (if pre
 nmObjGet.phiRSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  .eta <- .obj$eta[,-1]
+  .eta <- .obj$eta[,-1, drop=FALSE]
   if (is.null(.phi)) return(NULL)
   .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
-    suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,])*100)
+    suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,, drop=FALSE])*100)
   }, double(dim(.phi[[1]])[1]))))
   names(.ret) <- paste0("rse(", names(.ret), ")%")
   .id <- seq_along(.phi)
@@ -308,9 +308,14 @@ nmObjGet.idLvl <- function(x, ...){
 .dataMergeStub <- function(obj) {
   .env      <- obj$env
   .origData <- obj$origData
-  .origData$nlmixrRowNums <- seq_along(.origData[, 1])
+  .origData$nlmixrRowNums <- seq_len(nrow(.origData))
+  # add llikObs
+  .llikObs <- FALSE
   if (exists("llikObs", obj$env)) {
+    if (length(obj$env$llikObs) == length(.origData$nlmixrRowNums)) {
       .origData$nlmixrLlikObs <- obj$env$llikObs
+      .llikObs <- TRUE
+    }
   }
   .fitData <- as.data.frame(obj)
   if (is.null(.fitData$EVID)) .fitData$EVID <- 0
@@ -323,6 +328,12 @@ nmObjGet.idLvl <- function(x, ...){
   .fitData <- .fitData[, !(names(.fitData) %in% .share)]
   if (inherits(.fitData$ID, "factor")) {
     .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))
+  }
+  if (!.llikObs && exists("llikObs", obj$env)) {
+    if (length(obj$env$llikObs) == length(.fitData$nlmixrRowNums)) {
+      .fitData$nlmixrLlikObs <- obj$env$llikObs
+      .llikObs <- TRUE
+    }
   }
   list(.origData, .fitData)
 }

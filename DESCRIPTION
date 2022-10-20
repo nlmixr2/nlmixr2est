@@ -61,7 +61,7 @@ Imports:
     Rcpp,
     rex,
     Rvmmin,
-    rxode2 (>= 2.0.7),
+    rxode2 (>= 2.0.10),
     stats,
     symengine,
     ucminf,
@@ -84,8 +84,8 @@ Suggests:
     withr,
     xgxr,
     sfsmisc,
-    rxode2parse,
-    rxode2random
+    rxode2parse (>= 2.0.11),
+    rxode2random (>= 2.0.9)
 LinkingTo: 
     BH,
     dparser (>= 0.1.8),
@@ -93,10 +93,10 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen (>= 0.3.3.3.0),
-    rxode2 (>= 2.0.7),
+    rxode2 (>= 2.0.10),
     StanHeaders (>= 2.18.0),
-    rxode2parse,
-    rxode2random
+    rxode2parse (>= 2.0.11),
+    rxode2random (>= 2.0.9)
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8
