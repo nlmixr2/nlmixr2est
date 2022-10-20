@@ -22,8 +22,8 @@ status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](
 [![CRAN version](http://www.r-pkg.org/badges/version/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 [![CRAN total downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 [![CRAN total downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-
 [![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
+![r-universe](https://nlmixr2.r-universe.dev/badges/nlmixr2est)
 <!-- badges: end -->
 
 The goal of nlmixr2est is to provide the nlmixr2 core estimation routines.

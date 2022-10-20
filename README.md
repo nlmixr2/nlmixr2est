@@ -14,8 +14,8 @@ version](http://www.r-pkg.org/badges/version/nlmixr2est)](https://cran.r-project
 downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 [![CRAN total
 downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-
 [![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
+![r-universe](https://nlmixr2.r-universe.dev/badges/nlmixr2est)
 <!-- badges: end -->
 
 The goal of nlmixr2est is to provide the nlmixr2 core estimation
@@ -73,31 +73,31 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|>---------------------------------]  33%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
 #> rxode2 2.0.9 using 4 threads (see ?getRxThreads)
 #> Calculating covariance matrix
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> >-------------------------------------------------]  01%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem predOnly model 0...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 2...
-#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
+#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
 #> → compress parHist in nlmixr2 object, save 9560
-#> → compress saem0 in nlmixr2 object, save 28728
+#> → compress saem0 in nlmixr2 object, save 27056
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -108,8 +108,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other
-#> elapsed 0.001443   0.009009 3.158 0.025    0.019 1.509548
+#>            setup covariance saem table compress    other
+#> elapsed 0.001175   0.007003 2.54  0.04    0.017 1.651822
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
