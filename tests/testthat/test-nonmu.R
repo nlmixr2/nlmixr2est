@@ -34,12 +34,9 @@ test_that("non-mu simple test", {
   
   # Should have llikObs
   expect_true("llikObs" %in% names(tmp))
-
   
-  # Wrong results
-  ## fit$etaSE
-
-  ## fit$etaH
-
+  expect_true(all(names(fit$etaSE) == c("ID", "eta.Vc")))
+  
+  expect_true(all(names(fit$etaRSE) == c("ID", "rse(eta.Vc)%")))
 
 })

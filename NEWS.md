@@ -3,6 +3,9 @@
 - Fixes `$dataMergeInner` so that observation-based log-likelihoods
   work with infusions.  Should fix tests with `ggPMX`
 
+- Fixes `$etaSE` and `$etaRSE` to work correctly when there is only 1
+  eta.
+
 # nlmixr2est 2.1.0
 
 ## Breaking changes

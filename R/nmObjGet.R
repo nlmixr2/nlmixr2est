@@ -238,11 +238,15 @@ nmObjGet.phiSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   if (is.null(.phi)) return(NULL)
-  .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
+  .d1 <- dim(.phi[[1]])[1]
+  .ret <- vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     suppressWarnings(sqrt(diag(.cov)))
-  }, double(dim(.phi[[1]])[1]))))
+  }, double(.d1), USE.NAMES=FALSE)
+  dim(.ret) <- c(.d1, length(.phi))
+  dimnames(.ret) <- list(colnames(.phi[[1]]), names(.phi))
   names(.ret) <- paste0("se(", names(.ret), ")")
+  .ret <- as.data.frame(t(.ret))
   .id <- seq_along(.phi)
   if (!is.null(names(.phi))) {
     .id <- names(.phi)
@@ -258,10 +262,14 @@ nmObjGet.phiRSE <- function(x, ...) {
   .phi <- .obj$phiC
   .eta <- .obj$eta[,-1, drop=FALSE]
   if (is.null(.phi)) return(NULL)
-  .ret <- as.data.frame(t(vapply(seq_along(.phi), function(i) {
+  .d1 <-dim(.phi[[1]])[1]
+  .ret <-vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     suppressWarnings(sqrt(diag(.cov))/unlist(.eta[i,, drop=FALSE])*100)
-  }, double(dim(.phi[[1]])[1]))))
+  }, double(.d1), USE.NAMES=FALSE)
+  dim(.ret) <- c(.d1, length(.phi))
+  dimnames(.ret) <- list(colnames(.phi[[1]]), names(.phi))
+  .ret <- as.data.frame(t(.ret))
   names(.ret) <- paste0("rse(", names(.ret), ")%")
   .id <- seq_along(.phi)
   if (!is.null(names(.phi))) {
