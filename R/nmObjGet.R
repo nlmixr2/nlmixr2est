@@ -315,6 +315,11 @@ nmObjGet.idLvl <- function(x, ...){
     if (length(obj$env$llikObs) == length(.origData$nlmixrRowNums)) {
       .origData$nlmixrLlikObs <- obj$env$llikObs
       .llikObs <- TRUE
+    } else {
+      .llik0 <- data.frame(nlmixrRowNums=obj$dataSav$nlmixrRowNums, llikObs=obj$env$llikObs)
+      .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
+      .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
+      .origData <- .origData[order(.origData$nlmixrRowNums),]
     }
   }
   .fitData <- as.data.frame(obj)
@@ -328,12 +333,6 @@ nmObjGet.idLvl <- function(x, ...){
   .fitData <- .fitData[, !(names(.fitData) %in% .share)]
   if (inherits(.fitData$ID, "factor")) {
     .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))
-  }
-  if (!.llikObs && exists("llikObs", obj$env)) {
-    if (length(obj$env$llikObs) == length(.fitData$nlmixrRowNums)) {
-      .fitData$nlmixrLlikObs <- obj$env$llikObs
-      .llikObs <- TRUE
-    }
   }
   list(.origData, .fitData)
 }
