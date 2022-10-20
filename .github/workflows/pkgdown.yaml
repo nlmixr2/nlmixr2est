@@ -60,8 +60,7 @@ jobs:
           remotes::install_github("nlmixr2/rxode2random")
           remotes::install_github("nlmixr2/rxode2et")
           remotes::install_github("nlmixr2/rxode2")
-          remotes::install_github("jeroen/curl")
-          remotes::install_dev("pkgdown")
+          remotes::install_cran("pkgdown")
         shell: Rscript {0}
 
       - name: Install package.
