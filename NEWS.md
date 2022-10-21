@@ -6,6 +6,8 @@
 - Fixes `$etaSE` and `$etaRSE` to work correctly when there is only 1
   eta.
 
+- Fixes npde valgrind observed on CRAN machines
+
 # nlmixr2est 2.1.0
 
 ## Breaking changes

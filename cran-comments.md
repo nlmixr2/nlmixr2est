@@ -1,5 +1,8 @@
 # CRAN Comments
 
+The observed valgrind jumps based on unitinialized values should be
+fixed by initializing the npdes columns to zero.
+
 > Dear maintainer,
 
 > Please see the problems shown on
@@ -31,6 +34,6 @@ This is caused by an edge case that is tested in 'ggPMX' but was not tested in '
 
 This was fixed and now is tested for directl in 'nlmixr2est'
 
- 
 
+ 
 
