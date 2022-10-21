@@ -430,7 +430,6 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   epred.zeros();
   dvf.zeros();
   eres.zeros();
-  warn.zeros();
 
   int cores = as<int>(opt["cores"]);
 
