@@ -422,6 +422,16 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::vec eres(REAL(eresSEXP), dvLen, false, true);
   arma::ivec warn(idLoc.size()-1);
 
+  // initialize for CRAN's valgrind
+  npde.zeros();
+  npd.zeros();
+  pde.zeros();
+  pd.zeros();
+  epred.zeros();
+  dvf.zeros();
+  eres.zeros();
+  warn.zeros();
+
   int cores = as<int>(opt["cores"]);
 
   for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
