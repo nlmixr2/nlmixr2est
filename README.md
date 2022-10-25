@@ -28,12 +28,13 @@ You can install the development version of nlmixr2est from
 
 ``` r
 # install.packages("remotes")
+devtools::install_github("nlmixr2/rxode2parse")
+devtools::install_github("nlmixr2/rxode2random")
+devtools::install_github("nlmixr2/rxode2et")
+devtools::install_github("nlmixr2/rxode2ll")
+devtools::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2data")
 remotes::install_github("nlmixr2/lotri")
-remotes::install_github("nlmixr2/rxode2ll")
-remotes::install_github("nlmixr2/rxode2parse")
-remotes::install_github("nlmixr2/rxode2random")
-remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2est")
 ```
 
@@ -73,31 +74,27 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem model...
-#> [====|====|====|>---------------------------------]  33%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 #> → optimizing duplicate expressions in saem model...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
+#> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 #> ✔ done
-#> rxode2 2.0.9 using 4 threads (see ?getRxThreads)
+#> rxode2 2.0.10.9000 using 8 threads (see ?getRxThreads)
+#>   no cache: create with `rxCreateCache()`
 #> Calculating covariance matrix
-#> >-------------------------------------------------]  01%; 0:00:00 [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
 #> → finding duplicate expressions in saem predOnly model 0...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → optimizing duplicate expressions in saem predOnly model 1...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> → finding duplicate expressions in saem predOnly model 2...
-#> [====|====|====|====|====|====|====|====|====|====] 100%; 0:00:00                                                                                  
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
-#> → compress parHist in nlmixr2 object, save 9560
-#> → compress saem0 in nlmixr2 object, save 27056
+#> → compress parHist in nlmixr2 object, save 9592
+#> → compress saem0 in nlmixr2 object, save 27184
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -108,8 +105,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance saem table compress    other
-#> elapsed 0.001175   0.007003 2.54  0.04    0.017 1.651822
+#>         setup saem table compress other
+#> elapsed 0.002 6.47  0.06     0.05 3.688
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
