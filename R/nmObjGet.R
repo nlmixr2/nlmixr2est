@@ -109,7 +109,7 @@ nmObjGetData.dataLloq <- function(x, ...) {
 #' @export
 nmObjGetData.dataUloq <- function(x, ...) {
   .fit <- x[[1]]
-  .df <- as.data.frame(.fit)
+  .df <- as.data.frame(.fit) 
   if (!any(names(.df) == "CENS")) return(NULL)
   if (!any(names(.df) == "lowerLim")) return(NULL)
   .w <- which(.df$CENS == -1)
