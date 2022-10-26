@@ -130,7 +130,6 @@ struct focei_options {
   double *gB = NULL;
   double *gc = NULL;
   double *gH = NULL;
-  double *gH0 = NULL;
   double *gVid = NULL;
 
   double *likSav = NULL;
@@ -356,8 +355,6 @@ struct focei_ind {
   double *lp;// = mat(neta,1);
 
   double *g;
-  double *H;
-  double *H0;
   double *Vid;
 
   double *llikObs;
@@ -1329,6 +1326,7 @@ arma::vec getGradForOptimHess(arma::vec &t, int id) {
   return ret;
 }
 
+bool _finalObfCalc = false;
 
 double LikInner2(double *eta, int likId, int id){
   focei_ind *fInd = &(inds_focei[id]);
@@ -1479,8 +1477,11 @@ double LikInner2(double *eta, int likId, int id){
     } else {
       H0=cholSE__(H, op_focei.cholSEtol);
     }
-    std::copy(H.begin(), H.end(), fInd->H);
-    std::copy(H0.begin(), H0.end(), fInd->H0);
+    H = H0.t() * H0;
+    if (_finalObfCalc) {
+      std::copy(H.begin(), H.end(),
+                op_focei.gH + id*op_focei.neta*op_focei.neta);
+    }
 
     // - sum(log(H.diag()));
     for (unsigned int j = H0.n_rows; j--;){
@@ -2332,7 +2333,7 @@ void foceiPhi(Environment e) {
   }
   for (int j=rx->nsub; j--;){
     focei_ind *fInd = &(inds_focei[j]);
-    arma::mat H(fInd->H, op_focei.neta, op_focei.neta, false, true);
+    arma::mat H(op_focei.gH + j*op_focei.neta*op_focei.neta, op_focei.neta, op_focei.neta, false, true);
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
     retH[j] = cur;
@@ -3128,8 +3129,6 @@ static inline void foceiSetupNoEta_(){
     fInd->x = NULL;
     fInd->var = NULL;
     fInd->lp = NULL;
-    fInd->H = NULL;
-    fInd->H0 = NULL;
     fInd->Vid = NULL;
     fInd->a = NULL;
     fInd->c = NULL;
@@ -3157,9 +3156,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*rx->nsub;
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
+
   op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(rx->nsub + 1)+nz+
                                2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                               op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub + rx->nall,
+                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*rx->nsub + rx->nall,
                                double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -3178,9 +3178,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gc       = op_focei.ga + op_focei.neta * rx->nall;//[op_focei.neta * rx->nall]
   op_focei.gB       = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
   op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.gH0      = op_focei.gB + op_focei.neta*op_focei.neta*rx->nsub; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.llikObsFull =   op_focei.gH0 + op_focei.neta*op_focei.neta*rx->nsub; // [rx->nall]
-  op_focei.gVid     = op_focei.gH0 + rx->nall;
+  op_focei.llikObsFull =   op_focei.gH + op_focei.neta*op_focei.neta*rx->nsub; // [rx->nall]
+  op_focei.gVid     = op_focei.llikObsFull + rx->nall;
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -3211,8 +3210,6 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->x = &op_focei.gX[j];
     fInd->var = &op_focei.gVar[j];
     fInd->lp = &op_focei.glp[j];
-    fInd->H = &op_focei.gH[iH];
-    fInd->H0 = &op_focei.gH0[iH];
     fInd->Vid = &op_focei.gVid[iVid];
     iH += op_focei.neta*op_focei.neta;
     iVid += (ind->n_all_times - ind->ndoses - ind->nevid2)*(ind->n_all_times - ind->ndoses - ind->nevid2);
@@ -3840,8 +3837,9 @@ void foceiOuterFinal(double *x, Environment e){
   std::fill_n(op_focei.getahr, op_focei.gEtaGTransN, 0.0);
   op_focei.optimHessType = op_focei.optimHessCovType;
   op_focei.shi21maxInner = op_focei.shi21maxInnerCov;
+  _finalObfCalc = true;
   double fmin = foceiOfv0(x);
-
+  _finalObfCalc = false;
   NumericVector theta(op_focei.ntheta);
   std::copy(&op_focei.fullTheta[0],  &op_focei.fullTheta[0] + op_focei.ntheta,
             theta.begin());
@@ -6780,7 +6778,7 @@ void saveIntoEnvrionment(Environment e) {
     arma::vec etaUpper(op_focei.etaUpper,
                        op_focei.gEtaGTransN*10+ op_focei.npars*(rx->nsub + 1)+nz+
                        2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                       op_focei.neta*5 + 3*op_focei.neta*op_focei.neta*rx->nsub + rx->nall);
+                       op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*rx->nsub + rx->nall);
     e[".etaUpper"] = etaUpper;
   }
   arma::ivec gillRet(op_focei.gillRet,
