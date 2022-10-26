@@ -34,14 +34,14 @@ nlmixr2Est <- function(env, ...) {
   } else if (!inherits(get("data", envir=env), "data.frame")) {
     stop("'data' is not a data.frame", call.=FALSE)
   }
+  # Ensure that data is a data.frame (and not a tibble or some other similar
+  # object)
   assign("data", as.data.frame(get("data", envir=env)), envir=env)
   if (!exists("control", envir=env)) {
     stop("need 'control' object", call.=FALSE)
-  } else if (is.null(get("control", envir=env))) {
   }
   if (!exists("table", envir=env)) {
     stop("need 'table' object", call.=FALSE)
-  } else if (is.null(get("table", envir=env))) {
   }
   UseMethod("nlmixr2Est")
 }
@@ -135,9 +135,7 @@ nlmixr2Est0 <- function(env, ...) {
     assign("modelName", .modelName, envir=env$ui)
   }
   .doIt <- TRUE
-  if (is.null(get("missingTable", envir=env))) {
-  } else if (get("missingTable", envir=env)) {
-  } else {
+  if (!("missingTable" %in% names(env))) {
     .doIt <- FALSE
   }
   if (.doIt) {
