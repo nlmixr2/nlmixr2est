@@ -1332,7 +1332,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
-  for (.v in requiredCols) {
+  for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
