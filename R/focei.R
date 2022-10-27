@@ -1320,19 +1320,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates
-  colnames(data) <- vapply(names(data), function(x) {
-      if (any(x == .covNames)) {
-        return(x)
-      } else {
-        return(toupper(x))
-      }
-  }, character(1))
+  maskNotCov <- !(names(data) %in% .covNames)
+  colnames(data)[maskNotCov] <- toupper(colnames(data)[maskNotCov])
   requiredCols <- c("ID", "DV", "TIME", .covNames)
   checkmate::assert_names(names(data), must.include = requiredCols)
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
-  for (.v in requiredCols) {
+  for (.v in setdiff(requiredCols, "ID")) {
     data[[.v]] <- as.double(data[[.v]])
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
