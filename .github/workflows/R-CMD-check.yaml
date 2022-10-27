@@ -39,21 +39,6 @@ jobs:
           brew install udunits
         shell: bash
 
-      - name: Link gfortran on MacOS
-        if: runner.os == 'macOS'
-        run: |
-          sudo ln -s /usr/local/bin/gfortran-10 /usr/local/bin/gfortran
-          sudo mkdir /usr/local/gfortran
-          sudo ln -s /usr/local/gfortran-10 /usr/local/gfortran
-        shell: bash
-
-      - name: Create Makevars for Fortran linking options on macOS
-        if: runner.os == 'macOS'
-        run: |
-          try(dir.create("~/.R"))
-          writeLines(c("GCCBASE:=$(shell brew --prefix gcc)","FLIBS=-L$(GCCBASE)/lib/gcc/10/lib -lm",""),"~/.R/Makevars")
-        shell: Rscript {0}
-
       - uses: actions/checkout@v3
 
       - uses: r-lib/actions/setup-pandoc@v2
@@ -63,6 +48,13 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
+
+      - name: Create Makevars for Fortran linking options on macOS
+        if: runner.os == 'macOS'
+        run: |
+          try(dir.create("~/.R"))
+          writeLines(c("GCCBASE:=$(shell brew --prefix gcc)","FLIBS=-L$(GCCBASE)/lib/gcc/10/lib -lm",""),"~/.R/Makevars")
+        shell: Rscript {0}
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
