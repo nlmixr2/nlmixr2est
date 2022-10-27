@@ -49,13 +49,6 @@ jobs:
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
-      - name: Create Makevars for Fortran linking options on macOS
-        if: runner.os == 'macOS'
-        run: |
-          try(dir.create("~/.R"))
-          writeLines(c("GCCBASE:=$(shell brew --prefix gcc)","FLIBS=-L$(GCCBASE)/lib/gcc/10/lib -lm",""),"~/.R/Makevars")
-        shell: Rscript {0}
-
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           pak-version: devel
