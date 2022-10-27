@@ -54,11 +54,6 @@ jobs:
           writeLines(c("GCCBASE:=$(shell brew --prefix gcc)","FLIBS=-L$(GCCBASE)/lib/gcc/10/lib -lm",""),"~/.R/Makevars")
         shell: Rscript {0}
 
-      - name: Install Symengine from source for MacOS
-        if: runner.os == 'macOS'
-        run: install.packages("symengine", type="source")
-        shell: Rscript {0}
-
       - uses: actions/checkout@v3
 
       - uses: r-lib/actions/setup-pandoc@v2
