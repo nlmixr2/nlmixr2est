@@ -1335,6 +1335,16 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  .lvls <- NULL
+  for (.v in .covNames) {
+    if (inherits(.v, "charater")) {
+      .l <- factor(data[[.v]])
+      data[[.v]] <- .l
+      .lvls <- c(.lvls, setNames(list(levels(.l)), .v))
+    } else if (inherits(.v, "factor")) {
+      .lvls <- c(.lvls, setNames(list(levels(data[[.v]])), .v))
+    }
+  }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
   .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
@@ -1347,6 +1357,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .dat <- cbind(as.data.frame(.et), .keepL)
   env$dataSav <- .dat
   env$idLvl <- .idLvl
+  env$covLvl <- .lvls
 }
 
 .thetaReset <- new.env(parent = emptyenv())
@@ -1851,6 +1862,7 @@ nlmixr2Est.output <- function(env, ...) {
 #' - `$origData` -- Original Data
 #' - `$dataSav` -- Processed data from .foceiPreProcessData
 #' - `$idLvl` -- Level information for ID factor added
+#' - `$covLvl` -- Level information for items to convert to factor
 #' - `$ui` for ui object
 #' - `$fullTheta` Full theta information
 #' - `$etaObf` data frame with ID, etas and OBJI

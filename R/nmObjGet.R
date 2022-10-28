@@ -311,6 +311,18 @@ nmObjGet.idLvl <- function(x, ...){
   .foceiPreProcessData(.data, .env, .obj$ui)
   .env$idLvl
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.covLvl <- function(x, ...) {
+  .obj <- x[[1]]
+  .objEnv <- .obj$env
+  if (exists("covLvl", .objEnv)) return(get("covLvl", envir=.objEnv))
+  .data <- .obj$origData
+  .env <- new.env(emptyenv())
+  .foceiPreProcessData(.data, .env, .obj$ui)
+  .env$covLvl
+}
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
 .dataMergeStub <- function(obj) {

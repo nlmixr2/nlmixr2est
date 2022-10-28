@@ -11,6 +11,7 @@
 \alias{nmObjGet.phiRSE}
 \alias{nmObjGet.dataSav}
 \alias{nmObjGet.idLvl}
+\alias{nmObjGet.covLvl}
 \alias{nmObjGet.saemTransformedData}
 \alias{nmObjGet.parHistStacked}
 \alias{nmObjGet.md5}
@@ -59,6 +60,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{dataSav}(x, ...)
 
 \method{nmObjGet}{idLvl}(x, ...)
+
+\method{nmObjGet}{covLvl}(x, ...)
 
 \method{nmObjGet}{saemTransformedData}(x, ...)
 
