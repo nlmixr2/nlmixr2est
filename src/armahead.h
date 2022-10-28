@@ -1,6 +1,7 @@
 #ifndef __ARMAHEAD_H__
 #define __ARMAHEAD_H__
 #define ARMA_WARN_LEVEL 1
+#define ARMA_64BIT_WORD
 #define ARMA_DONT_USE_OPENMP // Known to cause speed problems
 // #ifdef _OPENMP
 // #include <omp.h>
