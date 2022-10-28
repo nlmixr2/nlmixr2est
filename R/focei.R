@@ -1337,12 +1337,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   .lvls <- NULL
   for (.v in .covNames) {
-    if (inherits(.v, "charater")) {
-      .l <- factor(data[[.v]])
+    .d <- data[[.v]]
+    if (inherits(.d, "character")) {
+      .l <- factor(.d)
       data[[.v]] <- .l
       .lvls <- c(.lvls, setNames(list(levels(.l)), .v))
-    } else if (inherits(.v, "factor")) {
-      .lvls <- c(.lvls, setNames(list(levels(data[[.v]])), .v))
+    } else if (inherits(.d, "factor")) {
+      .lvls <- c(.lvls, setNames(list(levels(.d)), .v))
     }
   }
   data$nlmixrRowNums <- seq_len(nrow(data))

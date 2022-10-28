@@ -509,10 +509,10 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     attr(.id, "levels") <- object$idLvl
     class(.id) <- "factor"
     .df$ID <- .id
-    .clsLvl <- object$clsLvl
-    for (.v in names(.clsLvl)) {
+    .covLvl <- object$covLvl
+    for (.v in names(.covLvl)) {
       .l <- as.integer(.df[[.v]])
-      attr(.l, "levels") <- .clsLvl[[.v]]
+      attr(.l, "levels") <- .covLvl[[.v]]
       class(.l) <- "factor"
       .df[[.v]] <- .l
     }
