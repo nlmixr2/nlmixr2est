@@ -509,6 +509,13 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     attr(.id, "levels") <- object$idLvl
     class(.id) <- "factor"
     .df$ID <- .id
+    .covLvl <- object$covLvl
+    for (.v in names(.covLvl)) {
+      .l <- as.integer(.df[[.v]])
+      attr(.l, "levels") <- .covLvl[[.v]]
+      class(.l) <- "factor"
+      .df[[.v]] <- .l
+    }
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
       .isDataTable <- requireNamespace("data.table", quietly = TRUE)

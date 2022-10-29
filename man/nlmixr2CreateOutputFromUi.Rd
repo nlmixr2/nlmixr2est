@@ -27,6 +27,7 @@ nlmixr2CreateOutputFromUi(
 - `$origData` -- Original Data
 - `$dataSav` -- Processed data from .foceiPreProcessData
 - `$idLvl` -- Level information for ID factor added
+- `$covLvl` -- Level information for items to convert to factor
 - `$ui` for ui object
 - `$fullTheta` Full theta information
 - `$etaObf` data frame with ID, etas and OBJI
