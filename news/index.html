@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.2</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -45,7 +45,18 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="2.1.0" id="nlmixr2est-210">nlmixr2est 2.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-210"></a></h2>
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<ul><li><p>Fixes <code>$etaH</code> memory corruption so the standard errors of etas are now correct</p></li>
+<li><p>Removed the memory requirements for focei by <code>neta*neta*nsub</code></p></li>
+</ul></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="2.1.1" id="nlmixr2est-211">nlmixr2est 2.1.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-211"></a></h2><p class="text-muted">CRAN release: 2022-10-22</p>
+<ul><li><p>Fixes <code>$dataMergeInner</code> so that observation-based log-likelihoods work with infusions. Should fix tests with <code>ggPMX</code></p></li>
+<li><p>Fixes <code>$etaSE</code> and <code>$etaRSE</code> to work correctly when there is only 1 eta.</p></li>
+<li><p>Fixes npde valgrind observed on CRAN machines</p></li>
+</ul></div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="2.1.0" id="nlmixr2est-210">nlmixr2est 2.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-210"></a></h2><p class="text-muted">CRAN release: 2022-10-19</p>
 <div class="section level3">
 <h3 id="breaking-changes-2-1-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-2-1-0"></a></h3>
 <div class="section level4">
@@ -57,7 +68,7 @@
 </ul></div>
 <div class="section level4">
 <h4 id="focei-covariance-calculation-2-1-0">FOCEi covariance calculation<a class="anchor" aria-label="anchor" href="#focei-covariance-calculation-2-1-0"></a></h4>
-<ul><li><p>The <code>S</code> matrix calculation was made a bit more robust to errors in individual gradients. When there are errors in the individual gradient calculation, assume the gradient is the same as the overall gradient. In the tests cases, were reasonable using this adjusted S matrix. This means if some individuals do not have very much data to support a specific parameter, a <code>S</code> matrix calculation for the population will still be generated. When there is some patients/subject combinations that do not have sufficient data, we will add the following to the run information: <code>S matrix had problems solving for some subject and parameters</code>. The <code>S</code> matrix calculation will still fail if the percentage of parameters that are being reset is lower than <code>foceiControl(smatPer=0.6)</code> or whatever you specify.</p></li>
+<ul><li><p>The <code>S</code> matrix calculation was made a bit more robust to errors in individual gradients. When there are errors in the individual gradient calculation, assume the gradient is the same as the overall gradient. In the tests cases, were reasonable using this adjusted S matrix. This means if some individuals do not have very much data to support a specific parameter, a <code>S</code> matrix calculation for the population will still be generated. When there is some patients/subject combinations that do not have sufficient data, we will add the following to the run information: <code>S matrix had    problems solving for some subject and parameters</code>. The <code>S</code> matrix calculation will still fail if the percentage of parameters that are being reset is lower than <code>foceiControl(smatPer=0.6)</code> or whatever you specify.</p></li>
 <li><p>The <code>r,s</code> covariance matrix will now also check for unreasonably small values (controlled by <code>foceiControl(covSmall=...)</code>) and select a different covariance estimate method even when the “r” and “s” matrices are calculated “correctly”.</p></li>
 </ul></div>
 </div>
@@ -76,7 +87,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="censoring-fixes-2-1-0">Censoring fixes<a class="anchor" aria-label="anchor" href="#censoring-fixes-2-1-0"></a></h3>
-<ul><li>Fixed bug where datasets with censoring that are not lower case <code>cens</code> and <code>limit</code> do not produce the correct table output (<a href="https://github.com/nlmixr2/nlmixr2est/issues/180" class="external-link">#180</a>)</li></ul></div>
+<ul><li>Fixed bug where datasets with censoring that are not lower case <code>cens</code> and <code>limit</code> do not produce the correct table output (<a href="https://github.com/nlmixr2/nlmixr2est/issues/180" class="external-link">#180</a>)</li>
+</ul></div>
 <div class="section level3">
 <h3 id="focei-updates-2-1-0">FOCEi updates<a class="anchor" aria-label="anchor" href="#focei-updates-2-1-0"></a></h3>
 <ul><li>Resets now scale properly when a value is simulated outside the limit</li>
@@ -88,23 +100,28 @@
 <div class="section level3">
 <h3 id="new-features-2-0-8">New features<a class="anchor" aria-label="anchor" href="#new-features-2-0-8"></a></h3>
 <ul><li>Add <code>pd</code>/<code>npd</code> as an output as well as <code>npd</code>/<code>npde</code>
-</li></ul></div>
+</li>
+</ul></div>
 <div class="section level3">
 <h3 id="saem-bug-fix-2-0-8">SAEM bug fix<a class="anchor" aria-label="anchor" href="#saem-bug-fix-2-0-8"></a></h3>
 <ul><li>When loading a <code>nlmixr2</code> “saem” fit from another R session, <code>nlmixr2</code> will no longer crash with <code>fit$objf</code>
-</li></ul></div>
+</li>
+</ul></div>
 <div class="section level3">
 <h3 id="npdenpd-fixes-2-0-8">NPDE/NPD fixes<a class="anchor" aria-label="anchor" href="#npdenpd-fixes-2-0-8"></a></h3>
 <ul><li>
-<code>NPDE</code> was identical to <code>NPD</code> even with correlated models, this was fixed (prior output was actually <code>NPDE</code>).</li></ul></div>
+<code>NPDE</code> was identical to <code>NPD</code> even with correlated models, this was fixed (prior output was actually <code>NPDE</code>).</li>
+</ul></div>
 <div class="section level3">
 <h3 id="censoring-fixes-2-0-8">Censoring fixes<a class="anchor" aria-label="anchor" href="#censoring-fixes-2-0-8"></a></h3>
-<ul><li>FOCEi censoring fixes:<ul><li>M4 method equation bug fix</li>
+<ul><li>FOCEi censoring fixes:
+<ul><li>M4 method equation bug fix</li>
 <li>M4 method derivative change based on equation fix</li>
 <li>M2 method added missing derivative</li>
 <li>Censoring already dTBS</li>
 </ul></li>
-<li>SAEM Censoring fixes:<ul><li>SAEM method M4 method equation bug fix</li>
+<li>SAEM Censoring fixes:
+<ul><li>SAEM method M4 method equation bug fix</li>
 <li>Censoring limit changed to dTBS</li>
 </ul></li>
 <li>Censoring handling was unified</li>
@@ -144,7 +161,8 @@
 <li>
 <p><code>nlmixr2</code> forced the parameter ordering to (1) population effects,</p>
 <ol start="2" style="list-style-type: decimal"><li>non mu-referenced between subject effects (3) omega estimates and (4) residual effects. This changes the order that <code>nlmixr2</code> sees the parameters. Since this is based on a random number generator, the optimization trajectory will be different and have different results than <code>nlmixr</code>
-</li></ol></li>
+</li>
+</ol></li>
 <li><p>Components of <code>omega</code> can now be fixed.</p></li>
 <li><p>Residual error components can also be fixed.</p></li>
 <li><p>When optimizing only one residual value, nlmixr2’s saem uses <code>nlm</code> from R, which is more efficient than the nealder-meade method.</p></li>
@@ -184,11 +202,12 @@
 <div class="section level3">
 <h3 id="npde-changes-2-0-6">NPDE changes<a class="anchor" aria-label="anchor" href="#npde-changes-2-0-6"></a></h3>
 <ul><li>Fixed a bug where the number of simulations for a NPDE calculation are correctly passed by <code>addNpde(fit, table=tableControl(nsim=500))</code>
-</li></ul></div>
+</li>
+</ul></div>
 <div class="section level3">
 <h3 id="vpc-changes-2-0-6">VPC changes<a class="anchor" aria-label="anchor" href="#vpc-changes-2-0-6"></a></h3>
 <ul><li><p><code>vpc</code> function rewritten and split out to <code><a href="../reference/vpcSim.html">vpcSim()</a></code> and <code>vpcPlot()</code> (which is a replacement for <code>vpc()</code>).</p></li>
-<li><p>There were too many mismatches between <code><a href="https://rdrr.io/pkg/vpc/man/vpc.html" class="external-link">vpc::vpc</a></code> and <code><a href="https://rdrr.io/pkg/nlmixr/man/vpc.html" class="external-link">nlmixr::vpc</a></code> which caused inconsistencies in code based on load order of <code>vpc</code> and <code>nlmixr</code>. This way both coexist, and you can use the <code>vpc</code> simulation for other packages more easily (like <code>ggPMX</code>) without creating or summarizing data since <code>ggPMX</code> has its own methods for summarizing and creating plots.</p></li>
+<li><p>There were too many mismatches between <code><a href="https://rdrr.io/pkg/vpc/man/vpc.html" class="external-link">vpc::vpc</a></code> and <code>nlmixr::vpc</code> which caused inconsistencies in code based on load order of <code>vpc</code> and <code>nlmixr</code>. This way both coexist, and you can use the <code>vpc</code> simulation for other packages more easily (like <code>ggPMX</code>) without creating or summarizing data since <code>ggPMX</code> has its own methods for summarizing and creating plots.</p></li>
 <li><p>VPC now directly uses <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxode2::rxSolve</a></code></p></li>
 </ul></div>
 <div class="section level3">
@@ -200,7 +219,8 @@
 <div class="section level3">
 <h3 id="getfitmethod-change-2-0-6">getFitMethod() change<a class="anchor" aria-label="anchor" href="#getfitmethod-change-2-0-6"></a></h3>
 <ul><li>Internally, fit estimation method is saved in <code>fit$est</code>, and now <code>getFitMethod(fit)</code> simply returns <code>fit$est</code>
-</li></ul></div>
+</li>
+</ul></div>
 <div class="section level3">
 <h3 id="delete-methods-2-0-6">Delete methods<a class="anchor" aria-label="anchor" href="#delete-methods-2-0-6"></a></h3>
 <ul><li><p>Many methods lower level utility functions have been deleted.</p></li>
@@ -208,7 +228,8 @@
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-2-0-6">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-2-0-6"></a></h3>
-<ul><li>Now will reset the cache when items cannot be loaded. In the past error messages like <code>function 'rx_0ba247452048de33b1ffb8af516714fc__calc_lhs' not provided by package 'rx_0ba247452048de33b1ffb8af516714fc_'</code> would cause the estimation to stop. Now <code><a href="https://nlmixr2.github.io/rxode2/reference/rxClean.html" class="external-link">rxode2::rxClean()</a></code> is run when this occurs.</li></ul></div>
+<ul><li>Now will reset the cache when items cannot be loaded. In the past error messages like <code>function   'rx_0ba247452048de33b1ffb8af516714fc__calc_lhs' not provided by   package 'rx_0ba247452048de33b1ffb8af516714fc_'</code> would cause the estimation to stop. Now <code><a href="https://nlmixr2.github.io/rxode2/reference/rxClean.html" class="external-link">rxode2::rxClean()</a></code> is run when this occurs.</li>
+</ul></div>
 </div>
   </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
     </nav></aside></div>
@@ -219,7 +240,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.9000.</p>
+  <p></p><p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.0.6.</p>
 </div>
 
     </footer></div>
