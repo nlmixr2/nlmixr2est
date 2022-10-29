@@ -2,7 +2,6 @@
 #define __CENSEST_H__
 
 #define STRICT_R_HEADER
-#define ARMA_64BIT_WORD
 #include <stdio.h>
 #include <stdarg.h>
 #include <thread>

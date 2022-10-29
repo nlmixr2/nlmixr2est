@@ -9,6 +9,8 @@
 #ifndef Rcpp_DE_evaluate_h_
 #define Rcpp_DE_evaluate_h_
 
+//#include <RcppArmadillo.h>
+
 namespace Rcpp {
 
   class EvalBase {
