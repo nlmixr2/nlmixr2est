@@ -670,13 +670,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   #.txt <- paste0("(", crayon::italic(ifelse(is.null(.uif$nmodel$lin.solved), ifelse(.uif$predSys, "PRED", "ODE"), "Solved")), "); ")
   .txt <- ""
   if (tolower(type) == "focei") {
-    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FOCEi approximation"))
+    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCEi approximation"))
   } else if (tolower(type) == "foce") {
-    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FOCE approximation"))
+    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FOCE approximation"))
   } else if (tolower(type) == "fo") {
-    .txt <- paste0(.txt, crayon::blurred$italic("OBJF by FO approximation"))
+    .txt <- paste0(.txt, crayon::silver$italic("OBJF by FO approximation"))
   } else if (type == "") {
-    .txt <- paste0(.txt, crayon::blurred$italic("OBJF not calculated"))
+    .txt <- paste0(.txt, crayon::silver$italic("OBJF not calculated"))
   } else {
     .reg <- rex::rex(start, "laplace", capture(.regNum), end)
     .regG <- rex::rex(start, "gauss", capture(.regNum), "_", capture(.regNum), end)
@@ -689,7 +689,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     } else {
       stop("unknown error")
     }
-    .txt <- paste0(.txt, crayon::blurred$italic(sprintf("OBJF by %s", paste0(ifelse(.nnode == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .nnode)), .nsd, ")"))))
+    .txt <- paste0(.txt, crayon::silver$italic(sprintf("OBJF by %s", paste0(ifelse(.nnode == 1, "Lapalcian (n.sd=", sprintf("Gaussian Quadrature (n.nodes=%s, n.sd=", .nnode)), .nsd, ")"))))
   }
   .env$extra <- .txt
   invisible()
