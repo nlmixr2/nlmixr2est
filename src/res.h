@@ -5,7 +5,7 @@
 #include "censResid.h"
 #include "shrink.h"
 #include "utilc.h"
-void calculateDfFull(arma::ivec& ID, arma::mat &etas,
+void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
 		     List &etasDfFull, int &nid, unsigned int &neta);
 
 int getPredIndex(List &ipredL);

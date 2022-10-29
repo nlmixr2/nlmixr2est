@@ -55,7 +55,7 @@ List nlmixr2Parameters(NumericVector theta, DataFrame eta) {
   return List::create(_["pred"]=pred, _["ipred"]=ipred,_["eta.lst"]=etadf);
 }
 
-void calcShrinkFinalize(arma::mat &omegaMat, int &nid, List& etaLst, arma::vec &iwres, arma::ivec &evid,
+void calcShrinkFinalize(arma::mat &omegaMat, int &nid, List& etaLst, arma::vec &iwres, arma::Col<int> &evid,
 			CharacterVector &etaNames, int doIwres) {
   double tc = sqrt((double)nid);
   double om;
@@ -120,7 +120,7 @@ extern "C" SEXP _nlmixr2est_calcShrinkOnly(SEXP omegaMatSEXP, SEXP etaLstSEXP, S
 BEGIN_RCPP
   // These are not needed because IWRES shrinkage isn't calculated
  arma::vec iwres;
- arma::ivec evid;
+ arma::Col<int> evid;
  arma::mat omegaMat = as<arma::mat>(omegaMatSEXP);
  int nid = INTEGER(nidSEXP)[0];
  CharacterVector etaNames = VECTOR_ELT(Rf_getAttrib(omegaMatSEXP, R_DimNamesSymbol), 1);

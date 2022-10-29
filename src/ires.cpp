@@ -20,17 +20,17 @@ BEGIN_RCPP
   arma::vec riv(REAL(ipredL[npred+1]), ncalc, false, true);
 
 
-  arma::ivec cens;
+  arma::Col<int> cens;
   if (Rf_isNull(censIn)) {
-    cens = arma::ivec(ncalc, fill::zeros);
+    cens = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    cens = as<arma::ivec>(censIn);
+    cens = as<arma::Col<int>>(censIn);
   }
-  arma::ivec evid;
+  arma::Col<int> evid;
   if (Rf_isNull(evidIn)) {
-    evid = arma::ivec(ncalc, fill::zeros);
+    evid = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    evid = as<arma::ivec>(evidIn);
+    evid = as<arma::Col<int>>(evidIn);
   }
 
   arma::vec limit;
@@ -75,7 +75,7 @@ BEGIN_RCPP
 
   int ncalc2 = sum(normRelated); // This is the true cwres calculations
 
-  arma::ivec ID(INTEGER(ipredL[0]), ncalc, false, true);
+  arma::Col<int> ID(INTEGER(ipredL[0]), ncalc, false, true);
 
   arma::vec iwres=(dvt-ipredt);
   uvec riv0 = find(riv!=0);
