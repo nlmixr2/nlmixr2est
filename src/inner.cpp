@@ -1849,12 +1849,12 @@ static inline int innerOpt1(int id, int likId) {
 void parHistData(Environment e, bool focei);
 
 void foceiPrintInfo() {
-  arma::irowvec etaTrans(op_focei.etaTrans, op_focei.neta);
-  arma::irowvec nbdInner(op_focei.nbdInner, op_focei.neta);
-  arma::irowvec xPar(op_focei.xPar, op_focei.ntheta + op_focei.omegan);
-  arma::irowvec thetaTrans(op_focei.thetaTrans, op_focei.ntheta + op_focei.omegan);
-  arma::irowvec fixedTrans(op_focei.fixedTrans, op_focei.ntheta + op_focei.omegan);
-  arma::irowvec etaFD(op_focei.etaFD, op_focei.neta);
+  arma::Row<int> etaTrans(op_focei.etaTrans, op_focei.neta);
+  arma::Row<int> nbdInner(op_focei.nbdInner, op_focei.neta);
+  arma::Row<int> xPar(op_focei.xPar, op_focei.ntheta + op_focei.omegan);
+  arma::Row<int> thetaTrans(op_focei.thetaTrans, op_focei.ntheta + op_focei.omegan);
+  arma::Row<int> fixedTrans(op_focei.fixedTrans, op_focei.ntheta + op_focei.omegan);
+  arma::Row<int> etaFD(op_focei.etaFD, op_focei.neta);
 
   arma::rowvec fullTheta(op_focei.fullTheta, op_focei.ntheta+op_focei.omegan);
   arma::rowvec theta(op_focei.theta, op_focei.ntheta+op_focei.omegan);
@@ -6765,7 +6765,7 @@ NumericVector iBoxCox_(NumericVector x = 1, double lambda=1, int yj = 0){
 
 void saveIntoEnvrionment(Environment e) {
   int totN=op_focei.ntheta + op_focei.omegan;
-  arma::ivec etaTrans(op_focei.etaTrans, op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan));
+  arma::Col<int> etaTrans(op_focei.etaTrans, op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan));
   e[".etaTrans"] = etaTrans;
   arma::vec fullTheta(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
   e[".fullTheta"] = fullTheta;
@@ -6781,7 +6781,7 @@ void saveIntoEnvrionment(Environment e) {
                        op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*rx->nsub + rx->nall);
     e[".etaUpper"] = etaUpper;
   }
-  arma::ivec gillRet(op_focei.gillRet,
+  arma::Col<int> gillRet(op_focei.gillRet,
                      2*totN+op_focei.npars+
                               op_focei.muRefN + op_focei.skipCovN);
   e[".gillRet"] = gillRet;
@@ -6791,7 +6791,7 @@ void saveIntoEnvrionment(Environment e) {
 
 void restoreFromEnvrionment(Environment e) {
   int totN=op_focei.ntheta + op_focei.omegan;
-  arma::ivec etaTrans = e[".etaTrans"];
+  arma::Col<int> etaTrans = e[".etaTrans"];
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];
   std::copy(fullTheta.begin(), fullTheta.end(), op_focei.fullTheta);
@@ -6803,7 +6803,7 @@ void restoreFromEnvrionment(Environment e) {
     arma::vec etaUpper = e[".etaUpper"];
     std::copy(etaUpper.begin(), etaUpper.end(), op_focei.etaUpper);
   }
-  arma::ivec gillRet = e[".gillRet"];
+  arma::Col<int> gillRet = e[".gillRet"];
   std::copy(gillRet.begin(), gillRet.end(), op_focei.gillRet);
   arma::vec gillDf = e[".gillDf"];
   std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
