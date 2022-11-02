@@ -74,7 +74,6 @@ Suggests:
     data.table,
     devtools,
     digest,
-    dparser (>= 0.1.8),
     dplyr,
     generics,
     nloptr,
@@ -89,7 +88,6 @@ Suggests:
     rxode2random (>= 2.0.9)
 LinkingTo: 
     BH,
-    dparser (>= 0.1.8),
     lbfgsb3c,
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
