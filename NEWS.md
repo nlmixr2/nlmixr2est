@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 2.1.2
 
 - Fixes `$etaH` memory corruption so the standard errors of etas are now correct
 
