@@ -213,7 +213,10 @@ attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
 nmObjGet.phiR <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .ret <- lapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     .d <- diag(.cov)
@@ -237,7 +240,10 @@ attr(nmObjGet.phiR, "desc") <- "correlation matrix of each individual's eta (if 
 nmObjGet.phiSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .d1 <- dim(.phi[[1]])[1]
   .ret <- vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
@@ -261,7 +267,10 @@ nmObjGet.phiRSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   .eta <- .obj$eta[,-1, drop=FALSE]
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)){
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .d1 <-dim(.phi[[1]])[1]
   .ret <-vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
