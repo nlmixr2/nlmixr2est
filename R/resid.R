@@ -286,7 +286,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .Call(`_nlmixr2est_cwresCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
-    }  }
+    }
+  }
 }
 
 .calcCwres <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,

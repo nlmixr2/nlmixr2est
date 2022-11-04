@@ -28,6 +28,7 @@
     .foceiControl <- do.call(foceiControl, .foceiControl)
     .newFit <- nlmixr2(fit, nlme::getData(fit), "focei", control = .foceiControl)
     .env <- fit$env
+    .addFoceiInfoToFit(.env, .newFit)
     .ob1 <- .newFit$objDf
     .etaObf <- .newFit$etaObf
     nlmixrAddObjectiveFunctionDataFrame(fit, .ob1, .rn, .etaObf)
