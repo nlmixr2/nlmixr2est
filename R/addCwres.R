@@ -76,6 +76,12 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .origFitEnv <- fit$env
     .fit <- nlmixrClone(fit)
     .new <- nlmixrCbind(.fit, .extra)
+    .env <-.new$env
+    for (.v in c("phiC", "phiH")) {
+      if (exists(.v, envir=.newFit$env)) {
+        assign(.v, get(.v, envir=.newFit$env), envir=.env)
+      }
+    }
     .objDf <- .newFit$objDf
     .type <- rownames(.objDf)
     nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)
