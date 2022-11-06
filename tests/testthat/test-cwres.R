@@ -32,12 +32,14 @@ nmTest({
     expect_warning(fit$etaSE)
     expect_warning(fit$etaRSE)
     expect_warning(fit$etaR)
+    expect_false(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
     suppressMessages(expect_error(addCwres(fit), NA))
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_equal(row.names(fit$objDf), "FOCEi")
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
     expect_false(is.null(fit$etaR))
+    expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
@@ -62,7 +64,7 @@ nmTest({
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
     expect_false(is.null(fit$etaR))
-
+    expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
 
   })
 

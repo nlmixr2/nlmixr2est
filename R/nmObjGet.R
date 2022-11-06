@@ -345,7 +345,7 @@ nmObjGet.covLvl <- function(x, ...) {
       .origData$nlmixrLlikObs <- obj$env$llikObs
       .llikObs <- TRUE
     } else {
-      .llik0 <- data.frame(nlmixrRowNums=obj$dataSav$nlmixrRowNums, llikObs=obj$env$llikObs)
+      .llik0 <- data.frame(nlmixrRowNums=obj$dataSav$nlmixrRowNums, nlmixrLlikObs=obj$env$llikObs)
       .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
       .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
       .origData <- .origData[order(.origData$nlmixrRowNums),]
