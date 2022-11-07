@@ -34,7 +34,7 @@ nmTest({
     tmp <- fit$dataMergeInner
     
     # Should have llikObs
-    expect_true("llikObs" %in% names(tmp))
+    expect_true("nlmixrLlikObs" %in% names(tmp))
     
     expect_true(all(names(fit$etaSE) == c("ID", "eta.Vc")))
     
