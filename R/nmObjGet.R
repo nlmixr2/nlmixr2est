@@ -354,7 +354,7 @@ nmObjGet.covLvl <- function(x, ...) {
       } else {
         .nlmixrRowNums <- .dataSav[.dataSav$EVID == 0 | .dataSav$EVID == 2 |
                                      (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
-                                   c("nlmixrRowNums")]
+                                   "nlmixrRowNums"]
         .llikObs <- obj$env$llikObs[!is.na(obj$env$llikObs)]
         if (length(.nlmixrRowNums) == length(.llikObs)) {
           .llik0 <- data.frame(nlmixrRowNums=.nlmixrRowNums, nlmixrLlikObs=.llikObs)
