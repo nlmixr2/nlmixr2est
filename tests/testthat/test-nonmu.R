@@ -83,9 +83,9 @@ nmTest({
       })
     }
 
-    cmt2fit.logn <- nlmixr2::nlmixr(cmt2, dat2, "posthoc",
-                                    control=list(print=0),
-                                    table=nlmixr2::tableControl(cwres=TRUE, npde=TRUE))
+    cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
+                           control=list(print=0),
+                           table=tableControl(cwres=TRUE, npde=TRUE))
 
     expect_error(cmt2fit.logn$dataMergeLeft, NA)
     expect_true(any(names(cmt2fit.logn$dataMergeLeft) == "nlmixrLlikObs"))
