@@ -345,10 +345,26 @@ nmObjGet.covLvl <- function(x, ...) {
       .origData$nlmixrLlikObs <- obj$env$llikObs
       .llikObs <- TRUE
     } else {
-      .llik0 <- data.frame(nlmixrRowNums=obj$dataSav$nlmixrRowNums, nlmixrLlikObs=obj$env$llikObs)
-      .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
-      .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
-      .origData <- .origData[order(.origData$nlmixrRowNums),]
+      .dataSav <- obj$dataSav
+      if (length(.dataSav$nlmixrRowNums) == length(obj$env$llikObs)) {
+        .llik0 <- data.frame(nlmixrRowNums=.dataSav$nlmixrRowNums, nlmixrLlikObs=obj$env$llikObs)
+        .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
+        .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
+        .origData <- .origData[order(.origData$nlmixrRowNums),]
+      } else {
+        .nlmixrRowNums <- .dataSav[.dataSav$EVID == 0 | .dataSav$EVID == 2 |
+                                     (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
+                                   c("nlmixrRowNums")]
+        .llikObs <- obj$env$llikObs[!is.na(obj$env$llikObs)]
+        if (length(.nlmixrRowNums) == length(.llikObs)) {
+          .llik0 <- data.frame(nlmixrRowNums=.nlmixrRowNums, nlmixrLlikObs=.llikObs)
+          .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
+          .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
+          .origData <- .origData[order(.origData$nlmixrRowNums),]
+        } else {
+          warning("'nlmixrLlikObs' not added to dataset", call.=FALSE)
+        }
+      }
     }
   }
   .fitData <- as.data.frame(obj)
