@@ -3115,6 +3115,7 @@ static inline void foceiSetupNoEta_(){
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
   op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN + rx->nall, double);
   op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [rx->nall]
+  std::fill_n(op_focei.llikObsFull, rx->nall, NA_REAL);
   op_focei.mGthetaGrad = true;
   focei_ind *fInd;
   int jj = 0, iLO=0;

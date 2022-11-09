@@ -1,6 +1,6 @@
 nmTest({
   test_that("test timing engine", {
-
+    skip_on_os("mac")
     env <- new.env(parent=emptyenv())
     env$time <- data.frame(t0=1)
 
