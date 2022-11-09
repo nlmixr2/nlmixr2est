@@ -1,4 +1,4 @@
-unmTest({
+nmTest({
   test_that("test lag with warfarin", {
     
     KA1Lode <- function() {
