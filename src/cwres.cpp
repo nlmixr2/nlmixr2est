@@ -2,7 +2,7 @@
 #include "res.h"
 #include "cwres.h"
 static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
-                                      arma::ivec& ID, arma::mat &etas,
+                                      arma::Col<int>& ID, arma::mat &etas,
                                       arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
                                       int &nid) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
@@ -56,17 +56,17 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::vec dv(REAL(dvIn), ncalc, false, true);
   arma::vec dvt(ncalc);
 
-  arma::ivec cens;
+  arma::Col<int> cens;
   if (Rf_isNull(censIn)) {
-    cens = arma::ivec(ncalc, fill::zeros);
+    cens = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    cens = as<arma::ivec>(censIn);
+    cens = as<arma::Col<int>>(censIn);
   }
-  arma::ivec evid;
+  arma::Col<int> evid;
   if (Rf_isNull(evidIn)) {
-    evid = arma::ivec(ncalc, fill::zeros);
+    evid = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    evid = as<arma::ivec>(evidIn);
+    evid = as<arma::Col<int>>(evidIn);
   }
 
   arma::vec limit;
@@ -111,7 +111,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
                                                                    riv, doSim, censMethod,
                                                                    normRelated, normIdx, nonNormIdx);
   int ncalc2 = sum(normRelated); // This is the true cwres calculations
-  arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
+  arma::Col<int> ID(INTEGER(predL[0]), ncalc, false, true);
 
   arma::mat fppm(ncalc,neta);
   arma::mat fpim(ncalc,neta);
@@ -147,7 +147,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec lambdaNorm = lambda.elem(normIdx);
     arma::vec dvNorm = dv.elem(normIdx);
     arma::vec predtNorm = predt.elem(normIdx);
-    arma::ivec IDnorm = ID.elem(normIdx);
+    arma::Col<int> IDnorm = ID.elem(normIdx);
   
     arma::mat fppm2 = fppm.rows(normIdx);
     arma::mat fpim2 = fpim.rows(normIdx);

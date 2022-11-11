@@ -4,7 +4,7 @@
 #if defined(__cplusplus)
 #include "armahead.h"
 
-void calcShrinkFinalize(arma::mat &omegaMat, int &nid, List& etaLst, arma::vec &iwres, arma::ivec &evid,
+void calcShrinkFinalize(arma::mat &omegaMat, int &nid, List& etaLst, arma::vec &iwres, arma::Col<int> &evid,
 			CharacterVector &etaNames, int doIwres);
 
 extern "C" {

@@ -12,7 +12,7 @@
 #endif
 
 
-void calculateDfFull(arma::ivec& ID, arma::mat &etas,
+void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
                      List &etasDfFull, int &nid, unsigned int &neta) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
   int etaFulli = nid-1;
@@ -209,17 +209,17 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::vec riv(REAL(ipredL[npred+1]), ncalc, false, true);
 
 
-  arma::ivec cens;
+  arma::Col<int> cens;
   if (Rf_isNull(censIn)) {
-    cens = arma::ivec(ncalc, fill::zeros);
+    cens = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    cens = as<arma::ivec>(censIn);
+    cens = as<arma::Col<int>>(censIn);
   }
-  arma::ivec evid;
+  arma::Col<int> evid;
   if (Rf_isNull(evidIn)) {
-    evid = arma::ivec(ncalc, fill::zeros);
+    evid = arma::Col<int>(ncalc, fill::zeros);
   } else {
-    evid = as<arma::ivec>(evidIn);
+    evid = as<arma::Col<int>>(evidIn);
   }
   arma::vec limit;
   int hasLimit=0;
@@ -261,7 +261,7 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
                                                                    normRelated, normIdx, nonNormIdx);
 
 
-  arma::ivec ID(INTEGER(predL[0]), ncalc, false, true);
+  arma::Col<int> ID(INTEGER(predL[0]), ncalc, false, true);
 
   arma::mat etas(nid, neta);
   List etasDfFull(neta);

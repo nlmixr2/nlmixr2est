@@ -195,12 +195,6 @@ nlmixr2Print <- function(x, ...) {
 }
 # #########################################################################
 
-.dontRun <- function(...) {
-  ## This is for r checks, though they need to be loaded...
-  vpc::vpc(...)
-  dparser::dparse(...)
-}
-
 # cholSE() ----------------------------------------------------------------
 #' Generalized Cholesky Matrix Decomposition
 #'

@@ -436,6 +436,7 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   # - $origData -- Original Data
   # - $dataSav -- Processed data from .foceiPreProcessData
   # - $idLvl -- Level information for ID factor added
+  # - $covLvl -- Level information for items to convert to factor
   # - $ui for ui fullTheta Full theta information
   # - $etaObf data frame with ID, etas and OBJI
   # - $cov For covariance

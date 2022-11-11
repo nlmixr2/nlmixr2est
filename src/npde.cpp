@@ -5,7 +5,7 @@
 #include <omp.h>
 #endif
 
-arma::ivec getSimIdLoc(arma::ivec& id, arma::ivec& simId,
+arma::Col<int> getSimIdLoc(arma::Col<int>& id, arma::Col<int>& simId,
 		      unsigned int &nid, unsigned int &K) {
   int i = 0;
   int lastId=id[0];
@@ -21,7 +21,7 @@ arma::ivec getSimIdLoc(arma::ivec& id, arma::ivec& simId,
   }
   K =   id.size() /  totNobs;
 
-  arma::ivec idLoc(nid+1);
+  arma::Col<int> idLoc(nid+1);
   unsigned int j = 0;
   for (i = 0; i < totNobs; i++) {
     if (lastId != id[i]){
@@ -33,7 +33,7 @@ arma::ivec getSimIdLoc(arma::ivec& id, arma::ivec& simId,
   return idLoc;
 }
 
-arma::mat getSimMatById(arma::ivec& idLoc, arma::vec &sim, unsigned int& id,
+arma::mat getSimMatById(arma::Col<int>& idLoc, arma::vec &sim, unsigned int& id,
                         unsigned int& K) {
   int nobs = idLoc[id+1]-idLoc[id];
   int totNobs = idLoc[idLoc.size()-1];
@@ -114,7 +114,7 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
 // This is similar to a truncated normal BUT the truncated normal handles the range (low,hi)
 // so instead of updating the DV based on cdf method, simply use the truncated normal
 // we also don't need to back-calculate the simulated DV value
-static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit,
+static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
                                      int &censMethod, bool &doLimit,
                                      unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
   if (censMethod != CENS_CDF) return;
@@ -211,7 +211,7 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   ret.pd2.rows(ret.obs) = pdObs2;
 }
 
-static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, arma::vec &limit, int &censMethod, bool &doLimit,
+static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit, int &censMethod, bool &doLimit,
                                        unsigned int &K, bool &ties, arma::vec &ru, arma::vec &ru2, arma::vec& ru3) {
   ret.npde = arma::mat(ret.pd.n_rows, 1);
   ret.npd = arma::mat(ret.pd.n_rows, 1);
@@ -256,8 +256,8 @@ static inline void calculateNPDEfromPD(calcNpdeInfoId &ret, arma::ivec &cens, ar
   }
 }
 
-calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
-                          arma::vec &dvt, arma::ivec &evidIn, arma::ivec &censIn, arma::vec &limitIn,
+calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
+                          arma::vec &dvt, arma::Col<int> &evidIn, arma::Col<int> &censIn, arma::vec &limitIn,
                           int &censMethod, bool &doLimit,
                           unsigned int& id,
                           unsigned int& K, double &tolChol, bool &ties,
@@ -270,9 +270,9 @@ calcNpdeInfoId calcNpdeId(arma::ivec& idLoc, arma::vec &sim,
   arma::vec ru = ruIn(span(idLoc[id], idLoc[id+1]-1));
   arma::vec ru2 = ru2In(span(idLoc[id], idLoc[id+1]-1));
   arma::vec ru3 = ru3In(span(idLoc[id], idLoc[id+1]-1));
-  arma::ivec cens = censIn(span(idLoc[id], idLoc[id+1]-1));
+  arma::Col<int> cens = censIn(span(idLoc[id], idLoc[id+1]-1));
   arma::vec limit = limitIn(span(idLoc[id], idLoc[id+1]-1));
-  arma::ivec evid = evidIn(span(idLoc[id], idLoc[id+1]-1));
+  arma::Col<int> evid = evidIn(span(idLoc[id], idLoc[id+1]-1));
   handleNpdeNAandCalculateEpred(ret, K);
   ret.obs = find(evid == 0);
   calculatePD(ret, id, K, tolChol);
@@ -344,10 +344,10 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   int pro = 0;
   SEXP s0 = PROTECT(VECTOR_ELT(npdeSim, 0)); pro++;
   int simLen = Rf_length(s0);
-  arma::ivec aSimIdVec(INTEGER(s0), simLen, false, true);
-  arma::ivec aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
+  arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
+  arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;
-  arma::ivec idLoc = getSimIdLoc(aIdVec, aSimIdVec, nid, K);
+  arma::Col<int> idLoc = getSimIdLoc(aIdVec, aSimIdVec, nid, K);
   arma::vec sim(REAL(VECTOR_ELT(npdeSim, nsim)), simLen, false, true);
   arma::vec lambda(REAL(VECTOR_ELT(npdeSim, nsim+1)), simLen, false, true);
   arma::vec yj(REAL(VECTOR_ELT(npdeSim, nsim+2)), simLen, false, true);
@@ -363,17 +363,17 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   for (unsigned int i = simLen; i--;) {
     sim[i] = _powerD(sim[i], lambda[i], (int) yj[i], low[i], hi[i]);
   }
-  arma::ivec cens;
+  arma::Col<int> cens;
   if (Rf_isNull(censIn)) {
-    cens = arma::ivec(dvLen, fill::zeros);
+    cens = arma::Col<int>(dvLen, fill::zeros);
   } else {
-    cens = as<arma::ivec>(censIn);
+    cens = as<arma::Col<int>>(censIn);
   }
-  arma::ivec evid;
+  arma::Col<int> evid;
   if (Rf_isNull(evidIn)) {
-    evid = arma::ivec(dvLen, fill::zeros);
+    evid = arma::Col<int>(dvLen, fill::zeros);
   } else {
-    evid = as<arma::ivec>(evidIn);
+    evid = as<arma::Col<int>>(evidIn);
   }
   bool doLimit = false;
 
@@ -420,7 +420,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::vec epred(REAL(epredSEXP), dvLen, false, true);
   arma::vec dvf(REAL(dvSEXP), dvLen, false, true);
   arma::vec eres(REAL(eresSEXP), dvLen, false, true);
-  arma::ivec warn(idLoc.size()-1);
+  arma::Col<int> warn(idLoc.size()-1);
 
   // initialize for CRAN's valgrind
   npde.zeros();

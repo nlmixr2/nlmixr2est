@@ -213,7 +213,10 @@ attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
 nmObjGet.phiR <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .ret <- lapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
     .d <- diag(.cov)
@@ -237,7 +240,10 @@ attr(nmObjGet.phiR, "desc") <- "correlation matrix of each individual's eta (if 
 nmObjGet.phiSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)) {
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .d1 <- dim(.phi[[1]])[1]
   .ret <- vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
@@ -261,7 +267,10 @@ nmObjGet.phiRSE <- function(x, ...) {
   .obj <- x[[1]]
   .phi <- .obj$phiC
   .eta <- .obj$eta[,-1, drop=FALSE]
-  if (is.null(.phi)) return(NULL)
+  if (is.null(.phi)){
+    if (any(names(x[[1]]) !="CWRES")) warning("this requires 'CWRES' in fit (use `addCwres()`)", call.=FALSE)
+    return(NULL)
+  }
   .d1 <-dim(.phi[[1]])[1]
   .ret <-vapply(seq_along(.phi), function(i) {
     .cov <- .phi[[i]]
@@ -311,6 +320,18 @@ nmObjGet.idLvl <- function(x, ...){
   .foceiPreProcessData(.data, .env, .obj$ui)
   .env$idLvl
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.covLvl <- function(x, ...) {
+  .obj <- x[[1]]
+  .objEnv <- .obj$env
+  if (exists("covLvl", .objEnv)) return(get("covLvl", envir=.objEnv))
+  .data <- .obj$origData
+  .env <- new.env(emptyenv())
+  .foceiPreProcessData(.data, .env, .obj$ui)
+  .env$covLvl
+}
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
 
 .dataMergeStub <- function(obj) {
@@ -324,10 +345,26 @@ nmObjGet.idLvl <- function(x, ...){
       .origData$nlmixrLlikObs <- obj$env$llikObs
       .llikObs <- TRUE
     } else {
-      .llik0 <- data.frame(nlmixrRowNums=obj$dataSav$nlmixrRowNums, llikObs=obj$env$llikObs)
-      .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
-      .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
-      .origData <- .origData[order(.origData$nlmixrRowNums),]
+      .dataSav <- obj$dataSav
+      if (length(.dataSav$nlmixrRowNums) == length(obj$env$llikObs)) {
+        .llik0 <- data.frame(nlmixrRowNums=.dataSav$nlmixrRowNums, nlmixrLlikObs=obj$env$llikObs)
+        .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
+        .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
+        .origData <- .origData[order(.origData$nlmixrRowNums),]
+      } else {
+        .nlmixrRowNums <- .dataSav[.dataSav$EVID == 0 | .dataSav$EVID == 2 |
+                                     (.dataSav$EVID >= 9 & .dataSav$EVID <= 99),
+                                   "nlmixrRowNums"]
+        .llikObs <- obj$env$llikObs[!is.na(obj$env$llikObs)]
+        if (length(.nlmixrRowNums) == length(.llikObs)) {
+          .llik0 <- data.frame(nlmixrRowNums=.nlmixrRowNums, nlmixrLlikObs=.llikObs)
+          .llik0 <- .llik0[.llik0$nlmixrRowNums != 0,]
+          .origData <- merge(.origData, .llik0, by="nlmixrRowNums", all.x=TRUE)
+          .origData <- .origData[order(.origData$nlmixrRowNums),]
+        } else {
+          warning("'nlmixrLlikObs' not added to dataset", call.=FALSE)
+        }
+      }
     }
   }
   .fitData <- as.data.frame(obj)

@@ -654,7 +654,9 @@ rxUiGet.saemInitTheta <- function(x, ...) {
       .est <- .iniDf$est[.w]
       .m[.curTheta, .curCov] <- .est
     }
-    .ret <- setNames(c(.ret, as.vector(.m)), c(.n, rep("", .lc + 1)))
+    .ret <- c(.ret, as.vector(.m))
+    .ret <- setNames(.ret, c(.n, rep("", length(.ret) - length(.n))))
+    #.ret <- setNames(, c(.n, rep("", .lc + 1)))
   } else {
     .ret <- setNames(.ret, .n)
   }

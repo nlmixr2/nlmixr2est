@@ -286,7 +286,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .Call(`_nlmixr2est_cwresCalc`, .prdLst, fit$omega,
             fit$eta, .prdLst$ipred$dv, .prdLst$ipred$evid, .prdLst$ipred$cens,
             .prdLst$ipred$limit, .lhs, .state, .params, fit$IDlabel, table)
-    }  }
+    }
+  }
 }
 
 .calcCwres <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
@@ -509,6 +510,13 @@ addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEta
     attr(.id, "levels") <- object$idLvl
     class(.id) <- "factor"
     .df$ID <- .id
+    .covLvl <- object$covLvl
+    for (.v in names(.covLvl)) {
+      .l <- as.integer(.df[[.v]])
+      attr(.l, "levels") <- .covLvl[[.v]]
+      class(.l) <- "factor"
+      .df[[.v]] <- .l
+    }
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
       .isDataTable <- requireNamespace("data.table", quietly = TRUE)

@@ -1,3 +1,18 @@
+##' Integrates items like phiC/phiH into focei environment
+##'
+##' @param env environment where focei information needs to be integrated
+##' @param newFit new fit object with focei information in it.
+##' @return Nothing called for side effects
+##' @author Matthew L. Fidler
+##' @noRd
+.addFoceiInfoToFit <- function(env, newFit) {
+  for (.v in c("phiC", "phiH", "llikObs")) {
+    if (exists(.v, envir=newFit$env)) {
+      assign(.v, get(.v, envir=newFit$env), envir=env)
+    }
+  }
+}
+
 #' Add CWRES
 #'
 #' This returns a new fit object with CWRES attached
@@ -76,6 +91,8 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .origFitEnv <- fit$env
     .fit <- nlmixrClone(fit)
     .new <- nlmixrCbind(.fit, .extra)
+    .env <-.new$env
+    .addFoceiInfoToFit(.env, .newFit)
     .objDf <- .newFit$objDf
     .type <- rownames(.objDf)
     nlmixrAddObjectiveFunctionDataFrame(.new, .objDf, .type)

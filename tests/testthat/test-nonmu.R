@@ -34,11 +34,71 @@ nmTest({
     tmp <- fit$dataMergeInner
     
     # Should have llikObs
-    expect_true("llikObs" %in% names(tmp))
+    expect_true("nlmixrLlikObs" %in% names(tmp))
     
     expect_true(all(names(fit$etaSE) == c("ID", "eta.Vc")))
     
     expect_true(all(names(fit$etaRSE) == c("ID", "rse(eta.Vc)%")))
 
+  })
+
+  test_that("another merge issue", {
+    dat <- xgxr::case1_pkpd %>%
+      dplyr::rename(DV=LIDV) %>%
+      dplyr::filter(CMT %in% 1:2) %>%
+      dplyr::filter(TRTACT != "Placebo")
+
+    doses <- unique(dat$DOSE)
+    nid <- 3 # 7 ids per dose group
+    dat2 <- do.call("rbind",
+                    lapply(doses, function(x) {
+                      ids <- dat %>%
+                        dplyr::filter(DOSE == x) %>%
+                        dplyr::summarize(ids=unique(ID)) %>%
+                        dplyr::pull()
+                      ids <- ids[seq(1, nid)]
+                      dat %>%
+                        dplyr::filter(ID %in% ids)
+                    }))
+
+    cmt2 <- function() {
+      ini({
+        lka <- log(0.1) # log Ka
+        lv <- log(10) # Log Vc
+        lcl <- log(4) # Log Cl
+        lq <- log(10) # log Q
+        lvp <- log(20) # Log Vp
+        eta.ka ~ 0.01
+        eta.v ~ 0.1
+        eta.cl ~ 0.1
+        logn.sd = 10
+      })
+      model({
+        ka <- exp(lka + eta.ka)
+        cl <- exp(lcl + eta.cl)
+        v <- exp(lv + eta.v)
+        q <- exp(lq)
+        vp <- exp(lvp)
+        linCmt() ~ lnorm(logn.sd)
+      })
+    }
+
+    cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
+                           control=list(print=0),
+                           table=tableControl(cwres=TRUE, npde=TRUE))
+
+    expect_error(cmt2fit.logn$dataMergeLeft, NA)
+    expect_true(any(names(cmt2fit.logn$dataMergeLeft) == "nlmixrLlikObs"))
+
+    # Now force an error
+
+    .llikObs <- c(cmt2fit.logn$env$llikObs, 10)
+    assign("llikObs", .llikObs, envir=cmt2fit.logn$env)
+    
+    expect_warning(cmt2fit.logn$dataMergeLeft)
+    
+    .dat <- suppressWarnings(cmt2fit.logn$dataMergeLeft)
+    expect_false(any(names(.dat) == "nlmixrLlikObs"))
+ 
   })
 })
