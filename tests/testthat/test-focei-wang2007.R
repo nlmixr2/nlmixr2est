@@ -112,6 +112,22 @@ nmTest({
         type,{
           expect_equal(setNames(ret, NULL), setNames(val, NULL), tolerance=1e-3)
         })
+      test_that(paste0(type, " print"),{
+        utils::capture.output(suppressMessages({
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit1), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit1), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit2), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit2), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit3), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit3), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit4), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit4), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit5), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit5), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit6), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit6), NA))
+        }))
+      })
     }
     return(invisible(ret))
   }

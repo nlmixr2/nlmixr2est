@@ -173,7 +173,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     cat(cli::cli_format_method({
       .h2(paste0(
         crayon::bold$blue("nlmix"),
-        crayon::bold$red(paste0("r", ifelse(use.utf(), "\u00B2"), "")), " ",
+        crayon::bold$red(paste0("r", ifelse(use.utf(), "\u00B2", "2"))), " ",
         crayon::bold(ifelse(any(x$ui$predDf$distribution != "norm"), "log-likelihood ", "")),
         crayon::bold$yellow(x$method),
         x$extra, x$posthoc
