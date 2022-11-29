@@ -31,9 +31,9 @@ nmTest({
 
   one.compartment <- function() {
     ini({
-      tka <- 0.45 # Log Ka
-      tcl <- 1 # Log Cl
-      tv <- 3.45 # Log V
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
       eta.ka ~ 0.6
       eta.cl ~ 0.3
       eta.v ~ 0.1
@@ -156,9 +156,9 @@ nmTest({
   skip_on_cran()
 
   for (f in c("focei", "foce")) {
-
-
-    fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
+    suppressMessages(suppressWarnings(
+      fitF <- nlmixr(one.compartment, theo_sd, est = f, control=foceiControl(print = 0, eval.max = 1))
+    ))
 
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
 
