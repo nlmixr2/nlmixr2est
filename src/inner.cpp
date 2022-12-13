@@ -5611,7 +5611,6 @@ NumericMatrix foceiCalcCov(Environment e){
                       op_focei.covMethod=3;
                     } else if (covRSd > covRd){
                       // SE(RS) > SE(R)
-                      REprintf("here!!!");
                       if (covRd > covSd){
                         // SE(R) > SE(S)
                         e["cov"] = covS;
