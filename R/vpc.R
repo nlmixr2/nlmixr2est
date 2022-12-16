@@ -96,7 +96,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .sim <- .sim[!(.sim$sim.id %in% .simIds), ]
     .sim$sim.id <- as.integer(factor(.sim$sim.id))
     .mx <- max(.sim$sim.id)
-    .si$n <- n - .mx
+    .si$nsim <- n - .mx
     .sim2 <- do.call(rxode2::rxSolve, .si)
     .sim2$sim.id <- .sim2$sim.id + .mx
     .sim <- rbind(.sim, .sim2)

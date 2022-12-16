@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fix `vpcSim` so that it will be a bit more robust when it is
+  difficult to simulate.
+
 # nlmixr2est 2.1.3
 
 - Allows `$etaH` and related family to be integrated into a `saem` fit
