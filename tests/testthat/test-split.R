@@ -127,3 +127,33 @@ test_that("non mu-referenced split works correctly", {
 
   expect_error(ui$getSplitMuModel, NA)
 })
+
+
+test_that("tainted mu expressions are always additive", {
+  
+  oneCmtAllo <- function() {
+    ini({
+      lka <- log(0.1); label("Absorption rate (Ka)")
+      lcl <- log(0.2); label("Clearance (CL)")
+      lvc <- log(1); label("Central volume of distribution (V)")
+      cppropSd <- c(0, 0.5)
+      allo_cl <- 0.75
+      allo_vc <- 1
+      etalcl ~ 0.1
+    })
+    model({
+      ka <- exp(lka)
+      cl <- exp(lcl + allo_cl * log(WEIGHT_BL/100) + etalcl)
+      vc <- exp(lvc + allo_vc * log(WEIGHT_BL/100))
+      cp <- 1000 * linCmt()
+      cp ~ prop(cppropSd)
+    })
+  }
+
+  f <- oneCmtAllo()
+
+  split <- f$getSplitMuModel
+
+  expect_true(identical(split$muRefDef[[2]], quote(rx__lcl <- lcl)))
+  
+})
