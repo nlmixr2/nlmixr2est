@@ -885,7 +885,7 @@ nmObjGetRxSolve.default <- function(x, what) {
 #' @rdname nmObjGet
 #' @export
 nmObjGet.simulationModel <- function(x, ...) {
-  eval(rxode2:::getBaseSimModel(x[[1]]))
+  eval(rxode2::getBaseSimModel(x[[1]]))
 }
 
 #' @rdname nmObjGet
