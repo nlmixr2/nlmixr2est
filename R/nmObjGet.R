@@ -884,6 +884,12 @@ nmObjGetRxSolve.default <- function(x, what) {
 
 #' @rdname nmObjGet
 #' @export
+nmObjGet.simulationModel <- function(x, ...) {
+  eval(rxode2:::getBaseSimModel(x[[1]]))
+}
+
+#' @rdname nmObjGet
+#' @export
 nmObjGet.rxControl <- function(x, ...) {
   nmObjGetRxSolve(.createEstObject(x[[1]]), NULL)
 }
