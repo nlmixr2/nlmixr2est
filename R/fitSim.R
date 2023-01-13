@@ -98,7 +98,7 @@ getBaseSimModelFit.posthoc <- getBaseSimModelFit.focei
 getBaseSimModelFit.default <- function(x) {
   .obj <- x[[1]]
   .ui <- .obj$ui
-  getBaseSimModel(.ui)
+  rxode2::getBaseSimModel(.ui)
 }
 
 getBaseSimModel.nlmixr2FitCoreSilent <- function(obj) {
