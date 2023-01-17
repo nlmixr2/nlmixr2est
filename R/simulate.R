@@ -53,7 +53,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .getSimModel <- function(obj, hideIpred=FALSE, tad=TRUE) {
-  .lines <- rxode2::rxCombineErrorLines(obj$ui)
+  .lines <- rxode2::getBaseSimModel(obj)
   .f <- function(x) {
     if (is.atomic(x) || is.name(x) || is.pairlist(x)) {
       return(x)
