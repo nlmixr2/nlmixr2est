@@ -37,6 +37,7 @@ getBaseSimModelFit <- function(x) {
 #' @export
 getBaseSimModelFit.focei <- function(x) {
   obj <- x[[1]]
+    getBaseSimModelFit.default(x) # fall back to basic with new method
   if (all(obj$ui$predDf$distribution == "norm")) {
     .expr <- eval(parse(text=paste0("quote(rxode2({",
                                     rxode2::rxNorm(obj$foceiModel$predOnly),
@@ -72,8 +73,6 @@ getBaseSimModelFit.focei <- function(x) {
                                   "), rx_lambda_, rx_yj_, rx_low_, rx_hi_))")))),
       .e22))
     .expr[[2]] <- .e2
-
-    
   }
   getBaseSimModelFit.default(x)
 }
