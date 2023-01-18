@@ -142,35 +142,28 @@ related variables only</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> parameter labels from comments will be replaced by 'label()'</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of full model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate jacobian</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(f)/∂(η)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(R²)/∂(η)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in inner model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in inner model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in EBE model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in EBE model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling inner model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in FD model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling EBE model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling events FD model...</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Error in (function (..., row.names = NULL, check.rows = FALSE, check.names = TRUE,  : </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   arguments imply differing number of rows: 1, 0</span>
-<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error:</span> arguments imply differing number of rows: 1, 0</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 5952</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHist in nlmixr2 object, save 2040</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fu">vpcSim</span><span class="op">(</span><span class="va">fit</span>, pred<span class="op">=</span><span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in vpcSim(fit, pred = TRUE):</span> object 'fit' not found</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   sim.id id time     ipred        sim  tad nlmixrRowNums rxLambda rxYj rxLow</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1      1  1 0.00  0.000000  0.6132404 0.00             2        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2      1  1 0.25  5.205301  5.1603586 0.25             3        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3      1  1 0.57  8.408673  7.9054951 0.57             4        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4      1  1 1.12 10.052037 10.5396389 1.12             5        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5      1  1 2.02  9.841617  9.6449304 2.02             6        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6      1  1 3.82  8.303352  7.9738399 3.82             7        1    2     0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   rxHi     pred</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1    1 0.000000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2    1 3.262518</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3    1 5.829574</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4    1 7.864622</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5    1 8.505134</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6    1 7.620618</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
