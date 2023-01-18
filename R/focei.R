@@ -1353,7 +1353,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
                          allTimeVar=TRUE, keepDosingOnly=FALSE)
   .lst <- attr(class(.et), ".rxode2.lst")
-  .keepL <- .lst$keepL
+  .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
   env$dataSav <- .dat
