@@ -5724,7 +5724,15 @@ NumericMatrix foceiCalcCov(Environment e){
               }
             }
           }
-          return as<NumericMatrix>(e["cov"]);
+          if (e.exists("cov")) {
+            RObject covRO = e["cov"];
+            if (covRO.sexp_type() == REALSXP &&
+                Rf_isMatrix(covRO)) {
+              return as<NumericMatrix>(covRO);
+            }
+          }
+          NumericMatrix ret;
+          return ret;
         }
       } else {
         if (op_focei.covMethod && boundary){
