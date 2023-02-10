@@ -11,6 +11,7 @@
 #' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
+#' @importFrom RcppParallel RcppParallelLibs
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
 #' @import nlmixr2data

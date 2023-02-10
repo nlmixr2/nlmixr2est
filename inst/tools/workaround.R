@@ -42,12 +42,14 @@ close(md5file)
 
 .badStan <- ""
 .in <- gsub("@SH@", gsub("-I", "-@ISYSTEM@",
-                         paste(## capture.output(StanHeaders:::CxxFlags()),
-                               ## capture.output(RcppParallel:::CxxFlags()),
+                         paste(capture.output(StanHeaders:::CxxFlags()),
+                               capture.output(RcppParallel:::CxxFlags()),
                                paste0("-@ISYSTEM@'", system.file('include', 'src', package = 'StanHeaders', mustWork = TRUE), "'"),
                                .badStan)),
             .in)
 
+.in <- gsub("@SH_LIBS@", paste(capture.output(StanHeaders:::LdFlags()),
+                                capture.output(RcppParallel:::RcppParallelLibs())), .in)
 
 
 if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {

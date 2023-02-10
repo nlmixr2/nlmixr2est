@@ -42,10 +42,10 @@ Description: Fit and compare nonlinear mixed-effects models in
 License: GPL (>=3)
 URL: https://github.com/nlmixr2/nlmixr2est,
     https://nlmixr2.github.io/nlmixr2est/
-Depends: 
+Depends:
     nlmixr2data,
     R (>= 4.0)
-Imports: 
+Imports:
     backports,
     checkmate,
     cli,
@@ -68,7 +68,7 @@ Imports:
     ucminf,
     utils,
     vpc
-Suggests: 
+Suggests:
     broom.mixed,
     crayon,
     data.table,
@@ -86,7 +86,7 @@ Suggests:
     sfsmisc,
     rxode2parse (>= 2.0.11),
     rxode2random (>= 2.0.9)
-LinkingTo: 
+LinkingTo:
     BH,
     lbfgsb3c,
     Rcpp,
@@ -95,7 +95,8 @@ LinkingTo:
     rxode2 (>= 2.0.10),
     StanHeaders (>= 2.18.0),
     rxode2parse (>= 2.0.11),
-    rxode2random (>= 2.0.9)
+    rxode2random (>= 2.0.9),
+    RcppParallel
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8
