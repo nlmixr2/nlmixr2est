@@ -5879,13 +5879,18 @@ void foceiFinalizeTables(Environment e){
   }
   LogicalVector skipCov = e["skipCov"];
 
-  if (covExists && op_focei.eigen){
+  if (covExists) {
+    Function loadNamespace("loadNamespace", R_BaseNamespace);    
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
+    Function getCor = nlmixr2[".cov2cor"];
+    e["cor"] = getCor(e["cov"]);
+    arma::mat cor = as<arma::mat>(e["cor"]);
+    cor.diag().ones();
     arma::vec eigval;
     arma::mat eigvec;
-
     eig_sym(eigval, eigvec, cov);
-    e["eigen"] = eigval;
-    e["eigenVec"] = eigvec;
+    e["eigenCor"] = eigval;
+    e["eigenVecCor"] = eigvec;
     unsigned int k=0;
     if (eigval.size() > 0){
       double mx=std::fabs(eigval[0]), mn, cur;
@@ -5899,9 +5904,35 @@ void foceiFinalizeTables(Environment e){
           mn=cur;
         }
       }
-      e["conditionNumber"] = mx/mn;
+      e["conditionNumberCor"] = mx/mn;
     } else {
-      e["conditionNumber"] = NA_REAL;
+      e["conditionNumberCor"] = NA_REAL;
+    }
+  }
+
+  if (covExists && op_focei.eigen){
+    arma::vec eigval;
+    arma::mat eigvec;
+
+    eig_sym(eigval, eigvec, cov);
+    e["eigenCov"] = eigval;
+    e["eigenVecCov"] = eigvec;
+    unsigned int k=0;
+    if (eigval.size() > 0){
+      double mx=std::fabs(eigval[0]), mn, cur;
+      mn=mx;
+      for (k = eigval.size(); k--;){
+        cur = std::fabs(eigval[k]);
+        if (cur > mx){
+          mx=cur;
+        }
+        if (cur < mn){
+          mn=cur;
+        }
+      }
+      e["conditionNumberCov"] = mx/mn;
+    } else {
+      e["conditionNumberCov"] = NA_REAL;
     }
   }
   arma::vec se1;
