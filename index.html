@@ -93,11 +93,11 @@
 <p>You can install the development version of nlmixr2est from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2parse"</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2random"</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2et"</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2ll"</span><span class="op">)</span></span>
-<span><span class="fu">devtools</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2parse"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2random"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2et"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2ll"</span><span class="op">)</span></span>
+<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2data"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/lotri"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2est"</span><span class="op">)</span></span></code></pre></div>
@@ -106,18 +106,18 @@
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/nlmixr2/nlmixr2est" class="external-link">nlmixr2est</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; Loading required package: nlmixr2data</span></span>
 <span></span>
-<span><span class="co">## The basic model consiss of an ini block that has initial estimates</span></span>
+<span><span class="co">## The basic model consists of an ini block that has initial estimates</span></span>
 <span><span class="va">one.compartment</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini</a></span><span class="op">(</span><span class="op">{</span></span>
-<span>    <span class="va">tka</span> <span class="op">&lt;-</span> <span class="fl">0.45</span> <span class="co"># Log Ka</span></span>
-<span>    <span class="va">tcl</span> <span class="op">&lt;-</span> <span class="fl">1</span> <span class="co"># Log Cl</span></span>
-<span>    <span class="va">tv</span> <span class="op">&lt;-</span> <span class="fl">3.45</span>    <span class="co"># Log V</span></span>
+<span>    <span class="va">tka</span> <span class="op">&lt;-</span> <span class="fl">0.45</span>; <span class="fu">label</span><span class="op">(</span><span class="st">"Ka"</span><span class="op">)</span></span>
+<span>    <span class="va">tcl</span> <span class="op">&lt;-</span> <span class="fl">1</span>; <span class="fu">label</span><span class="op">(</span><span class="st">"Cl"</span><span class="op">)</span></span>
+<span>    <span class="va">tv</span> <span class="op">&lt;-</span> <span class="fl">3.45</span>; <span class="fu">label</span><span class="op">(</span><span class="st">"V"</span><span class="op">)</span></span>
 <span>    <span class="va">eta.ka</span> <span class="op">~</span> <span class="fl">0.6</span></span>
 <span>    <span class="va">eta.cl</span> <span class="op">~</span> <span class="fl">0.3</span></span>
 <span>    <span class="va">eta.v</span> <span class="op">~</span> <span class="fl">0.1</span></span>
 <span>    <span class="va">add.sd</span> <span class="op">&lt;-</span> <span class="fl">0.7</span></span>
 <span>  <span class="op">}</span><span class="op">)</span></span>
-<span>  <span class="co"># and a model block with the error sppecification and model specification</span></span>
+<span>  <span class="co"># and a model block with the error specification and model specification</span></span>
 <span>  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/model.html" class="external-link">model</a></span><span class="op">(</span><span class="op">{</span></span>
 <span>    <span class="va">ka</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tka</span> <span class="op">+</span> <span class="va">eta.ka</span><span class="op">)</span></span>
 <span>    <span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tcl</span> <span class="op">+</span> <span class="va">eta.cl</span><span class="op">)</span></span>
@@ -131,7 +131,6 @@
 <span></span>
 <span><span class="co">## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate</span></span>
 <span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.compartment</span>, <span class="va">theo_sd</span>,  est<span class="op">=</span><span class="st">"saem"</span>, <span class="fu"><a href="reference/saemControl.html">saemControl</a></span><span class="op">(</span>print<span class="op">=</span><span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co">#&gt; ℹ parameter labels from comments will be replaced by 'label()'</span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
 <span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
@@ -140,7 +139,7 @@
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem model...</span></span>
 <span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; rxode2 2.0.10.9000 using 8 threads (see ?getRxThreads)</span></span>
+<span><span class="co">#&gt; rxode2 2.0.11.9000 using 8 threads (see ?getRxThreads)</span></span>
 <span><span class="co">#&gt;   no cache: create with `rxCreateCache()`</span></span>
 <span><span class="co">#&gt; Calculating covariance matrix</span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
@@ -156,7 +155,7 @@
 <span><span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span></span>
 <span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span></span>
 <span><span class="co">#&gt; → compress parHist in nlmixr2 object, save 9592</span></span>
-<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 27184</span></span>
+<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 27064</span></span>
 <span></span>
 <span><span class="co"># Since the fit is performed in `nlmixr2est` this code works</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
@@ -167,15 +166,15 @@
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;         setup saem table compress other</span></span>
-<span><span class="co">#&gt; elapsed 0.002 6.47  0.06     0.05 3.688</span></span>
+<span><span class="co">#&gt;         setup covariance saem table compress other</span></span>
+<span><span class="co">#&gt; elapsed 0.002       0.02 6.75  0.06     0.07 3.678</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span></span>
-<span><span class="co">#&gt; tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span></span>
-<span><span class="co">#&gt; tcl       Log Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% </span></span>
-<span><span class="co">#&gt; tv         Log V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% </span></span>
+<span><span class="co">#&gt; tka           Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span></span>
+<span><span class="co">#&gt; tcl           Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% </span></span>
+<span><span class="co">#&gt; tv             V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% </span></span>
 <span><span class="co">#&gt; add.sd           0.693                               0.693                     </span></span>
 <span><span class="co">#&gt;  </span></span>
 <span><span class="co">#&gt;   Covariance Type ($covMethod): linFim</span></span>
