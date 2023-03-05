@@ -101,19 +101,25 @@
 #'   model in terms of the estimated model
 #' @author Matthew L. Fidler
 #' @noRd
-.createMuRefPkBlock <- function(var, est, muRefCurEval) {
-  .w <- which(muRefCurEval$parameter == est)
-  if (length(.w) == 1) {
-    .curEval <- muRefCurEval$curEval[.w]
-    .low <- muRefCurEval$low[.w]
-    .hi <- muRefCurEval$hi[.w]
-    if (is.na(.low) && !is.na(.hi)) .low <- 0
-  } else if (length(.w) == 0) {
+.createMuRefPkBlock <- function(var, est, muRefCurEval, taintedMu) {
+  if (any(est == names(taintedMu))) {
     .curEval <- ""
     .low <- NA_real_
     .hi <- NA_real_
   } else {
-    stop("duplicate/missing parameter in `muRefCurEval`", call.=FALSE)
+    .w <- which(muRefCurEval$parameter == est)
+    if (length(.w) == 1) {
+      .curEval <- muRefCurEval$curEval[.w]
+      .low <- muRefCurEval$low[.w]
+      .hi <- muRefCurEval$hi[.w]
+      if (is.na(.low) && !is.na(.hi)) .low <- 0
+    } else if (length(.w) == 0) {
+      .curEval <- ""
+      .low <- NA_real_
+      .hi <- NA_real_
+    } else {
+      stop("duplicate/missing parameter in `muRefCurEval`", call.=FALSE)
+    }
   }
   .encFun <- .isCurEvalEncodedFunction(.curEval)
   str2lang(paste0(var, "<-", ifelse(.encFun, .curEval, ""),
@@ -159,7 +165,7 @@ rxUiGet.getSplitMuModel <- function(x, ...) {
   .muRef <- lapply(seq_along(.muRef), function(.i){
     .est <- names(.muRef)[.i]
     .var <- setNames(.muRef[.i], NULL)
-    .createMuRefPkBlock(.var, .est, .ui$muRefCurEval)
+    .createMuRefPkBlock(.var, .est, .ui$muRefCurEval, .taintMuRef)
   })
   assign("getSplitModel",
          list(muRefDef=.muRef,

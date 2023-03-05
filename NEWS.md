@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- A bug in boundary value detection prevented automatic covariance calculation
+  with FOCEi estimation (#318)
+
+- Fix `vpcSim` so that it will be a bit more robust when it is
+  difficult to simulate.
+
+- A bug in model piping which did not allow models to be appended to was fixed
+  (rxode2#364)
+
 # nlmixr2est 2.1.3
 
 - Allows `$etaH` and related family to be integrated into a `saem` fit

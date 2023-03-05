@@ -26,6 +26,9 @@
   }
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCoreSilent")
+  rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCoreSilent")
+  rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCore")
+  rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitData")
   .resetCacheIfNeeded()
 }
 

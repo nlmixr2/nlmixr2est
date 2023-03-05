@@ -91,9 +91,7 @@ LinkingTo:
     lbfgsb3c,
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
-    RcppEigen (>= 0.3.3.3.0),
     rxode2 (>= 2.0.10),
-    StanHeaders (>= 2.18.0),
     rxode2parse (>= 2.0.11),
     rxode2random (>= 2.0.9)
 Biarch: true
@@ -101,4 +99,4 @@ Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
-RoxygenNote: 7.2.1
+RoxygenNote: 7.2.3

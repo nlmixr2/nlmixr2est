@@ -35,6 +35,7 @@
 \alias{nmObjGet.methodOde}
 \alias{nmObjGet.covsInterpolation}
 \alias{nmObjGet.control}
+\alias{nmObjGet.simulationModel}
 \alias{nmObjGet.rxControl}
 \alias{nmObjGet.rxControlWithVar}
 \alias{nmObjGet.saemDopredIpred}
@@ -108,6 +109,8 @@ nmObjGet(x, ...)
 \method{nmObjGet}{covsInterpolation}(x, ...)
 
 \method{nmObjGet}{control}(x, ...)
+
+\method{nmObjGet}{simulationModel}(x, ...)
 
 \method{nmObjGet}{rxControl}(x, ...)
 

@@ -237,6 +237,9 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
+  } else if (!is.null(.uif$nonmemData)) {
+    .env$data <- .uif$nonmemData
+    .minfo("use {.code data} from $nonmemData")
   } else if (.missingData) {
     stop("need data", call.=FALSE)
   } else {
@@ -246,7 +249,30 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     .env$control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
     .minfo("use {.code control} from pipeline")
   } else {
-    .env$control <- getValidNlmixrControl(control, est)
+    .ctl <- getValidNlmixrControl(control, est)
+    if (.ctl$genRxControl) {
+      if (is.numeric(.uif$atol)) {
+        .minfo("use rxControl(atol=) from $atol")
+        .ctl$rxControl$atol <- .uif$atol
+      }
+      if (is.numeric(.uif$rtol)) {
+        .minfo("use rxControl(rtol=) from $rtol")
+        .ctl$rxControl$atol <- .uif$rtol
+      }
+      if (is.numeric(.uif$ssAtol)) {
+        .minfo("use rxControl(ssAtol=) from $ssAtol")
+        .ctl$rxControl$ssAtol <- .uif$ssAtol
+      }
+      if (is.numeric(.uif$ssRtol)) {
+        .minfo("use rxControl(ssRtol=) from $ssRtol")
+        .ctl$rxControl$ssRtol <- .uif$ssRtol
+      }
+      if (inherits(.uif, "nonmem2rx")) {
+        .minfo("use rxControl(covsInterpolation=\"nocb\") since this model was import from NONMEM")
+        .ctl$rxControl$covsInterpolation <- 2L
+      }
+    }
+    .env$control <- .ctl
   }
   if (is.null(table) && !is.null(.nlmixr2pipeTable)) {
     .env$table <- getValidNlmixrControl(.nlmixr2pipeTable, "tableControl")

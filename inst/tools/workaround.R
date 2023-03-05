@@ -37,18 +37,7 @@ close(md5file)
 .in <- gsub("@ARMA@", file.path(find.package("RcppArmadillo"),"include"), .in)
 .in <- gsub("@BH@", file.path(find.package("BH"),"include"), .in)
 .in <- gsub("@RCPP@", file.path(find.package("Rcpp"),"include"), .in)
-.in <- gsub("@EG@", file.path(find.package("RcppEigen"),"include"), .in)
 .in <- gsub("@RXP@", file.path(find.package("rxode2parse"),"include"), .in)
-
-.badStan <- ""
-.in <- gsub("@SH@", gsub("-I", "-@ISYSTEM@",
-                         paste(## capture.output(StanHeaders:::CxxFlags()),
-                               ## capture.output(RcppParallel:::CxxFlags()),
-                               paste0("-@ISYSTEM@'", system.file('include', 'src', package = 'StanHeaders', mustWork = TRUE), "'"),
-                               .badStan)),
-            .in)
-
-
 
 if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {
   writeLines(gsub("@ISYSTEM@", "I",
