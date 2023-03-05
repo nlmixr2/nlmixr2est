@@ -5253,23 +5253,23 @@ NumericMatrix foceiCalcCov(Environment e){
             cur = op_focei.fullTheta[j];
             if (op_focei.nbd[k] == 1){
               // Lower only
-              if ((cur-op_focei.lower[k])/cur < op_focei.boundTol) {
+              if (fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol) {
                 boundary = true;
                 boundStr += "\"" + thetaNames[j] + "\" ";
               }
             } else if (op_focei.nbd[k] == 2){
               // Upper and lower
-              if ((cur-op_focei.lower[k])/cur < op_focei.boundTol) {
+              if (fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol) {
                 boundary = true;
                 boundStr += "\"" + thetaNames[j] + "\" ";
               }
-              if ((op_focei.upper[k]-cur)/cur < op_focei.boundTol){
+              if (fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol){
                 boundary = true;
                 boundStr += "\"" + thetaNames[j] + "\" ";
               }
             } else {
               // Upper only
-              if ((op_focei.upper[k]-cur)/cur < op_focei.boundTol){
+              if (fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol){
                 boundary = true;
                 boundStr += "\"" + thetaNames[j] + "\" ";
               }
