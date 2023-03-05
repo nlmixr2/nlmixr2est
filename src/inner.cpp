@@ -94,10 +94,6 @@ iniSubjectI_t iniSubjectI;
 
 bool assignFn_ = false;
 
-extern void lin_cmt_stanC(double *obs_timeD, const int nobs, double *dose_timeD, const int ndose, double *doseD, double *TinfD,
-                          double *paramsD, const int oral, const int infusion, const int ncmt, const int parameterization,
-                          const int neta, double *fxD, double *dvdxD, double *fpD);
-
 List _rxInv;
 
 // These are focei inner options
