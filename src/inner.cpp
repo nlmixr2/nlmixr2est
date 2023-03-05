@@ -5883,8 +5883,8 @@ void foceiFinalizeTables(Environment e){
     Function loadNamespace("loadNamespace", R_BaseNamespace);    
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function getCor = nlmixr2[".cov2cor"];
-    e["cor"] = getCor(e["cov"]);
-    arma::mat cor = as<arma::mat>(e["cor"]);
+    e["fullCor"] = getCor(e["cov"]);
+    arma::mat cor = as<arma::mat>(e["fullCor"]);
     cor.diag().ones();
     arma::vec eigval;
     arma::mat eigvec;
@@ -6288,10 +6288,11 @@ void foceiFinalizeTables(Environment e){
     }
   }
   List objDf;
-  if (e.exists("conditionNumber")){
+  if (e.exists("conditionNumberCov")){
     objDf = List::create(_["OBJF"] = as<double>(e["objective"]), _["AIC"]=as<double>(e["AIC"]),
                          _["BIC"] = as<double>(e["BIC"]), _["Log-likelihood"]=as<double>(e["logLik"]),
-                         _["Condition Number"]=as<double>(e["conditionNumber"]));
+                         _["Condition#(Cov)"]=as<double>(e["conditionNumberCov"]),
+                         _["Condition#(Cor)"]=as<double>(e["conditionNumberCor"]));
   } else {
     objDf = List::create(_["OBJF"] = as<double>(e["objective"]), _["AIC"]=as<double>(e["AIC"]),
                          _["BIC"] = as<double>(e["BIC"]), _["Log-likelihood"]=as<double>(e["logLik"]));

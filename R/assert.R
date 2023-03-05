@@ -60,9 +60,9 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
          paste(.diff, collapse="', '"), "'",
          call.=FALSE)
   }
-  .w <- which(.name == "Condition Number")
+  .w <- which(.name == "Condition#(Cov)")
   if (length(.w) == 1) {
-    .cn <- df[["Condition Number"]]
+    .cn <- df[["Condition#(Cov)"]]
     if (inherits(.cn, "numeric")) {
       if (!is.na(.cn)) {
         .cn <- setNames(.cn, NULL)
@@ -74,6 +74,21 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
     }
   } else {
     .cn <- NA
+  }
+  .w <- which(.name == "Condition#(Cor)")
+  if (length(.w) == 1) {
+    .cnr <- df[["Condition#(Cor)"]]
+    if (inherits(.cnr, "numeric")) {
+      if (!is.na(.cnr)) {
+        .cnr <- setNames(.cnr, NULL)
+      } else {
+        .cnr <- NA
+      }
+    } else {
+      .cnr <- NA
+    }
+  } else {
+    .cnr <- NA
   }
   .df1 <- df[, .needed]
   if (length(.df1[, 1]) == 0) {
@@ -87,5 +102,5 @@ assertNlmixrObjDataFrameRow <- function(df, allowNa=FALSE) {
       checkmate::assertNumeric(df[[x]], len=1, any.missing=FALSE, .var.name=x)
     })
   }
-  list(.df1, .cn)
+  list(.df1, .cn, .cnr)
 }
