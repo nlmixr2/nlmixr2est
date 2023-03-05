@@ -5888,7 +5888,7 @@ void foceiFinalizeTables(Environment e){
     cor.diag().ones();
     arma::vec eigval;
     arma::mat eigvec;
-    eig_sym(eigval, eigvec, cov);
+    eig_sym(eigval, eigvec, cor);
     e["eigenCor"] = eigval;
     e["eigenVecCor"] = eigvec;
     unsigned int k=0;
