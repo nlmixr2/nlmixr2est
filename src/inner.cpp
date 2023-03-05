@@ -336,7 +336,7 @@ struct focei_ind {
   double *eta; // Eta includes the ID number for the patient
   double *etahf;
   double *etahr;
-  double *etahh; 
+  double *etahh;
   //
   double *thetaGrad; // Theta gradient; Calculated on the individual level for S matrix calculation
   double thVal[2]; // thVal[0] = lower; thVal[2] = upper
@@ -816,7 +816,7 @@ arma::vec calcGradForward(arma::vec &f0,
   if (grPH.is_finite()) {
     // forward
     return (grPH - f0)/h;
-  } 
+  }
   arma::vec ret(grPH.size());
   ret.zeros();
   return ret;
@@ -945,7 +945,7 @@ double likInner0(double *eta, int id){
         arma::vec curEta = getCurEta(id);
         arma::vec hEta(curEta.size());
         arma::vec grETA(fInd->nObs);
-        
+
         arma::vec grPH(fInd->nObs);
         arma::vec grMH(fInd->nObs);
         arma::vec grP2H(fInd->nObs);
@@ -1027,7 +1027,7 @@ double likInner0(double *eta, int id){
                 if (op_focei.eventType == 3) {
                   if (grPH.is_finite()) {
                     useForward = true;
-                    etaGradR.col(ii) = calcGradForward(r0, grPH,  fInd->etahr[ii]);                    
+                    etaGradR.col(ii) = calcGradForward(r0, grPH,  fInd->etahr[ii]);
                   }
                 }
                 if (!useForward) {
@@ -1042,7 +1042,7 @@ double likInner0(double *eta, int id){
         }
         // restore the prior solve
         std::copy(solveSave.begin(), solveSave.end(), ind->solve);
-      } 
+      }
       if (op_focei.fo == 1){
         Vid.zeros();
       }
@@ -1359,10 +1359,10 @@ double LikInner2(double *eta, int likId, int id){
     if (op_focei.needOptimHess) {
       arma::vec gr0(op_focei.neta);
       std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
-      
+
       arma::vec grPH(op_focei.neta);
       arma::vec grMH(op_focei.neta);
-      
+
       arma::vec grP2H(op_focei.neta);
       arma::vec grM2H(op_focei.neta);
 
@@ -2913,7 +2913,7 @@ void numericGrad(double *theta, double *g){
               g[cpar]=op_focei.gradTrim;
             } else if (g[cpar] < op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
-            } 
+            }
           }
         }
       }
@@ -5234,6 +5234,8 @@ NumericMatrix foceiCalcCov(Environment e){
       unsigned int j, k;
       double cur;
       bool boundary=false;
+      bool checkLowerBound=false;
+      bool checkUpperBound=false;
       rx = getRx();
       if (op_focei.neta == 0) op_focei.covMethod = 2; // Always use hessian for NLS
       for (unsigned int k = op_focei.npars; k--;){
@@ -5253,26 +5255,22 @@ NumericMatrix foceiCalcCov(Environment e){
             cur = op_focei.fullTheta[j];
             if (op_focei.nbd[k] == 1){
               // Lower only
-              if ((cur-op_focei.lower[k])/cur < op_focei.boundTol) {
-                boundary = true;
-                boundStr += "\"" + thetaNames[j] + "\" ";
-              }
-            } else if (op_focei.nbd[k] == 2){
+              checkLowerBound = true;
+            } else if (op_focei.nbd[k] == 2) {
               // Upper and lower
-              if ((cur-op_focei.lower[k])/cur < op_focei.boundTol) {
-                boundary = true;
-                boundStr += "\"" + thetaNames[j] + "\" ";
-              }
-              if ((op_focei.upper[k]-cur)/cur < op_focei.boundTol){
-                boundary = true;
-                boundStr += "\"" + thetaNames[j] + "\" ";
-              }
+              checkLowerBound = true;
+              checkUpperBound = true;
             } else {
               // Upper only
-              if ((op_focei.upper[k]-cur)/cur < op_focei.boundTol){
-                boundary = true;
-                boundStr += "\"" + thetaNames[j] + "\" ";
-              }
+              checkUpperBound = true;
+            }
+            if (checkLowerBound && ((cur-op_focei.lower[k])/cur < op_focei.boundTol)) {
+              boundary = true;
+              boundStr += "\"" + thetaNames[j] + "\" ";
+            }
+            if (checkUpperBound && ((op_focei.upper[k]-cur)/cur < op_focei.boundTol)) {
+              boundary = true;
+              boundStr += "\"" + thetaNames[j] + "\" ";
             }
           }
         }
@@ -5359,7 +5357,7 @@ NumericMatrix foceiCalcCov(Environment e){
             gillKcov = op_focei.gillKcov;
             gillStepCov=op_focei.gillStepCov;
             gillFtolCov=op_focei.gillFtolCov;
-            hessEps = op_focei.hessEps;            
+            hessEps = op_focei.hessEps;
           }
           if (op_focei.shi21maxOuter != 0) {
             op_focei.calcGrad=1;
@@ -5761,7 +5759,7 @@ void addLlikObs(Environment e) {
     rx = getRx();
     NumericVector llikObs(rx->nall);
     std::copy(&op_focei.llikObsFull[0], &op_focei.llikObsFull[0] + rx->nall, llikObs.begin());
-    e["llikObs"] = llikObs;    
+    e["llikObs"] = llikObs;
   }
 }
 
@@ -6554,7 +6552,7 @@ Environment foceiFitCpp_(Environment e){
   }
   std::string tmpS;
   if (op_focei.nF2) {
-    Function loadNamespace("loadNamespace", R_BaseNamespace);    
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Environment thetaReset = nlmixr2[".thetaReset"];
     restoreFromEnvrionment(thetaReset);
