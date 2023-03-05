@@ -5,6 +5,10 @@
 
 - A bug in model piping which did not allow models to be appended to was fixed
   (rxode2#364)
+  
+- Fixed bug where `$iniUi` did not return the initial ui when running
+  non `focei` related methods.  Also added alias of `$uiIni` to the
+  same function.
 
 # nlmixr2est 2.1.3
 

@@ -296,7 +296,8 @@
   "etaH"="phiH",
   "etaC"="phiC",
   "etaSE"="phiSE",
-  "etaRSE"="phiRSE"
+  "etaRSE"="phiRSE",
+  "uiIni"="iniUi"
 )
 
 #' @export
@@ -521,7 +522,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
   .iniDf <- .ui$iniDf
-  assign("iniDf0", .iniDf, envir=x)
+  assign("iniDf0", .nlmixr2EstEnv$iniDf0, envir=x)
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {
