@@ -66,7 +66,9 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf=NULL) {
     if (is.na(.cnr) & !is.na(.inRow[[3]])) {
       .cnr <- .inRow[[3]]
     }
-    .cur <- rbind(.cur[, names(.cur) != "Condition#(Cor)"], .inRow[[1]])
+    .cur <- rbind(.cur[, !(names(.cur) %in% c("Condition#(Cor)", "Condition#(Cov)"))], .inRow[[1]])
+    .cur[["Condition#(Cov)"]] <- .cn
+    .cur[["Condition#(Cor)"]] <- .cnr
     row.names(.cur) <- c(.rownames, type)
     assign("objDf", .cur, envir=fit$env)
     setOfv(fit, type)
