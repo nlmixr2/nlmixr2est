@@ -46,7 +46,8 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>A bug in boundary value detection prevented automatic covariance calculation with FOCEi estimation (<a href="https://github.com/nlmixr2/nlmixr2est/issues/318" class="external-link">#318</a>)</p></li>
+<ul><li><p>Breaking change, now calculate condition number based on covariance and correlation, the names have changed to be more explicit. <code>conditionNumber</code> changed to <code>conditionNumberCov</code> and a new metric <code>conditionNumberCor</code> has been added.</p></li>
+<li><p>A bug in boundary value detection prevented automatic covariance calculation with FOCEi estimation (<a href="https://github.com/nlmixr2/nlmixr2est/issues/318" class="external-link">#318</a>)</p></li>
 <li><p>Fix <code>vpcSim</code> so that it will be a bit more robust when it is difficult to simulate.</p></li>
 <li><p>A bug in model piping which did not allow models to be appended to was fixed (rxode2#364)</p></li>
 <li><p>An internal change was made in <code><a href="../reference/nlmixr2.html">nlmixr2.rxUi()</a></code> to better support the babelmixr2 PKNCA estimation method (babelmixr2#75)</p></li>
