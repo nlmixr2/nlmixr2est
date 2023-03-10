@@ -250,7 +250,10 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     .minfo("use {.code control} from pipeline")
   } else {
     .ctl <- getValidNlmixrControl(control, est)
-    if (.ctl$genRxControl) {
+    # The isTRUE() in the if below allows for the fact that
+    # babelmixr2::pkncaControl() does not have a genRxControl element, so it is
+    # NULL.
+    if (isTRUE(.ctl$genRxControl)) {
       if (is.numeric(.uif$atol)) {
         .minfo("use rxControl(atol=) from $atol")
         .ctl$rxControl$atol <- .uif$atol
