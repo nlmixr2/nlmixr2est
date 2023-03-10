@@ -8,6 +8,9 @@
 
 - A bug in model piping which did not allow models to be appended to was fixed
   (rxode2#364)
+  
+- An internal change was made in `nlmixr2.rxUi()` to better support the
+  babelmixr2 PKNCA estimation method (babelmixr2#75)
 
 # nlmixr2est 2.1.3
 
