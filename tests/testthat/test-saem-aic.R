@@ -21,7 +21,8 @@ nmTest({
 
     fit <-
       suppressMessages(
-        nlmixr(one.cmt, theo_sd, est = "saem", control = list(calcTables = FALSE, print = 0))
+        nlmixr(one.cmt, theo_sd, est = "saem",
+               control = saemControl(calcTables = FALSE, print = 0, nBurn=10, nEm=10))
       )
 
     expect_s3_class(fit, "nlmixr2FitCore")
@@ -29,10 +30,22 @@ nmTest({
     expect_false(inherits(fit, "nlmixrFitData"))
 
     expect_error(suppressMessages(setOfv(fit, "focei")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
     expect_error(suppressMessages(setOfv(fit, "foce")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
     expect_error(suppressMessages(setOfv(fit, "fo")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
     expect_error(suppressMessages(setOfv(fit, "gauss3_1.6")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
     expect_error(suppressMessages(setOfv(fit, "laplace2")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
     expect_error(suppressMessages(setOfv(fit, "laplace3")), NA)
+    expect_true(any(names(fit$objDf) == "Condition#(Cov)"))
+    expect_true(any(names(fit$objDf) == "Condition#(Cor)"))
   })
 })

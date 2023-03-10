@@ -161,3 +161,12 @@ getVarCov.nlmixr2FitCore <- function(obj, ...) {
 
 ##' @export
 getVarCov.nlmixr2FitCoreSilent <- getVarCov.nlmixr2FitCore
+
+
+.cov2cor <- function(cov) {
+  .sd2 <- sqrt(diag(cov))
+  .cor <- stats::cov2cor(cov)
+  dimnames(.cor) <- dimnames(cov)
+  diag(.cor) <- .sd2
+  .cor
+}

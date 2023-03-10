@@ -1750,13 +1750,22 @@ nlmixr2Est.posthoc <- function(env, ...) {
     ret <- attr(class(ret), ".foceiEnv")
   }
   .objDf1 <- get("objDf", ret)
-  if (any(names(.objDf1) == "Condition Number")) {
-    if (!any(names(objDf) == "Condition Number")) {
-      objDf[["Condition Number"]] <- NA_real_
+  if (any(names(.objDf1) == "Condition#(Cov)")) {
+    if (!any(names(objDf) == "Condition#(Cov)")) {
+      objDf[["Condition#(Cov)"]] <- NA_real_
     }
-  } else if (any(names(objDf) == "Condition Number")) {
-    if (!any(names(.objDf1) == "Condition Number")) {
-      .objDf1[["Condition Number"]] <- NA_real_
+  } else if (any(names(objDf) == "Condition#(Cov)")) {
+    if (!any(names(.objDf1) == "Condition#(Cov)")) {
+      .objDf1[["Condition#(Cov)"]] <- NA_real_
+    }
+  }
+  if (any(names(.objDf1) == "Condition#(Cor)")) {
+    if (!any(names(objDf) == "Condition#(Cor)")) {
+      objDf[["Condition#(Cor)"]] <- NA_real_
+    }
+  } else if (any(names(objDf) == "Condition#(Cor)")) {
+    if (!any(names(.objDf1) == "Condition#(Cor)")) {
+      .objDf1[["Condition#(Cor)"]] <- NA_real_
     }
   }
   assign("objDf", rbind(.objDf1, objDf), envir=ret)

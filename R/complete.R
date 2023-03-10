@@ -1,7 +1,8 @@
 
 .nmObjGetEnvInfo <- list(
   ui="rxode2 user interface",
-  conditionNumber="Condition Number",
+  conditionNumberCor="Condition Number (Correlation)",
+  conditionNumberCov="Condition Number (Covariance)",
   cov="Covariance of fixed effects",
   covMethod="Covariance Method for fixed effects",
   etaObf="ETAs and their individual objective function contribution (if applicable)",

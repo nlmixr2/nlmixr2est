@@ -494,8 +494,8 @@ nmObjGet.env <- function(x, ...) {
 nmObjGet.condition <- function(x, ...) {
   .env <- x[[1]]
   .objDf <- .env$objDf
-  if (any(names(.objDf) == "Condition Number")) {
-    .cn <- .objDf[, "Condition Number"]
+  if (any(names(.objDf) == "Condition#(Cor)")) {
+    .cn <- .objDf[, "Condition#(Cor)"]
     .cn <- .cn[!is.na(.cn)]
     return(.cn)
   }

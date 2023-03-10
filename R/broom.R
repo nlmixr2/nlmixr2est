@@ -254,7 +254,8 @@ glance.nlmixr2FitCore <- function(x, ...) {
   .aic <- AIC(x) ## To calculate AIC if needed
   .df <- x$objDf[which(tolower(rownames(x$objDf)) == tolower(x$ofvType)), ]
   names(.df) <- gsub("Log-likelihood", "logLik", names(.df))
-  names(.df) <- gsub("Condition Number", "conditionNumber", names(.df))
+  names(.df) <- gsub("Condition#(Cor)", "conditionNumberCor", names(.df))
+  names(.df) <- gsub("Condition#(Cov)", "conditionNumberCov", names(.df))
   tibble::as_tibble(.df)
 }
 

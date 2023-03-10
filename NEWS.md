@@ -1,7 +1,13 @@
 # nlmixr2est (development version)
 
+- Breaking change, now calculate condition number based on covariance
+  and correlation, the names have changed to be more explicit.
+  `conditionNumber` changed to `conditionNumberCov` and a new metric
+  `conditionNumberCor` has been added.
+
 - A bug in boundary value detection prevented automatic covariance calculation
   with FOCEi estimation (#318)
+
 
 - Fix `vpcSim` so that it will be a bit more robust when it is
   difficult to simulate.
