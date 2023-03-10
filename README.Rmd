@@ -34,11 +34,11 @@ You can install the development version of nlmixr2est from [GitHub](https://gith
 
 ``` r
 # install.packages("remotes")
-devtools::install_github("nlmixr2/rxode2parse")
-devtools::install_github("nlmixr2/rxode2random")
-devtools::install_github("nlmixr2/rxode2et")
-devtools::install_github("nlmixr2/rxode2ll")
-devtools::install_github("nlmixr2/rxode2")
+remotes::install_github("nlmixr2/rxode2parse")
+remotes::install_github("nlmixr2/rxode2random")
+remotes::install_github("nlmixr2/rxode2et")
+remotes::install_github("nlmixr2/rxode2ll")
+remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2data")
 remotes::install_github("nlmixr2/lotri")
 remotes::install_github("nlmixr2/nlmixr2est")
@@ -49,18 +49,18 @@ For most people, using nlmixr2 directly would be likely easier.
 ```{r example}
 library(nlmixr2est)
 
-## The basic model consiss of an ini block that has initial estimates
+## The basic model consists of an ini block that has initial estimates
 one.compartment <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45    # Log V
+    tka <- 0.45; label("Ka")
+    tcl <- 1; label("Cl")
+    tv <- 3.45; label("V")
     eta.ka ~ 0.6
     eta.cl ~ 0.3
     eta.v ~ 0.1
     add.sd <- 0.7
   })
-  # and a model block with the error sppecification and model specification
+  # and a model block with the error specification and model specification
   model({
     ka <- exp(tka + eta.ka)
     cl <- exp(tcl + eta.cl)

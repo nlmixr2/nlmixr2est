@@ -1,7 +1,8 @@
 #define STRICT_R_HEADER
+#include <RcppArmadillo.h>
 #include "../inst/include/nlmixr2est_types.h"
 #include "evaluate.h"
-#include "lin_cmt.h"
+using namespace Rcpp;
 Rcpp::EvalBase *ev = NULL;                  // pointer to abstract base class
 int NPAR=0;
 
@@ -55,72 +56,6 @@ BEGIN_RCPP
                            Rcpp::Named("iter") = Nfcall,
                            Rcpp::Named("value") = Ynewlo,
                            Rcpp::Named("par") = par);
-END_RCPP
-}
-
-
-//------------
-double uni_slice(double x0, double (*g)(double), double w, int m, double lower, double upper);
-
-double slcfn_wrap(double x)
-{
-	Rcpp::NumericVector par(1);
-	par[0] = x;
-	return as<double>(ev->eval(par));
-}
-
-RcppExport SEXP
-slice_wrap(SEXP fcallSEXP, SEXP rhoSEXP, SEXP x0SEXP, SEXP wSEXP, SEXP mSEXP, SEXP lowerSEXP, SEXP upperSEXP)
-{
-BEGIN_RCPP
-
-    ev = new Rcpp::EvalStandard(fcallSEXP, rhoSEXP);    // assign R function and environment
-    double x0=REAL(x0SEXP)[0], x1;
-    double w=REAL(wSEXP)[0];
-    int m=INTEGER(mSEXP)[0];
-    double lower=REAL(lowerSEXP)[0];
-    double upper=REAL(upperSEXP)[0];
-    x1 = uni_slice(x0, slcfn_wrap, w, m, lower, upper);
-
-	return Rcpp::List::create(Rcpp::Named("x1") = x1);
-
-END_RCPP
-}
-
-
-RcppExport SEXP nlmixr2_lin_cmt( SEXP obs_timeSEXP, SEXP dose_timeSEXP, SEXP doseSEXP, SEXP TinfSEXP,
-	SEXP paramsSEXP, SEXP oralSEXP, SEXP infusionSEXP, SEXP ncmtSEXP, SEXP parameterizationSEXP ) {
-BEGIN_RCPP
-
-    Rcpp::RObject __result;
-    Rcpp::RNGScope __rngScope;
-
-    using Eigen::VectorXd;
-    Rcpp::traits::input_parameter< const VectorXd& >::type obs_time(obs_timeSEXP);
-    Rcpp::traits::input_parameter< const VectorXd& >::type dose_time(dose_timeSEXP);
-    Rcpp::traits::input_parameter< const VectorXd& >::type dose(doseSEXP);
-    Rcpp::traits::input_parameter< const VectorXd& >::type Tinf(TinfSEXP);
-    Rcpp::traits::input_parameter< const VectorXd& >::type params(paramsSEXP);
-    Rcpp::traits::input_parameter< const int >::type ncmt(ncmtSEXP);
-    Rcpp::traits::input_parameter< const int >::type infusion(infusionSEXP);
-    Rcpp::traits::input_parameter< const int >::type oral(oralSEXP);
-    Rcpp::traits::input_parameter< const int >::type parameterization(parameterizationSEXP);
-
-    VectorXd g;
-    g = generic_cmt_interface<double>(
-      obs_time,
-      dose_time,
-      dose,
-      Tinf,
-      params,
-      ncmt,
-      oral,
-      infusion,
-      parameterization);
-
-    __result = Rcpp::wrap(g);
-    return __result;
-
 END_RCPP
 }
 

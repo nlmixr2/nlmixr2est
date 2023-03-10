@@ -1,7 +1,6 @@
 nmTest({
 
   test_that("test augPred", {
-
     PKdata <- nlmixr2data::warfarin %>%
       dplyr::filter(dvid == "cp") %>%
       dplyr::select(-dvid) %>%
@@ -9,18 +8,16 @@ nmTest({
 
     One.comp.KA.solved <- function() {
       ini({
-        # Where initial conditions/variables are specified
-        lka  <- log(1.15)  #log ka (1/h)
-        lcl  <- log(0.135) #log Cl (L/h)
-        lv   <- log(8)     #log V (L)
-        prop.err <- 0.15   #proportional error (SD/mean)
-        add.err  <- 0.6    #additive error (mg/L)
-        eta.ka ~ 0.5   #IIV ka
-        eta.cl ~ 0.1   #IIV cl
-        eta.v  ~ 0.1   #IIV v
+        lka  <- log(1.15)
+        lcl  <- log(0.135)
+        lv   <- log(8)
+        prop.err <- 0.15
+        add.err  <- 0.6
+        eta.ka ~ 0.5
+        eta.cl ~ 0.1
+        eta.v  ~ 0.1
       })
       model({
-        # Where the model is specified
         cl <- exp(lcl + eta.cl)
         v  <- exp(lv + eta.v)
         ka <- exp(lka + eta.ka)
@@ -28,31 +25,28 @@ nmTest({
       })
     }
 
-
     fitOne.comp.KA.solved_S <-
       nlmixr(
-        One.comp.KA.solved,    #the model definition
-        PKdata,                #the data set
-        est = "saem",          #the estimation algorithm (SAEM)
-        #the SAEM minimisation options:
-        saemControl(nBurn = 200, #200 SAEM burn-in iterations (the default)
-                    nEm   = 300, #300 EM iterations (the default)
-                    print = 50), #print every 50th iteration
-        #only print every 50th estimation step (default=1 which gives endless output)
-        tableControl(cwres = TRUE,npde=TRUE) #calculates NONMEM-style conditional weighted residuals and npde for diagnostics
+        One.comp.KA.solved,
+        PKdata,
+        est = "saem",
+        saemControl(nBurn = 200,
+                    nEm   = 300,
+                    print = 50),
+        tableControl(cwres = TRUE, npde=TRUE)
       )
 
       expect_error(augPred(fitOne.comp.KA.solved_S), NA)
 
-      # Data' purpose illustrates the error and my data set
-      df <- tibble::tibble(
-        ID = c(rep(1, 6), rep(2, 6)),
-        TIME = c(0.00, 12.11, 18.41, 23.89, 36.00, 43.51, 0.00, 12.00, 20.00, 24.00, 36.80, 45.00),
-        AMT = c(1000, 1000, NA, 1000, 1000, NA, 1000, 2000, NA, 1000, 1000, NA),
-        DUR = c(2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA),
-        DV = c(NA, NA, 3.0, NA, NA, 9.6, NA, NA, 7.0, NA, NA, 2.8),
-        WT = c(rep(55, 6), rep(48, 6))
-      ) %>%
+      df <-
+        tibble::tibble(
+          ID = c(rep(1, 6), rep(2, 6)),
+          TIME = c(0.00, 12.11, 18.41, 23.89, 36.00, 43.51, 0.00, 12.00, 20.00, 24.00, 36.80, 45.00),
+          AMT = c(1000, 1000, NA, 1000, 1000, NA, 1000, 2000, NA, 1000, 1000, NA),
+          DUR = c(2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA, 2.5, 2.5, NA),
+          DV = c(NA, NA, 3.0, NA, NA, 9.6, NA, NA, 7.0, NA, NA, 2.8),
+          WT = c(rep(55, 6), rep(48, 6))
+        ) %>%
         dplyr::mutate(EVID = ifelse(is.na(DV), 1, 0))
 
       fun <- function() {
@@ -76,11 +70,9 @@ nmTest({
       fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
 
       expect_error(augPred(fit), NA)
-
   })
 
   test_that("test augPred with xgxr dataset", {
-
     dat <- xgxr::case1_pkpd %>%
       dplyr::rename(DV=LIDV) %>%
       dplyr::filter(CMT %in% 1:2) %>%
@@ -123,24 +115,18 @@ nmTest({
       }
 
       cmt2fit.logn <- nlmixr(cmt2, dat2, "saem",
-                                      control=list(print=0),
+                                      control=saemControl(print=0, nBurn = 1, nEm = 1),
                                       table=tableControl(cwres=TRUE, npde=TRUE))
 
       expect_error(augPred(cmt2fit.logn), NA)
-
   })
 
   test_that("augPred with pop only data", {
-
     one.cmt <- function() {
       ini({
-        ## You may label each parameter with a comment
-        tka <- 0.45 # Log Ka
-        tcl <- log(c(0, 2.7, 100)) # Log Cl
-        ## This works with interactive models
-        ## You may also label the preceding line with label("label text")
-        tv <- 3.45; label("log V")
-        ## the label("Label name") works with all models
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
         add.sd <- 0.7
       })
       model({
@@ -152,11 +138,9 @@ nmTest({
     }
 
     fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei",
+                   control = foceiControl(eval.max = 1),
                    table=tableControl(npde=TRUE))
 
     expect_error(augPred(fit2), NA)
-
   })
-
 })
-

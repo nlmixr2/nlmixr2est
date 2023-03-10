@@ -28,11 +28,11 @@ You can install the development version of nlmixr2est from
 
 ``` r
 # install.packages("remotes")
-devtools::install_github("nlmixr2/rxode2parse")
-devtools::install_github("nlmixr2/rxode2random")
-devtools::install_github("nlmixr2/rxode2et")
-devtools::install_github("nlmixr2/rxode2ll")
-devtools::install_github("nlmixr2/rxode2")
+remotes::install_github("nlmixr2/rxode2parse")
+remotes::install_github("nlmixr2/rxode2random")
+remotes::install_github("nlmixr2/rxode2et")
+remotes::install_github("nlmixr2/rxode2ll")
+remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2data")
 remotes::install_github("nlmixr2/lotri")
 remotes::install_github("nlmixr2/nlmixr2est")
@@ -44,18 +44,18 @@ For most people, using nlmixr2 directly would be likely easier.
 library(nlmixr2est)
 #> Loading required package: nlmixr2data
 
-## The basic model consiss of an ini block that has initial estimates
+## The basic model consists of an ini block that has initial estimates
 one.compartment <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45    # Log V
+    tka <- 0.45; label("Ka")
+    tcl <- 1; label("Cl")
+    tv <- 3.45; label("V")
     eta.ka ~ 0.6
     eta.cl ~ 0.3
     eta.v ~ 0.1
     add.sd <- 0.7
   })
-  # and a model block with the error sppecification and model specification
+  # and a model block with the error specification and model specification
   model({
     ka <- exp(tka + eta.ka)
     cl <- exp(tcl + eta.cl)
@@ -69,7 +69,6 @@ one.compartment <- function() {
 
 ## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
 fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
-#> ℹ parameter labels from comments will be replaced by 'label()'
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
@@ -78,7 +77,7 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → optimizing duplicate expressions in saem model...
 #> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 #> ✔ done
-#> rxode2 2.0.10.9000 using 8 threads (see ?getRxThreads)
+#> rxode2 2.0.11.9000 using 8 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
 #> Calculating covariance matrix
 #> → loading into symengine environment...
@@ -94,7 +93,7 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 62360
 #> → compress parHist in nlmixr2 object, save 9592
-#> → compress saem0 in nlmixr2 object, save 27184
+#> → compress saem0 in nlmixr2 object, save 27064
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -105,15 +104,15 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>         setup saem table compress other
-#> elapsed 0.002 6.47  0.06     0.05 3.688
+#>         setup covariance saem table compress other
+#> elapsed 0.002       0.02 6.75  0.06     0.07 3.678
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka       Log Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% 
-#> tcl       Log Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% 
-#> tv         Log V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% 
+#> tka           Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% 
+#> tcl           Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% 
+#> tv             V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% 
 #> add.sd           0.693                               0.693                     
 #>  
 #>   Covariance Type ($covMethod): linFim

@@ -1,14 +1,14 @@
 nmTest({
 
   test_that("focei complex event info", {
-    
+
     pheno <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance
         tv <-  log(0.6)   # typical value of volume
         max_dose <- 5
         ## var(eta.cl)
-        eta.cl + eta.v ~ c(1, 
+        eta.cl + eta.v ~ c(1,
                            0.01, 1) ## cov(eta.cl, eta.v), var(eta.v)
         # interindividual variability on clearance and volume
         add.err <- 0.1    # residual variability
@@ -27,7 +27,7 @@ nmTest({
 
     f <- pheno()
     expect_error(f$foceiModel, NA)
-    
+
   })
 
   test_that("Inner test", {
@@ -83,6 +83,32 @@ nmTest({
     ))
 
     expect_equal(418.935, round(fitPi$objective, 3))
+  })
+
+  test_that("boundary value is not triggered by bounds on both sides of zero (#318)", {
+    one.compartment <- function() {
+      ini({
+        tka <- c(-6, -4, 2)
+        tcl <- 1
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)*100
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) = -ka * depot
+        d/dt(center) = ka * depot - cl / v * center
+        cp = center / v
+        cp ~ add(add.sd)
+      })
+    }
+    fit <- nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
+    # SE being present indicates that the covariance matrix was estimated
+    expect_true("SE" %in% names(fit$parFixedDf))
   })
 
 })
