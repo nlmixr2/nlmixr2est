@@ -5,11 +5,18 @@
   `conditionNumber` changed to `conditionNumberCov` and a new metric
   `conditionNumberCor` has been added.
 
+- A bug in boundary value detection prevented automatic covariance calculation
+  with FOCEi estimation (#318)
+
+
 - Fix `vpcSim` so that it will be a bit more robust when it is
   difficult to simulate.
 
 - A bug in model piping which did not allow models to be appended to was fixed
   (rxode2#364)
+  
+- An internal change was made in `nlmixr2.rxUi()` to better support the
+  babelmixr2 PKNCA estimation method (babelmixr2#75)
 
 # nlmixr2est 2.1.3
 
