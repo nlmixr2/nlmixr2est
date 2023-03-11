@@ -1,3 +1,5 @@
+.nlmixr2EstEnv <- new.env(parent=emptyenv())
+
 #' Generic for nlmixr2 estimation methods
 #'
 #' @param env Environment for the nlmixr2 estimation routines.
@@ -28,6 +30,9 @@ nlmixr2Est <- function(env, ...) {
     stop("need 'ui' object", call.=FALSE)
   } else if (!inherits(get("ui", envir=env), "rxUi")) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
+  }
+  if (!inherits(env, "output")) {
+    .nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir=env)$iniDf)
   }
   if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)

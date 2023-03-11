@@ -18,6 +18,10 @@
 - An internal change was made in `nlmixr2.rxUi()` to better support the
   babelmixr2 PKNCA estimation method (babelmixr2#75)
 
+- Fixed bug where `$iniUi` did not return the initial ui when running
+  non `focei` related methods.  Also added alias of `$uiIni` to the
+  same function.
+
 # nlmixr2est 2.1.3
 
 - Allows `$etaH` and related family to be integrated into a `saem` fit
@@ -59,16 +63,16 @@
 
  - Gill forward differences will not repeat now (by default), You can
    change back to prior behavior with `foceiControl(repeatGillMax=3)`
- 
+
  - Number of sticky recalculation is reduced to 4; to have the old
    behavior use `foceiControl(stickyRecalcN=5)`
-   
+
  - `n2ll` has been changed to `ll` to specify individual
    log-likelihoods.  This was only used in simulation and was not well
-   documented. 
-   
+   documented.
+
  - Generalized log-likelihood is only supported with `rxode2` `2.0.8` or later.
- 
+
 ### FOCEi covariance calculation
 
  - The `S` matrix calculation was made a bit more robust to errors in
@@ -84,7 +88,7 @@
    calculation will still fail if the percentage of parameters that
    are being reset is lower than `foceiControl(smatPer=0.6)` or
    whatever you specify.
- 
+
  - The `r,s` covariance matrix will now also check for unreasonably
    small values (controlled by `foceiControl(covSmall=...)`) and
    select a different covariance estimate method even when the "r" and
@@ -98,37 +102,37 @@
   also available are `fit$phiRSE` (relative standard error),
   `fit$phiH`, (individual hessian), `fit$phiC` (individual
   covariances), `fit$phiR` (individual correlation matrices)
-  
+
 - Can also use Shi 2021 differences in addition to Gill differences.
   In our tests (using the same datasets as CPT) these produced worse
   estimates than the Gill 1983, though it is unclear why since it
   should be a faster more accurate method.  A modified version is used
   in calculating the individual Hessians of numerically for the
   generalized likelihood approach.
-  
+
 - Generalized likelihood estimation is now present in `nlmixr2est` for
   `focei`, `foce` and `posthoc`
-  
+
 - `nmNearPD()` is a function you may use for nearest positive definite
   matrix.  This is derived from `Matrix::nearPD()` but is implemented
   in C/C++ to be used in (possibly threaded) optimization.
-  
+
 - Individual Hessians can be accessed by `$phiH`, covariance by
   `$phiC`, eta standard errors by `$phiSE` and eta RSEs can be
   accessed by `$phiRSE`.  There are `eta` aliases for these as well
   (`$etaH`, `$etaC`, `$etaSE`, and `$etaRSE`).
-  
+
 - Can now access the individual point's contribution to the overall
   likelihood when merging to the original dataset. These merges can be
   accessed with `$dataMergeFull`, `$dataMergeLeft`, `$dataMergeRight`,
   and `$dataMergeInner`.  The columns with the individual data column
   is `nlmixrLlikObs`.
-  
+
   To calculate the total `focei`/`foce` objective function, the sum of the
   likelihoods still need to be adjusted by the omega/eta contribution,
   and the individual Hessians, and possibly the NONMEM objective
   function offset constant.
-  
+
 ## Censoring fixes
 
  - Fixed bug where datasets with censoring that are not lower case `cens` and `limit` do not
@@ -162,7 +166,7 @@
 - FOCEi censoring fixes:
   - M4 method equation bug fix
   - M4 method derivative change based on equation fix
-  - M2 method added missing derivative 
+  - M2 method added missing derivative
   - Censoring already dTBS
 
 - SAEM Censoring fixes:
@@ -384,4 +388,3 @@
   'rx_0ba247452048de33b1ffb8af516714fc__calc_lhs' not provided by
   package 'rx_0ba247452048de33b1ffb8af516714fc_'` would cause the
   estimation to stop.  Now `rxode2::rxClean()` is run when this occurs.
-
