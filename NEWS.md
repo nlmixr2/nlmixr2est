@@ -21,7 +21,7 @@
   non `focei` related methods.  Also added alias of `$uiIni` to the
   same function.
   
-- Dropped Stan headers for this package
+- Dropped Stan headers for this package, also updated to C++17
 
 # nlmixr2est 2.1.3
 
