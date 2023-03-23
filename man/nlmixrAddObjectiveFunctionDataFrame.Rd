@@ -11,7 +11,7 @@ nlmixrAddObjectiveFunctionDataFrame(fit, objDf, type, etaObf = NULL)
 
 \item{objDf}{nlmixr objective function data frame which has column
 names "OBJF", "AIC", "BIC", "Log-likelihood" and
-"Condition Number"}
+"Condition#(Cov)" "Condition#(Cor)"}
 
 \item{type}{Objective Function Type}
 
