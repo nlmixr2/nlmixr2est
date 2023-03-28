@@ -62,7 +62,7 @@ Imports:
     Rcpp,
     rex,
     Rvmmin,
-    rxode2 (>= 2.0.10),
+    rxode2 (>= 2.0.12),
     stats,
     symengine,
     ucminf,
@@ -90,7 +90,7 @@ LinkingTo:
     lbfgsb3c,
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
-    rxode2 (>= 2.0.10),
+    rxode2 (>= 2.0.12),
     rxode2parse (>= 2.0.11),
     rxode2random (>= 2.0.9)
 Biarch: true
