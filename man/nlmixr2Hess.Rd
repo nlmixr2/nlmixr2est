@@ -58,9 +58,6 @@ h2 <- optimHess(c(1.2,1.2), fr)
 
 h3 <- nlmixr2Hess(c(1.2,1.2), fr)
 }
-\references{
-\url{https://v8doc.sas.com/sashtml/ormp/chap5/sect28.htm}
-}
 \seealso{
 \code{\link{nlmixr2Gill83}}, \code{\link{optimHess}}
 }

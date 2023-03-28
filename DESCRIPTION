@@ -66,8 +66,7 @@ Imports:
     stats,
     symengine,
     ucminf,
-    utils,
-    vpc
+    utils
 Suggests: 
     broom.mixed,
     crayon,

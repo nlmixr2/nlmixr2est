@@ -176,9 +176,6 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
 ##' @return Hessian matrix based on Gill83
 ##' @export
 ##' @seealso \code{\link{nlmixr2Gill83}}, \code{\link{optimHess}}
-##' @references
-##'
-##' \url{https://v8doc.sas.com/sashtml/ormp/chap5/sect28.htm}
 ##'
 ##' @examples
 ##'  func0 <- function(x){ sum(sin(x))  }
