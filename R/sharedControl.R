@@ -121,6 +121,10 @@ getValidNlmixrCtl.simulate <- getValidNlmixrCtl.rxSolve
 
 #' @rdname getValidNlmixrControl
 #' @export
+getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
+
+#' @rdname getValidNlmixrControl
+#' @export
 getValidNlmixrCtl.tableControl <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- tableControl()

@@ -99,6 +99,17 @@ nlmixr2Est.simulate <- function(env, ...) {
 
 #'@rdname nlmixr2Est
 #'@export
+nlmixr2Est.simulation <- function(env, ...) {
+  .rxControl <- .rxSolveGetControlForNlmixr(env)
+  .events <- get("data", envir=env)
+  do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
+                                  events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
+                             list(theta = NULL, eta = NULL)))
+}
+
+
+#'@rdname nlmixr2Est
+#'@export
 nlmixr2Est.predict <- function(env, ...) {
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .events <- get("data", envir=env)
