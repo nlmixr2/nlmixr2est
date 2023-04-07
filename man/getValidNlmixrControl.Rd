@@ -12,6 +12,7 @@
 \alias{getValidNlmixrCtl.saem}
 \alias{getValidNlmixrCtl.rxSolve}
 \alias{getValidNlmixrCtl.simulate}
+\alias{getValidNlmixrCtl.simulation}
 \alias{getValidNlmixrCtl.tableControl}
 \alias{getValidNlmixrCtl.default}
 \title{Get valid nlmixr control object}
@@ -39,6 +40,8 @@ getValidNlmixrCtl(control)
 \method{getValidNlmixrCtl}{rxSolve}(control)
 
 \method{getValidNlmixrCtl}{simulate}(control)
+
+\method{getValidNlmixrCtl}{simulation}(control)
 
 \method{getValidNlmixrCtl}{tableControl}(control)
 
