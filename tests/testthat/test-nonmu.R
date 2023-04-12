@@ -30,6 +30,7 @@ nmTest({
     fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
     
     expect_error(fit$dataMergeInner, NA)
+    expect_error(fit$fitMergeInner, NA)
     
     tmp <- fit$dataMergeInner
     
@@ -88,6 +89,7 @@ nmTest({
                            table=tableControl(cwres=TRUE, npde=TRUE))
 
     expect_error(cmt2fit.logn$dataMergeLeft, NA)
+    expect_error(cmt2fit.logn$fitMergeLeft, NA)
     expect_true(any(names(cmt2fit.logn$dataMergeLeft) == "nlmixrLlikObs"))
 
     # Now force an error
@@ -96,6 +98,7 @@ nmTest({
     assign("llikObs", .llikObs, envir=cmt2fit.logn$env)
     
     expect_warning(cmt2fit.logn$dataMergeLeft)
+    expect_warning(cmt2fit.logn$fitMergeLeft)
     
     .dat <- suppressWarnings(cmt2fit.logn$dataMergeLeft)
     expect_false(any(names(.dat) == "nlmixrLlikObs"))
