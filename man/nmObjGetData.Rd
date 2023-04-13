@@ -7,6 +7,10 @@
 \alias{nmObjGetData.dataMergeRight}
 \alias{nmObjGetData.dataMergeInner}
 \alias{nmObjGetData.dataMergeFull}
+\alias{nmObjGetData.fitMergeLeft}
+\alias{nmObjGetData.fitMergeRight}
+\alias{nmObjGetData.fitMergeInner}
+\alias{nmObjGetData.fitMergeFull}
 \title{Get an item from a nlmixr2FitData object}
 \usage{
 \method{nmObjGetData}{addCwres}(x, ...)
@@ -20,6 +24,14 @@ nmObjGetData(x, ...)
 \method{nmObjGetData}{dataMergeInner}(x, ...)
 
 \method{nmObjGetData}{dataMergeFull}(x, ...)
+
+\method{nmObjGetData}{fitMergeLeft}(x, ...)
+
+\method{nmObjGetData}{fitMergeRight}(x, ...)
+
+\method{nmObjGetData}{fitMergeInner}(x, ...)
+
+\method{nmObjGetData}{fitMergeFull}(x, ...)
 }
 \arguments{
 \item{x}{A specialized list with:

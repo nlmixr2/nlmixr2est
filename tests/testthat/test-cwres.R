@@ -65,6 +65,7 @@ nmTest({
     expect_false(is.null(fit$etaRSE))
     expect_false(is.null(fit$etaR))
     expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
+    expect_true(any(names(fit$fitMergeInner) == "nlmixrLlikObs"))
 
   })
 
