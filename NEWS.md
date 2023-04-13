@@ -1,4 +1,4 @@
-# nlmixr2est (development)
+# nlmixr2est (development version)
 
 - Add `$fitMergeFull`, `$fitMergInner`, `$fitMergeLeft`,
   `$fitMergeRight` as a complement to `$dataMergeFull`,
