@@ -130,6 +130,32 @@
                   ifelse(.encFun, ")", "")))
 }
 
+# moved from babelmixr2
+.muRefDefFix <- function(muRefDef, ui) {
+  .muRefCurEval <- ui$muRefCurEval
+  .v <- setNames(lapply(ui$nonMuEtas, function(eta) {
+    .w <- which(.muRefCurEval$parameter == eta)
+    if (length(.w) == 1) {
+      .e <- try(str2lang(paste0(.muRefCurEval$curEval[.w], "(", eta, ")")), silent=TRUE)
+      if (inherits(.e, "try-error")) return(NULL)
+      return(.e)
+    }
+    NULL
+  }), ui$nonMuEtas)
+
+  lapply(seq_along(muRefDef), function(i) {
+    .expr <- muRefDef[[i]]
+    if (length(.expr) < 3) return(.expr)
+    .w <- which(vapply(ui$nonMuEtas, function(i) {
+      identical(.v[[i]], .expr[[3]])
+    }, logical(1)))
+    if (length(.w)!=1) return(.expr)
+    .expr[[3]] <- str2lang(ui$nonMuEtas)
+    .expr
+  })
+}
+
+
 #' @export
 rxUiGet.getSplitMuModel <- function(x, ...) {
   .ui <- x[[1]]
@@ -168,12 +194,10 @@ rxUiGet.getSplitMuModel <- function(x, ...) {
     .createMuRefPkBlock(.var, .est, .ui$muRefCurEval, .taintMuRef)
   })
   assign("getSplitModel",
-         list(muRefDef=.muRef,
+         list(muRefDef=.muRefDefFix(.muRef, .ui),
               pureMuRef=.pureMuRef,
               taintMuRef=.taintMuRef,
               modelWithDrop=.ret),
          envir=.ui)
   get("getSplitModel", .ui)
 }
-
-
