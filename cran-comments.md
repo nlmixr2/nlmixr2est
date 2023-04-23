@@ -1,6 +1,4 @@
 # CRAN Comments
 
-This is to fix reverse dependency check for nlmixr2est with dparser by
-dropping dparser dependency.
-
-Fixes larger ggPMX issue
+- Small feature expansion (allowing different types of merges)
+- Release to fix binary incompatibility with rxode2
