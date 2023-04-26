@@ -24,7 +24,7 @@ nmTest({
     )
     expect_error(
       addCwres(fitNoEta),
-      regexp = "Cannot add CWRES to a model without etas"
+      regexp = "cannot add CWRES to a model without etas"
     )
   })
 })

@@ -73,7 +73,7 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
   checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
   checkmate::assertLogical(focei, len=1, any.missing=FALSE)
   if (is.null(fit$eta)) {
-    stop("Cannot add CWRES to a model without etas")
+    stop("cannot add CWRES to a model without etas", call.=FALSE)
   } else if (any(names(fit) == "CWRES")) {
     return(fit)
   }
