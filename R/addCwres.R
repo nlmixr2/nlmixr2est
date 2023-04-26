@@ -72,7 +72,9 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
   assertNlmixrFitData(fit)
   checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
   checkmate::assertLogical(focei, len=1, any.missing=FALSE)
-  if (any(names(fit) == "CWRES")) {
+  if (is.null(fit$eta)) {
+    stop("cannot add CWRES to a model without etas", call.=FALSE)
+  } else if (any(names(fit) == "CWRES")) {
     return(fit)
   }
   nlmixrWithTiming("CWRES", {
@@ -80,7 +82,7 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .foceiControl <- fit$foceiControl
     .foceiControl$maxOuterIterations <- 0L
     .foceiControl$maxInnerIterations <- 0L
-    .foceiControl$etaMat = as.matrix(fit$eta[, -1])
+    .foceiControl$etaMat <- as.matrix(fit$eta[, -1, drop = FALSE])
     .foceiControl$compress <- FALSE
     .foceiControl$covMethod <- 0L
     .foceiControl$interaction <- focei
