@@ -1,5 +1,7 @@
 # nlmixr2est (development version)
 
+- `vpcSim()` works when an eta value is fixed to 0 (#341)
+
 # nlmixr2est 2.1.5
 
 - Add `$fitMergeFull`, `$fitMergInner`, `$fitMergeLeft`,

@@ -81,6 +81,12 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
       .data <- .data[.lst$filter, ]
     }
   }
+  # Add etas that are set to 0 to .data so that rxode can use them
+  maskZeroEtas <- !is.na(object$iniDf$neta1) & (object$iniDf$est == 0)
+  for (zeroEtaIdx in which(maskZeroEtas)) {
+    zeroEtaName <- object$iniDf$name[zeroEtaIdx]
+    .data[, zeroEtaName] <- 0
+  }
   .si$events <- .data
   .si$thetaMat <- NULL
   .si$dfSub <- NULL
