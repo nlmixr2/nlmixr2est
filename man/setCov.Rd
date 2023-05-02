@@ -9,13 +9,17 @@ setCov(fit, method)
 \arguments{
 \item{fit}{nlmixr2 fit}
 
-\item{method}{covariance method}
+\item{method}{covariance method (see the `covMethod` argument for the control
+options for the choices)}
 }
 \value{
 Fit object with covariance updated
 }
 \description{
 Set the covariance type based on prior calculated covariances
+}
+\seealso{
+\code{\link{foceiControl}()}, \code{\link{saemControl}()}
 }
 \author{
 Matt Fidler

@@ -220,6 +220,12 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 \description{
 Control Options for SAEM
 }
+\seealso{
+Other Estimation control: 
+\code{\link{foceiControl}()},
+\code{\link{nlmixr2NlmeControl}()}
+}
 \author{
 Wenping Wang & Matthew L. Fidler
 }
+\concept{Estimation control}

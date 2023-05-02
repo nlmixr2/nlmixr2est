@@ -111,35 +111,36 @@
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
+#' @family Estimation control
 #' @export
-saemControl <- function(seed = 99, # Seed
-                        nBurn = 200, #
-                        nEm = 300, #
-                        nmc = 3, #
-                        nu = c(2, 2, 2), #
-                        print = 1, #
-                        trace = 0, #
-                        covMethod = c("linFim", "fim", "r,s", "r", "s", ""), #
-                        calcTables = TRUE, #
-                        logLik = FALSE, #
-                        nnodesGq = 3, #
-                        nsdGq = 1.6, #
-                        optExpression = TRUE, #
-                        adjObf = TRUE, #
-                        sumProd = FALSE, #
-                        addProp = c("combined2", "combined1"), #
-                        tol = 1e-6, #
-                        itmax = 30, #
-                        type = c("nelder-mead", "newuoa"),#
-                        powRange = 10, #
-                        lambdaRange = 3, #
-                        odeRecalcFactor=10^(0.5), #
-                        maxOdeRecalc=5L, #
-                        perSa=0.75, #
-                        perNoCor=0.75, #
-                        perFixOmega=0.1, #
-                        perFixResid=0.1, #
-                        compress=TRUE, #
+saemControl <- function(seed = 99,
+                        nBurn = 200,
+                        nEm = 300,
+                        nmc = 3,
+                        nu = c(2, 2, 2),
+                        print = 1,
+                        trace = 0,
+                        covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
+                        calcTables = TRUE,
+                        logLik = FALSE,
+                        nnodesGq = 3,
+                        nsdGq = 1.6,
+                        optExpression = TRUE,
+                        adjObf = TRUE,
+                        sumProd = FALSE,
+                        addProp = c("combined2", "combined1"),
+                        tol = 1e-6,
+                        itmax = 30,
+                        type = c("nelder-mead", "newuoa"),
+                        powRange = 10,
+                        lambdaRange = 3,
+                        odeRecalcFactor=10^(0.5),
+                        maxOdeRecalc=5L,
+                        perSa=0.75,
+                        perNoCor=0.75,
+                        perFixOmega=0.1,
+                        perFixResid=0.1,
+                        compress=TRUE,
                         rxControl=NULL,
                         sigdig=NULL,
                         sigdigTable=NULL,

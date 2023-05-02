@@ -106,7 +106,7 @@
 #' @param shi21maxOuter The maximum number of steps for the
 #'   optimization of the forward-difference step size.  When not zero,
 #'   use this instead of Gill differences.
-#' 
+#'
 #' @param shi21maxInner The maximum number of steps for the
 #'   optimization of the individual Hessian matrices in the
 #'   generalized likelihood problem. When 0, un-optimized finite differences
@@ -116,11 +116,11 @@
 #'   optimization of the individual Hessian matrices in the
 #'   generalized likelihood problem for the covariance step. When 0,
 #'   un-optimized finite differences are used.
-#' 
+#'
 #' @param shi21maxFD The maximum number of steps for the optimization
 #'   of the forward difference step size when using dosing events (lag
 #'   time, modeled duration/rate and bioavailability)
-#' 
+#'
 #' @param centralDerivEps Central difference tolerances.  This is a
 #'   numeric vector of relative difference and absolute difference.
 #'   The central/forward difference step size h is calculated as:
@@ -664,7 +664,7 @@
 #' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
 #' Finite-Difference Interval Estimation for Noisy Derivative-Free
 #' Optimization.
-#' 
+#' @family Estimation control
 #' @export
 foceiControl <- function(sigdig = 3, #
                          ...,
