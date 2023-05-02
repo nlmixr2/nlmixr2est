@@ -12,10 +12,11 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @return a nlmixr-nlme list
-#' @export
 #' @examples
-#' nlmixr2est::nlmeControl()
+#' nlmeControl()
 #' nlmixr2NlmeControl()
+#' @family Estimation control
+#' @export
 nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100, minScale = 0.001,
     tolerance = 1e-05, niterEM = 25, pnlsTol = 0.001, msTol = 1e-06,
     returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,

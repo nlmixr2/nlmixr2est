@@ -102,17 +102,15 @@
   return(.env$cov)
 }
 
-##' Set the covariance type based on prior calculated covariances
-##'
-##' @param fit nlmixr2 fit
-##'
-##' @param method covariance method
-##'
-##' @return Fit object with covariance updated
-##'
-##' @author Matt Fidler
-##'
-##' @export
+#' Set the covariance type based on prior calculated covariances
+#'
+#' @param fit nlmixr2 fit
+#' @param method covariance method (see the `covMethod` argument for the control
+#'   options for the choices)
+#' @return Fit object with covariance updated
+#' @author Matt Fidler
+#' @seealso \code{\link{foceiControl}()}, \code{\link{saemControl}()}
+#' @export
 setCov <- function(fit, method) {
   .pt <- proc.time()
   .env <- fit
