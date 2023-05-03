@@ -99,5 +99,3 @@ nmTest({
     expect_s3_class(vpcSim(fit, pred=TRUE), "data.frame")
   })
 })
-
-test_that()

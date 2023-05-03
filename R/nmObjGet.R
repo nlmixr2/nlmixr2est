@@ -201,7 +201,11 @@ nmObjGet.omegaR <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$omega
   .sd2 <- sqrt(diag(.cov))
-  .cor <- stats::cov2cor(.cov)
+  .w <- which(diag(.cov) != 0)
+  .cor2 <- stats::cov2cor(.cov[.w, .w])
+  .d <- dim(.cov)[1]
+  .cor <- matrix(rep(NA, .d^2), .d, .d)
+  .cor[.w, .w] <- .cor2
   dimnames(.cor) <- dimnames(.cov)
   diag(.cor) <- .sd2
   .cor

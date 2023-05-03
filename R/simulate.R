@@ -92,7 +92,7 @@
 
 .simInfo <- function(object) {
   .mod <- .getSimModel(object, hideIpred=FALSE)
-  .omega <- object$ui$omega
+  .omega <- object$omega
   .etaN <- dimnames(.omega)[[1]]
   .params <- nlme::fixed.effects(object)
   .params <- .params
