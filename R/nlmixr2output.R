@@ -564,7 +564,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       .w  <- which(.iniDf$name == .n)
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
+    .ui <- rxode2::rxUiDecompress(.ui)
     assign("iniDf", .iniDf, envir=.ui)
+    .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   }
 }
