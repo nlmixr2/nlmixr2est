@@ -101,7 +101,8 @@ nlmixr2Est.default <- function(env, ...) {
     }
     assign("iniDf", .finalIni, .final)
     assign("ui", .final, envir=ret$env)
-    .minfo("initial model updated with final estimates, zero etas are excluded from output")
+    assign("omega", .final$omega, envir=ret$env)
+    .minfo("initial model updated with final estimates, some zero etas are excluded from output")
   }
   assignInMyNamespace(".nlmixrPureInputUi", NULL)
 }

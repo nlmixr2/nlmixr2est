@@ -73,4 +73,29 @@ nmTest({
     expect_equal(tmp$dvid, tmp2$dvid)
 
   })
+
+  test_that("vpcSim works with etas that are set to zero (#341)", {
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    suppressMessages(
+      fit <- nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
+    )
+    expect_s3_class(vpcSim(fit, pred=TRUE), "data.frame")
+  })
 })
