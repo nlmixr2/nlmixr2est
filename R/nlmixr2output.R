@@ -543,7 +543,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
   if (is.null(.omega)) {
+    .ui <- rxode2::rxUiDecompress(.ui)
     assign("iniDf", .iniDf, envir=.ui)
+    .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   } else {
     .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
