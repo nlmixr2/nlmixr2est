@@ -203,7 +203,7 @@
         }
         
       }
-      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[-.w, ]
+      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
     assign("muRefFinal", .muRefCovariateDataFrame, ui)
     assign("timeVaryingCovariates", timeVaryingCovariates, ui)
