@@ -14,7 +14,7 @@ is used as the ‘control’ argument to the ‘nlme’ function."><meta propert
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.5</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -278,7 +278,7 @@ this is <code>FALSE</code>.</p></dd>
    random-effects model for
    these parameters and <code>g1/.../gQ</code> the grouping structure
    (<code>Q</code> may be equal to 1, in which case no <code>/</code> is
-   required). The random effects formula will be repeated
+   required). The random effects formula will be repeated 
    for all levels of grouping, in the case of multiple levels of
    grouping; (ii) a two-sided formula of the form
    <code>r1+...+rn~x1+..+xm</code>, a list of two-sided formulas of the form
@@ -294,8 +294,8 @@ this is <code>FALSE</code>.</p></dd>
    with the grouping factors as names. The order of nesting will be
    assumed the same as the order of the order of the elements in the
    list; (iv) an <code>reStruct</code> object. See the documentation on
-   <code><a href="https://rdrr.io/pkg/nlme/man/pdClasses.html" class="external-link">pdClasses</a></code> for a description of the available <code>pdMat</code>
-   classes. Defaults to <code>fixed</code>,
+   <code>pdClasses</code> for a description of the available <code>pdMat</code>
+   classes. Defaults to <code>fixed</code>, 
    resulting in all fixed effects having also random effects.</p></dd>
 
 
@@ -318,7 +318,7 @@ this is <code>FALSE</code>.</p></dd>
    describing the within-group heteroscedasticity structure. If given as
    a formula, it is used as the argument to <code>varFixed</code>,
    corresponding to fixed variance weights. See the documentation on
-   <code><a href="https://rdrr.io/pkg/nlme/man/varClasses.html" class="external-link">varClasses</a></code> for a description of the available <code>varFunc</code>
+   <code>varClasses</code> for a description of the available <code>varFunc</code>
    classes. Defaults to <code>NULL</code>, corresponding to homoscedastic
    within-group errors.</p></dd>
 
@@ -401,10 +401,16 @@ If not specified, then it matches the significant digits in the
 
 <p>a nlmixr-nlme list</p>
     </div>
+    <div class="section level2">
+    <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
+    <div class="dont-index"><p>Other Estimation control: 
+<code><a href="foceiControl.html">foceiControl</a>()</code>,
+<code><a href="saemControl.html">saemControl</a>()</code></p></div>
+    </div>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">nlmixr2est</span><span class="fu">::</span><span class="fu">nlmeControl</span><span class="op">(</span><span class="op">)</span></span></span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="fu">nlmeControl</span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $maxIter</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 100</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.4.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.5</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -46,7 +46,20 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li>Add <code>$fitMergeFull</code>, <code>$fitMergInner</code>, <code>$fitMergeLeft</code>, <code>$fitMergeRight</code> as a complement to <code>$dataMergeFull</code>, <code>$dataMergInner</code>, <code>$dataMergeLeft</code>, <code>$dataMergeRight</code>. The fit variants prefer columns in the fit dataset instead of the original dataset. This is useful for goodness of fit plots with censoring since the <code>DV</code> in the fit simulates values under the ipred/residual assumption and will give more appropriate goodness of fits, otherwise these values are the limit of whatever censoring is applied.</li>
+<div class="section level3">
+<h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
+<ul><li>Since <code>rxode2</code> now allows simulation with <code>omega</code> having diagonal zero elements, <code>$omega</code> and <code>$omegaR</code> now reflects this information including the zero omega elements in the output. On the other hand, the other eta-information and standard error information for zero etas are still excluded in <code>$phiR</code>, <code>$phiSE</code>, <code>$eta</code> etc.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<ul><li>
+<code><a href="../reference/vpcSim.html">vpcSim()</a></code> works when an eta value is fixed to 0 (<a href="https://github.com/nlmixr2/nlmixr2est/issues/341" class="external-link">#341</a>)</li>
+</ul></div>
+</div>
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="2.1.5" id="nlmixr2est-215">nlmixr2est 2.1.5<a class="anchor" aria-label="anchor" href="#nlmixr2est-215"></a></h2><p class="text-muted">CRAN release: 2023-04-22</p>
+<ul><li><p>Add <code>$fitMergeFull</code>, <code>$fitMergInner</code>, <code>$fitMergeLeft</code>, <code>$fitMergeRight</code> as a complement to <code>$dataMergeFull</code>, <code>$dataMergInner</code>, <code>$dataMergeLeft</code>, <code>$dataMergeRight</code>. The fit variants prefer columns in the fit dataset instead of the original dataset. This is useful for goodness of fit plots with censoring since the <code>DV</code> in the fit simulates values under the ipred/residual assumption and will give more appropriate goodness of fits, otherwise these values are the limit of whatever censoring is applied</p></li>
+<li><p>Moved the mu reference fix for the split mu referenced model here (from babelmixr2)</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="2.1.4" id="nlmixr2est-214">nlmixr2est 2.1.4<a class="anchor" aria-label="anchor" href="#nlmixr2est-214"></a></h2><p class="text-muted">CRAN release: 2023-04-02</p>
@@ -229,7 +242,7 @@
 <div class="section level3">
 <h3 id="vpc-changes-2-0-6">VPC changes<a class="anchor" aria-label="anchor" href="#vpc-changes-2-0-6"></a></h3>
 <ul><li><p><code>vpc</code> function rewritten and split out to <code><a href="../reference/vpcSim.html">vpcSim()</a></code> and <code>vpcPlot()</code> (which is a replacement for <code>vpc()</code>).</p></li>
-<li><p>There were too many mismatches between <code><a href="https://rdrr.io/pkg/vpc/man/vpc.html" class="external-link">vpc::vpc</a></code> and <code>nlmixr::vpc</code> which caused inconsistencies in code based on load order of <code>vpc</code> and <code>nlmixr</code>. This way both coexist, and you can use the <code>vpc</code> simulation for other packages more easily (like <code>ggPMX</code>) without creating or summarizing data since <code>ggPMX</code> has its own methods for summarizing and creating plots.</p></li>
+<li><p>There were too many mismatches between <code>vpc::vpc</code> and <code>nlmixr::vpc</code> which caused inconsistencies in code based on load order of <code>vpc</code> and <code>nlmixr</code>. This way both coexist, and you can use the <code>vpc</code> simulation for other packages more easily (like <code>ggPMX</code>) without creating or summarizing data since <code>ggPMX</code> has its own methods for summarizing and creating plots.</p></li>
 <li><p>VPC now directly uses <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxode2::rxSolve</a></code></p></li>
 </ul></div>
 <div class="section level3">
