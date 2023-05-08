@@ -99,3 +99,4 @@ Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
 RoxygenNote: 7.2.3
+LazyData: true
