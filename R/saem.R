@@ -183,6 +183,26 @@
     .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
     if (length(timeVaryingCovariates) > 0) {
       # Drop time-varying covariates
+      # First get the time varying covariates
+      .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
+      # next find out the theta for the phi expression
+      .covPar <- .muRefCovariateDataFrame[.w, "theta"]
+      .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
+      if (length(.w2) > 0) {
+        # see if the expression is on a log scale
+        .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
+        if (length(.w3) > 0) {
+          .w2 <- .w2[.w3]
+          .texp <- ui$muRefCurEval$parameter[.w2]
+          # now get parameters 
+          .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
+          warning(paste0("log-scale mu referenced time varying covariates (",
+                         paste(.pars, collapse=", "),
+                         ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
+                  call.=FALSE)
+        }
+        
+      }
       .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
     assign("muRefFinal", .muRefCovariateDataFrame, ui)
