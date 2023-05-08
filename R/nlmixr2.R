@@ -79,6 +79,9 @@ nlmixr2Version <- function() {
 #' @param envir Environment where the nlmixr object/function is
 #'   evaluated before running the estimation routine.
 #' @return Either a nlmixr2 model or a nlmixr2 fit object
+#' 
+#' @includeRmd man/rmdhunks/nlmixr2Keywords.Rmd
+#' 
 #' @author Matthew L. Fidler
 #' @examples
 #'
