@@ -116,7 +116,15 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .stk$time <- .sim$time
   .stk$cmt <- as.integer(.sim$CMT)
   .ipredModel <- .augPredIpredModel(fit)
-  levels(.stk$cmt) <- c(.ipredModel$state, .ipredModel$stateExtra)
+  .lvl <- c(.ipredModel$state, .ipredModel$stateExtra)
+  if (length(.lvl) == 1L && .lvl == "rxLinCmt") {
+    if (rxModelVars(fit)$flags["ka"] == c(ka=1L)) {
+      .lvl <- c("depot", "central")
+    } else {
+      .lvl <- "central"
+    }
+  }
+  levels(.stk$cmt) <- .lvl
   class(.stk$cmt) <- "factor"
   .stk <- .stk[!is.na(.stk$values), ]
   class(.stk) <- c("nlmixr2AugPred", "data.frame")
