@@ -26,18 +26,6 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
-
-.ucminf <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  rxode2::rxReq("ucminf")
-  .ctl <- control
-  .ctl$stepmax <- control$rhobeg
-  .ctl$maxeval <- control$maxOuterIterations
-  .ctl <- .ctl[names(.ctl) %in% c("stepmax", "maxeval")]
-  .ret <- ucminf::ucminf(par, fn, gr = NULL, ..., control = list(), hessian = 2)
-  .ret$x <- .ret$par
-  return(.ret)
-}
-
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1

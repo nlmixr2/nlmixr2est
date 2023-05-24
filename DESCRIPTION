@@ -82,7 +82,6 @@ Suggests:
     withr,
     xgxr,
     sfsmisc,
-    ucminf,
     rxode2parse (>= 2.0.11),
     rxode2random (>= 2.0.9)
 LinkingTo: 
