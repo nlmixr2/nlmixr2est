@@ -1,11 +1,14 @@
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
-  .origData <- rxode2::etTrans(fit$dataSav, fit$ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
+  .ipredModel <- .getSimModel(fit, hideIpred=FALSE,tad=FALSE)
+  .ipredModel <- eval(as.call(list(quote(`rxModelVars`), .ipredModel[[-1]])))
+  .origData <- rxode2::etTrans(fit$dataSav, .ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs
   .obsData <- .origData[.origData$EVID %in% c(0, 2), ]
   .allCmt <- unique(.obsData$CMT)
+  print(.allCmt)
   .idLvl <- attr(class(.origData), ".rxode2.lst")$idLvl
   if (is.null(minimum)) {
     minimum <- .range[1]
@@ -86,6 +89,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
+
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keep=c("DV", "CMT"), returnType="data.frame")
