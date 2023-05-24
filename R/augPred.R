@@ -11,7 +11,6 @@
   .covs <- fit$ui$allCovs
   .obsData <- .origData[.origData$EVID %in% c(0, 2), ]
   .allCmt <- unique(.obsData$CMT)
-  print(.allCmt)
   .idLvl <- attr(class(.origData), ".rxode2.lst")$idLvl
   if (is.null(minimum)) {
     minimum <- .range[1]

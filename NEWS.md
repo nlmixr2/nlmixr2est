@@ -12,6 +12,9 @@
 
 - `vpcSim()` works when an eta value is fixed to 0 (#341)
 
+- `augPred()` now consistently uses the simulation model (instead of
+  the inner model used for `CWRES` calculation).
+
 # nlmixr2est 2.1.5
 
 - Add `$fitMergeFull`, `$fitMergInner`, `$fitMergeLeft`,
