@@ -84,7 +84,7 @@ nmTest({
                       lapply(doses, function(x) {
                         ids <- dat %>%
                           dplyr::filter(DOSE == x) %>%
-                          dplyr::summarize(ids=unique(ID)) %>%
+                          dplyr::reframe(ids=unique(ID)) %>%
                           dplyr::pull()
                         ids <- ids[seq(1, nid)]
                         dat %>%
@@ -142,5 +142,53 @@ nmTest({
                    table=tableControl(npde=TRUE))
 
     expect_error(augPred(fit2), NA)
+  })
+
+  test_that("mixed pkpd with effect compartment augpred", {
+
+    dat <- nlmixr2data::warfarin
+
+    mod <- function () {
+      ini({
+        tktr <- -0.0407039444259225
+        tcl <- -1.94598426244892
+        tv <- 2.09185800199064
+        eps.pkprop <- c(0, 0.103324277742915)
+        eps.pkadd <- c(0, 0.41909330805883)
+        tc50 <- 0.121920646717701
+        tkout <- -3.1790123282253
+        te0 <- 4.43865746919035
+        eps.pdadd <- c(0, 5.96046447753906e-07)
+        eta.ktr ~ 0.625781701127507
+        eta.cl ~ 0.102936117458982
+        eta.v ~ 0.0491541297805943
+        eta.c50 ~ 0.41589473728507
+        eta.kout ~ 0.108340169259417
+        eta.e0 ~ 0.0632084214464694
+      })
+      model({
+        ktr <- exp(tktr + eta.ktr)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        c50 <- exp(tc50 + eta.c50)
+        kout <- exp(tkout + eta.kout)
+        e0 <- exp(te0 + eta.e0)
+        emax <- 1
+        cp <- central/v
+        d/dt(depot) <- -ktr * depot
+        d/dt(central) <- ktr * trans - cl * cp
+        d/dt(trans) <- ktr * depot - ktr * trans
+        d/dt(ce) = kout * (cp - ce)
+        effect <- e0 * (1 - emax * ce/(c50 + ce))
+        cp ~ prop(eps.pkprop) + add(eps.pkadd) | cp
+        effect ~ add(eps.pdadd) | pca
+      })
+    }
+    
+    fit <- nlmixr2(mod, dat, "posthoc")
+
+    expect_error(augPred(fit), NA)
+    
+    
   })
 })

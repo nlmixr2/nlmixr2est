@@ -1,6 +1,11 @@
+.augPredIpredModel <- function(fit) {
+  .ipredModel <- .getSimModel(fit, hideIpred=FALSE,tad=FALSE)
+  eval(as.call(list(quote(`rxModelVars`), .ipredModel[[-1]])))
+}
+
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
-  .origData <- rxode2::etTrans(fit$dataSav, fit$ipredModel, addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
+  .origData <- rxode2::etTrans(fit$dataSav, .augPredIpredModel(fit), addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs
@@ -86,6 +91,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
+
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keep=c("DV", "CMT"), returnType="data.frame")
@@ -109,7 +115,16 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .stk$id <- .sim$id
   .stk$time <- .sim$time
   .stk$cmt <- as.integer(.sim$CMT)
-  levels(.stk$cmt) <- c(fit$ipredModel$state, fit$ipredModel$stateExtra)
+  .ipredModel <- .augPredIpredModel(fit)
+  .lvl <- c(.ipredModel$state, .ipredModel$stateExtra)
+  if (length(.lvl) == 1L && .lvl == "rxLinCmt") {
+    if (rxModelVars(fit)$flags["ka"] == c(ka=1L)) {
+      .lvl <- c("depot", "central")
+    } else {
+      .lvl <- "central"
+    }
+  }
+  levels(.stk$cmt) <- .lvl
   class(.stk$cmt) <- "factor"
   .stk <- .stk[!is.na(.stk$values), ]
   class(.stk) <- c("nlmixr2AugPred", "data.frame")
