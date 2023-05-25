@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 2.1.6
 
 ## Breaking changes
 
@@ -14,6 +14,10 @@
 
 - `augPred()` now consistently uses the simulation model (instead of
   the inner model used for `CWRES` calculation).
+  
+## Other changes
+
+- Dropped dependence on orphaned package `ucminf`
 
 # nlmixr2est 2.1.5
 

@@ -2,9 +2,9 @@ Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
     Routines
-Version: 2.1.5
+Version: 2.1.6
 Authors@R: c(
-    person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"),
+    person("Matthew", "Fidler", , "matt.fidler@novartis.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
     person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut"),
     person("Rik", "Schoemaker", , "rik.schoemaker@occams.com", role = "aut",
@@ -32,7 +32,7 @@ Authors@R: c(
     person("Katharine", "Mullen", role = "cph"),
     person("Ben", "Goodrich", role = "ctb")
   )
-Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
+Maintainer: Matthew Fidler <matt.fidler@novartis.com>
 Description: Fit and compare nonlinear mixed-effects models in
     differential equations with flexible dosing information commonly seen
     in pharmacokinetics and pharmacodynamics (Almquist, Leander, and
