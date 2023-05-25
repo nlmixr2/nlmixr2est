@@ -84,7 +84,7 @@ BinaryFiles$
 ^vignettes/pheno.docx$
 ^vignettes/*.pdf
 ^inst/1.1.1.3/*.*
-
+^data-raw$
 ^codecov\.yml$
 ^\.github$
 ^README\.Rmd$
