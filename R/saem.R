@@ -775,6 +775,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
+  .lst     <- .uiModifyForCovs(env$ui, env$data)
+  env$ui   <- .lst$ui
+  env$data <- .lst$data
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
@@ -787,7 +790,9 @@ nlmixr2Est.saem <- function(env, ...) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .saemFamilyFit(env,  ...)
+  .ret <- .saemFamilyFit(env,  ...)
+  # FIXME, update ui
+  .ret
 }
 
 #' @rdname nmObjGet
