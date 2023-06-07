@@ -721,7 +721,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   #as.data.frame(.tmp)
   .tmp
 }
-
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
