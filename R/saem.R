@@ -775,6 +775,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
+  .doMu2 <- FALSE
   if (isTRUE(env$control$muRefCovAlg) &&
         length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
     .lst     <- .uiModifyForCovs(env$ui, env$data)

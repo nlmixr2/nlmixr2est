@@ -27,7 +27,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -53,6 +53,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(ci, lower=0, upper=1, any.missing=FALSE, len=1)
+  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
 
   method <- match.arg(method)
   addProp <- match.arg(addProp)
@@ -110,7 +111,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
                rxControl=rxControl, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
+               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable, muRefCovAlg=muRefCovAlg,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmeControl"
   .ret
@@ -428,6 +429,15 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 }
 
 .nlmeFamilyFit <- function(env, ...) {
+  .doMu2 <- FALSE
+  if (isTRUE(env$control$muRefCovAlg) &&
+        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(env$ui, env$data)
+    .model <- rxode2::as.model(env$ui)
+    env$ui   <- .lst$ui
+    env$data <- .lst$data
+    .doMu2 <- TRUE
+  }
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -510,6 +520,21 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
   .env <- .ret$env
   .env$method <- "nlme"
+  if (.doMu2) {
+    ui2 <- rxUiDecompress(.ret$ui)
+    rm("control", envir=ui2)
+    rxode2::model(ui2) <- .model
+    assign("ui", ui2, envir=.ret$env)
+    if (inherits(.ret, "data.frame")) {
+      .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(.ret)))
+      if (length(.w) > 0L) {
+        .cls <- class(.ret)
+        class(.ret) <- "data.frame"
+        .ret <- .ret[,-.w]
+        class(.ret) <- .cls
+      }
+    }
+  }
   .ret
 }
 
