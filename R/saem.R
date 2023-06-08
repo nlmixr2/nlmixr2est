@@ -775,23 +775,43 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
-  .lst     <- .uiModifyForCovs(env$ui, env$data)
-  env$ui   <- .lst$ui
-  env$data <- .lst$data
+  if (isTRUE(env$control$muRefCovAlg) &&
+        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(env$ui, env$data)
+    .model <- rxode2::as.model(env$ui)
+    env$ui   <- .lst$ui
+    env$data <- .lst$data
+    .doMu2 <- TRUE
+  }
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-
   .saemFamilyControl(env, ...)
+  .doMu2 <- FALSE
+
   on.exit({
     if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
   .ret <- .saemFamilyFit(env,  ...)
-  # FIXME, update ui
+  if (.doMu2) {
+    ui2 <- rxUiDecompress(.ret$ui)
+    rm("control", envir=ui2)
+    rxode2::model(ui2) <- .model
+    assign("ui", ui2, envir=.ret$env)
+    if (inherits(.ret, "data.frame")) {
+      .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(.ret)))
+      if (length(.w) > 0L) {
+        .cls <- class(.ret)
+        class(.ret) <- "data.frame"
+        .ret <- .ret[,-.w]
+        class(.ret) <- .cls
+      }
+    }
+  }
   .ret
 }
 
