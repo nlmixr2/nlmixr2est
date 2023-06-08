@@ -429,15 +429,6 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 }
 
 .nlmeFamilyFit <- function(env, ...) {
-  .doMu2 <- FALSE
-  if (isTRUE(env$control$muRefCovAlg) &&
-        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
-    .lst     <- .uiModifyForCovs(env$ui, env$data)
-    .model <- rxode2::as.model(env$ui)
-    env$ui   <- .lst$ui
-    env$data <- .lst$data
-    .doMu2 <- TRUE
-  }
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -520,27 +511,13 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
   .env <- .ret$env
   .env$method <- "nlme"
-  if (.doMu2) {
-    ui2 <- rxUiDecompress(.ret$ui)
-    rm("control", envir=ui2)
-    rxode2::model(ui2) <- .model
-    assign("ui", ui2, envir=.ret$env)
-    if (inherits(.ret, "data.frame")) {
-      .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(.ret)))
-      if (length(.w) > 0L) {
-        .cls <- class(.ret)
-        class(.ret) <- "data.frame"
-        .ret <- .ret[,-.w]
-        class(.ret) <- .cls
-      }
-    }
-  }
   .ret
 }
 
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
+  .model <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
@@ -549,5 +526,5 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   .nlmeFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .nlmeFamilyFit(env,  ...)
+  .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }

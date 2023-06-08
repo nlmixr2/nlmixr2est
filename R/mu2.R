@@ -44,3 +44,55 @@
   ui2 <- rxode2::rxUiDecompress(ui2)
   list(ui=ui2, data=.datEnv$data)
 }
+#' This is an internal function for modifying the UI to apply mu2 referencing
+#'
+#' mu2 referencing is algebraic mu-referencing by converting to the
+#' transformation to a single value in the original dataset, and
+#' moving that around
+#'  
+#' @param env Environment needed for nlmixr2 fits
+#' @return Either the original model({}) block (if changed) or NULL if
+#'   not changed
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+.uiApplyMu2 <- function(env) {
+  if (isTRUE(env$control$muRefCovAlg) &&
+        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(env$ui, env$data)
+    .model <- rxode2::as.model(env$ui)
+    env$ui   <- .lst$ui
+    env$data <- .lst$data
+    return(.model)
+  }
+  NULL
+}
+
+#' This is an internal function for replacing the ui with original
+#' model and dropping artificial data in output
+#'
+#' @param ret The object that would be returned, without modification
+#' @param model The original model to apply
+#' @return modified fit updated to show the original model and without
+#'   the internal transformations
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+.uiFinalizeMu2 <- function(ret, model) {
+  if (!is.null(model)) {
+    .ui2 <- rxode2::rxUiDecompress(ret$ui)
+    rm("control", envir=.ui2)
+    rxode2::model(.ui2) <- model
+    assign("ui", .ui2, envir=ret$env)
+    if (inherits(ret, "data.frame")) {
+      .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(ret)))
+      if (length(.w) > 0L) {
+        .cls <- class(ret)
+        class(ret) <- "data.frame"
+        ret <- ret[,-.w]
+        class(ret) <- .cls
+      }
+    }
+  }
+  ret
+}
