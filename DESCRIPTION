@@ -62,7 +62,7 @@ Imports:
     Rcpp,
     rex,
     Rvmmin,
-    rxode2 (>= 2.0.12),
+    rxode2 (>= 2.0.13),
     stats,
     symengine,
     utils
