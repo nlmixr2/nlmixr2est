@@ -1,3 +1,16 @@
+mu2env <- new.env(parent=baseenv())
+mu2env$pow <- function(x, y) {
+  (x)^(y)
+}
+mu2env$erf <- rxode2::erf
+#mu2env$erfinv <- rxode2::erfinv
+mu2env$R_pow <- mu2env$pow
+mu2env$R_pow_di <- mu2env$pow
+mu2env$Rx_pow_di <- mu2env$pow
+mu2env$Rx_pow <- mu2env$pow
+mu2env$logit <- rxode2::logit
+mu2env$expit <- rxode2::expit
+
 #' UI modify covariates with reps
 #'
 #' @param expr expression to change
@@ -25,18 +38,29 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .uiModifyForCovs <- function(ui, data) {
-  .datEnv <- new.env(parent=emptyenv())
+  .datEnv <- new.env(parent=mu2env)
   .datEnv$data <- data
   .datEnv$model <- rxode2::as.model(ui)
+  .datEnv$ui  <- ui
   lapply(seq_along(ui$mu2RefCovariateReplaceDataFrame$covariate),
          function(i) {
-           .datEnv$data[[paste0("nlmixrMuDerCov", i)]] <-
-             with(.datEnv$data,
-                  eval(str2lang(ui$mu2RefCovariateReplaceDataFrame$covariate[i])))
-           .new <- str2lang(paste0("nlmixrMuDerCov", i, "*",
-                                   ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))
-           .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
-           .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
+           .datEnv$i <- i
+           .tmp <- try(with(.datEnv,
+                        with(data,
+                             eval(str2lang(ui$mu2RefCovariateReplaceDataFrame$covariate[i])))),
+                       silent=TRUE)
+           if (!inherits(.tmp, "try-error")) {
+             .datEnv$data[[paste0("nlmixrMuDerCov", i)]] <- .tmp
+             .new <- str2lang(paste0("nlmixrMuDerCov", i, "*",
+                                     ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))
+             .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
+             .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
+           } else {
+             warning(paste0("algebraic mu expression failed for '",
+                            ui$mu2RefCovariateReplaceDataFrame$modelExpression[i],
+                            "'"),
+                     call.=FALSE)
+           }
            invisible()
          })
   ui2 <- ui
