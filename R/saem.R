@@ -721,7 +721,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   #as.data.frame(.tmp)
   .tmp
 }
-
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
@@ -776,19 +775,19 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
+  .doMu2 <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-
   .saemFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .saemFamilyFit(env,  ...)
+  .uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2)
 }
 
 #' @rdname nmObjGet
