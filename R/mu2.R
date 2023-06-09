@@ -31,7 +31,7 @@ mu2env$expit <- rxode2::expit
 #'
 #' In general the dataset is modified with nlmixrMuDerCov# and the mu2
 #' expressions are changed to traditional mu-expressions
-#'  
+#'
 #' @param data input dataset
 #' @param ui input ui
 #' @return a list with list(ui=mu referenced ui, data=mu referenced dataset)
@@ -68,12 +68,45 @@ mu2env$expit <- rxode2::expit
   ui2 <- rxode2::rxUiDecompress(ui2)
   list(ui=ui2, data=.datEnv$data)
 }
+#' This fixes initial conditions in a model
+#'
+#' @param ui Ui to fix
+#' @return modified model with fixed parameters hard coded
+#' @author Matthew L. Fidler
+#' @noRd
+.uiModifyFixInModel <- function(env) {
+  if (!isTRUE(env$control$fixReplace)) return(NULL)
+  .ini <- env$ui$iniDf
+  .wFixed <- which(.ini$fix == TRUE & is.na(.ini$err) & !is.na(.ini$ntheta))
+  if (length(.wFixed > 0)) {
+    .ini2 <- .ini[-.wFixed,]
+    .ini2$theta <- ifelse(is.na(.ini2$neta1), seq_along(.ini2$theta), NA_integer_)
+    .env <- new.env(parent=emptyenv())
+    .env$.model <- rxode2::as.model(env$ui)
+    .env$.dummy <- NULL
+    lapply(seq_along(.wFixed), function(i) {
+      .i <- .wFixed[i]
+      .env$.dummy <- c(.env$.dummy, .ini$name[.i])
+      .old <- str2lang(.ini$name[.i])
+      .new <- .ini$est[.wFixed]
+      .env$.model <- .uiModifyForCovsRep(.env$.model, .old, .new)
+    })
+    .ret <- env$ui
+    .mod <- .env$.model[[2]]
+    rxode2::model(.ret) <- c(lapply(seq_along(.mod)[-1], function(i) .mod[[i]]),
+                             list(str2lang(paste0("nlmixrFixDummy ~ ",
+                                                  paste(.env$.dummy, collapse=" + ")))))
+    .ret <- rxode2::rxUiDecompress(.ret)
+    return(.ret)
+  }
+  NULL
+}
 #' This is an internal function for modifying the UI to apply mu2 referencing
 #'
 #' mu2 referencing is algebraic mu-referencing by converting to the
 #' transformation to a single value in the original dataset, and
 #' moving that around
-#'  
+#'
 #' @param env Environment needed for nlmixr2 fits
 #' @return Either the original model({}) block (if changed) or NULL if
 #'   not changed
@@ -81,12 +114,16 @@ mu2env$expit <- rxode2::expit
 #' @author Matthew L. Fidler
 #' @keywords internal
 .uiApplyMu2 <- function(env) {
+  .model <- rxode2::as.model(env$ui)
+  .doFix <- .uiModifyFixInModel(env)
+  if (!is.null(.doFix)) env$ui <- .doFix
   if (isTRUE(env$control$muRefCovAlg) &&
         length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
     .lst     <- .uiModifyForCovs(env$ui, env$data)
-    .model <- rxode2::as.model(env$ui)
     env$ui   <- .lst$ui
     env$data <- .lst$data
+    return(.model)
+  } else if (!is.null(.doFix)) {
     return(.model)
   }
   NULL

@@ -39,6 +39,7 @@ saemControl(
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
+  fixReplace = TRUE,
   ...
 )
 }
@@ -228,7 +229,22 @@ other input parameter.}
   5. Remove `nlmixrMuDerCov#` from nlmix2 output
 
 In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.}
+changes the system to a linear compartment model.  Therefore, by
+default this is `TRUE`.}
+
+\item{fixReplace}{For `saem`, there are two different fixing
+  methods:
+
+ - `FALSE`: this approach varies the fixed parameters during the
+   first phase of optimization and eventually approaches a constant
+   solution, this allows a larger area to be explored during
+   optimization and could find a better solution, though it truly
+   isn't fixed throughout the optimization process.
+
+- `TRUE`: this approach fixes the parameters throughout the
+   optimization process but may miss a bitter solution. However the
+   fixed parameter placement is less likely to give different
+   overall results.}
 
 \item{...}{Other arguments to control SAEM.}
 }

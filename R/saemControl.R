@@ -120,7 +120,22 @@
 #'   5. Remove `nlmixrMuDerCov#` from nlmix2 output
 #'
 #' In general, these covariates should be more accurate since it
-#' changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.
+#' changes the system to a linear compartment model.  Therefore, by
+#' default this is `TRUE`.
+#'
+#' @param fixReplace For `saem`, there are two different fixing
+#'   methods:
+#'
+#'  - `FALSE`: this approach varies the fixed parameters during the
+#'    first phase of optimization and eventually approaches a constant
+#'    solution, this allows a larger area to be explored during
+#'    optimization and could find a better solution, though it truly
+#'    isn't fixed throughout the optimization process.
+#'
+#' - `TRUE`: this approach fixes the parameters throughout the
+#'    optimization process but may miss a bitter solution. However the
+#'    fixed parameter placement is less likely to give different
+#'    overall results.
 #'
 #' @param ... Other arguments to control SAEM.
 #'
@@ -165,6 +180,7 @@ saemControl <- function(seed = 99,
                         ci=0.95,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
+                        fixReplace=TRUE,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -214,7 +230,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(perFixResid, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
-
+  checkmate::assertLogical(fixReplace, any.missing=FALSE, len=1)
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
     if (addProp == 1) {
@@ -289,7 +305,8 @@ saemControl <- function(seed = 99,
     logLik=logLik,
     calcTables=calcTables,
     muRefCov=muRefCov,
-    muRefCovAlg=muRefCovAlg
+    muRefCovAlg=muRefCovAlg,
+    fixReplace=fixReplace
   )
   class(.ret) <- "saemControl"
   .ret

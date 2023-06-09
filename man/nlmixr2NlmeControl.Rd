@@ -300,7 +300,8 @@ If not specified, then it matches the significant digits in the
   5. Remove `nlmixrMuDerCov#` from nlmix2 output
 
 In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.}
+changes the system to a linear compartment model.  Therefore, by
+default this is `TRUE`.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}
