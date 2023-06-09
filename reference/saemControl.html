@@ -85,6 +85,7 @@
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  muRefCov <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -305,6 +306,20 @@ are handled differently than non mu-referenced covariates.  When
 `TRUE`, mu-referenced covariates have special handling.  When
 `FALSE` mu-referenced covariates are treated the same as any
 other input parameter.</p></dd>
+
+
+<dt>muRefCovAlg</dt>
+<dd><p>This controls if algebraic expressions that can
+  be mu-referenced are treated as mu-referenced covariates by:</p>
+<p>1. Creating a internal data-variable `nlmixrMuDerCov#` for each
+     algebraic mu-referenced expression</p>
+<p>2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`</p>
+<p>3. Use the internal mu-referenced covariate for saem</p>
+<p>4. After optimization is completed, replace `model()` with old
+  `model()` expression</p>
+<p>5. Remove `nlmixrMuDerCov#` from nlmix2 output</p>
+<p>In general, these covariates should be more accurate since it
+changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.</p></dd>
 
 
 <dt>...</dt>
