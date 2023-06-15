@@ -1,4 +1,8 @@
-# nlmixr2est (2.1.6.9000)
+# nlmixr2est (development version)
+
+## mu referencing
+
+- Algebraic mu referencing has been implemented in `nlme` and `saem`.
 
 ## Bug fixes
 
