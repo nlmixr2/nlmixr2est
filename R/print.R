@@ -26,7 +26,9 @@
       .lt <- c(setNames(diag(x), paste0("sd", getOption("broom.mixed.sep1", "__"), .dn1)), .lt)
     }
   }
-  return(.lt)
+  # Omit NA values that may be present with one eta fixed as zero and other etas
+  # with estimated correlations.
+  .lt[!is.na(.lt)]
 }
 
 .getCorPrint <- function(x) {

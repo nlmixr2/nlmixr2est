@@ -4,6 +4,11 @@
 
 - Algebraic mu referencing has been implemented in `nlme` and `saem`.
 
+## Bug fixes
+
+- Printing models with correlated omega values and omega values fixed
+  to zero no longer fails (#359)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes
