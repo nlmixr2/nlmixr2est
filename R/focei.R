@@ -1615,8 +1615,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   assignInMyNamespace(".currentTimingEnvironment", .ret) # add environment for updating timing info
   if (.control$calcTables) {
-    .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
-                     table=.ret$table)
+    .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
+                         table=.ret$table), silent=TRUE)
+    if (inherits(.tmp, "try-error")) {
+      warning("error calculating tables, returning without table step", call.=FALSE)
+    } else {
+      .ret <- .tmp
+    }
   }
   nlmixrWithTiming("compress", {
     if (exists("saem", .env)) {
