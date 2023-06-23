@@ -113,7 +113,7 @@
     return(data.frame(
       ch = paste0(
         ifelse(.omegaFix[.eta], "fix(", ""),
-        formatC(signif(sqrt(.w), digits = .sigdig),
+        formatC(signif(sqrt(.v), digits = .sigdig),
                 digits = .sigdig, format = "fg", flag = "#"),
         ifelse(.omegaFix[.eta], ")", "")),
       v = .v))
