@@ -8,6 +8,6 @@ test_that(".updateParFixedGetEtaRow returns correct values", {
       .muRefCurEval = data.frame(parameter = "iivemax", curEval = "", low = NA_real_, hi = NA_real_),
       .sigdig = 3L
     ),
-    data.frame(.ch = "5.00", .v = 25)
+    data.frame(ch = "5.00", v = 25)
   )
 })
