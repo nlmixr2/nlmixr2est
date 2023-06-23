@@ -93,35 +93,35 @@
 #' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
 #' @param .sigdig is the number of significant digits used in the evaluation
 #' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
-#' @author Matthew L. Fidler
+#' @author Matthew L. Fidler and Bill Denney
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (.muRefCurEval$curEval[.w] == "exp") {
     assign(".sdOnly", FALSE, envir=.env)
-    valNumber <- sqrt(exp(.v) - 1) * 100
-    valCharPrep <- valNumber
+    .valNumber <- sqrt(exp(.v) - 1) * 100
+    .valCharPrep <- .valNumber
   } else {
     assign(".cvOnly", FALSE, envir=.env)
-    valNumber <- .v
-    valCharPrep <- sqrt(.v)
+    .valNumber <- .v
+    .valCharPrep <- sqrt(.v)
   }
   if (.omegaFix[.eta]) {
-    charPrefix <- "fix("
-    charSuffix <- ")"
+    .charPrefix <- "fix("
+    .charSuffix <- ")"
   } else {
-    charPrefix <- ""
-    charSuffix <- ""
+    .charPrefix <- ""
+    .charSuffix <- ""
   }
-  valChar <-
+  .valChar <-
     formatC(
-      signif(valCharPrep, digits = .sigdig),
+      signif(.valCharPrep, digits = .sigdig),
       digits = .sigdig, format = "fg", flag = "#"
     )
   data.frame(
-    ch = paste0(charPrefix, valChar, charSuffix),
-    v = valNumber
+    ch = paste0(.charPrefix, .valChar, .charSuffix),
+    v = .valNumber
   )
 }
 
