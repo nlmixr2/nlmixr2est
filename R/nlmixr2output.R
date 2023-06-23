@@ -91,8 +91,8 @@
 #' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
 #' @param .ome Omega fixed vector
 #' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
-#' @param .sigdig is the number of significant digits used in the evaulation
-#' @return Data frame row with ch= the charaacter representation and v is the vector representation of the CV or sd
+#' @param .sigdig is the number of significant digits used in the evaluation
+#' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
@@ -120,7 +120,7 @@
   }
 }
 
-#'  This will add the between subject varaibility to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
+#'  This will add the between subject variability to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
 #'
 #'
 #' @param .ret The focei return environment
