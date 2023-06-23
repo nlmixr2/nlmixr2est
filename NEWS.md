@@ -8,6 +8,8 @@
 
 - Printing models with correlated omega values and omega values fixed
   to zero no longer fails (#359)
+- Values in $parFixed for BSV without exponential transformation are now
+  correctly shown (#366)
 
 # nlmixr2est 2.1.6
 
