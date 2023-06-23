@@ -39,7 +39,7 @@
 #'  This applies the manually specified back-transformations
 #'
 #' @param .ret focei environment
-#' @return Nothing, called for side effecs
+#' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
