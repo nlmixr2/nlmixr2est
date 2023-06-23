@@ -39,7 +39,7 @@
 #'  This applies the manually specified back-transformations
 #'
 #' @param .ret focei environment
-#' @return Nothing, called for side effecs
+#' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
@@ -91,36 +91,41 @@
 #' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
 #' @param .ome Omega fixed vector
 #' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
-#' @param .sigdig is the number of significant digits used in the evaulation
-#' @return Data frame row with ch= the charaacter representation and v is the vector representation of the CV or sd
-#' @author Matthew L. Fidler
+#' @param .sigdig is the number of significant digits used in the evaluation
+#' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
+#' @author Matthew L. Fidler and Bill Denney
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (.muRefCurEval$curEval[.w] == "exp") {
     assign(".sdOnly", FALSE, envir=.env)
-    return(data.frame(
-      ch = paste0(
-        ifelse(.omegaFix[.eta], "fix(", ""),
-        formatC(signif(sqrt(exp(.v) - 1) * 100, digits = .sigdig),
-                digits = .sigdig, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.eta], ")", "")
-      ),
-      v = sqrt(exp(.v) - 1) * 100))
+    .valNumber <- sqrt(exp(.v) - 1) * 100
+    .valCharPrep <- .valNumber
   } else {
     assign(".cvOnly", FALSE, envir=.env)
-    return(data.frame(
-      ch = paste0(
-        ifelse(.omegaFix[.eta], "fix(", ""),
-        formatC(signif(sqrt(.w), digits = .sigdig),
-                digits = .sigdig, format = "fg", flag = "#"),
-        ifelse(.omegaFix[.eta], ")", "")),
-      v = .v))
+    .valNumber <- .v
+    .valCharPrep <- sqrt(.v)
   }
+  if (.omegaFix[.eta]) {
+    .charPrefix <- "fix("
+    .charSuffix <- ")"
+  } else {
+    .charPrefix <- ""
+    .charSuffix <- ""
+  }
+  .valChar <-
+    formatC(
+      signif(.valCharPrep, digits = .sigdig),
+      digits = .sigdig, format = "fg", flag = "#"
+    )
+  data.frame(
+    ch = paste0(.charPrefix, .valChar, .charSuffix),
+    v = .valNumber
+  )
 }
 
-#'  This will add the between subject varaibility to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
+#'  This will add the between subject variability to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
 #'
 #'
 #' @param .ret The focei return environment

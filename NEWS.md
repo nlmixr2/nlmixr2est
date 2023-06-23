@@ -9,6 +9,9 @@
 - Printing models with correlated omega values and omega values fixed
   to zero no longer fails (#359)
 
+- Values in `$parFixed` for BSV without exponential transformation are now
+  correctly shown (#366)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes
@@ -25,7 +28,7 @@
 
 - `augPred()` now consistently uses the simulation model (instead of
   the inner model used for `CWRES` calculation).
-  
+
 ## Other changes
 
 - Dropped dependence on orphaned package `ucminf`
