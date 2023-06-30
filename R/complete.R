@@ -11,7 +11,7 @@
   origData="Original Data",
   parFixed="Formatted Parameter Values for Fixed effects",
   parFixedDf="Parameter Values for Fixed Effects (data frame)",
-  parHist="Parameter History",
+  parHistData="Parameter History (including gradients)",
   scaleInfo="Scaling Information",
   shrink="Shrinkage data frame",
   table="Table Control Value",
