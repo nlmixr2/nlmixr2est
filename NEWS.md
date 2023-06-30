@@ -12,6 +12,8 @@
 - Values in `$parFixed` for BSV without exponential transformation are now
   correctly shown (#366)
 
+- Add back values for $parHistData (#368)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes
