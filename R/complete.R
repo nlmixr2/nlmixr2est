@@ -9,6 +9,7 @@
   objDf="Objective Function DF",
   omega="Omega Matrix",
   origData="Original Data",
+  phiC="covariance matrix of each individual's eta (if present)",
   parFixed="Formatted Parameter Values for Fixed effects",
   parFixedDf="Parameter Values for Fixed Effects (data frame)",
   parHistData="Parameter History (including gradients)",
