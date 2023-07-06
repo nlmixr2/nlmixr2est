@@ -396,12 +396,12 @@
   if (ncol(.m) > length(.allThetaNames)) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
-  .ph <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
-  names(.ph) <- c("iter", .allThetaNames)
+  .ph <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m),
+                    type="Unscaled", check.names=FALSE)
+  names(.ph) <- c("iter", .allThetaNames, "type")
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
-  .ph$type <- "Unscaled"
   assign("parHistData", .ph, envir=env)
 }
 #' Calculate the covariance term

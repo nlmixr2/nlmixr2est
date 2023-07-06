@@ -1558,7 +1558,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
   .iter <- .tmp$iter
   .tmp <- .tmp[, names(.tmp) != "iter"]
-  data.frame(iter = .iter, .tmp)
+  data.frame(iter = .iter, .tmp, check.names=FALSE)
 }
 
 #' Setup the par history information
