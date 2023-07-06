@@ -396,7 +396,7 @@
   if (ncol(.m) > length(.allThetaNames)) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
-  .ph <- data.frame(iter = rep(seq_len(.m)), as.data.frame(.m),
+  .ph <- data.frame(iter = rep(seq_len(nrow(.m))), as.data.frame(.m),
                     type="Unscaled", check.names=FALSE)
   names(.ph) <- c("iter", .allThetaNames, "type")
   .cls <- class(.ph)
