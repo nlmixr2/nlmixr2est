@@ -401,7 +401,8 @@
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
-  assign("parHist", .ph, envir=env)
+  .ph$type <- "Unscaled"
+  assign("parHistData", .ph, envir=env)
 }
 #' Calculate the covariance term
 #'
