@@ -1547,6 +1547,19 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
          deparse1(ui$dvidLine)),
         collapse="\n")
 }
+#' Calculate the parameter history
+#'
+#' @param .ret return data
+#' @return parameter history data frame
+#' @noRd
+#' @author Matthew L. Fidler
+.parHistCalc <- function(.ret) {
+  .tmp <- .ret$parHistData
+  .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
+  .iter <- .tmp$iter
+  .tmp <- .tmp[, names(.tmp) != "iter"]
+  data.frame(iter = .iter, .tmp, check.names=FALSE)
+}
 
 #' Setup the par history information
 #'
@@ -1556,13 +1569,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @noRd
 .foceiSetupParHistData <- function(.ret) {
   if (exists("parHistData", envir=.ret)) {
-    .tmp <- .ret$parHistData
-    .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
-    .iter <- .tmp$iter
-    .tmp <- .tmp[, names(.tmp) != "iter"]
-    ## .ret$parHistStacked <- data.frame(stack(.tmp), iter = .iter)
-    ## names(.ret$parHistStacked) <- c("val", "par", "iter")
-    .ret$parHist <- data.frame(iter = .iter, .tmp)
+    .ret$parHist <- .parHistCalc(.ret)
   }
 }
 
@@ -1637,7 +1644,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .env$saem0 <- .saem
     }
     if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHist", "saem0")) {
+      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
@@ -1659,7 +1666,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                     "xType", "IDlabel", "ODEmodel",
                     # times
                     "optimTime", "setupTime", "covTime",
-                    "parHistData", "dataSav", "idLvl", "theta",
+                    "parHist", "dataSav", "idLvl", "theta",
                     "missingTable", "missingControl", "missingEst")) {
       if (exists(.item, .env)) {
         rm(list=.item, envir=.env)
@@ -1913,4 +1920,3 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
   class(.env) <- c("output", "nlmixr2Est")
   nlmixr2Est(.env)
 }
-

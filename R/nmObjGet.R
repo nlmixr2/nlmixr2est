@@ -488,22 +488,32 @@ nmObjGet.saemTransformedData <- function(x, ...) {
 }
 #attr(nmObjGet.saemTransformedData, "desc") <- "data that saem sees for optimization"
 
+#' @rdname nmObjGet
+#' @export
+nmObjGet.parHist <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("parHistData", envir=.env)) {
+    return(.parHistCalc(.env))
+  }
+  NULL
+}
+attr(nmObjGet.parHist, "desc") <- "Parameter History"
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.parHistStacked <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHist", envir=.env)) {
-    .parHist <- .env$parHist
+  if (exists("parHistData", envir=.env)) {
+    .parHist <- .parHistCalc(.env)
     .iter <- .parHist$iter
     .ret <- data.frame(iter=.iter, stack(.parHist[, -1]))
     names(.ret) <- sub("values", "val",
                        sub("ind", "par", names(.ret)))
-    .ret
-  } else {
-    NULL
+    return(.ret)
   }
+  NULL
 }
 attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
 

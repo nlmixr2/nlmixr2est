@@ -1,6 +1,7 @@
 nmTest({
 
   test_that("addCwres", {
+
     one.compartment <- function() {
       ini({
         tka <- log(1.57)
@@ -22,6 +23,7 @@ nmTest({
     suppressMessages(
       fitNoEta <- nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
     )
+    expect_true(inherits(fitNoEta$parHistData, "data.frame"))
     expect_error(
       addCwres(fitNoEta),
       regexp = "cannot add CWRES to a model without etas"
