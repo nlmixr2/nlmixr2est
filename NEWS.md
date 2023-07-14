@@ -14,6 +14,10 @@
 
 - Add back values for $parHistData (#368)
 
+## Other changes
+
+- An `as.rxUi()` method was added for fit models (#377)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes
