@@ -9,16 +9,6 @@ for (f in c("src/RcppExports.cpp", "inst/include/nlmixr2est_RcppExports.h")) {
   }
 }
 
-for (f in c("R/RcppExports.R")) {
-  l <- readLines(f)
-  w <- which(regexpr("_nlmixr2est_RcppExport_registerCCallable", l) != 1)
-  if (length(w) == 1) {
-    l <- l[-w]
-    message("Excluding _nlmixr2est_RcppExport_registerCCallable")
-    writeLines(l, f)
-  }
-}
-
 unlink("R/nlmixr2_md5.R")
 
 cpp <- list.files("src", pattern = ".(c|h|cpp|f)$")
