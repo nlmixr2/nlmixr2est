@@ -50,9 +50,11 @@ nmTest({
     d <- funcion_transf_logaritmica(d)
 
     
-    f <- nlmixr(mod.dos.cmpt, d, "posthoc")
+    f <- nlmixr(mod.dos.cmpt, d, "posthoc", control=list(calcTables=FALSE))
 
-    expect_false(all(f$eta.cl == 0.0))
+    f2 <- addTable(f)
+
+    expect_false(all(f2$eta.cl == 0.0))
     
   })
 }
