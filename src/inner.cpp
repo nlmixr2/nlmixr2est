@@ -718,7 +718,6 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   arma::vec retR(ind->n_all_times);
   // this assumes the inner problem has been solved
   fInd->nObs = 0;
-  double *llikObs = fInd->llikObs;
   rx_solving_options *op = rx->op;
   int kk, k=0;
   double curT;
@@ -1051,7 +1050,6 @@ double likInner0(double *eta, int id){
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
-      int oldNeq = op->neq;
       if (predSolve) {
         iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
       } else {
@@ -2330,7 +2328,6 @@ void foceiPhi(Environment e) {
     dimn[1] = e["etaNames"];
   }
   for (int j=rx->nsub; j--;){
-    focei_ind *fInd = &(inds_focei[j]);
     arma::mat H(op_focei.gH + j*op_focei.neta*op_focei.neta, op_focei.neta, op_focei.neta, false, true);
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
@@ -5878,7 +5875,7 @@ void foceiFinalizeTables(Environment e){
   LogicalVector skipCov = e["skipCov"];
 
   if (covExists) {
-    Function loadNamespace("loadNamespace", R_BaseNamespace);    
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function getCor = nlmixr2[".cov2cor"];
     e["fullCor"] = getCor(e["cov"]);
@@ -6829,7 +6826,6 @@ void saveIntoEnvrionment(Environment e) {
 }
 
 void restoreFromEnvrionment(Environment e) {
-  int totN=op_focei.ntheta + op_focei.omegan;
   arma::Col<int> etaTrans = e[".etaTrans"];
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];

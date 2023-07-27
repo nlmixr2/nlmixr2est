@@ -188,7 +188,7 @@ static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned i
   ret.ydsim.each_col() -= ret.epredt.elem(ret.obs);
   ret.ydsim2 = ret.ydsim;
   ret.ydsim = ymatt * ret.ydsim;
-  ret.ydsim2 = ret.ymat2 * ret.ydsim2; 
+  ret.ydsim2 = ret.ymat2 * ret.ydsim2;
   ret.ydobs = ymatt * (ret.yobst.elem(ret.obs) - ret.epredt.elem(ret.obs));
   ret.ydobs2 = ret.ymat2 * (ret.yobst.elem(ret.obs) - ret.epredt.elem(ret.obs));
   // sim < obs
@@ -285,7 +285,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
     ret.epred[j] = _powerDi(ret.epredt[j], lambda[j], (int) yj[j], low[j], hi[j]);
     if (censMethod == CENS_EPRED && cens[j] != 0) {
       ret.yobst[j] = ret.epredt[j];
-    } 
+    }
     ret.yobs[j] = _powerDi(ret.yobst[j], lambda[j], (int) yj[j], low[j], hi[j]);
     ret.eres[j] = ret.yobs[j] - ret.epred[j];
     if (censMethod == CENS_OMIT && cens[j] != 0) {
@@ -431,8 +431,6 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   dvf.zeros();
   eres.zeros();
 
-  int cores = as<int>(opt["cores"]);
-
   for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
     calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
                                        lambda, yj, hi, low);
@@ -533,7 +531,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   if (sPD != "") {
     Rf_warningcall(R_NilValue, _("npde decorrelation failed (return normalized prediction discrepancies) for %.1f%% id: %s"), rPD*100, sPD.c_str());
   }
-  
+
   List ret(6);
   // epred, eres, npde, dv
   ret[0] = List::create(_["EPRED"]=epred);
