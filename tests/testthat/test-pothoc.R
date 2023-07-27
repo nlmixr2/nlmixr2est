@@ -1,5 +1,5 @@
 nmTest({
-  test_that("test that posthoc does the correct thing", {
+  test_that("test that posthoc does the correct thing with one subject", {
     skip_on_cran()
 
     d <- qs::qread(test_path("datos_pac.qs"))
@@ -48,13 +48,14 @@ nmTest({
     }
 
     d <- funcion_transf_logaritmica(d)
-
     
     f <- nlmixr(mod.dos.cmpt, d, "posthoc", control=list(calcTables=FALSE))
 
     f2 <- addTable(f)
 
     expect_false(all(f2$eta.cl == 0.0))
+    expect_false(all(f2$eta.v1 == 0.0))
+    expect_false(all(f2$eta.v2 == 0.0))
     
   })
 }
