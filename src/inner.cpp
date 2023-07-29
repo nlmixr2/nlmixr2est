@@ -1943,7 +1943,7 @@ static inline bool isFixedTheta(int m) {
   return true; // here the parameter is fixed
 }
 
-static inline bool thetaReset0() {
+static inline bool thetaReset0(bool forceReset = false) {
   NumericVector thetaIni(op_focei.ntheta);
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
@@ -1983,7 +1983,9 @@ static inline bool thetaReset0() {
       adjustEta[ii] = false;
     }
   }
-  if (!doAdjust) return false;
+  if (!doAdjust && !forceReset) {
+    return false;
+  }
 
   arma::mat etaMat(rx->nsub, op_focei.neta);
   for (int ii = rx->nsub; ii--;){
@@ -2026,7 +2028,7 @@ void thetaReset(double size){
 }
 
 void thetaResetZero() {
-  thetaReset0();
+  thetaReset0(true);
   warning(_("thetas were reset during optimization because of a zero gradient"));
   stop("theta reset0");
 }
