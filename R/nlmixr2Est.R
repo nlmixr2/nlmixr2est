@@ -130,9 +130,6 @@ nlmixr2Est0 <- function(env, ...) {
   if (!exists("missingEst", envir=env)) {
     assign("missingEst", FALSE, envir=env)
   }
-  if (!exists("missingTable", envir=env)) {
-    assign("missingTable", TRUE, envir=env)
-  }
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
     assign("ui",
