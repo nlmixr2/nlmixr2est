@@ -192,11 +192,11 @@ exploration of the likelihood surface.}
 solving requests.  When specified this controls the relative and
 absolute tolerances of the ODE solvers.  By default the tolerance
 is \code{0.5*10^(-sigdig-2)} for regular ODEs. For the
-sensitivity equations the default is \code{0.5*10^(-sigdig-1.5)}
+sensitivity equations the default is \verb{0.5*10\\^(-sigdig-1.5)}
 (sensitivity changes only applicable for liblsoda).  This also
 controls the \code{atol}/\code{rtol} of the steady state solutions. The
-\code{ssAtol}/\code{ssRtol} is \code{0.5*10^(-sigdig)} and for the sensitivities
-\code{0.5*10^(-sigdig+0.625)}.  By default
+\code{ssAtol}/\code{ssRtol} is \verb{0.5*10\\^(-sigdig)} and for the sensitivities
+\verb{0.5*10\\^(-sigdig+0.625)}.  By default
 this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.}
 
 \item{sigdigTable}{Significant digits in the final output table.

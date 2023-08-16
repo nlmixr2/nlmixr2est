@@ -480,16 +480,6 @@ attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit d
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.saemTransformedData <- function(x, ...) {
-  .dataSav <- nmObjGet.dataSav(x, ...)
-  .obj <- x[[1]]
-  .ui <- .obj$ui
-  .saemGetDataForFit(.dataSav, .ui)
-}
-#attr(nmObjGet.saemTransformedData, "desc") <- "data that saem sees for optimization"
-
-#' @rdname nmObjGet
-#' @export
 nmObjGet.parHist <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env

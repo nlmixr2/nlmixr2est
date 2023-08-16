@@ -41,7 +41,7 @@ nmNearPD(
     vector of eigenvalues of the approximating matrix.}
 
 \item{ensureSymmetry}{logical; by default, \code{\link[Matrix]{symmpart}(x)}
-    is used whenever \code{\link{isSymmetric}(x)} is not true.  The user
+    is used whenever \code{\link[Matrix]{isSymmetric}(x)} is not true.  The user
     can explicitly set this to \code{TRUE} or \code{FALSE}, saving the
     symmetry test. \emph{Beware} however that setting it \code{FALSE}
     for an \bold{a}symmetric input \code{x}, is typically nonsense!}
@@ -89,8 +89,8 @@ This implements the algorithm of Higham (2002), and then (if
   within the algorithm.
 
   Higham (2002) uses Dykstra's correction, but the version by Jens
-  Oehlschlaegel did not use it (accidentally), and still gave
-  reasonable results; this simplification, now only
+  \enc{Oehlschlägel}{Oehlschlaegel} did not use it (accidentally),
+  and still gave reasonable results; this simplification, now only
   used if \code{doDykstra = FALSE},
   was active in \code{nearPD()} up to Matrix version 0.999375-40.
 }
@@ -144,6 +144,6 @@ A first version of this (with non-optional \code{corr=TRUE})
   \code{\link[sfsmisc]{posdefify}()}, both from package \pkg{sfsmisc}.
 }
 \author{
-Jens Oehlschlaegel donated a first version.  Subsequent changes
-  by the Matrix package authors.
+Jens \enc{Oehlschlägel}{Oehlschlaegel} donated a first version.
+  Subsequent changes by the Matrix package authors.
 }

@@ -1,5 +1,11 @@
 # nlmixr2est (development version)
 
+
+## Breaking changes
+
+- Removed `fit$saemTransformedData` since it isn't actually used in
+  `saem` anymore.
+
 ## mu referencing
 
 - Algebraic mu referencing has been implemented in `nlme` and `saem`.

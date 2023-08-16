@@ -716,12 +716,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
-.saemGetDataForFit <- function(dataSav, ui) {
-  .tmp <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
-  class(.tmp) <- "data.frame"
-  #as.data.frame(.tmp)
-  .tmp
-}
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
