@@ -457,8 +457,11 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   # When running the focei problem to create the nlmixr object, you also need a
   #  foceiControl object
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
+                         addlKeepsCov = .control$rxControl$addlKeepsCov,
+                         addlDropSs = .control$rxControl$addlDropSs,
+                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
   # Just like saem, nlme can use mu-referenced covariates
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) .nTv <- 0
