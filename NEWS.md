@@ -1,5 +1,16 @@
 # nlmixr2est (development version)
 
+
+## Breaking changes
+
+- Removed `fit$saemTransformedData` since it isn't actually used in
+  `saem` anymore (but will break anyone's code who is using it)
+
+- Now the internal function `.foceiPreProcessData()` requires the
+  rxode2 control `rxControl()` because some of the new steady state
+  lag features need to translate the data differently based on
+  `rxControl()` options.
+
 ## mu referencing
 
 - Algebraic mu referencing has been implemented in `nlme` and `saem`.

@@ -1300,11 +1300,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @param data Input dataset
 #' @param env focei environment where focei family is run
 #' @param ui rxode2 ui
+#' @param rxControl is the rxode2 control that is used to translate to the modeling dataset
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.foceiPreProcessData <- function(data, env, ui) {
+.foceiPreProcessData <- function(data, env, ui, rxControl) {
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates
@@ -1339,7 +1340,10 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
-                         allTimeVar=TRUE, keepDosingOnly=FALSE)
+                         allTimeVar=TRUE, keepDosingOnly=FALSE,
+                         addlKeepsCov = rxControl$addlKeepsCov,
+                         addlDropSs = rxControl$addlDropSs,
+                         ssAtDoseTime = rxControl$ssAtDoseTime)
   .lst <- attr(class(.et), ".rxode2.lst")
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
@@ -1579,7 +1583,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
-  .foceiPreProcessData(.data, .env, ui)
+  .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
     checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
                             row.names="strict", col.names="strict")

@@ -302,7 +302,7 @@ nmObjGet.dataSav <- function(x, ...) {
   if (exists("dataSav", .objEnv)) return(get("dataSav", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$dataSav
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
@@ -321,7 +321,7 @@ nmObjGet.idLvl <- function(x, ...){
   if (exists("idLvl", .objEnv)) return(get("idLvl", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .env$control$rxControl)
   .env$idLvl
 }
 
@@ -333,7 +333,7 @@ nmObjGet.covLvl <- function(x, ...) {
   if (exists("covLvl", .objEnv)) return(get("covLvl", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$covLvl
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
@@ -477,16 +477,6 @@ nmObjGetData.fitMergeFull <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
-
-#' @rdname nmObjGet
-#' @export
-nmObjGet.saemTransformedData <- function(x, ...) {
-  .dataSav <- nmObjGet.dataSav(x, ...)
-  .obj <- x[[1]]
-  .ui <- .obj$ui
-  .saemGetDataForFit(.dataSav, .ui)
-}
-#attr(nmObjGet.saemTransformedData, "desc") <- "data that saem sees for optimization"
 
 #' @rdname nmObjGet
 #' @export

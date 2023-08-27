@@ -5,7 +5,10 @@
 
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
-  .origData <- rxode2::etTrans(fit$dataSav, .augPredIpredModel(fit), addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE)
+  .origData <- rxode2::etTrans(fit$dataSav, .augPredIpredModel(fit), addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE,
+                               addlKeepsCov = fit$control$rxControl$addlKeepsCov,
+                               addlDropSs = fit$control$rxControl$addlDropSs,
+                               ssAtDoseTime = fit$control$rxControl$ssAtDoseTime)
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs

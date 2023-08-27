@@ -716,12 +716,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
-.saemGetDataForFit <- function(dataSav, ui) {
-  .tmp <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
-  class(.tmp) <- "data.frame"
-  #as.data.frame(.tmp)
-  .tmp
-}
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
@@ -735,8 +729,11 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
+                         addlKeepsCov = .control$rxControl$addlKeepsCov,
+                         addlDropSs = .control$rxControl$addlDropSs,
+                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) {
     .tv <- names(.et)[-seq(1, 6)]
