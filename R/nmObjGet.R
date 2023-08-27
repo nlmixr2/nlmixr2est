@@ -321,7 +321,7 @@ nmObjGet.idLvl <- function(x, ...){
   if (exists("idLvl", .objEnv)) return(get("idLvl", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui, .env$control$rxControl)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$idLvl
 }
 
