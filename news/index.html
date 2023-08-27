@@ -47,6 +47,11 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
 <div class="section level3">
+<h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
+<ul><li><p>Removed <code>fit$saemTransformedData</code> since it isn’t actually used in <code>saem</code> anymore (but will break anyone’s code who is using it)</p></li>
+<li><p>Now the internal function <code><a href="../reference/dot-foceiPreProcessData.html">.foceiPreProcessData()</a></code> requires the rxode2 control <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> because some of the new steady state lag features need to translate the data differently based on <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> options.</p></li>
+</ul></div>
+<div class="section level3">
 <h3 id="mu-referencing-development-version">mu referencing<a class="anchor" aria-label="anchor" href="#mu-referencing-development-version"></a></h3>
 <ul><li>Algebraic mu referencing has been implemented in <code>nlme</code> and <code>saem</code>.</li>
 </ul></div>
