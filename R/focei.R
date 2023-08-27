@@ -1305,7 +1305,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.foceiPreProcessData <- function(data, env, ui, rxControl) {
+.foceiPreProcessData <- function(data, env, ui, rxControl=rxode2::rxControl()) {
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates
