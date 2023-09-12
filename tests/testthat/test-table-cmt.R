@@ -94,7 +94,7 @@ nmTest({
 
     tab1 <- .addTable(fit.s, table=tableControl(cwres=FALSE, npde=FALSE))
 
-    
+
     expect_true(all(c("CMT", "CRPZERO","WT", "PCA") %in% names(tab1)))
     expect_true(all(!is.na(tab1$CMT)))
     expect_s3_class(tab1$CMT, "factor")
@@ -138,4 +138,60 @@ nmTest({
         iter.max=0, calcTables=FALSE)), NA)
 
   })
+
+  test_that("another test for proper table output", {
+
+    .nlmixr <- function(...) suppressMessages(suppressWarnings(nlmixr(...)))
+
+    one.0abs.PM <- function() {
+      ini({
+        tkm <- log(c(0,1))
+        tcl <- log(c(0,2))
+        tclm <- log(c(0,10))
+        tv <- log(c(0,10))
+        tdur0 <- log(c(0,1))
+        eta.cl ~ 1
+        eta.v ~ 1
+        eta.km ~ 1
+        eta.clm ~ 1
+        eta.dur0 ~ 1
+        prop.err <- 1
+        prop.err2 <- 1
+      })
+      model({
+        km <- exp(tkm + eta.km)
+        cl <- exp(tcl + eta.cl)
+        clm <- exp(tclm + eta.clm)
+        v <- exp(tv + eta.v)
+        dur0    <- exp(tdur0+eta.dur0)
+        d/dt(center) = - cl / v * center - km * center
+        dur(center)=dur0
+        d/dt(meta) = km * center - clm/ v * meta
+        center(0)= 0
+        meta(0)= 0
+        cp = center / v
+        cm = meta / v
+        cp ~ prop(prop.err)
+        cm ~  prop(prop.err2)
+      })
+    }
+
+    d <- qs::qread(test_path("test-394.qs"))
+
+    f <- .nlmixr(
+      object = one.0abs.PM, data = d, est='focei',
+      control = foceiControl(
+        covMethod="",
+        interaction = TRUE,
+        maxOuterIterations = 0,
+        iter.max=0, calcTables=TRUE))
+
+    expect_equal(f %>% dplyr::filter(TIME==0.5) %>%
+                   dplyr::pull(CMT) %>% as.character() %>%
+                   unique() %>% sort(),
+                 c("cm", "cp"))
+
+  })
+
+
 })
