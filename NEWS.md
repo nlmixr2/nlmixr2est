@@ -1,6 +1,5 @@
 # nlmixr2est (development version)
 
-
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in
@@ -24,6 +23,8 @@
   correctly shown (#366)
 
 - Add back values for $parHistData (#368)
+
+- This requires a new `rxode2` which will fix multiple endpoint issues observed (#394)
 
 # nlmixr2est 2.1.6
 
