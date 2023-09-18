@@ -2,7 +2,7 @@ Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
     Routines
-Version: 2.1.6
+Version: 2.1.7
 Authors@R: c(
     person("Matthew", "Fidler", , "matt.fidler@novartis.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
@@ -42,10 +42,10 @@ Description: Fit and compare nonlinear mixed-effects models in
 License: GPL (>=3)
 URL: https://github.com/nlmixr2/nlmixr2est,
     https://nlmixr2.github.io/nlmixr2est/
-Depends: 
+Depends:
     nlmixr2data,
     R (>= 4.0)
-Imports: 
+Imports:
     backports,
     checkmate,
     cli,
@@ -61,12 +61,11 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    Rvmmin,
     rxode2 (>= 2.0.12),
     stats,
     symengine,
     utils
-Suggests: 
+Suggests:
     broom.mixed,
     crayon,
     data.table,
@@ -84,7 +83,7 @@ Suggests:
     sfsmisc,
     rxode2parse (>= 2.0.11),
     rxode2random (>= 2.0.9)
-LinkingTo: 
+LinkingTo:
     BH,
     lbfgsb3c,
     Rcpp,

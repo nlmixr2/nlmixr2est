@@ -1,3 +1,9 @@
+# nlmixr2est 2.1.7
+
+- As requested by CRAN, remove `Rvmmin`
+
+- Fix SD calculation typo (#366)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes
@@ -14,7 +20,7 @@
 
 - `augPred()` now consistently uses the simulation model (instead of
   the inner model used for `CWRES` calculation).
-  
+
 ## Other changes
 
 - Dropped dependence on orphaned package `ucminf`

@@ -32,10 +32,10 @@ is.latex <- function() {
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn,
-    control = .ctl,
-    lower = lower,
-    upper = upper
-  )
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper
+                        )
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -78,22 +78,6 @@ is.latex <- function() {
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
-  return(.ret)
-}
-
-.Rvmmin <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  ## Also gives unreasonable estimates
-  rxode2::rxReq("Rvmmin")
-  .masked <- rep_len(1, length(par))
-  .ctl <- list(
-    maxit = control$maxOuterIterations,
-    ## maxfevals
-    trace = 0, dowarn = FALSE, checkgrad = FALSE, checkbounds = FALSE,
-    keepinputpar = FALSE, eps = control$abstol
-  )
-  .ret <- Rvmmin::Rvmmin(par = par, fn = fn, gr = gr, lower = lower, upper = upper, bdmsk = .masked, control = list(), ...)
-  .ret$x <- .ret$par
-  .ret$message <- .ret$message
   return(.ret)
 }
 
@@ -1257,7 +1241,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     env$model <- rxUiGet.foceiModel(list(ui))
   }
   #} else {
-    #env$model <- rxUiGet.ebe(list(ui))
+  #env$model <- rxUiGet.ebe(list(ui))
   #}
   .foceiOptEnvAssignTol(ui, env)
   .foceiOptEnvAssignNllik(ui, env)
@@ -1309,11 +1293,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   data <- env$origData
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
-      if (any(x == .covNames)) {
-        return(x)
-      } else {
-        return(toupper(x))
-      }
+    if (any(x == .covNames)) {
+      return(x)
+    } else {
+      return(toupper(x))
+    }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
   checkmate::assert_names(names(data), must.include = requiredCols)
@@ -1474,12 +1458,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
     .draw <- TRUE
     if (attr(.ret0, "condition")$message == "Evaluation error: On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\").") {
-        message("Changing to \"bobyqa\"")
-        rxode2::rxReq("minqa")
-        .ret$control$outerOpt <- -1L
-        .ret$control$outerOptFun <- .bobyqa
-        .ret$control$outerOptTxt <- "bobyqa"
-        .draw <- FALSE
+      message("Changing to \"bobyqa\"")
+      rxode2::rxReq("minqa")
+      .ret$control$outerOpt <- -1L
+      .ret$control$outerOptFun <- .bobyqa
+      .ret$control$outerOptTxt <- "bobyqa"
+      .draw <- FALSE
     }
     ## Maybe change scale?
     message(sprintf("Restart %s", .n))
@@ -1542,9 +1526,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 .foceiToCmtLinesAndDvid <- function(ui) {
   .cmtLines <- ui$cmtLines
   paste(c("", vapply(seq_along(.cmtLines),
-         function(i){deparse1(.cmtLines[[i]])},
-         character(1), USE.NAMES=FALSE),
-         deparse1(ui$dvidLine)),
+                     function(i){deparse1(.cmtLines[[i]])},
+                     character(1), USE.NAMES=FALSE),
+          deparse1(ui$dvidLine)),
         collapse="\n")
 }
 
@@ -1908,4 +1892,3 @@ nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, e
   class(.env) <- c("output", "nlmixr2Est")
   nlmixr2Est(.env)
 }
-

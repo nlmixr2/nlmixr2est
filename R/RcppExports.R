@@ -154,5 +154,5 @@ nlmixr2Parameters <- function(theta, eta) {
 
 # Register entry points for exported C++ functions
 methods::setLoadAction(function(ns) {
-    .Call('_nlmixr2est_RcppExport_registerCCallable', PACKAGE = 'nlmixr2est')
+    .Call(`_nlmixr2est_RcppExport_registerCCallable`)
 })
