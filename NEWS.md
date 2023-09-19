@@ -26,6 +26,12 @@
 
 - This requires a new `rxode2` which will fix multiple endpoint issues observed (#394)
 
+# nlmixr2est 2.1.7
+
+- As requested by CRAN, remove `Rvmmin`
+
+- Fix SD calculation typo (#366)
+
 # nlmixr2est 2.1.6
 
 ## Breaking changes

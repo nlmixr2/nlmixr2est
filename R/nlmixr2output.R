@@ -316,7 +316,7 @@
   if (!is.null(.ret)) return(.ret)
 }
 
- #' @export
+#' @export
 `$.nlmixr2FitCoreSilent` <- `$.nlmixr2FitCore`
 
 #' @export

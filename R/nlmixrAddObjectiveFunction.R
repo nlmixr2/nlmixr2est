@@ -40,7 +40,9 @@ nlmixrAddObjectiveFunctionDataFrame <- function(fit, objDf, type, etaObf=NULL) {
       assign("objDf", .tmp, envir=fit$env)
       setOfv(fit, type)
     } else {
-      if (any(.rownames == type)) stop("objective function '", type, "' already present", call.=FALSE)
+      if (any(.rownames == type)) {
+        stop("objective function '", type, "' already present", call.=FALSE)
+      }
       # Now the original data frame is not NA.
       .tmp <- rbind(.inRow[[1]], .inRow2[[1]])
       .tmp[["Condition#(Cov)"]] <- .cn
