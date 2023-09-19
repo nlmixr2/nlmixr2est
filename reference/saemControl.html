@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.7.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.7</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -85,7 +85,6 @@
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  muRefCov <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -281,11 +280,11 @@ exploration of the likelihood surface.</p></dd>
 solving requests.  When specified this controls the relative and
 absolute tolerances of the ODE solvers.  By default the tolerance
 is <code>0.5*10^(-sigdig-2)</code> for regular ODEs. For the
-sensitivity equations the default is <code>0.5*10\^(-sigdig-1.5)</code>
+sensitivity equations the default is <code>0.5*10^(-sigdig-1.5)</code>
 (sensitivity changes only applicable for liblsoda).  This also
 controls the <code>atol</code>/<code>rtol</code> of the steady state solutions. The
-<code>ssAtol</code>/<code>ssRtol</code> is <code>0.5*10\^(-sigdig)</code> and for the sensitivities
-<code>0.5*10\^(-sigdig+0.625)</code>.  By default
+<code>ssAtol</code>/<code>ssRtol</code> is <code>0.5*10^(-sigdig)</code> and for the sensitivities
+<code>0.5*10^(-sigdig+0.625)</code>.  By default
 this is unspecified (<code>NULL</code>) and uses the standard <code>atol</code>/<code>rtol</code>.</p></dd>
 
 
@@ -306,20 +305,6 @@ are handled differently than non mu-referenced covariates.  When
 `TRUE`, mu-referenced covariates have special handling.  When
 `FALSE` mu-referenced covariates are treated the same as any
 other input parameter.</p></dd>
-
-
-<dt>muRefCovAlg</dt>
-<dd><p>This controls if algebraic expressions that can
-  be mu-referenced are treated as mu-referenced covariates by:</p>
-<p>1. Creating a internal data-variable `nlmixrMuDerCov#` for each
-     algebraic mu-referenced expression</p>
-<p>2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`</p>
-<p>3. Use the internal mu-referenced covariate for saem</p>
-<p>4. After optimization is completed, replace `model()` with old
-  `model()` expression</p>
-<p>5. Remove `nlmixrMuDerCov#` from nlmix2 output</p>
-<p>In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.</p></dd>
 
 
 <dt>...</dt>
