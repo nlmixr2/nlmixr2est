@@ -27,7 +27,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
@@ -53,6 +53,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   checkmate::assertNumeric(.relStep, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minAbsParApVar, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(ci, lower=0, upper=1, any.missing=FALSE, len=1)
+  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
 
   method <- match.arg(method)
   addProp <- match.arg(addProp)
@@ -110,7 +111,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
                rxControl=rxControl, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
-               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
+               ci=ci, sigdig=sigdig, sigdigTable=sigdigTable, muRefCovAlg=muRefCovAlg,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmeControl"
   .ret
@@ -456,8 +457,11 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   # When running the focei problem to create the nlmixr object, you also need a
   #  foceiControl object
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
+                         addlKeepsCov = .control$rxControl$addlKeepsCov,
+                         addlDropSs = .control$rxControl$addlDropSs,
+                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
   # Just like saem, nlme can use mu-referenced covariates
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) .nTv <- 0
@@ -516,6 +520,7 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
+  .model <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
@@ -524,5 +529,5 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   .nlmeFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .nlmeFamilyFit(env,  ...)
+  .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }

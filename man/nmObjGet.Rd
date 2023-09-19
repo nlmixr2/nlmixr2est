@@ -12,7 +12,7 @@
 \alias{nmObjGet.dataSav}
 \alias{nmObjGet.idLvl}
 \alias{nmObjGet.covLvl}
-\alias{nmObjGet.saemTransformedData}
+\alias{nmObjGet.parHist}
 \alias{nmObjGet.parHistStacked}
 \alias{nmObjGet.md5}
 \alias{nmObjGet.notes}
@@ -64,7 +64,7 @@ nmObjGet(x, ...)
 
 \method{nmObjGet}{covLvl}(x, ...)
 
-\method{nmObjGet}{saemTransformedData}(x, ...)
+\method{nmObjGet}{parHist}(x, ...)
 
 \method{nmObjGet}{parHistStacked}(x, ...)
 

@@ -1284,11 +1284,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @param data Input dataset
 #' @param env focei environment where focei family is run
 #' @param ui rxode2 ui
+#' @param rxControl is the rxode2 control that is used to translate to the modeling dataset
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.foceiPreProcessData <- function(data, env, ui) {
+.foceiPreProcessData <- function(data, env, ui, rxControl=rxode2::rxControl()) {
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates
@@ -1320,10 +1321,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
-  .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
+  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
+  .et <- rxode2::etTrans(inData=data, obj=.mod,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
-                         allTimeVar=TRUE, keepDosingOnly=FALSE)
+                         allTimeVar=TRUE, keepDosingOnly=FALSE,
+                         addlKeepsCov = rxControl$addlKeepsCov,
+                         addlDropSs = rxControl$addlDropSs,
+                         ssAtDoseTime = rxControl$ssAtDoseTime)
   .lst <- attr(class(.et), ".rxode2.lst")
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
@@ -1531,6 +1536,19 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
           deparse1(ui$dvidLine)),
         collapse="\n")
 }
+#' Calculate the parameter history
+#'
+#' @param .ret return data
+#' @return parameter history data frame
+#' @noRd
+#' @author Matthew L. Fidler
+.parHistCalc <- function(.ret) {
+  .tmp <- .ret$parHistData
+  .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
+  .iter <- .tmp$iter
+  .tmp <- .tmp[, names(.tmp) != "iter"]
+  data.frame(iter = .iter, .tmp, check.names=FALSE)
+}
 
 #' Setup the par history information
 #'
@@ -1540,13 +1558,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @noRd
 .foceiSetupParHistData <- function(.ret) {
   if (exists("parHistData", envir=.ret)) {
-    .tmp <- .ret$parHistData
-    .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
-    .iter <- .tmp$iter
-    .tmp <- .tmp[, names(.tmp) != "iter"]
-    ## .ret$parHistStacked <- data.frame(stack(.tmp), iter = .iter)
-    ## names(.ret$parHistStacked) <- c("val", "par", "iter")
-    .ret$parHist <- data.frame(iter = .iter, .tmp)
+    .ret$parHist <- .parHistCalc(.ret)
   }
 }
 
@@ -1556,7 +1568,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
-  .foceiPreProcessData(.data, .env, ui)
+  .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
     checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
                             row.names="strict", col.names="strict")
@@ -1599,8 +1611,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   assignInMyNamespace(".currentTimingEnvironment", .ret) # add environment for updating timing info
   if (.control$calcTables) {
-    .ret <- addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
-                     table=.ret$table)
+    .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
+                         table=.ret$table), silent=TRUE)
+    if (inherits(.tmp, "try-error")) {
+      warning("error calculating tables, returning without table step", call.=FALSE)
+    } else {
+      .ret <- .tmp
+    }
   }
   nlmixrWithTiming("compress", {
     if (exists("saem", .env)) {
@@ -1616,7 +1633,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .env$saem0 <- .saem
     }
     if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHist", "saem0")) {
+      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
@@ -1638,7 +1655,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                     "xType", "IDlabel", "ODEmodel",
                     # times
                     "optimTime", "setupTime", "covTime",
-                    "parHistData", "dataSav", "idLvl", "theta",
+                    "parHist", "dataSav", "idLvl", "theta",
                     "missingTable", "missingControl", "missingEst")) {
       if (exists(.item, .env)) {
         rm(list=.item, envir=.env)
