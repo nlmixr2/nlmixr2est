@@ -19,9 +19,6 @@
 - Printing models with correlated omega values and omega values fixed
   to zero no longer fails (#359)
 
-- Values in `$parFixed` for BSV without exponential transformation are now
-  correctly shown (#366)
-
 - Add back values for $parHistData (#368)
 
 - This requires a new `rxode2` which will fix multiple endpoint issues observed (#394)
@@ -30,7 +27,8 @@
 
 - As requested by CRAN, remove `Rvmmin`
 
-- Fix SD calculation typo (#366)
+- Values in `$parFixed` for BSV without exponential transformation are now
+  correctly shown (#366)
 
 # nlmixr2est 2.1.6
 
