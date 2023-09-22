@@ -44,7 +44,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
-  .qn <- qnorm(1.0-(1-0.95)/2)
+  .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
   .btName <- names(.ret$popDfSig)[4]
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
   .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
@@ -55,6 +55,11 @@
     if (length(.w) == 1L) {
       .b <- .ui$iniDf$backTransform[.w]
       if (!is.na(.b)) {
+        if (!exists(.b, envir=globalenv())) {
+          warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
+                  call.=FALSE)
+          return(invisible())
+        }
         .est <- .ret$popDf$Estimate[i]
         .se <- .ret$popDf$SE[i]
         .bt <- .ret$popDf[["Back-transformed"]]
