@@ -70,11 +70,12 @@
           .i1[i] <- .hi
           .ret$popDf[["CI Upper"]] <- .i1
           .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
+          .bt2[i] <- sprintf(.fmt, get(.b, envir=globalenv())(.est),
+                             .low, .hi)
           .ret$popDfSig[[.btName]] <- .bt2
         } else {
           .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt2, .est)
+          .bt2[i] <- sprintf(.fmt2, get(.b, envir=globalenv())(.est))
           .ret$popDfSig[[.btName]] <- .bt2
         }
       }
