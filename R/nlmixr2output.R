@@ -72,8 +72,6 @@
           .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
           .ret$popDfSig[[.btName]] <- .bt2
         } else {
-          .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
           .ret$popDfSig[[.btName]] <- .bt2
           .bt2 <- .ret$popDfSig[[.btName]]
           .bt2[i] <- sprintf(.fmt2, .est)
