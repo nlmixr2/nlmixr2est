@@ -36,6 +36,7 @@
     ret$popDfSig <- data.frame(Parameter = .lab, ret$popDfSig, check.names = FALSE)
   }
 }
+
 #'  This applies the manually specified back-transformations
 #'
 #' @param .ret focei environment
@@ -59,7 +60,7 @@
         .bt <- .ret$popDf[["Back-transformed"]]
         .bt[i] <- get(.b, envir=globalenv())(.est)
         .ret$popDf[["Back-transformed"]] <- .bt
-        if (is.na(.se)) {
+        if (!is.na(.se)) {
           .i1 <- .ret$popDf[["CI Lower"]]
           .low <- get(.b, envir=globalenv())(.est - .se * .qn)
           .i1[i] <- .low
@@ -72,7 +73,6 @@
           .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
           .ret$popDfSig[[.btName]] <- .bt2
         } else {
-          .ret$popDfSig[[.btName]] <- .bt2
           .bt2 <- .ret$popDfSig[[.btName]]
           .bt2[i] <- sprintf(.fmt2, .est)
           .ret$popDfSig[[.btName]] <- .bt2
