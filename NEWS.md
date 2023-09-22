@@ -23,6 +23,10 @@
 
 - This requires a new `rxode2` which will fix multiple endpoint issues observed (#394)
 
+- Manual back-transformed values in `$parFixed` are now displaying
+  correctly and are calculated based on the confidence interval in the
+  control instead of 95% confidence no matter what (#397)
+,s
 # nlmixr2est 2.1.7
 
 - As requested by CRAN, remove `Rvmmin`
