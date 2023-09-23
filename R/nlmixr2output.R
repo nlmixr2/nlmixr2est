@@ -57,7 +57,8 @@
   if (length(.w) == 1L) {
     .b <- .ui$iniDf$backTransform[.w]
     if (!is.na(.b)) {
-      if (!exists(.b, envir=globalenv())) {
+      .bfun <- try(get(.b, envir=.nlmixrEvalEnv$envir), silent=TRUE)
+      if (inherits(.bfun, "try-error")) {
         warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
                 call.=FALSE)
         return(invisible())
@@ -65,24 +66,24 @@
       .est <- .ret$popDf$Estimate[i]
       .se <- .ret$popDf$SE[i]
       .bt <- .ret$popDf[["Back-transformed"]]
-      .bt[i] <- get(.b, envir=globalenv())(.est)
+      .bt[i] <- .bfun(.est)
       .ret$popDf[["Back-transformed"]] <- .bt
       if (!is.na(.se)) {
         .i1 <- .ret$popDf[["CI Lower"]]
-        .low <- get(.b, envir=globalenv())(.est - .se * .qn)
+        .low <- .bfun(.est - .se * .qn)
         .i1[i] <- .low
         .ret$popDf[["CI Lower"]] <- .i1
         .i1 <- .ret$popDf[["CI Upper"]]
-        .hi <- get(.b, envir=globalenv())(.est + .se * .qn)
+        .hi <- .bfun(.est + .se * .qn)
         .i1[i] <- .hi
         .ret$popDf[["CI Upper"]] <- .i1
         .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt, get(.b, envir=globalenv())(.est),
+        .bt2[i] <- sprintf(.fmt, .bfun(.est),
                            .low, .hi)
         .ret$popDfSig[[.btName]] <- .bt2
       } else {
         .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt2, get(.b, envir=globalenv())(.est))
+        .bt2[i] <- sprintf(.fmt2, .bfun(.est))
         .ret$popDfSig[[.btName]] <- .bt2
       }
     }

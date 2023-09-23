@@ -55,6 +55,8 @@ nlmixr2Version <- function() {
   invisible()
 }
 
+.nlmixrEvalEnv <- new.env(parent=emptyenv())
+
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -79,9 +81,9 @@ nlmixr2Version <- function() {
 #' @param envir Environment where the nlmixr object/function is
 #'   evaluated before running the estimation routine.
 #' @return Either a nlmixr2 model or a nlmixr2 fit object
-#' 
+#'
 #' @includeRmd man/rmdhunks/nlmixr2Keywords.Rmd
-#' 
+#'
 #' @author Matthew L. Fidler
 #' @examples
 #'
@@ -123,6 +125,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   rxode2::rxUnloadAll()
   assignInMyNamespace(".nlmixr2Time", proc.time())
   assignInMyNamespace(".finalUiCompressed", FALSE)
+  .nlmixrEvalEnv$envir <- envir
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
