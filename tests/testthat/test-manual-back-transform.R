@@ -98,4 +98,8 @@ test_that("manual back-transform", {
   expect_equal(setNames(exp(fit$parFixedDf["tv", "Estimate"] - qn * fit$parFixedDf["tv", "SE"]), NULL),
                setNames(fit$parFixedDf["tv", "CI Lower"], NULL))
 
+  expect_error(nlmixr(one.cmt, theo_sd, est="focei",
+                      control=foceiControl(print=0, maxOuterIterations = 0, maxInnerIterations = 0,
+                                           covMethod = "")), NA)
+
 })

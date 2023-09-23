@@ -97,13 +97,14 @@
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
-  .w <- which(grepl("^[Bb]ack", names(.ret$popDfSig)))
-  if (length(.w) != 1L) {
-    warning("structure of output not expected, cannot apply manual back-transformations",
-            call.=FALSE)
-    return(invisible())
+  .n <- names(.ret$popDfSig)
+  if (length(.n) >= 4) {
+    .btName <- names(.ret$popDfSig)[4]
+  } else if (length(.n) >= 2) {
+    .btName <- names(.ret$popDfSig)[2]
+  } else {
+    return(NULL)
   }
-  .btName <- names(.ret$popDfSig)[.w]
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
   .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
   .fmt2 <- paste0("%", .sigdig, "g")
