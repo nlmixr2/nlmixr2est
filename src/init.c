@@ -13,9 +13,9 @@
 /* Internal C calls, should not be called outside of C code. */
 typedef void (*S_fp) (double *, double *);
 extern void nelder_fn(S_fp func, int n, double *start, double *step,
-	       int itmax, double ftol_rel, double rcoef, double ecoef, double ccoef,
-	       int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
-	       int *iprint);
+                      int itmax, double ftol_rel, double rcoef, double ecoef, double ccoef,
+                      int *iconv, int *it, int *nfcall, double *ynewlo, double *xmin,
+                      int *iprint);
 
 /* .Call calls */
 extern SEXP neldermead_wrap(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -42,7 +42,7 @@ SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiNumericGrad(SEXP);
 
 SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
-			 SEXP, SEXP, SEXP, SEXP, SEXP);
+                             SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
@@ -54,7 +54,7 @@ SEXP _nlmixr2est_boxCox_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_iBoxCox_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_freeFocei(void);
 SEXP _nlmixr2est_nlmixr2Gill83_(SEXP, SEXP, SEXP, SEXP, SEXP,
-			   SEXP, SEXP, SEXP, SEXP);
+                                SEXP, SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_nlmixr2Grad_(SEXP, SEXP);
 SEXP _nlmixr2est_nlmixr2Eval_(SEXP, SEXP);
@@ -66,10 +66,10 @@ SEXP _nlmixr2est_saem_fit(SEXP);
 SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
-			  SEXP);
+                              SEXP);
 
 static const R_CMethodDef CEntries[] = {
-    {NULL, NULL, 0}
+  {NULL, NULL, 0}
 };
 
 SEXP _nlmixr2est_powerD(SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -88,8 +88,12 @@ SEXP _nlmixr2est_rxode2hasLlik(void);
 
 typedef SEXP (*_rxode2random_rxRmvnSEXP_t)(SEXP nSSEXP, SEXP muSSEXP, SEXP sigmaSSEXP, SEXP lowerSSEXP, SEXP upperSSEXP, SEXP ncoresSSEXP, SEXP isCholSSEXP, SEXP keepNamesSSEXP, SEXP aSSEXP, SEXP tolSSEXP, SEXP nlTolSSEXP, SEXP nlMaxiterSSEXP);
 _rxode2random_rxRmvnSEXP_t rxRmvnSEXPnlmixrEst;
+SEXP _nlmixr2est_RcppExport_registerCCallable();
+
+SEXP _nlmixr2est_RcppExport_registerCCallable(void);
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},
   {"_nlmixr2est_freeFocei", (DL_FUNC) &_nlmixr2est_freeFocei, 0},
   {"_nlmixr2est_filterNormalLikeAndDoses", (DL_FUNC) &_nlmixr2est_filterNormalLikeAndDoses, 3},

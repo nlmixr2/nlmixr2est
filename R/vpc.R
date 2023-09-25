@@ -3,7 +3,7 @@
 #'
 #' @param object This is the nlmixr2 fit object
 #' @param ... Other arguments sent to `rxSolve()`
-#' @param keep Keep character vector
+#' @param keep Column names to keep in the output simulated dataset
 #' @param n Number of simulations
 #' @param pred Should predictions be added to the simulation
 #' @param seed Seed to set for the VPC simulation

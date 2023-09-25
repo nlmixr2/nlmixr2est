@@ -718,7 +718,6 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   arma::vec retR(ind->n_all_times);
   // this assumes the inner problem has been solved
   fInd->nObs = 0;
-  double *llikObs = fInd->llikObs;
   rx_solving_options *op = rx->op;
   int kk, k=0;
   double curT;
@@ -1051,7 +1050,6 @@ double likInner0(double *eta, int id){
       fInd->tbsLik=0.0;
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
-      int oldNeq = op->neq;
       if (predSolve) {
         iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
       } else {
@@ -1945,7 +1943,7 @@ static inline bool isFixedTheta(int m) {
   return true; // here the parameter is fixed
 }
 
-static inline bool thetaReset0() {
+static inline bool thetaReset0(bool forceReset = false) {
   NumericVector thetaIni(op_focei.ntheta);
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
@@ -1985,7 +1983,9 @@ static inline bool thetaReset0() {
       adjustEta[ii] = false;
     }
   }
-  if (!doAdjust) return false;
+  if (!doAdjust && !forceReset) {
+    return false;
+  }
 
   arma::mat etaMat(rx->nsub, op_focei.neta);
   for (int ii = rx->nsub; ii--;){
@@ -2028,7 +2028,7 @@ void thetaReset(double size){
 }
 
 void thetaResetZero() {
-  thetaReset0();
+  thetaReset0(true);
   warning(_("thetas were reset during optimization because of a zero gradient"));
   stop("theta reset0");
 }
@@ -2330,7 +2330,6 @@ void foceiPhi(Environment e) {
     dimn[1] = e["etaNames"];
   }
   for (int j=rx->nsub; j--;){
-    focei_ind *fInd = &(inds_focei[j]);
     arma::mat H(op_focei.gH + j*op_focei.neta*op_focei.neta, op_focei.neta, op_focei.neta, false, true);
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
@@ -5878,7 +5877,7 @@ void foceiFinalizeTables(Environment e){
   LogicalVector skipCov = e["skipCov"];
 
   if (covExists) {
-    Function loadNamespace("loadNamespace", R_BaseNamespace);    
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function getCor = nlmixr2[".cov2cor"];
     e["fullCor"] = getCor(e["cov"]);
@@ -6829,7 +6828,6 @@ void saveIntoEnvrionment(Environment e) {
 }
 
 void restoreFromEnvrionment(Environment e) {
-  int totN=op_focei.ntheta + op_focei.omegan;
   arma::Col<int> etaTrans = e[".etaTrans"];
   std::copy(etaTrans.begin(), etaTrans.end(), op_focei.etaTrans);
   arma::vec fullTheta = e[".fullTheta"];

@@ -20,7 +20,7 @@ vpcSim(
 
 \item{...}{Other arguments sent to `rxSolve()`}
 
-\item{keep}{Keep character vector}
+\item{keep}{Column names to keep in the output simulated dataset}
 
 \item{n}{Number of simulations}
 

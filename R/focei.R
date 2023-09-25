@@ -32,10 +32,10 @@ is.latex <- function() {
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn,
-    control = .ctl,
-    lower = lower,
-    upper = upper
-  )
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper
+                        )
   .ret$x <- .ret$par
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
@@ -78,22 +78,6 @@ is.latex <- function() {
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
-  return(.ret)
-}
-
-.Rvmmin <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  ## Also gives unreasonable estimates
-  rxode2::rxReq("Rvmmin")
-  .masked <- rep_len(1, length(par))
-  .ctl <- list(
-    maxit = control$maxOuterIterations,
-    ## maxfevals
-    trace = 0, dowarn = FALSE, checkgrad = FALSE, checkbounds = FALSE,
-    keepinputpar = FALSE, eps = control$abstol
-  )
-  .ret <- Rvmmin::Rvmmin(par = par, fn = fn, gr = gr, lower = lower, upper = upper, bdmsk = .masked, control = list(), ...)
-  .ret$x <- .ret$par
-  .ret$message <- .ret$message
   return(.ret)
 }
 
@@ -1257,7 +1241,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     env$model <- rxUiGet.foceiModel(list(ui))
   }
   #} else {
-    #env$model <- rxUiGet.ebe(list(ui))
+  #env$model <- rxUiGet.ebe(list(ui))
   #}
   .foceiOptEnvAssignTol(ui, env)
   .foceiOptEnvAssignNllik(ui, env)
@@ -1300,20 +1284,21 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @param data Input dataset
 #' @param env focei environment where focei family is run
 #' @param ui rxode2 ui
+#' @param rxControl is the rxode2 control that is used to translate to the modeling dataset
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.foceiPreProcessData <- function(data, env, ui) {
+.foceiPreProcessData <- function(data, env, ui, rxControl=rxode2::rxControl()) {
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
-      if (any(x == .covNames)) {
-        return(x)
-      } else {
-        return(toupper(x))
-      }
+    if (any(x == .covNames)) {
+      return(x)
+    } else {
+      return(toupper(x))
+    }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
   checkmate::assert_names(names(data), must.include = requiredCols)
@@ -1336,10 +1321,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
-  .et <- rxode2::etTrans(inData=data, obj=ui$mv0,
+  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
+  .et <- rxode2::etTrans(inData=data, obj=.mod,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
-                         allTimeVar=TRUE, keepDosingOnly=FALSE)
+                         allTimeVar=TRUE, keepDosingOnly=FALSE,
+                         addlKeepsCov = rxControl$addlKeepsCov,
+                         addlDropSs = rxControl$addlDropSs,
+                         ssAtDoseTime = rxControl$ssAtDoseTime)
   .lst <- attr(class(.et), ".rxode2.lst")
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
@@ -1474,12 +1463,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
     .draw <- TRUE
     if (attr(.ret0, "condition")$message == "Evaluation error: On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\").") {
-        message("Changing to \"bobyqa\"")
-        rxode2::rxReq("minqa")
-        .ret$control$outerOpt <- -1L
-        .ret$control$outerOptFun <- .bobyqa
-        .ret$control$outerOptTxt <- "bobyqa"
-        .draw <- FALSE
+      message("Changing to \"bobyqa\"")
+      rxode2::rxReq("minqa")
+      .ret$control$outerOpt <- -1L
+      .ret$control$outerOptFun <- .bobyqa
+      .ret$control$outerOptTxt <- "bobyqa"
+      .draw <- FALSE
     }
     ## Maybe change scale?
     message(sprintf("Restart %s", .n))
@@ -1542,9 +1531,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 .foceiToCmtLinesAndDvid <- function(ui) {
   .cmtLines <- ui$cmtLines
   paste(c("", vapply(seq_along(.cmtLines),
-         function(i){deparse1(.cmtLines[[i]])},
-         character(1), USE.NAMES=FALSE),
-         deparse1(ui$dvidLine)),
+                     function(i){deparse1(.cmtLines[[i]])},
+                     character(1), USE.NAMES=FALSE),
+          deparse1(ui$dvidLine)),
         collapse="\n")
 }
 #' Calculate the parameter history
@@ -1579,7 +1568,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
-  .foceiPreProcessData(.data, .env, ui)
+  .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
     checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
                             row.names="strict", col.names="strict")

@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+## Breaking changes
+
+- Removed `fit$saemTransformedData` since it isn't actually used in
+  `saem` anymore (but will break anyone's code who is using it)
+
+- Now the internal function `.foceiPreProcessData()` requires the
+  rxode2 control `rxControl()` because some of the new steady state
+  lag features need to translate the data differently based on
+  `rxControl()` options.
+
 ## mu referencing
 
 - Algebraic mu referencing has been implemented in `nlme` and `saem`.
@@ -9,14 +19,25 @@
 - Printing models with correlated omega values and omega values fixed
   to zero no longer fails (#359)
 
-- Values in `$parFixed` for BSV without exponential transformation are now
-  correctly shown (#366)
-
 - Add back values for $parHistData (#368)
 
+- This requires a new `rxode2` which will fix multiple endpoint issues observed (#394)
+
+- Manual back-transformed values in `$parFixed` are now displaying
+  correctly and are calculated based on the confidence interval in the
+  control instead of 95% confidence no matter what (#397)
+  
 ## Other changes
 
 - An `as.rxUi()` method was added for fit models (#377)
+
+# nlmixr2est 2.1.7
+
+- As requested by CRAN, remove `Rvmmin`
+
+- Values in `$parFixed` for BSV without exponential transformation are now
+  correctly shown (#366)
+
 
 # nlmixr2est 2.1.6
 

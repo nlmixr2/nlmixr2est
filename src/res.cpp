@@ -14,29 +14,39 @@
 
 void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
                      List &etasDfFull, int &nid, unsigned int &neta) {
+  int idSize = ID.size();
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
+  bool singleEta = lastId == ID[0];
   int etaFulli = nid-1;
   double curEta=0.0;
-  for (unsigned int j = ID.size(); j--; ){
-    if (lastId != ID[j]){
-      // Fill in full eta data frame
-      for (unsigned int i = neta; i--;){
-        curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
-        NumericVector cur = etasDfFull[i];
-        std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
-      }
-      etaFulli--;
-      lastId=ID[j];
-      lastIndex=j;
-      lastCol--;
-      if (lastCol == 0){
-        // Finalize ETA
+  if (singleEta) {
+    for (unsigned int i = neta; i--;){
+      curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
+      NumericVector cur = etasDfFull[i];
+      std::fill_n(cur.begin(),ID.size(),curEta);
+    }
+  } else {
+    for (unsigned int j = ID.size(); j--; ){
+      if (lastId != ID[j]) {
+        // Fill in full eta data frame
         for (unsigned int i = neta; i--;){
-          curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
+          curEta = etas(etaFulli, i);//(as<NumericVector>(etasDf1[i]))[etaFulli];
           NumericVector cur = etasDfFull[i];
-          std::fill_n(cur.begin(),lastIndex+1,curEta);
+          std::fill_n(cur.begin()+j+1,lastIndex-j,curEta);
         }
-        break;
+        etaFulli--;
+        lastId=ID[j];
+        lastIndex=j;
+        lastCol--;
+        if (lastCol == 0) {
+          // Finalize ETA
+          for (unsigned int i = neta; i--;){
+            curEta = etas(0, i);//(as<NumericVector>(etasDf1[i]))[0];
+            NumericVector cur = etasDfFull[i];
+            std::fill_n(cur.begin(),lastIndex+1,curEta);
+          }
+          break;
+        }
       }
     }
   }
@@ -295,7 +305,7 @@ extern "C" SEXP _nlmixr2est_resCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   arma::vec iwres=(dvt-ipredt);
   iwres.elem(riv0) /= sqrt(riv.elem(riv0));
   iwres.elem(nonNormIdx).fill(NA_REAL);
-  
+
   arma::vec ires = dv - ipred;
   ires.elem(nonNormIdx).fill(NA_REAL);
 
@@ -391,5 +401,5 @@ extern "C" SEXP _nlmixr2est_popResFinal(SEXP inList) {
                            l4[2]);
   return List::create(_["resid"]=dfCbindList(wrap(retC)),
                       _["shrink"]=l4[3]);
-  END_RCPP  
+  END_RCPP
     }

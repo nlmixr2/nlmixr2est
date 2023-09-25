@@ -1,5 +1,4 @@
 # CRAN Comments
 
-- Change maintainer email address
-- Dropped orphan package
-- Fix `augPred` and change `$omega` output
+- Dropped retired package Rvmmin
+- Fix issue with incorrect standard devitiatons for random effects

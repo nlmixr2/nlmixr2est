@@ -36,6 +36,60 @@
     ret$popDfSig <- data.frame(Parameter = .lab, ret$popDfSig, check.names = FALSE)
   }
 }
+#' Apply the manual translation for only one item
+#'
+#' @param i Which parameter should be updated
+#' @param .ret return environment
+#' @param .ui user interface function
+#' @param .qn The qn for the
+#' @param .btName Back-transform name
+#' @param .fmt format for one estimate
+#' @param .fmt2 format for estimate and ci
+#' @return nothing, called for side effects
+#' @keywords internal
+#' @author Matthew L. Fidler
+#' @noRd
+.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui,
+                                                           .qn, .btName,
+                                                           .fmt, .fmt2) {
+  theta <- row.names(.ret$popDf)[i]
+  .w <- which(.ui$iniDf$name == theta)
+  if (length(.w) == 1L) {
+    .b <- .ui$iniDf$backTransform[.w]
+    if (!is.na(.b)) {
+      .bfun <- try(get(.b, envir=.nlmixrEvalEnv$envir), silent=TRUE)
+      if (inherits(.bfun, "try-error")) {
+        warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
+                call.=FALSE)
+        return(invisible())
+      }
+      .est <- .ret$popDf$Estimate[i]
+      .se <- .ret$popDf$SE[i]
+      .bt <- .ret$popDf[["Back-transformed"]]
+      .bt[i] <- .bfun(.est)
+      .ret$popDf[["Back-transformed"]] <- .bt
+      if (!is.na(.se)) {
+        .i1 <- .ret$popDf[["CI Lower"]]
+        .low <- .bfun(.est - .se * .qn)
+        .i1[i] <- .low
+        .ret$popDf[["CI Lower"]] <- .i1
+        .i1 <- .ret$popDf[["CI Upper"]]
+        .hi <- .bfun(.est + .se * .qn)
+        .i1[i] <- .hi
+        .ret$popDf[["CI Upper"]] <- .i1
+        .bt2 <- .ret$popDfSig[[.btName]]
+        .bt2[i] <- sprintf(.fmt, .bfun(.est),
+                           .low, .hi)
+        .ret$popDfSig[[.btName]] <- .bt2
+      } else {
+        .bt2 <- .ret$popDfSig[[.btName]]
+        .bt2[i] <- sprintf(.fmt2, .bfun(.est))
+        .ret$popDfSig[[.btName]] <- .bt2
+      }
+    }
+  }
+}
+
 #'  This applies the manually specified back-transformations
 #'
 #' @param .ret focei environment
@@ -43,45 +97,21 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
-  .qn <- qnorm(1.0-(1-0.95)/2)
-  .btName <- names(.ret$popDfSig)[4]
+  .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
+  .n <- names(.ret$popDfSig)
+  if (length(.n) >= 4) {
+    .btName <- names(.ret$popDfSig)[4]
+  } else if (length(.n) >= 2) {
+    .btName <- names(.ret$popDfSig)[2]
+  } else {
+    return(NULL)
+  }
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
   .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
   .fmt2 <- paste0("%", .sigdig, "g")
-  lapply(seq_along(.ret$popDf$Estimate), function(i) {
-    theta <- row.names(.ret$popDf)[i]
-    .w <- which(.ui$iniDf$name == theta)
-    if (length(.w) == 1L) {
-      .b <- .ui$iniDf$backTransform[.w]
-      if (!is.na(.b)) {
-        .est <- .ret$popDf$Estimate[i]
-        .se <- .ret$popDf$SE[i]
-        .bt <- .ret$popDf[["Back-transformed"]]
-        .bt[i] <- get(.b, envir=globalenv())(.est)
-        .ret$popDf[["Back-transformed"]] <- .bt
-        if (is.na(.se)) {
-          .i1 <- .ret$popDf[["CI Lower"]]
-          .low <- get(.b, envir=globalenv())(.est - .se * .qn)
-          .i1[i] <- .low
-          .ret$popDf[["CI Lower"]] <- .i1
-          .i1 <- .ret$popDf[["CI Upper"]]
-          .hi <- get(.b, envir=globalenv())(.est + .se * .qn)
-          .i1[i] <- .hi
-          .ret$popDf[["CI Upper"]] <- .i1
-          .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
-          .ret$popDfSig[[.btName]] <- .bt2
-        } else {
-          .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt, .est, .low, .hi)
-          .ret$popDfSig[[.btName]] <- .bt2
-          .bt2 <- .ret$popDfSig[[.btName]]
-          .bt2[i] <- sprintf(.fmt2, .est)
-          .ret$popDfSig[[.btName]] <- .bt2
-        }
-      }
-    }
-  })
+  lapply(seq_along(.ret$popDf$Estimate), .updateParFixedApplyManualBacktransformationsI,
+         .ret=.ret, .ui=.ui, .qn=.qn, .btName=.btName,
+         .fmt=.fmt, .fmt2=.fmt2)
 }
 
 #' This gets the CV/SD for a single ETA
@@ -316,7 +346,7 @@
   if (!is.null(.ret)) return(.ret)
 }
 
- #' @export
+#' @export
 `$.nlmixr2FitCoreSilent` <- `$.nlmixr2FitCore`
 
 #' @export

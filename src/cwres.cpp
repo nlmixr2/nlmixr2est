@@ -6,8 +6,6 @@ static inline void calculateCwresDerr(arma::mat& fppm, arma::mat& fpim,
                                       arma::vec &dErr_dEta_i, arma::vec &dErr_dEta_p,
                                       int &nid) {
   int lastId = ID[ID.size()-1], lastCol = nid-1, lastIndex=ID.size()-1;
-  int etaFulli = nid-1;
-  double curEta=0.0;
   for (unsigned int j = fppm.n_rows; j--; ){
     if (lastId != ID[j]){
       // FIXME do it without copy?
@@ -148,7 +146,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     arma::vec dvNorm = dv.elem(normIdx);
     arma::vec predtNorm = predt.elem(normIdx);
     arma::Col<int> IDnorm = ID.elem(normIdx);
-  
+
     arma::mat fppm2 = fppm.rows(normIdx);
     arma::mat fpim2 = fpim.rows(normIdx);
 
@@ -218,17 +216,17 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
     cwresFinal.elem(normIdx) = cwres;
     pred.elem(normIdx)  = predNorm;
     // fill rest with na
-    resFinal.elem(nonNormIdx).fill(NA_REAL);  
-    wresFinal.elem(nonNormIdx).fill(NA_REAL); 
-    iresFinal.elem(nonNormIdx).fill(NA_REAL); 
+    resFinal.elem(nonNormIdx).fill(NA_REAL);
+    wresFinal.elem(nonNormIdx).fill(NA_REAL);
+    iresFinal.elem(nonNormIdx).fill(NA_REAL);
     iwresFinal.elem(nonNormIdx).fill(NA_REAL);
     cpredFinal.elem(nonNormIdx).fill(NA_REAL);
-    cresFinal.elem(nonNormIdx).fill(NA_REAL); 
+    cresFinal.elem(nonNormIdx).fill(NA_REAL);
     cwresFinal.elem(nonNormIdx).fill(NA_REAL);
   }
   calculateDfFull(ID, etas, etasDfFull, nid, neta);
 
- 
+
   for (unsigned int j = dv.size(); j--; ) {
     if (censMethod == CENS_OMIT && cens[j] != 0) {
       dv[j]         = NA_REAL;
@@ -267,7 +265,7 @@ extern "C" SEXP _nlmixr2est_cwresCalc(SEXP ipredPredListSEXP, SEXP omegaMatSEXP,
   nm[i] = "PRED"; retDF[i++] = wrap(pred);
   if (ncalc2 != 0) {
     nm[i] = "RES"; retDF[i++] = wrap(resFinal);
-    nm[i] = "WRES"; retDF[i++] = wrap(wresFinal);    
+    nm[i] = "WRES"; retDF[i++] = wrap(wresFinal);
   }
   nm[i] = "IPRED"; retDF[i++] = wrap(ipred);
   if (ncalc2 != 0) {

@@ -862,7 +862,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(rhobeg, lower=0, len=1, finite=TRUE, any.missing=FALSE)
   checkmate::assertNumeric(rhoend, lower=0, len=1, finite=TRUE, any.missing=FALSE)
   if (rhoend >= rhobeg) {
-     stop("the trust region method needs '0 < rhoend < rhobeg'",
+    stop("the trust region method needs '0 < rhoend < rhobeg'",
          call.=FALSE)
   }
   if (!is.null(npt)) {
@@ -1051,9 +1051,6 @@ foceiControl <- function(sigdig = 3, #
     } else if (outerOpt == "lbfgsbLG") {
       outerOptFun <- .lbfgsbLG
       outerOpt <- -1L
-    } else if (outerOpt == "Rvmmin") {
-      outerOptFun <- .Rvmmin
-      outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
         outerOpt <- as.integer(outerOpt)
@@ -1079,14 +1076,14 @@ foceiControl <- function(sigdig = 3, #
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
-      checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
-      if (resetEtaP > 0 & resetEtaP < 1) {
-        .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
-      } else if (resetEtaP <= 0) {
-        .resetEtaSize <- Inf
-      } else {
-        .resetEtaSize <- 0
-      }
+    checkmate::assertNumeric(resetEtaP, lower=0, upper=1, len=1)
+    if (resetEtaP > 0 & resetEtaP < 1) {
+      .resetEtaSize <- qnorm(1 - (resetEtaP / 2))
+    } else if (resetEtaP <= 0) {
+      .resetEtaSize <- Inf
+    } else {
+      .resetEtaSize <- 0
+    }
   }
   if (!is.null(.xtra$resetThetaSize)) {
     .resetThetaSize <- .xtra$resetThetaSize
