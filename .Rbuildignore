@@ -90,3 +90,4 @@ BinaryFiles$
 ^README\.Rmd$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^LICENSE\.md$

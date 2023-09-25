@@ -26,13 +26,18 @@
 - Manual back-transformed values in `$parFixed` are now displaying
   correctly and are calculated based on the confidence interval in the
   control instead of 95% confidence no matter what (#397)
-,s
+  
+## Other changes
+
+- An `as.rxUi()` method was added for fit models (#377)
+
 # nlmixr2est 2.1.7
 
 - As requested by CRAN, remove `Rvmmin`
 
 - Values in `$parFixed` for BSV without exponential transformation are now
   correctly shown (#366)
+
 
 # nlmixr2est 2.1.6
 
