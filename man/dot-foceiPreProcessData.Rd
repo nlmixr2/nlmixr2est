@@ -4,7 +4,7 @@
 \alias{.foceiPreProcessData}
 \title{This function process the data for use in focei}
 \usage{
-.foceiPreProcessData(data, env, ui)
+.foceiPreProcessData(data, env, ui, rxControl = rxode2::rxControl())
 }
 \arguments{
 \item{data}{Input dataset}
@@ -12,6 +12,8 @@
 \item{env}{focei environment where focei family is run}
 
 \item{ui}{rxode2 ui}
+
+\item{rxControl}{is the rxode2 control that is used to translate to the modeling dataset}
 }
 \value{
 Nothing, called for side effects

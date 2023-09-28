@@ -6,6 +6,10 @@ magrittr::`%>%`
 #' @export
 rxode2::rxode2
 
+#' @importFrom rxode2 as.rxUi
+#' @export
+rxode2::as.rxUi
+
 #' @importFrom rxode2 rxode
 #' @export
 rxode2::rxode
@@ -253,5 +257,3 @@ rxode2::rxParams
 #' @importFrom rxode2 rxModelVarsS3
 #' @export
 rxode2::rxModelVarsS3
-
-
