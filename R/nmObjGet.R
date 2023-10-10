@@ -302,7 +302,7 @@ nmObjGet.dataSav <- function(x, ...) {
   if (exists("dataSav", .objEnv)) return(get("dataSav", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$dataSav
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
@@ -321,7 +321,7 @@ nmObjGet.idLvl <- function(x, ...){
   if (exists("idLvl", .objEnv)) return(get("idLvl", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$idLvl
 }
 
@@ -333,7 +333,7 @@ nmObjGet.covLvl <- function(x, ...) {
   if (exists("covLvl", .objEnv)) return(get("covLvl", envir=.objEnv))
   .data <- .obj$origData
   .env <- new.env(emptyenv())
-  .foceiPreProcessData(.data, .env, .obj$ui)
+  .foceiPreProcessData(.data, .env, .obj$ui, .obj$control$rxControl)
   .env$covLvl
 }
 #attr(nmObjGet.dataSav, "desc") <- "data that focei sees for optimization"
@@ -480,30 +480,30 @@ attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit d
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.saemTransformedData <- function(x, ...) {
-  .dataSav <- nmObjGet.dataSav(x, ...)
+nmObjGet.parHist <- function(x, ...) {
   .obj <- x[[1]]
-  .ui <- .obj$ui
-  .saemGetDataForFit(.dataSav, .ui)
+  .env <- .obj$env
+  if (exists("parHistData", envir=.env)) {
+    return(.parHistCalc(.env))
+  }
+  NULL
 }
-#attr(nmObjGet.saemTransformedData, "desc") <- "data that saem sees for optimization"
-
+attr(nmObjGet.parHist, "desc") <- "Parameter History"
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.parHistStacked <- function(x, ...) {
   .obj <- x[[1]]
   .env <- .obj$env
-  if (exists("parHist", envir=.env)) {
-    .parHist <- .env$parHist
+  if (exists("parHistData", envir=.env)) {
+    .parHist <- .parHistCalc(.env)
     .iter <- .parHist$iter
     .ret <- data.frame(iter=.iter, stack(.parHist[, -1]))
     names(.ret) <- sub("values", "val",
                        sub("ind", "par", names(.ret)))
-    .ret
-  } else {
-    NULL
+    return(.ret)
   }
+  NULL
 }
 attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
 

@@ -63,7 +63,7 @@ bool nmNearPD(mat &ret, mat x
               , int maxit//    = 100 // maximum number of iterations allowed
               , bool trace// = false // set to TRUE (or 1 ..) to trace iterations
               ){
-  int n = x.n_cols;
+  unsigned int n = (unsigned int)x.n_cols;
   vec diagX0;
   if (keepDiag) {
     diagX0 = x.diag();
@@ -71,7 +71,7 @@ bool nmNearPD(mat &ret, mat x
   mat D_S(n, n, arma::fill::zeros);
   mat X = x;
   int iter = 0 ;
-  bool converged = false; 
+  bool converged = false;
   double conv = R_PosInf;
   mat Y;
   mat R;
@@ -102,7 +102,7 @@ bool nmNearPD(mat &ret, mat x
     uvec fp = find(p);
     Q=Q.cols(fp);
     X=nmMatVecSameLen(Q,nmRepEach(d.elem(fp),Q.n_rows))*Q.t();
-    // update Dykstra's correction D_S = \Delta S_k           
+    // update Dykstra's correction D_S = \Delta S_k
     if (doDykstra) {
       D_S = X - R;
     }
@@ -110,7 +110,7 @@ bool nmNearPD(mat &ret, mat x
     X = 0.5*(X + X.t());
     if (keepDiag) {
       X.diag() = diagX0;
-    } 
+    }
     conv = norm(Y-X,"inf")/norm(Y,"inf");
     iter = iter + 1;
     if (trace) {
@@ -118,7 +118,7 @@ bool nmNearPD(mat &ret, mat x
       // iter, sum(p), conv))
       Rcpp::Rcout << "iter " << iter <<" : #{p}= "<< sum(p) << std::endl;
     }
-    converged = (conv <= conv_tol); 
+    converged = (conv <= conv_tol);
     // force symmetry is *NEVER* needed, we have symmetric X here!
     //X <- (X + t(X))/2
     if(do2eigen || only_values) {

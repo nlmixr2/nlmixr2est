@@ -396,12 +396,13 @@
   if (ncol(.m) > length(.allThetaNames)) {
     .m <- .m[, seq_along(.allThetaNames)]
   }
-  .ph <- data.frame(iter = rep(1:nrow(.m)), as.data.frame(.m))
-  names(.ph) <- c("iter", .allThetaNames)
+  .ph <- data.frame(iter = rep(seq_len(nrow(.m))), as.data.frame(.m),
+                    type="Unscaled", check.names=FALSE)
+  names(.ph) <- c("iter", .allThetaNames, "type")
   .cls <- class(.ph)
   attr(.cls, "niter") <- env$saemControl$mcmc$niter[1]
   class(.ph) <- .cls
-  assign("parHist", .ph, envir=env)
+  assign("parHistData", .ph, envir=env)
 }
 #' Calculate the covariance term
 #'
@@ -715,13 +716,6 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
-.saemGetDataForFit <- function(dataSav, ui) {
-  .tmp <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE, dropUnits = TRUE, allTimeVar = TRUE)
-  class(.tmp) <- "data.frame"
-  #as.data.frame(.tmp)
-  .tmp
-}
-
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
@@ -735,8 +729,11 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE)
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
+                         addlKeepsCov = .control$rxControl$addlKeepsCov,
+                         addlDropSs = .control$rxControl$addlDropSs,
+                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) {
     .tv <- names(.et)[-seq(1, 6)]
@@ -776,19 +773,19 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.saem <- function(env, ...) {
+  .doMu2 <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-
   .saemFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .saemFamilyFit(env,  ...)
+  .uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2)
 }
 
 #' @rdname nmObjGet

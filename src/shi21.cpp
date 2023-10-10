@@ -65,8 +65,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   } else {
     h = fabs(h);
   }
-  double h0=h;
-  double l = 0, u = R_PosInf, rcur = NA_REAL, tmp;
+  double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
   double lasth = h;
   int iter=0;
@@ -185,11 +184,10 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
   // Equation 3.3
   //
   if (h == 0.0) {
-    h = pow(3.0*ef, 0.3333333333333333333333); 
+    h = pow(3.0*ef, 0.3333333333333333333333);
   } else {
     h = fabs(h);
   }
-  double h0=h, tmp = h;
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   double hlast = h;
 
@@ -234,7 +232,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
     } else {
       calcGrad = true;
       gr = (fp1-fm1)/(2*h);
-      hlast = h;      
+      hlast = h;
     }
     if (rcur < rl) {
       l = h;
