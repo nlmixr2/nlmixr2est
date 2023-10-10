@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.7.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.8.9000</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -101,10 +101,10 @@
 
 <dt>ensureSymmetry</dt>
 <dd><p>logical; by default, <code><a href="https://rdrr.io/pkg/Matrix/man/symmpart.html" class="external-link">symmpart</a>(x)</code>
-    is used whenever <code>isSymmetric(x)</code> is not true.  The user
-    can explicitly set this to <code>TRUE</code> or <code>FALSE</code>, saving the
-    symmetry test. <em>Beware</em> however that setting it <code>FALSE</code>
-    for an <b>a</b>symmetric input <code>x</code>, is typically nonsense!</p></dd>
+is used whenever <code>isSymmetric(x)</code> is not true.  The user
+can explicitly set this to <code>TRUE</code> or <code>FALSE</code>, saving the
+symmetry test. <em>Beware</em> however that setting it <code>FALSE</code>
+for an <b>a</b>symmetric input <code>x</code>, is typically nonsense!</p></dd>
 
 
 <dt>eig.tol</dt>
@@ -218,7 +218,7 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> [3,] -0.46  0.58  1.00 -0.45 -0.32</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [4,] -1.15  0.50 -0.45  1.00  0.25</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [5,] -0.76 -0.90 -0.32  0.25  1.00</span>
-<span class="r-in"><span>    </span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">near.m</span> <span class="op">&lt;-</span> <span class="fu">nmNearPD</span><span class="op">(</span><span class="va">m</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="va">near.m</span>, <span class="fl">2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>       [,1]  [,2]  [,3]  [,4]  [,5]</span>
@@ -229,7 +229,7 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> [5,] -0.75 -0.91 -0.32  0.26  1.00</span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/norm.html" class="external-link">norm</a></span><span class="op">(</span><span class="va">m</span> <span class="op">-</span> <span class="va">near.m</span><span class="op">)</span> <span class="co"># 1.102 / 1.08</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.079735</span>
-<span class="r-in"><span>    </span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">round</a></span><span class="op">(</span><span class="fu">nmNearPD</span><span class="op">(</span><span class="va">m</span>, only.values<span class="op">=</span><span class="cn">TRUE</span><span class="op">)</span>, <span class="fl">9</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             [,1]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1,] 2.800681404</span>
@@ -237,10 +237,10 @@
 <span class="r-out co"><span class="r-pr">#&gt;</span> [3,] 1.229003616</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [4,] 0.076994641</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [5,] 0.000000028</span>
-<span class="r-in"><span>    </span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## A longer example, extended from Jens' original,</span></span></span>
 <span class="r-in"><span><span class="co">## showing the effects of some of the options:</span></span></span>
-<span class="r-in"><span>    </span></span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">pr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/matrix.html" class="external-link">matrix</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">1</span>,     <span class="fl">0.477</span>, <span class="fl">0.644</span>, <span class="fl">0.478</span>, <span class="fl">0.651</span>, <span class="fl">0.826</span>,</span></span>
 <span class="r-in"><span>               <span class="fl">0.477</span>, <span class="fl">1</span>,     <span class="fl">0.516</span>, <span class="fl">0.233</span>, <span class="fl">0.682</span>, <span class="fl">0.75</span>,</span></span>
 <span class="r-in"><span>               <span class="fl">0.644</span>, <span class="fl">0.516</span>, <span class="fl">1</span>,     <span class="fl">0.599</span>, <span class="fl">0.581</span>, <span class="fl">0.742</span>,</span></span>
@@ -248,8 +248,8 @@
 <span class="r-in"><span>               <span class="fl">0.651</span>, <span class="fl">0.682</span>, <span class="fl">0.581</span>, <span class="fl">0.741</span>, <span class="fl">1</span>,     <span class="fl">0.798</span>,</span></span>
 <span class="r-in"><span>               <span class="fl">0.826</span>, <span class="fl">0.75</span>,  <span class="fl">0.742</span>, <span class="fl">0.8</span>,   <span class="fl">0.798</span>, <span class="fl">1</span><span class="op">)</span>,</span></span>
 <span class="r-in"><span>               nrow <span class="op">=</span> <span class="fl">6</span>, ncol <span class="op">=</span> <span class="fl">6</span><span class="op">)</span></span></span>
-<span class="r-in"><span>    </span></span>
-<span class="r-in"><span><span class="va">nc</span>  <span class="op">&lt;-</span> <span class="fu">nmNearPD</span><span class="op">(</span><span class="va">pr</span><span class="op">)</span> </span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">nc</span>  <span class="op">&lt;-</span> <span class="fu">nmNearPD</span><span class="op">(</span><span class="va">pr</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>
