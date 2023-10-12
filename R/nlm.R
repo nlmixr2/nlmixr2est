@@ -1,7 +1,8 @@
 #' nlmixr2 defaults controls for nlm
 #'
 #' @inheritParams stats::nlm
-#' @inheritParams nlmixrNlmeControl
+#' @inheritParams foceiControl
+#' @inheritParams saemControl
 #' @return
 #' @export
 #' @author Matthew L. Fidler
@@ -82,4 +83,128 @@ nlmControl <- function(hessian = TRUE, typsize = NULL,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmControl"
   .ret
+}
+
+#' Get the nlm family control
+#'
+#' @param env nlme optimization environment
+#' @param ... Other arguments
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFamilyControl <- function(env, ...) {
+  .ui <- env$ui
+  .control <- env$control
+  if (is.null(.control)) {
+    .control <- nlmixr2est::nlmControl()
+  }
+  if (!inherits(.control, "nlmControl")){
+    .control <- do.call(nlmixr2est::nlmControl, .control)
+  }
+  assign("control", .control, envir=.ui)
+}
+
+
+.nlmEnv <- new.env(parent=emptyenv())
+
+#' A surrogate function for nlm to call for ode solving
+#'
+#' @param dv The observations for the `nlm` function
+#' @param pars Parameters that will be estimated
+#' @return Predictions
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+.nlmixrNlmFun <- function(pars) {
+  row.names(.pars) <- NULL
+  .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmEnv$model, params=.pars,
+                                           events=.nlmEnv$data),
+                                      .nlmEnv$rxControl))
+  sum(.retF$rx_pred_)
+}
+
+#' Setup the data for nlm estimation
+#'
+#' @param dataSav Formatted Data
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFitDataSetup <- function(dataSav, model) {
+  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
+  .nlmEnv$data <- .dsAll
+}
+
+#'@export
+rxUiGet.nlmModel0 <- function(x, ...) {
+  .ui <- rxode2::rxUiDecompress(x[[1]])
+  .predDf <- .ui$predDf
+  .save <- .predDf
+  .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
+  assign("predDf", .predDf, envir=.ui)
+  on.exit(assign("predDf", .save, envir=.ui))
+  .ui$foceiModel0ll
+}
+
+#' Load the saem model into symengine
+#'
+#' @param x rxode2 UI object
+#' @return String for loading into symengine
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmPrune <- function(x) {
+  .x <- x[[1]]
+  .x <- .x$nlmModel0[[-1]]
+  .env <- new.env(parent = emptyenv())
+  .env$.if <- NULL
+  .env$.def1 <- NULL
+  .malert("pruning branches ({.code if}/{.code else}) of nlm model...")
+  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .mv <- rxode2::rxModelVars(.ret)
+  ## Need to convert to a function
+  if (rxode2::.rxIsLinCmt() == 1L) {
+    .vars <- c(.mv$params, .mv$lhs, .mv$slhs)
+    .mv <- rxode2::.rxLinCmtGen(length(.mv$state), .vars)
+  }
+  .msuccess("done")
+  rxode2::rxNorm(.mv)
+}
+
+#' @export
+rxUiGet.loadPruneNlm <- function(x, ...) {
+  .loadSymengine(.nlmPrune(x), promoteLinSens = FALSE)
+}
+
+#' @export
+rxUiGet.nlmRxModel <- function(x, ...) {
+  .s <- rxUiGet.loadPruneNlm(x, ...)
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  ## .lhs0 <- .s$..lhs0
+  ## if (is.null(.lhs0)) .lhs0 <- ""
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- ""
+  .ret <- paste(c(
+    #.s$..stateInfo["state"],
+    #.lhs0,
+    .ddt,
+    .prd,
+    #.s$..stateInfo["statef"],
+    #.s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  if (.sumProd) {
+    .malert("stabilizing round off errors in nlm model...")
+    .ret <- rxode2::rxSumProdModel(.ret)
+    .msuccess("done")
+  }
+  if (.optExpression) {
+    .ret <- rxode2::rxOptExpr(.ret, "nlm model")
+    .msuccess("done")
+  }
+  paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
