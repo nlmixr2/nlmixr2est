@@ -208,3 +208,23 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
+
+
+#' @export
+rxUiGet.nlmParNameFun <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .env <- new.env(parent=emptyenv())
+  .env$i <- 1
+  eval(str2lang(
+    paste0("function(p) {c(",
+           paste(vapply(seq_along(.iniDf$ntheta), function(t) {
+             if (.iniDf$fix[t]) {
+               paste0("'THETA[", t, "]'=", .iniDf$est[t])
+             } else {
+               .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
+               .env$i <- .env$i + 1
+               .ret
+             }
+           }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
+}
