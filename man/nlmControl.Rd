@@ -5,7 +5,6 @@
 \title{nlmixr2 defaults controls for nlm}
 \usage{
 nlmControl(
-  hessian = TRUE,
   typsize = NULL,
   fscale = 1,
   print.level = 2,
@@ -14,7 +13,7 @@ nlmControl(
   stepmax = NULL,
   steptol = 1e-06,
   iterlim = 10000,
-  check.analyticals = TRUE,
+  check.analyticals = FALSE,
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
@@ -22,6 +21,7 @@ nlmControl(
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = TRUE,
+  covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -30,9 +30,6 @@ nlmControl(
 )
 }
 \arguments{
-\item{hessian}{if \code{TRUE}, the hessian of \code{f}
-    at the minimum is returned.}
-
 \item{typsize}{an estimate of the size of each parameter
     at the minimum.}
 
@@ -111,6 +108,26 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
+\item{covMethod}{Method for calculating covariance.  In this
+    discussion, R is the Hessian matrix of the objective
+    function. The S matrix is the sum of individual
+    gradient cross-product (evaluated at the individual empirical
+    Bayes estimates).
+
+\itemize{
+
+ \item "\code{r,s}" Uses the sandwich matrix to calculate the
+ covariance, that is: \code{solve(R) \%*\% S \%*\% solve(R)}
+
+ \item "\code{r}" Uses the Hessian matrix to calculate the
+ covariance as \code{2 \%*\% solve(R)}
+
+ \item "\code{s}" Uses the cross-product matrix to calculate the
+ covariance as \code{4 \%*\% solve(S)}
+
+ \item "" Does not calculate the covariance step.
+}}
+
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
 function.  By default this is \code{TRUE}}
@@ -139,8 +156,14 @@ If not specified, then it matches the significant digits in the
 
 \item{...}{additional arguments to be passed to \code{f}.}
 }
+\value{
+nlme control object
+}
 \description{
 nlmixr2 defaults controls for nlm
+}
+\details{
+Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option
 }
 \author{
 Matthew L. Fidler
