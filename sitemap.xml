@@ -46,6 +46,9 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFun.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc>
   </url>
   <url>
@@ -53,6 +56,12 @@
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiFinalizeMu2.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc>
@@ -68,6 +77,9 @@
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html</loc>
