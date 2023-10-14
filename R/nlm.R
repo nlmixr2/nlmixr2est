@@ -3,11 +3,10 @@
 #' @inheritParams stats::nlm
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @param covMethod allows selection of "r", which uses nlmixr2's
+#'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
+#'   the hessian from `stats::nlm(.., hessian=TRUE)`
 #' @return nlme control object
-#' @details
-#'
-#' Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option
-#'
 #' @export
 #' @author Matthew L. Fidler
 #' @examples

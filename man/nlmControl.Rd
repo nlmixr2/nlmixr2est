@@ -108,25 +108,9 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
-\item{covMethod}{Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of individual
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).
-
-\itemize{
-
- \item "\code{r,s}" Uses the sandwich matrix to calculate the
- covariance, that is: \code{solve(R) \%*\% S \%*\% solve(R)}
-
- \item "\code{r}" Uses the Hessian matrix to calculate the
- covariance as \code{2 \%*\% solve(R)}
-
- \item "\code{s}" Uses the cross-product matrix to calculate the
- covariance as \code{4 \%*\% solve(S)}
-
- \item "" Does not calculate the covariance step.
-}}
+\item{covMethod}{allows selection of "r", which uses nlmixr2's
+`nlmixr2Hess()` for the hessian calculation or "nlm" which uses
+the hessian from `stats::nlm(.., hessian=TRUE)`}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective
@@ -161,9 +145,6 @@ nlme control object
 }
 \description{
 nlmixr2 defaults controls for nlm
-}
-\details{
-Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option
 }
 \examples{
 
