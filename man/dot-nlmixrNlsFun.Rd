@@ -4,7 +4,7 @@
 \alias{.nlmixrNlsFun}
 \title{A surrogate function for nls to call for ode solving}
 \usage{
-.nlmixrNlsFun(...)
+.nlmixrNlsFun(DV, ...)
 }
 \arguments{
 \item{pars}{Parameters that will be estimated}

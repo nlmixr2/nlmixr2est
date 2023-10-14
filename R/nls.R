@@ -51,9 +51,6 @@ nlsControl <- function(maxiter=10000,
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl
   }
-  if (is.null(ndigit)) {
-    ndigit <- sigdig
-  }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
       rxControl <- rxode2::rxControl(sigdig=sigdig)
@@ -122,6 +119,7 @@ nmObjHandleControlObject.nlsControl <- function(control, env) {
   assign("nlsControl", control, envir=env)
 }
 
+
 #' @rdname nmObjGetControl
 #' @export
 nmObjGetControl.nls <- function(x, ...) {
@@ -163,7 +161,7 @@ getValidNlmixrCtl.nls <- function(control) {
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.nlmixrNlsFun <- function(...) {
+.nlmixrNlsFun <- function(DV, ...) {
   .retF <- do.call(rxode2::rxSolve,
                    c(list(object=.nlsEnv$model,
                           params=.nlsEnv$parFun(...),
@@ -175,6 +173,17 @@ getValidNlmixrCtl.nls <- function(control) {
   #
   # Give the weighted residual for nls
   (.retF$rx_dv_ - .retF$rx_pred_) / sqrt(.retF$rx_r_)
+}
+#' Returns the data currently setup to run nls
+#'
+#' @return Returns the data currently setup to run nls
+#' @export
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+.nlmixrNlsData <- function() {
+  .nlsEnv$dataNls
 }
 
 #'@export
@@ -351,5 +360,207 @@ rxUiGet.nlsRxModel <- function(x, ...) {
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
+#' @export
+rxUiGet.nlsParStart <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  setNames(lapply(.w, function(i){
+    .ui$iniDf$est[i]
+  }),
+  .ui$iniDf$name[.w])
+}
+#' @export
+rxUiGet.nlsParLower <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  setNames(vapply(.w, function(i){
+    .ui$iniDf$lower[i]
+  }, double(1), USE.NAMES=FALSE),
+  .ui$iniDf$name[.w])
+}
+
+#' @export
+rxUiGet.nlsParUpper <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  setNames(vapply(.w, function(i){
+    .ui$iniDf$upper[i]
+  }, double(1), USE.NAMES=FALSE),
+  .ui$iniDf$name[.w])
+}
+
+
+#' @export
+rxUiGet.nlsParNameFun <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .args <- vapply(seq_along(.iniDf$ntheta),
+                  function(t) {
+                    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
+                      ""
+                    } else if (.iniDf$fix[t]) {
+                      ""
+                    } else {
+                      .iniDf$name[t]
+                    }
+                  }, character(1), USE.NAMES=FALSE)
+  .args <- .args[.args != ""]
+  eval(str2lang(
+    paste0("function(",paste(.args, collapse=", "),
+           ") {c(",
+           paste(vapply(seq_along(.iniDf$ntheta), function(t) {
+             if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
+               paste0("'THETA[", t, "]'=", .iniDf$est[t])
+             } else if (.iniDf$fix[t]) {
+               paste0("'THETA[", t, "]'=", .iniDf$est[t])
+             } else {
+               paste0("'THETA[", t, "]'=", .iniDf$name[t])
+             }
+           }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
+}
+
+#' @export
+rxUiGet.nlsFormula <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .args <- vapply(seq_along(.iniDf$ntheta),
+                  function(t) {
+                    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
+                      ""
+                    } else if (.iniDf$fix[t]) {
+                      ""
+                    } else {
+                      .iniDf$name[t]
+                    }
+                  }, character(1), USE.NAMES=FALSE)
+  .args <- c("DV", .args[.args != ""])
+  str2lang(paste0("~nlmixr2est::.nlmixrNlsFun(",
+                  paste(.args, collapse=", "),
+                  ")"))
+}
+
+#' Setup the data for nls estimation
+#'
+#' @param dataSav Formatted Data
+#' @return Nothing, called for side effects
+#' @author Matthew L. Fidler
+#' @noRd
+.nlsFitDataSetup <- function(dataSav) {
+  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
+  if (any(names(.dsAll) == "CENS")) {
+    if (!all(.dsAll$CENS == 0)) {
+      stop("'nls' does not work with censored data", call. =FALSE)
+    }
+  }
+  .nlsEnv$dataNls <- .dsAll
+  .nlsEnv$data <- rxode2::etTrans(.dsAll, .nlsEnv$model)
+}
+
+.nlsFitModel <- function(ui, dataSav) {
+  .nlsEnv$model <- rxode2::rxode2(ui$nlsRxModel)
+  .nlsFitDataSetup(dataSav)
+  .nlsEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  .nlsEnv$rxControl$returnType <- 2L # use data.frame output
+  .nlsEnv$parFun <- ui$nlsParNameFun
+  .ctl <- ui$control
+  .nls.control <- stats::nls.control(
+    maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
+    printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
+    scaleOffset = .ctl$scaleOffset,
+    nDcentral = .ctl$nDcentral)
+  class(.ctl) <- NULL
+  .ret <- eval(bquote(stats::nls(
+    formula= .(ui$nlsFormula),
+    data=nlmixr2est::.nlmixrNlsData(),
+    start=.(ui$nlsParStart),
+    control=.(.nls.control),
+    algorithm=.(.ctl$algorithm),
+    trace=.(.ctl$trace),
+    model=FALSE,
+    lower=.(ui$nlsParLower),
+    upper=.(ui$nlsParUpper)
+  )))
+  .ret
+}
+
 
 #summary(fm1DNase1)$cov.unscaled
+
+.nlsFamilyFit <- function(env, ...) {
+  .ui <- env$ui
+  .control <- .ui$control
+  .data <- env$data
+  .ret <- new.env(parent=emptyenv())
+  # The environment needs:
+  # - table for table options
+  # - $origData -- Original Data
+  # - $dataSav -- Processed data from .foceiPreProcessData
+  # - $idLvl -- Level information for ID factor added
+  # - $covLvl -- Level information for items to convert to factor
+  # - $ui for ui fullTheta Full theta information
+  # - $etaObf data frame with ID, etas and OBJI
+  # - $cov For covariance
+  # - $covMethod for the method of calculating the covariance
+  # - $adjObf Should the objective function value be adjusted
+  # - $objective objective function value
+  # - $extra Extra print information
+  # - $method Estimation method (for printing)
+  # - $omega Omega matrix
+  # - $theta Is a theta data frame
+  # - $model a list of model information for table generation.  Needs a `predOnly` model
+  # - $message Message for display
+  # - $est estimation method
+  # - $ofvType (optional) tells the type of ofv is currently being used
+  # When running the focei problem to create the nlmixr object, you also need a
+  #  foceiControl object
+  .ret$table <- env$table
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)
+  .ret$nls <- .nls[[1]]
+  .ret$message <- NULL
+  if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
+    return(.ret$nls)
+  }
+  .ret$message <- fit1$convInfo$stopMessage
+  .ret$ui <- .ui
+  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
+  .ret$fullTheta <- .nlsGetTheta(.ret$nls, .ui)
+  .ret$cov <- summary(.ret$nls)$cov.unscaled
+  .ret$covMethod <- "nls"
+  #.ret$etaMat <- NULL
+  #.ret$etaObf <- NULL
+  #.ret$omega <- NULL
+  .ret$control <- .control
+  .ret$extra <- ""
+  .nlmixr2FitUpdateParams(.ret)
+  nmObjHandleControlObject(.ret$control, .ret)
+  if (exists("control", .ui)) {
+    rm(list="control", envir=.ui)
+  }
+  .ret$est <- "nls"
+  # There is no parameter history for nlse
+  .ret$objective <- -2 * as.numeric(.ret$nls$minimum)
+  .ret$model <- .ui$ebe
+  .ret$ofvType <- "nls"
+  .nlsControlToFoceiControl(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nls")
+  .env <- .ret$env
+  .env$method <- "nls"
+  .ret
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.nls <- function(env, ...) {
+  .ui <- env$ui
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nls', try 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
+  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
+  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
+  # No add+prop or add+pow
+  # Single endpoint
+  .nlsFamilyControl(env, ...)
+  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
+  .nlsFamilyFit(env,  ...)
+}

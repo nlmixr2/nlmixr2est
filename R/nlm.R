@@ -287,14 +287,8 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
              if (.iniDf$fix[t]) {
                paste0("'THETA[", t, "]'=", .iniDf$est[t])
              } else {
-               if (!is.na(.iniDf$err[t]) &&
-                     !is.finite(.iniDf$upper[t]) &&
-                      .iniDf$lower[t] == 0) {
-                 .ret <- paste0("'THETA[", t, "]'=abs(p[", .env$i, "])")
-               } else {
-                 .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
-                 .env$i <- .env$i + 1
-               }
+               .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
+               .env$i <- .env$i + 1
                .ret
              }
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))

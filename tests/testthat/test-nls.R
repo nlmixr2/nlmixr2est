@@ -13,6 +13,24 @@ one.cmt <- function() {
   })
 }
 
+fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls")
+
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- fix(3.45)
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ add(add.sd)
+  })
+}
+
 
 one.cmt <- function() {
   ini({
