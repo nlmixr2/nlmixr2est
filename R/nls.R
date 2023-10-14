@@ -452,7 +452,7 @@ rxUiGet.nlsFormula <- function(x, ...) {
       stop("'nls' does not work with censored data", call. =FALSE)
     }
   }
-  .nlsEnv$dataNls <- .dsAll
+  .nlsEnv$dataNls <- .dsAll[.dsAll$EVID == 0, ] # only observations are passed to nls
   .nlsEnv$data <- rxode2::etTrans(.dsAll, .nlsEnv$model)
 }
 
@@ -483,8 +483,41 @@ rxUiGet.nlsFormula <- function(x, ...) {
   .ret
 }
 
+.nlsGetTheta <- function(nls, ui) {
+  .iniDf <- ui$iniDf
+  .theta0 <- coef(nls)
+  .sd <- sd(resid(nls))
+  setNames(vapply(seq_along(.iniDf$ntheta), function(t) {
+    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
+      return(.sd)
+    } else if (.iniDf$fix[t]) {
+      return(.iniDf$est[t])
+    } else {
+      return(.theta0[.iniDf$name[t]])
+    }
+  }, double(1), USE.NAMES=FALSE), .iniDf$name)
+}
 
-#summary(fm1DNase1)$cov.unscaled
+.nlsControlToFoceiControl <- function(env, assign=TRUE) {
+  .nlsControl <- env$nlsControl
+  .ui <- env$ui
+  .foceiControl <- foceiControl(rxControl=env$nlsControl$rxControl,
+                                maxOuterIterations=0L,
+                                maxInnerIterations=0L,
+                                covMethod=0L,
+                                sumProd=.nlsControl$sumProd,
+                                optExpression=.nlsControl$optExpression,
+                                scaleTo=0,
+                                calcTables=.nlsControl$calcTables,
+                                addProp=.nlsControl$addProp,
+                                #skipCov=.ui$foceiSkipCov,
+                                interaction=0L,
+                                compress=.nlsControl$compress,
+                                ci=.nlsControl$ci,
+                                sigdigTable=.nlsControl$sigdigTable)
+  if (assign) env$control <- .foceiControl
+  .foceiControl
+}
 
 .nlsFamilyFit <- function(env, ...) {
   .ui <- env$ui
@@ -539,7 +572,7 @@ rxUiGet.nlsFormula <- function(x, ...) {
   }
   .ret$est <- "nls"
   # There is no parameter history for nlse
-  .ret$objective <- -2 * as.numeric(.ret$nls$minimum)
+  .ret$objective <- -2 * as.numeric(logLik(fit1))
   .ret$model <- .ui$ebe
   .ret$ofvType <- "nls"
   .nlsControlToFoceiControl(.ret)
