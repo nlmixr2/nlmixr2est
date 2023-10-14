@@ -185,7 +185,6 @@ getValidNlmixrCtl.nlm <- function(control) {
 
 #' A surrogate function for nlm to call for ode solving
 #'
-#' @param dv The observations for the `nlm` function
 #' @param pars Parameters that will be estimated
 #' @return Predictions
 #' @details
