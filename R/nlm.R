@@ -213,7 +213,7 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   .ui$foceiModel0ll
 }
 
-#' Load the saem model into symengine
+#' Load the nlm model into symengine
 #'
 #' @param x rxode2 UI object
 #' @return String for loading into symengine

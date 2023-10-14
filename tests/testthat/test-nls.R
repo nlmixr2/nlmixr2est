@@ -13,6 +13,38 @@ one.cmt <- function() {
   })
 }
 
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    prop.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ prop(prop.sd)
+  })
+}
+
+one.cmt <- function() {
+  ini({
+    tka <- 0.45
+    tcl <- log(c(0, 2.7, 100))
+    tv <- 3.45
+    prop.sd <- 0.7
+    pow.exp <- 1
+  })
+  model({
+    ka <- exp(tka)
+    cl <- exp(tcl)
+    v <- exp(tv)
+    linCmt() ~ pow(prop.sd, pow.exp)
+  })
+}
+
 one.cmt <- function() {
   ini({
     tka <- 0.45

@@ -212,7 +212,47 @@ rxGetDistributionNlsLines.norm <- function(line) {
   } else {
     .lineExtra <- quote(rx_dv_ ~ rxTBS(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_))
   }
-  c(.line, list(.lineExtra))
+  .lineExtra <- list(.lineExtra)
+  if (pred1$dvid == 1) {
+    # First estimated residual error is divided out, since it will be
+    # estimated as the residual error by nls
+    # add+prop and add+pow are not supported
+    .errType <- as.character(pred1$errType)
+    if (.errType == "add") {
+      # In these cases you are simply dividing out the additive error
+      # Simply force this to be one.
+      .lineExtra <- c(.lineExtra, list(quote(rx_r_ ~ 1)))
+    } else if (.errType == "prop") {
+      #   rx_r_ ~ (rx_pred_f_ * prop.sd)^2
+      .f <- pred1$f
+      .type <- as.character(pred1$errTypeF)
+      .lineExtra <- c(.lineExtra,
+                      list(switch(.type, untransformed = quote(rx_r_ ~ (rx_pred_f_)^2),
+                                  transformed = quote(rx_r_ ~ (rx_pred_)^2),
+                                  f = bquote(rx_r_ ~ (.(str2lang(.f)))^2),
+                                  none = quote(rx_r_ ~ (rx_pred_f_) ^2))))
+    } else if (.errType == "pow") {
+      .cnd <- pred1$cond
+      if (!is.na(pred1$c)) {
+        .p2 <- str2lang(pred1$c)
+      } else {
+        .w <- which(env$iniDf$err %in% c("pow2", "powF2", "powT2") & env$iniDf$condition == .cnd)
+        if (length(.w) == 1L) {
+          .p2 <- str2lang(env$iniDf$name[.w])
+        } else {
+          stop("cannot find exponent of power expression", call.=FALSE)
+        }
+      }
+      .f <- pred1$f
+      .type <- as.character(pred1$errTypeF)
+      .lineExtra <- c(.lineExtra,
+                      list(switch(.type, untransformed = bquote(rx_r_ ~ (rx_pred_f_)^(2 * .(.p2))),
+                                  transformed = bquote(rx_r_ ~ (rx_pred_)^(2 * .(.p2))),
+                                  f = bquote(rx_r_ ~ (.(str2lang(.f)))^(2 * .(.p2))),
+                                  none = quote(rx_r_ ~ (rx_pred_f_) ^(2 * .(.p2))))))
+    }
+  }
+  c(.line, .lineExtra)
 }
 
 #' @rdname rxGetDistributionNlsLines
@@ -239,6 +279,76 @@ rxUiGet.nlsModel0 <- function(x, ...) {
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE)
+}
+
+#' Load the nls model into symengine
+#'
+#' @param x rxode2 UI object
+#' @return String for loading into symengine
+#' @author Matthew L. Fidler
+#' @noRd
+.nlsPrune <- function(x) {
+  .x <- x[[1]]
+  .x <- .x$nlsModel0[[-1]]
+  .env <- new.env(parent = emptyenv())
+  .env$.if <- NULL
+  .env$.def1 <- NULL
+  .malert("pruning branches ({.code if}/{.code else}) of nls model...")
+  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .mv <- rxode2::rxModelVars(.ret)
+  ## Need to convert to a function
+  if (rxode2::.rxIsLinCmt() == 1L) {
+    .vars <- c(.mv$params, .mv$lhs, .mv$slhs)
+    .mv <- rxode2::.rxLinCmtGen(length(.mv$state), .vars)
+  }
+  .msuccess("done")
+  rxode2::rxNorm(.mv)
+}
+
+#' @export
+rxUiGet.loadPruneNls <- function(x, ...) {
+  .loadSymengine(.nlsPrune(x), promoteLinSens = FALSE)
+}
+
+#' @export
+rxUiGet.nlsRxModel <- function(x, ...) {
+  .s <- rxUiGet.loadPruneNls(x, ...)
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+
+  .var <- get("rx_r_", envir = .s)
+  .var <- paste0("rx_r_=", rxode2::rxFromSE(.var))
+
+  .dv <- get("rx_dv_", envir = .s)
+  .dv <- paste0("rx_dv_=", rxode2::rxFromSE(.dv))
+  ## .lhs0 <- .s$..lhs0
+  ## if (is.null(.lhs0)) .lhs0 <- ""
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- ""
+  .ret <- paste(c(
+    #.s$..stateInfo["state"],
+    #.lhs0,
+    .ddt,
+    .prd,
+    .var,
+    .dv,
+    #.s$..stateInfo["statef"],
+    #.s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  if (.sumProd) {
+    .malert("stabilizing round off errors in nls model...")
+    .ret <- rxode2::rxSumProdModel(.ret)
+    .msuccess("done")
+  }
+  if (.optExpression) {
+    .ret <- rxode2::rxOptExpr(.ret, "nls model")
+    .msuccess("done")
+  }
+  paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
 
