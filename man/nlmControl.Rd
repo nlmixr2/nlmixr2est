@@ -21,7 +21,7 @@ nlmControl(
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = TRUE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -164,6 +164,41 @@ nlmixr2 defaults controls for nlm
 }
 \details{
 Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option
+}
+\examples{
+
+\donttest{
+# A logit regression example with emax model
+
+dsn <- data.frame(i=1:1000) \%>\%
+dsn$time <- exp(rnorm(1000))
+dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+dsn$id <- 1 mutate(id=1)
+
+mod <- function() {
+ ini({
+   E0 <- 0.5
+   Em <- 0.5
+   E50 <- 2
+   g <- fix(2)
+ })
+ model({
+   v <- E0+Em*time^g/(E50^g+time^g)
+   ll(bin) ~ DV * v - log(1 + exp(v))
+ })
+}
+
+fit2 <- nlmixr(mod, dsn, est="nlm")
+
+print(fit2)
+
+# you can also get the nlm output with fit2$nlm
+
+fit2$nlm
+
+# The nlm control has been modified slightly to include
+# extra components and name the parameters
+}
 }
 \author{
 Matthew L. Fidler

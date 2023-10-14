@@ -11,6 +11,39 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
+#'
+#' \donttest{
+#' # A logit regression example with emax model
+#'
+#' dsn <- data.frame(i=1:1000) %>%
+#' dsn$time <- exp(rnorm(1000))
+#' dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+#' dsn$id <- 1 mutate(id=1)
+#'
+#' mod <- function() {
+#'  ini({
+#'    E0 <- 0.5
+#'    Em <- 0.5
+#'    E50 <- 2
+#'    g <- fix(2)
+#'  })
+#'  model({
+#'    v <- E0+Em*time^g/(E50^g+time^g)
+#'    ll(bin) ~ DV * v - log(1 + exp(v))
+#'  })
+#' }
+#'
+#' fit2 <- nlmixr(mod, dsn, est="nlm")
+#'
+#' print(fit2)
+#'
+#' # you can also get the nlm output with fit2$nlm
+#'
+#' fit2$nlm
+#'
+#' # The nlm control has been modified slightly to include
+#' # extra components and name the parameters
+#' }
 nlmControl <- function(typsize = NULL,
                        fscale = 1, print.level = 2, ndigit = NULL, gradtol = 1e-6,
                        stepmax = NULL,
@@ -289,6 +322,11 @@ rxUiGet.nlmParName <- function(x, ...) {
 #' @noRd
 .nlmFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
+  if (any(names(.dsAll) == "CENS")) {
+    if (!all(.dsAll$CENS == 0)) {
+      stop("'nlm' does not work with censored data", call. =FALSE)
+    }
+  }
   .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
 }
 
