@@ -20,8 +20,10 @@ nlmControl <- function(typsize = NULL,
                        returnNlm=FALSE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
-                       covMethod=c("r", ""),
+                       covMethod=c("r", "nlm", ""),
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+  checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
   checkmate::assertIntegerish(print.level, lower=1, upper=2, any.missing=FALSE)
   checkmate::assertNumeric(ndigit, lower=0, len=1, any.missing=FALSE, null.ok=TRUE)
@@ -132,7 +134,20 @@ nmObjGetControl.nlm <- function(x, ...) {
   stop("cannot find nlm related control object", call.=FALSE)
 }
 
-
+#' @rdname getValidNlmixrControl
+#' @export
+getValidNlmixrCtl.nlm <- function(control) {
+  .ctl <- control[[1]]
+  if (is.null(.ctl)) .ctl <- nlmControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("nlmControl", .ctl)
+  if (!inherits(.ctl, "nlmControl")) {
+    .minfo("invalid control for `est=\"nlm\"`, using default")
+    .ctl <- nlmControl()
+  } else {
+    .ctl <- do.call(nlmControl, .ctl)
+  }
+  .ctl
+}
 
 .nlmEnv <- new.env(parent=emptyenv())
 
@@ -152,7 +167,7 @@ nmObjGetControl.nlm <- function(x, ...) {
                           params=.nlmEnv$parTrans(pars),
                           events=.nlmEnv$data),
                      .nlmEnv$rxControl))
-  sum(.retF$rx_pred_)
+  -sum(.retF$rx_pred_)
 }
 
 
@@ -241,8 +256,14 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
              if (.iniDf$fix[t]) {
                paste0("'THETA[", t, "]'=", .iniDf$est[t])
              } else {
-               .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
-               .env$i <- .env$i + 1
+               if (!is.na(.iniDf$err[t]) &&
+                     !is.finite(.iniDf$upper[t]) &&
+                      .iniDf$lower[t] == 0) {
+                 .ret <- paste0("'THETA[", t, "]'=abs(p[", .env$i, "])")
+               } else {
+                 .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
+                 .env$i <- .env$i + 1
+               }
                .ret
              }
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
@@ -266,14 +287,14 @@ rxUiGet.nlmParName <- function(x, ...) {
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmFitDataSetup <- function(dataSav, model) {
+.nlmFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
   .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
 }
 
 .nlmFitModel <- function(ui, dataSav) {
   .nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
-  .nlmeFitDataSetup(dataSav)
+  .nlmFitDataSetup(dataSav)
   .nlmEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
   .nlmEnv$rxControl$returnType <- 2L # use data.frame output
   .nlmEnv$parTrans <- ui$nlmParNameFun
@@ -295,6 +316,7 @@ rxUiGet.nlmParName <- function(x, ...) {
   .ret <- eval(bquote(stats::nlm(
     f=.(nlmixr2est::.nlmixrNlmFun),
     p=.(.p),
+    hessian=.(.ctl$covMethod == "nlm"),
     typsize=.(.typsize),
     fscale=.(.ctl$fscale),
     print.level=.(.ctl$print.level),
@@ -309,20 +331,26 @@ rxUiGet.nlmParName <- function(x, ...) {
   .name <- ui$nlmParName
   names(.ret$estimate) <- .name
   names(.ret$gradient) <- .name
-  if (.ctl$covMethod == "r") {
+  if (any(.ctl$covMethod == c("r", "nlm"))) {
     .malert("calculating covariance")
-    .hess <- nlmixr2Hess(.ret$estimate, nlmixr2est::.nlmixrNlmFun)
+    if (.ctl$covMethod != "nlm") {
+      .p <- setNames(.ret$estimate, NULL)
+      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFun)
+      .ret$hessian <- .hess
+    }
+    dimnames(.ret$hessian) <- list(.name, .name)
+    .hess <- .ret$hessian
+
     # r matrix
     .r <- 0.5 * .hess
-
-    .ch <- try(chol(.r), silent = TRUE)
+    .ch <- try(cholSE(.r), silent = TRUE)
     .covType <- "r"
     if (inherits(.ch, "try-error")) {
       .r2 <- .r %*% .r
       .r2 <- try(sqrtm(.r2), silent=TRUE)
       .covType <- "|r|"
       if (!inherits(.r2, "try-error")) {
-        .ch <- try(chol(.r), silent=TRUE)
+        .ch <- try(cholSE(.r), silent=TRUE)
         if (inherits(.ch, "try-error")) {
           .r2 <- .ch # switch to nearPD
         }
@@ -331,10 +359,10 @@ rxUiGet.nlmParName <- function(x, ...) {
         .covType <- "r+"
         .r2 <- try(nmNearPD(.r), silent=TRUE)
         if (!inherits(.r2, "try-error")) {
-          .ch <- try(chol(.r), silent=TRUE)
+          .ch <- try(cholSE(.r), silent=TRUE)
         }
       } else {
-        .ch <- try(chol(.r), silent=TRUE)
+        .ch <- try(cholSE(.r), silent=TRUE)
       }
     }
     if (!inherits(.ch, "try-error")) {
@@ -344,18 +372,65 @@ rxUiGet.nlmParName <- function(x, ...) {
       dimnames(.cov) <- list(.name, .name)
       dimnames(.rinv) <- list(.name, .name)
       .ret$covMethod <- .covType
+      if (.ctl$covMethod == "nlm") {
+        .ret$covMethod <- paste0(.covType, " (nlm)")
+      } else {
+        .ret$covMethod <- .covType
+      }
       .ret$cov <- .cov
+
+    } else {
+      .ret$covMethod <- "failed"
     }
-    dimnames(.hess) <- list(.name, .name)
-    .ret$hessian <- .hess
     dimnames(.r) <- list(.name, .name)
     .ret$r <- .r
     .msuccess("done")
   }
   .ret
 }
+#' Get the full theta for nlm methods
+#'
+#' @param nlm enhanced nlm return
+#' @param ui ui object
+#' @return named theta matrix
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmGetTheta <- function(nlm, ui) {
+  .iniDf <- ui$iniDf
+  setNames(vapply(seq_along(.iniDf$name),
+         function(i) {
+           if (.iniDf$fix[i]) {
+             return(.iniDf$est[i])
+           } else {
+             return(nlm$estimate[.iniDf$name[i]])
+           }
+         }, double(1), USE.NAMES=FALSE),
+         .iniDf$name)
+}
 
-.nlmeFamilyFit <- function(env, ...) {
+.nlmControlToFoceiControl <- function(env, assign=TRUE) {
+  .nlmControl <- env$nlmControl
+  .ui <- env$ui
+  .foceiControl <- foceiControl(rxControl=env$nlmControl$rxControl,
+                                maxOuterIterations=0L,
+                                maxInnerIterations=0L,
+                                covMethod=0L,
+                                sumProd=.nlmControl$sumProd,
+                                optExpression=.nlmControl$optExpression,
+                                scaleTo=0,
+                                calcTables=.nlmControl$calcTables,
+                                addProp=.nlmControl$addProp,
+                                #skipCov=.ui$foceiSkipCov,
+                                interaction=0L,
+                                compress=.nlmControl$compress,
+                                ci=.nlmControl$ci,
+                                sigdigTable=.nlmControl$sigdigTable)
+  if (assign) env$control <- .foceiControl
+  .foceiControl
+}
+
+
+.nlmFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -375,7 +450,6 @@ rxUiGet.nlmParName <- function(x, ...) {
   # - $extra Extra print information
   # - $method Estimation method (for printing)
   # - $omega Omega matrix
-  # - $etaObf Eat objective function data frame
   # - $theta Is a theta data frame
   # - $model a list of model information for table generation.  Needs a `predOnly` model
   # - $message Message for display
@@ -386,46 +460,51 @@ rxUiGet.nlmParName <- function(x, ...) {
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$nlme <- .nlme[[1]]
+  .ret$nlm <- .nlm[[1]]
   .ret$message <- NULL
-  if (rxode2::rxGetControl(.ui, "returnNlme", FALSE)) {
+  if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
     return(.ret$nlm)
   }
-  return(.ret$nlm)
-  if (is.null(.ret$message)) {
-    .ret$message <- ""
+  if (.ret$nlm$code == 1) {
+    .ret$message <- "relative gradient is close to zero, current iterate is probably solution"
+  } else if (.ret$nlm$code == 2) {
+    .ret$message <- "successive iterates within tolerance, current iterate is probably solution"
+  } else if (.ret$nlm$code == 3) {
+    .ret$message <- c("last global step failed to locate a point lower than 'estimate'",
+                      "either 'estimate' is an approximate local minimum of the function or 'steptol' is too small")
+  } else if (.ret$nlm$code == 4) {
+    .ret$message <- "iteration limit exceeded"
+  } else if (.ret$nlm$code == 5) {
+    .ret$message <- c("maximum step size 'stepmax' exceeded five consecutive times",
+                      "either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or 'stepmax' is too small")
   } else {
-    .ret$message <- paste(.ret$message, collapse="\n")
+    .ret$message <- ""
   }
-
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .nlmeGetTheta(.ret$nlme, .ui)
-  .ret$cov <- .nlmeGetCov(.ret$nlme)
-  .ret$covMethod <- "nlme"
-  .ret$etaMat <- .nlmeGetEtaMat(.ret$nlme, .ui)
-  .ret$etaObf <- data.frame(ID = seq_along(.ret$etaMat[, 1]),
-                            as.data.frame(.ret$etaMat),
-                            OBJI = NA)
-  .ret$omega <- .nlmeGetOmega(.ret$nlme, .ui)
+  .ret$fullTheta <- .nlmGetTheta(.ret$nlm, .ui)
+  .ret$cov <- .ret$nlm$cov
+  .ret$covMethod <- .ret$nlm$covMethod
+  #.ret$etaMat <- NULL
+  #.ret$etaObf <- NULL
+  #.ret$omega <- NULL
   .ret$control <- .control
-  .ret$extra <- paste0(" by ", crayon::bold$yellow(ifelse(.control$method == "REML", "REML", "maximum likelihood")))
+  .ret$extra <- ""
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
   }
-  .ret$est <- "nlme"
+  .ret$est <- "nlm"
   # There is no parameter history for nlme
-  .ret$objective <- -2 * as.numeric(logLik(.ret$nlme))
+  .ret$objective <- -2 * as.numeric(.ret$nlm$minimum)
   .ret$model <- .ui$ebe
-  .ret$est <- "nlme"
-  .ret$ofvType <- "nlme"
-  .nlmeControlToFoceiControl(.ret)
+  .ret$ofvType <- "nlm"
+  .nlmControlToFoceiControl(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlme")
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlm")
   .env <- .ret$env
-  .env$method <- "nlme"
+  .env$method <- "nlm"
   .ret
 }
 
@@ -437,5 +516,5 @@ nlmixr2Est.nlm <- function(env, ...) {
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlm'", .var.name=.ui$modelName)
   .nlmFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .uiFinalizeMu2(.nlmFamilyFit(env,  ...), .model)
+  .nlmFamilyFit(env,  ...)
 }
