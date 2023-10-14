@@ -1,5 +1,13 @@
 # nlmixr2est (development version)
 
+## New Features
+
+- Algebraic mu referencing has been implemented in `nlme` and `saem`.
+
+- New estimation method "nlm" has been added to estimate population
+  only likelihoods using `stats::nlm` and possibly return a
+  standardized `nlmixr2` fit.
+
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in
@@ -10,9 +18,6 @@
   lag features need to translate the data differently based on
   `rxControl()` options.
 
-## mu referencing
-
-- Algebraic mu referencing has been implemented in `nlme` and `saem`.
 
 ## Bug fixes
 
