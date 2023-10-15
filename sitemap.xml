@@ -52,6 +52,12 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsData.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFun.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc>
   </url>
   <url>
@@ -142,6 +148,9 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrWithTiming.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmGetDistributionSaemLines.html</loc>
   </url>
   <url>
@@ -203,6 +212,9 @@
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc>

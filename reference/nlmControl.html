@@ -178,19 +178,9 @@ will calculate tables. By default this is <code>TRUE</code></p></dd>
 
 
 <dt>covMethod</dt>
-<dd><p>Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of individual
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).</p>
-<ul><li><p>"<code>r,s</code>" Uses the sandwich matrix to calculate the
- covariance, that is: <code>solve(R) %*% S %*% solve(R)</code></p></li>
-<li><p>"<code>r</code>" Uses the Hessian matrix to calculate the
- covariance as <code>2 %*% solve(R)</code></p></li>
-<li><p>"<code>s</code>" Uses the cross-product matrix to calculate the
- covariance as <code>4 %*% solve(S)</code></p></li>
-<li><p>"" Does not calculate the covariance step.</p></li>
-</ul></dd>
+<dd><p>allows selection of "r", which uses nlmixr2's
+`nlmixr2Hess()` for the hessian calculation or "nlm" which uses
+the hessian from `stats::nlm(.., hessian=TRUE)`</p></dd>
 
 
 <dt>adjObf</dt>
@@ -230,10 +220,6 @@ If not specified, then it matches the significant digits in the
     
 
 <p>nlme control object</p>
-    </div>
-    <div class="section level2">
-    <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
-    <p>Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option</p>
     </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
