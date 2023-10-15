@@ -3,11 +3,10 @@
 #' @inheritParams stats::nlm
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @param covMethod allows selection of "r", which uses nlmixr2's
+#'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
+#'   the hessian from `stats::nlm(.., hessian=TRUE)`
 #' @return nlme control object
-#' @details
-#'
-#' Note the covariance is calculated by nlmixr instead of optimHess, so `hessian` is not a possible option
-#'
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -186,7 +185,6 @@ getValidNlmixrCtl.nlm <- function(control) {
 
 #' A surrogate function for nlm to call for ode solving
 #'
-#' @param dv The observations for the `nlm` function
 #' @param pars Parameters that will be estimated
 #' @return Predictions
 #' @details
@@ -215,7 +213,7 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   .ui$foceiModel0ll
 }
 
-#' Load the saem model into symengine
+#' Load the nlm model into symengine
 #'
 #' @param x rxode2 UI object
 #' @return String for loading into symengine
@@ -289,14 +287,8 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
              if (.iniDf$fix[t]) {
                paste0("'THETA[", t, "]'=", .iniDf$est[t])
              } else {
-               if (!is.na(.iniDf$err[t]) &&
-                     !is.finite(.iniDf$upper[t]) &&
-                      .iniDf$lower[t] == 0) {
-                 .ret <- paste0("'THETA[", t, "]'=abs(p[", .env$i, "])")
-               } else {
-                 .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
-                 .env$i <- .env$i + 1
-               }
+               .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
+               .env$i <- .env$i + 1
                .ret
              }
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
