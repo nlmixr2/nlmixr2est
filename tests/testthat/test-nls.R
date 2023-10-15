@@ -1,83 +1,47 @@
-one.cmt <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- log(c(0, 2.7, 100))
-    tv <- 3.45
-    add.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl)
-    v <- exp(tv)
-    linCmt() ~ add(add.sd)
-  })
-}
+nmTest({
+  test_that("nls makes sense", {
 
-fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls")
+    d <- nlmixr2data::theo_sd
 
+    d <- d[d$AMT != 0 | d$DV != 0, ]
 
-one.cmt <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- log(c(0, 2.7, 100))
-    tv <- fix(3.45)
-    add.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl)
-    v <- exp(tv)
-    linCmt() ~ add(add.sd)
-  })
-}
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
 
+    fit1 <- nlmixr(one.cmt, d, est="nls")
 
-one.cmt <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- log(c(0, 2.7, 100))
-    tv <- 3.45
-    prop.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl)
-    v <- exp(tv)
-    linCmt() ~ prop(prop.sd)
-  })
-}
+    expect_true(inherits(fit1, "nlmixr2.nls"))
 
-one.cmt <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- log(c(0, 2.7, 100))
-    tv <- 3.45
-    prop.sd <- 0.7
-    pow.exp <- 1
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl)
-    v <- exp(tv)
-    linCmt() ~ pow(prop.sd, pow.exp)
-  })
-}
+    Treated <- Puromycin[Puromycin$state == "treated", ]
+    names(Treated) <- gsub("rate", "DV", gsub("conc", "time", names(Treated)))
+    Treated$ID <- 1
 
-one.cmt <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- log(c(0, 2.7, 100))
-    tv <- 3.45
-    add.sd <- 0.7
-    lambda <- c(-2, 0, 2)
-  })
-  model({
-    ka <- exp(tka)
-    cl <- exp(tcl)
-    v <- exp(tv)
-    linCmt() ~ add(add.sd) + yeoJohnson(lambda)
-  })
-}
+    f <- function() {
+      ini({
+        Vm <- 200
+        K <- 0.1
+        prop.sd <- 0.1
+      })
+      model({
+        pred <- (Vm * time)/(K + time)
+        pred ~ prop(prop.sd)
+      })
+    }
 
+    fit1 <- nlmixr(f, Treated, est="nls", control=nlsControl(algorithm="default"))
 
-#fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+    expect_true(inherits(fit1, "nlmixr2.nls"))
+  })
+})

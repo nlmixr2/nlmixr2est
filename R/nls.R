@@ -4,6 +4,7 @@
 #' @inheritParams stats::nls.control
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @inheritParams minpack.lm::nls.lm.control
 #' @return nls control object
 #' @export
 #' @author Matthew L. Fidler
@@ -15,7 +16,18 @@ nlsControl <- function(maxiter=10000,
                        warnOnly = FALSE,
                        scaleOffset = 0,
                        nDcentral = FALSE,
-                       algorithm = c("default", "plinear", "port"),
+                       algorithm = c("LM", "default", "plinear", "port"),
+                       ############################################
+                       ## minpack.lm
+                       ftol = sqrt(.Machine$double.eps),
+                       ptol = sqrt(.Machine$double.eps),
+                       gtol = 0,
+                       diag = list(),
+                       epsfcn = 0,
+                       factor = 100,
+                       maxfev = integer(),
+                       nprint = 1,
+                       ############################################
                        trace = TRUE,
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
@@ -24,6 +36,18 @@ nlsControl <- function(maxiter=10000,
                        calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   algorithm <- match.arg(algorithm)
+  if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {
+    .malert("to use the LM algorithm you must have minpack.lm installed")
+    .malert("changing to default `nls` method")
+    algorithm <- "default"
+  }
+  checkmate::assertNumeric(ftol, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(ptol, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(gtol, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(epsfcn, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertNumeric(factor, len=1, any.missing=FALSE, lower=1)
+  checkmate::assertIntegerish(maxfev, min.len=0, max.len=1, any.missing=FALSE)
+
   checkmate::assertLogical(trace, len=1, any.missing=FALSE)
   checkmate::assertLogical(nDcentral, len=1, any.missing=FALSE)
   checkmate::assertNumeric(scaleOffset, any.missing=FALSE, finite=TRUE)
@@ -82,10 +106,20 @@ nlsControl <- function(maxiter=10000,
                warnOnly=warnOnly,
                scaleOffset=scaleOffset,
                nDcentral=nDcentral,
+               ftol = ftol,
+               ptol = ptol,
+               gtol = gtol,
+               diag = diag,
+               epsfcn = epsfcn,
+               factor = factor,
+               maxfev = maxfev,
+               nprint = nprint,
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
-               returnNls=returnNls, addProp=addProp, calcTables=calcTables,
+               returnNls=returnNls,
+               addProp=addProp,
+               calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl)
@@ -162,17 +196,11 @@ getValidNlmixrCtl.nls <- function(control) {
 #' @keywords internal
 #' @export
 .nlmixrNlsFun <- function(DV, ...) {
-  .retF <- do.call(rxode2::rxSolve,
-                   c(list(object=.nlsEnv$model,
-                          params=.nlsEnv$parFun(...),
-                          events=.nlsEnv$data),
-                     .nlsEnv$rxControl))
-  # rx_dv_ applies TBS to DV
-  # rx_pred_ is the predicted value
-  # rx_r_ is the variance
-  #
-  # Give the weighted residual for nls
-  (.retF$rx_dv_ - .retF$rx_pred_) / sqrt(.retF$rx_r_)
+  do.call(rxode2::rxSolve,
+          c(list(object=.nlsEnv$model,
+                 params=.nlsEnv$parFun(...),
+                 events=.nlsEnv$data),
+            .nlsEnv$rxControl))$rx_pred_
 }
 #' Returns the data currently setup to run nls
 #'
@@ -282,12 +310,21 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
   .f <- x[[1]]
-  rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlsLines(.f),
-                              prefixLines=.uiGetThetaEta(.f),
-                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
-                              modelVars=TRUE,
-                              cmtLines=FALSE,
-                              dvidLine=FALSE)
+  .ret <- rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlsLines(.f),
+                                      prefixLines=.uiGetThetaEta(.f),
+                                      paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                                      modelVars=TRUE,
+                                      cmtLines=FALSE,
+                                      dvidLine=FALSE)
+  ## pred <- (Vm * conc)/(K + conc)
+  ## (resp - pred) / sqrt(pred)
+  .ret <- .ret[[-1]]
+  .w <- seq_along(.ret)
+  .w <- .w[-1]
+  as.call(c(list(quote(`rxModelVars`)),
+            as.call(c(list(quote(`{`)),
+                      lapply(.w, function(i){.ret[[i]]}),
+                      list(quote(rx_pred_ <- (rx_dv_ - rx_pred_) / sqrt(rx_r_)))))))
 }
 
 #' Load the nls model into symengine
@@ -320,16 +357,22 @@ rxUiGet.loadPruneNls <- function(x, ...) {
 }
 
 #' @export
+rxUiGet.loadPrunNlsSens <- function(x, ..., theta=FALSE) {
+  .s <- rxUiGet.loadPruneSens(x, ...)
+  .sensEtaOrTheta(.s, theta=TRUE)
+}
+
+
+#' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNls(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  ## .var <- get("rx_r_", envir = .s)
+  ## .var <- paste0("rx_r_=", rxode2::rxFromSE(.var))
 
-  .var <- get("rx_r_", envir = .s)
-  .var <- paste0("rx_r_=", rxode2::rxFromSE(.var))
-
-  .dv <- get("rx_dv_", envir = .s)
-  .dv <- paste0("rx_dv_=", rxode2::rxFromSE(.dv))
+  ## .dv <- get("rx_dv_", envir = .s)
+  ## .dv <- paste0("rx_dv_=", rxode2::rxFromSE(.dv))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
@@ -339,8 +382,6 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     #.lhs0,
     .ddt,
     .prd,
-    .var,
-    .dv,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""
@@ -463,23 +504,45 @@ rxUiGet.nlsFormula <- function(x, ...) {
   .nlsEnv$rxControl$returnType <- 2L # use data.frame output
   .nlsEnv$parFun <- ui$nlsParNameFun
   .ctl <- ui$control
-  .nls.control <- stats::nls.control(
-    maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
-    printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
-    scaleOffset = .ctl$scaleOffset,
-    nDcentral = .ctl$nDcentral)
-  class(.ctl) <- NULL
-  .ret <- eval(bquote(stats::nls(
-    formula= .(ui$nlsFormula),
-    data=nlmixr2est::.nlmixrNlsData(),
-    start=.(ui$nlsParStart),
-    control=.(.nls.control),
-    algorithm=.(.ctl$algorithm),
-    trace=.(.ctl$trace),
-    model=FALSE,
-    lower=.(ui$nlsParLower),
-    upper=.(ui$nlsParUpper)
-  )))
+  if (.ctl$algorithm == "LM") {
+    .nls.control <- minpack.lm::nls.lm.control(ftol = .ctl$ftol, ptol = .ctl$ptol,
+                                               gtol = .ctl$gtol,
+                                               diag = .ctl$diag,
+                                               epsfcn = .ctl$epsfcn,
+                                               factor = .ctl$factor,
+                                               maxfev = .ctl$maxfev,
+                                               maxiter = .ctl$maxiter,
+                                               nprint = .ctl$nprint)
+    class(.ctl) <- NULL
+    .ret <- eval(bquote(minpack.lm::nlsLM(
+      formula= .(ui$nlsFormula),
+      data=nlmixr2est::.nlmixrNlsData(),
+      start=.(ui$nlsParStart),
+      control=.(.nls.control),
+      algorithm=.(.ctl$algorithm),
+      model=FALSE,
+      lower=.(ui$nlsParLower),
+      upper=.(ui$nlsParUpper)
+    )))
+  } else {
+    .nls.control <- stats::nls.control(
+      maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
+      printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
+      scaleOffset = .ctl$scaleOffset,
+      nDcentral = .ctl$nDcentral)
+    class(.ctl) <- NULL
+    .ret <- eval(bquote(stats::nls(
+      formula= .(ui$nlsFormula),
+      data=nlmixr2est::.nlmixrNlsData(),
+      start=.(ui$nlsParStart),
+      control=.(.nls.control),
+      algorithm=.(.ctl$algorithm),
+      trace=.(.ctl$trace),
+      model=FALSE,
+      lower=.(ui$nlsParLower),
+      upper=.(ui$nlsParUpper)
+    )))
+  }
   .ret
 }
 
@@ -554,7 +617,7 @@ rxUiGet.nlsFormula <- function(x, ...) {
   if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
     return(.ret$nls)
   }
-  .ret$message <- fit1$convInfo$stopMessage
+  .ret$message <- .ret$nls$convInfo$stopMessage
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlsGetTheta(.ret$nls, .ui)
@@ -572,7 +635,7 @@ rxUiGet.nlsFormula <- function(x, ...) {
   }
   .ret$est <- "nls"
   # There is no parameter history for nlse
-  .ret$objective <- -2 * as.numeric(logLik(fit1))
+  .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
   .ret$model <- .ui$ebe
   .ret$ofvType <- "nls"
   .nlsControlToFoceiControl(.ret)
