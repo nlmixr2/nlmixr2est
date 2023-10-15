@@ -219,13 +219,17 @@ rxUiGet.nlmModel0 <- function(x, ...) {
 #' @return String for loading into symengine
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmPrune <- function(x) {
+.nlmPrune <- function(x, nlm=TRUE) {
   .x <- x[[1]]
   .x <- .x$nlmModel0[[-1]]
   .env <- new.env(parent = emptyenv())
   .env$.if <- NULL
   .env$.def1 <- NULL
-  .malert("pruning branches ({.code if}/{.code else}) of nlm model...")
+  if (nlm) {
+    .malert("pruning branches ({.code if}/{.code else}) of nlm model...")
+  } else {
+    .malert("pruning branches ({.code if}/{.code else}) of optim model...")
+  }
   .ret <- rxode2::.rxPrune(.x, envir = .env)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
@@ -295,16 +299,25 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
 }
 
 #' @export
+rxUiGet.optimParNameFun <- rxUiGet.nlmParNameFun
+
+#' @export
 rxUiGet.nlmParIni <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$est[!.ui$iniDf$fix]
 }
 
 #' @export
+rxUiGet.optimParIni <- rxUiGet.nlmParIni
+
+#' @export
 rxUiGet.nlmParName <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$name[!.ui$iniDf$fix]
 }
+
+#' @export
+rxUiGet.optimParName <- rxUiGet.nlmParName
 
 #' Setup the data for nlm estimation
 #'
