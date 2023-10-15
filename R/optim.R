@@ -1,9 +1,11 @@
 #' nlmixr2 optim defaults
 #'
 #'
-#' @inheritParams stats::nlm
+#' @inheritParams stats::optim
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @param returnOptim logical; when TRUE this will return the optim
+#'   list instead of the nlmixr2 fit object
 #' @param covMethod allows selection of "r", which uses nlmixr2's
 #'   `nlmixr2Hess()` for the hessian calculation or "optim" which uses
 #'   the hessian from `stats::optim(.., hessian=TRUE)`
@@ -45,12 +47,45 @@
 #'
 #' @param gamma Expansion  factor for the `"Nelder-Mead"` method
 #'
+#' @param REPORT The frequency of reports for the `"BFGS"`,
+#'   `"L-BFGS-B"` and `"SANN"` methods if `control$trace` is
+#'   positive. Defaults to every 10 iterations for `"BFGS"` and
+#'   `"L-BFGS-B"`, or every 100 temperatures for `"SANN"`
+#'
+#' @param warn.1d.NelderMead a logical indicating if the (default)
+#'   `"Nelder-Mead"` method should signal a warning when used for
+#'   one-dimensional minimization.  As the warning is sometimes
+#'   inappropriate, you can suppress it by setting this option to
+#'   `FALSE`
+#'
+#' @param type for the conjugate-gradients method.  Takes value `1`
+#'   for the Fletcher-Reeves update, `2` for Polak-Ribiere and `3` for
+#'   Beale-Sorenson.
+#'
+#' @param lmm is an integer giving the number of BFGS updates retained
+#'   in the `"L-BFGS-B"` method, It defaults to `5`
+#'
+#' @param factr controls the convergence of the `"L-BFGS-B"` method.
+#'   Convergence occurs when the reduction in the objective is within
+#'   this factor of the machine tolerance. Default is `1e7`, that is a
+#'   tolerance of about `1e-8`.
+#'
+#' @param pgtol helps control the convergence of the ‘"L-BFGS-B"’
+#'   method.  It is a tolerance on the projected gradient in the
+#'   current search direction. This defaults to zero, when the check
+#'   is suppressed
+#'
+#' @param temp controls the `"SANN"` method. It is the starting
+#'   temperature for the cooling schedule. Defaults to `10`.
+#'
+#' @param tmax is the number of function evaluations at each
+#'   temperature for the `"SANN"` method. Defaults to `10`.
+#'
 #' @return optimControl object for nlmixr2
 #' @export
 #' @author Matthew L. Fidler
-#' @examples
 optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN", "Brent"),
-                         trace=0,
+                         trace=10,
                          fnscale=1.0,
                          parscale=1.0,
                          ndeps=1e-3,
@@ -84,27 +119,24 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(fnscale, len=1, any.missing=FALSE)
   checkmate::assertNumeric(parscale, any.missing=FALSE)
-  checkmate::assertNumeric(ndeps, len=1, lower=0, an.missing=FALSE)
+  checkmate::assertNumeric(ndeps, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(maxit, len=1, any.missing=FALSE, lower=1)
   checkmate::assertNumeric(abstol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(reltol, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(alpha, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(beta, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(gamma, len=1, lower=0, any.missing=FALSE)
-  ## alpha=1.0,
-  ## beta=0.5,
-  ## gamma=2.0,
-  ## REPORT=NULL,
-  ## warn.1d.NelderMead=TRUE,
-  ## type=NULL,
-  ## lmm=5,
-  ## factr=1e7,
-  ## pgtol=0,
-  ## temp=10,
-  ## tmax=10,
+  checkmate::assertIntegerish(REPORT, len=1, lower=0, any.missing=FALSE, null.ok=TRUE)
+  checkmate::assertLogical(warn.1d.NelderMead, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(type, len=1, lower=1, upper=3, any.missing=FALSE, null.ok=TRUE)
+  checkmate::assertIntegerish(lmm, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertNumeric(factr, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(pgtol, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(temp, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(tmax, len=1, lower=0, any.missing=FALSE)
 
   covMethod <- match.arg(covMethod)
-  covMethod <- match.arg(method)
+  method <- match.arg(method)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl"))]
@@ -154,6 +186,14 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                alpha=alpha,
                beta=beta,
                gamma=gamma,
+               REPORT=REPORT,
+               warn.1d.NelderMead=warn.1d.NelderMead,
+               type=type,
+               lmm=lmm,
+               factr=factr,
+               pgtol=pgtol,
+               temp=temp,
+               tmax=tmax,
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
@@ -223,45 +263,7 @@ getValidNlmixrCtl.optim <- function(control) {
 
 .optimEnv <- new.env(parent=emptyenv())
 
-#' @export
-rxUiGet.loadPruneOptim <- function(x, ...) {
-  .loadSymengine(.nlmPrune(x), promoteLinSens = FALSE)
-}
-
-#' @export
-rxUiGet.nlmRxModel <- function(x, ...) {
-  .s <- rxUiGet.loadPruneOptim(x, ...)
-  .prd <- get("rx_pred_", envir = .s)
-  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
-  ## .lhs0 <- .s$..lhs0
-  ## if (is.null(.lhs0)) .lhs0 <- ""
-  .ddt <- .s$..ddt
-  if (is.null(.ddt)) .ddt <- ""
-  .ret <- paste(c(
-    #.s$..stateInfo["state"],
-    #.lhs0,
-    .ddt,
-    .prd,
-    #.s$..stateInfo["statef"],
-    #.s$..stateInfo["dvid"],
-    ""
-  ), collapse = "\n")
-  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
-  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
-  if (.sumProd) {
-    .malert("stabilizing round off errors in optim model...")
-    .ret <- rxode2::rxSumProdModel(.ret)
-    .msuccess("done")
-  }
-  if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "optim model")
-    .msuccess("done")
-  }
-  paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
-}
-
-#' Setup the data for nlm estimation
+#' Setup the data for optim estimation
 #'
 #' @param dataSav Formatted Data
 #' @return Nothing, called for side effects
@@ -275,4 +277,236 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     }
   }
   .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
+}
+
+#' @export
+rxUiGet.optimParLower <- function(x, ...) {
+  .ui <- x[[1]]
+  .ui$iniDf$lower[!.ui$iniDf$fix]
+}
+
+#' @export
+rxUiGet.optimParUpper <- function(x, ...) {
+  .ui <- x[[1]]
+  .ui$iniDf$upper[!.ui$iniDf$fix]
+}
+
+.optimFitModel <- function(ui, dataSav) {
+  # Use nlmEnv and function for DRY principle
+  .nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+  .nlmFitDataSetup(dataSav)
+  .nlmEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  .nlmEnv$rxControl$returnType <- 2L # use data.frame output
+  .nlmEnv$parTrans <- ui$nlmParNameFun
+  .ctl <- ui$control
+  .keep <- c("trace", "fnscale", "parscale", "ndeps", "maxit",
+             "abstol", "reltol", "alpha", "beta", "gamma",
+             "REPORT", "warn.1d.NelderMead", "type", "lmm",
+             "factr", "pgtol", "temp", "tmax")
+  if (is.null(.ctl$REPORT)) {
+    .keep <- .keep[.keep != "REPORT"]
+  }
+  if (is.null(.ctl$type)) {
+    .keep <- .keep[.keep != "type"]
+  }
+  .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
+  class(.ctl) <- NULL
+  .par <- ui$nlmParIni
+  if (length(.oCtl$parscale) == 1L) {
+    .oCtl$parscale <- rep(.oCtl$parscale, length(.par))
+  } else if (!(length(.oCtl$parscale) == length(.par))) {
+    stop("'parscale' should match the number of parmeters (currently ",
+         length(.oCtl$parscale), " should be ", length(.par), ")",
+         call.=FALSE)
+  }
+  if (length(.oCtl$ndeps) == 1L) {
+    .oCtl$ndeps <- rep(.oCtl$ndeps, length(.par))
+  } else if (!(length(.oCtl$ndeps) == length(.par))) {
+    stop("'ndeps' should match the number of parmeters (currently ",
+         length(.oCtl$ndeps), " should be ", length(.par), ")",
+         call.=FALSE)
+  }
+  .ret <- eval(bquote(stats::optim(
+    par=.(.par),
+    fn=.(nlmixr2est::.nlmixrNlmFun),
+    method=.(.ctl$method),
+    control=.(.oCtl),
+    lower=.(ui$optimParLower),
+    upper=(ui$optimParUpper),
+    hessian=.(.ctl$covMethod == "optim"))))
+  # be nice and name items
+  .name <- ui$nlmParName
+  names(.ret$par) <- .name
+  if (any(.ctl$covMethod == c("r", "optim"))) {
+    .malert("calculating covariance")
+    if (.ctl$covMethod != "nlm") {
+      .p <- setNames(.ret$par, NULL)
+      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFun)
+      .ret$hessian <- .hess
+    }
+    dimnames(.ret$hessian) <- list(.name, .name)
+    .hess <- .ret$hessian
+
+    # r matrix
+    .r <- 0.5 * .hess
+    .ch <- try(cholSE(.r), silent = TRUE)
+    .covType <- "r"
+    if (inherits(.ch, "try-error")) {
+      .r2 <- .r %*% .r
+      .r2 <- try(sqrtm(.r2), silent=TRUE)
+      .covType <- "|r|"
+      if (!inherits(.r2, "try-error")) {
+        .ch <- try(cholSE(.r), silent=TRUE)
+        if (inherits(.ch, "try-error")) {
+          .r2 <- .ch # switch to nearPD
+        }
+      }
+      if (inherits(.r2, "try-error")) {
+        .covType <- "r+"
+        .r2 <- try(nmNearPD(.r), silent=TRUE)
+        if (!inherits(.r2, "try-error")) {
+          .ch <- try(cholSE(.r), silent=TRUE)
+        }
+      } else {
+        .ch <- try(cholSE(.r), silent=TRUE)
+      }
+    }
+    if (!inherits(.ch, "try-error")) {
+      .rinv <- rxode2::rxInv(.ch)
+      .rinv <- .rinv %*% t(.rinv)
+      .cov <- 2*.rinv
+      dimnames(.cov) <- list(.name, .name)
+      dimnames(.rinv) <- list(.name, .name)
+      .ret$covMethod <- .covType
+      if (.ctl$covMethod == "optim") {
+        .ret$covMethod <- paste0(.covType, " (optim)")
+      } else {
+        .ret$covMethod <- .covType
+      }
+      .ret$cov <- .cov
+
+    } else {
+      .ret$covMethod <- "failed"
+    }
+    dimnames(.r) <- list(.name, .name)
+    .ret$r <- .r
+    .msuccess("done")
+  }
+  .ret
+}
+
+#' Get the full theta for nlm methods
+#'
+#' @param optim enhanced nlm return
+#' @param ui ui object
+#' @return named theta matrix
+#' @author Matthew L. Fidler
+#' @noRd
+.optimGetTheta <- function(nlm, ui) {
+  .iniDf <- ui$iniDf
+  setNames(vapply(seq_along(.iniDf$name),
+                  function(i) {
+                    if (.iniDf$fix[i]) {
+                      return(.iniDf$est[i])
+                    } else {
+                      return(nlm$par[.iniDf$name[i]])
+                    }
+                  }, double(1), USE.NAMES=FALSE),
+           .iniDf$name)
+}
+
+.optimControlToFoceiControl <- function(env, assign=TRUE) {
+  .optimControl <- env$optimControl
+  .ui <- env$ui
+  .foceiControl <- foceiControl(rxControl=env$optimControl$rxControl,
+                                maxOuterIterations=0L,
+                                maxInnerIterations=0L,
+                                covMethod=0L,
+                                sumProd=.optimControl$sumProd,
+                                optExpression=.optimControl$optExpression,
+                                scaleTo=0,
+                                calcTables=.optimControl$calcTables,
+                                addProp=.optimControl$addProp,
+                                #skipCov=.ui$foceiSkipCov,
+                                interaction=0L,
+                                compress=.optimControl$compress,
+                                ci=.optimControl$ci,
+                                sigdigTable=.optimControl$sigdigTable)
+  if (assign) env$control <- .foceiControl
+  .foceiControl
+}
+
+.optimFamilyFit <- function(env, ...) {
+  .ui <- env$ui
+  .control <- .ui$control
+  .data <- env$data
+  .ret <- new.env(parent=emptyenv())
+  # The environment needs:
+  # - table for table options
+  # - $origData -- Original Data
+  # - $dataSav -- Processed data from .foceiPreProcessData
+  # - $idLvl -- Level information for ID factor added
+  # - $covLvl -- Level information for items to convert to factor
+  # - $ui for ui fullTheta Full theta information
+  # - $etaObf data frame with ID, etas and OBJI
+  # - $cov For covariance
+  # - $covMethod for the method of calculating the covariance
+  # - $adjObf Should the objective function value be adjusted
+  # - $objective objective function value
+  # - $extra Extra print information
+  # - $method Estimation method (for printing)
+  # - $omega Omega matrix
+  # - $theta Is a theta data frame
+  # - $model a list of model information for table generation.  Needs a `predOnly` model
+  # - $message Message for display
+  # - $est estimation method
+  # - $ofvType (optional) tells the type of ofv is currently being used
+  # When running the focei problem to create the nlmixr object, you also need a
+  #  foceiControl object
+  .ret$table <- env$table
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .optim <- .collectWarn(.optimFitModel(.ui, .ret$dataSav), lst = TRUE)
+  .ret$optim <- .optim[[1]]
+  .ret$message <- .ret$optim$message
+  if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
+    return(.ret$nlm)
+  }
+  .ret$ui <- .ui
+  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
+  .ret$fullTheta <- .optimGetTheta(.ret$optim, .ui)
+  .ret$cov <- .ret$optim$cov
+  .ret$covMethod <- .ret$optim$covMethod
+  #.ret$etaMat <- NULL
+  #.ret$etaObf <- NULL
+  #.ret$omega <- NULL
+  .ret$control <- .control
+  .ret$extra <- ""
+  .ret$extra <- paste0(" with ", crayon::bold$yellow(.control$method),  " method")
+  .nlmixr2FitUpdateParams(.ret)
+  nmObjHandleControlObject(.ret$control, .ret)
+  if (exists("control", .ui)) {
+    rm(list="control", envir=.ui)
+  }
+  .ret$est <- "optim"
+  # There is no parameter history for nlme
+  .ret$objective <- -2 * as.numeric(.ret$optim$value)
+  .ret$model <- .ui$ebe
+  .ret$ofvType <- "optim"
+  .optimControlToFoceiControl(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="optim")
+  .env <- .ret$env
+  .env$method <- "optim"
+  .ret
+}
+
+#' @rdname nlmixr2Est
+#' @export
+nlmixr2Est.optim <- function(env, ...) {
+  .ui <- env$ui
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'optim', try 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'optim'", .var.name=.ui$modelName)
+  .optimFamilyControl(env, ...)
+  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
+  .optimFamilyFit(env,  ...)
 }

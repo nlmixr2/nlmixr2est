@@ -1301,6 +1301,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
+  if (is.null(data$ID)) data$ID <- 1L
   checkmate::assert_names(names(data), must.include = requiredCols)
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0

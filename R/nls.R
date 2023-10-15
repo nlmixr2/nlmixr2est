@@ -5,10 +5,39 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams minpack.lm::nls.lm.control
+#' @param returnNls logical; when TRUE, will return the nls object
+#'   instead of the nlmixr object
 #' @return nls control object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'   ini({
+#'    tka <- 0.45
+#'    tcl <- log(c(0, 2.7, 100))
+#'    tv <- 3.45
+#'    add.sd <- 0.7
+#'  })
+#'  model({
+#'    ka <- exp(tka)
+#'    cl <- exp(tcl)
+#'    v <- exp(tv)
+#'    linCmt() ~ add(add.sd)
+#'  })
+#' }
+#'
+#' # Uses nlsLM from minpack.lm if available
+#'
+#' fit1 <- nlmixr(one.cmt, d, est="nls", nlsControl(algorithm="LM"))
+#'
+#' # Uses port and respect parameter boundaries
+#' fit2 <- nlmixr(one.cmt, d, est="nls", nlsControl(algorithm="port"))
+#'
+#' # You can access the underlying nls object with `$nls`
+#' fit2$nls
+#' }
 nlsControl <- function(maxiter=10000,
                        tol = 1e-05,
                        minFactor = 1/1024,

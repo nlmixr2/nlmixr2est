@@ -1,6 +1,5 @@
 nmTest({
-  test_that("nlm makes sense", {
-
+  test_that("optim makes sense", {
 
     library(dplyr)
 
@@ -21,13 +20,13 @@ nmTest({
       })
     }
 
-    fit2 <- nlmixr(mod, dsn, est="nlm")
+    fit2 <- nlmixr(mod, dsn, est="optim")
 
-    expect_true(inherits(fit2, "nlmixr2.nlm"))
+    expect_true(inherits(fit2, "nlmixr2.optim"))
 
-    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "nlm", nlmControl(covMethod="nlm"))
+    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "optim", nlmControl(covMethod="optim"))
 
-    expect_true(inherits(fit3, "nlmixr2.nlm"))
+    expect_true(inherits(fit3, "nlmixr2.optim"))
 
     one.cmt <- function() {
       ini({
@@ -44,9 +43,9 @@ nmTest({
       })
     }
 
-    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="optim", optimControl(method="L-BFGS-B"))
 
-    expect_true(inherits(fit1, "nlmixr2.nlm"))
+    expect_true(inherits(fit1, "nlmixr2.optim"))
 
   })
 

@@ -4265,10 +4265,14 @@ Environment foceiOuter(Environment e){
     foceiOuterFinal(x.begin(), e);
     if (op_focei.maxInnerIterations == 0){
       e["fail"] = NA_INTEGER;
-      e["message"] = "Likelihood evaluation with provided ETAs";
+      if (!e.exists("message")) {
+        e["message"] = "Likelihood evaluation with provided ETAs";
+      }
     } else {
       e["fail"] = 0;
-      e["message"] = "Posthoc prediction with provided THETAs";
+      if (!e.exists("message")) {
+        e["message"] = "Posthoc prediction with provided THETAs";
+      }
     }
   }
   return e;
@@ -6845,4 +6849,3 @@ void restoreFromEnvrionment(Environment e) {
   arma::vec gillDf = e[".gillDf"];
   std::copy(gillDf.begin(), gillDf.end(), op_focei.gillDf);
 }
-

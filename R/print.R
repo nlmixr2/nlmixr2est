@@ -331,7 +331,7 @@ print.nlmixr2FitCore <- function(x, ...) {
     ))
 
 
-    if (x$message != "") {
+    if (length(x$message) > 0L && x$message != "") {
       cat(paste0("  Minimization message (", crayon::yellow(.bound), crayon::bold$blue("$message"), "): "), "\n")
       cat(paste0("    ", x$message), "\n")
       if (x$message == "false convergence (8)") {

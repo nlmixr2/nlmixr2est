@@ -6,6 +6,8 @@
 #' @param covMethod allows selection of "r", which uses nlmixr2's
 #'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
 #'   the hessian from `stats::nlm(.., hessian=TRUE)`
+#' @param returnNlm is a logical that allows a return of the `nlm`
+#'   object
 #' @return nlme control object
 #' @export
 #' @author Matthew L. Fidler
@@ -14,7 +16,7 @@
 #' \donttest{
 #' # A logit regression example with emax model
 #'
-#' dsn <- data.frame(i=1:1000) %>%
+#' dsn <- data.frame(i=1:1000)
 #' dsn$time <- exp(rnorm(1000))
 #' dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
 #' dsn$id <- 1 mutate(id=1)
@@ -127,7 +129,7 @@ nlmControl <- function(typsize = NULL,
 
 #' Get the nlm family control
 #'
-#' @param env nlme optimization environment
+#' @param env nlm optimization environment
 #' @param ... Other arguments
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
@@ -219,17 +221,13 @@ rxUiGet.nlmModel0 <- function(x, ...) {
 #' @return String for loading into symengine
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmPrune <- function(x, nlm=TRUE) {
+.nlmPrune <- function(x) {
   .x <- x[[1]]
   .x <- .x$nlmModel0[[-1]]
   .env <- new.env(parent = emptyenv())
   .env$.if <- NULL
   .env$.def1 <- NULL
-  if (nlm) {
-    .malert("pruning branches ({.code if}/{.code else}) of nlm model...")
-  } else {
-    .malert("pruning branches ({.code if}/{.code else}) of optim model...")
-  }
+  .malert("pruning branches ({.code if}/{.code else}) of population log-likelihood model...")
   .ret <- rxode2::.rxPrune(.x, envir = .env)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
@@ -267,12 +265,12 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
-    .malert("stabilizing round off errors in nlm model...")
+    .malert("stabilizing round off errors in population log-likelihood model...")
     .ret <- rxode2::rxSumProdModel(.ret)
     .msuccess("done")
   }
   if (.optExpression) {
-    .ret <- rxode2::rxOptExpr(.ret, "nlm model")
+    .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model")
     .msuccess("done")
   }
   paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),

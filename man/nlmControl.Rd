@@ -151,7 +151,7 @@ nlmixr2 defaults controls for nlm
 \donttest{
 # A logit regression example with emax model
 
-dsn <- data.frame(i=1:1000) \%>\%
+dsn <- data.frame(i=1:1000)
 dsn$time <- exp(rnorm(1000))
 dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
 dsn$id <- 1 mutate(id=1)
