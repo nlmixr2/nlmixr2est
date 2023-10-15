@@ -79,6 +79,9 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{returnNlm}{is a logical that allows a return of the `nlm`
+object}
+
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).
@@ -154,7 +157,6 @@ nlmixr2 defaults controls for nlm
 dsn <- data.frame(i=1:1000)
 dsn$time <- exp(rnorm(1000))
 dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
-dsn$id <- 1 mutate(id=1)
 
 mod <- function() {
  ini({

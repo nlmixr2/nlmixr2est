@@ -149,6 +149,9 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{returnNls}{logical; when TRUE, will return the nls object
+instead of the nlmixr object}
+
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).

@@ -84,6 +84,30 @@
 #' @return optimControl object for nlmixr2
 #' @export
 #' @author Matthew L. Fidler
+#' @examples
+#' \donttest{
+#' # A logit regression example with emax model
+#'
+#' dsn <- data.frame(i=1:1000)
+#' dsn$time <- exp(rnorm(1000))
+#' dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+#'
+#' mod <- function() {
+#'  ini({
+#'    E0 <- 0.5
+#'    Em <- 0.5
+#'    E50 <- 2
+#'    g <- fix(2)
+#'  })
+#'  model({
+#'    v <- E0+Em*time^g/(E50^g+time^g)
+#'    ll(bin) ~ DV * v - log(1 + exp(v))
+#'  })
+#' }
+#'
+#' fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
+#' fit2
+#' }
 optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN", "Brent"),
                          trace=10,
                          fnscale=1.0,

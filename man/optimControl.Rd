@@ -40,6 +40,8 @@ optimControl(
 )
 }
 \arguments{
+\item{method}{The method to be used. See \sQuote{Details}.  Can be abbreviated.}
+
 \item{trace}{Non-negative integer. If positive, tracing information
 on the progress of the optimization is produced. Higher values
 may produce more tracing information: for method `"L-BFGS-B"`,
@@ -121,6 +123,9 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{returnOptim}{logical; when TRUE this will return the optim
+list instead of the nlmixr2 fit object}
+
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).
@@ -180,13 +185,38 @@ function.  By default this is \code{TRUE}}
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 
-\item{...}{additional arguments to be passed to \code{f}.}
+\item{...}{Further arguments to be passed to \code{fn} and \code{gr}.}
 }
 \value{
 optimControl object for nlmixr2
 }
 \description{
 nlmixr2 optim defaults
+}
+\examples{
+\donttest{
+# A logit regression example with emax model
+
+dsn <- data.frame(i=1:1000)
+dsn$time <- exp(rnorm(1000))
+dsn$DV=rbinom(1000,1,exp(-1+dsn$time)/(1+exp(-1+dsn$time)))
+
+mod <- function() {
+ ini({
+   E0 <- 0.5
+   Em <- 0.5
+   E50 <- 2
+   g <- fix(2)
+ })
+ model({
+   v <- E0+Em*time^g/(E50^g+time^g)
+   ll(bin) ~ DV * v - log(1 + exp(v))
+ })
+}
+
+fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
+fit2
+}
 }
 \author{
 Matthew L. Fidler

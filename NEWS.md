@@ -12,6 +12,10 @@
   only likelihoods.  This uses `minpack.lm::nlsNM` by default if
   present, or the `stats::nls`
 
+- New estimation method "optim" has been added to estimate population
+  only likelihoods.  This uses `stats::optim` and returns a
+  standardized `nlmixr2` fit.
+
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in
