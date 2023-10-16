@@ -285,8 +285,6 @@ getValidNlmixrCtl.optim <- function(control) {
   .ctl
 }
 
-.optimEnv <- new.env(parent=emptyenv())
-
 #' Setup the data for optim estimation
 #'
 #' @param dataSav Formatted Data
@@ -504,7 +502,6 @@ rxUiGet.optimParUpper <- function(x, ...) {
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
   .ret$control <- .control
-  .ret$extra <- ""
   .ret$extra <- paste0(" with ", crayon::bold$yellow(.control$method),  " method")
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)

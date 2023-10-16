@@ -16,6 +16,10 @@
   only likelihoods.  This uses `stats::optim` and returns a
   standardized `nlmixr2` fit.
 
+- New estimation method "nlminb" has been added to estimate population
+  only likelihoods.  This uses `stats::nlminb` and returns a
+  standardized `nlmixr2` fit.
+
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in
