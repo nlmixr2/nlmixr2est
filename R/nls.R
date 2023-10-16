@@ -130,6 +130,7 @@ nlsControl <- function(maxiter=10000,
 
   .ret <- list(algorithm=algorithm, maxiter=maxiter,
                tol=tol,
+               trace=trace,
                minFactor=minFactor,
                printEval=printEval,
                warnOnly=warnOnly,
@@ -560,7 +561,7 @@ rxUiGet.nlsFormula <- function(x, ...) {
       scaleOffset = .ctl$scaleOffset,
       nDcentral = .ctl$nDcentral)
     class(.ctl) <- NULL
-    .ret <- eval(bquote(stats::nls(
+    .ret <- bquote(stats::nls(
       formula= .(ui$nlsFormula),
       data=nlmixr2est::.nlmixrNlsData(),
       start=.(ui$nlsParStart),
@@ -570,7 +571,9 @@ rxUiGet.nlsFormula <- function(x, ...) {
       model=FALSE,
       lower=.(ui$nlsParLower),
       upper=.(ui$nlsParUpper)
-    )))
+    ))
+    print(.ret)
+    .ret <- eval(.ret)
   }
   .ret
 }

@@ -235,10 +235,10 @@ one.cmt <- function() {
 
 # Uses nlsLM from minpack.lm if available
 
-fit1 <- nlmixr(one.cmt, d, est="nls", nlsControl(algorithm="LM"))
+fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="LM"))
 
 # Uses port and respect parameter boundaries
-fit2 <- nlmixr(one.cmt, d, est="nls", nlsControl(algorithm="port"))
+fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
