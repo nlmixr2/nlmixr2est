@@ -329,12 +329,19 @@ print.nlmixr2FitCore <- function(x, ...) {
       "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
       as.character(x$censInformation), "\n"
     ))
-
-
-    if (length(x$message) > 0L && x$message != "") {
+    .msg <- x$message
+    if (length(.msg) >= 1L) {
+      if (length(.msg) == 1L && x$message == "") {
+        .msg <- NULL
+      } else {
+        .msg <- gsub("^ *", "", .msg)
+        .msg <- paste(paste0("    ", .msg), collapse="\n")
+      }
+    }
+    if (length(.msg) > 0L) {
       cat(paste0("  Minimization message (", crayon::yellow(.bound), crayon::bold$blue("$message"), "): "), "\n")
-      cat(paste0("    ", x$message), "\n")
-      if (x$message == "false convergence (8)") {
+      cat(.msg, "\n")
+      if (x$message[1] == "false convergence (8)") {
         cat("  In an ODE system, false convergence may mean \"useless\" evaluations were performed.\n")
         cat("  See https://tinyurl.com/yyrrwkce\n")
         cat("  It could also mean the convergence is poor, check results before accepting fit\n")
