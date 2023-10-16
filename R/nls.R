@@ -572,7 +572,6 @@ rxUiGet.nlsFormula <- function(x, ...) {
       lower=.(ui$nlsParLower),
       upper=.(ui$nlsParUpper)
     ))
-    print(.ret)
     .ret <- eval(.ret)
   }
   .ret
