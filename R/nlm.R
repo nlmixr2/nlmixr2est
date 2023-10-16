@@ -202,6 +202,27 @@ getValidNlmixrCtl.nlm <- function(control) {
   -sum(.retF$rx_pred_)
 }
 
+#' Get the THETA lines from rxode2 UI and assign fixed
+#'
+#' @param rxui This is the rxode2 ui object
+#' @return The theta/eta lines
+#' @author Matthew L. Fidler
+#' @noRd
+.uiGetThetaDropFixed <- function(rxui) {
+  .iniDf <- rxui$iniDf
+  .w <- which(!is.na(.iniDf$ntheta))
+  .env <- new.env(parent=emptyenv())
+  .env$t <- 0
+  lapply(.w, function(i) {
+    if (.iniDf$fix[i]) {
+      eval(str2lang(paste0("quote(", .iniDf$name[i], " <- ", .iniDf$est[i], ")")))
+    } else {
+      .env$t <- .env$t + 1
+      eval(str2lang(paste0("quote(", .iniDf$name[i], " <- THETA[", .env$t, "])")))
+    }
+  })
+}
+
 
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
@@ -211,7 +232,12 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
   assign("predDf", .predDf, envir=.ui)
   on.exit(assign("predDf", .save, envir=.ui))
-  .ui$foceiModel0ll
+  rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
+                              prefixLines=.uiGetThetaDropFixed(.ui),
+                              paramsLine=NA, #.uiGetThetaEtaParams(.f),
+                              modelVars=TRUE,
+                              cmtLines=FALSE,
+                              dvidLine=FALSE)
 }
 
 #' Load the nlm model into symengine
@@ -240,7 +266,23 @@ rxUiGet.nlmModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlm <- function(x, ...) {
-  .loadSymengine(.nlmPrune(x), promoteLinSens = FALSE)
+  .p <- .nlmPrune(x)
+  .loadSymengine(.p, promoteLinSens = FALSE)
+}
+
+#' @export
+rxUiGet.nlmParams <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .w <- which(!.iniDf$fix)
+  .env <- new.env(parent=emptyenv())
+  .env$t <- 0
+  paste0("params(",
+         paste(c(vapply(.w, function(i) {
+           .env$t <- .env$t + 1
+           return(paste0("THETA[", .env$t, "]"))
+         }, character(1), USE.NAMES = FALSE), "DV"),
+         collapse=","), ")")
 }
 
 #' @export
@@ -272,7 +314,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model")
     .msuccess("done")
   }
-  paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+  paste(c(rxUiGet.nlmParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
@@ -282,16 +324,13 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
   .iniDf <- .ui$iniDf
   .env <- new.env(parent=emptyenv())
   .env$i <- 1
+  .w <- which(!.iniDf$fix)
   eval(str2lang(
     paste0("function(p) {c(",
-           paste(vapply(seq_along(.iniDf$ntheta), function(t) {
-             if (.iniDf$fix[t]) {
-               paste0("'THETA[", t, "]'=", .iniDf$est[t])
-             } else {
-               .ret <- paste0("'THETA[", t, "]'=p[", .env$i, "]")
-               .env$i <- .env$i + 1
-               .ret
-             }
+           paste(vapply(.w, function(t) {
+             .ret <- paste0("'THETA[", .env$i, "]'=p[", .env$i, "]")
+             .env$i <- .env$i + 1
+             .ret
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
 }
 
