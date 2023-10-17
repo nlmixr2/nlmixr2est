@@ -7,6 +7,8 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
+#include "inner.h"
+
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -68,10 +70,6 @@ extern "C" {
                 double pgtol, int *fncount, int *grcount,
                 int maxit, char *msg, int trace, int nREPORT);
 
-
-  typedef void (*ind_solve_t)(rx_solve *rx, unsigned int cid, t_dydt_liblsoda dydt_lls,
-                              t_dydt_lsoda_dum dydt_lsoda, t_jdum_lsoda jdum,
-                              t_dydt c_dydt, t_update_inis u_inis, int jt);
   ind_solve_t ind_solve;
   typedef int (*par_progress_t)(int c, int n, int d, int cores, clock_t t0, int stop);
   par_progress_t par_progress;
@@ -426,26 +424,7 @@ extern "C" void rxOptionsFreeFocei(){
 void freeFocei(){
   rxOptionsFreeFocei();
 }
-struct rxSolveF {
-  //
-  // std::string estStr;
-  // std::string gradStr;
-  // std::string obfStr;
-  //
-  t_dydt dydt = NULL;
-  t_calc_jac calc_jac = NULL;
-  t_calc_lhs calc_lhs = NULL;
-  t_update_inis update_inis = NULL;
-  t_dydt_lsoda_dum dydt_lsoda_dum = NULL;
-  t_dydt_liblsoda dydt_liblsoda = NULL;
-  t_jdum_lsoda jdum_lsoda = NULL;
-  t_set_solve set_solve = NULL;
-  t_get_solve get_solve = NULL;
-  int global_jt = 2;
-  int global_mf = 22;
-  int global_debug = 0;
-  int neq = NA_INTEGER;
-} ;
+
 
 rxSolveF rxInner;
 rxSolveF rxPred;
@@ -3066,7 +3045,7 @@ static inline void foceiSetupTheta_(List mvi,
     rxUpdateFuns(as<SEXP>(mvi["trans"]), &rxInner);
     foceiSetupTrans_(as<CharacterVector>(mvi["params"]));
   } else if (!op_focei.alloc){
-    stop("FOCEi problem not allocated\nThis can happen when sympy<->nlmixr2 interaction is not working correctly.");
+    stop("FOCEi problem not allocated\nThis can happen when symengine<->nlmixr2 interaction is not working correctly.");
   }
   std::copy(theta.begin(), theta.end(), &op_focei.fullTheta[0]);
   if (op_focei.neta >= 0) {
@@ -6362,19 +6341,7 @@ void foceiFinalizeTables(Environment e){
 
 ////////////////////////////////////////////////////////////////////////////////
 // FOCEi fit
-
-//' Fit/Evaluate FOCEi
-//'
-//' This shouldn't be called directly.
-//'
-//' @param e Environment
-//'
-//' @return A focei fit object
-//'
-//' @keywords internal
-//' @export
-//[[Rcpp::export]]
-Environment foceiFitCpp_(Environment e){
+void doAssignFn(void) {
   if (!assignFn_){
     n1qn1_ = (n1qn1_fp) R_GetCCallable("n1qn1","n1qn1_");
     par_progress = (par_progress_t) R_GetCCallable("rxode2", "par_progress");
@@ -6387,6 +6354,20 @@ Environment foceiFitCpp_(Environment e){
     sortIdsF = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
     assignFn_=true;
   }
+}
+//' Fit/Evaluate FOCEi
+//'
+//' This shouldn't be called directly.
+//'
+//' @param e Environment
+//'
+//' @return A focei fit object
+//'
+//' @keywords internal
+//' @export
+//[[Rcpp::export]]
+Environment foceiFitCpp_(Environment e){
+  doAssignFn();
   clock_t t0 = clock();
   List model = e["model"];
   bool doPredOnly = false;

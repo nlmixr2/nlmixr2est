@@ -559,6 +559,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ctl <- ui$control
   class(.ctl) <- NULL
   .p <- ui$nlmParIni
+  .nlmEnv$param <- p
   .typsize <- .ctl$typsize
   if (is.null(.typsize)) {
     .typsize <- rep(1, length(.p))
