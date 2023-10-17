@@ -136,6 +136,18 @@ nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, on
     .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
 }
 
+nlmSetup <- function(e) {
+    .Call(`_nlmixr2est_nlmSetup`, e)
+}
+
+nlmSolveGrad <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveGrad`, theta)
+}
+
+nlmSolveGradHess <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

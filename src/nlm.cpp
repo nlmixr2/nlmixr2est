@@ -35,6 +35,8 @@ struct nlmOptions {
   int ntheta=0;
   int *thetaFD=NULL; // theta needs finite difference?
   double *thetahf=NULL; // Shi step size
+  double *thetahh=NULL;
+
   int eventType=3; // eventType
   int shi21maxFD=1000; //maxiter for shi
   int stickyTol=0;
@@ -47,7 +49,10 @@ struct nlmOptions {
   double odeRecalcFactor;
   // calc/get
   bool needFD=false;
+  int optimHessType=3;
+  int shi21maxHess=1000;
   double shiErr;
+  double hessErr;
 
 };
 
@@ -60,6 +65,7 @@ void nlmFree(void) {
   nlmOp.thetahf = NULL;
 }
 
+//[[Rcpp::export]]
 RObject nlmSetup(Environment e) {
   doAssignFn();
   List control = e["control"];
@@ -78,7 +84,8 @@ RObject nlmSetup(Environment e) {
   nlmOp.ntheta = p.size();
 
   nlmOp.thetaFD = R_Calloc(nlmOp.ntheta, int);
-  nlmOp.thetahf = R_Calloc(nlmOp.ntheta, double);
+  nlmOp.thetahf = R_Calloc(nlmOp.ntheta*2, double);
+  nlmOp.thetahh = nlmOp.thetahf+nlmOp.ntheta;
 
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
@@ -189,7 +196,8 @@ arma::vec nlmSolveF(arma::vec &theta, int id) {
   return ret(span(0, k-1));
 }
 
-// Solve gradient with finite difference thetas
+// Solve gradient with finite difference thetas This is done for every
+// observation so it could possibly be used in nls types of models
 arma::mat nlmSolveGrad(arma::vec &theta, int id) {
   // first solve the inner problem
   rx_solving_options_ind *ind =  &(rx->subjects[id]);
@@ -286,5 +294,104 @@ arma::mat nlmSolveGrad(arma::vec &theta, int id) {
     // restore save (may not be needed)
     //std::copy(solveSave.begin(), solveSave.end(), ind->solve);
   }
+  return ret;
+}
+
+//[[Rcpp::export]]
+RObject nlmSolveGrad(arma::vec &theta) {
+  int ntheta = theta.size();
+  arma::mat ret0 = nlmSolveGrad(theta, 0);
+  arma::vec cs = arma::sum(ret0, 0);
+  NumericVector ret(1);
+  NumericVector grad(ntheta);
+  ret[0] = cs[0];
+  ret.attr("gradient") = wrap(cs(span(1, ntheta)));
+  return ret;
+}
+
+arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
+  int ntheta = theta.size();
+  arma::mat ret0 = nlmSolveGrad(theta, 0);
+  ret0 = ret0.cols(1, ntheta);
+  return arma::sum(ret0, 0);
+}
+//[[Rcpp::export]]
+RObject nlmSolveGradHess(arma::vec &theta) {
+  int id = 0;
+  int ntheta = theta.size();
+  arma::mat ret0 = nlmSolveGrad(theta, 0);
+  arma::vec cs = arma::sum(ret0, 0);
+  double ll = cs[0];
+  arma::vec gr0 = cs(span(1, ntheta));
+  mat H(nlmOp.ntheta, nlmOp.ntheta);
+  H.zeros();
+  arma::vec grPH(nlmOp.ntheta);
+  arma::vec grMH(nlmOp.ntheta);
+  double h;
+  for (int k = nlmOp.ntheta; k--;) {
+    h = nlmOp.thetahh[k];
+    if (nlmOp.optimHessType == 3 && h <= 0) {
+      arma::vec t = theta;
+      nlmOp.thetahh[k] = shi21Forward(nlmSolveGrad1, theta, h,
+                                    gr0, grPH, id, k,
+                                    nlmOp.hessErr, //double ef = 7e-7,
+                                    1.5,  //double rl = 1.5,
+                                    6.0,  //double ru = 6.0);;
+                                    nlmOp.shi21maxHess);  //maxiter=15
+      H.col(k) = grPH;
+      continue;
+    }
+    if (nlmOp.optimHessType == 1 && h <= 0) {
+      // Central
+      arma::vec t = theta;
+      nlmOp.thetahh[k] = shi21Central(nlmSolveGrad1, t, h,
+                                    gr0, grPH, id, k,
+                                    nlmOp.hessErr, // ef,
+                                    1.5,//double rl = 1.5,
+                                    4.5,//double ru = 4.5,
+                                    3.0,//double nu = 8.0);
+                                    nlmOp.shi21maxHess); // maxiter
+      H.col(k) = grPH;
+      continue;
+    }
+    // x + h
+    theta[k] += h;
+    grPH = nlmSolveGrad1(theta, id);
+    bool forwardFinite =  grPH.is_finite();
+    if (nlmOp.optimHessType == 3 && forwardFinite) { // forward
+      H.col(k) = (grPH-gr0)/h;
+      theta[k] -= h;
+      continue;
+    }
+    // x - h
+    theta[k] -= 2*h;
+    grMH = nlmSolveGrad1(theta, id);
+    bool backwardFinite = grMH.is_finite();
+    if (nlmOp.optimHessType == 1 &&
+        forwardFinite && backwardFinite) {
+      // central
+      theta[k] += h;
+      H.col(k) = (grPH-grMH)/(2.0*h);
+      continue;
+    }
+    if (forwardFinite && !backwardFinite) {
+      // forward difference
+      H.col(k) = (grPH-gr0)/h;
+      theta[k] += h;
+      continue;
+    }
+    if (!forwardFinite && backwardFinite) {
+      // backward difference
+      H.col(k) = (gr0-grMH)/h;
+      theta[k] += h;
+      continue;
+    }
+  }
+  // symmetrize
+  H = 0.5*(H + H.t());
+  NumericVector ret(1);
+  ret[0] = ll;
+  ret.attr("gradient") = wrap(gr0);
+  ret.attr("hessian") = wrap(H);
   return ret;
 }
