@@ -1,7 +1,6 @@
 nmTest({
   test_that("nlm makes sense", {
 
-
     library(dplyr)
 
     dsn <- data.frame(i=1:1000) %>%
