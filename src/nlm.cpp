@@ -45,6 +45,10 @@ struct nlmOptions {
   int reducedTol;
   int reducedTol2;
   double odeRecalcFactor;
+  // calc/get
+  bool needFD=false;
+  double shiErr;
+
 };
 
 nlmOptions nlmOp;
@@ -149,11 +153,17 @@ void nlmSolvePred(int id) {
   }
 }
 
+extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);
+arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0, arma::vec &grPH,  double h);
+
 // Solve prediction
-arma::vec nlmSolveF(int id) {
+arma::vec nlmSolveF(arma::vec &theta, int id) {
+  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  for (int i = nlmOp.ntheta; i--;) {
+    ind->par_ptr[i]=theta[i];
+  }
   nlmSolvePred(id);
   rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
   arma::vec ret(ind->n_all_times);
   iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
   int kk, k=0;
@@ -180,11 +190,14 @@ arma::vec nlmSolveF(int id) {
 }
 
 // Solve gradient with finite difference thetas
-arma::mat nlmSolveGrad0(int id) {
+arma::mat nlmSolveGrad(arma::vec &theta, int id) {
   // first solve the inner problem
+  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  for (int i = nlmOp.ntheta; i--;) {
+    ind->par_ptr[i]=theta[i];
+  }
   nlmSolveInner(id);
   rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
   arma::mat ret(ind->n_all_times, nlmOp.ntheta+1);
   int kk, k=0;
   double curT;
@@ -208,29 +221,70 @@ arma::mat nlmSolveGrad0(int id) {
       break;
     }
   }
-  // for (int ii = 0; ii < op_focei.neta; ++ii) {
-  //   if (predSolve || op_focei.etaFD[ii]==1) {
-  // if (predSolve || op_focei.etaFD[ii]==1) {
-  //   if (fInd->etahf[ii] == 0.0) {
-  //     double h = 0;
-  //     //     .eventTypeIdx <- c("stencil" = 1L, "central" = 2L, "forward" = 3L)
-  //     switch(op_focei.eventType) {
-  //     case 2: // central
-  //       fInd->etahf[ii] = shi21Central(shi21EtaF, curEta, h,
-  //                                      f0, grETA, id, ii,
-  //                                      op_focei.hessEpsInner, // ef,
-  //                                      1.5,//double rl = 1.5,
-  //                                      4.5,//double ru = 4.5,
-  //                                      3.0,//double nu = 8.0);
-  //                                      op_focei.shi21maxFD); // maxiter
-  //       break;
-  //     case 3: // forward
-  //       fInd->etahf[ii] = shi21Forward(shi21EtaF, curEta, h,
-  //                                      f0, grETA, id, ii,
-  //                                      op_focei.hessEpsInner, // ef,
-  //                                      1.5,  //double rl = 1.5,
-  //                                      6.0,  //double ru = 6.0);;
-  //                                      op_focei.shi21maxFD); // maxiter
-  //     }
-  return ret.rows(0, k-1);
+  ret = ret.rows(0, k-1);
+  int nObs = k;
+  if (nlmOp.needFD) {
+    // Save solve; not needed can corrupt memory space with preds
+    //int nsolve = (op->neq + op->nlin)*ind->n_all_times;
+    //arma::vec solveSave(nsolve);
+    // save and restore memory pointer
+    // std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());
+    arma::vec f0 = ret.col(0);
+    arma::vec grTheta(nObs);
+    arma::vec grPH(nObs);
+    arma::vec grMH(nObs);
+
+    arma::vec hTheta(nlmOp.ntheta);
+    arma::vec curTheta = theta;
+    for (int ii = 0; ii < nlmOp.ntheta; ++ii) {
+      if (nlmOp.thetaFD[ii] == 0) continue;
+      if (nlmOp.thetahf[ii] == 0.0) {
+        double h = 0;
+        switch(nlmOp.eventType) {
+        case 2: // central
+          nlmOp.thetahf[ii] = shi21Central(nlmSolveF, curTheta, h,
+                                           f0, grTheta, id, ii,
+                                           nlmOp.shiErr, // ef,
+                                           1.5,//double rl = 1.5,
+                                           4.5,//double ru = 4.5,
+                                           3.0,//double nu = 8.0);
+                                           nlmOp.shi21maxFD); // maxiter
+          break;
+        case 3: // forward
+          nlmOp.thetahf[ii] = shi21Forward(nlmSolveF, curTheta, h,
+                                           f0, grTheta, id, ii,
+                                           nlmOp.shiErr, // ef,
+                                           1.5,  //double rl = 1.5,
+                                           6.0,  //double ru = 6.0);;
+                                           nlmOp.shi21maxFD); // maxiter
+        }
+        ret.col(ii+1) = grTheta;
+        continue;
+      }
+      // already calculated optimum thetahf, now do the differences
+      hTheta = curTheta;
+      hTheta[ii] += nlmOp.thetahf[ii];
+      grPH = nlmSolveF(hTheta, id);
+      bool useForward = false;
+      if (nlmOp.eventType == 3) {
+        // if this isn't true try backward
+        if (grPH.is_finite()) {
+          useForward = true;
+          ret.col(ii) = calcGradForward(f0, grPH,  nlmOp.thetahf[ii]);
+          continue;
+        }
+      }
+      if (!useForward) {
+        // stencil or central
+        hTheta = curTheta;
+        hTheta[ii] -= nlmOp.thetahf[ii];
+        grMH = nlmSolveF(hTheta, id);
+        // central
+        ret.col(ii) = calcGradCentral(grMH, f0, grPH,  nlmOp.thetahf[ii]);
+      }
+    }
+    // restore save (may not be needed)
+    //std::copy(solveSave.begin(), solveSave.end(), ind->solve);
+  }
+  return ret;
 }

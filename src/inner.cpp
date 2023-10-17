@@ -9,7 +9,6 @@
 #include "shi21.h"
 #include "inner.h"
 
-
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #define _(String) dgettext ("nlmixr2est", String)
@@ -922,8 +921,6 @@ double likInner0(double *eta, int id){
 
         arma::vec grPH(fInd->nObs);
         arma::vec grMH(fInd->nObs);
-        arma::vec grP2H(fInd->nObs);
-        arma::vec grM2H(fInd->nObs);
 
         for (int ii = 0; ii < op_focei.neta; ++ii) {
           if (predSolve || op_focei.etaFD[ii]==1) {
@@ -1335,9 +1332,6 @@ double LikInner2(double *eta, int likId, int id){
 
       arma::vec grPH(op_focei.neta);
       arma::vec grMH(op_focei.neta);
-
-      arma::vec grP2H(op_focei.neta);
-      arma::vec grM2H(op_focei.neta);
 
       double h = 0;
 
