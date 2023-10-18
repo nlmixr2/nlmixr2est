@@ -16,7 +16,7 @@
 #define _(String) (String)
 #endif
 
-#define innerOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
+#define nlmOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
 extern void doAssignFn(void);
@@ -47,36 +47,50 @@ struct nlmOptions {
   int reducedTol;
   int reducedTol2;
   double odeRecalcFactor;
-  // calc/get
   bool needFD=false;
   int optimHessType=3;
   int shi21maxHess=1000;
   double shiErr;
   double hessErr;
-
+  int solveType;
 };
 
 nlmOptions nlmOp;
 
-void nlmFree(void) {
+//[[Rcpp::export]]
+RObject nlmFree() {
   if (nlmOp.thetaFD != NULL) R_Free(nlmOp.thetaFD);
   nlmOp.thetaFD = NULL;
   if (nlmOp.thetahf != NULL) R_Free(nlmOp.thetahf);
   nlmOp.thetahf = NULL;
+  nlmOp.thetahh = NULL;
+  return R_NilValue;
 }
+
 
 //[[Rcpp::export]]
 RObject nlmSetup(Environment e) {
   doAssignFn();
+  nlmFree();
   List control = e["control"];
-  List model = e["thetaGrad"];
 
-  List mv = rxode2::rxModelVars_(model);
-  rxUpdateFuns(as<SEXP>(mv["trans"]), &rxPred);
-
-  List pred = e["predOnly"];
+  RObject pred = e["predOnly"];
   List mvp = rxode2::rxModelVars_(pred);
   rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
+
+
+  nlmOp.solveType = as<int>(control["solveType"]);
+  RObject model;
+  if (e.exists("thetaGrad")) {
+    model = e["thetaGrad"];
+
+    List mv = rxode2::rxModelVars_(model);
+    rxUpdateFuns(as<SEXP>(mv["trans"]), &rxInner);
+  } else {
+    nlmOp.solveType = 1;
+    model = pred;
+  }
+
 
   List rxControl = as<List>(e["rxControl"]);
 
@@ -84,6 +98,16 @@ RObject nlmSetup(Environment e) {
   nlmOp.ntheta = p.size();
 
   nlmOp.thetaFD = R_Calloc(nlmOp.ntheta, int);
+  IntegerVector needFD = as<IntegerVector>(e["needFD"]);
+
+  nlmOp.needFD=false;
+  for (int i = 0; i < nlmOp.ntheta; ++i) {
+    nlmOp.thetaFD[i] = needFD[i];
+    if (nlmOp.thetaFD[i]) {
+      nlmOp.needFD=true;
+    }
+  }
+
   nlmOp.thetahf = R_Calloc(nlmOp.ntheta*2, double);
   nlmOp.thetahh = nlmOp.thetahf+nlmOp.ntheta;
 
@@ -91,11 +115,18 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
   nlmOp.stickyRecalcN1=0;
+  nlmOp.reducedTol = 0;
+  nlmOp.reducedTol2 = 0;
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
   nlmOp.eventType = control["eventType"];
   nlmOp.shi21maxFD = control["shi21maxFD"];
+  nlmOp.shiErr = control["shiErr"];
+
+  nlmOp.optimHessType = control["optimHessType"];
+  nlmOp.shi21maxHess = control["shi21maxHess"];
+  nlmOp.hessErr = control["hessErr"];
 
   rxode2::rxSolve_(model, rxControl,
                    R_NilValue,//const Nullable<CharacterVector> &specParams =
@@ -108,20 +139,19 @@ RObject nlmSetup(Environment e) {
   return R_NilValue;
 }
 
-void nlmSolveInner(int id) {
+void nlmSolveNlm(int id) {
   rx_solving_options *op = rx->op;
   rx_solving_options_ind *ind =  &(rx->subjects[id]);
-  innerOde(id);
+  nlmOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
          op->badSolve && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol  = 1;
-    nlmOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
     ind->solved = -1;
-    innerOde(id);
+    nlmOde(id);
     j++;
   }
   if (j != 0) {
@@ -142,7 +172,6 @@ void nlmSolvePred(int id) {
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
          op->badSolve && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
-    nlmOp.reducedTol  = 1;
     nlmOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
@@ -182,7 +211,7 @@ arma::vec nlmSolveF(arma::vec &theta, int id) {
     if (isDose(ind->evid[kk])) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else {
+    } else if (ind->evid[kk] == 0) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       ret(k) = ind->lhs[0];
       k++;
@@ -196,15 +225,49 @@ arma::vec nlmSolveF(arma::vec &theta, int id) {
   return ret(span(0, k-1));
 }
 
-// Solve gradient with finite difference thetas This is done for every
-// observation so it could possibly be used in nls types of models
-arma::mat nlmSolveGrad(arma::vec &theta, int id) {
-  // first solve the inner problem
+//[[Rcpp::export]]
+double nlmSolveR(arma::vec &theta) {
+  int id = 0;
   rx_solving_options_ind *ind =  &(rx->subjects[id]);
   for (int i = nlmOp.ntheta; i--;) {
     ind->par_ptr[i]=theta[i];
   }
-  nlmSolveInner(id);
+  nlmSolvePred(id);
+  rx_solving_options *op = rx->op;
+  double ret = 0.0;
+  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  int kk, k=0;
+  double curT;
+  for (int j = 0; j < ind->n_all_times; ++j) {
+    ind->idx=j;
+    kk = ind->ix[j];
+    curT = getTimeF(kk, ind);
+    if (isDose(ind->evid[kk])) {
+      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      continue;
+    } else if (ind->evid[kk] == 0) {
+      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      ret += ind->lhs[0];
+      k++;
+    }
+    if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+      // With moving doses this may be at the very end, so drop out
+      // now if all the observations were accounted for
+      break;
+    }
+  }
+  return ret;
+}
+
+// Solve gradient with finite difference thetas This is done for every
+// observation so it could possibly be used in nls types of models
+arma::mat nlmSolveGrad(arma::vec &theta, int id) {
+  // first solve the nlm problem
+  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  for (int i = nlmOp.ntheta; i--;) {
+    ind->par_ptr[i]=theta[i];
+  }
+  nlmSolveNlm(id);
   rx_solving_options *op = rx->op;
   arma::mat ret(ind->n_all_times, nlmOp.ntheta+1);
   int kk, k=0;
@@ -217,7 +280,8 @@ arma::mat nlmSolveGrad(arma::vec &theta, int id) {
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else {
+    } else if (ind->evid[kk] == 0) {
+      double *solveCur = getSolve(j);
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       for (int kk = 0; kk < op->nlhs; ++kk) {
         ret(k, kk) = ind->lhs[kk];
@@ -258,7 +322,7 @@ arma::mat nlmSolveGrad(arma::vec &theta, int id) {
                                            3.0,//double nu = 8.0);
                                            nlmOp.shi21maxFD); // maxiter
           break;
-        case 3: // forward
+        case 1: // forward
           nlmOp.thetahf[ii] = shi21Forward(nlmSolveF, curTheta, h,
                                            f0, grTheta, id, ii,
                                            nlmOp.shiErr, // ef,
@@ -274,7 +338,7 @@ arma::mat nlmSolveGrad(arma::vec &theta, int id) {
       hTheta[ii] += nlmOp.thetahf[ii];
       grPH = nlmSolveF(hTheta, id);
       bool useForward = false;
-      if (nlmOp.eventType == 3) {
+      if (nlmOp.eventType == 1) {
         // if this isn't true try backward
         if (grPH.is_finite()) {
           useForward = true;
@@ -298,10 +362,10 @@ arma::mat nlmSolveGrad(arma::vec &theta, int id) {
 }
 
 //[[Rcpp::export]]
-RObject nlmSolveGrad(arma::vec &theta) {
+RObject nlmSolveGradR(arma::vec &theta) {
   int ntheta = theta.size();
   arma::mat ret0 = nlmSolveGrad(theta, 0);
-  arma::vec cs = arma::sum(ret0, 0);
+  arma::vec cs = (arma::sum(ret0, 0)).t();
   NumericVector ret(1);
   NumericVector grad(ntheta);
   ret[0] = cs[0];
@@ -313,14 +377,14 @@ arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
   int ntheta = theta.size();
   arma::mat ret0 = nlmSolveGrad(theta, 0);
   ret0 = ret0.cols(1, ntheta);
-  return arma::sum(ret0, 0);
+  return (arma::sum(ret0, 0)).t();
 }
 //[[Rcpp::export]]
 RObject nlmSolveGradHess(arma::vec &theta) {
   int id = 0;
   int ntheta = theta.size();
   arma::mat ret0 = nlmSolveGrad(theta, 0);
-  arma::vec cs = arma::sum(ret0, 0);
+  arma::vec cs = (arma::sum(ret0, 0)).t();
   double ll = cs[0];
   arma::vec gr0 = cs(span(1, ntheta));
   mat H(nlmOp.ntheta, nlmOp.ntheta);
@@ -330,27 +394,27 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   double h;
   for (int k = nlmOp.ntheta; k--;) {
     h = nlmOp.thetahh[k];
-    if (nlmOp.optimHessType == 3 && h <= 0) {
+    if (nlmOp.optimHessType == 1 && h <= 0) {
       arma::vec t = theta;
       nlmOp.thetahh[k] = shi21Forward(nlmSolveGrad1, theta, h,
-                                    gr0, grPH, id, k,
-                                    nlmOp.hessErr, //double ef = 7e-7,
-                                    1.5,  //double rl = 1.5,
-                                    6.0,  //double ru = 6.0);;
-                                    nlmOp.shi21maxHess);  //maxiter=15
+                                      gr0, grPH, id, k,
+                                      nlmOp.hessErr, //double ef = 7e-7,
+                                      1.5,  //double rl = 1.5,
+                                      6.0,  //double ru = 6.0);;
+                                      nlmOp.shi21maxHess);  //maxiter=15
       H.col(k) = grPH;
       continue;
     }
-    if (nlmOp.optimHessType == 1 && h <= 0) {
+    if (nlmOp.optimHessType == 2 && h <= 0) {
       // Central
       arma::vec t = theta;
       nlmOp.thetahh[k] = shi21Central(nlmSolveGrad1, t, h,
-                                    gr0, grPH, id, k,
-                                    nlmOp.hessErr, // ef,
-                                    1.5,//double rl = 1.5,
-                                    4.5,//double ru = 4.5,
-                                    3.0,//double nu = 8.0);
-                                    nlmOp.shi21maxHess); // maxiter
+                                      gr0, grPH, id, k,
+                                      nlmOp.hessErr, // ef,
+                                      1.5,//double rl = 1.5,
+                                      4.5,//double ru = 4.5,
+                                      3.0,//double nu = 8.0);
+                                      nlmOp.shi21maxHess); // maxiter
       H.col(k) = grPH;
       continue;
     }
@@ -358,7 +422,7 @@ RObject nlmSolveGradHess(arma::vec &theta) {
     theta[k] += h;
     grPH = nlmSolveGrad1(theta, id);
     bool forwardFinite =  grPH.is_finite();
-    if (nlmOp.optimHessType == 3 && forwardFinite) { // forward
+    if (nlmOp.optimHessType == 1 && forwardFinite) { // forward
       H.col(k) = (grPH-gr0)/h;
       theta[k] -= h;
       continue;
@@ -367,7 +431,7 @@ RObject nlmSolveGradHess(arma::vec &theta) {
     theta[k] -= 2*h;
     grMH = nlmSolveGrad1(theta, id);
     bool backwardFinite = grMH.is_finite();
-    if (nlmOp.optimHessType == 1 &&
+    if (nlmOp.optimHessType == 2 &&
         forwardFinite && backwardFinite) {
       // central
       theta[k] += h;
@@ -391,7 +455,19 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   H = 0.5*(H + H.t());
   NumericVector ret(1);
   ret[0] = ll;
-  ret.attr("gradient") = wrap(gr0);
+  ret.attr("gradient") = wrap(gr0(span(0, ntheta-1)));
   ret.attr("hessian") = wrap(H);
   return ret;
+}
+
+//[[Rcpp::export]]
+RObject nlmSolveSwitch(arma::vec &theta) {
+  switch(nlmOp.solveType) {
+  case 1:
+    return wrap(nlmSolveR(theta));
+  case 2:
+    return nlmSolveGradR(theta);
+  default:
+    return nlmSolveGradHess(theta);
+  }
 }
