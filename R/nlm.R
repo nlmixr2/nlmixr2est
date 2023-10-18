@@ -227,10 +227,13 @@ getValidNlmixrCtl.nlm <- function(control) {
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
+  assignInMyNamespace(".rxPredLlik", TRUE)
+  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
   .predDf <- .ui$predDf
   .save <- .predDf
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"
-  assign("predDf", .predDf, envir=.ui)
+  assign(".predDfFocei", .predDf, envir=.ui)
+  #assign("predDf", .predDf, envir=.ui)
   on.exit(assign("predDf", .save, envir=.ui))
   rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
                               prefixLines=.uiGetThetaDropFixed(.ui),
