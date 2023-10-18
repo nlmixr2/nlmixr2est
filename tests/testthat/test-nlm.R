@@ -116,6 +116,9 @@ nmTest({
 
     expect_equal(val1, val2)
 
+    expect_equal(.Call(`_nlmixr2est_nlmSolveGradOnly`, env$param),
+                 attr(val1, "gradient"))
+
     expect_equal(.Call(`_nlmixr2est_nlmSolveGradHess`, env$param),
                  .Call(`_nlmixr2est_nlmSolveGradHess`, env$param))
 
@@ -131,14 +134,14 @@ nmTest({
 
     .Call(`_nlmixr2est_nlmSetup`, env)
 
-    exepct_equal(.Call(`_nlmixr2est_nlmSolveSwitch`, env$param),
+    expect_equal(.Call(`_nlmixr2est_nlmSolveSwitch`, env$param),
                  .Call(`_nlmixr2est_nlmSolveGradR`, env$param))
 
     env$control$solveType <- 1L
     .Call(`_nlmixr2est_nlmSetup`, env)
 
     expect_equal(.Call(`_nlmixr2est_nlmSolveSwitch`, env$param),
-                 .Call(`_nlmixr2est_nlmSolveGradR`, env$param))
+                 .Call(`_nlmixr2est_nlmSolveR`, env$param))
 
   })
 

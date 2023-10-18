@@ -405,6 +405,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmSolveGradOnly
+NumericVector nlmSolveGradOnly(arma::vec& theta);
+RcppExport SEXP _nlmixr2est_nlmSolveGradOnly(SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmSolveGradOnly(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmSolveGradHess
 RObject nlmSolveGradHess(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveGradHess(SEXP thetaSEXP) {

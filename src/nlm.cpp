@@ -380,6 +380,12 @@ arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
   return (arma::sum(ret0, 0)).t();
 }
 //[[Rcpp::export]]
+NumericVector nlmSolveGradOnly(arma::vec &theta) {
+  arma::vec gr=nlmSolveGrad1(theta, 0);
+  return wrap(gr(span(0, nlmOp.ntheta-1)));
+}
+
+//[[Rcpp::export]]
 RObject nlmSolveGradHess(arma::vec &theta) {
   int id = 0;
   int ntheta = theta.size();
