@@ -152,16 +152,20 @@ nlmSolveGradR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradR`, theta)
 }
 
-nlmSolveGradOnly <- function(theta) {
-    .Call(`_nlmixr2est_nlmSolveGradOnly`, theta)
-}
-
 nlmSolveGradHess <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }
 
 nlmSolveSwitch <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveSwitch`, theta)
+}
+
+optimFunC <- function(theta, grad = FALSE) {
+    .Call(`_nlmixr2est_optimFunC`, theta, grad)
+}
+
+nlmWarnings <- function() {
+    .Call(`_nlmixr2est_nlmWarnings`)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {

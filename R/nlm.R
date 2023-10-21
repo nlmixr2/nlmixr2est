@@ -5,9 +5,31 @@
 #' @inheritParams saemControl
 #' @param covMethod allows selection of "r", which uses nlmixr2's
 #'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
-#'   the hessian from `stats::nlm(.., hessian=TRUE)`
+#'   the hessian from `stats::nlm(.., hessian=TRUE)`. When using
+#'   `nlmixr2's` hessian for optimization or `nlmixr2's` gradient for
+#'   solving this defaults to "nlm" since `stats::optimHess()` assumes
+#'   an accurate gradient and is faster than `nlmixr2Hess`
 #' @param returnNlm is a logical that allows a return of the `nlm`
 #'   object
+#' @param solveType tells if `nlm` will use nlmixr2's analytical
+#'   gradients when available (finite differences will be used for
+#'   event-related parameters like parameters controlling lag time,
+#'   duration/rate of infusion, and modeled bioavailability). This can
+#'   be:
+#'
+#'  - `"hessian"` which will use the analytical gradients to create a
+#'     Hessian with finite differences.
+#'
+#' - `"gradient"` which will use the gradient and let `nlm` calculate
+#'    the finite difference hessian
+#'
+#' - `"fun"` where nlm will calculate both the finite difference
+#'    gradient and the finite difference Hessian
+#'
+#'  When using nlmixr2's finite differences, the "ideal" step size for
+#'  either central or forward differences are optimized for with the
+#'  Shi2021 method which may give more accurate derivatives
+#'
 #' @return nlme control object
 #' @export
 #' @author Matthew L. Fidler
@@ -48,13 +70,34 @@ nlmControl <- function(typsize = NULL,
                        fscale = 1, print.level = 2, ndigit = NULL, gradtol = 1e-6,
                        stepmax = NULL,
                        steptol = 1e-6, iterlim = 10000, check.analyticals = FALSE,
+                       returnNlm=FALSE,
+                       solveType=c("hessian", "grad", "fun"),
+
+                       stickyRecalcN=4,
+                       maxOdeRecalc=5,
+                       odeRecalcFactor=10^(0.5),
+
+                       eventType=c("central", "forward"),
+                       shiErr=(.Machine$double.eps)^(1/3),
+                       shi21maxFD=20L,
+
+                       optimHessType=c("central", "forward"),
+                       hessErr =(.Machine$double.eps)^(1/3),
+                       shi21maxHess=20L,
+
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
-                       returnNlm=FALSE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
                        covMethod=c("r", "nlm", ""),
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+  checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
+
+  checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(shi21maxHess, lower=1, any.missing=FALSE, len=1)
+
+
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
@@ -68,7 +111,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
-  covMethod <- match.arg(covMethod)
+
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl"))]
@@ -77,6 +120,10 @@ nlmControl <- function(typsize = NULL,
     (paste0("'", .bad, "'", sep=""), collapse=", "),
     call.=FALSE)
   }
+
+  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -109,6 +156,33 @@ nlmControl <- function(typsize = NULL,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
+  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
+  if (checkmate::testIntegerish(solveType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    solveType <- as.integer(solveType)
+  } else {
+    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
+  }
+  if (missing(covMethod) && any(solveType == 2:3)) {
+    covMethod <- "nlm"
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
+
+  .eventTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    eventType <- as.integer(eventType)
+  } else {
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
+  }
+
+  .optimHessTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    optimHessType <- as.integer(optimHessType)
+  } else {
+    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
+  }
+
+
   .ret <- list(covMethod=covMethod,
                typsize = typsize,
                fscale = fscale, print.level = print.level, ndigit=ndigit, gradtol = gradtol,
@@ -118,8 +192,23 @@ nlmControl <- function(typsize = NULL,
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
-               returnNlm=returnNlm, addProp=addProp, calcTables=calcTables,
+               returnNlm=returnNlm,
+
+               stickyRecalcN=as.integer(stickyRecalcN),
+               maxOdeRecalc=as.integer(maxOdeRecalc),
+               odeRecalcFactor=odeRecalcFactor,
+
+               eventType=eventType,
+               shiErr=shiErr,
+               shi21maxFD=as.integer(shi21maxFD),
+
+               optimHessType=optimHessType,
+               hessErr=hessErr,
+               shi21maxHess=as.integer(shi21maxHess),
+
+               addProp=addProp, calcTables=calcTables,
                compress=compress,
+               solveType=solveType,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmControl"
@@ -193,13 +282,8 @@ getValidNlmixrCtl.nlm <- function(control) {
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.nlmixrNlmFun <- function(pars) {
-  .retF <- do.call(rxode2::rxSolve,
-                   c(list(object=.nlmEnv$model,
-                          params=.nlmEnv$parTrans(pars),
-                          events=.nlmEnv$data),
-                     .nlmEnv$rxControl))
-  -sum(.retF$rx_pred_)
+.nlmixrNlmFunC <- function(pars) {
+  .Call(`_nlmixr2est_nlmSolveSwitch`, pars)
 }
 
 #' Get the THETA lines from rxode2 UI and assign fixed
@@ -235,12 +319,15 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   assign(".predDfFocei", .predDf, envir=.ui)
   #assign("predDf", .predDf, envir=.ui)
   on.exit(assign("predDf", .save, envir=.ui))
-  rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
+  .ret <- rxode2::rxCombineErrorLines(.ui, errLines=rxGetDistributionFoceiLines(.ui),
                               prefixLines=.uiGetThetaDropFixed(.ui),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE)
+  as.call(c(list(quote(`rxModelVars`)), as.call(c(list(quote(`{`)),
+    lapply(seq_along(.ret)[-1], function(i) .ret[[i]]),
+    list(str2lang("rx_pred_ <- -rx_pred_"))))))
 }
 
 #' Load the nlm model into symengine
@@ -554,15 +641,9 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 }
 
 .nlmFitModel <- function(ui, dataSav) {
-  .nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
-  .nlmFitDataSetup(dataSav)
-  .nlmEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-  .nlmEnv$rxControl$returnType <- 2L # use data.frame output
-  .nlmEnv$parTrans <- ui$nlmParNameFun
   .ctl <- ui$control
   class(.ctl) <- NULL
   .p <- ui$nlmParIni
-  .nlmEnv$param <- p
   .typsize <- .ctl$typsize
   if (is.null(.typsize)) {
     .typsize <- rep(1, length(.p))
@@ -575,10 +656,48 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   if (is.null(.stepmax)) {
     .stepmax <- max(1000 * sqrt(sum((.p/.typsize)^2)), 1000)
   }
+  .hessian <- .ctl$covMethod == "nlm"
+  if (.ctl$solveType == 1L) {
+    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .predOnly
+    .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
+    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- rep(0L, length(.p))
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+  } else {
+    .f <- ui$nlmSensModel
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .f$predOnly
+    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+    .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
+    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- .f$eventTheta
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+  }
+
+  ## .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
+
   .ret <- eval(bquote(stats::nlm(
-    f=.(nlmixr2est::.nlmixrNlmFun),
+    f=.(.nlmixrNlmFunC),
     p=.(.p),
-    hessian=.(.ctl$covMethod == "nlm"),
+    hessian=.(.hessian),
     typsize=.(.typsize),
     fscale=.(.ctl$fscale),
     print.level=.(.ctl$print.level),
@@ -595,59 +714,64 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   names(.ret$gradient) <- .name
   if (any(.ctl$covMethod == c("r", "nlm"))) {
     .malert("calculating covariance")
-    if (.ctl$covMethod != "nlm") {
+    if (!.hessian) {
       .p <- setNames(.ret$estimate, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFun)
+      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
     .hess <- .ret$hessian
-
-    # r matrix
-    .r <- 0.5 * .hess
-    .ch <- try(cholSE(.r), silent = TRUE)
-    .covType <- "r"
-    if (inherits(.ch, "try-error")) {
-      .r2 <- .r %*% .r
-      .r2 <- try(sqrtm(.r2), silent=TRUE)
-      .covType <- "|r|"
-      if (!inherits(.r2, "try-error")) {
-        .ch <- try(cholSE(.r), silent=TRUE)
-        if (inherits(.ch, "try-error")) {
-          .r2 <- .ch # switch to nearPD
-        }
-      }
-      if (inherits(.r2, "try-error")) {
-        .covType <- "r+"
-        .r2 <- try(nmNearPD(.r), silent=TRUE)
+    if (any(is.na(.hess))) {
+      .ret$covMethod <- "failed"
+    } else {
+      # r matrix
+      .r <- 0.5 * .hess
+      .ch <- try(cholSE(.r), silent = TRUE)
+      .covType <- "r"
+      if (inherits(.ch, "try-error")) {
+        .r2 <- .r %*% .r
+        .r2 <- try(sqrtm(.r2), silent=TRUE)
+        .covType <- "|r|"
         if (!inherits(.r2, "try-error")) {
           .ch <- try(cholSE(.r), silent=TRUE)
+          if (inherits(.ch, "try-error")) {
+            .r2 <- .ch # switch to nearPD
+          }
         }
-      } else {
-        .ch <- try(cholSE(.r), silent=TRUE)
+        if (inherits(.r2, "try-error")) {
+          .covType <- "r+"
+          .r2 <- try(nmNearPD(.r), silent=TRUE)
+          if (!inherits(.r2, "try-error")) {
+            .ch <- try(cholSE(.r), silent=TRUE)
+          }
+        } else {
+          .ch <- try(cholSE(.r), silent=TRUE)
+        }
       }
-    }
-    if (!inherits(.ch, "try-error")) {
-      .rinv <- rxode2::rxInv(.ch)
-      .rinv <- .rinv %*% t(.rinv)
-      .cov <- 2*.rinv
-      dimnames(.cov) <- list(.name, .name)
-      dimnames(.rinv) <- list(.name, .name)
-      .ret$covMethod <- .covType
-      if (.ctl$covMethod == "nlm") {
-        .ret$covMethod <- paste0(.covType, " (nlm)")
-      } else {
+      if (!inherits(.ch, "try-error")) {
+        .rinv <- rxode2::rxInv(.ch)
+        .rinv <- .rinv %*% t(.rinv)
+        .cov <- 2*.rinv
+        dimnames(.cov) <- list(.name, .name)
+        dimnames(.rinv) <- list(.name, .name)
         .ret$covMethod <- .covType
-      }
-      .ret$cov <- .cov
+        if (.ctl$covMethod == "nlm") {
+          .ret$covMethod <- paste0(.covType, " (nlm)")
+        } else {
+          .ret$covMethod <- .covType
+        }
+        .ret$cov <- .cov
 
-    } else {
-      .ret$covMethod <- "failed"
+      } else {
+        .ret$covMethod <- "failed"
+      }
+      dimnames(.r) <- list(.name, .name)
+      .ret$r <- .r
+
     }
-    dimnames(.r) <- list(.name, .name)
-    .ret$r <- .r
     .msuccess("done")
   }
+  .Call(`_nlmixr2est_nlmWarnings`)
   .ret
 }
 #' Get the full theta for nlm methods
@@ -724,6 +848,10 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlm <- .nlm[[1]]
   .ret$message <- NULL
+  lapply(.nlm[[2]], function(x){
+    warning(x, call.=FALSE)
+  })
+
   if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
     return(.ret$nlm)
   }

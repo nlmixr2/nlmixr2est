@@ -405,17 +405,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// nlmSolveGradOnly
-NumericVector nlmSolveGradOnly(arma::vec& theta);
-RcppExport SEXP _nlmixr2est_nlmSolveGradOnly(SEXP thetaSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmSolveGradOnly(theta));
-    return rcpp_result_gen;
-END_RCPP
-}
 // nlmSolveGradHess
 RObject nlmSolveGradHess(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveGradHess(SEXP thetaSEXP) {
@@ -435,6 +424,28 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmSolveSwitch(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// optimFunC
+NumericVector optimFunC(arma::vec& theta, bool grad);
+RcppExport SEXP _nlmixr2est_optimFunC(SEXP thetaSEXP, SEXP gradSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< bool >::type grad(gradSEXP);
+    rcpp_result_gen = Rcpp::wrap(optimFunC(theta, grad));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmWarnings
+RObject nlmWarnings();
+RcppExport SEXP _nlmixr2est_nlmWarnings() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmWarnings());
     return rcpp_result_gen;
 END_RCPP
 }

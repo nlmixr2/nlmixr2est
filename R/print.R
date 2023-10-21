@@ -428,12 +428,21 @@ print.nlmixr2FitCore <- function(x, ...) {
     .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo):"),
             paste0("    ", x$runInfo))
   }
-  if (x$message != "") {
+  .msg <- x$message
+  if (length(.msg) >= 1L) {
+    if (length(.msg) == 1L && x$message == "") {
+      .msg <- NULL
+    } else {
+      .msg <- gsub("^ *", "", .msg)
+      .msg <- paste(paste0("    ", .msg), collapse="\n")
+    }
+  }
+  if (length(.msg) > 0L) {
     .c <- c(
       .c, paste0("  Minimization message (", .bound, "$message): "),
       paste0("    ", x$message)
     )
-    if (x$message == "false convergence (8)") {
+    if (.msg == "false convergence (8)") {
       .c <- c(
         .c, "  In an ODE system, false convergence may mean \"useless\" evaluations were performed.",
         "  See https://tinyurl.com/yyrrwkce",

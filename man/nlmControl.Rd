@@ -14,10 +14,20 @@ nlmControl(
   steptol = 1e-06,
   iterlim = 10000,
   check.analyticals = FALSE,
+  returnNlm = FALSE,
+  solveType = c("hessian", "grad", "fun"),
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1/3),
+  shi21maxFD = 20L,
+  optimHessType = c("central", "forward"),
+  hessErr = (.Machine$double.eps)^(1/3),
+  shi21maxHess = 20L,
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
-  returnNlm = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = TRUE,
@@ -69,6 +79,54 @@ nlmControl(
     values. This can help detect incorrectly formulated gradients or
     Hessians.}
 
+\item{returnNlm}{is a logical that allows a return of the `nlm`
+object}
+
+\item{solveType}{tells if `nlm` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:
+
+ - `"hessian"` which will use the analytical gradients to create a
+    Hessian with finite differences.
+
+- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian
+
+- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian
+
+ When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives}
+
+\item{stickyRecalcN}{The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.}
+
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
+
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{eventType}{Event gradient type for dosing events; Can be
+"central" or "forward"}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
+
+\item{optimHessType}{The hessian type for when calculating the
+individual hessian by numeric differences (in generalized
+log-likelihood estimation).  The options are "central", and
+"forward".  The central differences is what R's `optimHess()`
+uses and is the default for this method. (Though the "forward" is
+faster and still reasonable for most cases).  The Shi21 cannot be
+changed for the Gill83 algorithm with the optimHess in a
+generalized likelihood problem.}
+
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
@@ -78,9 +136,6 @@ calculation. By default this is turned on.}
 multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
-
-\item{returnNlm}{is a logical that allows a return of the `nlm`
-object}
 
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
@@ -113,7 +168,10 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{covMethod}{allows selection of "r", which uses nlmixr2's
 `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
-the hessian from `stats::nlm(.., hessian=TRUE)`}
+the hessian from `stats::nlm(.., hessian=TRUE)`. When using
+`nlmixr2's` hessian for optimization or `nlmixr2's` gradient for
+solving this defaults to "nlm" since `stats::optimHess()` assumes
+an accurate gradient and is faster than `nlmixr2Hess`}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

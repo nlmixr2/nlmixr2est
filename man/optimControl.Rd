@@ -24,6 +24,10 @@ optimControl(
   pgtol = 0,
   temp = 10,
   tmax = 10,
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1/3),
+  shi21maxFD = 20L,
+  solveType = c("grad", "fun"),
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
@@ -112,6 +116,13 @@ temperature for the cooling schedule. Defaults to `10`.}
 
 \item{tmax}{is the number of function evaluations at each
 temperature for the `"SANN"` method. Defaults to `10`.}
+
+\item{eventType}{Event gradient type for dosing events; Can be
+"central" or "forward"}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 

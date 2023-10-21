@@ -4,8 +4,29 @@
 #' @inheritParams stats::optim
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#'
+#' @param solveType tells if `optim` will use nlmixr2's analytical
+#'   gradients when available (finite differences will be used for
+#'   event-related parameters like parameters controlling lag time,
+#'   duration/rate of infusion, and modeled bioavailability). This can
+#'   be:
+#'
+#' - `"gradient"` which will use the gradient and let `nlm` calculate
+#'    the finite difference hessian
+#'
+#' - `"fun"` where nlm will calculate both the finite difference
+#'    gradient and the finite difference Hessian
+#'
+#'  When using nlmixr2's finite differences, the "ideal" step size for
+#'  either central or forward differences are optimized for with the
+#'  Shi2021 method which may give more accurate derivatives
+#'
+#' These are only applied in the gradient based methods: "BFGS", "CG",
+#' "L-BFGS-B"
+#'
 #' @param returnOptim logical; when TRUE this will return the optim
 #'   list instead of the nlmixr2 fit object
+#'
 #' @param covMethod allows selection of "r", which uses nlmixr2's
 #'   `nlmixr2Hess()` for the hessian calculation or "optim" which uses
 #'   the hessian from `stats::optim(.., hessian=TRUE)`
@@ -127,6 +148,13 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          pgtol=0,
                          temp=10,
                          tmax=10,
+                         stickyRecalcN=4,
+                         maxOdeRecalc=5,
+                         odeRecalcFactor=10^(0.5),
+                         eventType=c("central", "forward"),
+                         shiErr=(.Machine$double.eps)^(1/3),
+                         shi21maxFD=20L,
+                         solveType=c("grad", "fun"),
                          rxControl=NULL,
                          optExpression=TRUE, sumProd=FALSE,
                          returnOptim=FALSE,
@@ -159,8 +187,34 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertNumeric(temp, len=1, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(tmax, len=1, lower=0, any.missing=FALSE)
 
-  covMethod <- match.arg(covMethod)
+  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
+  if (checkmate::testIntegerish(solveType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    solveType <- as.integer(solveType)
+  } else {
+    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
+  }
   method <- match.arg(method)
+  if (missing(covMethod) && any(solveType == 2:3) &&
+        method %in% c("BFGS", "CG", "L-BFGS-B")) {
+    covMethod <- "optim"
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
+
+  .eventTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    eventType <- as.integer(eventType)
+  } else {
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
+  }
+
+  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+
+
+
+
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl"))]
@@ -220,6 +274,13 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                tmax=tmax,
                optExpression=optExpression,
                sumProd=sumProd,
+               solveType=solveType,
+               stickyRecalcN=as.integer(stickyRecalcN),
+               maxOdeRecalc=as.integer(maxOdeRecalc),
+               odeRecalcFactor=odeRecalcFactor,
+               eventType=eventType,
+               shiErr=shiErr,
+               shi21maxFD=as.integer(shi21maxFD),
                rxControl=rxControl,
                returnOptim=returnOptim, addProp=addProp, calcTables=calcTables,
                compress=compress,
@@ -227,6 +288,25 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                genRxControl=.genRxControl)
   class(.ret) <- "optimControl"
   .ret
+}
+
+
+#' A surrogate function for optim to call for ode solving
+#'
+#' @param pars Parameters that will be estimated
+#' @return Predictions
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+.nlmixrOptimFunC <- function(pars) {
+  .Call(`_nlmixr2est_optimFunC`, pars, FALSE)
+}
+#' @rdname dot-nlmixrOptimFunC
+#' @export
+.nlmixrOptimGradC <- function(pars) {
+  .Call(`_nlmixr2est_optimFunC`, pars, TRUE)
 }
 
 #' Get the optim family control
@@ -315,11 +395,6 @@ rxUiGet.optimParUpper <- function(x, ...) {
 
 .optimFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
-  .nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
-  .nlmFitDataSetup(dataSav)
-  .nlmEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-  .nlmEnv$rxControl$returnType <- 2L # use data.frame output
-  .nlmEnv$parTrans <- ui$nlmParNameFun
   .ctl <- ui$control
   .keep <- c("trace", "fnscale", "parscale", "ndeps", "maxit",
              "abstol", "reltol", "alpha", "beta", "gamma",
@@ -348,14 +423,69 @@ rxUiGet.optimParUpper <- function(x, ...) {
          length(.oCtl$ndeps), " should be ", length(.par), ")",
          call.=FALSE)
   }
-  .ret <- eval(bquote(stats::optim(
-    par=.(.par),
-    fn=.(nlmixr2est::.nlmixrNlmFun),
-    method=.(.ctl$method),
-    control=.(.oCtl),
-    lower=.(ui$optimParLower),
-    upper=(ui$optimParUpper),
-    hessian=.(.ctl$covMethod == "optim"))))
+
+  # Fill in options for hessian which isn't supported in this method
+  .ctl$optimHessType <- 2L
+  .ctl$hessErr <- (.Machine$double.eps)^(1/3)
+  .ctl$shi21maxHess <- 20L
+
+  if (.ctl$method %in% c("BFGS", "CG", "L-BFGS-B") &&
+        .ctl$solveType == 2L) {
+    # support gradient
+    .f <- ui$nlmSensModel
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .f$predOnly
+    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+    .env$param <- setNames(.par, sprintf("THETA[%d]", seq_along(.par)))
+    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- .f$eventTheta
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+    .ret <- bquote(stats::optim(
+      par=.(.par),
+      fn=.(nlmixr2est::.nlmixrOptimFunC),
+      gr=.(nlmixr2est::.nlmixrOptimGradC),
+      method=.(.ctl$method),
+      control=.(.oCtl),
+      lower=.(ui$optimParLower),
+      upper=.(ui$optimParUpper),
+      hessian=.(.ctl$covMethod == "optim")))
+    .ret <- eval(.ret)
+  } else {
+    # don't support gradient
+    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .ctl$solveType <- 1L
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .predOnly
+    .env$param <- setNames(.par, sprintf("THETA[%d]", seq_along(.par)))
+    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- rep(0L, length(.par))
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+    .ret <- bquote(stats::optim(
+      par=.(.par),
+      fn=.(nlmixr2est::.nlmixrOptimFunC),
+      method=.(.ctl$method),
+      control=.(.oCtl),
+      lower=.(ui$optimParLower),
+      upper=.(ui$optimParUpper),
+      hessian=.(.ctl$covMethod == "optim")))
+    .ret <- eval(.ret)
+  }
   # be nice and name items
   .name <- ui$nlmParName
   names(.ret$par) <- .name
@@ -363,7 +493,7 @@ rxUiGet.optimParUpper <- function(x, ...) {
     .malert("calculating covariance")
     if (.ctl$covMethod != "nlm") {
       .p <- setNames(.ret$par, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFun)
+      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrOptimFunC)
       .ret$hessian <- .hess
     }
     dimnames(.ret$hessian) <- list(.name, .name)
