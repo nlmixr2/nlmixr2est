@@ -171,7 +171,28 @@ nlminbControl <- function(eval.max=200,
   .ret
 }
 
-
+#' A surrogate function for nlminb to call for ode solving
+#'
+#' @param pars Parameters that will be estimated
+#' @return Predictions
+#' @details
+#' This is an internal function and should not be called directly.
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+.nlmixrNlminbFunC <- function(pars) {
+  .Call(`_nlmixr2est_nlminbFunC`, pars, 1L)
+}
+#' @rdname dot-nlmixrNlminbFunC
+#' @export
+.nlmixrNlminbGradC <- function(pars) {
+  .Call(`_nlmixr2est_nlminbFunC`, pars, 2L)
+}
+#' @rdname dot-nlmixrNlminbFunC
+#' @export
+.nlmixrNlminbHessC <- function(pars) {
+  .Call(`_nlmixr2est_nlminbFunC`, pars, 37)
+}
 #' Get the nlminb family control
 #'
 #' @param env nlminb nlminbization environment

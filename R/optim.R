@@ -328,7 +328,6 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   assign("control", .control, envir=.ui)
 }
 
-
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.optimControl <- function(control, env) {

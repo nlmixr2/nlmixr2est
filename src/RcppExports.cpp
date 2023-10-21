@@ -439,6 +439,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlminbFunC
+NumericVector nlminbFunC(arma::vec& theta, int type);
+RcppExport SEXP _nlmixr2est_nlminbFunC(SEXP thetaSEXP, SEXP typeSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< int >::type type(typeSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlminbFunC(theta, type));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmWarnings
 RObject nlmWarnings();
 RcppExport SEXP _nlmixr2est_nlmWarnings() {

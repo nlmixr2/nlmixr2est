@@ -43,6 +43,7 @@ struct nlmOptions {
   double *thetaSave = NULL;
   double *valSave   = NULL;
   double *grSave    = NULL;
+  double *hSave     = NULL;
 
   int eventType=3; // eventType
   int shi21maxFD=1000; //maxiter for shi
@@ -145,11 +146,12 @@ RObject nlmSetup(Environment e) {
   IntegerVector needFD = as<IntegerVector>(e["needFD"]);
 
   // nlmOp.ntheta nlmOp.ntheta+1
-  nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(rx->nsub+3) + 1, double);
+  nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(rx->nsub+3) + 1 + nlmOp.ntheta*nlmOp.ntheta, double);
   nlmOp.thetahh = nlmOp.thetahf   + nlmOp.ntheta*rx->nsub; // [nlmOp.ntheta]
   nlmOp.thetaSave = nlmOp.thetahh + nlmOp.ntheta; // [nlmOp.ntheta]
   nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; // [1]
-  nlmOp.grSave = nlmOp.valSave + 1; // nlmOp.ntheta
+  nlmOp.grSave = nlmOp.valSave + 1; // [nlmOp.ntheta]
+  nlmOp.hSave = nlmOp.grSave+nlmOp.ntheta;// [nlmOp.ntheta*nlmOp.ntheta]
   std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
 
   nlmOp.needFD=false;
@@ -270,7 +272,6 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
     } else if (ind->evid[kk] == 0) {
-      double *d = getSolve(j);
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       if (ISNA(ind->lhs[0])) {
         nlmOp.naZero=1;
@@ -592,6 +593,59 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   NumericVector ret(1);
   ret[0] = nlmOp.valSave[0];
   return ret;
+}
+
+//[[Rcpp::export]]
+NumericVector nlminbFunC(arma::vec &theta, int type) {
+  if (!nlmOp.loaded) stop("'nlminb' problem not loaded");
+  if (nlmOp.solveType == 1) {
+    if (type != 1) stop(_("incorrect solve type"));
+    NumericVector ret(1);
+    ret[0] = nlmSolveR(theta);
+    return ret;
+  }
+  if (nlmOp.solveType == 2) {
+    if (type == 3) stop(_("incorrect solve type"));
+    return optimFunC(theta, type == 2);
+  }
+  bool isSame = true;
+  for (int i = 0; i < nlmOp.ntheta; ++i) {
+    if (nlmOp.thetaSave[i] != theta[i]) {
+      isSame = false;
+      break;
+    }
+  }
+  if (isSame) {
+    if (type == 2) {
+      NumericVector ret(nlmOp.ntheta);
+      std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+      return ret;
+    }
+    if (type == 3) {
+      NumericVector ret(nlmOp.ntheta*nlmOp.ntheta);
+      std::copy(nlmOp.hSave, nlmOp.hSave + nlmOp.ntheta * nlmOp.ntheta, ret.begin());
+      ret.attr("dim") = IntegerVector::create(nlmOp.ntheta, nlmOp.ntheta);
+      return ret;
+    }
+    NumericVector ret(1);
+    ret[0] = nlmOp.valSave[0];
+    return ret;
+  }
+  NumericVector attrRet = as<NumericVector>(nlmSolveGradHess(theta));
+  arma::vec thetaSave(nlmOp.thetaSave, nlmOp.ntheta, false, true);
+  thetaSave = theta;
+  nlmOp.valSave[0] = attrRet[0];
+  NumericVector grad = as<NumericVector>(attrRet.attr("gradient"));
+  std::copy(grad.begin(), grad.end(), nlmOp.grSave);
+  NumericVector hess = as<NumericVector>(attrRet.attr("hessian"));
+  std::copy(hess.begin(), hess.end(), nlmOp.hSave);
+  if (type == 1) {
+    NumericVector ret(1);
+    ret[0] = nlmOp.valSave[0];
+    return ret;
+  }
+  if (type == 2) return grad;
+  return hess;
 }
 
 //[[Rcpp::export]]

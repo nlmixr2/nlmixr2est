@@ -114,6 +114,12 @@ nmTest({
 
     ## .Call(`_nlmixr2est_optimFunC`, env$param * 0.5, TRUE)
 
+    ## .Call(`_nlmixr2est_nlminbFunC`, env$param, 1L)
+
+    ## .Call(`_nlmixr2est_nlminbFunC`, env$param, 2L)
+
+    ## .Call(`_nlmixr2est_nlminbFunC`, env$param, 3L)
+
     val <- .Call(`_nlmixr2est_nlmSolveR`, env$param)
 
 

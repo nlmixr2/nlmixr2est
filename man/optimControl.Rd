@@ -24,6 +24,9 @@ optimControl(
   pgtol = 0,
   temp = 10,
   tmax = 10,
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -117,12 +120,41 @@ temperature for the cooling schedule. Defaults to `10`.}
 \item{tmax}{is the number of function evaluations at each
 temperature for the `"SANN"` method. Defaults to `10`.}
 
+\item{stickyRecalcN}{The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.}
+
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
+
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
+
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
 
 \item{shi21maxFD}{The maximum number of steps for the optimization
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
+
+\item{solveType}{tells if `optim` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:
+
+- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian
+
+- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian
+
+ When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives
+
+These are only applied in the gradient based methods: "BFGS", "CG",
+"L-BFGS-B"}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 

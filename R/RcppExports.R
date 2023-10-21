@@ -164,6 +164,10 @@ optimFunC <- function(theta, grad = FALSE) {
     .Call(`_nlmixr2est_optimFunC`, theta, grad)
 }
 
+nlminbFunC <- function(theta, type) {
+    .Call(`_nlmixr2est_nlminbFunC`, theta, type)
+}
+
 nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }
