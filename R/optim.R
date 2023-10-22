@@ -639,7 +639,7 @@ rxUiGet.optimParUpper <- function(x, ...) {
   }
   .ret$est <- "optim"
   # There is no parameter history for nlme
-  .ret$objective <- -2 * as.numeric(.ret$optim$value)
+  .ret$objective <- 2 * as.numeric(.ret$optim$value)
   .ret$model <- .ui$ebe
   .ret$ofvType <- "optim"
   .optimControlToFoceiControl(.ret)

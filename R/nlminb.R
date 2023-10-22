@@ -83,9 +83,23 @@ nlminbControl <- function(eval.max=200,
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
                           returnOptim=FALSE,
+                          solveType=c("hessian", "grad", "fun"),
+
+                          stickyRecalcN=4,
+                          maxOdeRecalc=5,
+                          odeRecalcFactor=10^(0.5),
+
+                          eventType=c("central", "forward"),
+                          shiErr=(.Machine$double.eps)^(1/3),
+                          shi21maxFD=20L,
+
+                          optimHessType=c("central", "forward"),
+                          hessErr =(.Machine$double.eps)^(1/3),
+                          shi21maxHess=20L,
+
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=TRUE,
-                          covMethod=c("r",""),
+                          covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
@@ -108,7 +122,49 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
-  covMethod <- match.arg(covMethod)
+
+  .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
+  if (checkmate::testIntegerish(solveType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    solveType <- as.integer(solveType)
+  } else {
+    solveType <- setNames(.solveTypeIdx[match.arg(solveType)], NULL)
+  }
+
+  if (missing(covMethod) && any(solveType == 2:3)) {
+    covMethod <- "nlminb"
+  } else {
+    covMethod <- match.arg(covMethod)
+  }
+  if (covMethod == "nlminb" && !any(solveType == 2:3)) {
+    warning("using the Hessian function used during nlminb optimization requires a hessian or gradient solving type\n",
+            "switching to covMethod='r'")
+    covMethod <- "r"
+  }
+
+  .eventTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    eventType <- as.integer(eventType)
+  } else {
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
+  }
+
+  .optimHessTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(optimHessType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    optimHessType <- as.integer(optimHessType)
+  } else {
+    optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
+  }
+
+  checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
+
+  checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(shi21maxHess, lower=1, any.missing=FALSE, len=1)
+
+  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl"))]
@@ -159,6 +215,19 @@ nlminbControl <- function(eval.max=200,
                scale.init=scale.init,
                diff.g=diff.g,
                scale=scale,
+               solveType=solveType,
+               stickyRecalcN=as.integer(stickyRecalcN),
+               maxOdeRecalc=as.integer(maxOdeRecalc),
+               odeRecalcFactor=odeRecalcFactor,
+
+               eventType=eventType,
+               shiErr=shiErr,
+               shi21maxFD=as.integer(shi21maxFD),
+
+               optimHessType=optimHessType,
+               hessErr=hessErr,
+               shi21maxHess=as.integer(shi21maxHess),
+
                covMethod=covMethod,
                optExpression=optExpression,
                sumProd=sumProd,
@@ -191,7 +260,7 @@ nlminbControl <- function(eval.max=200,
 #' @rdname dot-nlmixrNlminbFunC
 #' @export
 .nlmixrNlminbHessC <- function(pars) {
-  .Call(`_nlmixr2est_nlminbFunC`, pars, 37)
+  .Call(`_nlmixr2est_nlminbFunC`, pars, 3L)
 }
 #' Get the nlminb family control
 #'
@@ -267,11 +336,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
 
 .nlminbFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
-  .nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
-  .nlminbFitDataSetup(dataSav)
-  .nlmEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-  .nlmEnv$rxControl$returnType <- 2L # use data.frame output
-  .nlmEnv$parTrans <- ui$nlmParNameFun
   .ctl <- ui$control
   .keep <- c("eval.max", "iter.max", "trace", "abs.tol", "rel.tol","x.tol", "xf.tol",
              "step.min", "step.max", "sing.tol", "diff.g", "scale.init")
@@ -284,20 +348,85 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
   class(.ctl) <- NULL
   .start <- ui$nlmParIni
-  .ret <- eval(bquote(stats::nlminb(
-    start=.(.start),
-    objective=.(nlmixr2est::.nlmixrNlmFun),
-    scale = .(.ctl$scale),
-    control = .(.oCtl),
-    lower=.(ui$optimParLower),
-    upper=(ui$optimParUpper))))
+
+  if (.ctl$solveType == 1L) {
+    # pred only
+    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .predOnly
+    .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
+    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- rep(0L, length(.start))
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+    .ret <- bquote(stats::nlminb(
+      start=.(.start),
+      objective=.(nlmixr2est::.nlmixrNlminbFunC),
+      scale = .(.ctl$scale),
+      control = .(.oCtl),
+      lower=.(ui$optimParLower),
+      upper=.(ui$optimParUpper)))
+    .ret <- eval(.ret)
+  } else {
+    # grad/hessian added
+    .f <- ui$nlmSensModel
+    .env <- new.env(parent=emptyenv())
+    .env$rxControl <- .ctl$rxControl
+    .env$predOnly <- .f$predOnly
+    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+    .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
+    .nlmFitDataSetup(dataSav)
+    .env$needFD <- .f$eventTheta
+    .env$control <- .ctl
+    .env$data <- .nlmEnv$data
+    .Call(`_nlmixr2est_nlmSetup`, .env)
+    on.exit({
+      .Call(`_nlmixr2est_nlmFree`)
+      rxode2::rxSolveFree()
+    })
+    if (.ctl$solveType == 2L) {
+      # Gradient
+      .ret <- bquote(stats::nlminb(
+        start=.(.start),
+        objective=.(nlmixr2est::.nlmixrNlminbFunC),
+        gradient=.(nlmixr2est::.nlmixrNlminbGradC),
+        scale = .(.ctl$scale),
+        control = .(.oCtl),
+        lower=.(ui$optimParLower),
+        upper=.(ui$optimParUpper)))
+    } else {
+      # Gradient / Hessian
+      .ret <- bquote(stats::nlminb(
+        start=.(.start),
+        objective=.(nlmixr2est::.nlmixrNlminbFunC),
+        gradient=.(nlmixr2est::.nlmixrNlminbGradC),
+        hessian=.(nlmixr2est::.nlmixrNlminbHessC),
+        scale = .(.ctl$scale),
+        control = .(.oCtl),
+        lower=.(ui$optimParLower),
+        upper=.(ui$optimParUpper)))
+
+    }
+    .ret <- eval(.ret)
+  }
   # be nice and name items
   .name <- ui$nlmParName
   names(.ret$par) <- .name
-  if (any(.ctl$covMethod == c("r"))) {
+  if (any(.ctl$covMethod == c("r", "nlminb"))) {
     .malert("calculating covariance")
     .p <- setNames(.ret$par, NULL)
-    .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFun)
+    if (.ctl$covMethod == "r") {
+      .hess <- nlmixr2Hess(.p, .nlmixrNlminbFunC)
+    } else {
+      .hess <- .nlmixrNlminbHessC(.p)
+    }
     .ret$hessian <- .hess
     dimnames(.ret$hessian) <- list(.name, .name)
     .hess <- .ret$hessian
@@ -333,13 +462,12 @@ getValidNlmixrCtl.nlminb <- function(control) {
       dimnames(.cov) <- list(.name, .name)
       dimnames(.rinv) <- list(.name, .name)
       .ret$covMethod <- .covType
-      if (.ctl$covMethod == "optim") {
-        .ret$covMethod <- paste0(.covType, " (optim)")
+      if (.ctl$covMethod == "nlminb") {
+        .ret$covMethod <- paste0(.covType, " (nlminb)")
       } else {
         .ret$covMethod <- .covType
       }
       .ret$cov <- .cov
-
     } else {
       .ret$covMethod <- "failed"
     }
@@ -442,7 +570,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
   }
   .ret$est <- "nlminb"
   # There is no parameter history for nlme
-  .ret$objective <- -2 * as.numeric(.ret$nlminb$objective)
+  .ret$objective <- 2 * as.numeric(.ret$nlminb$objective)
   .ret$model <- .ui$ebe
   .ret$ofvType <- "nlminb"
   .nlminbControlToFoceiControl(.ret)

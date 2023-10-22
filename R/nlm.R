@@ -887,7 +887,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   }
   .ret$est <- "nlm"
   # There is no parameter history for nlme
-  .ret$objective <- -2 * as.numeric(.ret$nlm$minimum)
+  .ret$objective <- 2 * as.numeric(.ret$nlm$minimum)
   .ret$model <- .ui$ebe
   .ret$ofvType <- "nlm"
   .nlmControlToFoceiControl(.ret)
