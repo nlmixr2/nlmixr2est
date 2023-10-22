@@ -414,7 +414,7 @@ rxUiGet.loadPruneNlmSens <- function(x, ...) {
 }
 
 #' @export
-rxUiGet.nlmThetaS <- function(x, ..., theta=FALSE) {
+rxUiGet.nlmThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
@@ -465,7 +465,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   .s
 }
 
-#' Finalize inner rxode2 based on symengine saved info
+#' Finalize nlm rxode2 based on symengine saved info
 #'
 #' @param .s Symengine/rxode2 object
 #' @return Nothing

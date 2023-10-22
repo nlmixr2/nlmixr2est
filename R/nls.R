@@ -387,13 +387,6 @@ rxUiGet.loadPruneNls <- function(x, ...) {
 }
 
 #' @export
-rxUiGet.loadPrunNlsSens <- function(x, ..., theta=FALSE) {
-  .s <- rxUiGet.loadPruneSens(x, ...)
-  .sensEtaOrTheta(.s, theta=TRUE)
-}
-
-
-#' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNls(x, ...)
   .prd <- get("rx_pred_", envir = .s)
@@ -430,6 +423,186 @@ rxUiGet.nlsRxModel <- function(x, ...) {
   paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
+
+#' @export
+rxUiGet.loadPruneNlsSens <- function(x, ...) {
+  .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
+}
+
+#' @export
+rxUiGet.nlsThetaS <- function(x, ...) {
+  .s <- rxUiGet.loadPruneNlsSens(x, ...)
+  .sensEtaOrTheta(.s, theta=TRUE)
+}
+
+#' @export
+rxUiGet.nlsHdTheta <- function(x, ...) {
+  .s <- rxUiGet.nlsThetaS(x)
+  .stateVars <- rxode2::rxState(.s)
+  # FIXME: take out pred.minus.dv
+  .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
+  .grd <- rxode2::rxExpandFEta_(
+    .stateVars, .s$..maxTheta,
+    ifelse(.predMinusDv, 1L, 2L),
+    isTheta=TRUE)
+  if (rxode2::.useUtf()) {
+    .malert("calculate \u2202(f)/\u2202(\u03B8)")
+  } else {
+    .malert("calculate d(f)/d(theta)")
+  }
+  rxode2::rxProgress(dim(.grd)[1])
+  on.exit({
+    rxode2::rxProgressAbort()
+  })
+  .any.zero <- FALSE
+  .all.zero <- TRUE
+  .ret <- apply(.grd, 1, function(x) {
+    .l <- x["calc"]
+    .l <- eval(parse(text = .l))
+    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
+    if (identical(.zErr, 0)) {
+      .any.zero <<- TRUE
+    } else if (.all.zero) {
+      .all.zero <<- FALSE
+    }
+    rxode2::rxTick()
+    return(.ret)
+  })
+  if (.all.zero) {
+    stop("none of the predictions depend on 'THETA'", call. = FALSE)
+  }
+  if (.any.zero) {
+    warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
+  }
+  .s$..HdTheta <- .ret
+  .s$..pred.minus.dv <- .predMinusDv
+  rxode2::rxProgressStop()
+  .s
+}
+
+#' Finalize nls rxode2 based on symengine saved info
+#'
+#' @param .s Symengine/rxode2 object
+#' @return Nothing
+#' @author Matthew L Fidler
+#' @noRd
+.rxFinalizeNls <- function(.s, sum.prod = FALSE,
+                           optExpression = TRUE) {
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  .yj <- paste(get("rx_yj_", envir = .s))
+  .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
+  .lambda <- paste(get("rx_lambda_", envir = .s))
+  .lambda <- paste0("rx_lambda_~", rxode2::rxFromSE(.lambda))
+  .hi <- paste(get("rx_hi_", envir = .s))
+  .hi <- paste0("rx_hi_~", rxode2::rxFromSE(.hi))
+  .low <- paste(get("rx_low_", envir = .s))
+  .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- character(0)
+  .sens <- .s$..sens
+  if (is.null(.sens)) .sens <- character(0)
+  .s$..nlsS <- paste(c(
+    .s$params,
+    .s$..stateInfo["state"],
+    .ddt,
+    .sens,
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .prd,
+    .s$..HdTheta,
+    .s$..stateInfo["statef"],
+    .s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .lhs0 <- .s$..lhs0
+  if (is.null(.lhs0)) .lhs0 <- ""
+  .s$..pred.nolhs <- paste(c(
+    .s$params,
+    .s$..stateInfo["state"],
+    .lhs0,
+    .ddt,
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .prd,
+    .s$..stateInfo["statef"],
+    .s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+
+  if (sum.prod) {
+    .malert("stabilizing round off errors in nls gradient problem...")
+    .s$..nlsS <- rxode2::rxSumProdModel(.s$..nlsS)
+    .msuccess("done")
+    .malert("stabilizing round off errors in nls pred-only problem...")
+    .s$..pred.nolhs <- rxode2::rxSumProdModel(.s$..pred.nolhs)
+    .msuccess("done")
+  }
+  if (optExpression) {
+    .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient")
+    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only")
+  }
+}
+
+#' @export
+rxUiGet.nlsEnv <- function(x, ...) {
+  .s <- rxUiGet.nlsHdTheta(x, ...)
+  .s$params <- rxUiGet.nlmParams(x, ...)
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  .rxFinalizeNls(.s, .sumProd, .optExpression)
+  .s$..outer <- NULL
+  if (exists("..maxTheta", .s)) {
+    .eventTheta <- rep(0L, .s$..maxTheta)
+  } else {
+    .eventTheta <- integer(0)
+  }
+  for (.v in .s$..eventVars) {
+    .vars <- as.character(get(.v, envir = .s))
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+    for (.v2 in .vars) {
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+      if (regexpr(.reg, .v2) != -1) {
+        .num <- as.numeric(sub(.reg, "\\1", .v2))
+        .eventTheta[.num] <- 1L
+      }
+    }
+  }
+
+  ## if (.sumProd) {
+  ##   .malert("stabilizing round off errors in pred-only model...")
+  ##   s$..pred.nolhs <- rxode2::rxSumProdModel(.s$..pred.nolhs)
+  ##   .msuccess("done")
+  ## }
+  ## if (.optExpression) {
+  ##   s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs,
+  ##                                       ifelse(.getRxPredLlikOption(),
+  ##                                              "Llik pred-only model",
+  ##                                              "pred-only model"))
+  ## }
+  ## s$..pred.nolhs <- paste(c(
+  ##   paste0("params(", paste(inner$params, collapse = ","), ")"),
+  ##   s$..pred.nolhs
+  ## ), collapse = "\n")
+
+  .s$.eventTheta <- .eventTheta
+
+  .s
+}
+
+#' @export
+rxUiGet.nlsSensModel <- function(x, ...) {
+  .s <- rxUiGet.nlsEnv(x, ...)
+  list(thetaGrad=rxode2::rxode2(.s$..nlsS),
+       predOnly=rxode2::rxode2(.s$..pred.nolhs),
+       eventTheta=.s$.eventTheta)
+}
+
 
 #' @export
 rxUiGet.nlsParStart <- function(x, ...) {

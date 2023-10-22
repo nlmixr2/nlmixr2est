@@ -23,10 +23,20 @@ nlminbControl(
   optExpression = TRUE,
   sumProd = FALSE,
   returnOptim = FALSE,
+  solveType = c("hessian", "grad", "fun"),
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1/3),
+  shi21maxFD = 20L,
+  optimHessType = c("central", "forward"),
+  hessErr = (.Machine$double.eps)^(1/3),
+  shi21maxHess = 20L,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = TRUE,
-  covMethod = c("r", ""),
+  covMethod = c("r", "nlminb", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -83,6 +93,32 @@ calculation. By default this is turned on.}
 multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
+
+\item{stickyRecalcN}{The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.}
+
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
+
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{eventType}{Event gradient type for dosing events; Can be
+"central" or "forward"}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
+
+\item{optimHessType}{The hessian type for when calculating the
+individual hessian by numeric differences (in generalized
+log-likelihood estimation).  The options are "central", and
+"forward".  The central differences is what R's `optimHess()`
+uses and is the default for this method. (Though the "forward" is
+faster and still reasonable for most cases).  The Shi21 cannot be
+changed for the Gill83 algorithm with the optimHess in a
+generalized likelihood problem.}
 
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
