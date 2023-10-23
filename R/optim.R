@@ -437,7 +437,6 @@ rxUiGet.optimParUpper <- function(x, ...) {
     .env$predOnly <- .f$predOnly
     .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
     .env$param <- setNames(.par, sprintf("THETA[%d]", seq_along(.par)))
-    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
     .nlmFitDataSetup(dataSav)
     .env$needFD <- .f$eventTheta
     .env$control <- .ctl
@@ -459,15 +458,15 @@ rxUiGet.optimParUpper <- function(x, ...) {
     .ret <- eval(.ret)
   } else {
     # don't support gradient
-    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .f <- ui$nlmRxModel
+    .nlmEnv$model <- .predOnly <- .f$predOnly
     .ctl$solveType <- 1L
     .env <- new.env(parent=emptyenv())
     .env$rxControl <- .ctl$rxControl
     .env$predOnly <- .predOnly
     .env$param <- setNames(.par, sprintf("THETA[%d]", seq_along(.par)))
-    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
     .nlmFitDataSetup(dataSav)
-    .env$needFD <- rep(0L, length(.par))
+    .env$needFD <- .f$eventTheta
     .env$control <- .ctl
     .env$data <- .nlmEnv$data
     .Call(`_nlmixr2est_nlmSetup`, .env)

@@ -393,6 +393,23 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     #.s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  if (exists("..maxTheta", .s)) {
+    .eventTheta <- rep(0L, .s$..maxTheta)
+  } else {
+    .eventTheta <- integer(0)
+  }
+  for (.v in .s$..eventVars) {
+    .vars <- as.character(get(.v, envir = .s))
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+    for (.v2 in .vars) {
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+      if (regexpr(.reg, .v2) != -1) {
+        .num <- as.numeric(sub(.reg, "\\1", .v2))
+        .eventTheta[.num] <- 1L
+      }
+    }
+  }
+  .s$.eventTheta <- .eventTheta
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
@@ -404,8 +421,9 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model")
     .msuccess("done")
   }
-  paste(c(rxUiGet.nlmParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+  list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+                                       .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+       eventTheta=.eventTheta)
 }
 
 #' @export
@@ -658,14 +676,14 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   }
   .hessian <- .ctl$covMethod == "nlm"
   if (.ctl$solveType == 1L) {
-    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .f <- ui$nlmRxModel
+    .nlmEnv$model <- .predOnly <- .f$predOnly
     .env <- new.env(parent=emptyenv())
     .env$rxControl <- .ctl$rxControl
     .env$predOnly <- .predOnly
     .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
-    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
     .nlmFitDataSetup(dataSav)
-    .env$needFD <- rep(0L, length(.p))
+    .env$needFD <- .f$eventTheta
     .env$control <- .ctl
     .env$data <- .nlmEnv$data
     .Call(`_nlmixr2est_nlmSetup`, .env)
@@ -680,7 +698,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     .env$predOnly <- .f$predOnly
     .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
     .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
-    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
     .nlmFitDataSetup(dataSav)
     .env$needFD <- .f$eventTheta
     .env$control <- .ctl

@@ -351,14 +351,14 @@ getValidNlmixrCtl.nlminb <- function(control) {
 
   if (.ctl$solveType == 1L) {
     # pred only
-    .nlmEnv$model <- .predOnly <- rxode2::rxode2(ui$nlmRxModel)
+    .f <- ui$nlmRxModel
+    .nlmEnv$model <- .predOnly <- .f$predOnly
     .env <- new.env(parent=emptyenv())
     .env$rxControl <- .ctl$rxControl
     .env$predOnly <- .predOnly
     .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
-    #.nlmEnv$model <- rxode2::rxode2(ui$nlmRxModel)
     .nlmFitDataSetup(dataSav)
-    .env$needFD <- rep(0L, length(.start))
+    .env$needFD <- .f$eventTheta
     .env$control <- .ctl
     .env$data <- .nlmEnv$data
     .Call(`_nlmixr2est_nlmSetup`, .env)
