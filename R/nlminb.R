@@ -103,11 +103,11 @@ nlminbControl <- function(eval.max=200,
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
-  if (!missing(print) && !missing(trace)) {
+  if (!missing(print) && !missing(trace)) { # nolint
     stop("can only specify `print=` or `trace=`, not both")
   } else if (!missing(print)) {
     checkmate::assertIntegerish(print, len=1, any.missing=FALSE, lower=1)
-    trace <- print
+    trace <- print #nolint
   } else {
     checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=1)
   }
@@ -204,7 +204,7 @@ nlminbControl <- function(eval.max=200,
 
   .ret <- list(eval.max=eval.max,
                iter.max=iter.max,
-               trace=trace,
+               trace=trace, # nolint
                abs.tol=abs.tol,
                rel.tol=rel.tol,
                x.tol=x.tol,

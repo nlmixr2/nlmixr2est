@@ -158,7 +158,7 @@ nlsControl <- function(maxiter=10000,
 
   .ret <- list(algorithm=algorithm, maxiter=maxiter,
                tol=tol,
-               trace=trace,
+               trace=trace, #nolint
                minFactor=minFactor,
                printEval=printEval,
                warnOnly=warnOnly,

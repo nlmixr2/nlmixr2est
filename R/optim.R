@@ -254,7 +254,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
 
   .ret <- list(method=method,
                covMethod=covMethod,
-               trace=trace,
+               trace=trace, # nolint
                fnscale=fnscale,
                parscale=parscale,
                ndeps=ndeps,
