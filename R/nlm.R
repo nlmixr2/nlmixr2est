@@ -441,7 +441,6 @@ rxUiGet.nlmThetaS <- function(x, ...) {
 rxUiGet.nlmHdTheta <- function(x, ...) {
   .s <- rxUiGet.nlmThetaS(x)
   .stateVars <- rxode2::rxState(.s)
-  # FIXME: take out pred.minus.dv
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
     .stateVars, .s$..maxTheta,
