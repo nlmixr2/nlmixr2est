@@ -134,6 +134,25 @@ nlsControl(
 \item{nprint}{is an integer; set \code{nprint} to be positive
       to enable printing of iterates}
 
+\item{solveType}{tells if `nlm` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:
+
+ - `"hessian"` which will use the analytical gradients to create a
+    Hessian with finite differences.
+
+- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian
+
+- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian
+
+ When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives}
+
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
 
@@ -146,6 +165,9 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
+
+\item{shiErr}{This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method}
 
 \item{shi21maxFD}{The maximum number of steps for the optimization
 of the forward difference step size when using dosing events (lag

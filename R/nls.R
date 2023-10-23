@@ -4,6 +4,7 @@
 #' @inheritParams stats::nls.control
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @inheritParams nlmControl
 #' @inheritParams minpack.lm::nls.lm.control
 #' @param returnNls logical; when TRUE, will return the nls object
 #'   instead of the nlmixr object
@@ -69,7 +70,7 @@ nlsControl <- function(maxiter=10000,
                        shi21maxFD=20L,
 
                        ############################################
-                       trace = TRUE,
+                       trace = TRUE, #nolint
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
                        returnNls=FALSE,
@@ -105,7 +106,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertNumeric(factor, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(maxfev, min.len=0, max.len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(trace, len=1, any.missing=FALSE)
+  checkmate::assertLogical(trace, len=1, any.missing=FALSE) # nolint
   checkmate::assertLogical(nDcentral, len=1, any.missing=FALSE)
   checkmate::assertNumeric(scaleOffset, any.missing=FALSE, finite=TRUE)
   checkmate::assertLogical(warnOnly, len=1, any.missing = FALSE)
@@ -937,7 +938,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
       start=.(ui$nlsParStart),
       control=.(.nls.control),
       algorithm=.(.ctl$algorithm),
-      trace=.(.ctl$trace),
+      trace=.(.ctl$trace), # nolint
       model=FALSE,
       lower=.(ui$nlsParLower),
       upper=.(ui$nlsParUpper)

@@ -133,6 +133,9 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
 
+\item{shiErr}{This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method}
+
 \item{shi21maxFD}{The maximum number of steps for the optimization
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}

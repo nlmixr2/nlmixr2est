@@ -35,6 +35,8 @@
 #' @param diff.g an estimated bound on the relative error in the
 #'   objective function value
 #'
+#' @inheritParams nlmControl
+#'
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -68,7 +70,7 @@
 #' }
 nlminbControl <- function(eval.max=200,
                           iter.max=150,
-                          trace=1,
+                          trace=1, # nolint
                           print=1,
                           abs.tol=0,
                           rel.tol=1e-10,
@@ -82,7 +84,7 @@ nlminbControl <- function(eval.max=200,
                           diff.g=NULL,
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
-                          returnOptim=FALSE,
+                          returnNlminb=FALSE,
                           solveType=c("hessian", "grad", "fun"),
 
                           stickyRecalcN=4,
@@ -118,7 +120,7 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertNumeric(step.max, len=1, any.missing=FALSE, lower=0)
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnOptim, len=1, any.missing=FALSE)
+  checkmate::assertLogical(returnNlminb, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
@@ -232,7 +234,7 @@ nlminbControl <- function(eval.max=200,
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
-               returnOptim=returnOptim, addProp=addProp, calcTables=calcTables,
+               returnNlminb=returnNlminb, addProp=addProp, calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl)
@@ -550,8 +552,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlminb <- .nlminb[[1]]
   .ret$message <- .ret$nlminb$message
-  if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
-    return(.ret$nlm)
+  if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
+    return(.ret$nlminb)
   }
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)

@@ -268,7 +268,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   }
   step <- -.2 * start
 
-  con <- list(maxeval = 999, reltol = 1e-6, rcoeff = 1., ecoeff = 2., ccoeff = .5, trace = FALSE)
+  con <- list(maxeval = 999, reltol = 1e-6, rcoeff = 1., ecoeff = 2., ccoeff = .5, trace = FALSE) # nolint
   nmsC <- names(con)
   con[(namc <- names(control))] <- control
   if (length(noNms <- namc[!namc %in% nmsC])) {
@@ -277,7 +277,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 
   .Call(neldermead_wrap, fr, rho, length(start), start, step,
     as.integer(con$maxeval), con$reltol, con$rcoeff, con$ecoeff, con$ccoeff,
-    as.integer(con$trace),
+    as.integer(con$trace), # nolint
     PACKAGE = "nlmixr2est"
   )
 }
@@ -376,9 +376,13 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #' nc  <- nmNearPD(pr)
 #'
 #' @export
-nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only.values = FALSE, ensureSymmetry=!isSymmetric(x), eig.tol = 1e-6, conv.tol = 1e-7, posd.tol = 1e-8, maxit = 100L, trace = FALSE) {
+nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, only.values = FALSE, ensureSymmetry=!isSymmetric(x), eig.tol = 1e-6, conv.tol = 1e-7, posd.tol = 1e-8, maxit = 100L,
+                     trace = FALSE # nolint
+                     ) {
   if (ensureSymmetry) {
     x <- 0.5 * (t(x) + x)
   }
-  .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only.values, eig.tol, conv.tol, posd.tol, maxit, trace)
+  .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only.values, eig.tol, conv.tol, posd.tol, maxit,
+        trace # nolint
+        )
 }

@@ -30,7 +30,16 @@
 #'  either central or forward differences are optimized for with the
 #'  Shi2021 method which may give more accurate derivatives
 #'
-#' @return nlme control object
+#' @param shiErr This represents the epsilon when optimizing the ideal
+#'   step size for numeric differentiation using the Shi2021 method
+#'
+#' @param hessErr This represents the epsilon when optimizing the
+#'   Hessian step size using the Shi2021 method.
+#'
+#' @param shi21maxHess Maximum number of times to optimize the best
+#'   step size for the hessian calculation
+#'
+#' @return nlm control object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples

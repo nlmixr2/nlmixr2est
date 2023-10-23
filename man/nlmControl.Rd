@@ -114,6 +114,9 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
 
+\item{shiErr}{This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method}
+
 \item{shi21maxFD}{The maximum number of steps for the optimization
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
@@ -126,6 +129,12 @@ uses and is the default for this method. (Though the "forward" is
 faster and still reasonable for most cases).  The Shi21 cannot be
 changed for the Gill83 algorithm with the optimHess in a
 generalized likelihood problem.}
+
+\item{hessErr}{This represents the epsilon when optimizing the
+Hessian step size using the Shi2021 method.}
+
+\item{shi21maxHess}{Maximum number of times to optimize the best
+step size for the hessian calculation}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
@@ -202,7 +211,7 @@ If not specified, then it matches the significant digits in the
 \item{...}{additional arguments to be passed to \code{f}.}
 }
 \value{
-nlme control object
+nlm control object
 }
 \description{
 nlmixr2 defaults controls for nlm

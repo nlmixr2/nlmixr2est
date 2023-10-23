@@ -4,6 +4,7 @@
 #' @inheritParams stats::optim
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @inheritParams nlmControl
 #'
 #' @param solveType tells if `optim` will use nlmixr2's analytical
 #'   gradients when available (finite differences will be used for
@@ -130,7 +131,7 @@
 #' fit2
 #' }
 optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN", "Brent"),
-                         trace=10,
+                         trace=10, #nolint
                          fnscale=1.0,
                          parscale=1.0,
                          ndeps=1e-3,

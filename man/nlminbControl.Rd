@@ -22,7 +22,7 @@ nlminbControl(
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
-  returnOptim = FALSE,
+  returnNlminb = FALSE,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
@@ -94,6 +94,28 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
+\item{returnNlminb}{logical; when TRUE this will return the nlminb
+result instead of the nlmixr2 fit object}
+
+\item{solveType}{tells if `nlm` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:
+
+ - `"hessian"` which will use the analytical gradients to create a
+    Hessian with finite differences.
+
+- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian
+
+- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian
+
+ When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives}
+
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
 
@@ -107,6 +129,9 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
 
+\item{shiErr}{This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method}
+
 \item{shi21maxFD}{The maximum number of steps for the optimization
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
@@ -119,6 +144,12 @@ uses and is the default for this method. (Though the "forward" is
 faster and still reasonable for most cases).  The Shi21 cannot be
 changed for the Gill83 algorithm with the optimHess in a
 generalized likelihood problem.}
+
+\item{hessErr}{This represents the epsilon when optimizing the
+Hessian step size using the Shi2021 method.}
+
+\item{shi21maxHess}{Maximum number of times to optimize the best
+step size for the hessian calculation}
 
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
@@ -196,9 +227,6 @@ If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 
 \item{...}{Further arguments to be supplied to \code{objective}.}
-
-\item{returnNlminb}{logical; when TRUE this will return the nlminb
-result instead of the nlmixr2 fit object}
 }
 \description{
 nlmixr2 nlminb defaults
