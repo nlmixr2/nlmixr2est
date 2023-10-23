@@ -764,7 +764,7 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
 #' @export
 rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
   .args <- .nlsFormulaArgs(x)
-  str2lang(paste0("~nlmixr2est::.nlmixrNlsFun(",
+  str2lang(paste0("~nlmixr2est::.nlmixrNlsFunValGrad(",
                   paste(.args, collapse=", "),
                   ")"))
 }
@@ -906,7 +906,6 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
       }
     }
   } else {
-    stop()
     .nls.control <- stats::nls.control(
       maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
       printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
