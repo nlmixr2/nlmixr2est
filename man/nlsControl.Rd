@@ -21,6 +21,13 @@ nlsControl(
   factor = 100,
   maxfev = integer(),
   nprint = 1,
+  solveType = c("grad", "fun"),
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1/3),
+  shi21maxFD = 20L,
   trace = TRUE,
   rxControl = NULL,
   optExpression = TRUE,
@@ -126,6 +133,23 @@ nlsControl(
 
 \item{nprint}{is an integer; set \code{nprint} to be positive
       to enable printing of iterates}
+
+\item{stickyRecalcN}{The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.}
+
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
+
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{eventType}{Event gradient type for dosing events; Can be
+"central" or "forward"}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
 
 \item{trace}{logical value indicating if a trace of the iteration
     progress should be printed.  Default is \code{FALSE}.  If

@@ -102,7 +102,10 @@ SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlmWarnings();
 
+SEXP _nlmixr2est_solveGradNls(SEXP, SEXP);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_solveGradNls", (DL_FUNC) &_nlmixr2est_solveGradNls, 2},
   {"_nlmixr2est_nlminbFunC", (DL_FUNC) &_nlmixr2est_nlminbFunC, 2},
   {"_nlmixr2est_nlmWarnings", (DL_FUNC) &_nlmixr2est_nlmWarnings, 0},
   {"_nlmixr2est_optimFunC", (DL_FUNC) &_nlmixr2est_optimFunC, 2},

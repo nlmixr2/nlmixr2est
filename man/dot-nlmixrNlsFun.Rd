@@ -2,9 +2,12 @@
 % Please edit documentation in R/nls.R
 \name{.nlmixrNlsFun}
 \alias{.nlmixrNlsFun}
+\alias{.nlmixrNlsFunValGrad}
 \title{A surrogate function for nls to call for ode solving}
 \usage{
 .nlmixrNlsFun(DV, ...)
+
+.nlmixrNlsFunValGrad(DV, ...)
 }
 \arguments{
 \item{pars}{Parameters that will be estimated}

@@ -45,6 +45,7 @@ struct nlmOptions {
   double *grSave    = NULL;
   double *hSave     = NULL;
 
+
   int eventType=3; // eventType
   int shi21maxFD=1000; //maxiter for shi
   int stickyTol=0;
@@ -65,6 +66,8 @@ struct nlmOptions {
 #define solveType_pred 1
 #define solveType_grad 2
 #define solveType_hess 3
+#define solveType_nls 10
+#define solveType_nls_pred 11
   int saveType;
 #define save_pred 1
 #define save_grad 2
@@ -151,24 +154,6 @@ RObject nlmSetup(Environment e) {
   nlmOp.idS = nlmOp.nobs + rx->nsub;
   nlmOp.idF = nlmOp.idS + rx->nsub;
 
-  IntegerVector needFD = as<IntegerVector>(e["needFD"]);
-
-  // nlmOp.ntheta nlmOp.ntheta+1
-  nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(rx->nsub+3) + 1 + nlmOp.ntheta*nlmOp.ntheta, double);
-  nlmOp.thetahh = nlmOp.thetahf   + nlmOp.ntheta*rx->nsub; // [nlmOp.ntheta]
-  nlmOp.thetaSave = nlmOp.thetahh + nlmOp.ntheta; // [nlmOp.ntheta]
-  nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; // [1]
-  nlmOp.grSave = nlmOp.valSave + 1; // [nlmOp.ntheta]
-  nlmOp.hSave = nlmOp.grSave+nlmOp.ntheta;// [nlmOp.ntheta*nlmOp.ntheta]
-  std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
-
-  nlmOp.needFD=false;
-  for (int i = 0; i < nlmOp.ntheta; ++i) {
-    nlmOp.thetaFD[i] = needFD[i];
-    if (nlmOp.thetaFD[i]) {
-      nlmOp.needFD=true;
-    }
-  }
   // now calculate nobs per id
   nlmOp.nobsTot = 0;
   for (int id = 0; id < rx->nsub; ++id) {
@@ -189,20 +174,38 @@ RObject nlmSetup(Environment e) {
     nlmOp.idS[id] = nlmOp.idF[id-1]+1;
     nlmOp.idF[id] = nlmOp.idS[id] + no - 1;
   }
-  // NumericVector nobsa(rx->nsub);
-  // // save and restore memory pointer
-  // // std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());
-  // std::copy(nlmOp.nobs, nlmOp.nobs + rx->nsub, nobsa.begin());
-  // IntegerVector idSa(rx->nsub);
-  // std::copy(nlmOp.idS, nlmOp.idS + rx->nsub, idSa.begin());
-  // IntegerVector idFa(rx->nsub);
-  // std::copy(nlmOp.idF, nlmOp.idF + rx->nsub, idFa.begin());
-  // List df = List::create(_["nobs"]=nobsa,
-  //                        _["idS"]=idSa,
-  //                        _["idF"]=idFa);
-  // df.attr("class") = "data.frame";
-  // df.attr("row.names") = IntegerVector::create(NA_INTEGER, -rx->nsub);
-  // print(wrap(df));
+
+  IntegerVector needFD = as<IntegerVector>(e["needFD"]);
+
+  // nlmOp.ntheta nlmOp.ntheta+1
+  switch(nlmOp.solveType) {
+  case solveType_nls:
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(1+rx->nsub) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; //[nlmOp.nobsTot]
+    nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
+    break;
+  case solveType_nls_pred:
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*rx->nsub, double);// [ntheta*nsub]
+    break;
+  default:
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(rx->nsub+3) + 1 + nlmOp.ntheta*nlmOp.ntheta, double);
+    nlmOp.thetahh = nlmOp.thetahf   + nlmOp.ntheta*rx->nsub; // [nlmOp.ntheta]
+    nlmOp.thetaSave = nlmOp.thetahh + nlmOp.ntheta; // [nlmOp.ntheta]
+    nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; // [1]
+    nlmOp.grSave = nlmOp.valSave + 1; // [nlmOp.ntheta]
+    nlmOp.hSave = nlmOp.grSave+nlmOp.ntheta;// [nlmOp.ntheta*nlmOp.ntheta]
+    std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
+  }
+
+  nlmOp.needFD=false;
+  for (int i = 0; i < nlmOp.ntheta; ++i) {
+    nlmOp.thetaFD[i] = needFD[i];
+    if (nlmOp.thetaFD[i]) {
+      nlmOp.needFD=true;
+    }
+  }
+
   nlmOp.loaded = true;
   return R_NilValue;
 }
@@ -479,6 +482,50 @@ arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
   arma::mat ret0 = nlmSolveGrad(theta);
   ret0 = ret0.cols(1, nlmOp.ntheta);
   return (arma::sum(ret0, 0)).t();
+}
+
+//[[Rcpp::export]]
+NumericVector solveGradNls(arma::vec &theta, int returnType) {
+  if (!nlmOp.loaded) stop("'nls' problem not loaded");
+  if (nlmOp.solveType == solveType_nls_pred) {
+    return wrap(nlmSolveF(theta));
+  }
+  if (nlmOp.solveType != solveType_nls) {
+    stop(_("incorrect solve type"));
+  }
+  if (!isThetaSame(theta)) {
+    arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
+    ret0 = nlmSolveGrad(theta);
+    if (ret0.has_nan()) {
+      nlmOp.naZero=1;
+      ret0.replace(datum::nan, 0);
+    }
+    saveTheta(theta);
+  }
+  if (returnType == 1) {
+    // vector with gradient attached
+    NumericVector ret(nlmOp.nobsTot);
+    NumericVector grad(nlmOp.nobsTot*nlmOp.ntheta);
+    std::copy(nlmOp.valSave, nlmOp.valSave + nlmOp.nobsTot, ret.begin());
+    std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta*nlmOp.nobsTot, grad.begin());
+    grad.attr("dim") = IntegerVector::create(nlmOp.nobsTot, nlmOp.ntheta);
+    ret.attr("gradient") = grad;
+    return ret;
+  } else if (returnType == 2) {
+    // vector only
+    NumericVector ret(nlmOp.nobsTot);
+    std::copy(nlmOp.valSave, nlmOp.valSave + nlmOp.nobsTot, ret.begin());
+    return ret;
+  } else if (returnType == 3) {
+    // gradient only
+    NumericVector grad(nlmOp.nobsTot*nlmOp.ntheta);
+    std::copy(nlmOp.grSave,
+              nlmOp.grSave + nlmOp.ntheta*nlmOp.nobsTot,
+              grad.begin());
+    grad.attr("dim") = IntegerVector::create(nlmOp.nobsTot, nlmOp.ntheta);
+    return grad;
+  }
+  return NumericVector::create();
 }
 
 arma::mat nlmCalcHessian(arma::vec &gr0, arma::vec &theta) {

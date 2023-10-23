@@ -152,6 +152,10 @@ nlmSolveGradR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradR`, theta)
 }
 
+solveGradNls <- function(theta, returnType) {
+    .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
+}
+
 nlmSolveGradHess <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
 }

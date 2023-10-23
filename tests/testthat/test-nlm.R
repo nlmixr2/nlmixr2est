@@ -120,6 +120,19 @@ nmTest({
 
     ## .Call(`_nlmixr2est_nlminbFunC`, env$param, 3L)
 
+    ## env$control$solveType <- 10L
+
+    ## .Call(`_nlmixr2est_nlmSetup`, env)
+
+    ## .Call(`_nlmixr2est_solveGradNls`, env$param, 1L)
+
+    ## .Call(`_nlmixr2est_solveGradNls`, env$param, 2L)
+
+    ## .Call(`_nlmixr2est_solveGradNls`, env$param, 3L)
+
+    ## .Call(`_nlmixr2est_solveGradNls`, env$param*400, 1L)
+
+    ## .Call(`_nlmixr2est_nlmSetup`, env)
     val <- .Call(`_nlmixr2est_nlmSolveR`, env$param)
 
 
