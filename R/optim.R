@@ -168,7 +168,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
-  checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0) #nolint
   checkmate::assertNumeric(fnscale, len=1, any.missing=FALSE)
   checkmate::assertNumeric(parscale, any.missing=FALSE)
   checkmate::assertNumeric(ndeps, lower=0, any.missing=FALSE)
