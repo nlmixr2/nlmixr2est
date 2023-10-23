@@ -24,8 +24,6 @@ nmTest({
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
 
-
-
     fit1 <- nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun"))
 
     Treated <- Puromycin[Puromycin$state == "treated", ]

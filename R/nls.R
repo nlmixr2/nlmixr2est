@@ -490,6 +490,24 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     #.s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  if (exists("..maxTheta", .s)) {
+    .eventTheta <- rep(0L, .s$..maxTheta)
+  } else {
+    .eventTheta <- integer(0)
+  }
+  for (.v in .s$..eventVars) {
+    .vars <- as.character(get(.v, envir = .s))
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+    for (.v2 in .vars) {
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+      if (regexpr(.reg, .v2) != -1) {
+        .num <- as.numeric(sub(.reg, "\\1", .v2))
+        .eventTheta[.num] <- 1L
+      }
+    }
+  }
+  .s$.eventTheta <- .eventTheta
+
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
@@ -501,8 +519,10 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "nls model")
     .msuccess("done")
   }
-  paste(c(rxUiGet.nlsParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+
+  list(predOnly =rxode2::rxode2(paste(c(rxUiGet.nlsParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+       eventTheta=.eventTheta)
 }
 
 #' @export
@@ -798,11 +818,11 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ctl$solveType <- 11L
     .env <- new.env(parent=emptyenv())
     .env$rxControl <- .ctl$rxControl
-    .nlsEnv$model <- .env$thetaGrad <- .env$predOnly <- rxode2::rxode2(ui$nlsRxModel)
+    f <- ui$nlsRxModel
+    .nlsEnv$model <- .env$thetaGrad <- .env$predOnly <- f$predOnly
     .nlsFitDataSetup(dataSav)
     .par <- ui$nlsParStartTheta
-    # FIXME: needFD
-    .env$needFD <- rep(0L, length(.par))
+    .env$needFD <- f$eventTheta
     .env$control <- .ctl
     .env$data <- .nlsEnv$data
     .par <- ui$nlsParStartTheta
