@@ -5,9 +5,9 @@
 #'   should match the names of the model to run (not `THETA[#]` as
 #'   required in the `modelInfo` argument)
 #'
-#' @param data rxode2 compatible data for solving/setting up
-#'
 #' @param ui rxode2 ui model
+#'
+#' @param data rxode2 compatible data for solving/setting up
 #'
 #' @param modelInfo A list containing the following elements:
 #'
@@ -49,6 +49,8 @@
 #' - `scaleTo`
 #' - `scaleC`
 #' - `gradTo` (optional); if missing assumed gradTo=0
+#' @param lower lower bounds, will be scaled if present
+#' @param upper upper bounds, will be scaled if present
 #' @return nlm solve environment; of interest
 #'
 #' par.ini -- the initial value of the scaled parameter
@@ -63,7 +65,8 @@
 #' @keywords internal
 #'
 #' @export
-.nlmSetupEnv <- function(par, ui, data, modelInfo, control) {
+.nlmSetupEnv <- function(par, ui, data, modelInfo, control,
+                         lower=NULL, upper=NULL) {
   .ctl <- control
   if (!any(names(.ctl) == "gradTo")) {
     .ctl$gradTo <- 0.0
@@ -100,6 +103,12 @@
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
   .env$par.ini <- .p
   .env$.ctl <- .ctl
+  if (is.null(upper)) {
+    .env$upper <- .Call(`_nlmixr2est_nlmScalePar`, upper)
+  }
+  if (is.null(lower)) {
+    .env$lower <- .Call(`_nlmixr2est_nlmScalePar`, lower)
+  }
   .Call(`_nlmixr2est_nlmPrintHeader`)
   .env
 }
