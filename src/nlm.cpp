@@ -893,9 +893,12 @@ RObject nlmWarnings() {
 }
 
 //[[Rcpp::export]]
-RObject nlmGetParHist() {
+RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
   nlmOp.scale.print = 0;
+  if (p) {
+    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.printNcol));
+  }
   return scaleParHisDf(&(nlmOp.scale));
 }
 

@@ -539,12 +539,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // nlmGetParHist
-RObject nlmGetParHist();
-RcppExport SEXP _nlmixr2est_nlmGetParHist() {
+RObject nlmGetParHist(bool p);
+RcppExport SEXP _nlmixr2est_nlmGetParHist(SEXP pSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(nlmGetParHist());
+    Rcpp::traits::input_parameter< bool >::type p(pSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmGetParHist(p));
     return rcpp_result_gen;
 END_RCPP
 }

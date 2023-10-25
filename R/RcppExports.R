@@ -200,8 +200,8 @@ nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }
 
-nlmGetParHist <- function() {
-    .Call(`_nlmixr2est_nlmGetParHist`)
+nlmGetParHist <- function(p = TRUE) {
+    .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
 
 nlmAdjustHessian <- function(Hin, theta) {

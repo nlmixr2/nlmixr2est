@@ -718,8 +718,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 .nlmFitModel <- function(ui, dataSav) {
   .ctl <- ui$control
   class(.ctl) <- NULL
-  .p <- ui$nlmParIni
-  .name <- ui$nlmParName
+  .p <- setNames(ui$nlmParIni, ui$nlmParName)
   .typsize <- .ctl$typsize
   if (is.null(.typsize)) {
     .typsize <- rep(1, length(.p))
@@ -733,54 +732,13 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     .stepmax <- max(1000 * sqrt(sum((.p/.typsize)^2)), 1000)
   }
   .hessian <- .ctl$covMethod == "nlm"
-  .env <- new.env(parent=emptyenv())
-  .env$rxControl <- .ctl$rxControl
-  .env$thetaNames <- .name
   if (.ctl$solveType == 1L) {
-    .f <- ui$nlmRxModel
-    .nlmEnv$model <- .predOnly <- .f$predOnly
-    .env$predOnly <- .predOnly
-    .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
-    .nlmFitDataSetup(dataSav)
-    .env$needFD <- .f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlmEnv$data
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
+    .mi <-  ui$nlmRxModel
   } else {
-    .f <- ui$nlmSensModel
-    .env$predOnly <- .f$predOnly
-    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
-    .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
-    .nlmFitDataSetup(dataSav)
-    .env$needFD <- .f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlmEnv$data
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
+    .mi <- ui$nlmSensModel
   }
-
-  ## .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
-    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, .p, .ctl$gradTo)
-    if (length(.tmp) == 0L) {
-      .ctl$scaleC <- ui$scaleCtheta
-      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-    } else {
-      .ctl$scaleC <- .tmp
-    }
-  } else if (is.null(.ctl$scaleC)) {
-    .ctl$scaleC <- ui$scaleCtheta
-    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
-  }
-  .p <- .Call(`_nlmixr2est_nlmScalePar`, .p)
-  .Call(`_nlmixr2est_nlmPrintHeader`)
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
+  on.exit({.nlmFreeEnv()})
   .ret <- eval(bquote(stats::nlm(
     f=.(.nlmixrNlmFunC),
     p=.(.p),
@@ -795,74 +753,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     iterlim = .(.ctl$iterlim),
     check.analyticals = .(.ctl$check.analyticals)
   )))
-  .ret$scaleC <- .ctl$scaleC
-  .ret$estimate.scaled <- .ret$estimate
-  .ret$estimate <- .Call(`_nlmixr2est_nlmUnscalePar`, .ret$estimate)
-  # be nice and name items
-  names(.ret$estimate) <- .name
-  names(.ret$gradient) <- .name
-  .ret$parHistData <- .Call(`_nlmixr2est_nlmGetParHist`)
-  if (any(.ctl$covMethod == c("r", "nlm"))) {
-    .malert("calculating covariance")
-    if (!.hessian) {
-      .p <- setNames(.ret$estimate.scaled, NULL)
-      .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
-      .ret$hessian <- .hess
-    }
-    #.ret$hessian <- .Call(`_nlmixr2est_nlmAdjustHessian`, .ret$hessian, .ret$estimate.scaled)
-    dimnames(.ret$hessian) <- list(.name, .name)
-    .hess <- .ret$hessian
-    if (any(is.na(.hess))) {
-      .ret$covMethod <- "failed"
-    } else {
-      # r matrix
-      .r <- 0.5 * .hess
-      .ch <- try(cholSE(.r), silent = TRUE)
-      .covType <- "r"
-      if (inherits(.ch, "try-error")) {
-        .r2 <- .r %*% .r
-        .r2 <- try(sqrtm(.r2), silent=TRUE)
-        .covType <- "|r|"
-        if (!inherits(.r2, "try-error")) {
-          .ch <- try(cholSE(.r), silent=TRUE)
-          if (inherits(.ch, "try-error")) {
-            .r2 <- .ch # switch to nearPD
-          }
-        }
-        if (inherits(.r2, "try-error")) {
-          .covType <- "r+"
-          .r2 <- try(nmNearPD(.r), silent=TRUE)
-          if (!inherits(.r2, "try-error")) {
-            .ch <- try(cholSE(.r), silent=TRUE)
-          }
-        } else {
-          .ch <- try(cholSE(.r), silent=TRUE)
-        }
-      }
-      if (!inherits(.ch, "try-error")) {
-        .rinv <- rxode2::rxInv(.ch)
-        .rinv <- .rinv %*% t(.rinv)
-        .cov <- 2*.rinv
-        dimnames(.cov) <- list(.name, .name)
-        dimnames(.rinv) <- list(.name, .name)
-        .ret$covMethod <- .covType
-        if (.ctl$covMethod == "nlm") {
-          .ret$covMethod <- paste0(.covType, " (nlm)")
-        } else {
-          .ret$covMethod <- .covType
-        }
-        .ret$cov.scaled <- .cov
-        .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .ret$estimate.scaled)
-      } else {
-        .ret$covMethod <- "failed"
-      }
-      dimnames(.r) <- list(.name, .name)
-      .ret$r <- .r
-    }
-    .msuccess("done")
-  }
-  .Call(`_nlmixr2est_nlmWarnings`)
-  .ret
+  .nlmFinalizeList(.env, .ret, par="estimate", printLine=TRUE,
+                   hessianCov=TRUE)
 }
 #' Get the full theta for nlm methods
 #'

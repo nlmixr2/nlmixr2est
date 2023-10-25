@@ -110,10 +110,10 @@ SEXP _nlmixr2est_nlmAdjustHessian(SEXP, SEXP);
 SEXP _nlmixr2est_nlmAdjustCov(SEXP, SEXP);
 SEXP _nlmixr2est_nlmSetScaleC(SEXP);
 SEXP _nlmixr2est_nlmPrintHeader(void);
-SEXP _nlmixr2est_nlmGetParHist(void);
+SEXP _nlmixr2est_nlmGetParHist(SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
-  {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 0},
+  {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
   {"_nlmixr2est_nlmPrintHeader", (DL_FUNC) &_nlmixr2est_nlmPrintHeader, 0},
   {"_nlmixr2est_nlmSetScaleC", (DL_FUNC) &_nlmixr2est_nlmSetScaleC, 1},
   {"_nlmixr2est_nlmAdjustCov", (DL_FUNC) &_nlmixr2est_nlmAdjustCov, 2},
