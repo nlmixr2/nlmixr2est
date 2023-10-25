@@ -107,9 +107,12 @@ SEXP _nlmixr2est_solveGradNls(SEXP, SEXP);
 SEXP _nlmixr2est_nlmGetScaleC(SEXP, SEXP);
 
 SEXP _nlmixr2est_nlmAdjustHessian(SEXP, SEXP);
-
+SEXP _nlmixr2est_nlmAdjustCov(SEXP, SEXP);
+SEXP _nlmixr2est_nlmSetScaleC(SEXP);
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_nlmSetScaleC", (DL_FUNC) &_nlmixr2est_nlmSetScaleC, 1},
+  {"_nlmixr2est_nlmAdjustCov", (DL_FUNC) &_nlmixr2est_nlmAdjustCov, 2},
   {"_nlmixr2est_nlmAdjustHessian", (DL_FUNC) &_nlmixr2est_nlmAdjustHessian, 2},
   {"_nlmixr2est_nlmGetScaleC", (DL_FUNC) &_nlmixr2est_nlmGetScaleC, 2},
   {"_nlmixr2est_nlmScalePar", (DL_FUNC) &_nlmixr2est_nlmScalePar, 1},

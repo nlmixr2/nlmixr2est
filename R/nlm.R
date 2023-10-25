@@ -39,6 +39,10 @@
 #' @param shi21maxHess Maximum number of times to optimize the best
 #'   step size for the hessian calculation
 #'
+#' @param gradTo this is the factor that the gradient is scaled to
+#'   before optimizing.  This only works with
+#'   scaleType="nlmixr2".
+#'
 #' @return nlm control object
 #' @export
 #' @author Matthew L. Fidler
@@ -103,6 +107,7 @@ nlmControl <- function(typsize = NULL,
                        scaleCmin = 1e-5, #
                        scaleC=NULL,
                        scaleTo=1.0,
+                       gradTo=1.0,
 
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
@@ -222,6 +227,7 @@ nlmControl <- function(typsize = NULL,
     checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
   }
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
 
   .ret <- list(covMethod=covMethod,
                typsize = typsize,
@@ -256,6 +262,7 @@ nlmControl <- function(typsize = NULL,
                scaleCmin=scaleCmin,
                scaleC=scaleC,
                scaleTo=scaleTo,
+               gradTo=gradTo,
 
                addProp=addProp, calcTables=calcTables,
                compress=compress,
@@ -759,8 +766,17 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   }
 
   ## .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-  if (.ctl$scaleType == 2L) {
-    print(.Call(`_nlmixr2est_nlmGetScaleC`, .p, 0.1))
+  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
+    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, .p, .ctl$gradTo)
+    if (length(.tmp) == 0L) {
+      .ctl$scaleC <- ui$scaleCtheta
+      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+    } else {
+      .ctl$scaleC <- .tmp
+    }
+  } else if (is.null(.ctl$scaleC)) {
+    .ctl$scaleC <- ui$scaleCtheta
+    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   }
   .p <- .Call(`_nlmixr2est_nlmScalePar`, .p)
   .ret <- eval(bquote(stats::nlm(
@@ -777,6 +793,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     iterlim = .(.ctl$iterlim),
     check.analyticals = .(.ctl$check.analyticals)
   )))
+  .ret$scaleC <- .ctl$scaleC
   .ret$estimate.scaled <- .ret$estimate
   .ret$estimate <- .Call(`_nlmixr2est_nlmUnscalePar`, .ret$estimate)
   # be nice and name items
@@ -785,13 +802,11 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   if (any(.ctl$covMethod == c("r", "nlm"))) {
     .malert("calculating covariance")
     if (!.hessian) {
-      stop()
-      .p <- setNames(.ret$estimate, NULL)
+      .p <- setNames(.ret$estimate.scaled, NULL)
       .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
       .ret$hessian <- .hess
-    } else {
-      .ret$hessian <- .Call(`_nlmixr2est_nlmAdjustHessian`, .ret$hessian, .ret$estimate.scaled)
     }
+    #.ret$hessian <- .Call(`_nlmixr2est_nlmAdjustHessian`, .ret$hessian, .ret$estimate.scaled)
     dimnames(.ret$hessian) <- list(.name, .name)
     .hess <- .ret$hessian
     if (any(is.na(.hess))) {
@@ -833,8 +848,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
         } else {
           .ret$covMethod <- .covType
         }
-        .ret$cov <- .cov
-
+        .ret$cov.scaled <- .cov
+        .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .ret$estimate.scaled)
       } else {
         .ret$covMethod <- "failed"
       }

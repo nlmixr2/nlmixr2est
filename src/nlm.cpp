@@ -221,7 +221,6 @@ RObject nlmSetup(Environment e) {
   default:
     // 7*ntheta + nsub*ntheta + 1 + ntheta*ntheta
     // ntheta*(7+nsub+ntheta) + 1
-    REprintf("nlmOp.ntheta: %d nsub: %d\n",nlmOp.ntheta, rx->nsub);
 #define ntheta nlmOp.ntheta
 #define nsub rx->nsub
     //nsub*ntheta
@@ -241,8 +240,6 @@ RObject nlmSetup(Environment e) {
     std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
   }
 
-  print(wrap(p));
-
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
   scaleSetup(&(nlmOp.scale),
@@ -261,12 +258,6 @@ RObject nlmSetup(Environment e) {
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
-  if (e.exists("scaleC")) {
-    arma::vec scaleC = as<arma::vec>(e["scaleC"]);
-    if (scaleC.size() == nlmOp.ntheta) {
-      std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
-    }
-  }
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -557,6 +548,14 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
   }
   return ret;
+}
+
+//[[Rcpp::export]]
+RObject nlmSetScaleC(NumericVector scaleC) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (scaleC.size() != nlmOp.ntheta) stop("scaleC size mismatch");
+  std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  return R_NilValue;
 }
 
 //[[Rcpp::export]]
@@ -889,19 +888,30 @@ RObject nlmWarnings() {
 //[[Rcpp::export]]
 RObject nlmAdjustHessian(RObject Hin, arma::vec theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  if (nlmOp.solveType == solveType_pred) return Hin;
-  if (nlmOp.scale.scaleTo == 0.0 &&
-      (nlmOp.scale.scaleType == scaleTypeMultAdd ||
-       nlmOp.scale.scaleType == scaleTypeMult)) {
-    return Hin;
-  }
-  arma::mat J(nlmOp.ntheta, 1);
+  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
   arma::mat H = as<arma::mat>(Hin);
   for (int i = 0; i < nlmOp.ntheta; ++i) {
-    J(i, 0) = 1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
+    J(i, i) =1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
   }
-  H = (J * J.t()) % H;
+  H = J * H * J;
+  // inv(J2*H*J2)
+  // inv(H*J2)*inv(J2)
+  // inv(J2)*inv(H)*inv(J2)
   RObject ret = wrap(H);
   ret.attr("dimnames") = Hin.attr("dimnames");
+  return ret;
+}
+
+//[[Rcpp::export]]
+RObject nlmAdjustCov(RObject CovIn, arma::vec theta) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  arma::mat J(nlmOp.ntheta, nlmOp.ntheta);
+  arma::mat Cov = as<arma::mat>(CovIn);
+  for (int i = 0; i < nlmOp.ntheta; ++i) {
+    J(i, i) = scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
+  }
+  Cov = J * Cov * J;
+  RObject ret = wrap(Cov);
+  ret.attr("dimnames") = CovIn.attr("dimnames");
   return ret;
 }

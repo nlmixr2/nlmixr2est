@@ -160,6 +160,10 @@ nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
 }
 
+nlmSetScaleC <- function(scaleC) {
+    .Call(`_nlmixr2est_nlmSetScaleC`, scaleC)
+}
+
 nlmGetScaleC <- function(theta, to) {
     .Call(`_nlmixr2est_nlmGetScaleC`, theta, to)
 }
@@ -194,6 +198,10 @@ nlmWarnings <- function() {
 
 nlmAdjustHessian <- function(Hin, theta) {
     .Call(`_nlmixr2est_nlmAdjustHessian`, Hin, theta)
+}
+
+nlmAdjustCov <- function(CovIn, theta) {
+    .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
