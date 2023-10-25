@@ -144,8 +144,8 @@ nlmSetup <- function(e) {
     .Call(`_nlmixr2est_nlmSetup`, e)
 }
 
-nlmScalePar <- function(p) {
-    .Call(`_nlmixr2est_nlmScalePar`, p)
+nlmScalePar <- function(p0) {
+    .Call(`_nlmixr2est_nlmScalePar`, p0)
 }
 
 nlmUnscalePar <- function(p) {

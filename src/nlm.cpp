@@ -271,7 +271,11 @@ RObject nlmSetup(Environment e) {
 }
 
 //[[Rcpp::export]]
-NumericVector nlmScalePar(NumericVector p) {
+RObject nlmScalePar(RObject p0) {
+  if (p0.sexp_type() != REALSXP) {
+    return p0;
+  }
+  NumericVector p = as<NumericVector>(p0);
   if (p.size() != nlmOp.ntheta) stop("parameter dimension mismatch");
   NumericVector ret(nlmOp.ntheta);
   for (int i = 0; i < nlmOp.ntheta; i++) {
@@ -553,7 +557,10 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 //[[Rcpp::export]]
 RObject nlmSetScaleC(NumericVector scaleC) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  if (scaleC.size() != nlmOp.ntheta) stop("scaleC size mismatch");
+  if (scaleC.size() != nlmOp.ntheta) {
+    REprintf("ntheta %d\n", nlmOp.ntheta);
+    stop("scaleC size mismatch");
+  }
   std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
   return R_NilValue;
 }
@@ -757,6 +764,7 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
     if (grad) stop(_("incorrect solve type"));
     NumericVector ret(1);
     ret[0] = nlmSolveR(theta);
+    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
     return ret;
   }
   if (isThetaSame(theta)) {
@@ -775,10 +783,14 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   if (grad) {
     NumericVector ret(nlmOp.ntheta);
     std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+    scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
     return ret;
   }
   NumericVector ret(1);
   ret[0] = nlmOp.valSave[0];
+  scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+  scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
   return ret;
 }
 

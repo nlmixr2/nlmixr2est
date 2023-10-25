@@ -384,13 +384,13 @@ BEGIN_RCPP
 END_RCPP
 }
 // nlmScalePar
-NumericVector nlmScalePar(NumericVector p);
-RcppExport SEXP _nlmixr2est_nlmScalePar(SEXP pSEXP) {
+RObject nlmScalePar(RObject p0);
+RcppExport SEXP _nlmixr2est_nlmScalePar(SEXP p0SEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< NumericVector >::type p(pSEXP);
-    rcpp_result_gen = Rcpp::wrap(nlmScalePar(p));
+    Rcpp::traits::input_parameter< RObject >::type p0(p0SEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmScalePar(p0));
     return rcpp_result_gen;
 END_RCPP
 }

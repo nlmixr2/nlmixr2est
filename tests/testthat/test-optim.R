@@ -23,7 +23,7 @@ nmTest({
 
     expect_true(inherits(fit2, "nlmixr2.optim"))
 
-    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "optim", nlmControl(covMethod="optim"))
+    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "optim", optimControl(covMethod="optim"))
 
     expect_true(inherits(fit3, "nlmixr2.optim"))
 

@@ -741,7 +741,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   on.exit({.nlmFreeEnv()})
   .ret <- eval(bquote(stats::nlm(
     f=.(.nlmixrNlmFunC),
-    p=.(.p),
+    p=.(.env$par.ini),
     hessian=.(.hessian),
     typsize=.(.typsize),
     fscale=.(.ctl$fscale),

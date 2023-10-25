@@ -53,7 +53,13 @@
 #' @param upper upper bounds, will be scaled if present
 #' @return nlm solve environment; of interest
 #'
-#' par.ini -- the initial value of the scaled parameter
+#' `$par.ini` -- scaled parameter initial value
+#'
+#' `$lower` -- scaled parameter lower value
+#'
+#' `$upper` -- scaled parameter upper value
+#'
+#' `$.ctl`  -- control structure
 #'
 #' @details
 #'
@@ -103,11 +109,18 @@
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
   .env$par.ini <- .p
   .env$.ctl <- .ctl
-  if (is.null(upper)) {
+  .env$upper <- .env$lower <- NULL
+  if (!is.null(upper)) {
     .env$upper <- .Call(`_nlmixr2est_nlmScalePar`, upper)
   }
-  if (is.null(lower)) {
+  if (is.null(.env$upper)) {
+    .env$upper <- rep(Inf, length(.p))
+  }
+  if (!is.null(lower)) {
     .env$lower <- .Call(`_nlmixr2est_nlmScalePar`, lower)
+  }
+  if (is.null(.env$lower)) {
+    .env$lower <- rep(-Inf, length(.p))
   }
   .Call(`_nlmixr2est_nlmPrintHeader`)
   .env
