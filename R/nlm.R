@@ -801,6 +801,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   # be nice and name items
   names(.ret$estimate) <- .name
   names(.ret$gradient) <- .name
+  .ret$parHistData <- .Call(`_nlmixr2est_nlmGetParHist`)
   if (any(.ctl$covMethod == c("r", "nlm"))) {
     .malert("calculating covariance")
     if (!.hessian) {
@@ -935,7 +936,10 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
+
   .ret$nlm <- .nlm[[1]]
+  .ret$parHistData <- .ret$nlm$parHistData
+  .ret$nlm$parHistData <- NULL
   .ret$message <- NULL
   lapply(.nlm[[2]], function(x){
     warning(x, call.=FALSE)

@@ -5785,7 +5785,8 @@ void parHistData(Environment e, bool focei){
     tmp = typ;
     tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
                                                  "Forward Difference", "Central Difference",
-                                                 "Scaled", "Unscaled", "Back-Transformed");
+                                                 "Scaled", "Unscaled", "Back-Transformed",
+                                                 "Forward Sensitivity");
     tmp.attr("class") = "factor";
     ret[1] = tmp;
     arma::mat cPar(vPar.size()/iterType.size(), iterType.size());

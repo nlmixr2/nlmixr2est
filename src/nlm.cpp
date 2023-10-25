@@ -731,7 +731,7 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   ret.attr("gradient") = grad;
   ret.attr("hessian") = wrap(H);
   scalePrintFun(&(nlmOp.scale), &theta[0], ll);
-  scalePrintGrad(&(nlmOp.scale), &grad[0]);
+  scalePrintGrad(&(nlmOp.scale), &grad[0], iterTypeSens);
   return ret;
 }
 
@@ -820,6 +820,7 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
     nlmOp.valSave[0] = ret[0] = nlmSolveR(theta);
     nlmOp.saveType = solveType_pred;
     saveTheta(theta);
+    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
     return ret;
   }
     break;
@@ -832,6 +833,7 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
     saveTheta(theta);
     NumericVector ret(nlmOp.ntheta);
     std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
+    scalePrintGrad(&(nlmOp.scale), &ret[0], iterTypeSens);
     return ret;
   }
     break;
@@ -888,6 +890,13 @@ RObject nlmWarnings() {
     }
   }
   return R_NilValue;
+}
+
+//[[Rcpp::export]]
+RObject nlmGetParHist() {
+  nlmOp.scale.save = 0;
+  nlmOp.scale.print = 0;
+  return scaleParHisDf(&(nlmOp.scale));
 }
 
 

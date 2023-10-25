@@ -53,6 +53,14 @@ struct scaling {
   std::vector<double> vGrad;
   std::vector<int> niterGrad;
   std::vector<int> gradType;
+#define iterTypeGill 1
+#define iterTypeMixed 2
+#define iterTypeForward 3
+#define iterTypeCentral 4
+#define iterTypeScaled 5
+#define iterTypeUnscaled 6
+#define iterTypeBack 7
+#define iterTypeSens 8
 };
 
 static inline void scaleNone(scaling *scale) {
@@ -421,19 +429,19 @@ void scalePrintFun(scaling *scale, double *x, double f) {
     scale->niter.push_back(scale->cn);
 
     scale->vPar.push_back(f);
-    scale->iterType.push_back(5);
+    scale->iterType.push_back(iterTypeScaled);
     for (i = 0; i < scale->npars; i++){
       scale->vPar.push_back(x[i]);
     }
     // Unscaled
-    scale->iterType.push_back(6);
+    scale->iterType.push_back(iterTypeUnscaled);
     scale->niter.push_back(scale->niter.back());
     scale->vPar.push_back(f);
     for (i = 0; i < scale->npars; i++){
       scale->vPar.push_back(scaleUnscalePar(scale, x, i));
     }
     // Back-transformed (7)
-    scale->iterType.push_back(7);
+    scale->iterType.push_back(iterTypeBack);
     scale->niter.push_back(scale->niter.back());
     scale->vPar.push_back(f);
     for (i = 0; i < scale->npars; i++){
@@ -538,7 +546,7 @@ void scalePrintFun(scaling *scale, double *x, double f) {
   }
 }
 
-void scalePrintGrad(scaling *scale, double *gr) {
+void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
   // if (op_focei.derivMethod == 0){
   //   if (op_focei.curGill == 1){
@@ -555,7 +563,7 @@ void scalePrintGrad(scaling *scale, double *gr) {
   // }
   if (scale->save) {
     scale->niterGrad.push_back(scale->niter.back());
-    scale->gradType.push_back(4);
+    scale->gradType.push_back(type);
   }
   if (scale->print != 0 &&
       scale->cn % scale->print == 0){
@@ -602,4 +610,61 @@ void scalePrintGrad(scaling *scale, double *gr) {
       scale->vGrad.push_back(gr[i]);
     }
   }
+}
+
+RObject scaleParHisDf(scaling *scale) {
+  CharacterVector dfNames(3+scale->thetaNames.size());
+  dfNames[0] = "iter";
+  dfNames[1] = "type";
+  dfNames[2] = "objf";
+  int i;
+  for (i = 0; i < scale->thetaNames.size(); i++){
+    dfNames[i+3] = scale->thetaNames[i];
+  }
+  List ret(3+scale->thetaNames.size());
+  int sz = scale->niter.size()+scale->niterGrad.size();
+  std::vector<int> iter;
+  iter.reserve(sz);
+  iter.insert(iter.end(), scale->niter.begin(), scale->niter.end());
+  iter.insert(iter.end(), scale->niterGrad.begin(), scale->niterGrad.end());
+  ret[0] = iter;
+  IntegerVector tmp;
+  tmp = IntegerVector(sz);
+  std::vector<int> typ;
+  typ.reserve(sz);
+  typ.insert(typ.end(), scale->iterType.begin(), scale->iterType.end());
+  typ.insert(typ.end(), scale->gradType.begin(), scale->gradType.end());
+  tmp = typ;
+  tmp.attr("levels") = CharacterVector::create("Gill83 Gradient", "Mixed Gradient",
+                                               "Forward Difference", "Central Difference",
+                                               "Scaled", "Unscaled", "Back-Transformed",
+                                               "Forward Sensitivity");
+  tmp.attr("class") = "factor";
+  ret[1] = tmp;
+  arma::mat cPar(scale->vPar.size()/scale->iterType.size(), scale->iterType.size());
+  std::copy(scale->vPar.begin(), scale->vPar.end(), cPar.begin());
+  arma::mat vals;
+  if (scale->vGrad.size() > 0){
+    arma::mat cGrad(scale->vGrad.size()/scale->gradType.size(), scale->gradType.size());
+    std::copy(scale->vGrad.begin(), scale->vGrad.end(), cGrad.begin());
+    cPar = cPar.t();
+    cGrad = cGrad.t();
+    vals = arma::join_cols(cPar, cGrad);
+  } else {
+    cPar = cPar.t();
+    vals = cPar;
+  }
+  for (i = 0; i < scale->thetaNames.size()+1; i++){
+    ret[i+2]= vals.col(i);
+  }
+  scale->vGrad.clear();
+  scale->vPar.clear();
+  scale->iterType.clear();
+  scale->gradType.clear();
+  scale->niter.clear();
+  scale->niterGrad.clear();
+  ret.attr("names")=dfNames;
+  ret.attr("class") = "data.frame";
+  ret.attr("row.names")=IntegerVector::create(NA_INTEGER, -sz);
+  return ret;
 }

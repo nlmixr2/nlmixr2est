@@ -200,6 +200,10 @@ nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }
 
+nlmGetParHist <- function() {
+    .Call(`_nlmixr2est_nlmGetParHist`)
+}
+
 nlmAdjustHessian <- function(Hin, theta) {
     .Call(`_nlmixr2est_nlmAdjustHessian`, Hin, theta)
 }

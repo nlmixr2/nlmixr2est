@@ -70,8 +70,7 @@
 #' }
 nlminbControl <- function(eval.max=200,
                           iter.max=150,
-                          trace=1, # nolint
-                          print=1,
+                          trace=0, # nolint
                           abs.tol=0,
                           rel.tol=1e-10,
                           x.tol=1.5e-8,
@@ -99,20 +98,25 @@ nlminbControl <- function(eval.max=200,
                           hessErr =(.Machine$double.eps)^(1/3),
                           shi21maxHess=20L,
 
+                          useColor = crayon::has_color(),
+                          printNcol = floor((getOption("width") - 23) / 12), #
+                          print = 1L, #
+                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+                          scaleCmax = 1e5, #
+                          scaleCmin = 1e-5, #
+                          scaleC=NULL,
+                          scaleTo=1.0,
+                          gradTo=1.0,
+
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(iter.max, len=1, any.missing=FALSE, lower=1)
-  if (!missing(print) && !missing(trace)) { # nolint
-    stop("can only specify `print=` or `trace=`, not both")
-  } else if (!missing(print)) {
-    checkmate::assertIntegerish(print, len=1, any.missing=FALSE, lower=1)
-    trace <- print #nolint
-  } else {
-    checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=1)
-  }
+  checkmate::assertIntegerish(print, len=1, any.missing=FALSE, lower=1)
+  checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(rel.tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(x.tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(xf.tol, len=1, any.missing=FALSE, lower=0)
@@ -204,6 +208,31 @@ nlminbControl <- function(eval.max=200,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
+
+  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    scaleType <- as.integer(scaleType)
+  } else {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
+  }
+
+  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    normType <- as.integer(normType)
+  } else {
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
+  }
+  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  if (!is.null(scaleC)) {
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+  }
+  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
+
   .ret <- list(eval.max=eval.max,
                iter.max=iter.max,
                trace=trace, # nolint
@@ -229,6 +258,18 @@ nlminbControl <- function(eval.max=200,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+
+               useColor=useColor,
+               print=print,
+               printNcol=printNcol,
+               scaleType=scaleType,
+               normType=normType,
+
+               scaleCmax=scaleCmax,
+               scaleCmin=scaleCmin,
+               scaleC=scaleC,
+               scaleTo=scaleTo,
+               gradTo=gradTo,
 
                covMethod=covMethod,
                optExpression=optExpression,
@@ -350,24 +391,47 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .oCtl <- setNames(lapply(.keep, function(x) {.ctl[[x]]}), .keep)
   class(.ctl) <- NULL
   .start <- ui$nlmParIni
+  .env <- new.env(parent=emptyenv())
+  .env$rxControl <- .ctl$rxControl
+
+  if (.ctl$solveType == 1L) {
+    .f <- ui$nlmRxModel
+    .nlmEnv$model <- .predOnly <- .f$predOnly
+    .env$predOnly <- .predOnly
+  } else {
+    .f <- ui$nlmSensModel
+    .env$predOnly <- .f$predOnly
+    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+  }
+  .name <- ui$nlmParName
+  .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
+  .env$thetaNames <- .name
+  .nlmFitDataSetup(dataSav)
+  .env$needFD <- .f$eventTheta
+  .env$control <- .ctl
+  .env$data <- .nlmEnv$data
+  .Call(`_nlmixr2est_nlmSetup`, .env)
+  on.exit({
+    .Call(`_nlmixr2est_nlmFree`)
+    rxode2::rxSolveFree()
+  })
+
+  if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
+    .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, .start, .ctl$gradTo)
+    if (length(.tmp) == 0L) {
+      .ctl$scaleC <- ui$scaleCtheta
+      .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+    } else {
+      .ctl$scaleC <- .tmp
+    }
+  } else if (is.null(.ctl$scaleC)) {
+    .ctl$scaleC <- ui$scaleCtheta
+    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+  }
+  .start <- .Call(`_nlmixr2est_nlmScalePar`, .start)
 
   if (.ctl$solveType == 1L) {
     # pred only
-    .f <- ui$nlmRxModel
-    .nlmEnv$model <- .predOnly <- .f$predOnly
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
-    .env$predOnly <- .predOnly
-    .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
-    .nlmFitDataSetup(dataSav)
-    .env$needFD <- .f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlmEnv$data
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
     .ret <- bquote(stats::nlminb(
       start=.(.start),
       objective=.(nlmixr2est::.nlmixrNlminbFunC),
@@ -375,24 +439,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
       control = .(.oCtl),
       lower=.(ui$optimParLower),
       upper=.(ui$optimParUpper)))
-    .ret <- eval(.ret)
   } else {
     # grad/hessian added
-    .f <- ui$nlmSensModel
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
-    .env$predOnly <- .f$predOnly
-    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
-    .env$param <- setNames(.start, sprintf("THETA[%d]", seq_along(.start)))
-    .nlmFitDataSetup(dataSav)
-    .env$needFD <- .f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlmEnv$data
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
     if (.ctl$solveType == 2L) {
       # Gradient
       .ret <- bquote(stats::nlminb(
@@ -416,10 +464,13 @@ getValidNlmixrCtl.nlminb <- function(control) {
         upper=.(ui$optimParUpper)))
 
     }
-    .ret <- eval(.ret)
   }
+  .Call(`_nlmixr2est_nlmPrintHeader`)
+  .ret <- eval(.ret)
+  .ret$parHistData <- .Call(`_nlmixr2est_nlmGetParHist`)
   # be nice and name items
-  .name <- ui$nlmParName
+  .ret$par.scaled <- .ret$par
+  .ret$par <- .Call(`_nlmixr2est_nlmUnscalePar`, .ret$par)
   names(.ret$par) <- .name
   if (any(.ctl$covMethod == c("r", "nlminb"))) {
     .malert("calculating covariance")
@@ -469,7 +520,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
       } else {
         .ret$covMethod <- .covType
       }
-      .ret$cov <- .cov
+      .ret$cov.scaled <- .cov
+      .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .ret$cov.scaled, .ret$par.scaled)
     } else {
       .ret$covMethod <- "failed"
     }
@@ -551,6 +603,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlminb <- .nlminb[[1]]
+  .ret$parHistData <- .ret$nlminb$parHistData
+  .ret$nlm$parHistData <- NULL
   .ret$message <- .ret$nlminb$message
   if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
     return(.ret$nlminb)
