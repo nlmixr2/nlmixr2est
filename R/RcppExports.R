@@ -144,8 +144,24 @@ nlmSetup <- function(e) {
     .Call(`_nlmixr2est_nlmSetup`, e)
 }
 
+nlmScalePar <- function(p) {
+    .Call(`_nlmixr2est_nlmScalePar`, p)
+}
+
+nlmUnscalePar <- function(p) {
+    .Call(`_nlmixr2est_nlmUnscalePar`, p)
+}
+
+nlmSolveNlm <- function(id) {
+    invisible(.Call(`_nlmixr2est_nlmSolveNlm`, id))
+}
+
 nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
+}
+
+nlmGetScaleC <- function(theta, to) {
+    .Call(`_nlmixr2est_nlmGetScaleC`, theta, to)
 }
 
 nlmSolveGradR <- function(theta) {
@@ -174,6 +190,10 @@ nlminbFunC <- function(theta, type) {
 
 nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
+}
+
+nlmAdjustHessian <- function(Hin, theta) {
+    .Call(`_nlmixr2est_nlmAdjustHessian`, Hin, theta)
 }
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {

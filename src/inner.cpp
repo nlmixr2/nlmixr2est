@@ -73,7 +73,6 @@ extern "C" {
   typedef int (*par_progress_t)(int c, int n, int d, int cores, clock_t t0, int stop);
   par_progress_t par_progress;
   typedef rx_solve* (*getRxSolve_t)();
-  typedef int (*isRstudio_t)();
   isRstudio_t isRstudio;
   getRxSolve_t getRx;
   typedef const char *(*rxGetId_t)(int id);

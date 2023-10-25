@@ -28,5 +28,6 @@ extern "C" {
                               t_dydt c_dydt, t_update_inis u_inis, int jt);
   typedef rx_solve* (*getRxSolve_t)();
   typedef double (*getTime_t)(int idx, rx_solving_options_ind *ind);
+  typedef int (*isRstudio_t)();
 
 }

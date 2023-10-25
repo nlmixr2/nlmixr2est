@@ -7,7 +7,7 @@
 nlmControl(
   typsize = NULL,
   fscale = 1,
-  print.level = 2,
+  print.level = 0,
   ndigit = NULL,
   gradtol = 1e-06,
   stepmax = NULL,
@@ -25,6 +25,15 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  useColor = crayon::has_color(),
+  printNcol = floor((getOption("width") - 23)/12),
+  print = 1L,
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
+  scaleCmax = 1e+05,
+  scaleCmin = 1e-05,
+  scaleC = NULL,
+  scaleTo = 1,
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
@@ -135,6 +144,166 @@ Hessian step size using the Shi2021 method.}
 
 \item{shi21maxHess}{Maximum number of times to optimize the best
 step size for the hessian calculation}
+
+\item{useColor}{Boolean indicating if focei can use ASCII color codes}
+
+\item{printNcol}{Number of columns to printout before wrapping
+parameter estimates/gradient}
+
+\item{print}{Integer representing when the outer step is
+printed. When this is 0 or do not print the iterations.  1 is
+print every function evaluation (default), 5 is print every 5
+evaluations.}
+
+\item{normType}{This is the type of parameter
+    normalization/scaling used to get the scaled initial values
+    for nlmixr2.  These are used with \code{scaleType} of.
+
+    With the exception of \code{rescale2}, these come
+    from
+    \href{https://en.wikipedia.org/wiki/Feature_scaling}{Feature
+    Scaling}. The \code{rescale2} The rescaling is the same type
+    described in the
+    \href{http://apmonitor.com/me575/uploads/Main/optimization_book.pdf}{OptdesX}
+    software manual.
+
+    In general, all all scaling formula can be described by:
+
+    v_{scaled} = (v_{unscaled}-C_{1})/C_{2}
+
+    Where
+
+
+    The other data normalization approaches follow the following formula
+
+    v_{scaled} = (v_{unscaled}-C_{1})/C_{2};
+
+\itemize{
+
+\item \code{rescale2} This scales all parameters from (-1 to 1).
+    The relative differences between the parameters are preserved
+    with this approach and the constants are:
+
+    C_{1} = (max(all unscaled values)+min(all unscaled values))/2
+
+    C_{2} = (max(all unscaled values) - min(all unscaled values))/2
+
+
+\item \code{rescale} or min-max normalization. This rescales all
+    parameters from (0 to 1).  As in the \code{rescale2} the
+    relative differences are preserved.  In this approach:
+
+    C_{1} = min(all unscaled values)
+
+    C_{2} = max(all unscaled values) - min(all unscaled values)
+
+
+\item \code{mean} or mean normalization.  This rescales to center
+    the parameters around the mean but the parameters are from 0
+    to 1.  In this approach:
+
+    C_{1} = mean(all unscaled values)
+
+    C_{2} = max(all unscaled values) - min(all unscaled values)
+
+\item \code{std} or standardization.  This standardizes by the mean
+     and standard deviation.  In this approach:
+
+    C_{1} = mean(all unscaled values)
+
+    C_{2} = sd(all unscaled values)
+
+\item \code{len} or unit length scaling.  This scales the
+   parameters to the unit length.  For this approach we use the Euclidean length, that
+   is:
+
+    C_{1} = 0
+
+    C_{2} = sqrt(v_1^2 + v_2^2 + ... + v_n^2)
+
+
+\item \code{constant} which does not perform data normalization. That is
+
+    C_{1} = 0
+
+    C_{2} = 1
+
+}}
+
+\item{scaleType}{The scaling scheme for nlmixr2.  The supported types are:
+
+\itemize{
+\item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
+
+   v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
+
+The \code{scaleTo} parameter is specified by the \code{normType},
+and the scales are specified by \code{scaleC}.
+
+\item \code{norm} This approach uses the simple scaling provided
+    by the \code{normType} argument.
+
+\item \code{mult} This approach does not use the data
+normalization provided by \code{normType}, but rather uses
+multiplicative scaling to a constant provided by the \code{scaleTo}
+argument.
+
+  In this case:
+
+  v_{scaled} = v_{current}/v_{init}*scaleTo
+
+\item \code{multAdd} This approach changes the scaling based on
+the parameter being specified.  If a parameter is defined in an
+exponential block (ie exp(theta)), then it is scaled on a
+linearly, that is:
+
+  v_{scaled} = (v_{current}-v_{init}) + scaleTo
+
+Otherwise the parameter is scaled multiplicatively.
+
+   v_{scaled} = v_{current}/v_{init}*scaleTo
+
+}}
+
+\item{scaleCmax}{Maximum value of the scaleC to prevent overflow.}
+
+\item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
+
+\item{scaleC}{The scaling constant used with
+    \code{scaleType=nlmixr2}.  When not specified, it is based on
+    the type of parameter that is estimated.  The idea is to keep
+    the derivatives similar on a log scale to have similar
+    gradient sizes.  Hence parameters like log(exp(theta)) would
+    have a scaling factor of 1 and log(theta) would have a scaling
+    factor of ini_value (to scale by 1/value; ie
+    d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)
+
+   \itemize{
+
+   \item For parameters in an exponential (ie exp(theta)) or
+   parameters specifying powers, boxCox or yeoJohnson
+   transformations , this is 1.
+
+   \item For additive, proportional, lognormal error structures,
+   these are given by 0.5*abs(initial_estimate)
+
+   \item Factorials are scaled by abs(1/digamma(initial_estimate+1))
+
+   \item parameters in a log scale (ie log(theta)) are transformed
+   by log(abs(initial_estimate))*abs(initial_estimate)
+
+   }
+
+   These parameter scaling coefficients are chose to try to keep
+   similar slopes among parameters.  That is they all follow the
+   slopes approximately on a log-scale.
+
+   While these are chosen in a logical manner, they may not always
+   apply.  You can specify each parameters scaling factor by this
+   parameter if you wish.}
+
+\item{scaleTo}{Scale the initial parameter estimate to this value.
+By default this is 1.  When zero or below, no scaling is performed.}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 

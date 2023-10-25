@@ -76,7 +76,7 @@
 #' # extra components and name the parameters
 #' }
 nlmControl <- function(typsize = NULL,
-                       fscale = 1, print.level = 2, ndigit = NULL, gradtol = 1e-6,
+                       fscale = 1, print.level = 0, ndigit = NULL, gradtol = 1e-6,
                        stepmax = NULL,
                        steptol = 1e-6, iterlim = 10000, check.analyticals = FALSE,
                        returnNlm=FALSE,
@@ -94,6 +94,16 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
+                       useColor = crayon::has_color(),
+                       printNcol = floor((getOption("width") - 23) / 12), #
+                       print = 1L, #
+                       normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+                       scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+                       scaleCmax = 1e5, #
+                       scaleCmin = 1e-5, #
+                       scaleC=NULL,
+                       scaleTo=1.0,
+
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
                        addProp = c("combined2", "combined1"),
@@ -106,11 +116,10 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(shi21maxHess, lower=1, any.missing=FALSE, len=1)
 
-
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
-  checkmate::assertIntegerish(print.level, lower=1, upper=2, any.missing=FALSE)
+  checkmate::assertIntegerish(print.level, lower=0, upper=2, any.missing=FALSE)
   checkmate::assertNumeric(ndigit, lower=0, len=1, any.missing=FALSE, null.ok=TRUE)
   checkmate::assertNumeric(gradtol, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(steptol, lower=0, len=1, any.missing=FALSE)
@@ -191,6 +200,28 @@ nlmControl <- function(typsize = NULL,
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
+  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    scaleType <- as.integer(scaleType)
+  } else {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
+  }
+
+  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    normType <- as.integer(normType)
+  } else {
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
+  }
+  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  if (!is.null(scaleC)) {
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+  }
+  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
 
   .ret <- list(covMethod=covMethod,
                typsize = typsize,
@@ -214,6 +245,17 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+
+               useColor=useColor,
+               print=print,
+               printNcol=printNcol,
+               scaleType=scaleType,
+               normType=normType,
+
+               scaleCmax=scaleCmax,
+               scaleCmin=scaleCmin,
+               scaleC=scaleC,
+               scaleTo=scaleTo,
 
                addProp=addProp, calcTables=calcTables,
                compress=compress,
@@ -315,7 +357,6 @@ getValidNlmixrCtl.nlm <- function(control) {
     }
   })
 }
-
 
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
@@ -670,6 +711,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ctl <- ui$control
   class(.ctl) <- NULL
   .p <- ui$nlmParIni
+  .name <- ui$nlmParName
   .typsize <- .ctl$typsize
   if (is.null(.typsize)) {
     .typsize <- rep(1, length(.p))
@@ -683,11 +725,12 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     .stepmax <- max(1000 * sqrt(sum((.p/.typsize)^2)), 1000)
   }
   .hessian <- .ctl$covMethod == "nlm"
+  .env <- new.env(parent=emptyenv())
+  .env$rxControl <- .ctl$rxControl
+  .env$thetaNames <- .name
   if (.ctl$solveType == 1L) {
     .f <- ui$nlmRxModel
     .nlmEnv$model <- .predOnly <- .f$predOnly
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
     .env$predOnly <- .predOnly
     .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
     .nlmFitDataSetup(dataSav)
@@ -701,8 +744,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     })
   } else {
     .f <- ui$nlmSensModel
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
     .env$predOnly <- .f$predOnly
     .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
     .env$param <- setNames(.p, sprintf("THETA[%d]", seq_along(.p)))
@@ -718,7 +759,10 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   }
 
   ## .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-
+  if (.ctl$scaleType == 2L) {
+    print(.Call(`_nlmixr2est_nlmGetScaleC`, .p, 0.1))
+  }
+  .p <- .Call(`_nlmixr2est_nlmScalePar`, .p)
   .ret <- eval(bquote(stats::nlm(
     f=.(.nlmixrNlmFunC),
     p=.(.p),
@@ -733,16 +777,20 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     iterlim = .(.ctl$iterlim),
     check.analyticals = .(.ctl$check.analyticals)
   )))
+  .ret$estimate.scaled <- .ret$estimate
+  .ret$estimate <- .Call(`_nlmixr2est_nlmUnscalePar`, .ret$estimate)
   # be nice and name items
-  .name <- ui$nlmParName
   names(.ret$estimate) <- .name
   names(.ret$gradient) <- .name
   if (any(.ctl$covMethod == c("r", "nlm"))) {
     .malert("calculating covariance")
     if (!.hessian) {
+      stop()
       .p <- setNames(.ret$estimate, NULL)
       .hess <- nlmixr2Hess(.p, nlmixr2est::.nlmixrNlmFunC)
       .ret$hessian <- .hess
+    } else {
+      .ret$hessian <- .Call(`_nlmixr2est_nlmAdjustHessian`, .ret$hessian, .ret$estimate.scaled)
     }
     dimnames(.ret$hessian) <- list(.name, .name)
     .hess <- .ret$hessian
@@ -792,7 +840,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
       }
       dimnames(.r) <- list(.name, .name)
       .ret$r <- .r
-
     }
     .msuccess("done")
   }

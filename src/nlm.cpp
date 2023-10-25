@@ -8,6 +8,7 @@
 #include "shi21.h"
 #include "inner.h"
 
+
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #define _(String) dgettext ("nlmixr2est", String)
@@ -15,6 +16,9 @@
 #else
 #define _(String) (String)
 #endif
+
+#include "scale.h"
+
 
 #define nlmOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
@@ -29,6 +33,7 @@ extern getRxSolve_t getRx;
 extern rx_solve *rx;
 extern getTime_t getTimeF;
 extern iniSubjectI_t iniSubjectI;
+extern isRstudio_t isRstudio;
 
 
 struct nlmOptions {
@@ -37,14 +42,18 @@ struct nlmOptions {
   int *nobs = NULL;
   int *idS  = NULL;
   int *idF  = NULL;
+  int *xPar = NULL;
   int nobsTot = 0;
   double *thetahf=NULL; // Shi step size
   double *thetahh=NULL;
+  double *initPar= NULL; // initial parameters
   double *thetaSave = NULL;
   double *valSave   = NULL;
   double *grSave    = NULL;
   double *hSave     = NULL;
-
+  double *scaleC    = NULL;
+  double *logitThetaLow = NULL;
+  double *logitThetaHi  = NULL;
 
   int eventType=3; // eventType
   int shi21maxFD=1000; //maxiter for shi
@@ -74,6 +83,7 @@ struct nlmOptions {
 #define save_hess 3
   int naZero;
   int naGrad;
+  scaling scale;
   bool loaded=false;
 };
 
@@ -86,13 +96,22 @@ RObject nlmFree() {
   nlmOp.nobs    = NULL;
   nlmOp.idS     = NULL;
   nlmOp.idF     = NULL;
+  nlmOp.xPar    = NULL;
   if (nlmOp.thetahf != NULL) R_Free(nlmOp.thetahf);
   nlmOp.thetahf = NULL;
   nlmOp.thetahh = NULL;
+  nlmOp.thetaSave = NULL;
+  nlmOp.valSave = NULL;
+  nlmOp.grSave = NULL;
+  nlmOp.hSave = NULL;
+  nlmOp.initPar = NULL;
+  nlmOp.scaleC  = NULL;
+  nlmOp.logitThetaLow = NULL;
+  nlmOp.logitThetaHi  = NULL;
+
   nlmOp.loaded = false;
   return R_NilValue;
 }
-
 
 //[[Rcpp::export]]
 RObject nlmSetup(Environment e) {
@@ -140,19 +159,21 @@ RObject nlmSetup(Environment e) {
   nlmOp.shi21maxHess = control["shi21maxHess"];
   nlmOp.hessErr = control["hessErr"];
 
+
   rxode2::rxSolve_(model, rxControl,
                    R_NilValue,//const Nullable<CharacterVector> &specParams =
                    R_NilValue,//const Nullable<List> &extraArgs =
-                   e["param"],//const RObject &params =
+                   p,//const RObject &params =
                    e["data"],//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRx();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta + rx->nsub*3, int);
-  nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta;
-  nlmOp.idS = nlmOp.nobs + rx->nsub;
-  nlmOp.idF = nlmOp.idS + rx->nsub;
+  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + rx->nsub*3, int); // [ntheta]
+  nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
+  nlmOp.idS = nlmOp.nobs + rx->nsub; // [nsub]
+  nlmOp.idF = nlmOp.idS + rx->nsub; // [nsub]
+  nlmOp.xPar = nlmOp.idF + rx->nsub; // [ntheta]
 
   // now calculate nobs per id
   nlmOp.nobsTot = 0;
@@ -177,27 +198,75 @@ RObject nlmSetup(Environment e) {
 
   IntegerVector needFD = as<IntegerVector>(e["needFD"]);
 
+
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(1+rx->nsub) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+rx->nsub) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
     nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
-    nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; //[nlmOp.nobsTot]
+    nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
+    nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
+    nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
+    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
+    nlmOp.valSave = nlmOp.logitThetaHi + nlmOp.ntheta; //[nlmOp.nobsTot]
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*rx->nsub, double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+rx->nsub), double);// [ntheta*nsub]
+    nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
+    nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
+    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
     break;
   default:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(rx->nsub+3) + 1 + nlmOp.ntheta*nlmOp.ntheta, double);
-    nlmOp.thetahh = nlmOp.thetahf   + nlmOp.ntheta*rx->nsub; // [nlmOp.ntheta]
-    nlmOp.thetaSave = nlmOp.thetahh + nlmOp.ntheta; // [nlmOp.ntheta]
-    nlmOp.valSave = nlmOp.thetaSave + nlmOp.ntheta; // [1]
-    nlmOp.grSave = nlmOp.valSave + 1; // [nlmOp.ntheta]
-    nlmOp.hSave = nlmOp.grSave+nlmOp.ntheta;// [nlmOp.ntheta*nlmOp.ntheta]
+    // 7*ntheta + nsub*ntheta + 1 + ntheta*ntheta
+    // ntheta*(7+nsub+ntheta) + 1
+    REprintf("nlmOp.ntheta: %d nsub: %d\n",nlmOp.ntheta, rx->nsub);
+#define ntheta nlmOp.ntheta
+#define nsub rx->nsub
+    //nsub*ntheta
+    nlmOp.thetahf = R_Calloc(ntheta*(nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
+    nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
+    nlmOp.thetaSave = nlmOp.thetahh + ntheta; // [ntheta]
+    nlmOp.valSave = nlmOp.thetaSave + ntheta; // [1]
+    nlmOp.grSave = nlmOp.valSave + 1; // [ntheta]
+    nlmOp.hSave = nlmOp.grSave + ntheta;// [ntheta*ntheta]
+    nlmOp.initPar = nlmOp.hSave + ntheta*ntheta; // [ntheta]
+    nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
+    nlmOp.logitThetaLow = nlmOp.scaleC + ntheta; // [ntheta]
+    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + ntheta; // [ntheta]
+#undef ntheta
+#undef nsub
+
     std::fill_n(nlmOp.thetaSave, nlmOp.ntheta, R_PosInf); // not likely to be equal
   }
 
+  print(wrap(p));
+
+  std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
+
+  scaleSetup(&(nlmOp.scale),
+             nlmOp.initPar,
+             nlmOp.scaleC,
+             nlmOp.xPar,
+             nlmOp.logitThetaLow,
+             nlmOp.logitThetaHi,
+             as<CharacterVector>(e["thetaNames"]) ,
+             as<int>(control["useColor"]),
+             as<int>(control["printNcol"]),
+             as<int>(control["print"]),
+             as<int>(control["normType"]),
+             as<int>(control["scaleType"]),
+             as<double>(control["scaleCmin"]),
+             as<double>(control["scaleCmax"]),
+             as<double>(control["scaleTo"]),
+             nlmOp.ntheta);
+  if (e.exists("scaleC")) {
+    arma::vec scaleC = as<arma::vec>(e["scaleC"]);
+    if (scaleC.size() == nlmOp.ntheta) {
+      std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+    }
+  }
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -209,6 +278,29 @@ RObject nlmSetup(Environment e) {
   nlmOp.loaded = true;
   return R_NilValue;
 }
+
+//[[Rcpp::export]]
+NumericVector nlmScalePar(NumericVector p) {
+  if (p.size() != nlmOp.ntheta) stop("parameter dimension mismatch");
+  NumericVector ret(nlmOp.ntheta);
+  for (int i = 0; i < nlmOp.ntheta; i++) {
+    ret[i] = scaleScalePar(&(nlmOp.scale), &p[0], i);
+  }
+  return ret;
+}
+
+//[[Rcpp::export]]
+NumericVector nlmUnscalePar(NumericVector p) {
+  if (p.size() != nlmOp.ntheta) stop("parameter dimension mismatch");
+  NumericVector ret(nlmOp.ntheta);
+  for (int i = 0; i < nlmOp.ntheta; i++) {
+    ret[i] = scaleUnscalePar(&(nlmOp.scale), &p[0], i);
+  }
+  return ret;
+}
+
+//[[Rcpp::export]]
+
 
 void nlmSolveNlm(int id) {
   rx_solving_options *op = rx->op;
@@ -266,7 +358,7 @@ extern arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0, arma::vec &grPH
 static inline rx_solving_options_ind* updateParamRetInd(arma::vec &theta, int &id) {
   rx_solving_options_ind *ind = &(rx->subjects[id]);
   for (int i = nlmOp.ntheta; i--;) {
-    ind->par_ptr[i]=theta[i];
+    ind->par_ptr[i]=scaleUnscalePar(&(nlmOp.scale), &theta[0], i);
   }
   return ind;
 }
@@ -364,11 +456,14 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       for (int kk = 0; kk < op->nlhs; ++kk) {
         if (ISNA(ind->lhs[kk])) {
-          ret(k, kk) = 0.0;
+          ind->lhs[kk] = 0.0;
           nlmOp.naZero=1;
-          continue;
         }
-        ret(k, kk) = ind->lhs[kk];
+        if (kk == 0) {
+          ret(k, kk) = ind->lhs[kk];
+        } else {
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), ind->lhs[kk], &theta[0], kk-1);
+        }
       }
       k++;
     }
@@ -465,6 +560,26 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 }
 
 //[[Rcpp::export]]
+NumericVector nlmGetScaleC(arma::vec &theta, double to) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType == solveType_pred)  return NumericVector::create();
+  if (to <= 0) return NumericVector::create();
+  std::fill_n(nlmOp.scaleC, nlmOp.ntheta, 1.0);
+  arma::mat ret0 = nlmSolveGrad(theta);
+  arma::vec cs = (arma::sum(ret0, 0)).t();
+  NumericVector scaleC(nlmOp.ntheta);
+  for(int i = 0; i < nlmOp.ntheta; ++i) {
+    // grad*C = to
+    //
+    scaleC[i] = fabs(to/cs(i+1));
+  }
+  std::copy(scaleC.begin(), scaleC.end(), nlmOp.scaleC);
+  return scaleC;
+}
+
+
+
+//[[Rcpp::export]]
 RObject nlmSolveGradR(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
@@ -474,7 +589,9 @@ RObject nlmSolveGradR(arma::vec &theta) {
   NumericVector ret(1);
   NumericVector grad(ntheta);
   ret[0] = cs[0];
-  ret.attr("gradient") = wrap(cs(span(1, ntheta)));
+  grad = wrap(cs(span(1, ntheta)));
+  ret.attr("gradient") = grad;
+  scalePrintFun(&(nlmOp.scale), &theta[0], cs[0]);
   return ret;
 }
 
@@ -611,8 +728,11 @@ RObject nlmSolveGradHess(arma::vec &theta) {
   mat H = nlmCalcHessian(gr0, theta);
   NumericVector ret(1);
   ret[0] = ll;
-  ret.attr("gradient") = wrap(gr0(span(0, nlmOp.ntheta-1)));
+  NumericVector grad = wrap(gr0(span(0, nlmOp.ntheta-1)));
+  ret.attr("gradient") = grad;
   ret.attr("hessian") = wrap(H);
+  scalePrintFun(&(nlmOp.scale), &theta[0], ll);
+  scalePrintGrad(&(nlmOp.scale), &grad[0]);
   return ret;
 }
 
@@ -763,4 +883,25 @@ RObject nlmWarnings() {
     }
   }
   return R_NilValue;
+}
+
+
+//[[Rcpp::export]]
+RObject nlmAdjustHessian(RObject Hin, arma::vec theta) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType == solveType_pred) return Hin;
+  if (nlmOp.scale.scaleTo == 0.0 &&
+      (nlmOp.scale.scaleType == scaleTypeMultAdd ||
+       nlmOp.scale.scaleType == scaleTypeMult)) {
+    return Hin;
+  }
+  arma::mat J(nlmOp.ntheta, 1);
+  arma::mat H = as<arma::mat>(Hin);
+  for (int i = 0; i < nlmOp.ntheta; ++i) {
+    J(i, 0) = 1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
+  }
+  H = (J * J.t()) % H;
+  RObject ret = wrap(H);
+  ret.attr("dimnames") = Hin.attr("dimnames");
+  return ret;
 }

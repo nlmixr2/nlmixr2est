@@ -48,7 +48,10 @@ nmTest({
       })
     }
 
-    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+    fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+
+    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm",
+                   nlmControl(scaleTo=0.0, scaleType="multAdd"))
 
     expect_true(inherits(fit1, "nlmixr2.nlm"))
 
@@ -86,6 +89,7 @@ nmTest({
     env$param <- setNames(p, sprintf("THETA[%d]", seq_along(p)))
     env$data <- dsn
     env$needFD <- f$eventTheta
+    env$thetaNames <- mod$nlmParName
 
     #.eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     control <- list(stickyRecalcN=4,
@@ -100,11 +104,46 @@ nmTest({
                     shi21maxHess=20L,
                     hessErr=(.Machine$double.eps)^(1/3),
 
-                    solveType=3L)
+                    solveType=3L,
+
+                    useColor = crayon::has_color(), #
+                    print = 1L, #
+                    printNcol = floor((getOption("width") - 23) / 12), #
+
+                    scaleType=2L,
+                    normType=1L,
+                    scaleC=NULL,
+                    scaleTo=1.0,
+                    scaleCmax = 1e5, #
+                    scaleCmin = 1e-5 #
+                    )
 
     env$control <- control
 
+    # unscaled
+    env$control$normType <- 6L
+    env$control$scaleTo <- 0.0
+    env$control$scaleType <- 4L
     .Call(`_nlmixr2est_nlmSetup`, env)
+
+    expect_equal(.Call(`_nlmixr2est_nlmUnscalePar`, env$param),
+                 .Call(`_nlmixr2est_nlmScalePar`, env$param))
+
+    expect_true(all(.Call(`_nlmixr2est_nlmScalePar`, env$param)== env$param))
+
+    # scaled
+    env$control$normType <- 1L
+    env$control$scaleTo <- 1.0
+    env$control$scaleType <- 2L
+    .Call(`_nlmixr2est_nlmSetup`, env)
+
+    expect_equal(.Call(`_nlmixr2est_nlmUnscalePar`, .Call(`_nlmixr2est_nlmScalePar`, env$param)),
+                 setNames(env$param,  NULL))
+
+    expect_true(all(.Call(`_nlmixr2est_nlmScalePar`, env$param) != env$param))
+
+    # now apply unscaled
+    .Call(`_nlmixr2est_nlmGetScaleC`, env$param, 0.1)
 
     ## .Call(`_nlmixr2est_optimFunC`, env$param, FALSE)
 

@@ -383,6 +383,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmScalePar
+NumericVector nlmScalePar(NumericVector p);
+RcppExport SEXP _nlmixr2est_nlmScalePar(SEXP pSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type p(pSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmScalePar(p));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmUnscalePar
+NumericVector nlmUnscalePar(NumericVector p);
+RcppExport SEXP _nlmixr2est_nlmUnscalePar(SEXP pSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type p(pSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmUnscalePar(p));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmSolveNlm
+void nlmSolveNlm(int id);
+RcppExport SEXP _nlmixr2est_nlmSolveNlm(SEXP idSEXP) {
+BEGIN_RCPP
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< int >::type id(idSEXP);
+    nlmSolveNlm(id);
+    return R_NilValue;
+END_RCPP
+}
 // nlmSolveR
 double nlmSolveR(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveR(SEXP thetaSEXP) {
@@ -391,6 +423,18 @@ BEGIN_RCPP
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
     rcpp_result_gen = Rcpp::wrap(nlmSolveR(theta));
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmGetScaleC
+NumericVector nlmGetScaleC(arma::vec& theta, double to);
+RcppExport SEXP _nlmixr2est_nlmGetScaleC(SEXP thetaSEXP, SEXP toSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec& >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< double >::type to(toSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmGetScaleC(theta, to));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -470,6 +514,18 @@ BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     rcpp_result_gen = Rcpp::wrap(nlmWarnings());
+    return rcpp_result_gen;
+END_RCPP
+}
+// nlmAdjustHessian
+RObject nlmAdjustHessian(RObject Hin, arma::vec theta);
+RcppExport SEXP _nlmixr2est_nlmAdjustHessian(SEXP HinSEXP, SEXP thetaSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< RObject >::type Hin(HinSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type theta(thetaSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmAdjustHessian(Hin, theta));
     return rcpp_result_gen;
 END_RCPP
 }
