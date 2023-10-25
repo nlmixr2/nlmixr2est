@@ -101,6 +101,7 @@ nlmControl <- function(typsize = NULL,
                        useColor = crayon::has_color(),
                        printNcol = floor((getOption("width") - 23) / 12), #
                        print = 1L, #
+
                        normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
                        scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
                        scaleCmax = 1e5, #
@@ -779,6 +780,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
     .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   }
   .p <- .Call(`_nlmixr2est_nlmScalePar`, .p)
+  .Call(`_nlmixr2est_nlmPrintHeader`)
   .ret <- eval(bquote(stats::nlm(
     f=.(.nlmixrNlmFunC),
     p=.(.p),

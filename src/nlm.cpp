@@ -866,6 +866,12 @@ NumericVector nlminbFunC(arma::vec &theta, int type) {
 }
 
 //[[Rcpp::export]]
+RObject nlmPrintHeader() {
+  scalePrintHeader(&(nlmOp.scale));
+  return R_NilValue;
+}
+
+//[[Rcpp::export]]
 RObject nlmWarnings() {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
   if (nlmOp.naGrad) {

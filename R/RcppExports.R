@@ -192,6 +192,10 @@ nlminbFunC <- function(theta, type) {
     .Call(`_nlmixr2est_nlminbFunC`, theta, type)
 }
 
+nlmPrintHeader <- function() {
+    .Call(`_nlmixr2est_nlmPrintHeader`)
+}
+
 nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }

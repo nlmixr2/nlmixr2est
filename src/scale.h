@@ -379,8 +379,10 @@ void scalePrintHeader(scaling *scale) {
       RSprintf("\033[1mKey:\033[0m ");
     else
       RSprintf("Key: ");
+    RSprintf("U: Unscaled Parameters; ");
+    RSprintf("X: Back-transformed parameters; \n");
     int i, finalize=0, n=scale->thetaNames.size();
-    RSprintf("|    #| Function Val. |");
+    RSprintf("\n|    #| Function Val. |");
     std::string tmpS;
     for (i = 0; i < n; i++){
       tmpS = scale->thetaNames[i];
@@ -407,6 +409,7 @@ void scalePrintHeader(scaling *scale) {
     } else {
       RSprintf("\n");
     }
+    scalePrintLine(min2(scale->npars, scale->printNcol));
   }
 }
 
