@@ -225,17 +225,17 @@ static inline double scaleGetScaleC(scaling *scale, int i){
       scale->scaleC[i]=1.0;
       break;
     case 2: // diag^2
-      scale->scaleC[i]=fabs(scale->initPar[i]);
+      scale->scaleC[i]=1.0/fabs(scale->initPar[i]);
       break;
     case 3: // exp(diag)
-      scale->scaleC[i] = 2.0;
+      scale->scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      scale->scaleC[i] = 2.0*fabs(scale->initPar[i]);
+      scale->scaleC[i] = 1.0/(2.0*fabs(scale->initPar[i]));
       break;
     default:
-      scale->scaleC[i]= fabs(scale->initPar[i]);
+      scale->scaleC[i]= 1.0/fabs(scale->initPar[i]);
       break;
     }
   }
