@@ -412,22 +412,6 @@ getValidNlmixrCtl.optim <- function(control) {
   .ctl
 }
 
-#' Setup the data for optim estimation
-#'
-#' @param dataSav Formatted Data
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.optimFitDataSetup <- function(dataSav) {
-  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'optim' does not work with censored data", call. =FALSE)
-    }
-  }
-  .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
-}
-
 #' @export
 rxUiGet.optimParLower <- function(x, ...) {
   .ui <- x[[1]]
@@ -470,11 +454,6 @@ rxUiGet.optimParUpper <- function(x, ...) {
          length(.oCtl$ndeps), " should be ", length(.p), ")",
          call.=FALSE)
   }
-
-  # Fill in options for hessian which isn't supported in this method
-  .ctl$optimHessType <- 2L
-  .ctl$hessErr <- (.Machine$double.eps)^(1/3)
-  .ctl$shi21maxHess <- 20L
 
   if(.ctl$method %in% c("BFGS", "CG", "L-BFGS-B") &&
        .ctl$solveType == 2L) {

@@ -854,11 +854,6 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
 
 .nlsFitModel <- function(ui, dataSav) {
   .ctl <- ui$control
-  # Fill in options for hessian which isn't supported in this method
-  .ctl$optimHessType <- 2L
-  .ctl$hessErr <- (.Machine$double.eps)^(1/3)
-  .ctl$shi21maxHess <- 20L
-
   if (.ctl$solveType != "fun") {
     .mi <- ui$nlsSensModel
     .ctl$solveType <- 10L

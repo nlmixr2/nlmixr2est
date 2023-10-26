@@ -29,16 +29,16 @@
 #' @param control is a control structure with a few required elements:
 #'
 #' - `rxControl` represents the rxode2 solving options
-#' - `solveType` integer indicating the solveType
+#' - `solveType` integer indicating the solveType (optional)
 #' - `stickyRecalcN`
 #' - `maxOdeRecalc`
 #' - `odeRecalcFactor`
-#' - `eventType`
-#' - `shi21maxFD`
-#' - `shiErr`
-#' - `optimHessType`
-#' - `shi21maxHess`
-#' - `hessErr`
+#' - `eventType` (optional)
+#' - `shi21maxFD` (optional)
+#' - `shiErr` (optional)
+#' - `optimHessType` (optional)
+#' - `shi21maxHess` (optional)
+#' - `hessErr` (optional)
 #' - `useColor`
 #' - `printNcol`
 #' - `print`
@@ -77,6 +77,29 @@
   if (!any(names(.ctl) == "gradTo")) {
     .ctl$gradTo <- 0.0
   }
+  if (!any(names(.ctl) == "solveType")) {
+    .ctl$solveType <- 1L
+  }
+  if (!any(names(.ctl) == "eventType")) {
+    .ctl$eventType <- 1L
+  }
+  if (!any(names(.ctl) == "optimHessType")) {
+    .ctl$optimHessType <- 1L
+  }
+  if (!any(names(.ctl) == "shi21maxFD")) {
+    .ctl$shi21maxFD <- 20L
+  }
+  if (!any(names(.ctl) == "shi21maxHess")) {
+    .ctl$shi21maxHess <- 20L
+  }
+  if (!any(names(.ctl) == "shiErr")) {
+    .ctl$shiErr <-   (.Machine$double.eps)^(1/3)
+  }
+
+  if (!any(names(.ctl) == "hessErr")) {
+    .ctl$hessErr <-   (.Machine$double.eps)^(1/3)
+  }
+
   .env <- new.env(parent=emptyenv())
   .env$rxControl <- .ctl$rxControl
   .env$thetaNames <- names(par)
@@ -149,7 +172,7 @@
 #' @return modified list with `$cov`
 #' @export
 #' @author Matthew L. Fidler
-#' @examples
+#' @keywords internal
 .nlmFinalizeList <- function(env, lst, par="par", printLine=TRUE,
                              hessianCov=TRUE) {
   .ret <- lst

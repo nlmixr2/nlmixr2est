@@ -36,16 +36,16 @@ An example can be found with `ui$nlmSensModel` or `ui$nlmRxModel`}
 \item{control}{is a control structure with a few required elements:
 
 - `rxControl` represents the rxode2 solving options
-- `solveType` integer indicating the solveType
+- `solveType` integer indicating the solveType (optional)
 - `stickyRecalcN`
 - `maxOdeRecalc`
 - `odeRecalcFactor`
-- `eventType`
-- `shi21maxFD`
-- `shiErr`
-- `optimHessType`
-- `shi21maxHess`
-- `hessErr`
+- `eventType` (optional)
+- `shi21maxFD` (optional)
+- `shiErr` (optional)
+- `optimHessType` (optional)
+- `shi21maxHess` (optional)
+- `hessErr` (optional)
 - `useColor`
 - `printNcol`
 - `print`
