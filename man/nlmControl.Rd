@@ -34,6 +34,7 @@ nlmControl(
   scaleCmin = 1e-05,
   scaleC = NULL,
   scaleTo = 1,
+  gradTo = 1,
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
@@ -235,7 +236,7 @@ evaluations.}
 \itemize{
 \item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 
-   v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
+   v_{scaled} = (v_{current} - v_{init})*scaleC[i] + scaleTo
 
 The \code{scaleTo} parameter is specified by the \code{normType},
 and the scales are specified by \code{scaleC}.
@@ -304,6 +305,10 @@ Otherwise the parameter is scaled multiplicatively.
 
 \item{scaleTo}{Scale the initial parameter estimate to this value.
 By default this is 1.  When zero or below, no scaling is performed.}
+
+\item{gradTo}{this is the factor that the gradient is scaled to
+before optimizing.  This only works with
+scaleType="nlmixr2".}
 
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 

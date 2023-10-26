@@ -104,6 +104,8 @@
   } else if (is.null(.ctl$scaleC)) {
     .ctl$scaleC <- ui$scaleCtheta
     .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
+  } else if (!is.null(.ctl$scaleC)) {
+    .Call(`_nlmixr2est_nlmSetScaleC`, .ctl$scaleC)
   }
   .env$scaleC <- .ctl$scaleC
   .p <- .Call(`_nlmixr2est_nlmScalePar`, par)
@@ -160,6 +162,9 @@
   .par <- .Call(`_nlmixr2est_nlmUnscalePar`, .parScaled)
   .ret[[par]] <- setNames(.par, .name)
   # if using hessian to caluclate covariance
+  if (!any(names(.ctl) == "covMethod")) {
+    .ctl$covMethod <- "r"
+  }
   if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {

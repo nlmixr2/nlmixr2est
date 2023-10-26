@@ -130,7 +130,9 @@ RObject nlmSetup(Environment e) {
     List mv = rxode2::rxModelVars_(model);
     rxUpdateFuns(as<SEXP>(mv["trans"]), &rxInner);
   } else {
-    nlmOp.solveType = solveType_pred;
+    if (nlmOp.solveType != solveType_nls_pred) {
+      nlmOp.solveType = solveType_pred;
+    }
     model = pred;
   }
 
@@ -611,7 +613,11 @@ arma::vec nlmSolveGrad1(arma::vec &theta, int id) {
 NumericVector solveGradNls(arma::vec &theta, int returnType) {
   if (!nlmOp.loaded) stop("'nls' problem not loaded");
   if (nlmOp.solveType == solveType_nls_pred) {
-    return wrap(nlmSolveF(theta));
+    arma::vec resid = nlmSolveF(theta);
+    arma::vec r2 = resid % resid;
+    double rss = arma::sum(r2);
+    scalePrintFun(&(nlmOp.scale), &theta[0], rss);
+    return wrap(resid);
   }
   if (nlmOp.solveType != solveType_nls) {
     stop(_("incorrect solve type"));
@@ -623,6 +629,11 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
       nlmOp.naZero=1;
       ret0.replace(datum::nan, 0);
     }
+    double llik;
+    arma::vec resid =ret0.col(0);
+    resid = resid % resid;
+    double rss = arma::sum(resid);
+    scalePrintFun(&(nlmOp.scale), &theta[0], rss);
     saveTheta(theta);
   }
   if (returnType == 1) {

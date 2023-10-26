@@ -56,7 +56,7 @@ nlsControl <- function(maxiter=10000,
                        epsfcn = 0,
                        factor = 100,
                        maxfev = integer(),
-                       nprint = 1,
+                       nprint = 0,
 
                        #### nlm C++ style style to give gradients
                        solveType=c("grad", "fun"),
@@ -69,8 +69,20 @@ nlsControl <- function(maxiter=10000,
                        shiErr=(.Machine$double.eps)^(1/3),
                        shi21maxFD=20L,
 
+                       useColor = crayon::has_color(),
+                       printNcol = floor((getOption("width") - 23) / 12), #
+                       print = 1L, #
+
+                       normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+                       scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+                       scaleCmax = 1e5, #
+                       scaleCmin = 1e-5, #
+                       scaleC=NULL,
+                       scaleTo=1.0,
+                       gradTo=1.0,
+
                        ############################################
-                       trace = TRUE, #nolint
+                       trace = FALSE, #nolint
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
                        returnNls=FALSE,
@@ -157,6 +169,31 @@ nlsControl <- function(maxiter=10000,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
+  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    scaleType <- as.integer(scaleType)
+  } else {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
+  }
+
+  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    normType <- as.integer(normType)
+  } else {
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
+  }
+  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  if (!is.null(scaleC)) {
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+  }
+  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
+
+
   .ret <- list(algorithm=algorithm, maxiter=maxiter,
                tol=tol,
                trace=trace, #nolint
@@ -180,6 +217,18 @@ nlsControl <- function(maxiter=10000,
                factor = factor,
                maxfev = maxfev,
                nprint = nprint,
+               useColor=useColor,
+               print=print,
+               printNcol=printNcol,
+               scaleType=scaleType,
+               normType=normType,
+
+               scaleCmax=scaleCmax,
+               scaleCmin=scaleCmin,
+               scaleC=scaleC,
+               scaleTo=scaleTo,
+               gradTo=gradTo,
+
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
@@ -675,7 +724,6 @@ rxUiGet.nlsEnv <- function(x, ...) {
     }
   }
   .s$.eventTheta <- .eventTheta
-
   .s
 }
 
@@ -735,7 +783,6 @@ rxUiGet.nlsParUpper <- function(x, ...) {
   }, double(1), USE.NAMES=FALSE),
   .ui$iniDf$name[.w])
 }
-
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
@@ -806,51 +853,28 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
 }
 
 .nlsFitModel <- function(ui, dataSav) {
-  .nlsEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-  .nlsEnv$rxControl$returnType <- 2L # use data.frame output
-  .nlsEnv$parFun <- ui$nlsParNameFun
   .ctl <- ui$control
   # Fill in options for hessian which isn't supported in this method
   .ctl$optimHessType <- 2L
   .ctl$hessErr <- (.Machine$double.eps)^(1/3)
   .ctl$shi21maxHess <- 20L
-  if (.ctl$solveType == "fun") {
-    .ctl$solveType <- 11L
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
-    f <- ui$nlsRxModel
-    .nlsEnv$model <- .env$thetaGrad <- .env$predOnly <- f$predOnly
-    .nlsFitDataSetup(dataSav)
-    .par <- ui$nlsParStartTheta
-    .env$needFD <- f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlsEnv$data
-    .par <- ui$nlsParStartTheta
-    .env$param <- .par
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
-  } else {
+
+  if (.ctl$solveType != "fun") {
+    .mi <- ui$nlsSensModel
     .ctl$solveType <- 10L
-    .f <- ui$nlsSensModel
-    .env <- new.env(parent=emptyenv())
-    .env$rxControl <- .ctl$rxControl
-    .env$predOnly <- .f$predOnly
-    .nlsEnv$model <- .env$thetaGrad <- .f$thetaGrad
-    .nlsFitDataSetup(dataSav)
-    .env$needFD <- .f$eventTheta
-    .env$control <- .ctl
-    .env$data <- .nlsEnv$data
-    .par <- ui$nlsParStartTheta
-    .env$param <- .par
-    .Call(`_nlmixr2est_nlmSetup`, .env)
-    on.exit({
-      .Call(`_nlmixr2est_nlmFree`)
-      rxode2::rxSolveFree()
-    })
+  } else {
+    .mi <- ui$nlsRxModel
+    .ctl$solveType <- 11L
+    .ctl$gradTo <- 0.0
   }
+  if (is.null(.ctl$scaleC)) {
+    .ctl$scaleC <- ui$scaleCnls
+  }
+  .p <- unlist(ui$nlsParStart)
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
+                       lower=ui$nlsParLower, upper=ui$nlsParUpper)
+  .env$par.ini.list <- setNames(as.list(.env$par.ini), names(.env$par.ini))
+
   if (.ctl$algorithm == "LM") {
     .nls.control <- minpack.lm::nls.lm.control(ftol = .ctl$ftol, ptol = .ctl$ptol,
                                                gtol = .ctl$gtol,
@@ -863,68 +887,25 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     class(.ctl) <- NULL
     if (.ctl$solveType == 11L) {
       .ret <- bquote(minpack.lm::nls.lm(
-        par=.(.env$param),
-        lower=.(ui$nlsParLower),
-        upper=.(ui$nlsParUpper),
+        par=.(.env$par.ini),
+        lower=.(.env$lower),
+        upper=.(.env$upper),
         fn=nlmixr2est::.nlmixrNlsFunVal,
-        control=.(.nls.control)
-      ))
+        control=.(.nls.control)))
     } else {
       .ret <- bquote(minpack.lm::nls.lm(
-        par=.(.env$param),
-        lower=.(ui$nlsParLower),
-        upper=.(ui$nlsParUpper),
+        par=.(.env$par.ini),
+        lower=.(.env$lower),
+        upper=.(.env$upper),
         fn=nlmixr2est::.nlmixrNlsFunVal,
         jac=nlmixr2est::.nlmixrNlsFunGrad,
-        control=.(.nls.control)
-      ))
+        control=.(.nls.control)))
     }
     .ret <- eval(.ret)
+    .ret <- .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
+                             hessianCov=TRUE)
     .ret$sd <- sd(.ret$fvec)
     .ret$logLik <- sum(dnorm(.ret$fvec, log=TRUE))
-    .name <- names(ui$nlsParStart)
-    dimnames(.ret$hessian) <- list(.name, .name)
-    names(.ret$par) <- .name
-    .hess <- .ret$hessian
-    if (any(is.na(.hess))) {
-      .ret$covMethod <- "failed"
-    } else {
-      # r matrix
-      .r <- 0.5 * .hess
-      .ch <- try(cholSE(.r), silent = TRUE)
-      .covType <- "r"
-      if (inherits(.ch, "try-error")) {
-        .r2 <- .r %*% .r
-        .r2 <- try(sqrtm(.r2), silent=TRUE)
-        .covType <- "|r|"
-        if (!inherits(.r2, "try-error")) {
-          .ch <- try(cholSE(.r), silent=TRUE)
-          if (inherits(.ch, "try-error")) {
-            .r2 <- .ch # switch to nearPD
-          }
-        }
-        if (inherits(.r2, "try-error")) {
-          .covType <- "r+"
-          .r2 <- try(nmNearPD(.r), silent=TRUE)
-          if (!inherits(.r2, "try-error")) {
-            .ch <- try(cholSE(.r), silent=TRUE)
-          }
-        } else {
-          .ch <- try(cholSE(.r), silent=TRUE)
-        }
-      }
-      if (!inherits(.ch, "try-error")) {
-        .rinv <- rxode2::rxInv(.ch)
-        .rinv <- .rinv %*% t(.rinv)
-        .cov <- 2*.rinv
-        dimnames(.cov) <- list(.name, .name)
-        dimnames(.rinv) <- list(.name, .name)
-        .ret$cov <- .cov
-        .ret$covMethod <- .covType
-      } else {
-        .ret$covMethod <- "failed"
-      }
-    }
   } else {
     .nls.control <- stats::nls.control(
       maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,

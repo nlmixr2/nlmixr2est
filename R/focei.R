@@ -1150,6 +1150,15 @@ rxUiGet.scaleCtheta <- function(x, ...) {
   .env$scaleC[!.ui$iniDf$fix]
 }
 
+#' @export
+rxUiGet.scaleCnls <- function(x, ...) {
+  .ui <- x[[1]]
+  .env <- new.env(parent=emptyenv())
+  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
+  .foceiOptEnvSetupScaleC(.ui, .env)
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
+}
+
 #' This sets up the transformation bounds and indexes and bounds for inner.cpp
 #'
 #' Note that the C code assumes the index starts at 1

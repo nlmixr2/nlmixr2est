@@ -485,7 +485,7 @@ void scalePrintFun(scaling *scale, double *x, double f) {
     } else {
       RSprintf("\n");
     }
-    RSprintf("|    U|%14.8g |", f);
+    RSprintf("|    U|               |");
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
       if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
@@ -509,10 +509,7 @@ void scalePrintFun(scaling *scale, double *x, double f) {
     } else {
       RSprintf("\n");
     }
-    if (scale->useColor && !isRstudio())
-      RSprintf("|    X|\033[1m%14.8g\033[0m |", f);
-    else
-      RSprintf("|    X|%14.8g |", f);
+    RSprintf("|    X|               |");
     for (i = 0; i < scale->npars; i++){
       if (scale->xPar[i] == 1){
         RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
