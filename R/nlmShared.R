@@ -78,7 +78,11 @@
     .ctl$gradTo <- 0.0
   }
   if (!any(names(.ctl) == "solveType")) {
-    .ctl$solveType <- 1L
+    if (any(names(modelInfo) == "thetaGrad")) {
+      .ctl$solveType <- 2L
+    } else {
+      .ctl$solveType <- 1L
+    }
   }
   if (!any(names(.ctl) == "eventType")) {
     .ctl$eventType <- 1L

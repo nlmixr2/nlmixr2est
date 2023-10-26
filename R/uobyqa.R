@@ -1,41 +1,12 @@
-#' Control for bobyqa estimation method in nlmixr2
+#' Control for uobyqa estimation method in nlmixr2
 #'
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
-#'
-#' @param returnBobyqa return the bobyqa output instead of the nlmixr2
+#' @inheritParams bobyqaControl
+#' @param returnUobyqa return the uobyqa output instead of the nlmixr2
 #'   fit
 #'
-#' @param npt The number of points used to approximate the objective
-#'   function via a quadratic approximation. The value of npt must be
-#'   in the interval [n+2,(n+1)(n+2)/2] where n is the number of
-#'   parameters in `par`. Choices that exceed 2*n+1 are not
-#'   recommended.  If not defined, it will be set to min(n * 2, n+2).
-#'
-#' @param rhobeg `rhobeg` and `rhoend` must be set to the initial and
-#'   final values of a trust region radius, so both must be positive
-#'   with `0 < rhoend < rhobeg`. Typically `rhobeg` should be about
-#'   one tenth of the greatest expected change to a variable.  If the
-#'   user does not provide a value, this will be set to `min(0.95, 0.2
-#'   * max(abs(par)))`.  Note also that smallest difference
-#'   `abs(upper-lower)` should be greater than or equal to `rhobeg*2`.
-#'   If this is not the case then `rhobeg` will be adjusted.
-#' @param rhoend The smallest value of the trust region radius that is
-#'   allowed. If not defined, then 1e-6 times the value set for
-#'   `rhobeg` will be used.
-#' @param iprint The value of `iprint` should be set to an integer
-#'   value in `0, 1, 2, 3, ...`, which controls the amount of
-#'   printing.  Specifically, there is no output if `iprint=0` and
-#'   there is output only at the start and the return if `iprint=1`.
-#'   Otherwise, each new value of `rho` is printed, with the best
-#'   vector of variables so far and the corresponding value of the
-#'   objective function. Further, each new value of the objective
-#'   function with its variables are output if `iprint=3`.  If `iprint
-#'   > 3`, the objective function value and corresponding variables
-#'   are output every `iprint` evaluations.  Default value is `0`.
-#' @param maxfun The maximum allowed number of function
-#'   evaluations. If this is exceeded, the method will terminate.
-#' @return bobqya control structure
+#' @return uobyqa control structure
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -60,23 +31,23 @@
 #'  })
 #' }
 #'
-#' fit2 <- nlmixr(mod, dsn, est="bobyqa")
+#' fit2 <- nlmixr(mod, dsn, est="uobyqa")
 #'
 #' print(fit2)
 #'
-#' # you can also get the nlm output with
+#' # you can also get the nlm output with fit2$nlm
 #'
-#' fit2$bobyqa
+#' fit2$uobyqa
 #'
 #' # The nlm control has been modified slightly to include
 #' # extra components and name the parameters
 #' }
-bobyqaControl <- function(npt=NULL,
+uobyqaControl <- function(npt=NULL,
                           rhobeg=NULL,
                           rhoend=NULL,
                           iprint=0L,
                           maxfun=100000L,
-                          returnBobyqa=FALSE,
+                          returnUobyqa=FALSE,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
@@ -107,7 +78,7 @@ bobyqaControl <- function(npt=NULL,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
-  checkmate::assertLogical(returnBobyqa, len=1, any.missing=FALSE)
+  checkmate::assertLogical(returnUobyqa, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
@@ -185,7 +156,7 @@ bobyqaControl <- function(npt=NULL,
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
-               returnBobyqa=returnBobyqa,
+               returnUobyqa=returnUobyqa,
 
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
@@ -206,87 +177,87 @@ bobyqaControl <- function(npt=NULL,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl)
-  class(.ret) <- "bobyqaControl"
+  class(.ret) <- "uobyqaControl"
   .ret
 }
 
-#' Get the bobyqa family control
+#' Get the uobyqa family control
 #'
-#' @param env bobyqa optimization environment
+#' @param env uobyqa optimization environment
 #' @param ... Other arguments
 #' @return Nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.bobyqaFamilyControl <- function(env, ...) {
+.uobyqaFamilyControl <- function(env, ...) {
   .ui <- env$ui
   .control <- env$control
   if (is.null(.control)) {
-    .control <- nlmixr2est::bobyqaControl()
+    .control <- nlmixr2est::uobyqaControl()
   }
-  if (!inherits(.control, "bobyqaControl")){
-    .control <- do.call(nlmixr2est::bobyqaControl, .control)
+  if (!inherits(.control, "uobyqaControl")){
+    .control <- do.call(nlmixr2est::uobyqaControl, .control)
   }
   assign("control", .control, envir=.ui)
 }
 
 #' @rdname nmObjHandleControlObject
 #' @export
-nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  assign("bobyqaControl", control, envir=env)
+nmObjHandleControlObject.uobyqaControl <- function(control, env) {
+  assign("uobyqaControl", control, envir=env)
 }
 
 #' @rdname nmObjGetControl
 #' @export
-nmObjGetControl.bobyqa <- function(x, ...) {
+nmObjGetControl.uobyqa <- function(x, ...) {
   .env <- x[[1]]
-  if (exists("bobyqaControl", .env)) {
-    .control <- get("bobyqaControl", .env)
-    if (inherits(.control, "bobyqaControl")) return(.control)
+  if (exists("uobyqaControl", .env)) {
+    .control <- get("uobyqaControl", .env)
+    if (inherits(.control, "uobyqaControl")) return(.control)
   }
   if (exists("control", .env)) {
     .control <- get("control", .env)
-    if (inherits(.control, "bobyqaControl")) return(.control)
+    if (inherits(.control, "uobyqaControl")) return(.control)
   }
-  stop("cannot find bobyqa related control object", call.=FALSE)
+  stop("cannot find uobyqa related control object", call.=FALSE)
 }
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.bobyqa <- function(control) {
+getValidNlmixrCtl.uobyqa <- function(control) {
   .ctl <- control[[1]]
-  if (is.null(.ctl)) .ctl <- bobyqaControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("bobyqaControl", .ctl)
-  if (!inherits(.ctl, "bobyqaControl")) {
-    .minfo("invalid control for `est=\"bobyqa\"`, using default")
-    .ctl <- bobyqaControl()
+  if (is.null(.ctl)) .ctl <- uobyqaControl()
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("uobyqaControl", .ctl)
+  if (!inherits(.ctl, "uobyqaControl")) {
+    .minfo("invalid control for `est=\"uobyqa\"`, using default")
+    .ctl <- uobyqaControl()
   } else {
-    .ctl <- do.call(bobyqaControl, .ctl)
+    .ctl <- do.call(uobyqaControl, .ctl)
   }
   .ctl
 }
 
-.bobyqaControlToFoceiControl <- function(env, assign=TRUE) {
-  .bobyqaControl <- env$bobyqaControl
+.uobyqaControlToFoceiControl <- function(env, assign=TRUE) {
+  .uobyqaControl <- env$uobyqaControl
   .ui <- env$ui
-  .foceiControl <- foceiControl(rxControl=env$bobyqaControl$rxControl,
+  .foceiControl <- foceiControl(rxControl=env$uobyqaControl$rxControl,
                                 maxOuterIterations=0L,
                                 maxInnerIterations=0L,
                                 covMethod=0L,
-                                sumProd=.bobyqaControl$sumProd,
-                                optExpression=.bobyqaControl$optExpression,
+                                sumProd=.uobyqaControl$sumProd,
+                                optExpression=.uobyqaControl$optExpression,
                                 scaleTo=0,
-                                calcTables=.bobyqaControl$calcTables,
-                                addProp=.bobyqaControl$addProp,
+                                calcTables=.uobyqaControl$calcTables,
+                                addProp=.uobyqaControl$addProp,
                                 #skipCov=.ui$foceiSkipCov,
                                 interaction=0L,
-                                compress=.bobyqaControl$compress,
-                                ci=.bobyqaControl$ci,
-                                sigdigTable=.bobyqaControl$sigdigTable)
+                                compress=.uobyqaControl$compress,
+                                ci=.uobyqaControl$ci,
+                                sigdigTable=.uobyqaControl$sigdigTable)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
 
-.bobyqaFitModel <- function(ui, dataSav) {
+.uobyqaFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
   rxode2::rxReq("minqa")
   .ctl <- ui$control
@@ -303,11 +274,9 @@ getValidNlmixrCtl.bobyqa <- function(control) {
                        lower=ui$optimParLower, upper=ui$optimParUpper)
   on.exit({.nlmFreeEnv()})
   # support gradient
-  .ret <- bquote(minqa::bobyqa(
+  .ret <- bquote(minqa::uobyqa(
     par=.(.env$par.ini),
     fn=.(nlmixr2est::.nlmixrOptimFunC),
-    lower=.(.env$lower),
-    upper=.(.env$upper),
     control=.(.oCtl)))
   .ret <- eval(.ret)
   .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
@@ -321,7 +290,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
 #' @return named theta matrix
 #' @author Matthew L. Fidler
 #' @noRd
-.bobyqaGetTheta <- function(nlm, ui) {
+.uobyqaGetTheta <- function(nlm, ui) {
   .iniDf <- ui$iniDf
   setNames(vapply(seq_along(.iniDf$name),
                   function(i) {
@@ -334,7 +303,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
            .iniDf$name)
 }
 
-.bobyqaFamilyFit <- function(env, ...) {
+.uobyqaFamilyFit <- function(env, ...) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -363,19 +332,19 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   #  foceiControl object
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .bobyqa <- .collectWarn(.bobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$bobyqa <- .bobyqa[[1]]
-  .ret$parHistData <- .ret$bobyqa$parHistData
-  .ret$bobyqa$parHistData <- NULL
-  .ret$message <- .ret$bobyqa$message
-  if (rxode2::rxGetControl(.ui, "returnBobyqa", FALSE)) {
-    return(.ret$bobyqa)
+  .uobyqa <- .collectWarn(.uobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
+  .ret$uobyqa <- .uobyqa[[1]]
+  .ret$parHistData <- .ret$uobyqa$parHistData
+  .ret$uobyqa$parHistData <- NULL
+  .ret$message <- .ret$uobyqa$message
+  if (rxode2::rxGetControl(.ui, "returnUobyqa", FALSE)) {
+    return(.ret$uobyqa)
   }
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .bobyqaGetTheta(.ret$bobyqa, .ui)
-  .ret$cov <- .ret$bobyqa$cov
-  .ret$covMethod <- .ret$bobyqa$covMethod
+  .ret$fullTheta <- .uobyqaGetTheta(.ret$uobyqa, .ui)
+  .ret$cov <- .ret$uobyqa$cov
+  .ret$covMethod <- .ret$uobyqa$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -386,28 +355,28 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   if (exists("control", .ui)) {
     rm(list="control", envir=.ui)
   }
-  .ret$est <- "bobyqa"
+  .ret$est <- "uobyqa"
   # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$bobyqa$fval)
+  .ret$objective <- 2 * as.numeric(.ret$uobyqa$fval)
   .ret$model <- .ui$ebe
-  .ret$ofvType <- "bobyqa"
-  .bobyqaControlToFoceiControl(.ret)
+  .ret$ofvType <- "uobyqa"
+  .uobyqaControlToFoceiControl(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="bobyqa")
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="uobyqa")
   .env <- .ret$env
-  .env$method <- "bobyqa"
+  .env$method <- "uobyqa"
   .ret
 }
 
 #' @rdname nlmixr2Est
 #' @export
-nlmixr2Est.bobyqa <- function(env, ...) {
+nlmixr2Est.uobyqa <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'bobyqa', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'bobyqa'", .var.name=.ui$modelName)
-  .bobyqaFamilyControl(env, ...)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'uobyqa', try 'focei'", .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'uobyqa'", .var.name=.ui$modelName)
+  .uobyqaFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .bobyqaFamilyFit(env,  ...)
+  .uobyqaFamilyFit(env,  ...)
 }
 
-#minqa::bobyqa()
+#minqa::uobyqa()

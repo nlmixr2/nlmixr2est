@@ -20,9 +20,9 @@
   only likelihoods.  This uses `stats::nlminb` and returns a
   standardized `nlmixr2` fit.
 
-- New estimation method "bobyqa" has been added to estimate population
-  only likelihoods.  This uses `minqa::bobqya` and returns a
-  standardized `nlmixr2` fit.
+- New estimation methods from the `minqa` package: "bobyqa", "uobyqa"
+  and "newuoa" have been added to estimate population only
+  likelihoods.  These methods returns a standardized `nlmixr2` fit.
 
 ## Breaking changes
 

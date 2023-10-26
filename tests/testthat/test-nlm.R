@@ -29,6 +29,18 @@ nmTest({
 
     expect_true(inherits(fit2, "nlmixr2.bobyqa"))
 
+    fit2 <- nlmixr(mod, dsn, est="uobyqa")
+
+    expect_true(inherits(fit2, "nlmixr2.uobyqa"))
+
+    fit2 <- nlmixr(mod, dsn, est="newuoa")
+
+    expect_true(inherits(fit2, "nlmixr2.newuoa"))
+
+    fit2 <- nlmixr(mod, dsn, est="n1qn1")
+
+    expect_true(inherits(fit2, "nlmixr2.n1qn1"))
+
    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "nlm", nlmControl(solveType="grad"))
 
     expect_true(inherits(fit3, "nlmixr2.nlm"))

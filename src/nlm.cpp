@@ -362,12 +362,9 @@ static inline rx_solving_options_ind* updateParamRetInd(arma::vec &theta, int &i
 }
 
 static inline bool isThetaSame(arma::vec &theta) {
-  for (int i = 0; i < nlmOp.ntheta; ++i) {
-    if (nlmOp.thetaSave[i] != theta[i]) {
-      return false;
-    }
-  }
-  return true;
+  arma::vec thetaSave(nlmOp.thetaSave, nlmOp.ntheta, false, true);
+  if (arma::approx_equal(theta, thetaSave, "absdiff",  std::numeric_limits<double>::epsilon())) return true;
+  return false;
 }
 
 static inline void saveTheta(arma::vec &theta) {
@@ -792,10 +789,11 @@ NumericVector optimFunC(arma::vec &theta, bool grad=false) {
   arma::mat ret0 = nlmSolveGrad(theta);
   arma::vec saveVec(nlmOp.valSave, nlmOp.ntheta + 1, false, true);
   saveVec = (arma::sum(ret0, 0)).t();
+  saveTheta(theta);
   if (grad) {
     NumericVector ret(nlmOp.ntheta);
     std::copy(nlmOp.grSave, nlmOp.grSave + nlmOp.ntheta, ret.begin());
-    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+    scalePrintFun(&(nlmOp.scale), &theta[0], nlmOp.valSave[0]);
     scalePrintGrad(&(nlmOp.scale), nlmOp.grSave, iterTypeSens);
     return ret;
   }
