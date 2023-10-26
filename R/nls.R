@@ -873,7 +873,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
   .p <- unlist(ui$nlsParStart)
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
                        lower=ui$nlsParLower, upper=ui$nlsParUpper)
-  .env$par.ini.list <- setNames(as.list(.env$par.ini), names(.env$par.ini))
+  .env$par.ini.list <- setNames(as.list(.env$par.ini), names(ui$nlsParStart))
 
   if (.ctl$algorithm == "LM") {
     .nls.control <- minpack.lm::nls.lm.control(ftol = .ctl$ftol, ptol = .ctl$ptol,
@@ -907,6 +907,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret$sd <- sd(.ret$fvec)
     .ret$logLik <- sum(dnorm(.ret$fvec, log=TRUE))
   } else {
+    .nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(
       maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
       printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
@@ -916,26 +917,27 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret <- bquote(stats::nls(
       formula= .(ui$nlsFormula),
       data=nlmixr2est::.nlmixrNlsData(),
-      start=.(ui$nlsParStart),
+      start=.(.env$par.ini.list),
       control=.(.nls.control),
       algorithm=.(.ctl$algorithm),
       trace=.(.ctl$trace), # nolint
       model=FALSE,
-      lower=.(ui$nlsParLower),
-      upper=.(ui$nlsParUpper)
+      lower=.(.env$lower),
+      upper=.(.env$upper)
     ))
     .ret <- eval(.ret)
+    .ret <- .nlmFinalizeList(.env, .ret, printLine=TRUE,
+                             hessianCov=FALSE)
   }
   .ret
 }
 
 .nlsGetTheta <- function(nls, ui) {
   .iniDf <- ui$iniDf
+  .theta0 <- nls$par
   if (inherits(nls, "nls.lm")) {
-    .theta0 <- nls$par
     .sd <- nls$sd
   } else {
-    .theta0 <- coef(nls)
     .sd <- sd(resid(nls))
   }
   setNames(vapply(seq_along(.iniDf$ntheta), function(t) {
@@ -1001,10 +1003,14 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nls <- .nls[[1]]
+  .ret$parHistData <- .ret$nls$parHistData
+  .ret$nls$parHistData <- NULL
+
   .ret$message <- NULL
   if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
     return(.ret$nls)
   }
+  .ret$cov <- .ret$nls$cov
   if (inherits(.ret$nls, "nls.lm")) {
     .ret$message <- .ret$nls$message
     .ret$cov <- .ret$nls$cov
@@ -1012,7 +1018,6 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret$objective <- -2 * .ret$nls$logLik
   } else {
     .ret$message <- .ret$nls$convInfo$stopMessage
-    .ret$cov <- summary(.ret$nls)$cov.unscaled
     .ret$covMethod <- "nls"
     .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
   }

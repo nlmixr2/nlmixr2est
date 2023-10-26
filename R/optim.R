@@ -587,9 +587,11 @@ rxUiGet.optimParUpper <- function(x, ...) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .optim <- .collectWarn(.optimFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$optim <- .optim[[1]]
+  .ret$parHistData <- .ret$optim$parHistData
+  .ret$optim$parHistData <- NULL
   .ret$message <- .ret$optim$message
-  if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
-    return(.ret$nlm)
+  if (rxode2::rxGetControl(.ui, "returnOptim", FALSE)) {
+    return(.ret$optim)
   }
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)

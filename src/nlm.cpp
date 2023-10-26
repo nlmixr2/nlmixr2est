@@ -293,6 +293,7 @@ NumericVector nlmUnscalePar(NumericVector p) {
   for (int i = 0; i < nlmOp.ntheta; i++) {
     ret[i] = scaleUnscalePar(&(nlmOp.scale), &p[0], i);
   }
+  ret.attr("names") = p.attr("names");
   return ret;
 }
 
@@ -935,9 +936,6 @@ RObject nlmAdjustHessian(RObject Hin, arma::vec theta) {
     J(i, i) =1.0/scaleAdjustGradScale(&(nlmOp.scale), 1.0, &theta[0], i);
   }
   H = J * H * J;
-  // inv(J2*H*J2)
-  // inv(H*J2)*inv(J2)
-  // inv(J2)*inv(H)*inv(J2)
   RObject ret = wrap(H);
   ret.attr("dimnames") = Hin.attr("dimnames");
   return ret;

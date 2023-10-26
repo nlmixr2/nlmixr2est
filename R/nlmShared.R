@@ -157,6 +157,9 @@
   .ret$scaleC <- env$scaleC
   .ret$parHistData <- .Call(`_nlmixr2est_nlmGetParHist`, printLine)
   .name <- env$thetaNames
+  if (inherits(lst, "nls")) {
+    .ret[[par]] <- coef(lst)
+  }
   .parScaled <- setNames(.ret[[par]], .name)
   .ret[[paste0(par, ".scaled")]] <- .parScaled
   .par <- .Call(`_nlmixr2est_nlmUnscalePar`, .parScaled)
@@ -165,7 +168,10 @@
   if (!any(names(.ctl) == "covMethod")) {
     .ctl$covMethod <- "r"
   }
-  if (hessianCov && .ctl$covMethod != "") {
+  if (inherits(lst, "nls")) {
+    .cov <- summary(lst)$cov.unscaled
+    .ret$cov <- .Call(`_nlmixr2est_nlmAdjustCov`, .cov, .parScaled)
+  } else if (hessianCov && .ctl$covMethod != "") {
     .malert("calculating covariance")
     if (!any(names(.ret) == "hessian")) {
       .p <- setNames(.parScaled, NULL)
