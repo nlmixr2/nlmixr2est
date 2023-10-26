@@ -1,5 +1,11 @@
 #' Control for bobyqa estimation method in nlmixr2
 #'
+#' @inheritParams foceiControl
+#' @inheritParams saemControl
+#'
+#' @param returnBobyqa return the bobyqa output instead of the nlmixr2
+#'   fit
+#'
 #' @param npt The number of points used to approximate the objective
 #'   function via a quadratic approximation. The value of npt must be
 #'   in the interval [n+2,(n+1)(n+2)/2] where n is the number of
