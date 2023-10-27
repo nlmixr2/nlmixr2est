@@ -329,12 +329,19 @@ print.nlmixr2FitCore <- function(x, ...) {
       "  Censoring (", crayon::yellow(.bound), crayon::bold$blue("$censInformation"), "): ",
       as.character(x$censInformation), "\n"
     ))
-
-
-    if (x$message != "") {
+    .msg <- x$message
+    if (length(.msg) >= 1L) {
+      if (length(.msg) == 1L && x$message == "") {
+        .msg <- NULL
+      } else {
+        .msg <- gsub("^ *", "", .msg)
+        .msg <- paste(paste0("    ", .msg), collapse="\n")
+      }
+    }
+    if (length(.msg) > 0L) {
       cat(paste0("  Minimization message (", crayon::yellow(.bound), crayon::bold$blue("$message"), "): "), "\n")
-      cat(paste0("    ", x$message), "\n")
-      if (x$message == "false convergence (8)") {
+      cat(.msg, "\n")
+      if (x$message[1] == "false convergence (8)") {
         cat("  In an ODE system, false convergence may mean \"useless\" evaluations were performed.\n")
         cat("  See https://tinyurl.com/yyrrwkce\n")
         cat("  It could also mean the convergence is poor, check results before accepting fit\n")
@@ -421,12 +428,21 @@ print.nlmixr2FitCore <- function(x, ...) {
     .c <- c(.c, paste0("  Information about run found in (", .bound, "$runInfo):"),
             paste0("    ", x$runInfo))
   }
-  if (x$message != "") {
+  .msg <- x$message
+  if (length(.msg) >= 1L) {
+    if (length(.msg) == 1L && x$message == "") {
+      .msg <- NULL
+    } else {
+      .msg <- gsub("^ *", "", .msg)
+      .msg <- paste(paste0("    ", .msg), collapse="\n")
+    }
+  }
+  if (length(.msg) > 0L) {
     .c <- c(
       .c, paste0("  Minimization message (", .bound, "$message): "),
       paste0("    ", x$message)
     )
-    if (x$message == "false convergence (8)") {
+    if (.msg == "false convergence (8)") {
       .c <- c(
         .c, "  In an ODE system, false convergence may mean \"useless\" evaluations were performed.",
         "  See https://tinyurl.com/yyrrwkce",

@@ -9,8 +9,20 @@
   standardized `nlmixr2` fit.
 
 - New estimation method "nls" has been added to estimate population
-  only likelihoods.  This uses `minpack.lm::nlsNM` by default if
+  only problems.  This uses `minpack.lm::nlsNM` by default if
   present, or the `stats::nls`
+
+- New estimation method "optim" has been added to estimate population
+  only likelihoods.  This uses `stats::optim` and returns a
+  standardized `nlmixr2` fit.
+
+- New estimation method "nlminb" has been added to estimate population
+  only likelihoods.  This uses `stats::nlminb` and returns a
+  standardized `nlmixr2` fit.
+
+- New estimation methods from the `minqa` package: "bobyqa", "uobyqa"
+  and "newuoa" have been added to estimate population only
+  likelihoods.  These methods returns a standardized `nlmixr2` fit.
 
 ## Breaking changes
 

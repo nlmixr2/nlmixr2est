@@ -1141,6 +1141,24 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   env$scaleC <- .scaleC
 }
 
+#' @export
+rxUiGet.scaleCtheta <- function(x, ...) {
+  .ui <- x[[1]]
+  .env <- new.env(parent=emptyenv())
+  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
+  .foceiOptEnvSetupScaleC(.ui, .env)
+  .env$scaleC[!.ui$iniDf$fix]
+}
+
+#' @export
+rxUiGet.scaleCnls <- function(x, ...) {
+  .ui <- x[[1]]
+  .env <- new.env(parent=emptyenv())
+  .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
+  .foceiOptEnvSetupScaleC(.ui, .env)
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
+}
+
 #' This sets up the transformation bounds and indexes and bounds for inner.cpp
 #'
 #' Note that the C code assumes the index starts at 1
@@ -1301,6 +1319,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
+  if (is.null(data$ID)) data$ID <- 1L
   checkmate::assert_names(names(data), must.include = requiredCols)
   if (is.null(data$EVID)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0

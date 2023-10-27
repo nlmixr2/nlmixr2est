@@ -136,6 +136,82 @@ nmNearPD_ <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, on
     .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only_values, eig_tol, conv_tol, posd_tol, maxit, trace)
 }
 
+nlmFree <- function() {
+    .Call(`_nlmixr2est_nlmFree`)
+}
+
+nlmSetup <- function(e) {
+    .Call(`_nlmixr2est_nlmSetup`, e)
+}
+
+nlmScalePar <- function(p0) {
+    .Call(`_nlmixr2est_nlmScalePar`, p0)
+}
+
+nlmUnscalePar <- function(p) {
+    .Call(`_nlmixr2est_nlmUnscalePar`, p)
+}
+
+nlmSolveNlm <- function(id) {
+    invisible(.Call(`_nlmixr2est_nlmSolveNlm`, id))
+}
+
+nlmSolveR <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveR`, theta)
+}
+
+nlmSetScaleC <- function(scaleC) {
+    .Call(`_nlmixr2est_nlmSetScaleC`, scaleC)
+}
+
+nlmGetScaleC <- function(theta, to) {
+    .Call(`_nlmixr2est_nlmGetScaleC`, theta, to)
+}
+
+nlmSolveGradR <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveGradR`, theta)
+}
+
+solveGradNls <- function(theta, returnType) {
+    .Call(`_nlmixr2est_solveGradNls`, theta, returnType)
+}
+
+nlmSolveGradHess <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveGradHess`, theta)
+}
+
+nlmSolveSwitch <- function(theta) {
+    .Call(`_nlmixr2est_nlmSolveSwitch`, theta)
+}
+
+optimFunC <- function(theta, grad = FALSE) {
+    .Call(`_nlmixr2est_optimFunC`, theta, grad)
+}
+
+nlminbFunC <- function(theta, type) {
+    .Call(`_nlmixr2est_nlminbFunC`, theta, type)
+}
+
+nlmPrintHeader <- function() {
+    .Call(`_nlmixr2est_nlmPrintHeader`)
+}
+
+nlmWarnings <- function() {
+    .Call(`_nlmixr2est_nlmWarnings`)
+}
+
+nlmGetParHist <- function(p = TRUE) {
+    .Call(`_nlmixr2est_nlmGetParHist`, p)
+}
+
+nlmAdjustHessian <- function(Hin, theta) {
+    .Call(`_nlmixr2est_nlmAdjustHessian`, Hin, theta)
+}
+
+nlmAdjustCov <- function(CovIn, theta) {
+    .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

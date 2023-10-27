@@ -4,11 +4,41 @@
 #' @inheritParams stats::nls.control
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
+#' @inheritParams nlmControl
 #' @inheritParams minpack.lm::nls.lm.control
+#' @param returnNls logical; when TRUE, will return the nls object
+#'   instead of the nlmixr object
 #' @return nls control object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
+#' \donttest{
+#'
+#' one.cmt <- function() {
+#'   ini({
+#'    tka <- 0.45
+#'    tcl <- log(c(0, 2.7, 100))
+#'    tv <- 3.45
+#'    add.sd <- 0.7
+#'  })
+#'  model({
+#'    ka <- exp(tka)
+#'    cl <- exp(tcl)
+#'    v <- exp(tv)
+#'    linCmt() ~ add(add.sd)
+#'  })
+#' }
+#'
+#' # Uses nlsLM from minpack.lm if available
+#'
+#' fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="LM"))
+#'
+#' # Uses port and respect parameter boundaries
+#' fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
+#'
+#' # You can access the underlying nls object with `$nls`
+#' fit2$nls
+#' }
 nlsControl <- function(maxiter=10000,
                        tol = 1e-05,
                        minFactor = 1/1024,
@@ -26,9 +56,33 @@ nlsControl <- function(maxiter=10000,
                        epsfcn = 0,
                        factor = 100,
                        maxfev = integer(),
-                       nprint = 1,
+                       nprint = 0,
+
+                       #### nlm C++ style style to give gradients
+                       solveType=c("grad", "fun"),
+
+                       stickyRecalcN=4,
+                       maxOdeRecalc=5,
+                       odeRecalcFactor=10^(0.5),
+
+                       eventType=c("central", "forward"),
+                       shiErr=(.Machine$double.eps)^(1/3),
+                       shi21maxFD=20L,
+
+                       useColor = crayon::has_color(),
+                       printNcol = floor((getOption("width") - 23) / 12), #
+                       print = 1L, #
+
+                       normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
+                       scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
+                       scaleCmax = 1e5, #
+                       scaleCmin = 1e-5, #
+                       scaleC=NULL,
+                       scaleTo=1.0,
+                       gradTo=1.0,
+
                        ############################################
-                       trace = TRUE,
+                       trace = FALSE, #nolint
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
                        returnNls=FALSE,
@@ -41,6 +95,22 @@ nlsControl <- function(maxiter=10000,
     .malert("changing to default `nls` method")
     algorithm <- "default"
   }
+  checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
+
+
+  .eventTypeIdx <- c("central" =2L, "forward"=1L)
+  if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    eventType <- as.integer(eventType)
+  } else {
+    eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
+  }
+
+  solveType <- match.arg(solveType)
+
   checkmate::assertNumeric(ftol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(ptol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(gtol, len=1, any.missing=FALSE, lower=0)
@@ -48,7 +118,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertNumeric(factor, len=1, any.missing=FALSE, lower=1)
   checkmate::assertIntegerish(maxfev, min.len=0, max.len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(trace, len=1, any.missing=FALSE)
+  checkmate::assertLogical(trace, len=1, any.missing=FALSE) # nolint
   checkmate::assertLogical(nDcentral, len=1, any.missing=FALSE)
   checkmate::assertNumeric(scaleOffset, any.missing=FALSE, finite=TRUE)
   checkmate::assertLogical(warnOnly, len=1, any.missing = FALSE)
@@ -99,13 +169,46 @@ nlsControl <- function(maxiter=10000,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
+  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
+  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
+    scaleType <- as.integer(scaleType)
+  } else {
+    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+    scaleType <- setNames(.scaleTypeIdx[match.arg(scaleType)], NULL)
+  }
+
+  .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+  if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
+    normType <- as.integer(normType)
+  } else {
+    normType <- setNames(.normTypeIdx[match.arg(normType)], NULL)
+  }
+  checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(scaleCmin, lower=0, any.missing=FALSE, len=1)
+  if (!is.null(scaleC)) {
+    checkmate::assertNumeric(scaleC, lower=0, any.missing=FALSE)
+  }
+  checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertNumeric(gradTo, len=1, lower=0, any.missing=FALSE)
+
+
   .ret <- list(algorithm=algorithm, maxiter=maxiter,
                tol=tol,
+               trace=trace, #nolint
                minFactor=minFactor,
                printEval=printEval,
                warnOnly=warnOnly,
                scaleOffset=scaleOffset,
                nDcentral=nDcentral,
+               solveType=solveType,
+               stickyRecalcN=stickyRecalcN,
+               maxOdeRecalc=maxOdeRecalc,
+               odeRecalcFactor=odeRecalcFactor,
+               eventType=eventType,
+               shiErr=shiErr,
+               shi21maxFD=shi21maxFD,
                ftol = ftol,
                ptol = ptol,
                gtol = gtol,
@@ -114,6 +217,18 @@ nlsControl <- function(maxiter=10000,
                factor = factor,
                maxfev = maxfev,
                nprint = nprint,
+               useColor=useColor,
+               print=print,
+               printNcol=printNcol,
+               scaleType=scaleType,
+               normType=normType,
+
+               scaleCmax=scaleCmax,
+               scaleCmin=scaleCmin,
+               scaleC=scaleC,
+               scaleTo=scaleTo,
+               gradTo=gradTo,
+
                optExpression=optExpression,
                sumProd=sumProd,
                rxControl=rxControl,
@@ -202,6 +317,25 @@ getValidNlmixrCtl.nls <- function(control) {
                  events=.nlsEnv$data),
             .nlsEnv$rxControl))$rx_pred_
 }
+#' @rdname dot-nlmixrNlsFun
+#' @export
+.nlmixrNlsFunValGrad <- function(DV, ...) {
+  .Call(`_nlmixr2est_solveGradNls`, c(...), 1L)
+}
+#' Internal nls functions for minpack.lm
+#' @param x Parameter for estimate
+#' @keywords internal
+#' @export
+.nlmixrNlsFunVal <- function(x) {
+  .Call(`_nlmixr2est_solveGradNls`, x, 2L)
+}
+
+#' @rdname dot-nlmixrNlsFunVal
+#' @export
+.nlmixrNlsFunGrad <- function(x) {
+  .Call(`_nlmixr2est_solveGradNls`, x, 3L)
+}
+
 #' Returns the data currently setup to run nls
 #'
 #' @return Returns the data currently setup to run nls
@@ -307,11 +441,38 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
   })
 }
 
+#' Get the THETA lines from rxode2 UI for nlscontrol
+#'
+#' Will assign fixed values and remove error terms
+#'
+#' @param rxui This is the rxode2 ui object
+#' @return The theta/eta lines
+#' @author Matthew L. Fidler
+#' @noRd
+.uiGetNlsTheta <- function(rxui) {
+  .iniDf <- rxui$iniDf
+  #.w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  .env <- new.env(parent=emptyenv())
+  .env$i <- 0
+  .w <- which(!(rxui$iniDf$err %in% c("add", "prop", "pow")))
+  lapply(.w, function(i) {
+    if (rxui$iniDf$fix[i]) {
+      return(eval(parse(text=paste0("quote(", .iniDf$name[i], " <- ", rxui$iniDf$est[i],")"))))
+    }
+    if (rxui$iniDf$err[i] %in% c("add", "prop", "pow")) {
+      return(NULL)
+    }
+    .env$i <- .env$i + 1
+    eval(parse(text=paste0("quote(", .iniDf$name[i], " <- THETA[", .env$i,"])")))
+  })
+}
+
+
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
   .f <- x[[1]]
   .ret <- rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlsLines(.f),
-                                      prefixLines=.uiGetThetaEta(.f),
+                                      prefixLines=.uiGetNlsTheta(.f),
                                       paramsLine=NA, #.uiGetThetaEtaParams(.f),
                                       modelVars=TRUE,
                                       cmtLines=FALSE,
@@ -357,13 +518,6 @@ rxUiGet.loadPruneNls <- function(x, ...) {
 }
 
 #' @export
-rxUiGet.loadPrunNlsSens <- function(x, ..., theta=FALSE) {
-  .s <- rxUiGet.loadPruneSens(x, ...)
-  .sensEtaOrTheta(.s, theta=TRUE)
-}
-
-
-#' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNls(x, ...)
   .prd <- get("rx_pred_", envir = .s)
@@ -386,6 +540,24 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     #.s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  if (exists("..maxTheta", .s)) {
+    .eventTheta <- rep(0L, .s$..maxTheta)
+  } else {
+    .eventTheta <- integer(0)
+  }
+  for (.v in .s$..eventVars) {
+    .vars <- as.character(get(.v, envir = .s))
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+    for (.v2 in .vars) {
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+      if (regexpr(.reg, .v2) != -1) {
+        .num <- as.numeric(sub(.reg, "\\1", .v2))
+        .eventTheta[.num] <- 1L
+      }
+    }
+  }
+  .s$.eventTheta <- .eventTheta
+
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   if (.sumProd) {
@@ -397,9 +569,172 @@ rxUiGet.nlsRxModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "nls model")
     .msuccess("done")
   }
-  paste(c(rxUiGet.foceiParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
-          .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
+
+  list(predOnly =rxode2::rxode2(paste(c(rxUiGet.nlsParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
+       eventTheta=.eventTheta)
 }
+
+#' @export
+rxUiGet.loadPruneNlsSens <- function(x, ...) {
+  .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
+}
+
+#' @export
+rxUiGet.nlsThetaS <- function(x, ...) {
+  .s <- rxUiGet.loadPruneNlsSens(x, ...)
+  .sensEtaOrTheta(.s, theta=TRUE)
+}
+
+#' @export
+rxUiGet.nlsHdTheta <- function(x, ...) {
+  .s <- rxUiGet.nlsThetaS(x)
+  .stateVars <- rxode2::rxState(.s)
+  .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
+  .grd <- rxode2::rxExpandFEta_(
+    .stateVars, .s$..maxTheta,
+    ifelse(.predMinusDv, 1L, 2L),
+    isTheta=TRUE)
+  if (rxode2::.useUtf()) {
+    .malert("calculate \u2202(f)/\u2202(\u03B8)")
+  } else {
+    .malert("calculate d(f)/d(theta)")
+  }
+  rxode2::rxProgress(dim(.grd)[1])
+  on.exit({
+    rxode2::rxProgressAbort()
+  })
+  .any.zero <- FALSE
+  .all.zero <- TRUE
+  .ret <- apply(.grd, 1, function(x) {
+    .l <- x["calc"]
+    .l <- eval(parse(text = .l))
+    .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
+    .zErr <- suppressWarnings(try(as.numeric(get(x["dfe"], .s)), silent = TRUE))
+    if (identical(.zErr, 0)) {
+      .any.zero <<- TRUE
+    } else if (.all.zero) {
+      .all.zero <<- FALSE
+    }
+    rxode2::rxTick()
+    return(.ret)
+  })
+  if (.all.zero) {
+    stop("none of the predictions depend on 'THETA'", call. = FALSE)
+  }
+  if (.any.zero) {
+    warning("some of the predictions do not depend on 'THETA'", call. = FALSE)
+  }
+  .s$..HdTheta <- .ret
+  .s$..pred.minus.dv <- .predMinusDv
+  rxode2::rxProgressStop()
+  .s
+}
+
+#' Finalize nls rxode2 based on symengine saved info
+#'
+#' @param .s Symengine/rxode2 object
+#' @return Nothing
+#' @author Matthew L Fidler
+#' @noRd
+.rxFinalizeNls <- function(.s, sum.prod = FALSE,
+                           optExpression = TRUE) {
+  .prd <- get("rx_pred_", envir = .s)
+  .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
+  .yj <- paste(get("rx_yj_", envir = .s))
+  .yj <- paste0("rx_yj_~", rxode2::rxFromSE(.yj))
+  .lambda <- paste(get("rx_lambda_", envir = .s))
+  .lambda <- paste0("rx_lambda_~", rxode2::rxFromSE(.lambda))
+  .hi <- paste(get("rx_hi_", envir = .s))
+  .hi <- paste0("rx_hi_~", rxode2::rxFromSE(.hi))
+  .low <- paste(get("rx_low_", envir = .s))
+  .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
+  .ddt <- .s$..ddt
+  if (is.null(.ddt)) .ddt <- character(0)
+  .sens <- .s$..sens
+  if (is.null(.sens)) .sens <- character(0)
+  .s$..nlsS <- paste(c(
+    .s$params,
+    .s$..stateInfo["state"],
+    .ddt,
+    .sens,
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .prd,
+    .s$..HdTheta,
+    .s$..stateInfo["statef"],
+    .s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+  .lhs0 <- .s$..lhs0
+  if (is.null(.lhs0)) .lhs0 <- ""
+  .s$..pred.nolhs <- paste(c(
+    .s$params,
+    .s$..stateInfo["state"],
+    .lhs0,
+    .ddt,
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .prd,
+    .s$..stateInfo["statef"],
+    .s$..stateInfo["dvid"],
+    ""
+  ), collapse = "\n")
+
+  if (sum.prod) {
+    .malert("stabilizing round off errors in nls gradient problem...")
+    .s$..nlsS <- rxode2::rxSumProdModel(.s$..nlsS)
+    .msuccess("done")
+    .malert("stabilizing round off errors in nls pred-only problem...")
+    .s$..pred.nolhs <- rxode2::rxSumProdModel(.s$..pred.nolhs)
+    .msuccess("done")
+  }
+  if (optExpression) {
+    .s$..nlsS <- rxode2::rxOptExpr(.s$..nlsS, "nls gradient")
+    .s$..pred.nolhs <- rxode2::rxOptExpr(.s$..pred.nolhs, "nls pred-only")
+  }
+}
+
+#' @export
+rxUiGet.nlsEnv <- function(x, ...) {
+  .s <- rxUiGet.nlsHdTheta(x, ...)
+  .s$params <- rxUiGet.nlsParams(x, ...)
+  .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
+  .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  .rxFinalizeNls(.s, .sumProd, .optExpression)
+  .s$..outer <- NULL
+  if (exists("..maxTheta", .s)) {
+    .eventTheta <- rep(0L, .s$..maxTheta)
+  } else {
+    .eventTheta <- integer(0)
+  }
+  for (.v in .s$..eventVars) {
+    .vars <- as.character(get(.v, envir = .s))
+    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+    for (.v2 in .vars) {
+      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+      if (regexpr(.reg, .v2) != -1) {
+        .num <- as.numeric(sub(.reg, "\\1", .v2))
+        .eventTheta[.num] <- 1L
+      }
+    }
+  }
+  .s$.eventTheta <- .eventTheta
+  .s
+}
+
+#' @export
+rxUiGet.nlsSensModel <- function(x, ...) {
+  .s <- rxUiGet.nlsEnv(x, ...)
+  list(thetaGrad=rxode2::rxode2(.s$..nlsS),
+       predOnly=rxode2::rxode2(.s$..pred.nolhs),
+       eventTheta=.s$.eventTheta)
+}
+
 
 #' @export
 rxUiGet.nlsParStart <- function(x, ...) {
@@ -410,6 +745,25 @@ rxUiGet.nlsParStart <- function(x, ...) {
   }),
   .ui$iniDf$name[.w])
 }
+
+#' @export
+rxUiGet.nlsParStartTheta <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  setNames(vapply(.w, function(i){
+    .ui$iniDf$est[i]
+  }, double(1), USE.NAMES = FALSE),
+  paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]")
+  )
+}
+
+#' @export
+rxUiGet.nlsParams <- function(x, ...) {
+  .ui <- x[[1]]
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
+  paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse=", "), ")")
+}
+
 #' @export
 rxUiGet.nlsParLower <- function(x, ...) {
   .ui <- x[[1]]
@@ -429,7 +783,6 @@ rxUiGet.nlsParUpper <- function(x, ...) {
   }, double(1), USE.NAMES=FALSE),
   .ui$iniDf$name[.w])
 }
-
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
@@ -459,9 +812,7 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
              }
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
 }
-
-#' @export
-rxUiGet.nlsFormula <- function(x, ...) {
+.nlsFormulaArgs <- function(x) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .args <- vapply(seq_along(.iniDf$ntheta),
@@ -474,12 +825,16 @@ rxUiGet.nlsFormula <- function(x, ...) {
                       .iniDf$name[t]
                     }
                   }, character(1), USE.NAMES=FALSE)
-  .args <- c("DV", .args[.args != ""])
-  str2lang(paste0("~nlmixr2est::.nlmixrNlsFun(",
+  c("DV", .args[.args != ""])
+}
+
+#' @export
+rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
+  .args <- .nlsFormulaArgs(x)
+  str2lang(paste0("~nlmixr2est::.nlmixrNlsFunValGrad(",
                   paste(.args, collapse=", "),
                   ")"))
 }
-
 #' Setup the data for nls estimation
 #'
 #' @param dataSav Formatted Data
@@ -498,12 +853,23 @@ rxUiGet.nlsFormula <- function(x, ...) {
 }
 
 .nlsFitModel <- function(ui, dataSav) {
-  .nlsEnv$model <- rxode2::rxode2(ui$nlsRxModel)
-  .nlsFitDataSetup(dataSav)
-  .nlsEnv$rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-  .nlsEnv$rxControl$returnType <- 2L # use data.frame output
-  .nlsEnv$parFun <- ui$nlsParNameFun
   .ctl <- ui$control
+  if (.ctl$solveType != "fun") {
+    .mi <- ui$nlsSensModel
+    .ctl$solveType <- 10L
+  } else {
+    .mi <- ui$nlsRxModel
+    .ctl$solveType <- 11L
+    .ctl$gradTo <- 0.0
+  }
+  if (is.null(.ctl$scaleC)) {
+    .ctl$scaleC <- ui$scaleCnls
+  }
+  .p <- unlist(ui$nlsParStart)
+  .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
+                       lower=ui$nlsParLower, upper=ui$nlsParUpper)
+  .env$par.ini.list <- setNames(as.list(.env$par.ini), names(ui$nlsParStart))
+
   if (.ctl$algorithm == "LM") {
     .nls.control <- minpack.lm::nls.lm.control(ftol = .ctl$ftol, ptol = .ctl$ptol,
                                                gtol = .ctl$gtol,
@@ -514,42 +880,61 @@ rxUiGet.nlsFormula <- function(x, ...) {
                                                maxiter = .ctl$maxiter,
                                                nprint = .ctl$nprint)
     class(.ctl) <- NULL
-    .ret <- eval(bquote(minpack.lm::nlsLM(
-      formula= .(ui$nlsFormula),
-      data=nlmixr2est::.nlmixrNlsData(),
-      start=.(ui$nlsParStart),
-      control=.(.nls.control),
-      algorithm=.(.ctl$algorithm),
-      model=FALSE,
-      lower=.(ui$nlsParLower),
-      upper=.(ui$nlsParUpper)
-    )))
+    if (.ctl$solveType == 11L) {
+      .ret <- bquote(minpack.lm::nls.lm(
+        par=.(.env$par.ini),
+        lower=.(.env$lower),
+        upper=.(.env$upper),
+        fn=nlmixr2est::.nlmixrNlsFunVal,
+        control=.(.nls.control)))
+    } else {
+      .ret <- bquote(minpack.lm::nls.lm(
+        par=.(.env$par.ini),
+        lower=.(.env$lower),
+        upper=.(.env$upper),
+        fn=nlmixr2est::.nlmixrNlsFunVal,
+        jac=nlmixr2est::.nlmixrNlsFunGrad,
+        control=.(.nls.control)))
+    }
+    .ret <- eval(.ret)
+    .ret <- .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
+                             hessianCov=TRUE)
+    .ret$sd <- sd(.ret$fvec)
+    .ret$logLik <- sum(dnorm(.ret$fvec, log=TRUE))
   } else {
+    .nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(
       maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
       printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
       scaleOffset = .ctl$scaleOffset,
       nDcentral = .ctl$nDcentral)
     class(.ctl) <- NULL
-    .ret <- eval(bquote(stats::nls(
+    .ret <- bquote(stats::nls(
       formula= .(ui$nlsFormula),
       data=nlmixr2est::.nlmixrNlsData(),
-      start=.(ui$nlsParStart),
+      start=.(.env$par.ini.list),
       control=.(.nls.control),
       algorithm=.(.ctl$algorithm),
-      trace=.(.ctl$trace),
+      trace=.(.ctl$trace), # nolint
       model=FALSE,
-      lower=.(ui$nlsParLower),
-      upper=.(ui$nlsParUpper)
-    )))
+      lower=.(.env$lower),
+      upper=.(.env$upper)
+    ))
+    .ret <- eval(.ret)
+    .ret <- .nlmFinalizeList(.env, .ret, printLine=TRUE,
+                             hessianCov=FALSE)
   }
   .ret
 }
 
 .nlsGetTheta <- function(nls, ui) {
   .iniDf <- ui$iniDf
-  .theta0 <- coef(nls)
-  .sd <- sd(resid(nls))
+  .theta0 <- nls$par
+  if (inherits(nls, "nls.lm")) {
+    .sd <- nls$sd
+  } else {
+    .sd <- sd(resid(nls))
+  }
   setNames(vapply(seq_along(.iniDf$ntheta), function(t) {
     if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
       return(.sd)
@@ -613,21 +998,32 @@ rxUiGet.nlsFormula <- function(x, ...) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nls <- .nls[[1]]
+  .ret$parHistData <- .ret$nls$parHistData
+  .ret$nls$parHistData <- NULL
+
   .ret$message <- NULL
   if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
     return(.ret$nls)
   }
-  .ret$message <- .ret$nls$convInfo$stopMessage
+  .ret$cov <- .ret$nls$cov
+  if (inherits(.ret$nls, "nls.lm")) {
+    .ret$message <- .ret$nls$message
+    .ret$cov <- .ret$nls$cov
+    .ret$covMethod <- paste0(.ret$nls$covMethod, " (LM)")
+    .ret$objective <- -2 * .ret$nls$logLik
+  } else {
+    .ret$message <- .ret$nls$convInfo$stopMessage
+    .ret$covMethod <- "nls"
+    .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
+  }
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlsGetTheta(.ret$nls, .ui)
-  .ret$cov <- summary(.ret$nls)$cov.unscaled
-  .ret$covMethod <- "nls"
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
   .ret$control <- .control
-  .ret$extra <- ""
+  .ret$extra <- paste0(" with ", crayon::bold$yellow(.control$algorithm),  " algorithm")
   .nlmixr2FitUpdateParams(.ret)
   nmObjHandleControlObject(.ret$control, .ret)
   if (exists("control", .ui)) {
@@ -635,7 +1031,6 @@ rxUiGet.nlsFormula <- function(x, ...) {
   }
   .ret$est <- "nls"
   # There is no parameter history for nlse
-  .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
   .ret$model <- .ui$ebe
   .ret$ofvType <- "nls"
   .nlsControlToFoceiControl(.ret)

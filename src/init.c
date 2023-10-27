@@ -88,11 +88,49 @@ SEXP _nlmixr2est_rxode2hasLlik(void);
 
 typedef SEXP (*_rxode2random_rxRmvnSEXP_t)(SEXP nSSEXP, SEXP muSSEXP, SEXP sigmaSSEXP, SEXP lowerSSEXP, SEXP upperSSEXP, SEXP ncoresSSEXP, SEXP isCholSSEXP, SEXP keepNamesSSEXP, SEXP aSSEXP, SEXP tolSSEXP, SEXP nlTolSSEXP, SEXP nlMaxiterSSEXP);
 _rxode2random_rxRmvnSEXP_t rxRmvnSEXPnlmixrEst;
-SEXP _nlmixr2est_RcppExport_registerCCallable();
-
 SEXP _nlmixr2est_RcppExport_registerCCallable(void);
 
+SEXP _nlmixr2est_nlmSetup(SEXP);
+SEXP _nlmixr2est_nlmFree(void);
+SEXP _nlmixr2est_nlmSolveGradHess(SEXP);
+SEXP _nlmixr2est_nlmSolveGradR(SEXP);
+SEXP _nlmixr2est_nlmSolveR(SEXP);
+SEXP _nlmixr2est_nlmSolveSwitch(SEXP);
+SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
+SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
+SEXP _nlmixr2est_nlmWarnings(void);
+
+SEXP _nlmixr2est_nlmScalePar(SEXP);
+SEXP _nlmixr2est_nlmUnscalePar(SEXP);
+
+SEXP _nlmixr2est_solveGradNls(SEXP, SEXP);
+SEXP _nlmixr2est_nlmGetScaleC(SEXP, SEXP);
+
+SEXP _nlmixr2est_nlmAdjustHessian(SEXP, SEXP);
+SEXP _nlmixr2est_nlmAdjustCov(SEXP, SEXP);
+SEXP _nlmixr2est_nlmSetScaleC(SEXP);
+SEXP _nlmixr2est_nlmPrintHeader(void);
+SEXP _nlmixr2est_nlmGetParHist(SEXP);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
+  {"_nlmixr2est_nlmPrintHeader", (DL_FUNC) &_nlmixr2est_nlmPrintHeader, 0},
+  {"_nlmixr2est_nlmSetScaleC", (DL_FUNC) &_nlmixr2est_nlmSetScaleC, 1},
+  {"_nlmixr2est_nlmAdjustCov", (DL_FUNC) &_nlmixr2est_nlmAdjustCov, 2},
+  {"_nlmixr2est_nlmAdjustHessian", (DL_FUNC) &_nlmixr2est_nlmAdjustHessian, 2},
+  {"_nlmixr2est_nlmGetScaleC", (DL_FUNC) &_nlmixr2est_nlmGetScaleC, 2},
+  {"_nlmixr2est_nlmScalePar", (DL_FUNC) &_nlmixr2est_nlmScalePar, 1},
+  {"_nlmixr2est_nlmUnscalePar", (DL_FUNC) &_nlmixr2est_nlmUnscalePar, 1},
+  {"_nlmixr2est_solveGradNls", (DL_FUNC) &_nlmixr2est_solveGradNls, 2},
+  {"_nlmixr2est_nlminbFunC", (DL_FUNC) &_nlmixr2est_nlminbFunC, 2},
+  {"_nlmixr2est_nlmWarnings", (DL_FUNC) &_nlmixr2est_nlmWarnings, 0},
+  {"_nlmixr2est_optimFunC", (DL_FUNC) &_nlmixr2est_optimFunC, 2},
+  {"_nlmixr2est_nlmSolveSwitch", (DL_FUNC) &_nlmixr2est_nlmSolveSwitch, 1},
+  {"_nlmixr2est_nlmSolveR", (DL_FUNC) &_nlmixr2est_nlmSolveR, 1},
+  {"_nlmixr2est_nlmSetup", (DL_FUNC) &_nlmixr2est_nlmSetup, 1},
+  {"_nlmixr2est_nlmSolveGradR", (DL_FUNC) &_nlmixr2est_nlmSolveGradR, 1},
+  {"_nlmixr2est_nlmSolveGradHess", (DL_FUNC) &_nlmixr2est_nlmSolveGradHess, 1},
+  {"_nlmixr2est_nlmFree", (DL_FUNC) &_nlmixr2est_nlmFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},
   {"_nlmixr2est_freeFocei", (DL_FUNC) &_nlmixr2est_freeFocei, 0},

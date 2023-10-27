@@ -239,7 +239,7 @@ value.  By default this is 0 (meaning do not scale)}
 \itemize{
 \item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 
-   v_{scaled} = (v_{current} - v_{init})/scaleC[i] + scaleTo
+   v_{scaled} = (v_{current} - v_{init})*scaleC[i] + scaleTo
 
 The \code{scaleTo} parameter is specified by the \code{normType},
 and the scales are specified by \code{scaleC}.

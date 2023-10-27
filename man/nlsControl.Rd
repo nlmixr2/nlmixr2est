@@ -12,8 +12,33 @@ nlsControl(
   warnOnly = FALSE,
   scaleOffset = 0,
   nDcentral = FALSE,
-  algorithm = c("default", "plinear", "port"),
-  trace = TRUE,
+  algorithm = c("LM", "default", "plinear", "port"),
+  ftol = sqrt(.Machine$double.eps),
+  ptol = sqrt(.Machine$double.eps),
+  gtol = 0,
+  diag = list(),
+  epsfcn = 0,
+  factor = 100,
+  maxfev = integer(),
+  nprint = 0,
+  solveType = c("grad", "fun"),
+  stickyRecalcN = 4,
+  maxOdeRecalc = 5,
+  odeRecalcFactor = 10^(0.5),
+  eventType = c("central", "forward"),
+  shiErr = (.Machine$double.eps)^(1/3),
+  shi21maxFD = 20L,
+  useColor = crayon::has_color(),
+  printNcol = floor((getOption("width") - 23)/12),
+  print = 1L,
+  normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
+  scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
+  scaleCmax = 1e+05,
+  scaleCmin = 1e-05,
+  scaleC = NULL,
+  scaleTo = 1,
+  gradTo = 1,
+  trace = FALSE,
   rxControl = NULL,
   optExpression = TRUE,
   sumProd = FALSE,
@@ -71,6 +96,257 @@ nlsControl(
     \sQuote{nl2sol} algorithm from the Port library -- see the
     references.  Can be abbreviated.}
 
+\item{ftol}{non-negative numeric. Termination occurs when
+      both the actual and predicted relative reductions in the sum of
+      squares are at most \code{ftol}. Therefore, \code{ftol} measures
+      the relative error desired in the sum of squares.}
+
+\item{ptol}{non-negative numeric. Termination occurs when
+      the relative error between two consecutive iterates is at most
+      \code{ptol}. Therefore, \code{ptol} measures the relative error
+      desired in the approximate solution.}
+
+\item{gtol}{non-negative numeric. Termination occurs when
+      the cosine of the angle between result of \code{fn} evaluation
+      \eqn{fvec} and any column of the Jacobian is at most \code{gtol}
+      in absolute value. Therefore, \code{gtol} measures the
+      orthogonality desired between the function vector and the
+      columns of the Jacobian.}
+
+\item{diag}{a list or numeric vector containing positive
+      entries that serve as multiplicative scale factors for the
+      parameters. Length of \code{diag} should be equal to that of
+      \code{par}. If not, user-provided \code{diag} is ignored and
+      \code{diag} is internally set.}
+
+\item{epsfcn}{(used if \code{jac} is not provided) is a
+      numeric used in determining a suitable step for the
+      forward-difference approximation. This approximation assumes
+      that the relative errors in the functions are of the order of
+      \code{epsfcn}. If \code{epsfcn} is less than the machine
+      precision, it is assumed that the relative errors in the
+      functions are of the order of the machine precision.}
+
+\item{factor}{positive numeric, used in determining the
+      initial step bound.  This bound is set to the product of
+      \code{factor} and the \eqn{|\code{diag}*\code{par}|} if nonzero,
+      or else to \code{factor} itself. In most cases \code{factor}
+      should lie in the interval (0.1,100). 100 is a generally
+      recommended value.}
+
+\item{maxfev}{integer; termination occurs
+      when the number of calls to \code{fn} has reached \code{maxfev}.
+      Note that \code{nls.lm} sets the value of \code{maxfev} to 
+      \code{100*(length(par) + 1)} if 
+      \code{maxfev = integer()}, where \code{par} is the list or
+      vector of parameters to be optimized.  }
+
+\item{nprint}{is an integer; set \code{nprint} to be positive
+      to enable printing of iterates}
+
+\item{solveType}{tells if `nlm` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:
+
+ - `"hessian"` which will use the analytical gradients to create a
+    Hessian with finite differences.
+
+- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian
+
+- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian
+
+ When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives}
+
+\item{stickyRecalcN}{The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.}
+
+\item{maxOdeRecalc}{Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.}
+
+\item{odeRecalcFactor}{The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{eventType}{Event gradient type for dosing events; Can be
+"central" or "forward"}
+
+\item{shiErr}{This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method}
+
+\item{shi21maxFD}{The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)}
+
+\item{useColor}{Boolean indicating if focei can use ASCII color codes}
+
+\item{printNcol}{Number of columns to printout before wrapping
+parameter estimates/gradient}
+
+\item{print}{Integer representing when the outer step is
+printed. When this is 0 or do not print the iterations.  1 is
+print every function evaluation (default), 5 is print every 5
+evaluations.}
+
+\item{normType}{This is the type of parameter
+    normalization/scaling used to get the scaled initial values
+    for nlmixr2.  These are used with \code{scaleType} of.
+
+    With the exception of \code{rescale2}, these come
+    from
+    \href{https://en.wikipedia.org/wiki/Feature_scaling}{Feature
+    Scaling}. The \code{rescale2} The rescaling is the same type
+    described in the
+    \href{http://apmonitor.com/me575/uploads/Main/optimization_book.pdf}{OptdesX}
+    software manual.
+
+    In general, all all scaling formula can be described by:
+
+    v_{scaled} = (v_{unscaled}-C_{1})/C_{2}
+
+    Where
+
+
+    The other data normalization approaches follow the following formula
+
+    v_{scaled} = (v_{unscaled}-C_{1})/C_{2};
+
+\itemize{
+
+\item \code{rescale2} This scales all parameters from (-1 to 1).
+    The relative differences between the parameters are preserved
+    with this approach and the constants are:
+
+    C_{1} = (max(all unscaled values)+min(all unscaled values))/2
+
+    C_{2} = (max(all unscaled values) - min(all unscaled values))/2
+
+
+\item \code{rescale} or min-max normalization. This rescales all
+    parameters from (0 to 1).  As in the \code{rescale2} the
+    relative differences are preserved.  In this approach:
+
+    C_{1} = min(all unscaled values)
+
+    C_{2} = max(all unscaled values) - min(all unscaled values)
+
+
+\item \code{mean} or mean normalization.  This rescales to center
+    the parameters around the mean but the parameters are from 0
+    to 1.  In this approach:
+
+    C_{1} = mean(all unscaled values)
+
+    C_{2} = max(all unscaled values) - min(all unscaled values)
+
+\item \code{std} or standardization.  This standardizes by the mean
+     and standard deviation.  In this approach:
+
+    C_{1} = mean(all unscaled values)
+
+    C_{2} = sd(all unscaled values)
+
+\item \code{len} or unit length scaling.  This scales the
+   parameters to the unit length.  For this approach we use the Euclidean length, that
+   is:
+
+    C_{1} = 0
+
+    C_{2} = sqrt(v_1^2 + v_2^2 + ... + v_n^2)
+
+
+\item \code{constant} which does not perform data normalization. That is
+
+    C_{1} = 0
+
+    C_{2} = 1
+
+}}
+
+\item{scaleType}{The scaling scheme for nlmixr2.  The supported types are:
+
+\itemize{
+\item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
+
+   v_{scaled} = (v_{current} - v_{init})*scaleC[i] + scaleTo
+
+The \code{scaleTo} parameter is specified by the \code{normType},
+and the scales are specified by \code{scaleC}.
+
+\item \code{norm} This approach uses the simple scaling provided
+    by the \code{normType} argument.
+
+\item \code{mult} This approach does not use the data
+normalization provided by \code{normType}, but rather uses
+multiplicative scaling to a constant provided by the \code{scaleTo}
+argument.
+
+  In this case:
+
+  v_{scaled} = v_{current}/v_{init}*scaleTo
+
+\item \code{multAdd} This approach changes the scaling based on
+the parameter being specified.  If a parameter is defined in an
+exponential block (ie exp(theta)), then it is scaled on a
+linearly, that is:
+
+  v_{scaled} = (v_{current}-v_{init}) + scaleTo
+
+Otherwise the parameter is scaled multiplicatively.
+
+   v_{scaled} = v_{current}/v_{init}*scaleTo
+
+}}
+
+\item{scaleCmax}{Maximum value of the scaleC to prevent overflow.}
+
+\item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
+
+\item{scaleC}{The scaling constant used with
+    \code{scaleType=nlmixr2}.  When not specified, it is based on
+    the type of parameter that is estimated.  The idea is to keep
+    the derivatives similar on a log scale to have similar
+    gradient sizes.  Hence parameters like log(exp(theta)) would
+    have a scaling factor of 1 and log(theta) would have a scaling
+    factor of ini_value (to scale by 1/value; ie
+    d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)
+
+   \itemize{
+
+   \item For parameters in an exponential (ie exp(theta)) or
+   parameters specifying powers, boxCox or yeoJohnson
+   transformations , this is 1.
+
+   \item For additive, proportional, lognormal error structures,
+   these are given by 0.5*abs(initial_estimate)
+
+   \item Factorials are scaled by abs(1/digamma(initial_estimate+1))
+
+   \item parameters in a log scale (ie log(theta)) are transformed
+   by log(abs(initial_estimate))*abs(initial_estimate)
+
+   }
+
+   These parameter scaling coefficients are chose to try to keep
+   similar slopes among parameters.  That is they all follow the
+   slopes approximately on a log-scale.
+
+   While these are chosen in a logical manner, they may not always
+   apply.  You can specify each parameters scaling factor by this
+   parameter if you wish.}
+
+\item{scaleTo}{Scale the initial parameter estimate to this value.
+By default this is 1.  When zero or below, no scaling is performed.}
+
+\item{gradTo}{this is the factor that the gradient is scaled to
+before optimizing.  This only works with
+scaleType="nlmixr2".}
+
 \item{trace}{logical value indicating if a trace of the iteration
     progress should be printed.  Default is \code{FALSE}.  If
     \code{TRUE} the residual (weighted) sum-of-squares, the convergence
@@ -92,6 +368,9 @@ calculation. By default this is turned on.}
 multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
+
+\item{returnNls}{logical; when TRUE, will return the nls object
+instead of the nlmixr object}
 
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
@@ -155,6 +434,35 @@ nls control object
 }
 \description{
 nlmixr2 defaults controls for nls
+}
+\examples{
+\donttest{
+
+one.cmt <- function() {
+  ini({
+   tka <- 0.45
+   tcl <- log(c(0, 2.7, 100))
+   tv <- 3.45
+   add.sd <- 0.7
+ })
+ model({
+   ka <- exp(tka)
+   cl <- exp(tcl)
+   v <- exp(tv)
+   linCmt() ~ add(add.sd)
+ })
+}
+
+# Uses nlsLM from minpack.lm if available
+
+fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="LM"))
+
+# Uses port and respect parameter boundaries
+fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
+
+# You can access the underlying nls object with `$nls`
+fit2$nls
+}
 }
 \author{
 Matthew L. Fidler

@@ -137,7 +137,7 @@ saemControl <- function(seed = 99,
                         nmc = 3,
                         nu = c(2, 2, 2),
                         print = 1,
-                        trace = 0,
+                        trace = 0, # nolint
                         covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
                         calcTables = TRUE,
                         logLik = FALSE,
@@ -192,9 +192,9 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
   checkmate::assertIntegerish(print, any.missing=FALSE, lower=0, len=1)
   if (!is.null(.xtra$DEBUG)) {
-    trace <- .xtra$DEBUG
+    trace <- .xtra$DEBUG # nolint
   }
-  checkmate::assertIntegerish(trace, any.missing=FALSE, lower=0, upper=1, len=1)
+  checkmate::assertIntegerish(trace, any.missing=FALSE, lower=0, upper=1, len=1) # nolint
   checkmate::assertLogical(calcTables, any.missing=FALSE, len=1)
   checkmate::assertLogical(logLik, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(nnodesGq, any.missing=FALSE, lower=1, len=1)
@@ -263,7 +263,7 @@ saemControl <- function(seed = 99,
     rxControl = rxControl,
     seed = seed,
     print = print,
-    DEBUG = trace,
+    DEBUG = trace, # nolint
     optExpression = optExpression,
     sumProd = sumProd,
     nnodesGq = nnodesGq,

@@ -39,17 +39,17 @@ attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 
 #' Set if the nlmixr2 object will return a compressed ui
 #'
-#' 
+#'
 #' @param type is a boolean indicating if the compressed ui will be
 #'   returned (`TRUE`) or not be returned (`FALSE`)
 #' @return invisible logical type
 #' @author Matthew L. Fidler
 #' @export
 #' @examples
-#' 
+#'
 #' nmObjUiSetCompressed(FALSE) # now the $ui will return an environment
 #' nmObjUiSetCompressed(TRUE) # now the $ui will return a compressed value
-#' 
+#'
 nmObjUiSetCompressed <- function(type) {
   checkmate::assertLogical(type,len=1, any.missing=FALSE)
   assignInMyNamespace(".finalUiCompressed", type)
@@ -109,7 +109,7 @@ nmObjGetData.dataLloq <- function(x, ...) {
 #' @export
 nmObjGetData.dataUloq <- function(x, ...) {
   .fit <- x[[1]]
-  .df <- as.data.frame(.fit) 
+  .df <- as.data.frame(.fit)
   if (!any(names(.df) == "CENS")) return(NULL)
   if (!any(names(.df) == "lowerLim")) return(NULL)
   .w <- which(.df$CENS == -1)
@@ -200,6 +200,7 @@ attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from cova
 nmObjGet.omegaR <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$omega
+  if (is.null(.cov)) return(NULL)
   .sd2 <- sqrt(diag(.cov))
   .w <- which(diag(.cov) != 0)
   .cor2 <- stats::cov2cor(.cov[.w, .w])
@@ -382,7 +383,7 @@ nmObjGet.covLvl <- function(x, ...) {
   if (preferFit) {
     .origData <- .origData[, !(names(.origData) %in% .share)]
   } else {
-    .fitData <- .fitData[, !(names(.fitData) %in% .share)] 
+    .fitData <- .fitData[, !(names(.fitData) %in% .share)]
   }
   if (inherits(.fitData$ID, "factor")) {
     .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))

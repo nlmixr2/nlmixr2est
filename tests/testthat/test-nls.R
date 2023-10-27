@@ -7,7 +7,7 @@ nmTest({
 
     one.cmt <- function() {
       ini({
-        tka <- 0.45
+        tka <- fix(0.45)
         tcl <- log(c(0, 2.7, 100))
         tv <- 3.45
         add.sd <- 0.7
@@ -23,6 +23,8 @@ nmTest({
     fit1 <- nlmixr(one.cmt, d, est="nls")
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
+
+    fit1 <- nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun"))
 
     Treated <- Puromycin[Puromycin$state == "treated", ]
     names(Treated) <- gsub("rate", "DV", gsub("conc", "time", names(Treated)))
