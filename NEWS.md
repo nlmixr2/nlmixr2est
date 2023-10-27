@@ -24,6 +24,12 @@
   and "newuoa" have been added to estimate population only
   likelihoods.  These methods returns a standardized `nlmixr2` fit.
 
+- New estimation method "lbfgsb3c" to estimate population only
+  likelihoods.  This returns a standardized `nlmixr2` fit.
+
+- New estimation method "n1qn1" to estimate population only
+  likelihoods.  This returns a standardized `nlmixr2` fit.
+
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in
