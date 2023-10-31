@@ -272,7 +272,7 @@ value.  By default this is 0 (meaning do not scale)</p></dd>
 <dt>scaleType</dt>
 <dd><p>The scaling scheme for nlmixr2.  The supported types are:</p>
 <ul><li><p><code>nlmixr2</code>  In this approach the scaling is performed by the following equation:</p>
-<p>v_scaled = (v_current - v_init)/scaleC[i] + scaleTo</p>
+<p>v_scaled = (v_current - v_init)*scaleC[i] + scaleTo</p>
 <p>The <code>scaleTo</code> parameter is specified by the <code>normType</code>,
 and the scales are specified by <code>scaleC</code>.</p></li>
 <li><p><code>norm</code> This approach uses the simple scaling provided

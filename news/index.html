@@ -50,7 +50,12 @@
 <h3 id="new-features-development-version">New Features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
 <ul><li><p>Algebraic mu referencing has been implemented in <code>nlme</code> and <code>saem</code>.</p></li>
 <li><p>New estimation method “nlm” has been added to estimate population only likelihoods using <code><a href="https://rdrr.io/r/stats/nlm.html" class="external-link">stats::nlm</a></code> and possibly return a standardized <code>nlmixr2</code> fit.</p></li>
-<li><p>New estimation method “nls” has been added to estimate population only likelihoods. This uses <code>minpack.lm::nlsNM</code> by default if present, or the <code><a href="https://rdrr.io/r/stats/nls.html" class="external-link">stats::nls</a></code></p></li>
+<li><p>New estimation method “nls” has been added to estimate population only problems. This uses <code>minpack.lm::nlsNM</code> by default if present, or the <code><a href="https://rdrr.io/r/stats/nls.html" class="external-link">stats::nls</a></code></p></li>
+<li><p>New estimation method “optim” has been added to estimate population only likelihoods. This uses <code><a href="https://rdrr.io/r/stats/optim.html" class="external-link">stats::optim</a></code> and returns a standardized <code>nlmixr2</code> fit.</p></li>
+<li><p>New estimation method “nlminb” has been added to estimate population only likelihoods. This uses <code><a href="https://rdrr.io/r/stats/nlminb.html" class="external-link">stats::nlminb</a></code> and returns a standardized <code>nlmixr2</code> fit.</p></li>
+<li><p>New estimation methods from the <code>minqa</code> package: “bobyqa”, “uobyqa” and “newuoa” have been added to estimate population only likelihoods. These methods returns a standardized <code>nlmixr2</code> fit.</p></li>
+<li><p>New estimation method “lbfgsb3c” to estimate population only likelihoods. This returns a standardized <code>nlmixr2</code> fit.</p></li>
+<li><p>New estimation method “n1qn1” to estimate population only likelihoods. This returns a standardized <code>nlmixr2</code> fit.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>

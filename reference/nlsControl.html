@@ -59,8 +59,33 @@
 <span>  warnOnly <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  scaleOffset <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  nDcentral <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  algorithm <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"plinear"</span>, <span class="st">"port"</span><span class="op">)</span>,</span>
-<span>  trace <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  algorithm <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"LM"</span>, <span class="st">"default"</span>, <span class="st">"plinear"</span>, <span class="st">"port"</span><span class="op">)</span>,</span>
+<span>  ftol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>,</span>
+<span>  ptol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>,</span>
+<span>  gtol <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  diag <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  epsfcn <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  factor <span class="op">=</span> <span class="fl">100</span>,</span>
+<span>  maxfev <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/integer.html" class="external-link">integer</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  nprint <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  solveType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"grad"</span>, <span class="st">"fun"</span><span class="op">)</span>,</span>
+<span>  stickyRecalcN <span class="op">=</span> <span class="fl">4</span>,</span>
+<span>  maxOdeRecalc <span class="op">=</span> <span class="fl">5</span>,</span>
+<span>  odeRecalcFactor <span class="op">=</span> <span class="fl">10</span><span class="op">^</span><span class="op">(</span><span class="fl">0.5</span><span class="op">)</span>,</span>
+<span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  shiErr <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
+<span>  shi21maxFD <span class="op">=</span> <span class="fl">20L</span>,</span>
+<span>  useColor <span class="op">=</span> <span class="fu">crayon</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/crayon/man/has_color.html" class="external-link">has_color</a></span><span class="op">(</span><span class="op">)</span>,</span>
+<span>  printNcol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">floor</a></span><span class="op">(</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"width"</span><span class="op">)</span> <span class="op">-</span> <span class="fl">23</span><span class="op">)</span><span class="op">/</span><span class="fl">12</span><span class="op">)</span>,</span>
+<span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  normType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"rescale2"</span>, <span class="st">"mean"</span>, <span class="st">"rescale"</span>, <span class="st">"std"</span>, <span class="st">"len"</span>, <span class="st">"constant"</span><span class="op">)</span>,</span>
+<span>  scaleType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlmixr2"</span>, <span class="st">"norm"</span>, <span class="st">"mult"</span>, <span class="st">"multAdd"</span><span class="op">)</span>,</span>
+<span>  scaleCmax <span class="op">=</span> <span class="fl">1e+05</span>,</span>
+<span>  scaleCmin <span class="op">=</span> <span class="fl">1e-05</span>,</span>
+<span>  scaleC <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  scaleTo <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  gradTo <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  trace <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  rxControl <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
@@ -136,6 +161,250 @@
     references.  Can be abbreviated.</p></dd>
 
 
+<dt>ftol</dt>
+<dd><p>non-negative numeric. Termination occurs when
+      both the actual and predicted relative reductions in the sum of
+      squares are at most <code>ftol</code>. Therefore, <code>ftol</code> measures
+      the relative error desired in the sum of squares.</p></dd>
+
+
+<dt>ptol</dt>
+<dd><p>non-negative numeric. Termination occurs when
+      the relative error between two consecutive iterates is at most
+      <code>ptol</code>. Therefore, <code>ptol</code> measures the relative error
+      desired in the approximate solution.</p></dd>
+
+
+<dt>gtol</dt>
+<dd><p>non-negative numeric. Termination occurs when
+      the cosine of the angle between result of <code>fn</code> evaluation
+      \(fvec\) and any column of the Jacobian is at most <code>gtol</code>
+      in absolute value. Therefore, <code>gtol</code> measures the
+      orthogonality desired between the function vector and the
+      columns of the Jacobian.</p></dd>
+
+
+<dt>diag</dt>
+<dd><p>a list or numeric vector containing positive
+      entries that serve as multiplicative scale factors for the
+      parameters. Length of <code>diag</code> should be equal to that of
+      <code>par</code>. If not, user-provided <code>diag</code> is ignored and
+      <code>diag</code> is internally set.</p></dd>
+
+
+<dt>epsfcn</dt>
+<dd><p>(used if <code>jac</code> is not provided) is a
+      numeric used in determining a suitable step for the
+      forward-difference approximation. This approximation assumes
+      that the relative errors in the functions are of the order of
+      <code>epsfcn</code>. If <code>epsfcn</code> is less than the machine
+      precision, it is assumed that the relative errors in the
+      functions are of the order of the machine precision.</p></dd>
+
+
+<dt>factor</dt>
+<dd><p>positive numeric, used in determining the
+      initial step bound.  This bound is set to the product of
+      <code>factor</code> and the \(|\code{diag}*\code{par}|\) if nonzero,
+      or else to <code>factor</code> itself. In most cases <code>factor</code>
+      should lie in the interval (0.1,100). 100 is a generally
+      recommended value.</p></dd>
+
+
+<dt>maxfev</dt>
+<dd><p>integer; termination occurs
+      when the number of calls to <code>fn</code> has reached <code>maxfev</code>.
+      Note that <code>nls.lm</code> sets the value of <code>maxfev</code> to 
+      <code>100*(length(par) + 1)</code> if 
+      <code>maxfev = integer()</code>, where <code>par</code> is the list or
+      vector of parameters to be optimized.</p></dd>
+
+
+<dt>nprint</dt>
+<dd><p>is an integer; set <code>nprint</code> to be positive
+      to enable printing of iterates</p></dd>
+
+
+<dt>solveType</dt>
+<dd><p>tells if `nlm` will use nlmixr2's analytical
+  gradients when available (finite differences will be used for
+  event-related parameters like parameters controlling lag time,
+  duration/rate of infusion, and modeled bioavailability). This can
+  be:</p>
+<p>- `"hessian"` which will use the analytical gradients to create a
+    Hessian with finite differences.</p>
+<p>- `"gradient"` which will use the gradient and let `nlm` calculate
+   the finite difference hessian</p>
+<p>- `"fun"` where nlm will calculate both the finite difference
+   gradient and the finite difference Hessian</p>
+<p>When using nlmixr2's finite differences, the "ideal" step size for
+ either central or forward differences are optimized for with the
+ Shi2021 method which may give more accurate derivatives</p></dd>
+
+
+<dt>stickyRecalcN</dt>
+<dd><p>The number of bad ODE solves before reducing
+the atol/rtol for the rest of the problem.</p></dd>
+
+
+<dt>maxOdeRecalc</dt>
+<dd><p>Maximum number of times to reduce the ODE
+tolerances and try to resolve the system if there was a bad
+ODE solve.</p></dd>
+
+
+<dt>odeRecalcFactor</dt>
+<dd><p>The ODE recalculation factor when ODE
+solving goes bad, this is the factor the rtol/atol is reduced</p></dd>
+
+
+<dt>eventType</dt>
+<dd><p>Event gradient type for dosing events; Can be
+"central" or "forward"</p></dd>
+
+
+<dt>shiErr</dt>
+<dd><p>This represents the epsilon when optimizing the ideal
+step size for numeric differentiation using the Shi2021 method</p></dd>
+
+
+<dt>shi21maxFD</dt>
+<dd><p>The maximum number of steps for the optimization
+of the forward difference step size when using dosing events (lag
+time, modeled duration/rate and bioavailability)</p></dd>
+
+
+<dt>useColor</dt>
+<dd><p>Boolean indicating if focei can use ASCII color codes</p></dd>
+
+
+<dt>printNcol</dt>
+<dd><p>Number of columns to printout before wrapping
+parameter estimates/gradient</p></dd>
+
+
+<dt>print</dt>
+<dd><p>Integer representing when the outer step is
+printed. When this is 0 or do not print the iterations.  1 is
+print every function evaluation (default), 5 is print every 5
+evaluations.</p></dd>
+
+
+<dt>normType</dt>
+<dd><p>This is the type of parameter
+    normalization/scaling used to get the scaled initial values
+    for nlmixr2.  These are used with <code>scaleType</code> of.</p>
+<p>With the exception of <code>rescale2</code>, these come
+    from
+    <a href="https://en.wikipedia.org/wiki/Feature_scaling" class="external-link">Feature
+    Scaling</a>. The <code>rescale2</code> The rescaling is the same type
+    described in the
+    <a href="http://apmonitor.com/me575/uploads/Main/optimization_book.pdf" class="external-link">OptdesX</a>
+    software manual.</p>
+<p>In general, all all scaling formula can be described by:</p>
+<p>v_scaled = (v_unscaled-C_1)/C_2</p>
+<p>Where</p>
+
+<p>The other data normalization approaches follow the following formula</p>
+<p>v_scaled = (v_unscaled-C_1)/C_2;</p>
+<ul><li><p><code>rescale2</code> This scales all parameters from (-1 to 1).
+    The relative differences between the parameters are preserved
+    with this approach and the constants are:</p>
+<p>C_1 = (max(all unscaled values)+min(all unscaled values))/2</p>
+<p>C_2 = (max(all unscaled values) - min(all unscaled values))/2</p></li>
+<li><p><code>rescale</code> or min-max normalization. This rescales all
+    parameters from (0 to 1).  As in the <code>rescale2</code> the
+    relative differences are preserved.  In this approach:</p>
+<p>C_1 = min(all unscaled values)</p>
+<p>C_2 = max(all unscaled values) - min(all unscaled values)</p></li>
+<li><p><code>mean</code> or mean normalization.  This rescales to center
+    the parameters around the mean but the parameters are from 0
+    to 1.  In this approach:</p>
+<p>C_1 = mean(all unscaled values)</p>
+<p>C_2 = max(all unscaled values) - min(all unscaled values)</p></li>
+<li><p><code>std</code> or standardization.  This standardizes by the mean
+     and standard deviation.  In this approach:</p>
+<p>C_1 = mean(all unscaled values)</p>
+<p>C_2 = sd(all unscaled values)</p></li>
+<li><p><code>len</code> or unit length scaling.  This scales the
+   parameters to the unit length.  For this approach we use the Euclidean length, that
+   is:</p>
+<p>C_1 = 0</p>
+<p>C_2 = sqrt(v_1^2 + v_2^2 + ... + v_n^2)</p></li>
+<li><p><code>constant</code> which does not perform data normalization. That is</p>
+<p>C_1 = 0</p>
+<p>C_2 = 1</p></li>
+</ul></dd>
+
+
+<dt>scaleType</dt>
+<dd><p>The scaling scheme for nlmixr2.  The supported types are:</p>
+<ul><li><p><code>nlmixr2</code>  In this approach the scaling is performed by the following equation:</p>
+<p>v_scaled = (v_current - v_init)*scaleC[i] + scaleTo</p>
+<p>The <code>scaleTo</code> parameter is specified by the <code>normType</code>,
+and the scales are specified by <code>scaleC</code>.</p></li>
+<li><p><code>norm</code> This approach uses the simple scaling provided
+    by the <code>normType</code> argument.</p></li>
+<li><p><code>mult</code> This approach does not use the data
+normalization provided by <code>normType</code>, but rather uses
+multiplicative scaling to a constant provided by the <code>scaleTo</code>
+argument.</p>
+<p>In this case:</p>
+<p>v_scaled = v_current/v_init*scaleTo</p></li>
+<li><p><code>multAdd</code> This approach changes the scaling based on
+the parameter being specified.  If a parameter is defined in an
+exponential block (ie exp(theta)), then it is scaled on a
+linearly, that is:</p>
+<p>v_scaled = (v_current-v_init) + scaleTo</p>
+<p>Otherwise the parameter is scaled multiplicatively.</p>
+<p>v_scaled = v_current/v_init*scaleTo</p></li>
+</ul></dd>
+
+
+<dt>scaleCmax</dt>
+<dd><p>Maximum value of the scaleC to prevent overflow.</p></dd>
+
+
+<dt>scaleCmin</dt>
+<dd><p>Minimum value of the scaleC to prevent underflow.</p></dd>
+
+
+<dt>scaleC</dt>
+<dd><p>The scaling constant used with
+    <code>scaleType=nlmixr2</code>.  When not specified, it is based on
+    the type of parameter that is estimated.  The idea is to keep
+    the derivatives similar on a log scale to have similar
+    gradient sizes.  Hence parameters like log(exp(theta)) would
+    have a scaling factor of 1 and log(theta) would have a scaling
+    factor of ini_value (to scale by 1/value; ie
+    d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)</p>
+<p></p><ul><li><p>For parameters in an exponential (ie exp(theta)) or
+   parameters specifying powers, boxCox or yeoJohnson
+   transformations , this is 1.</p></li>
+<li><p>For additive, proportional, lognormal error structures,
+   these are given by 0.5*abs(initial_estimate)</p></li>
+<li><p>Factorials are scaled by abs(1/digamma(initial_estimate+1))</p></li>
+<li><p>parameters in a log scale (ie log(theta)) are transformed
+   by log(abs(initial_estimate))*abs(initial_estimate)</p></li>
+</ul><p>These parameter scaling coefficients are chose to try to keep
+   similar slopes among parameters.  That is they all follow the
+   slopes approximately on a log-scale.</p>
+<p>While these are chosen in a logical manner, they may not always
+   apply.  You can specify each parameters scaling factor by this
+   parameter if you wish.</p></dd>
+
+
+<dt>scaleTo</dt>
+<dd><p>Scale the initial parameter estimate to this value.
+By default this is 1.  When zero or below, no scaling is performed.</p></dd>
+
+
+<dt>gradTo</dt>
+<dd><p>this is the factor that the gradient is scaled to
+before optimizing.  This only works with
+scaleType="nlmixr2".</p></dd>
+
+
 <dt>trace</dt>
 <dd><p>logical value indicating if a trace of the iteration
     progress should be printed.  Default is <code>FALSE</code>.  If
@@ -164,6 +433,11 @@ calculation. By default this is turned on.</p></dd>
 multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is <code>FALSE</code>.</p></dd>
+
+
+<dt>returnNls</dt>
+<dd><p>logical; when TRUE, will return the nls object
+instead of the nlmixr object</p></dd>
 
 
 <dt>addProp</dt>
@@ -234,6 +508,108 @@ If not specified, then it matches the significant digits in the
     <p>Matthew L. Fidler</p>
     </div>
 
+    <div class="section level2">
+    <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># \donttest{</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">one.cmt</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini</a></span><span class="op">(</span><span class="op">{</span></span></span>
+<span class="r-in"><span>   <span class="va">tka</span> <span class="op">&lt;-</span> <span class="fl">0.45</span></span></span>
+<span class="r-in"><span>   <span class="va">tcl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">log</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">0</span>, <span class="fl">2.7</span>, <span class="fl">100</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>   <span class="va">tv</span> <span class="op">&lt;-</span> <span class="fl">3.45</span></span></span>
+<span class="r-in"><span>   <span class="va">add.sd</span> <span class="op">&lt;-</span> <span class="fl">0.7</span></span></span>
+<span class="r-in"><span> <span class="op">}</span><span class="op">)</span></span></span>
+<span class="r-in"><span> <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/model.html" class="external-link">model</a></span><span class="op">(</span><span class="op">{</span></span></span>
+<span class="r-in"><span>   <span class="va">ka</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tka</span><span class="op">)</span></span></span>
+<span class="r-in"><span>   <span class="va">cl</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tcl</span><span class="op">)</span></span></span>
+<span class="r-in"><span>   <span class="va">v</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/Log.html" class="external-link">exp</a></span><span class="op">(</span><span class="va">tv</span><span class="op">)</span></span></span>
+<span class="r-in"><span>   <span class="fu">linCmt</span><span class="op">(</span><span class="op">)</span> <span class="op">~</span> <span class="fu">add</span><span class="op">(</span><span class="va">add.sd</span><span class="op">)</span></span></span>
+<span class="r-in"><span> <span class="op">}</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Uses nlsLM from minpack.lm if available</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="va">fit1</span> <span class="op">&lt;-</span> <span class="fu"><a href="nlmixr2.html">nlmixr</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est<span class="op">=</span><span class="st">"nls"</span>, <span class="fu">nlsControl</span><span class="op">(</span>algorithm<span class="op">=</span><span class="st">"LM"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of nls model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate jacobian</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(f)/∂(θ)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in nls gradient...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in nls gradient...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in nls pred-only...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> using C compiler: ‘gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0’</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> using C compiler: ‘gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0’</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculating covariance</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of full model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> using C compiler: ‘gcc (Ubuntu 11.4.0-1ubuntu1~22.04) 11.4.0’</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 5952</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2320</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># Uses port and respect parameter boundaries</span></span></span>
+<span class="r-in"><span><span class="va">fit2</span> <span class="op">&lt;-</span> <span class="fu"><a href="nlmixr2.html">nlmixr</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est<span class="op">=</span><span class="st">"nls"</span>, <span class="fu">nlsControl</span><span class="op">(</span>algorithm<span class="op">=</span><span class="st">"port"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of nls model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate jacobian</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(f)/∂(θ)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in nls gradient...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in nls gradient...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in nls pred-only...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of full model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 5952</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2296</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co"># You can access the underlying nls object with `$nls`</span></span></span>
+<span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nls</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Nonlinear regression model</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   model: 0 ~ nlmixr2est::.nlmixrNlsFunValGrad(DV, tka, tcl, tv)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    data: nlmixr2est::.nlmixrNlsData()</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     tka     tcl      tv </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -1.0097 -0.6696  1.0423 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  residual sum-of-squares: 249.7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Algorithm "port", convergence message: relative convergence (4)</span>
+<span class="r-in"><span><span class="co"># }</span></span></span>
+</code></pre></div>
+    </div>
   </main><aside class="col-md-3"><nav id="toc"><h2>On this page</h2>
     </nav></aside></div>
 

@@ -31,6 +31,9 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/boxCox.html</loc>
   </url>
   <url>
@@ -40,22 +43,40 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-foceiPreProcessData.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc>
   </url>
   <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFun.html</loc>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFunC.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlminbFunC.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsData.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFun.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrOptimFunC.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc>
@@ -85,7 +106,19 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html</loc>
@@ -199,6 +232,9 @@
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc>
   </url>
   <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc>
+  </url>
+  <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc>
   </url>
   <url>
@@ -233,6 +269,9 @@
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/tableControl.html</loc>
+  </url>
+  <url>
+    <loc>https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.html</loc>
   </url>
   <url>
     <loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcNameDataCmts.html</loc>
