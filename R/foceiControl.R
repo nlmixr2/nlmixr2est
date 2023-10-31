@@ -1115,16 +1115,22 @@ foceiControl <- function(sigdig = 3, #
     addProp <- match.arg(addProp)
   }
   checkmate::assertLogical(compress, any.missing=FALSE, len=1)
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
   if (!is.null(.xtra$genRxControl)) {
     genRxControl <- .xtra$genRxControl
   } else {
     genRxControl <- FALSE
     if (is.null(rxControl)) {
       rxControl <- rxode2::rxControl(sigdig=sigdig,
-                                     maxsteps=500000L)
+                                     maxsteps=500000L,
+                                     envir=.env)
       genRxControl <- TRUE
     } else if (is.list(rxControl)) {
       rxControl <- do.call(rxode2::rxControl, rxControl)
+      rxControl$envir <- .env
     }
     if (!inherits(rxControl, "rxControl")) {
       stop("rxControl needs to be ode solving options from rxode2::rxControl()",

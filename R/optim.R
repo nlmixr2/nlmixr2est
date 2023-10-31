@@ -241,16 +241,21 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl
   }
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig)
+      rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4, envir=.env)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
     rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

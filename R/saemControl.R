@@ -242,12 +242,17 @@ saemControl <- function(seed = 99,
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
   if (is.null(rxControl)) {
-    rxControl <- rxode2::rxControl(sigdig=sigdig)
+    rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
     rxControl <- do.call(rxode2::rxControl, rxControl)
+    rxControl$envir=.env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
