@@ -97,20 +97,27 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   .ctl <- control
   class(.ctl) <- NULL
   .ctl <- .ctl[[1]]
-  if (is.null(.ctl)) .ctl <- rxControl()
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
+  if (is.null(.ctl)) .ctl <- rxControl(envir=.env)
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) {
     .ctl <- do.call(rxode2::rxControl, .ctl)
+    .ctl$envir <- .env
   }
   if (!inherits(.ctl, "rxControl")) {
     .ctl <- .ctl$rxControl
     if (!inherits(.ctl, "rxControl")) {
       .minfo(paste0("invalid control for `est=\"", class(control)[1], "\"`, using default"))
-      .ctl <- rxode2::rxControl()
+      .ctl <- rxode2::rxControl(envir=.env)
     } else {
       .ctl <- do.call(rxode2::rxControl, .ctl)
+      .ctl$envir <- .env
     }
   } else {
     .ctl <- do.call(rxode2::rxControl, .ctl)
+    .ctl$envir <- .env
   }
   .ctl
 }

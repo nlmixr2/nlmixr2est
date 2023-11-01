@@ -3,11 +3,15 @@
   if (exists("control", envir=env)) {
     .rxControl <- get("control", envir=env)
   }
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
   if (!inherits(.rxControl, "rxControl")) {
     .rxControl <- try(.rxControl$rxControl)
     if (!inherits(.rxControl, "rxControl")) {
       .minfo("using default solving options `rxode2::rxControl()`")
-      .rxControl <- rxode2::rxControl()
+      .rxControl <- rxode2::rxControl(envir=.env)
     }
   }
   .isPred <- FALSE
@@ -123,10 +127,19 @@ nlmixr2Est.predict <- function(env, ...) {
 
 #' @export
 predict.nlmixr2FitCore <- function(object, ...) {
-  .both <- .getControlFromDots(rxode2::rxControl(), ...)
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
+  .both <- .getControlFromDots(rxode2::rxControl(envir=.env), ...)
   .both$ctl$omega <- NA
   .both$ctl$sigma <- NA
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  .rxControl$envir <- .env
   if (inherits(.both$rest$newdata, "data.frame")) {
     nlmixr2(object=object, data=.both$rest$newdata,
             est="rxSolve", control=.rxControl)
@@ -137,8 +150,13 @@ predict.nlmixr2FitCore <- function(object, ...) {
 
 #' @export
 simulate.nlmixr2FitCore <- function(object, ...) {
-  .both <- .getControlFromDots(rxode2::rxControl(), ...)
+  .env <- .nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
+  .both <- .getControlFromDots(rxode2::rxControl(envir=.env), ...)
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  .rxControl$envir <- .env
   if (inherits(.both$rest$newdata, "data.frame")) {
     nlmixr2(object=object, data=.both$rest$newdata,
             est="rxSolve", control=.rxControl)

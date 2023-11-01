@@ -337,6 +337,16 @@
 
 #' @export
 `$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
+  if (rxode2parse::.udfEnvLockIfExists(obj)) {
+    # If locked unlock when exiting
+    on.exit(rxode2parse::.udfEnvLock(FALSE))
+  } else if (!rxode2parse::.udfEnvLock(NULL)) {
+    ## unlocked, look for object in parent frame until global or empty environment
+    if (rxode2parse::.udfEnvLockIfExists(obj, parent.frame(1))) {
+      # if locked by this, unlock when exiting
+      on.exit(rxode2parse::.udfEnvLock(FALSE))
+    }
+  }
   .env <- obj
   .arg <- .nmObjBackward[arg]
   if (is.na(.arg)) .arg <- arg
@@ -351,6 +361,16 @@
 
 #' @export
 `$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
+  if (rxode2parse::.udfEnvLockIfExists(obj)) {
+    # If locked unlock when exiting
+    on.exit(rxode2parse::.udfEnvLock(FALSE))
+  } else if (!rxode2parse::.udfEnvLock(NULL)) {
+    ## unlocked, look for object in parent frame until global or empty environment
+    if (rxode2parse::.udfEnvLockIfExists(obj, parent.frame(1))) {
+      # if locked by this, unlock when exiting
+      on.exit(rxode2parse::.udfEnvLock(FALSE))
+    }
+  }
   .ret <- obj[[arg]]
   if (arg == "md5") {
     return(.nlmixr2Md5(obj))

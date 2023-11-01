@@ -252,7 +252,7 @@ saemControl <- function(seed = 99,
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
     rxControl <- do.call(rxode2::rxControl, rxControl)
-    rxControl$envir=.env
+    rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }
