@@ -152,11 +152,6 @@
     .env$lower <- rep(-Inf, length(.p))
   }
   rxode2parse::.udfEnvSet(.ctl$rxControl$envir)
-  .env <- .nlmixrEvalEnv$envir
-  if (!is.environment(.env)) {
-    .env <- parent.frame(1)
-  }
-
   .Call(`_nlmixr2est_nlmPrintHeader`)
   .env
 }
