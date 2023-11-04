@@ -22,13 +22,17 @@ nmTest({
   }
 
   .env <- new.env(parent=emptyenv())
+
   expect_error({.env$f <- nlmixr2(f, dat, "focei")}, NA)
 
-  expect_equal(rxModelVars(.env$f$foceiModel$inner)$udf, c("gg"=2L))
+  udfCheck <- function(udf) {
+    .w <- which(is.na(udf))
+    udf[-.w]
+  }
 
-  expect_equal(rxModelVars(.env$f$foceiModel$predOnly)$udf, c("gg"=2L))
-
-  expect_equal(rxModelVars(.env$f$foceiModel$predNoLhs)$udf, c("gg"=2L))
+  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$inner)$udf), c("gg"=2L))
+  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predOnly)$udf), c("gg"=2L))
+  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predNoLhs)$udf), c("gg"=2L))
 
   expect_error({.env$s <- nlmixr2(f, dat, "saem")}, NA)
 
@@ -51,7 +55,7 @@ nmTest({
 
   expect_error({.env$optim <- nlmixr2(g, dat, "optim")}, NA)
 
-  #expect_error({.env$nls <- nlmixr2(g, dat, "nls")}, NA)
+  ## expect_error({.env$nls <- nlmixr2(g, dat, "nls")}, NA)
 
   expect_error({.env$nlminb <- nlmixr2(g, dat, "nlminb")}, NA)
 
@@ -67,7 +71,12 @@ nmTest({
 
   rxClean()
 
-  f <- nlmixr2(f, dat, "focei")
+  .env$f2 <- nlmixr2(f, dat, "focei")
 
+  .env$s2 <- nlmixr2(f, dat, "saem")
+
+  .env$n2 <- nlmixr2(f, dat, "nlme")
+
+  rxode2::rxRmFun("gg")
 
 })

@@ -125,10 +125,6 @@ bobyqaControl <- function(npt=NULL,
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
 
-  .env <- .nlmixrEvalEnv$envir
-  if (!is.environment(.env)) {
-    .env <- parent.frame(1)
-  }
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -136,15 +132,14 @@ bobyqaControl <- function(npt=NULL,
   }
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
-      rxControl <- rxode2::rxControl(sigdig=sigdig, envir=.env)
+      rxControl <- rxode2::rxControl(sigdig=sigdig)
     } else {
-      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4, envir=.env)
+      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
   } else if (is.list(rxControl)) {
     rxControl <- do.call(rxode2::rxControl, rxControl)
-    rxControl$envir <- .env
   } else {
     stop("solving options 'rxControl' needs to be generated from 'rxode2::rxControl'", call=FALSE)
   }

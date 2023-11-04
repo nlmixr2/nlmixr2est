@@ -151,7 +151,6 @@
   if (is.null(.env$lower)) {
     .env$lower <- rep(-Inf, length(.p))
   }
-  rxode2parse::.udfEnvSet(.ctl$rxControl$envir)
   .Call(`_nlmixr2est_nlmPrintHeader`)
   .env
 }
@@ -164,7 +163,7 @@
 #' @keywords internal
 .nlmFreeEnv <- function() {
  .Call(`_nlmixr2est_nlmFree`)
-    rxode2::rxSolveFree()
+ rxode2::rxSolveFree()
 }
 #' Finalizes output list
 #'

@@ -3,15 +3,11 @@
   if (exists("control", envir=env)) {
     .rxControl <- get("control", envir=env)
   }
-  .env <- .nlmixrEvalEnv$envir
-  if (!is.environment(.env)) {
-    .env <- parent.frame(1)
-  }
   if (!inherits(.rxControl, "rxControl")) {
     .rxControl <- try(.rxControl$rxControl)
     if (!inherits(.rxControl, "rxControl")) {
       .minfo("using default solving options `rxode2::rxControl()`")
-      .rxControl <- rxode2::rxControl(envir=.env)
+      .rxControl <- rxode2::rxControl()
     }
   }
   .isPred <- FALSE
