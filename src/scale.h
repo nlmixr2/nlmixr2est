@@ -610,6 +610,7 @@ void scalePrintGrad(scaling *scale, double *gr, int type) {
 }
 
 RObject scaleParHisDf(scaling *scale) {
+  if (scale->iterType.size() == 0)  return R_NilValue;
   CharacterVector dfNames(3+scale->thetaNames.size());
   dfNames[0] = "iter";
   dfNames[1] = "type";

@@ -754,9 +754,12 @@ RObject nlmSolveGradHess(arma::vec &theta) {
 //[[Rcpp::export]]
 RObject nlmSolveSwitch(arma::vec &theta) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  NumericVector ret;
   switch(nlmOp.solveType) {
   case solveType_pred:
-    return wrap(nlmSolveR(theta));
+    ret = wrap(nlmSolveR(theta));
+    scalePrintFun(&(nlmOp.scale), &theta[0], ret[0]);
+    return ret;
   case solveType_grad:
     return nlmSolveGradR(theta);
   case solveType_hess:
