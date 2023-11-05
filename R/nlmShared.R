@@ -163,7 +163,7 @@
 #' @keywords internal
 .nlmFreeEnv <- function() {
  .Call(`_nlmixr2est_nlmFree`)
-    rxode2::rxSolveFree()
+ rxode2::rxSolveFree()
 }
 #' Finalizes output list
 #'

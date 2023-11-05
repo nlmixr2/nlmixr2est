@@ -134,6 +134,7 @@ lbfgsb3cControl <- function(trace=0,
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl
   }
+
   if (is.null(rxControl)) {
     if (!is.null(sigdig)) {
       rxControl <- rxode2::rxControl(sigdig=sigdig)

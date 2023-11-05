@@ -89,6 +89,7 @@ nmObjGet.ui <- nmObjGet.finalUi
 #' @keywords internal
 #' @export
 nmObjGetData <- function(x, ...) {
+  # need to assign environment correctly for UDF
   if (!inherits(x, "nmObjGetData")) {
     stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
   }

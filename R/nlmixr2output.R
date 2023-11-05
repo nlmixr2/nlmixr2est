@@ -337,6 +337,7 @@
 
 #' @export
 `$.nlmixr2FitCore` <- function(obj, arg, exact = FALSE) {
+  rxode2parse::.udfEnvSet(parent.frame(1))
   .env <- obj
   .arg <- .nmObjBackward[arg]
   if (is.na(.arg)) .arg <- arg
@@ -351,6 +352,7 @@
 
 #' @export
 `$.nlmixr2FitData` <- function(obj, arg, exact = FALSE) {
+  rxode2parse::.udfEnvSet(parent.frame(1))
   .ret <- obj[[arg]]
   if (arg == "md5") {
     return(.nlmixr2Md5(obj))

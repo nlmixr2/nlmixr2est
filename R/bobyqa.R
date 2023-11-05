@@ -125,6 +125,7 @@ bobyqaControl <- function(npt=NULL,
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
 
+
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
     .genRxControl <- .xtra$genRxControl
