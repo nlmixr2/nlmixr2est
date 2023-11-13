@@ -56,6 +56,7 @@
 <li><p>New estimation methods from the <code>minqa</code> package: “bobyqa”, “uobyqa” and “newuoa” have been added to estimate population only likelihoods. These methods returns a standardized <code>nlmixr2</code> fit.</p></li>
 <li><p>New estimation method “lbfgsb3c” to estimate population only likelihoods. This returns a standardized <code>nlmixr2</code> fit.</p></li>
 <li><p>New estimation method “n1qn1” to estimate population only likelihoods. This returns a standardized <code>nlmixr2</code> fit.</p></li>
+<li><p>Added new feature for <code><a href="../reference/vpcSim.html">vpcSim()</a></code> where a minimum number of subjects are simulated from the model when trying to fill in ODEs that were not solved successfully. By default this is <code>10</code>. This also works-around a bug when there is only one subject simulated and the <code>data.frame</code> has a slightly different output.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
