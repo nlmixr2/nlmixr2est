@@ -1,4 +1,3 @@
-
 nmTest({
 
   test_that("nlm makes sense", {

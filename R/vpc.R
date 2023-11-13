@@ -98,6 +98,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .mx <- max(.sim$sim.id)
     .si$nsim <- n - .mx
     .sim2 <- do.call(rxode2::rxSolve, .si)
+    if (!any(names(.sim2) == "sim.id")) .sim2$sim.id <- 1
     .sim2$sim.id <- .sim2$sim.id + .mx
     .sim <- rbind(.sim, .sim2)
     .w <- which(is.na(.sim$ipred))
