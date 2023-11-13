@@ -30,6 +30,12 @@
 - New estimation method "n1qn1" to estimate population only
   likelihoods.  This returns a standardized `nlmixr2` fit.
 
+- Added new feature for `vpcSim()` where a minimum number of subjects
+  are simulated from the model when trying to fill in ODEs that were
+  not solved successfully.  By default this is `10`.  This also
+  works-around a bug when there is only one subject simulated and the
+  `data.frame` has a slightly different output.
+
 ## Breaking changes
 
 - Removed `fit$saemTransformedData` since it isn't actually used in

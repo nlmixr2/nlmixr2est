@@ -45,8 +45,14 @@
 #'
 #' }
 vpcSim <- function(object, ..., keep=NULL, n=300,
-                   pred=FALSE, seed=1009, nretry=50,
+                   pred=FALSE, seed=1009, nretry=50, minN=10,
                    normRelated=TRUE) {
+  checkmate::assertIntegerish(minN, len=1, any.missing=FALSE, lower=2)
+  checkmate::assertLogical(pred, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(nretry, len=1, any.missing=FALSE, lower=0)
+  checkmate::assertLogical(normRelated, len=1, any.missing=FALSE)
+  checkmate::assertCharacter(keep, null.ok=TRUE, pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
+  checkmate::assertIntegerish(seed)
   assignInMyNamespace(".finalUiCompressed", FALSE)
   on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
   set.seed(seed)
@@ -97,8 +103,21 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .sim$sim.id <- as.integer(factor(.sim$sim.id))
     .mx <- max(.sim$sim.id)
     .si$nsim <- n - .mx
+    .adjust <- FALSE
+    if (.si$nsim < minN) {
+      .si$nsim <- minN
+      .adjust <- TRUE
+    }
     .sim2 <- do.call(rxode2::rxSolve, .si)
-    if (!any(names(.sim2) == "sim.id")) .sim2$sim.id <- 1
+    if (.adjust) {
+      # Select simulations without NA ipreds in them
+      .w <- which(is.na(.sim2$ipred))
+      .simIds <- unique(.sim2$sim.id[.w])
+      .allSimIds <- unique(.sim2$sim.id)
+      .simIds <- .allSimIds[!(.allSimIds %in% .simIds)]
+      .simIds <- .simIds[seq_len(min(n - .mx, length(.simIds)))]
+      .sim2 <- .sim2[.sim2$sim.id %in% .simIds, ]
+    }
     .sim2$sim.id <- .sim2$sim.id + .mx
     .sim <- rbind(.sim, .sim2)
     .w <- which(is.na(.sim$ipred))
