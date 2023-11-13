@@ -966,6 +966,10 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     .len0 <- length(env$model$inner$state)
     .len2 <- .len0 - .len
     if (.len2 > 0) {
+      .env <- .nlmixrEvalEnv$envir
+      if (!is.environment(.env)) {
+        .env <- parent.frame(1)
+      }
       .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
       rxode2::rxAssignControlValue(ui, "rxControl", rxode2::rxControlUpdateSens(.rxControl, .len2, .len0))
     }
@@ -990,6 +994,10 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
       }
     }, integer(1), USE.NAMES=FALSE))
     if (.maxLl > 0) {
+      .env <- .nlmixrEvalEnv$envir
+      if (!is.environment(.env)) {
+        .env <- parent.frame(1)
+      }
       .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
       .rxControl$nLlikAlloc <- .maxLl
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
@@ -1307,7 +1315,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @export
-.foceiPreProcessData <- function(data, env, ui, rxControl=rxode2::rxControl()) {
+.foceiPreProcessData <- function(data, env, ui, rxControl=NULL) {
+  if (is.null(rxControl)) {
+    .env <- .nlmixrEvalEnv$envir
+    if (!is.environment(.env)) {
+      .env <- parent.frame(1)
+    }
+    rxControl <- rxControl()
+  }
   env$origData <- as.data.frame(data)
   data <- env$origData
   .covNames <- ui$covariates

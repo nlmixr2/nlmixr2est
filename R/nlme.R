@@ -75,7 +75,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     if (is.null(sigdig)) {
       rxControl <- rxode2::rxControl(sigdig=sigdig)
     } else {
-        rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
+      rxControl <- rxode2::rxControl(atol=1e-4, rtol=1e-4)
     }
     .genRxControl <- TRUE
   } else if (inherits(rxControl, "rxControl")) {
