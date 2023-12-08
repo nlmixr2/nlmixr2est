@@ -1,5 +1,6 @@
 nmTest({
-
+  rxode2::rxUnloadAll()
+  gc()
   # M2 all observations
 
   dat <- Wang2007

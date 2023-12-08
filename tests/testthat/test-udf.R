@@ -1,5 +1,8 @@
 nmTest({
 
+  rxode2::rxUnloadAll()
+  gc()
+
   dat <- Wang2007
   dat$DV <- dat$Y
 
