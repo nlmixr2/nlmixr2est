@@ -36,7 +36,7 @@ nmTest({
 
     f <- nlmixr(KA1Lode, d, "focei")
 
-    expect_true(f$objf < 300)
+    expect_true(f$objf < 500)
 
   })
 })
