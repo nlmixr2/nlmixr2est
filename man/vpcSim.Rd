@@ -12,6 +12,7 @@ vpcSim(
   pred = FALSE,
   seed = 1009,
   nretry = 50,
+  minN = 10,
   normRelated = TRUE
 )
 }

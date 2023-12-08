@@ -1,5 +1,5 @@
 #' @export
-model.nlmixr2FitCore <- function(x, ..., append = FALSE,
+model.nlmixr2FitCore <- function(x, ..., append = NULL,
                                  auto = getOption("rxode2.autoVarPiping", TRUE),
                                  envir = parent.frame()) {
   .nlmixr2savePipe(x)

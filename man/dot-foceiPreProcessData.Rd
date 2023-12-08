@@ -4,7 +4,7 @@
 \alias{.foceiPreProcessData}
 \title{This function process the data for use in focei}
 \usage{
-.foceiPreProcessData(data, env, ui, rxControl = rxode2::rxControl())
+.foceiPreProcessData(data, env, ui, rxControl = NULL)
 }
 \arguments{
 \item{data}{Input dataset}
