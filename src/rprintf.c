@@ -46,7 +46,7 @@ void F77_SUB(rprintf)(char* msg) {
 }
 
 void F77_SUB(rprintflen)(char* msg, int *i) {
-  Rprintf("%.%s,",*i,msg);
+  Rprintf("%.*s,",*i, msg);
   Rprintf("\n");
 }
 
