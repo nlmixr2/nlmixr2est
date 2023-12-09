@@ -10,7 +10,7 @@
     
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.1.8.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.2.0</small>
 
     
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -45,9 +45,9 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="2.2.0" id="nlmixr2est-220">nlmixr2est 2.2.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-220"></a></h2>
 <div class="section level3">
-<h3 id="new-features-development-version">New Features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
+<h3 id="new-features-2-2-0">New Features<a class="anchor" aria-label="anchor" href="#new-features-2-2-0"></a></h3>
 <ul><li><p>Algebraic mu referencing has been implemented in <code>nlme</code> and <code>saem</code>.</p></li>
 <li><p>New estimation method “nlm” has been added to estimate population only likelihoods using <code><a href="https://rdrr.io/r/stats/nlm.html" class="external-link">stats::nlm</a></code> and possibly return a standardized <code>nlmixr2</code> fit.</p></li>
 <li><p>New estimation method “nls” has been added to estimate population only problems. This uses <code>minpack.lm::nlsNM</code> by default if present, or the <code><a href="https://rdrr.io/r/stats/nls.html" class="external-link">stats::nls</a></code></p></li>
@@ -59,19 +59,19 @@
 <li><p>Added new feature for <code><a href="../reference/vpcSim.html">vpcSim()</a></code> where a minimum number of subjects are simulated from the model when trying to fill in ODEs that were not solved successfully. By default this is <code>10</code>. This also works-around a bug when there is only one subject simulated and the <code>data.frame</code> has a slightly different output.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="breaking-changes-development-version">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-development-version"></a></h3>
+<h3 id="breaking-changes-2-2-0">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-2-2-0"></a></h3>
 <ul><li><p>Removed <code>fit$saemTransformedData</code> since it isn’t actually used in <code>saem</code> anymore (but will break anyone’s code who is using it)</p></li>
 <li><p>Now the internal function <code><a href="../reference/dot-foceiPreProcessData.html">.foceiPreProcessData()</a></code> requires the rxode2 control <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> because some of the new steady state lag features need to translate the data differently based on <code><a href="https://nlmixr2.github.io/rxode2/reference/rxSolve.html" class="external-link">rxControl()</a></code> options.</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-development-version">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<h3 id="bug-fixes-2-2-0">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-2-2-0"></a></h3>
 <ul><li><p>Printing models with correlated omega values and omega values fixed to zero no longer fails (<a href="https://github.com/nlmixr2/nlmixr2est/issues/359" class="external-link">#359</a>)</p></li>
 <li><p>Add back values for $parHistData (<a href="https://github.com/nlmixr2/nlmixr2est/issues/368" class="external-link">#368</a>)</p></li>
 <li><p>This requires a new <code>rxode2</code> which will fix multiple endpoint issues observed (<a href="https://github.com/nlmixr2/nlmixr2est/issues/394" class="external-link">#394</a>)</p></li>
 <li><p>Manual back-transformed values in <code>$parFixed</code> are now displaying correctly and are calculated based on the confidence interval in the control instead of 95% confidence no matter what (<a href="https://github.com/nlmixr2/nlmixr2est/issues/397" class="external-link">#397</a>)</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="other-changes-development-version">Other changes<a class="anchor" aria-label="anchor" href="#other-changes-development-version"></a></h3>
+<h3 id="other-changes-2-2-0">Other changes<a class="anchor" aria-label="anchor" href="#other-changes-2-2-0"></a></h3>
 <ul><li>An <code><a href="https://nlmixr2.github.io/rxode2/reference/as.rxUi.html" class="external-link">as.rxUi()</a></code> method was added for fit models (<a href="https://github.com/nlmixr2/nlmixr2est/issues/377" class="external-link">#377</a>)</li>
 </ul></div>
 </div>
