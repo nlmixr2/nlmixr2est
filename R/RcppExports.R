@@ -152,10 +152,6 @@ nlmUnscalePar <- function(p) {
     .Call(`_nlmixr2est_nlmUnscalePar`, p)
 }
 
-nlmSolveNlm <- function(id) {
-    invisible(.Call(`_nlmixr2est_nlmSolveNlm`, id))
-}
-
 nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
 }

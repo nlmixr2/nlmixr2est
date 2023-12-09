@@ -303,7 +303,8 @@ getValidNlmixrCtl.nls <- function(control) {
 
 #' A surrogate function for nls to call for ode solving
 #'
-#' @param pars Parameters that will be estimated
+#' @param DV dependent variable
+#' @param ... Other parameters fed to prediction function
 #' @return Predictions
 #' @details
 #' This is an internal function and should not be called directly.
@@ -900,7 +901,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret <- .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
                              hessianCov=TRUE)
     .ret$sd <- sd(.ret$fvec)
-    .ret$logLik <- sum(dnorm(.ret$fvec, log=TRUE))
+    .ret$logLik <- sum(stats::dnorm(.ret$fvec, log=TRUE))
   } else {
     .nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(

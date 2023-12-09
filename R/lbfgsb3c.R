@@ -3,6 +3,7 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams lbfgsb3c::lbfgsb3c
+#' @inheritParams nlmControl
 #'
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit

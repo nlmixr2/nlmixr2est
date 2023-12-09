@@ -10,7 +10,9 @@
 .nlmixrNlsFunValGrad(DV, ...)
 }
 \arguments{
-\item{pars}{Parameters that will be estimated}
+\item{DV}{dependent variable}
+
+\item{...}{Other parameters fed to prediction function}
 }
 \value{
 Predictions

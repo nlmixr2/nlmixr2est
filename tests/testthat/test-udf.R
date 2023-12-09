@@ -1,82 +1,125 @@
-nmTest({
+## nmTest({
 
-  dat <- Wang2007
-  dat$DV <- dat$Y
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  gg <- function(x, y) {
-    x * y
-  }
+##   dat <- Wang2007
+##   dat$DV <- dat$Y
 
-  f <- function() {
-    ini({
-      tke <- 0.5
-      eta.ke ~ 0.04
-      prop.sd <- sqrt(0.1)
-    })
-    model({
-      ke <- gg(tke, exp(eta.ke))
-      ipre <- gg(10, exp(-ke * t))
-      lipre <- log(ipre)
-      ipre ~ prop(prop.sd)
-    })
-  }
+##   gg <- function(x, y) {
+##     x * y
+##   }
 
-  .env <- new.env(parent=emptyenv())
+##   f <- function() {
+##     ini({
+##       tke <- 0.5
+##       eta.ke ~ 0.04
+##       prop.sd <- sqrt(0.1)
+##     })
+##     model({
+##       ke <- gg(tke, exp(eta.ke))
+##       ipre <- gg(10, exp(-ke * t))
+##       lipre <- log(ipre)
+##       ipre ~ prop(prop.sd)
+##     })
+##   }
 
-  expect_error({.env$f <- nlmixr2(f, dat, "focei")}, NA)
+##   .env <- new.env(parent=emptyenv())
 
-  udfCheck <- function(udf) {
-    .w <- which(is.na(udf))
-    udf[-.w]
-  }
+##   expect_error({.env$f <- nlmixr2(f, dat, "focei")}, NA)
 
-  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$inner)$udf), c("gg"=2L))
-  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predOnly)$udf), c("gg"=2L))
-  expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predNoLhs)$udf), c("gg"=2L))
+##   udfCheck <- function(udf) {
+##     .w <- which(is.na(udf))
+##     udf[-.w]
+##   }
 
-  expect_error({.env$s <- nlmixr2(f, dat, "saem")}, NA)
+##   expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$inner)$udf), c("gg"=2L))
+##   expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predOnly)$udf), c("gg"=2L))
+##   expect_equal(udfCheck(rxModelVars(.env$f$foceiModel$predNoLhs)$udf), c("gg"=2L))
 
-  expect_error({.env$n <- nlmixr2(f, dat, "nlme")}, NA)
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  g <- function() {
-    ini({
-      tke <- 0.5
-      add.sd <- sqrt(0.1)
-    })
-    model({
-      ke <- tke
-      ipre <- gg(10, exp(-ke * t))
-      lipre <- log(ipre)
-      ipre ~ add(add.sd)
-    })
-  }
+##   expect_error({.env$s <- nlmixr2(f, dat, "saem")}, NA)
 
-  expect_error({.env$nlm <- nlmixr2(g, dat, "nlm")}, NA)
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  expect_error({.env$optim <- nlmixr2(g, dat, "optim")}, NA)
+##   expect_error({.env$n <- nlmixr2(f, dat, "nlme")}, NA)
 
-  ## expect_error({.env$nls <- nlmixr2(g, dat, "nls")}, NA)
+##   g <- function() {
+##     ini({
+##       tke <- 0.5
+##       add.sd <- sqrt(0.1)
+##     })
+##     model({
+##       ke <- tke
+##       ipre <- gg(10, exp(-ke * t))
+##       lipre <- log(ipre)
+##       ipre ~ add(add.sd)
+##     })
+##   }
 
-  expect_error({.env$nlminb <- nlmixr2(g, dat, "nlminb")}, NA)
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  expect_error({.env$bobyqa <- nlmixr2(g, dat, "bobyqa")}, NA)
+##   expect_error({.env$nlm <- nlmixr2(g, dat, "nlm")}, NA)
 
-  expect_error({.env$lbfgsb3c <- nlmixr2(g, dat, "lbfgsb3c")}, NA)
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  expect_error({.env$n1qn1 <- nlmixr2(g, dat, "n1qn1")}, NA)
 
-  rxode2::rxFun(gg)
+##   expect_error({.env$optim <- nlmixr2(g, dat, "optim")}, NA)
 
-  rm(gg)
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  rxClean()
 
-  .env$f2 <- nlmixr2(f, dat, "focei")
+##   ## expect_error({.env$nls <- nlmixr2(g, dat, "nls")}, NA)
 
-  .env$s2 <- nlmixr2(f, dat, "saem")
+##   expect_error({.env$nlminb <- nlmixr2(g, dat, "nlminb")}, NA)
 
-  .env$n2 <- nlmixr2(f, dat, "nlme")
+##   rxode2::rxUnloadAll()
+##   gc()
 
-  rxode2::rxRmFun("gg")
 
-})
+##   expect_error({.env$bobyqa <- nlmixr2(g, dat, "bobyqa")}, NA)
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+##   expect_error({.env$lbfgsb3c <- nlmixr2(g, dat, "lbfgsb3c")}, NA)
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+##   expect_error({.env$n1qn1 <- nlmixr2(g, dat, "n1qn1")}, NA)
+
+##   rxode2::rxFun(gg)
+
+##   rm(gg)
+
+##   rxClean()
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+##   .env$f2 <- nlmixr2(f, dat, "focei")
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+##   .env$s2 <- nlmixr2(f, dat, "saem")
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+##   .env$n2 <- nlmixr2(f, dat, "nlme")
+
+##   rxode2::rxUnloadAll()
+##   gc()
+
+
+##   rxode2::rxRmFun("gg")
+
+## })

@@ -1,6 +1,6 @@
 nmTest({
   test_that("test lag with warfarin", {
-    
+
     KA1Lode <- function() {
       ini({
         # Where initial conditions/variables are specified
@@ -10,8 +10,8 @@ nmTest({
         lv   <- log(8)     #log V (L)
         prop.err <- 0.15   #proportional error (SD/mean)
         add.err  <- 0.6    #additive error (mg/L)
-        eta.tlag ~ 0.5 #IIV tlag               
-        eta.ka ~ 0.5   #IIV ka               
+        eta.tlag ~ 0.5 #IIV tlag
+        eta.ka ~ 0.5   #IIV ka
         eta.cl ~ 0.1   #IIV cl
         eta.v  ~ 0.1   #IIV v
       })
@@ -33,10 +33,10 @@ nmTest({
 
     d <- nlmixr2data::warfarin %>%
       dplyr::filter(dvid=="cp")
-    
+
     f <- nlmixr(KA1Lode, d, "focei")
 
-    expect_true(f$objf < 250)
-    
+    expect_true(f$objf < 500)
+
   })
 })

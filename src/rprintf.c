@@ -15,8 +15,8 @@ int F77_SUB(basout)(int *io, int *lunit, char *string,long int nbcharacters){
   }
   if (string) {
     if (nbcharacters > 1) {
-          /* on linux , q=[] crashs with previous version 
-             in printf.f line 102 
+          /* on linux , q=[] crashs with previous version
+             in printf.f line 102
              call basout(io,lunit,'     []')
              if we do basout(io,lunit,'     []',7) it works ...
              temp workaround , we returns to old version with a allocation
@@ -37,23 +37,22 @@ int F77_SUB(basout)(int *io, int *lunit, char *string,long int nbcharacters){
     }
   } else Rprintf("\n");
   return 0;
-} 
-/*--------------------------------------------------------------------------*/ 
+}
+/*--------------------------------------------------------------------------*/
 
 void F77_SUB(rprintf)(char* msg) {
-  Rprintf(msg);
-  Rprintf("\n");
+  Rprintf("%s\n",msg);
+  //Rprintf("\n");
 }
 
 void F77_SUB(rprintflen)(char* msg, int *i) {
-  Rprintf("%.%s,",*i,msg);
+  Rprintf("%.*s,",*i, msg);
   Rprintf("\n");
 }
 
 // may be redundant
 void F77_SUB(rprintf2)(char* msg) {
-  Rprintf(msg);
-  Rprintf("\n");
+  Rprintf("%s\n", msg);
 }
 
 

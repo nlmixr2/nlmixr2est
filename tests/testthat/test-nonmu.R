@@ -28,17 +28,17 @@ nmTest({
     }
 
     fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
-    
+
     expect_error(fit$dataMergeInner, NA)
     expect_error(fit$fitMergeInner, NA)
-    
+
     tmp <- fit$dataMergeInner
-    
+
     # Should have llikObs
     expect_true("nlmixrLlikObs" %in% names(tmp))
-    
+
     expect_true(all(names(fit$etaSE) == c("ID", "eta.Vc")))
-    
+
     expect_true(all(names(fit$etaRSE) == c("ID", "rse(eta.Vc)%")))
 
   })
@@ -55,7 +55,7 @@ nmTest({
                     lapply(doses, function(x) {
                       ids <- dat %>%
                         dplyr::filter(DOSE == x) %>%
-                        dplyr::summarize(ids=unique(ID)) %>%
+                        dplyr::reframe(ids=unique(ID)) %>%
                         dplyr::pull()
                       ids <- ids[seq(1, nid)]
                       dat %>%
@@ -96,12 +96,12 @@ nmTest({
 
     .llikObs <- c(cmt2fit.logn$env$llikObs, 10)
     assign("llikObs", .llikObs, envir=cmt2fit.logn$env)
-    
+
     expect_warning(cmt2fit.logn$dataMergeLeft)
     expect_warning(cmt2fit.logn$fitMergeLeft)
-    
+
     .dat <- suppressWarnings(cmt2fit.logn$dataMergeLeft)
     expect_false(any(names(.dat) == "nlmixrLlikObs"))
- 
+
   })
 })

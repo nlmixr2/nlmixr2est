@@ -3,6 +3,7 @@
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams n1qn1::n1qn1
+#' @inheritParams nlmControl
 #'
 #' @param returnN1qn1 return the n1qn1 output instead of the nlmixr2
 #'   fit

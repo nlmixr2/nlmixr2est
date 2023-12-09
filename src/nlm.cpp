@@ -297,9 +297,6 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-//[[Rcpp::export]]
-
-
 void nlmSolveNlm(int id) {
   rx_solving_options *op = rx->op;
   rx_solving_options_ind *ind =  &(rx->subjects[id]);
