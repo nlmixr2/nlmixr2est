@@ -341,7 +341,7 @@
 #' exponential block (ie exp(theta)), then it is scaled on a
 #' linearly, that is:
 #'
-#'   \deqn{v_{scaled}}{Vscaled} = (\dqn{v_{current}-v_{init}}{Vcurrent-Vinit}) + scaleTo
+#'   \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{current}-v_{init}}{Vcurrent-Vinit}) + scaleTo
 #'
 #' Otherwise the parameter is scaled multiplicatively.
 #'
