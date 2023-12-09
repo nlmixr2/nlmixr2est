@@ -900,7 +900,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret <- .nlmFinalizeList(.env, .ret, par="par", printLine=TRUE,
                              hessianCov=TRUE)
     .ret$sd <- sd(.ret$fvec)
-    .ret$logLik <- sum(dnorm(.ret$fvec, log=TRUE))
+    .ret$logLik <- sum(stats::dnorm(.ret$fvec, log=TRUE))
   } else {
     .nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(

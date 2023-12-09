@@ -207,14 +207,14 @@ evaluations.}
 
     In general, all all scaling formula can be described by:
 
-    $v_{scaled} = (v_{unscaled}-C_{1})/C_{2}$
+    \deqn{v_{scaled} = (v_{unscaled}-C_{1})/C_{2}}{Vscaled = (Vunscaled-C1)/C2}
 
     Where
 
 
     The other data normalization approaches follow the following formula
 
-    $v_{scaled} = (v_{unscaled}-C_{1})/C_{2}$
+    \deqn{v_{scaled} = (v_{unscaled}-C_{1})/C_{2}}{Vscaled = Vunscaled-C1)/C2}
 
 \itemize{
 
@@ -222,40 +222,40 @@ evaluations.}
     The relative differences between the parameters are preserved
     with this approach and the constants are:
 
-    $C_{1} = (max(all unscaled values)+min(all unscaled values))/2$
+    \deqn{C_{1} = (max(all unscaled values)+min(all unscaled values))/2}{C1 = (max(all unscaled values)+min(all unscaled values))/2}
 
-    $C_{2} = (max(all unscaled values) - min(all unscaled values))/2$
+    \deqn{C_{2} = (max(all unscaled values) - min(all unscaled values))/2}{C2 = (max(all unscaled values) - min(all unscaled values))/2}
 
 
 \item \code{rescale} or min-max normalization. This rescales all
     parameters from (0 to 1).  As in the \code{rescale2} the
     relative differences are preserved.  In this approach:
 
-    $C_{1} = min(all unscaled values)$
+    \deqn{C_{1} = min(all unscaled values)}{C1 = min(all unscaled values)}
 
-    $C_{2} = max(all unscaled values) - min(all unscaled values)$
+    \deqn{C_{2} = max(all unscaled values) - min(all unscaled values)}{C2 = max(all unscaled values) - min(all unscaled values)}
 
 
 \item \code{mean} or mean normalization.  This rescales to center
     the parameters around the mean but the parameters are from 0
     to 1.  In this approach:
 
-    $C_{1} = mean(all unscaled values)$
+    \deqn{C_{1} = mean(all unscaled values)}{C1 = mean(all unscaled values)}
 
-    $C_{2} = max(all unscaled values) - min(all unscaled values)$
+    \deqn{C_{2} = max(all unscaled values) - min(all unscaled values)}{C2 = max(all unscaled values) - min(all unscaled values)}
 
 \item \code{std} or standardization.  This standardizes by the mean
      and standard deviation.  In this approach:
 
-    $C_{1} = mean(all unscaled values)$
+    \deqn{C_{1} = mean(all unscaled values)}{C1 = mean(all unscaled values)}
 
-    $C_{2} = sd(all unscaled values)$
+    \deqn{C_{2} = sd(all unscaled values)}{C2 = sd(all unscaled values)}
 
 \item \code{len} or unit length scaling.  This scales the
    parameters to the unit length.  For this approach we use the Euclidean length, that
    is:
 
-    $C_{1} = 0$
+    \deqn{C_{1} = 0}{C1 = 0}
 
     $C_{2} = sqrt(v_1^2 + v_2^2 + ... + v_n^2)$
 

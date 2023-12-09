@@ -405,16 +405,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// nlmSolveNlm
-void nlmSolveNlm(int id);
-RcppExport SEXP _nlmixr2est_nlmSolveNlm(SEXP idSEXP) {
-BEGIN_RCPP
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< int >::type id(idSEXP);
-    nlmSolveNlm(id);
-    return R_NilValue;
-END_RCPP
-}
 // nlmSolveR
 double nlmSolveR(arma::vec& theta);
 RcppExport SEXP _nlmixr2est_nlmSolveR(SEXP thetaSEXP) {

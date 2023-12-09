@@ -32,6 +32,9 @@ vpcSim(
 \item{nretry}{Number of times to retry the simulation if there is
 NA values in the simulation}
 
+\item{minN}{With retries, the minimum number of studies to
+restimulate (by default 10)}
+
 \item{normRelated}{should the VPC style simulation be for normal
 related variables only}
 }

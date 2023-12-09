@@ -11,6 +11,8 @@
 #'   NA values in the simulation
 #' @param normRelated should the VPC style simulation be for normal
 #'   related variables only
+#' @param minN With retries, the minimum number of studies to
+#'   restimulate (by default 10)
 #' @return data frame of the VPC simulation
 #' @author Matthew L. Fidler
 #' @export
