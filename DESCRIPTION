@@ -2,7 +2,7 @@ Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
     Routines
-Version: 2.1.8.9000
+Version: 2.2.0
 Authors@R: c(
     person("Matthew", "Fidler", , "matt.fidler@novartis.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
@@ -61,7 +61,7 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (>= 2.0.13),
+    rxode2 (>= 2.1.0),
     stats,
     symengine,
     utils
