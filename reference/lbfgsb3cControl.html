@@ -221,7 +221,7 @@ evaluations.</p></dd>
 <dt>scaleType</dt>
 <dd><p>The scaling scheme for nlmixr2.  The supported types are:</p>
 <ul><li><p><code>nlmixr2</code>  In this approach the scaling is performed by the following equation:</p>
-<p>$v_scaled = (v_current - v_init)*scaleC[i] + scaleTo$</p>
+<p>$$v_{scaled}$$ = ($$v_{current} - v_{init}$$)*scaleC[i] + scaleTo</p>
 <p>The <code>scaleTo</code> parameter is specified by the <code>normType</code>,
 and the scales are specified by <code>scaleC</code>.</p></li>
 <li><p><code>norm</code> This approach uses the simple scaling provided
@@ -231,14 +231,14 @@ normalization provided by <code>normType</code>, but rather uses
 multiplicative scaling to a constant provided by the <code>scaleTo</code>
 argument.</p>
 <p>In this case:</p>
-<p>$v_scaled = v_current/v_init*scaleTo$</p></li>
+<p>$$v_{scaled}$$ = $$v_{current}$$/$$v_{init}$$*scaleTo</p></li>
 <li><p><code>multAdd</code> This approach changes the scaling based on
 the parameter being specified.  If a parameter is defined in an
 exponential block (ie exp(theta)), then it is scaled on a
 linearly, that is:</p>
-<p>$v_scaled = (v_current-v_init) + scaleTo$</p>
+<p>$$v_{scaled}$$ = (v_current-v_initVcurrent-Vinit) + scaleTo</p>
 <p>Otherwise the parameter is scaled multiplicatively.</p>
-<p>$v_scaled = v_current/v_init*scaleTo$</p></li>
+<p>$$v_{scaled}$$ = $$v_{current}$$/$$v_{init}$$*scaleTo</p></li>
 </ul></dd>
 
 
@@ -454,7 +454,7 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            setup table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002007 0.032    0.013 2.219993</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002021 0.033    0.013 2.254979</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
