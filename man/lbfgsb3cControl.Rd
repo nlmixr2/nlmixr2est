@@ -174,7 +174,7 @@ evaluations.}
 \itemize{
 \item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
 
-   $v_{scaled} = (v_{current} - v_{init})*scaleC[i] + scaleTo$
+   \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{current} - v_{init}}{Vcurrent - Vinit})*scaleC[i] + scaleTo
 
 The \code{scaleTo} parameter is specified by the \code{normType},
 and the scales are specified by \code{scaleC}.
@@ -189,18 +189,18 @@ argument.
 
   In this case:
 
-  $v_{scaled} = v_{current}/v_{init}*scaleTo$
+  \deqn{v_{scaled}}{Vscaled} = \deqn{v_{current}}{Vcurrent}/\deqn{v_{init}}{Vinit}*scaleTo
 
 \item \code{multAdd} This approach changes the scaling based on
 the parameter being specified.  If a parameter is defined in an
 exponential block (ie exp(theta)), then it is scaled on a
 linearly, that is:
 
-  $v_{scaled} = (v_{current}-v_{init}) + scaleTo$
+  \deqn{v_{scaled}}{Vscaled} = (\dqn{v_{current}-v_{init}}{Vcurrent-Vinit}) + scaleTo
 
 Otherwise the parameter is scaled multiplicatively.
 
-   $v_{scaled} = v_{current}/v_{init}*scaleTo$
+   \deqn{v_{scaled}}{Vscaled} = \deqn{v_{current}}{Vcurrent}/\deqn{v_{init}}{Vinit}*scaleTo
 
 }}
 
