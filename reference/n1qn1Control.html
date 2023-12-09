@@ -159,45 +159,46 @@ evaluations.</p></dd>
     <a href="http://apmonitor.com/me575/uploads/Main/optimization_book.pdf" class="external-link">OptdesX</a>
     software manual.</p>
 <p>In general, all all scaling formula can be described by:</p>
-<p>v_scaled = (v_unscaled-C_1)/C_2</p>
+<p>$$v_{scaled}$$ = ($$v_{unscaled}-C_{1}$$)/$$C_{2}$$</p>
+
 <p>Where</p>
 
 <p>The other data normalization approaches follow the following formula</p>
-<p>v_scaled = (v_unscaled-C_1)/C_2;</p>
+<p>$$v_{scaled}$$ = ($$v_{unscaled}-C_{1}$$)/$$C_{2}$$</p>
 <ul><li><p><code>rescale2</code> This scales all parameters from (-1 to 1).
     The relative differences between the parameters are preserved
     with this approach and the constants are:</p>
-<p>C_1 = (max(all unscaled values)+min(all unscaled values))/2</p>
-<p>C_2 = (max(all unscaled values) - min(all unscaled values))/2</p></li>
+<p>$$C_{1}$$ = (max(all unscaled values)+min(all unscaled values))/2</p>
+<p>$$C_{2}$$ = (max(all unscaled values) - min(all unscaled values))/2</p></li>
 <li><p><code>rescale</code> or min-max normalization. This rescales all
     parameters from (0 to 1).  As in the <code>rescale2</code> the
     relative differences are preserved.  In this approach:</p>
-<p>C_1 = min(all unscaled values)</p>
-<p>C_2 = max(all unscaled values) - min(all unscaled values)</p></li>
+<p>$$C_{1}$$ = min(all unscaled values)</p>
+<p>$$C_{2}$$ = max(all unscaled values) - min(all unscaled values)</p></li>
 <li><p><code>mean</code> or mean normalization.  This rescales to center
     the parameters around the mean but the parameters are from 0
     to 1.  In this approach:</p>
-<p>C_1 = mean(all unscaled values)</p>
-<p>C_2 = max(all unscaled values) - min(all unscaled values)</p></li>
+<p>$$C_{1}$$ = mean(all unscaled values)</p>
+<p>$$C_{2}$$ = max(all unscaled values) - min(all unscaled values)</p></li>
 <li><p><code>std</code> or standardization.  This standardizes by the mean
      and standard deviation.  In this approach:</p>
-<p>C_1 = mean(all unscaled values)</p>
-<p>C_2 = sd(all unscaled values)</p></li>
+<p>$$C_{1}$$ = mean(all unscaled values)</p>
+<p>$$C_{2}$$ = sd(all unscaled values)</p></li>
 <li><p><code>len</code> or unit length scaling.  This scales the
    parameters to the unit length.  For this approach we use the Euclidean length, that
    is:</p>
-<p>C_1 = 0</p>
-<p>C_2 = sqrt(v_1^2 + v_2^2 + ... + v_n^2)</p></li>
+<p>$$C_{1}$$ = 0</p>
+<p>$$C_{2}$$ = $$\sqrt(v_1^2 + v_2^2 + \cdots + v_n^2)$$</p></li>
 <li><p><code>constant</code> which does not perform data normalization. That is</p>
-<p>C_1 = 0</p>
-<p>C_2 = 1</p></li>
+<p>$$C_{1}$$ = 0</p>
+<p>$$C_{2}$$ = 1</p></li>
 </ul></dd>
 
 
 <dt>scaleType</dt>
 <dd><p>The scaling scheme for nlmixr2.  The supported types are:</p>
 <ul><li><p><code>nlmixr2</code>  In this approach the scaling is performed by the following equation:</p>
-<p>v_scaled = (v_current - v_init)*scaleC[i] + scaleTo</p>
+<p>$v_scaled = (v_current - v_init)*scaleC[i] + scaleTo$</p>
 <p>The <code>scaleTo</code> parameter is specified by the <code>normType</code>,
 and the scales are specified by <code>scaleC</code>.</p></li>
 <li><p><code>norm</code> This approach uses the simple scaling provided
@@ -207,14 +208,14 @@ normalization provided by <code>normType</code>, but rather uses
 multiplicative scaling to a constant provided by the <code>scaleTo</code>
 argument.</p>
 <p>In this case:</p>
-<p>v_scaled = v_current/v_init*scaleTo</p></li>
+<p>$v_scaled = v_current/v_init*scaleTo$</p></li>
 <li><p><code>multAdd</code> This approach changes the scaling based on
 the parameter being specified.  If a parameter is defined in an
 exponential block (ie exp(theta)), then it is scaled on a
 linearly, that is:</p>
-<p>v_scaled = (v_current-v_init) + scaleTo</p>
+<p>$v_scaled = (v_current-v_init) + scaleTo$</p>
 <p>Otherwise the parameter is scaled multiplicatively.</p>
-<p>v_scaled = v_current/v_init*scaleTo</p></li>
+<p>$v_scaled = v_current/v_init*scaleTo$</p></li>
 </ul></dd>
 
 
@@ -256,6 +257,12 @@ linearly, that is:</p>
 By default this is 1.  When zero or below, no scaling is performed.</p></dd>
 
 
+<dt>gradTo</dt>
+<dd><p>this is the factor that the gradient is scaled to
+before optimizing.  This only works with
+scaleType="nlmixr2".</p></dd>
+
+
 <dt>rxControl</dt>
 <dd><p>`rxode2` ODE solving options during fitting, created with `rxControl()`</p></dd>
 
@@ -277,9 +284,9 @@ this is <code>FALSE</code>.</p></dd>
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).</p>
 <p>The combined1 error type can be described by the following equation:</p>
-<p>y = f + (a + b*f^c)*err</p>
+<p>$$y = f + (a + b\times f^c) \times \varepsilon$$</p>
 <p>The combined2 error model can be described by the following equation:</p>
-<p>y = f + sqrt(a^2 + b^2*(f^c)^2)*err</p>
+<p>$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$</p>
 <p>Where:</p>
 <p>- y represents the observed value</p>
 <p>- f represents the predicted value</p>
@@ -422,7 +429,7 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            setup table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002025 0.022    0.008 1.436975</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002182  0.02    0.008 1.411818</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

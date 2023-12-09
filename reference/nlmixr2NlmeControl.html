@@ -342,9 +342,9 @@ of `random`, `fixed`, `sens`, the nlme object is returned</p></dd>
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).</p>
 <p>The combined1 error type can be described by the following equation:</p>
-<p>y = f + (a + b*f^c)*err</p>
+<p>$$y = f + (a + b\times f^c) \times \varepsilon$$</p>
 <p>The combined2 error model can be described by the following equation:</p>
-<p>y = f + sqrt(a^2 + b^2*(f^c)^2)*err</p>
+<p>$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$</p>
 <p>Where:</p>
 <p>- y represents the observed value</p>
 <p>- f represents the predicted value</p>
