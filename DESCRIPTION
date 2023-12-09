@@ -4,7 +4,7 @@ Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
     Routines
 Version: 2.2.0
 Authors@R: c(
-    person("Matthew", "Fidler", , "matt.fidler@novartis.com", role = c("aut", "cre"),
+    person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
     person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut"),
     person("Rik", "Schoemaker", , "rik.schoemaker@occams.com", role = "aut",
