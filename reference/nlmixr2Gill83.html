@@ -115,22 +115,56 @@ is acceptable before issuing a warning/error about the gradient estimates.</p></
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     
 
-<p>A data frame with the following columns:</p><ul><li><p>infoGradient evaluation/forward difference information</p></li>
-<li><p>hfForward difference final estimate</p></li>
-<li><p>dfDerivative estimate</p></li>
-<li><p>df22nd Derivative Estimate</p></li>
-<li><p>errError of the final estimate derivative</p></li>
-<li><p>aEpsAbsolute difference for forward numerical differences</p></li>
-<li><p>rEpsRelative Difference for backward numerical differences</p></li>
-<li><p>aEpsCAbsolute difference for central numerical differences</p></li>
-<li><p>rEpsCRelative difference for central numerical differences</p></li>
-</ul><p>The <code>info</code> returns one of the following:</p><ul><li><p>Not AssessedGradient wasn't assessed</p></li>
-<li><p>GoodSuccess in Estimating optimal forward difference interval</p></li>
-<li><p>High Grad ErrorLarge error; Derivative estimate error <code>fTol</code> or more of the derivative</p></li>
-<li><p>Constant GradFunction constant or nearly constant for this parameter</p></li>
-<li><p>Odd/Linear GradFunction odd or nearly linear, df = K, df2 ~ 0</p></li>
-<li><p>Grad changes quicklydf2 increases rapidly as h decreases</p></li>
-</ul></div>
+<p>A data frame with the following columns:</p>
+
+
+<p>- info Gradient evaluation/forward difference information</p>
+
+
+<p>- hf Forward difference final estimate</p>
+
+
+<p>- df Derivative estimate</p>
+
+
+<p>- df2 2nd Derivative Estimate</p>
+
+
+<p>- err Error of the final estimate derivative</p>
+
+
+<p>- aEps Absolute difference for forward numerical differences</p>
+
+
+<p>- rEps Relative Difference for backward numerical differences</p>
+
+
+<p>- aEpsC Absolute difference for central numerical differences</p>
+
+
+<p>- rEpsC Relative difference for central numerical differences</p>
+
+
+<p>The <code>info</code> returns one of the following:</p>
+
+
+<p>- "Not Assessed" Gradient wasn't assessed</p>
+
+
+<p>- "Good Success" in Estimating optimal forward difference interval</p>
+
+
+<p>- "High Grad Error" Large error; Derivative estimate error <code>fTol</code> or more of the derivative</p>
+
+
+<p>- "Constant Grad" Function constant or nearly constant for this parameter</p>
+
+
+<p>- "Odd/Linear Grad" Function odd or nearly linear, df = K, df2 ~ 0</p>
+
+
+<p>- "Grad changes quickly" df2 increases rapidly as h decreases</p>
+    </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
     <p>Matthew Fidler</p>
