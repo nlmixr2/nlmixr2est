@@ -9,27 +9,39 @@
 ##' @return
 ##'
 ##' A data frame with the following columns:
-##' \itemize{
-##' \item{info}{Gradient evaluation/forward difference information}
-##' \item{hf}{Forward difference final estimate}
-##' \item{df}{Derivative estimate}
-##' \item{df2}{2nd Derivative Estimate}
-##' \item{err}{Error of the final estimate derivative}
-##' \item{aEps}{Absolute difference for forward numerical differences}
-##' \item{rEps}{Relative Difference for backward numerical differences}
-##' \item{aEpsC}{Absolute difference for central numerical differences}
-##' \item{rEpsC}{Relative difference for central numerical differences}
-##' }
+##'
+##' - info Gradient evaluation/forward difference information
+##'
+##' - hf Forward difference final estimate
+##'
+##' - df Derivative estimate
+##'
+##' - df2 2nd Derivative Estimate
+##'
+##' - err Error of the final estimate derivative
+##'
+##' - aEps Absolute difference for forward numerical differences
+##'
+##' - rEps Relative Difference for backward numerical differences
+##'
+##' - aEpsC Absolute difference for central numerical differences
+##'
+##' - rEpsC Relative difference for central numerical differences
 ##'
 ##' The \code{info} returns one of the following:
-##' \itemize{
-##' \item{Not Assessed}{Gradient wasn't assessed}
-##' \item{Good}{Success in Estimating optimal forward difference interval}
-##' \item{High Grad Error}{Large error; Derivative estimate error \code{fTol} or more of the derivative}
-##' \item{Constant Grad}{Function constant or nearly constant for this parameter}
-##' \item{Odd/Linear Grad}{Function odd or nearly linear, df = K, df2 ~ 0}
-##' \item{Grad changes quickly}{df2 increases rapidly as h decreases}
-##' }
+##'
+##' - "Not Assessed" Gradient wasn't assessed
+##'
+##' - "Good Success" in Estimating optimal forward difference interval
+##'
+##' - "High Grad Error" Large error; Derivative estimate error \code{fTol} or more of the derivative
+##'
+##' - "Constant Grad" Function constant or nearly constant for this parameter
+##'
+##' - "Odd/Linear Grad" Function odd or nearly linear, df = K, df2 ~ 0
+##'
+##' - "Grad changes quickly" df2 increases rapidly as h decreases
+##'
 ##' @examples
 ##'
 ##' ## These are taken from the numDeriv::grad examples to show how

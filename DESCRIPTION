@@ -32,7 +32,7 @@ Authors@R: c(
     person("Katharine", "Mullen", role = "cph"),
     person("Ben", "Goodrich", role = "ctb")
   )
-Maintainer: Matthew Fidler <matt.fidler@novartis.com>
+Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
 Description: Fit and compare nonlinear mixed-effects models in
     differential equations with flexible dosing information commonly seen
     in pharmacokinetics and pharmacodynamics (Almquist, Leander, and
