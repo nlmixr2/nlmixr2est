@@ -38,9 +38,9 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   ## nocov start
   ## Setup rxode2.prefer.tbl
   if (compiled.rxode2.md5 != rxode2::rxMd5()) {
-    stop("nlmixr2 compiled against different version of rxode2, cannot run nlmixr2\ntry `install.packages(\"nlmixr2\", type = \"source\")` to recompile", call.=FALSE)
+    stop("nlmixr2 compiled against different version of rxode2, cannot run nlmixr2est\ntry `install.packages(\"nlmixr2est\", type = \"source\")` to recompile", call.=FALSE)
   }
-  requireNamespace("rxode2parse", quietly=TRUE)  
+  requireNamespace("rxode2parse", quietly=TRUE)
   requireNamespace("rxode2random", quietly=TRUE)
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
