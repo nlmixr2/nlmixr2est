@@ -887,6 +887,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .predMinusDv   <- rxode2::rxGetControl(.ui, "predMinusDv", TRUE)
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
+                   .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
