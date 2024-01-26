@@ -224,6 +224,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     fit_nlme <- .nlmixr(one.cmt.all.mu.ref, theo_sd, est="nlme", control=nlmeControl(verbose=FALSE, returnObject=TRUE))
     expect_true(!all(ranef(fit_nlme)[[1]] == 0))
 

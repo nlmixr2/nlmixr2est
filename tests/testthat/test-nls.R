@@ -19,6 +19,7 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
+    skip_if_not(rxode2parse::.linCmtSens())
 
     fit1 <- nlmixr(one.cmt, d, est="nls")
 

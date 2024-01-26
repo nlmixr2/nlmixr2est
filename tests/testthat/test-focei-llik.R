@@ -2,7 +2,7 @@ if (rxode2hasLlik()) {
   nmTest({
     test_that("test focei llik", {
       # dnorm() works
-      
+
       one.cmt <- function() {
         ini({
           ## You may label each parameter with a comment
@@ -24,6 +24,8 @@ if (rxode2hasLlik()) {
           linCmt() ~ add(add.sd) + dnorm()
         })
       }
+
+      skip_if_not(rxode2parse::.linCmtSens())
 
       f <- nlmixr(one.cmt, theo_sd, "focei")
       expect_true("CWRES" %in% names(f))
@@ -81,7 +83,7 @@ if (rxode2hasLlik()) {
       f <- try(nlmixr(one.cmt.ll, theo_sd, "focei",
                       control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
                                            maxOuterIterations=0)))
-      
+
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
@@ -96,12 +98,12 @@ if (rxode2hasLlik()) {
       f <- try(nlmixr(one.cmt.ll, theo_sd, "foce",
                       control=foceiControl(etaMat=etaMat2, maxInnerIterations=0,
                                            maxOuterIterations=0)))
-      
+
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
       expect_equal(f$objf, of2)
-      
+
       # no etas test
       one.cmt.noeta <- function() {
         ini({
@@ -150,14 +152,14 @@ if (rxode2hasLlik()) {
       one.cmt.ll.noeta %>%
         ini(theta1) ->
         one.cmt.ll.noeta
-      
+
       f <- nlmixr(one.cmt.ll.noeta, theo_sd, "focei",
                   control=foceiControl(maxOuterIterations=0))
 
       expect_equal(of1, f$objf)
     })
-    
-    
+
+
     pk.turnover.emax3.n1 <- function() {
       ini({
         tktr <- log(1)
@@ -274,7 +276,7 @@ if (rxode2hasLlik()) {
     f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
                 control=foceiControl(covMethod = "",
                                      maxOuterIterations=0))
-    
+
     of1     <- f$objf
     etaMat1 <- as.matrix(f$eta[,-1])
     theta1  <- f$theta
@@ -334,7 +336,7 @@ if (rxode2hasLlik()) {
         ll(pca) ~ -log(pdadd.err) - 0.5*log(2*pi) - 0.5 * ((DV - effect) / pdadd.err)^2
       })
     }
-    
+
     pk.turnover.emax3.ll %>%
       ini(theta1) %>%
       ini(omega1) ->
@@ -348,7 +350,7 @@ if (rxode2hasLlik()) {
     test_that("same values for omega, theta and eta, forward", {
       expect_equal(f$omega, f2$omega)
       expect_equal(f$theta, f2$theta)
-      expect_equal(f$eta, f2$eta)    
+      expect_equal(f$eta, f2$eta)
     })
 
     f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",

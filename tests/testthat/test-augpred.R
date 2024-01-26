@@ -38,6 +38,8 @@ nmTest({
 
       expect_error(augPred(fitOne.comp.KA.solved_S), NA)
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
       df <-
         tibble::tibble(
           ID = c(rep(1, 6), rep(2, 6)),
@@ -122,6 +124,7 @@ nmTest({
   })
 
   test_that("augPred with pop only data", {
+    skip_if_not(rxode2parse::.linCmtSens())
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -184,11 +187,11 @@ nmTest({
         effect ~ add(eps.pdadd) | pca
       })
     }
-    
+
     fit <- nlmixr2(mod, dat, "posthoc")
 
     expect_error(augPred(fit), NA)
-    
-    
+
+
   })
 })

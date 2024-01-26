@@ -24,6 +24,9 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
+
     f <- nlmixr(one.cmt)
 
     fit <- nlmixr(one.cmt, theo_sd, est="saem")

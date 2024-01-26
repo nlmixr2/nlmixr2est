@@ -1,6 +1,6 @@
 nmTest({
   test_that("input ui doesn't change", {
-    
+
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -22,6 +22,8 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
+
+    skip_if_not(rxode2parse::.linCmtSens())
 
     ui <- nlmixr(one.cmt)
 

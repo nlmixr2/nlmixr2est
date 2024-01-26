@@ -27,6 +27,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
 
     expect_error(fit$dataMergeInner, NA)

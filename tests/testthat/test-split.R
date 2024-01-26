@@ -100,7 +100,10 @@ test_that("test split", {
       cp ~ prop(prop.err)
     })
   }
-  
+
+  skip_if_not(rxode2parse::.linCmtSens())
+
+
   mod <- PK_1cmt()
   expect_error(mod$getSplitMuModel, NA)
 })
@@ -130,7 +133,7 @@ test_that("non mu-referenced split works correctly", {
 
 
 test_that("tainted mu expressions are always additive", {
-  
+
   oneCmtAllo <- function() {
     ini({
       lka <- log(0.1); label("Absorption rate (Ka)")
@@ -155,5 +158,5 @@ test_that("tainted mu expressions are always additive", {
   split <- f$getSplitMuModel
 
   expect_true(identical(split$muRefDef[[2]], quote(rx__lcl <- lcl)))
-  
+
 })

@@ -28,6 +28,8 @@ nmTest({
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
     expect_warning(fit$etaSE)
     expect_warning(fit$etaRSE)
