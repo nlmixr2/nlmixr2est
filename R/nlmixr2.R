@@ -112,7 +112,7 @@ nlmixr2Version <- function() {
 #'  })
 #' }
 #'
-#' fitF <- nlmixr(one.cmt, theo_sd, "focei")
+#' # fitF <- nlmixr(one.cmt, theo_sd, "focei")
 #'
 #' fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #'
