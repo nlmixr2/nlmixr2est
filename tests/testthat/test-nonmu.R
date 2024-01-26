@@ -86,6 +86,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
                            control=list(print=0),
                            table=tableControl(cwres=TRUE, npde=TRUE))
