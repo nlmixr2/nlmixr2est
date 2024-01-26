@@ -25,6 +25,7 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
     fitOne.comp.KA.solved_S <-
       nlmixr(
         One.comp.KA.solved,
@@ -116,6 +117,8 @@ nmTest({
         })
       }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
       cmt2fit.logn <- nlmixr(cmt2, dat2, "saem",
                                       control=saemControl(print=0, nBurn = 1, nEm = 1),
                                       table=tableControl(cwres=TRUE, npde=TRUE))
@@ -139,6 +142,7 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
+    skip_if_not(rxode2parse::.linCmtSens())
 
     fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei",
                    control = foceiControl(eval.max = 1),
