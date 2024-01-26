@@ -440,6 +440,7 @@ nlmixr2 defaults controls for nls
 \donttest{
 
 if (rxode2parse::.linCmtSens()) {
+
 one.cmt <- function() {
   ini({
    tka <- 0.45
