@@ -26,6 +26,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))

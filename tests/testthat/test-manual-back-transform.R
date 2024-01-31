@@ -22,6 +22,8 @@ test_that("manual back-transform", {
     })
   }
 
+  skip_if_not(rxode2parse::.linCmtSens())
+
   fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
 
   expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),

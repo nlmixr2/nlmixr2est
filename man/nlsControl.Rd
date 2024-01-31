@@ -439,6 +439,8 @@ nlmixr2 defaults controls for nls
 \examples{
 \donttest{
 
+if (rxode2parse::.linCmtSens()) {
+
 one.cmt <- function() {
   ini({
    tka <- 0.45
@@ -463,6 +465,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
+}
 }
 }
 \author{

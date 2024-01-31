@@ -19,6 +19,9 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
+
     fit <-
       suppressMessages(
         nlmixr(one.cmt, theo_sd, est = "saem",

@@ -47,6 +47,9 @@ VPC simulation
 \examples{
 
 \donttest{
+
+if (rxode2parse::.linCmtSens()) {
+
 one.cmt <- function() {
  ini({
    ## You may label each parameter with a comment
@@ -72,6 +75,8 @@ one.cmt <- function() {
 fit <- nlmixr(one.cmt, theo_sd, est="focei")
 
 head(vpcSim(fit, pred=TRUE))
+
+}
 
 }
 }

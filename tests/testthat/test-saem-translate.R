@@ -18,6 +18,8 @@ test_that("Standard theo linCmt()", {
     })
   }
 
+  skip_if_not(rxode2parse::.linCmtSens())
+
   f <- nlmixr(one.cmt)
 
   expect_equal(f$saemModel0,

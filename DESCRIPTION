@@ -2,7 +2,7 @@ Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
     Routines
-Version: 2.2.0.9000
+Version: 2.2.1
 Authors@R: c(
     person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
@@ -97,5 +97,5 @@ Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.1
 LazyData: true

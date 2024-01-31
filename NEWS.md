@@ -1,7 +1,10 @@
-# nlmixr2est (development version)
+# nlmixr2est 2.2.1
+
+- Align with the possibility that linCmt sensitivities may not be
+  present (like intel c++)
+
 
 ## Bug fix
-
 - `focei` cache needs to be based on the parameter order as well as
   the model information (#415)
 

@@ -27,6 +27,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
 
     expect_error(fit$dataMergeInner, NA)
@@ -83,6 +85,8 @@ nmTest({
         linCmt() ~ lnorm(logn.sd)
       })
     }
+
+    skip_if_not(rxode2parse::.linCmtSens())
 
     cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
                            control=list(print=0),

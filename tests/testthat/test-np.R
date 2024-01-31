@@ -21,6 +21,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     expect_error(suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"))), NA)
     expect_error(suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"))), NA)
 

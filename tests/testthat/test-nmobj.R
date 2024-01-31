@@ -21,6 +21,7 @@ test_that("nmObject get tests", {
       linCmt() ~ add(add.sd)
     })
   }
+  skip_if_not(rxode2parse::.linCmtSens())
 
   fit <- suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei")))
 

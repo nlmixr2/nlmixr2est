@@ -93,6 +93,8 @@ nmTest({
       })
     }
 
+    skip_if_not(rxode2parse::.linCmtSens())
+
     suppressMessages(
       fit <- nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
     )
