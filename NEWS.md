@@ -1,5 +1,7 @@
 # nlmixr2est (development version)
 
+- Gracefully degrade when $cov is not in the right form (see #423)
+
 # nlmixr2est 2.2.1
 
 - Align with the possibility that linCmt sensitivities may not be
