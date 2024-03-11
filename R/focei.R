@@ -1605,8 +1605,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .data <- env$data
   .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
-    checkmate::assertMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
-                            row.names="strict", col.names="strict")
+    if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, .var.name="env$cov",
+                               row.names="strict", col.names="strict")) {
+      .env$covDebug <- .env$cov
+      .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
+      warning(paste0("covariance not in proper form, can access value in $covDebug"))
+      .env$cov <- NULL
+    }
   }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     .ret0 <- try(.foceiFitInternal(.env))
