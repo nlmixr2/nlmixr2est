@@ -119,7 +119,7 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
 }
 
 // Solve prediction
-void nlmSolveFid(NumericVector &theta, int id) {
+void popedSolveFid(double *f, double *w, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
@@ -141,15 +141,22 @@ void nlmSolveFid(NumericVector &theta, int id) {
         ind->lhs[0] = 0.0;
       }
       // ret(k) = ind->lhs[0];
+      // k++;
+    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+      // mtimes to calculate information
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      f[k] = ind->lhs[0];
+      w[k] = sqrt(ind->lhs[1]);
       k++;
+      if (k >= totn) return; // vector has been created, break
     }
   }
 }
 
-
-// arma::vec nlmSolveFid(arma::vec &theta, int id) {
-//   arma::vec ret(popedOp.nobs[id]);
-//   double *retD = ret.memptr();
-//   nlmSolveFid(retD, popedOp.nobs[id], theta, id);
-//   return ret;
-// }
+//[[Rcpp::export]]
+Rcpp::DataFrame popedSolveIdN(NumericVector &theta, int id, int totn) {
+  NumericVector f(totn);
+  NumericVector w(totn);
+  popedSolveFid(&f[0], &w[0], theta, id, totn);
+  return DataFrame::create(_["f"]=f, _["w"]=w);;
+}
