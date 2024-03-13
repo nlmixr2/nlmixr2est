@@ -156,7 +156,7 @@ bobyqaControl <- function(npt=NULL,
 
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(printNcol, len=1, lower=0, any.missing=FALSE)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
