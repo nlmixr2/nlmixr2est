@@ -641,6 +641,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #' @export
 rxUiGet.predDfFocei <- function(x, ...) {
   .ui <- x[[1]]
+  .ui <- rxUiDecompress(.ui)
   if (exists(".predDfFocei", envir=.ui)) {
     get(".predDfFocei", envir=.ui)
   } else {
