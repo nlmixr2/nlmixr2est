@@ -208,6 +208,14 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
+popedFree <- function() {
+    .Call(`_nlmixr2est_popedFree`)
+}
+
+popedSetup <- function(e) {
+    .Call(`_nlmixr2est_popedSetup`, e)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

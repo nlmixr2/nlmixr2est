@@ -563,6 +563,27 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// popedFree
+RObject popedFree();
+RcppExport SEXP _nlmixr2est_popedFree() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(popedFree());
+    return rcpp_result_gen;
+END_RCPP
+}
+// popedSetup
+RObject popedSetup(Environment e);
+RcppExport SEXP _nlmixr2est_popedSetup(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(popedSetup(e));
+    return rcpp_result_gen;
+END_RCPP
+}
 // augPredTrans
 RObject augPredTrans(NumericVector& pred, NumericVector& ipred, NumericVector& lambda, RObject& yjIn, NumericVector& low, NumericVector& hi);
 RcppExport SEXP _nlmixr2est_augPredTrans(SEXP predSEXP, SEXP ipredSEXP, SEXP lambdaSEXP, SEXP yjInSEXP, SEXP lowSEXP, SEXP hiSEXP) {
