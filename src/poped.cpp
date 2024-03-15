@@ -51,10 +51,12 @@ RObject popedFree() {
   return R_NilValue;
 }
 
+Environment _popedE;
 //[[Rcpp::export]]
 RObject popedSetup(Environment e) {
   doAssignFn();
   popedFree();
+  _popedE=e;
   List control = e["control"];
 
   RObject model = e["model"];
@@ -158,5 +160,7 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, int id, int totn) {
   NumericVector f(totn);
   NumericVector w(totn);
   popedSolveFid(&f[0], &w[0], theta, id, totn);
-  return DataFrame::create(_["f"]=f, _["w"]=w);;
+  DataFrame ret = DataFrame::create(_["f"]=f, _["w"]=w);
+  _popedE["s"] = ret;
+  return ret;
 }
