@@ -166,8 +166,8 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   f = f(m);
   w = w(m);
   DataFrame ret = DataFrame::create(_["t"]=mt,
-                                    _["f"]=f,
-                                    _["w"]=w);
+                                    _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
+                                    _["w"]=w); // w = sqrt(rx_r_)
   _popedE["s"] = ret;
   return ret;
 }
