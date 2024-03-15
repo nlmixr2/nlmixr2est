@@ -121,7 +121,7 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
 }
 
 // Solve prediction
-void popedSolveFid(double *f, double *w, NumericVector &theta, int id, int totn) {
+void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
@@ -149,6 +149,7 @@ void popedSolveFid(double *f, double *w, NumericVector &theta, int id, int totn)
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       f[k] = ind->lhs[0];
       w[k] = sqrt(ind->lhs[1]);
+      t[k] = curT;
       k++;
       if (k >= totn) return; // vector has been created, break
     }
@@ -156,11 +157,17 @@ void popedSolveFid(double *f, double *w, NumericVector &theta, int id, int totn)
 }
 
 //[[Rcpp::export]]
-Rcpp::DataFrame popedSolveIdN(NumericVector &theta, int id, int totn) {
-  NumericVector f(totn);
-  NumericVector w(totn);
-  popedSolveFid(&f[0], &w[0], theta, id, totn);
-  DataFrame ret = DataFrame::create(_["f"]=f, _["w"]=w);
+Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, int totn) {
+  NumericVector t(totn);
+  arma::vec f(totn);
+  arma::vec w(totn);
+  popedSolveFid(&f[0], &w[0], &t[0], theta, id, totn);
+  arma::ivec m = as<arma::ivec>(match(mt, t));
+  f = f(arma::sort_index(m));
+  w = w(arma::sort_index(m));
+  DataFrame ret = DataFrame::create(_["t"]=mt,
+                                    _["f"]=f,
+                                    _["w"]=w);
   _popedE["s"] = ret;
   return ret;
 }

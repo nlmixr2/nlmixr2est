@@ -5,10 +5,12 @@
 \title{After the solver has been setup in memory (with the appropriate
 data), this solves for the appropriate sample times}
 \usage{
-.popedSolveIdN(theta, id, totn)
+.popedSolveIdN(theta, xt, id, totn)
 }
 \arguments{
 \item{theta}{parameters (includes covariates)}
+
+\item{xt}{original unsorted time (to match the f/w against)}
 
 \item{id}{this is the design identifier}
 

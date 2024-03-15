@@ -28,6 +28,7 @@
 #' can crash R)
 #'
 #' @param theta parameters (includes covariates)
+#' @param xt original unsorted time (to match the f/w against)
 #' @param id this is the design identifier
 #' @param totn This is the total number of design points tested
 #' @return a data frame with $f and $w corresponding to the function
@@ -35,6 +36,6 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.popedSolveIdN <- function(theta, id, totn) {
-  .Call(`_nlmixr2est_popedSolveIdN`, theta, id, totn)
+.popedSolveIdN <- function(theta, xt, id, totn) {
+  .Call(`_nlmixr2est_popedSolveIdN`, theta, xt, id, totn)
 }
