@@ -162,9 +162,9 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   arma::vec f(totn);
   arma::vec w(totn);
   popedSolveFid(&f[0], &w[0], &t[0], theta, id, totn);
-  arma::ivec m = as<arma::ivec>(match(mt, t));
-  f = f(arma::sort_index(m));
-  w = w(arma::sort_index(m));
+  arma::uvec m = as<arma::uvec>(match(mt, t))-1;
+  f = f(m);
+  w = w(m);
   DataFrame ret = DataFrame::create(_["t"]=mt,
                                     _["f"]=f,
                                     _["w"]=w);
