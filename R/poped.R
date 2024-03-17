@@ -21,8 +21,7 @@
 .popedSetup <- function(e) {
   invisible(.Call(`_nlmixr2est_popedSetup`, e))
 }
-#' After the solver has been setup in memory (with the appropriate
-#' data), this solves for the appropriate sample times
+#' Solve poped problem for appropriate times (may already be setup)
 #'
 #' This really should not be called directly (if not setup correctly
 #' can crash R)
@@ -38,4 +37,9 @@
 #' @keywords internal
 .popedSolveIdN <- function(theta, xt, id, totn) {
   .Call(`_nlmixr2est_popedSolveIdN`, theta, xt, id, totn)
+}
+#' @rdname .popedSolveIdN
+#' @export
+.popedSolveIdN2 <- function(theta, xt, id, totn) {
+  .Call(`_nlmixr2est_popedSolveIdN2`, theta, xt, id, totn)
 }

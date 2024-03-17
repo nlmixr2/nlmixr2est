@@ -216,6 +216,10 @@ popedSetup <- function(e) {
     .Call(`_nlmixr2est_popedSetup`, e)
 }
 
+popedSolveIdN2 <- function(theta, mt, id, totn) {
+    .Call(`_nlmixr2est_popedSolveIdN2`, theta, mt, id, totn)
+}
+
 popedSolveIdN <- function(theta, mt, id, totn) {
     .Call(`_nlmixr2est_popedSolveIdN`, theta, mt, id, totn)
 }

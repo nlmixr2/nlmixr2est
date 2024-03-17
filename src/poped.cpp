@@ -7,7 +7,6 @@
 #include "shi21.h"
 #include "inner.h"
 
-
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #define _(String) dgettext ("nlmixr2est", String)
@@ -113,6 +112,7 @@ void popedSolve(int &id) {
 }
 
 static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, int &id) {
+  rx = getRx();
   rx_solving_options_ind *ind = &(rx->subjects[id]);
   for (int i = popedOp.ntheta; i--;) {
     ind->par_ptr[i]=theta[i];
@@ -154,6 +154,54 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
       if (k >= totn) return; // vector has been created, break
     }
   }
+}
+
+void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
+  // arma::vec ret(retD, nobs, false, true);
+  rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
+  rx_solving_options *op = rx->op;
+  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  popedSolve(id);
+  int kk, k=0;
+  double curT;
+  for (int j = 0; j < ind->n_all_times; ++j) {
+    ind->idx=j;
+    kk = ind->ix[j];
+    curT = getTimeF(kk, ind);
+    if (isDose(ind->evid[kk])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      continue;
+    } else if (ind->evid[kk] == 0) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
+      // ret(k) = ind->lhs[0];
+      // k++;
+      f[k] = ind->lhs[0];
+      w[k] = sqrt(ind->lhs[1]);
+      t[k] = curT;
+      k++;
+      if (k >= totn) return; // vector has been created, break
+    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+      // mtimes to calculate information
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+    }
+  }
+}
+
+//[[Rcpp::export]]
+Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, int totn) {
+  NumericVector t(totn);
+  arma::vec f(totn);
+  arma::vec w(totn);
+  popedSolveFid2(&f[0], &w[0], &t[0], theta, id, totn);
+  DataFrame ret = DataFrame::create(_["t"]=mt,
+                                    _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
+                                    _["w"]=w); // w = sqrt(rx_r_)
+  _popedE["s"] = ret;
+  return ret;
 }
 
 //[[Rcpp::export]]
