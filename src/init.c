@@ -116,10 +116,8 @@ SEXP _nlmixr2est_popedSolveIdN(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_popedSolveIdN2(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_popedSetup(SEXP);
 SEXP _nlmixr2est_popedFree(void);
-SEXP _nlmixr2est_popedSolveFreed(void);
 
 static const R_CallMethodDef CallEntries[] = {
-  {"_nlmixr2est_popedSolveFreed", (DL_FUNC) &_nlmixr2est_popedFree, 0},
   {"_nlmixr2est_popedFree", (DL_FUNC) &_nlmixr2est_popedFree, 0},
   {"_nlmixr2est_popedSetup", (DL_FUNC) &_nlmixr2est_popedSetup, 1},
   {"_nlmixr2est_popedSolveIdN", (DL_FUNC) &_nlmixr2est_popedSolveIdN, 4},

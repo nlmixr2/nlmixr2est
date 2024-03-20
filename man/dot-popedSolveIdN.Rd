@@ -2,7 +2,8 @@
 % Please edit documentation in R/poped.R
 \name{.popedSolveIdN}
 \alias{.popedSolveIdN}
-\title{Solve poped problem for appropriate times (may already be setup)}
+\title{After the solver has been setup in memory (with the appropriate
+data), this solves for the appropriate sample times}
 \usage{
 .popedSolveIdN(theta, xt, id, totn)
 }

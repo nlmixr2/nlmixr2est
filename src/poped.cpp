@@ -111,16 +111,6 @@ void popedSolve(int &id) {
   }
 }
 
-
-//[[Rcpp::exportes]]
-LogicalVector popedSolveFreed() {
-  rx = getRx();
-  if (rx->par_sample == NULL) return true;
-  return false;
-}
-
-
-
 static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, int &id) {
   rx = getRx();
   rx_solving_options_ind *ind = &(rx->subjects[id]);
