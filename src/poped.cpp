@@ -120,7 +120,7 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
   return ind;
 }
 
-// Solve prediction
+// Solve prediction and saved based on modeling time
 void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);

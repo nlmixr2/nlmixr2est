@@ -112,16 +112,16 @@ SEXP _nlmixr2est_nlmSetScaleC(SEXP);
 SEXP _nlmixr2est_nlmPrintHeader(void);
 SEXP _nlmixr2est_nlmGetParHist(SEXP);
 
-SEXP _nlmixr2est_popedSolveIdN(SEXP, SEXP, SEXP);
-SEXP _nlmixr2est_popedSolveIdN2(SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_popedSolveIdN(SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_popedSolveIdN2(SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_popedSetup(SEXP);
 SEXP _nlmixr2est_popedFree(void);
 
 static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_popedFree", (DL_FUNC) &_nlmixr2est_popedFree, 0},
   {"_nlmixr2est_popedSetup", (DL_FUNC) &_nlmixr2est_popedSetup, 1},
-  {"_nlmixr2est_popedSolveIdN", (DL_FUNC) &_nlmixr2est_popedSolveIdN, 3},
-  {"_nlmixr2est_popedSolveIdN2", (DL_FUNC) &_nlmixr2est_popedSolveIdN2, 3},
+  {"_nlmixr2est_popedSolveIdN", (DL_FUNC) &_nlmixr2est_popedSolveIdN, 4},
+  {"_nlmixr2est_popedSolveIdN2", (DL_FUNC) &_nlmixr2est_popedSolveIdN2, 4},
   {"_nlmixr2est_nlmGetParHist", (DL_FUNC) &_nlmixr2est_nlmGetParHist, 1},
   {"_nlmixr2est_nlmPrintHeader", (DL_FUNC) &_nlmixr2est_nlmPrintHeader, 0},
   {"_nlmixr2est_nlmSetScaleC", (DL_FUNC) &_nlmixr2est_nlmSetScaleC, 1},
