@@ -65,7 +65,15 @@ RObject popedSetup(Environment e) {
 
   // initial value of parameters
   NumericVector p = as<NumericVector>(e["param"]);
-  popedOp.ntheta = p.size();
+  CharacterVector pars = mvp[RxMv_params];
+  popedOp.ntheta = pars.size();
+  if (p.size() != popedOp.ntheta) {
+    Rprintf("pars\n");
+    print(pars);
+    Rprintf("p\n");
+    print(p);
+    Rcpp::stop("size mismatch");
+  }
   popedOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   popedOp.stickyTol=0;
   popedOp.stickyRecalcN2=0;
@@ -210,9 +218,9 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   arma::vec f(totn);
   arma::vec w(totn);
   popedSolveFid(&f[0], &w[0], &t[0], theta, id, totn);
-  arma::uvec m = as<arma::uvec>(match(mt, t))-1;
-  f = f(m);
-  w = w(m);
+  // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
+  // f = f(m);
+  // w = w(m);
   DataFrame ret = DataFrame::create(_["t"]=mt,
                                     _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
                                     _["w"]=w); // w = sqrt(rx_r_)
