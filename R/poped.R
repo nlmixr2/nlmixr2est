@@ -12,6 +12,20 @@
   invisible(.Call(`_nlmixr2est_popedFree`))
 }
 
+#' See if Poped memory is allocated
+#'
+#' This should not be called directly but is used in babelmixr2's
+#' poped interface
+#'
+#' @return boolean; true if the system needs to be setup (again)?
+#'
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+.popedNeedSetup <- function() {
+  invisible(.Call(`_nlmixr2est_popedSolveFreed`))
+}
+
 #' Setup the PopED environment
 #'
 #' @param e environment with setup information for popEd
