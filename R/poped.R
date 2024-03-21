@@ -14,12 +14,16 @@
 
 #' Setup the PopED environment
 #'
+#' This should not typically be called directly
+#'
 #' @param e environment with setup information for popEd
+#' @param full setup the full model
 #' @return nothing, called for side effects
 #' @export
+#' @keywords internal
 #' @author Matthew L. Fidler
-.popedSetup <- function(e) {
-  invisible(.Call(`_nlmixr2est_popedSetup`, e))
+.popedSetup <- function(e, full=FALSE) {
+  invisible(.Call(`_nlmixr2est_popedSetup`, e, full))
 }
 #' Solve poped problem for appropriate times (may already be setup)
 #'

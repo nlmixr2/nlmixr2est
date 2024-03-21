@@ -51,20 +51,31 @@ RObject popedFree() {
 }
 
 Environment _popedE;
+
 //[[Rcpp::export]]
-RObject popedSetup(Environment e) {
+RObject popedSetup(Environment e, bool full) {
   doAssignFn();
   popedFree();
   _popedE=e;
   List control = e["control"];
-
-  RObject model = e["model"];
-  List mvp = rxode2::rxModelVars_(model);
-  rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxInner);
   List rxControl = as<List>(e["rxControl"]);
 
+  RObject model;
+  NumericVector p;
+  RObject data;
+  if (full) {
+    model = e["modelF"];
+    p = as<NumericVector>(e["paramF"]);
+    data = e["dataF"]; //const RObject &events =
+  } else {
+    model = e["modelMT"];
+    p = as<NumericVector>(e["paramMT"]);
+    data = e["dataMT"]; //const RObject &events =
+  }
+  List mvp = rxode2::rxModelVars_(model);
+  rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxInner);
+
   // initial value of parameters
-  NumericVector p = as<NumericVector>(e["param"]);
   CharacterVector pars = mvp[RxMv_params];
   popedOp.ntheta = pars.size();
   if (p.size() != popedOp.ntheta) {
@@ -87,7 +98,7 @@ RObject popedSetup(Environment e) {
                    R_NilValue,//const Nullable<CharacterVector> &specParams =
                    R_NilValue,//const Nullable<List> &extraArgs =
                    p,//const RObject &params =
-                   e["data"],//const RObject &events =
+                   data,//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRx();
