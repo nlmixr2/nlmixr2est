@@ -168,6 +168,28 @@ nlmixr <- nlmixr2
   assignInMyNamespace(".finalUiCompressed", TRUE)
   rxode2::rxSetCovariateNamesForPiping(NULL)
 }
+#' Infer missing estimation routine
+#'
+#' @param env prep environment for nlmixr2
+#' @param est estimation routine, could actually be a control
+#' @return actual estimation routine (could be inferred)
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr2inferEst <- function(env, est) {
+  if (!env$missingEst) {
+    .cls <- class(est)
+    if (grepl("^.*?Control$", .cls)) {
+      .est <- sub("^(.*?)Control$", "\\1", .cls)
+      if (env$missingControl) {
+        env$control <- getValidNlmixrControl(est, .est)
+        est <- .est
+        .minfo(paste0("infer estimation {.code ", est, "} from control"))
+        env$missingControl <- FALSE
+      }
+    }
+  }
+  est
+}
 
 #' @rdname nlmixr2
 #' @export
@@ -200,6 +222,12 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   } else {
     .env$data <- data
   }
+  .env$missingTable <- missing(table)
+  .env$missingControl <- missing(control)
+  .env$missingEst <- missing(est)
+  .env$control <- control
+  est <- .nlmixr2inferEst(.env, est)
+  control <- .env$control
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .minfo("use {.code control} from pipeline")
     .env$control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
@@ -216,9 +244,6 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .minfo("use {.code est} from pipeline")
     est <- .nlmixr2pipeEst
   }
-  .env$missingTable <- missing(table)
-  .env$missingControl <- missing(control)
-  .env$missingEst <- missing(est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -253,6 +278,12 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
   } else {
     .env$data <- data
   }
+  .env$missingTable <- missing(table)
+  .env$missingControl <- missing(control)
+  .env$missingEst <- missing(est)
+  .env$control <- control
+  est <- .nlmixr2inferEst(.env, est)
+  control <- .env$control
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .env$control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
     .minfo("use {.code control} from pipeline")
@@ -295,9 +326,6 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   }
-  .env$missingTable <- missing(table)
-  .env$missingControl <- missing(control)
-  .env$missingEst <- missing(est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -328,6 +356,9 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     .minfo("use {.code est} from prior fit")
     est <- object$est
   }
+  .env$control <- control
+  est <- .nlmixr2inferEst(.env, est)
+  control <- .env$control
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
     .minfo("use {.code control} from pipeline")
     control <- getValidNlmixrControl(.nlmixr2pipeControl, est)
@@ -352,6 +383,9 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .env$data <- data
   .env$control <- control
   .env$table <- table
+  .env$control <- control
+  est <- .nlmixr2inferEst(.env, est)
+  control <- .env$control
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
