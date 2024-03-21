@@ -212,8 +212,8 @@ popedFree <- function() {
     .Call(`_nlmixr2est_popedFree`)
 }
 
-popedSetup <- function(e) {
-    .Call(`_nlmixr2est_popedSetup`, e)
+popedSetup <- function(e, full) {
+    .Call(`_nlmixr2est_popedSetup`, e, full)
 }
 
 popedSolveIdN2 <- function(theta, mt, id, totn) {

@@ -4,17 +4,20 @@
 \alias{.popedSetup}
 \title{Setup the PopED environment}
 \usage{
-.popedSetup(e)
+.popedSetup(e, full = FALSE)
 }
 \arguments{
 \item{e}{environment with setup information for popEd}
+
+\item{full}{setup the full model}
 }
 \value{
 nothing, called for side effects
 }
 \description{
-Setup the PopED environment
+This should not typically be called directly
 }
 \author{
 Matthew L. Fidler
 }
+\keyword{internal}
