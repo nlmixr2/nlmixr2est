@@ -47,3 +47,24 @@
 .popedSolveIdN2 <- function(theta, xt, id, totn) {
   .Call(`_nlmixr2est_popedSolveIdN2`, theta, xt, id, totn)
 }
+
+#' Solve poped problem for appropriate times with multiple endpoint models
+#'
+#' This really should not be called directly (if not setup correctly
+#' can crash R)
+#'
+#' @param theta parameters (includes covariates and modeling times)
+#' @param uxt unique times sampled
+#' @param mt original unsorted time (to match the f/w against)
+#' @param ms model switch parameter integer starting with 1 (related to dvid in rxode2)
+#' @param nend specifies the number of endpoints in this model
+#' @param id this is the design identifier
+#' @param totn This is the total number of design points tested
+#' @return a data frame with $f and $w corresponding to the function
+#'   value and standard deviation at the sampling point
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+.popedSolveIdME <- function(theta, umt, mt, ms, nend, id, totn) {
+  .Call(`nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
+}

@@ -238,3 +238,80 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   _popedE["s"] = ret;
   return ret;
 }
+
+void popedSolveFidMat(arma::mat matMT, NumericVector &theta, int id, int totn, int nend) {
+  // arma::vec ret(retD, nobs, false, true);
+  rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
+  rx_solving_options *op = rx->op;
+  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  popedSolve(id);
+  int kk, k=0;
+  double curT;
+  for (int j = 0; j < ind->n_all_times; ++j) {
+    ind->idx=j;
+    kk = ind->ix[j];
+    curT = getTimeF(kk, ind);
+    if (isDose(ind->evid[kk])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      continue;
+    } else if (ind->evid[kk] == 0) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
+    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+      // mtimes to calculate information
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
+      matMT(k, 0) = curT;
+      for (int i = 0; i < nend; ++i) {
+        matMT(k, i*2+1) = ind->lhs[i*2];
+        matMT(k, i*2+2) = ind->lhs[i*2+1];
+      }
+      k++;
+      if (k >= totn) return; // vector has been created, break
+    }
+  }
+}
+
+//[[Rcpp::export]]
+Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
+                               NumericVector &umt,
+                               NumericVector &mt, IntegerVector &ms,
+                               int nend,
+                               int id, int totn) {
+  NumericVector t(totn);
+  arma::vec f(totn);
+  arma::vec w(totn);
+  int nrow = umt.size();
+  arma::mat matMT(nrow, nend*2+1);
+  popedSolveFidMat(matMT, theta, id, totn, nend);
+  // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
+  // f = f(m);
+  // w = w(m);
+  for (int i = 0; i < totn; ++i) {
+    double curT = mt[i];
+    int curMS = ms[i];
+    for (int j = 0; j < nrow; ++j) {
+      if (curT == matMT(j, 0)) {
+        f[i] = matMT(j, (curMS-1)*2+1);
+        w[i] = matMT(j, (curMS-1)*2+2);
+        break;
+      }
+      if (j == nrow-1) {
+        f[i] = NA_REAL;
+        w[i] = NA_REAL;
+      }
+    }
+  }
+  DataFrame ret = DataFrame::create(_["t"]=mt,
+                                    _["ms"]=ms,
+                                    _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
+                                    _["w"]=w); // w = sqrt(rx_r_)
+  _popedE["s"] = ret;
+  return ret;
+}
