@@ -66,5 +66,5 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 .popedSolveIdME <- function(theta, umt, mt, ms, nend, id, totn) {
-  .Call(`nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
+  .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
 }

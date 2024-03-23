@@ -289,6 +289,11 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
   arma::vec w(totn);
   int nrow = umt.size();
   arma::mat matMT(nrow, nend*2+1);
+  List we(nend);
+  for (int i = 0; i < totn; i++) {
+    we[i] = LogicalVector(totn);
+  }
+
   popedSolveFidMat(matMT, theta, id, totn, nend);
   // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
   // f = f(m);
@@ -296,6 +301,12 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
   for (int i = 0; i < totn; ++i) {
     double curT = mt[i];
     int curMS = ms[i];
+    // Create a logical vector for which endpoint (used in error per endpoint identification)
+    for (int j = 0; j < nend; j++) {
+      LogicalVector cur = we[j];
+      cur[i] = (curMS-1 == j);
+      we[j] = cur;
+    }
     for (int j = 0; j < nrow; ++j) {
       if (curT == matMT(j, 0)) {
         f[i] = matMT(j, (curMS-1)*2+1);
@@ -313,5 +324,6 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
                                     _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
                                     _["w"]=w); // w = sqrt(rx_r_)
   _popedE["s"] = ret;
+  _popedE["we"] = we;
   return ret;
 }
