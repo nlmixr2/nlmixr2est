@@ -6,6 +6,8 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#define max2( a , b )  ( (a) > (b) ? (a) : (b) )
+#define isSameTime(xout, xp) (fabs((xout)-(xp))  <= DBL_EPSILON*max2(fabs(xout),fabs(xp)))
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -239,28 +241,37 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   return ret;
 }
 
-void popedSolveFidMat(arma::mat matMT, NumericVector &theta, int id, int totn, int nend) {
+void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
   iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
-  double curT;
+  double curT, lastTime;
+  lastTime = getTimeF(ind->ix[0], ind)-1;
+  bool isMT;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTimeF(kk, ind);
+    isMT = ind->evid[kk] >= 10 && ind->evid[kk] <= 99;
+    if (isMT && isSameTime(curT, lastTime)) {
+      matMT(k, 0) = curT;
+      for (int i = 0; i < nend; ++i) {
+        matMT(k, i*2+1) = matMT(k-1, i*2+1);
+        matMT(k, i*2+2) = matMT(k-1, i*2+1);
+      }
+      k++;
+      if (k >= nrow) {
+        return; // vector has been created, break
+      }
+      continue;
+    }
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
-        popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
-      }
-    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+    } else if (isMT) {
       // mtimes to calculate information
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       if (ISNA(ind->lhs[0])) {
@@ -273,7 +284,16 @@ void popedSolveFidMat(arma::mat matMT, NumericVector &theta, int id, int totn, i
         matMT(k, i*2+2) = ind->lhs[i*2+1];
       }
       k++;
-      if (k >= totn) return; // vector has been created, break
+      if (k >= nrow) {
+        return; // vector has been created, break
+      }
+      lastTime = curT;
+    } else if (ind->evid[kk] == 0) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
     }
   }
 }
@@ -282,19 +302,18 @@ void popedSolveFidMat(arma::mat matMT, NumericVector &theta, int id, int totn, i
 Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
                                NumericVector &umt,
                                NumericVector &mt, IntegerVector &ms,
-                               int nend,
-                               int id, int totn) {
+                               int nend, int id, int totn) {
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
   int nrow = umt.size();
   arma::mat matMT(nrow, nend*2+1);
   List we(nend);
-  for (int i = 0; i < totn; i++) {
+  for (int i = 0; i < nend; i++) {
     we[i] = LogicalVector(totn);
   }
 
-  popedSolveFidMat(matMT, theta, id, totn, nend);
+  popedSolveFidMat(matMT, theta, id, nrow, nend);
   // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
   // f = f(m);
   // w = w(m);
