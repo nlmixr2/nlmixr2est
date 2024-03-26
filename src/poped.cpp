@@ -74,6 +74,10 @@ RObject popedSetup(Environment e, bool full) {
     p = as<NumericVector>(e["paramMT"]);
     data = e["dataMT"]; //const RObject &events =
   }
+  NumericVector p2 = p;
+  std::fill_n(p2.begin(), p2.size(), NA_REAL);
+  e["paramCache"]=p2;
+  e["lid"] = NA_INTEGER;
   List mvp = rxode2::rxModelVars_(model);
   rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxInner);
 
@@ -212,8 +216,16 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
   }
 }
 
+static inline bool solveCached(NumericVector &theta, int &id) {
+  int lid = as<int>(_popedE["lid"]);
+  if (lid != id) return false;
+  NumericVector last = as<NumericVector>(_popedE["paramCache"]);
+  return as<bool>(all(last == theta));
+}
+
 //[[Rcpp::export]]
 Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, int totn) {
+  if (solveCached(theta, id)) return(_popedE["s"]);
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
@@ -222,11 +234,13 @@ Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, 
                                     _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
                                     _["w"]=w); // w = sqrt(rx_r_)
   _popedE["s"] = ret;
+
   return ret;
 }
 
 //[[Rcpp::export]]
 Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, int totn) {
+  if (solveCached(theta, id)) return(_popedE["s"]);
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
@@ -303,6 +317,7 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
                                NumericVector &umt,
                                NumericVector &mt, IntegerVector &ms,
                                int nend, int id, int totn) {
+  if (solveCached(theta, id)) return(_popedE["s"]);
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
