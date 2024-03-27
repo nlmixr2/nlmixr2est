@@ -2,9 +2,12 @@
 % Please edit documentation in R/poped.R
 \name{.popedSolveIdME}
 \alias{.popedSolveIdME}
+\alias{.popedSolveIdME2}
 \title{Solve poped problem for appropriate times with multiple endpoint models}
 \usage{
 .popedSolveIdME(theta, umt, mt, ms, nend, id, totn)
+
+.popedSolveIdME2(theta, umt, mt, ms, nend, id, totn)
 }
 \arguments{
 \item{theta}{parameters (includes covariates and modeling times)}

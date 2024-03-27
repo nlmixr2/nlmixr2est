@@ -69,7 +69,8 @@
   .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
 }
 
-#'  @rdname dot-popedSolveIdME
+#' @rdname dot-popedSolveIdME
+#' @export
 .popedSolveIdME2 <- function(theta, umt, mt, ms, nend, id, totn) {
-  .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
+  .Call(`_nlmixr2est_popedSolveIdME2`, theta, umt, mt, ms, nend, id, totn)
 }
