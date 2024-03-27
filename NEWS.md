@@ -1,6 +1,12 @@
 # nlmixr2est (development version)
 
+## New features
 - Gracefully degrade when $cov is not in the right form (see #423)
+
+- Add support for PopED in place solving (used in babelmixr2)
+
+- If `est=foceiControl()` or other nlmixr2 control with the class
+  `foceiControl` infer the estimation method is `focei`
 
 # nlmixr2est 2.2.1
 
