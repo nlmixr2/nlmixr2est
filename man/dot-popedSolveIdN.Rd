@@ -2,9 +2,12 @@
 % Please edit documentation in R/poped.R
 \name{.popedSolveIdN}
 \alias{.popedSolveIdN}
+\alias{.popedSolveIdN2}
 \title{Solve poped problem for appropriate times (may already be setup)}
 \usage{
 .popedSolveIdN(theta, xt, id, totn)
+
+.popedSolveIdN2(theta, xt, id, totn)
 }
 \arguments{
 \item{theta}{parameters (includes covariates)}

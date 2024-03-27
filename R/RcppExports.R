@@ -228,6 +228,10 @@ popedSolveIdME <- function(theta, umt, mt, ms, nend, id, totn) {
     .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
 }
 
+popedSolveIdME2 <- function(theta, umt, mt, ms, nend, id, totn) {
+    .Call(`_nlmixr2est_popedSolveIdME2`, theta, umt, mt, ms, nend, id, totn)
+}
+
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }

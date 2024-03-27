@@ -225,7 +225,7 @@ static inline bool solveCached(NumericVector &theta, int &id) {
 
 //[[Rcpp::export]]
 Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, int totn) {
-  if (solveCached(theta, id)) return(_popedE["s"]);
+  if (solveCached(theta, id)) return(as<Rcpp::DataFrame>(_popedE["s"]));
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
@@ -240,7 +240,7 @@ Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, 
 
 //[[Rcpp::export]]
 Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, int totn) {
-  if (solveCached(theta, id)) return(_popedE["s"]);
+  if (solveCached(theta, id)) return(as<Rcpp::DataFrame>(_popedE["s"]));
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
@@ -317,7 +317,7 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
                                NumericVector &umt,
                                NumericVector &mt, IntegerVector &ms,
                                int nend, int id, int totn) {
-  if (solveCached(theta, id)) return(_popedE["s"]);
+  if (solveCached(theta, id)) return(as<Rcpp::DataFrame>(_popedE["s"]));
   NumericVector t(totn);
   arma::vec f(totn);
   arma::vec w(totn);
@@ -329,6 +329,113 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
   }
 
   popedSolveFidMat(matMT, theta, id, nrow, nend);
+  // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
+  // f = f(m);
+  // w = w(m);
+  for (int i = 0; i < totn; ++i) {
+    double curT = mt[i];
+    int curMS = ms[i];
+    // Create a logical vector for which endpoint (used in error per endpoint identification)
+    for (int j = 0; j < nend; j++) {
+      LogicalVector cur = we[j];
+      cur[i] = (curMS-1 == j);
+      we[j] = cur;
+    }
+    for (int j = 0; j < nrow; ++j) {
+      if (curT == matMT(j, 0)) {
+        f[i] = matMT(j, (curMS-1)*2+1);
+        w[i] = matMT(j, (curMS-1)*2+2);
+        break;
+      }
+      if (j == nrow-1) {
+        f[i] = NA_REAL;
+        w[i] = NA_REAL;
+      }
+    }
+  }
+  DataFrame ret = DataFrame::create(_["t"]=mt,
+                                    _["ms"]=ms,
+                                    _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
+                                    _["w"]=w); // w = sqrt(rx_r_)
+  _popedE["s"] = ret;
+  _popedE["we"] = we;
+  return ret;
+}
+
+
+void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
+  // arma::vec ret(retD, nobs, false, true);
+  rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
+  rx_solving_options *op = rx->op;
+  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  popedSolve(id);
+  int kk, k=0;
+  double curT, lastTime;
+  lastTime = getTimeF(ind->ix[0], ind)-1;
+  bool isMT;
+  for (int j = 0; j < ind->n_all_times; ++j) {
+    ind->idx=j;
+    kk = ind->ix[j];
+    curT = getTimeF(kk, ind);
+    if (ind->evid[kk] == 0 && isSameTime(curT, lastTime)) {
+      matMT(k, 0) = curT;
+      for (int i = 0; i < nend; ++i) {
+        matMT(k, i*2+1) = matMT(k-1, i*2+1);
+        matMT(k, i*2+2) = matMT(k-1, i*2+1);
+      }
+      k++;
+      if (k >= nrow) {
+        return; // vector has been created, break
+      }
+      continue;
+    }
+    if (isDose(ind->evid[kk])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      continue;
+    } else if (isMT) {
+      // mtimes to calculate information
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
+    } else if (ind->evid[kk] == 0) {
+      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      if (ISNA(ind->lhs[0])) {
+        popedOp.naZero=1;
+        ind->lhs[0] = 0.0;
+      }
+      matMT(k, 0) = curT;
+      for (int i = 0; i < nend; ++i) {
+        matMT(k, i*2+1) = ind->lhs[i*2];
+        matMT(k, i*2+2) = ind->lhs[i*2+1];
+      }
+      k++;
+      if (k >= nrow) {
+        return; // vector has been created, break
+      }
+      lastTime = curT;
+    }
+  }
+}
+
+//[[Rcpp::export]]
+Rcpp::DataFrame popedSolveIdME2(NumericVector &theta,
+                                NumericVector &umt,
+                                NumericVector &mt, IntegerVector &ms,
+                                int nend, int id, int totn) {
+  if (solveCached(theta, id)) return(as<Rcpp::DataFrame>(_popedE["s"]));
+  NumericVector t(totn);
+  arma::vec f(totn);
+  arma::vec w(totn);
+  int nrow = umt.size();
+  arma::mat matMT(nrow, nend*2+1);
+  List we(nend);
+  for (int i = 0; i < nend; i++) {
+    we[i] = LogicalVector(totn);
+  }
+
+  popedSolveFidMat2(matMT, theta, id, nrow, nend);
   // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
   // f = f(m);
   // w = w(m);

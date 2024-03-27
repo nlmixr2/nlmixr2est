@@ -42,7 +42,7 @@
 .popedSolveIdN <- function(theta, xt, id, totn) {
   .Call(`_nlmixr2est_popedSolveIdN`, theta, xt, id, totn)
 }
-#' @rdname .popedSolveIdN
+#' @rdname dot-popedSolveIdN
 #' @export
 .popedSolveIdN2 <- function(theta, xt, id, totn) {
   .Call(`_nlmixr2est_popedSolveIdN2`, theta, xt, id, totn)
@@ -66,5 +66,10 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 .popedSolveIdME <- function(theta, umt, mt, ms, nend, id, totn) {
+  .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
+}
+
+#'  @rdname dot-popedSolveIdME
+.popedSolveIdME2 <- function(theta, umt, mt, ms, nend, id, totn) {
   .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
 }
