@@ -132,6 +132,12 @@ getValidNlmixrCtl.simulation <- getValidNlmixrCtl.rxSolve
 
 #' @rdname getValidNlmixrControl
 #' @export
+getValidNlmixrCtl.predict <- getValidNlmixrCtl.rxSolve
+
+
+
+#' @rdname getValidNlmixrControl
+#' @export
 getValidNlmixrCtl.tableControl <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- tableControl()
@@ -154,7 +160,6 @@ getValidNlmixrCtl.default <- function(control) {
 }
 
 #'  Get specified control structure from reference
-#'
 #'
 #' @param ref Reference control
 #' @param ... Other arguments for new control
