@@ -100,10 +100,17 @@ nlmixr2Est.simulate <- function(env, ...) {
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.simulation <- function(env, ...) {
+  .nlmixr2clearPipe()
+  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   .rxControl <- .rxSolveGetControlForNlmixr(env)
+  env$control <- .rxControl
   .events <- get("data", envir=env)
   do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
-                                  events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
+                                  events = .events, inits = NULL), .rxControl,
                              list(theta = NULL, eta = NULL)))
 }
 
@@ -111,23 +118,56 @@ nlmixr2Est.simulation <- function(env, ...) {
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.predict <- function(env, ...) {
+  .nlmixr2clearPipe()
+  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   .rxControl <- .rxSolveGetControlForNlmixr(env)
+  .rxControl$omega <- NA
+  .rxControl$sigma <- NA
   .events <- get("data", envir=env)
   if (is.na(.rxControl$simVariability)) {
     .rxControl$simVariability <- FALSE
   }
-  do.call(rxode2::rxSolve, c(list(object = get("ui", envir=env), params = NULL,
-                                  events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
-                             list(theta = NULL, eta = NULL)))
+  nlmixr2(object=get("ui", envir=env), data=.events,
+          est="rxSolve", control=.rxControl)
+}
+#' Get new data
+#'
+#'
+#' @param both the adjusted control
+#' @return both adjusted for single data frame to be newdata
+#' @noRd
+#' @author Matthew L. Fidler
+.getNewData <- function(both) {
+  .both <- both
+  if (!any(names(.both$rest) == "newdata")) {
+    .w <- which(vapply(seq_along(.both$rest),
+                       function(i) {
+                         inherits(.both$rest[[i]], "data.frame")
+                       }, logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1L) {
+      names(.both$rest)[1] <- "newdata"
+    }
+  }
+  .both
 }
 
 #' @export
 predict.nlmixr2FitCore <- function(object, ...) {
+  .nlmixr2clearPipe()
+  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   .env <- .nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  .both <- .getControlFromDots(rxode2::rxControl(envir=.env), ...)
+  .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
   .both$ctl$omega <- NA
   .both$ctl$sigma <- NA
   .env <- .nlmixrEvalEnv$envir
@@ -138,19 +178,25 @@ predict.nlmixr2FitCore <- function(object, ...) {
   .rxControl$envir <- .env
   if (inherits(.both$rest$newdata, "data.frame")) {
     nlmixr2(object=object, data=.both$rest$newdata,
-            est="rxSolve", control=.rxControl)
+            est="predict", control=.rxControl)
   } else {
-    nlmixr2(object=object, est="rxSolve", control=.rxControl)
+    nlmixr2(object=object, est="predict", control=.rxControl)
   }
 }
 
 #' @export
 simulate.nlmixr2FitCore <- function(object, ...) {
+  .nlmixr2clearPipe()
+  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   .env <- .nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  .both <- .getControlFromDots(rxode2::rxControl(envir=.env), ...)
+  .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
   .rxControl$envir <- .env
   if (inherits(.both$rest$newdata, "data.frame")) {

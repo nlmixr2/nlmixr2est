@@ -328,10 +328,12 @@ nmSuppressMsg <- function() {
   invisible(NULL)
 }
 
+#' @export
 rxModelVarsS3.nlmixr2FitCore <- function(obj) {
   rxode2::rxModelVars(obj$ui)
 }
 
+#' @export
 rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
   rxode2::rxModelVars(obj$ui)
 }

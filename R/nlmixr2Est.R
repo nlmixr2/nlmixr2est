@@ -26,6 +26,10 @@
 #'
 #' @export
 nlmixr2Est <- function(env, ...) {
+  on.exit({
+    .nlmixr2clearPipe()
+    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  })
   if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
   } else if (!inherits(get("ui", envir=env), "rxUi")) {
@@ -63,7 +67,7 @@ nlmixr2AllEst <- function() {
 }
 
 #' @rdname nlmixr2Est
-#' @export
+#' @expor
 nlmixr2Est.default <- function(env, ...) {
   .curEst <- class(env)[1]
   stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",

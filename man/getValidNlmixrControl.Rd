@@ -22,6 +22,7 @@
 \alias{getValidNlmixrCtl.rxSolve}
 \alias{getValidNlmixrCtl.simulate}
 \alias{getValidNlmixrCtl.simulation}
+\alias{getValidNlmixrCtl.predict}
 \alias{getValidNlmixrCtl.tableControl}
 \alias{getValidNlmixrCtl.default}
 \alias{getValidNlmixrCtl.uobyqa}
@@ -68,6 +69,8 @@ getValidNlmixrCtl(control)
 \method{getValidNlmixrCtl}{simulate}(control)
 
 \method{getValidNlmixrCtl}{simulation}(control)
+
+\method{getValidNlmixrCtl}{predict}(control)
 
 \method{getValidNlmixrCtl}{tableControl}(control)
 
