@@ -272,7 +272,7 @@ rxGetDistributionFoceiLines <- function(line) {
   if (inherits(.rxPredLlik, "logical")) {
     return(.rxPredLlik)
   }
-  return(FALSE)
+  FALSE
 }
 
 #' @export
@@ -488,7 +488,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       .all.zero <<- FALSE
     }
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
   if (.all.zero) {
     stop("none of the predictions depend on 'ETA'", call. = FALSE)
@@ -632,9 +632,9 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 
 .nullInt <- function(x) {
   if (rxode2::rxIs(x, "integer") || rxode2::rxIs(x, "numeric")) {
-    return(as.integer(x))
+    as.integer(x)
   } else {
-    return(integer(0))
+    integer(0)
   }
 }
 
@@ -989,9 +989,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     .maxLl <- max(vapply(seq_along(env$model), function(i) {
       .model <- env$model[[i]]
       if (inherits(.model, "rxode2")) {
-        return(rxode2::rxModelVars(.model)$flags["nLlik"])
+        rxode2::rxModelVars(.model)$flags["nLlik"]
       } else {
-        return(0L)
+        0L
       }
     }, integer(1), USE.NAMES=FALSE))
     if (.maxLl > 0) {
@@ -1342,9 +1342,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
     if (any(x == .covNames)) {
-      return(x)
+      x
     } else {
-      return(toupper(x))
+      toupper(x)
     }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
@@ -1526,13 +1526,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       seq_along(.est0),
       function(.i) {
         if (!.draw || .ret$thetaFixed[.i]) {
-          return(.est0[.i])
+          .est0[.i]
         } else if (.estNew[.i] < lower[.i]) {
-          return(lower[.i] + (.Machine$double.eps)^(1 / 7))
+          lower[.i] + (.Machine$double.eps)^(1 / 7)
         } else if (.estNew[.i] > upper[.i]) {
-          return(upper[.i] - (.Machine$double.eps)^(1 / 7))
+          upper[.i] - (.Machine$double.eps)^(1 / 7)
         } else {
-          return(.estNew[.i])
+          .estNew[.i]
         }
       }, numeric(1), USE.NAMES=FALSE)
     .ret$thetaIni <- setNames(.estNew, names(.est0))
