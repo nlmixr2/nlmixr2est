@@ -1,5 +1,18 @@
 # nlmixr2est (development version)
 
+## Breaking changes
+
+- Focei changed back to having a lower bound for standard deviations
+  when not specified. This means that best model fits may change.  You
+  can revert to the old settings by using
+  `foceiControl(sdLowerFact=0.0)`.  You can also change the factors to
+  other values than the default value, that is
+  `foceiControl(sdLowerFact=0.000001)` for instance which would
+  multiply the initial value by `0.000001` when either the lower bound
+  isn't specified or the lower bound is specified as zero for the
+  error estimates related to error-based standard deviations.
+
+
 ## New features
 - Gracefully degrade when $cov is not in the right form (see #423)
 

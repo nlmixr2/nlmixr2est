@@ -113,7 +113,8 @@ foceiControl(
   rxControl = NULL,
   sigdigTable = NULL,
   fallbackFD = FALSE,
-  smatPer = 0.6
+  smatPer = 0.6,
+  sdLowerFact = 0.001
 )
 }
 \arguments{
@@ -746,6 +747,13 @@ parameter gradients for each individual (which are replaced with
 the overall gradient for the parameter) out of the total number
 of gradients parameters (ie `ntheta*nsub`) before the S matrix is
 considered to be a bad matrix.}
+
+\item{sdLowerFact}{A factor for multiplying the estimate by when
+the lower estimate is zero and the error is known to represent a
+standard deviation of a parameter (like add.sd, prop.sd, pow.sd,
+lnorm.sd, etc).  When zero, no factor is applied.  If your
+initial estimate is 0.15 and your lower bound is zero, then the
+lower bound would be assumed to be 0.00015.}
 }
 \value{
 The control object that changes the options for the FOCEi

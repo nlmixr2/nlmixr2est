@@ -67,7 +67,7 @@ nlmixr2AllEst <- function() {
 }
 
 #' @rdname nlmixr2Est
-#' @expor
+#' @export
 nlmixr2Est.default <- function(env, ...) {
   .curEst <- class(env)[1]
   stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",

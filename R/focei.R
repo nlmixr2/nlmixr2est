@@ -1016,7 +1016,20 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 .foceiOptEnvSetupBounds <- function(ui, env) {
   .iniDf <- ui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .lower <- .iniDf$lower[.w]
+  .lower <- vapply(.w,
+                   function(i) {
+                     .low <- .iniDf$lower[i]
+                     .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
+                     if (.zeroRep <= 0) return(.low)
+                     if (.low <= 0 &&
+                           .iniDf$err[i] %in% c("add",
+                                                "lnorm", "logitNorm", "probitNorm",
+                                                "prop", "propT", "propF",
+                                                "pow", "powF", "powT")) {
+                       .low <- .iniDf$est[i] * 0.001
+                     }
+                     .low
+                   }, numeric(1), USE.NAMES=FALSE)
   .upper <- .iniDf$upper[.w]
   env$thetaIni <- ui$theta
   env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
