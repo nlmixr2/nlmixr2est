@@ -230,7 +230,7 @@ Rcpp::DataFrame popedSolveIdN2(NumericVector &theta, NumericVector &mt, int id, 
   arma::vec f(totn);
   arma::vec w(totn);
   popedSolveFid2(&f[0], &w[0], &t[0], theta, id, totn);
-  DataFrame ret = DataFrame::create(_["t"]=mt,
+  DataFrame ret = DataFrame::create(_["t"]=t,
                                     _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
                                     _["w"]=w); // w = sqrt(rx_r_)
   _popedE["s"] = ret;
@@ -248,7 +248,7 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
   // arma::uvec m = as<arma::uvec>(match(mt, t))-1;
   // f = f(m);
   // w = w(m);
-  DataFrame ret = DataFrame::create(_["t"]=mt,
+  DataFrame ret = DataFrame::create(_["t"]=t,
                                     _["rx_pred_"]=f, // match rxode2/nlmixr2 to simplify code of mtime models
                                     _["w"]=w); // w = sqrt(rx_r_)
   _popedE["s"] = ret;

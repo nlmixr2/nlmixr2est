@@ -356,7 +356,13 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     .minfo("use {.code est} from prior/supplied fit")
     est <- object$est
   }
+  .env <- new.env(parent=emptyenv())
   .env$control <- control
+  if (!is.null(est)) {
+    .env$missingEst <- FALSE
+  } else {
+    .env$missingEst <- missing(est)
+  }
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
   if (is.null(control) && !is.null(.nlmixr2pipeControl)) {
@@ -377,13 +383,13 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   } else {
     table <- getValidNlmixrControl(table, "tableControl")
   }
-  .env <- new.env(parent=emptyenv())
   .ui <- rxode2::rxUiDecompress(object$ui)
   .env$ui <- .nlmixrPreprocessUi(.ui)
   .env$data <- data
   .env$control <- control
   .env$table <- table
   .env$control <- control
+  .env$missingEst <- missing(est)
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
   class(.env) <- c(est, "nlmixr2Est")

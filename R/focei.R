@@ -40,7 +40,7 @@ is.latex <- function() {
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
   .ret$value <- .ret$fval
-  return(.ret)
+  .ret
 }
 
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -48,7 +48,7 @@ is.latex <- function() {
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
   .ret$x <- .ret$par
-  return(.ret)
+  .ret
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -61,7 +61,7 @@ is.latex <- function() {
     control = .control, hessian = FALSE
   )
   .ret$x <- .ret$par
-  return(.ret)
+  .ret
 }
 
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -78,7 +78,7 @@ is.latex <- function() {
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
-  return(.ret)
+  .ret
 }
 
 .nloptr <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..., nloptrAlgoritm = "NLOPT_LD_MMA") {
@@ -103,7 +103,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 .bobyqaNLopt <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -127,7 +127,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 .slsqp <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -165,7 +165,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 #' Get the THETA/ETA lines from rxode2 UI
@@ -272,7 +272,7 @@ rxGetDistributionFoceiLines <- function(line) {
   if (inherits(.rxPredLlik, "logical")) {
     return(.rxPredLlik)
   }
-  return(FALSE)
+  FALSE
 }
 
 #' @export
@@ -488,7 +488,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
       .all.zero <<- FALSE
     }
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
   if (.all.zero) {
     stop("none of the predictions depend on 'ETA'", call. = FALSE)
@@ -575,7 +575,7 @@ rxUiGet.foceiEnv <- function(x, ...) {
     .l <- eval(parse(text = .l))
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
 
   .s$..REta <- .ret
@@ -627,14 +627,14 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   .malert(msg)
   .ret <- rxode2::rxode2(paste(.toRxParam, x, .toRxDvidCmt))
   .msuccess("done")
-  return(.ret)
+  .ret
 }
 
 .nullInt <- function(x) {
   if (rxode2::rxIs(x, "integer") || rxode2::rxIs(x, "numeric")) {
-    return(as.integer(x))
+    as.integer(x)
   } else {
-    return(integer(0))
+    integer(0)
   }
 }
 
@@ -989,9 +989,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     .maxLl <- max(vapply(seq_along(env$model), function(i) {
       .model <- env$model[[i]]
       if (inherits(.model, "rxode2")) {
-        return(rxode2::rxModelVars(.model)$flags["nLlik"])
+        rxode2::rxModelVars(.model)$flags["nLlik"]
       } else {
-        return(0L)
+        0L
       }
     }, integer(1), USE.NAMES=FALSE))
     if (.maxLl > 0) {
@@ -1016,7 +1016,20 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 .foceiOptEnvSetupBounds <- function(ui, env) {
   .iniDf <- ui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .lower <- .iniDf$lower[.w]
+  .lower <- vapply(.w,
+                   function(i) {
+                     .low <- .iniDf$lower[i]
+                     .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
+                     if (.zeroRep <= 0) return(.low)
+                     if (.low <= 0 &&
+                           .iniDf$err[i] %in% c("add",
+                                                "lnorm", "logitNorm", "probitNorm",
+                                                "prop", "propT", "propF",
+                                                "pow", "powF", "powT")) {
+                       .low <- .iniDf$est[i] * 0.001
+                     }
+                     .low
+                   }, numeric(1), USE.NAMES=FALSE)
   .upper <- .iniDf$upper[.w]
   env$thetaIni <- ui$theta
   env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
@@ -1329,9 +1342,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
     if (any(x == .covNames)) {
-      return(x)
+      x
     } else {
-      return(toupper(x))
+      toupper(x)
     }
   }, character(1))
   requiredCols <- c("ID", "DV", "TIME", .covNames)
@@ -1513,13 +1526,13 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       seq_along(.est0),
       function(.i) {
         if (!.draw || .ret$thetaFixed[.i]) {
-          return(.est0[.i])
+          .est0[.i]
         } else if (.estNew[.i] < lower[.i]) {
-          return(lower[.i] + (.Machine$double.eps)^(1 / 7))
+          lower[.i] + (.Machine$double.eps)^(1 / 7)
         } else if (.estNew[.i] > upper[.i]) {
-          return(upper[.i] - (.Machine$double.eps)^(1 / 7))
+          upper[.i] - (.Machine$double.eps)^(1 / 7)
         } else {
-          return(.estNew[.i])
+          .estNew[.i]
         }
       }, numeric(1), USE.NAMES=FALSE)
     .ret$thetaIni <- setNames(.estNew, names(.est0))
