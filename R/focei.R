@@ -40,7 +40,7 @@ is.latex <- function() {
   .ret$message <- .ret$msg
   .ret$convergence <- .ret$ierr
   .ret$value <- .ret$fval
-  return(.ret)
+  .ret
 }
 
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -48,7 +48,7 @@ is.latex <- function() {
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
   .ret$x <- .ret$par
-  return(.ret)
+  .ret
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -61,7 +61,7 @@ is.latex <- function() {
     control = .control, hessian = FALSE
   )
   .ret$x <- .ret$par
-  return(.ret)
+  .ret
 }
 
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -78,7 +78,7 @@ is.latex <- function() {
   .ret$x <- .ret$par
   ## .ret$message   already there.
   ## .ret$convergence already there.
-  return(.ret)
+  .ret
 }
 
 .nloptr <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ..., nloptrAlgoritm = "NLOPT_LD_MMA") {
@@ -103,7 +103,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 .bobyqaNLopt <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -127,7 +127,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 .slsqp <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -165,7 +165,7 @@ is.latex <- function() {
   .ret$x <- .ret$solution
   .ret$convergence <- .ret$status
   .ret$value <- .ret$objective
-  return(.ret)
+  .ret
 }
 
 #' Get the THETA/ETA lines from rxode2 UI
@@ -575,7 +575,7 @@ rxUiGet.foceiEnv <- function(x, ...) {
     .l <- eval(parse(text = .l))
     .ret <- paste0(x["dfe"], "=", rxode2::rxFromSE(.l))
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
 
   .s$..REta <- .ret
@@ -627,7 +627,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   .malert(msg)
   .ret <- rxode2::rxode2(paste(.toRxParam, x, .toRxDvidCmt))
   .msuccess("done")
-  return(.ret)
+  .ret
 }
 
 .nullInt <- function(x) {
