@@ -65,6 +65,7 @@ uobyqaControl <- function(npt=NULL,
 
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
+                          literalFix=TRUE,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", ""),
@@ -77,6 +78,7 @@ uobyqaControl <- function(npt=NULL,
   checkmate::assertIntegerish(maxfun, any.missing=FALSE, lower=10, len=1)
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnUobyqa, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -154,6 +156,7 @@ uobyqaControl <- function(npt=NULL,
                maxfun=maxfun,
                covMethod=match.arg(covMethod),
                optExpression=optExpression,
+               literalFix=literalFix,
                sumProd=sumProd,
                rxControl=rxControl,
                returnUobyqa=returnUobyqa,
@@ -245,6 +248,7 @@ getValidNlmixrCtl.uobyqa <- function(control) {
                                 covMethod=0L,
                                 sumProd=.uobyqaControl$sumProd,
                                 optExpression=.uobyqaControl$optExpression,
+                                literalFix=.uobyqaControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.uobyqaControl$calcTables,
                                 addProp=.uobyqaControl$addProp,

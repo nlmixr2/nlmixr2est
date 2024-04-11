@@ -88,6 +88,7 @@ nlsControl <- function(maxiter=10000,
                        trace = FALSE, #nolint
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
+                       literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
@@ -130,6 +131,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertNumeric(tol, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(minFactor, len=1, any.missing=FALSE, lower=0)
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnNls, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -233,6 +235,7 @@ nlsControl <- function(maxiter=10000,
                gradTo=gradTo,
 
                optExpression=optExpression,
+               literalFix=literalFix,
                sumProd=sumProd,
                rxControl=rxControl,
                returnNls=returnNls,
@@ -959,6 +962,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
                                 covMethod=0L,
                                 sumProd=.nlsControl$sumProd,
                                 optExpression=.nlsControl$optExpression,
+                                literalFix=.nlsControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.nlsControl$calcTables,
                                 addProp=.nlsControl$addProp,

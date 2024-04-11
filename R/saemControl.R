@@ -144,6 +144,7 @@ saemControl <- function(seed = 99,
                         nnodesGq = 3,
                         nsdGq = 1.6,
                         optExpression = TRUE,
+                        literalFix=TRUE,
                         adjObf = TRUE,
                         sumProd = FALSE,
                         addProp = c("combined2", "combined1"),
@@ -200,6 +201,7 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nnodesGq, any.missing=FALSE, lower=1, len=1)
   checkmate::assertNumeric(nsdGq, any.missing=FALSE, lower=1, len=1, finite=TRUE)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
+  checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
   checkmate::assertLogical(adjObf, any.missing=FALSE, len=1)
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertNumeric(tol, any.missing=FALSE, len=1, finite=TRUE)
@@ -270,6 +272,7 @@ saemControl <- function(seed = 99,
     print = print,
     DEBUG = trace, # nolint
     optExpression = optExpression,
+    literalFix=literalFix,
     sumProd = sumProd,
     nnodesGq = nnodesGq,
     nsdGq = nsdGq,

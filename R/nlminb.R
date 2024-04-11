@@ -83,6 +83,7 @@ nlminbControl <- function(eval.max=200,
                           diff.g=NULL,
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
+                          literalFix=TRUE,
                           returnNlminb=FALSE,
                           solveType=c("hessian", "grad", "fun"),
 
@@ -122,6 +123,7 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertNumeric(step.min, len=1, any.missing=FALSE, lower=0)
   checkmate::assertNumeric(step.max, len=1, any.missing=FALSE, lower=0)
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnNlminb, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -272,6 +274,7 @@ nlminbControl <- function(eval.max=200,
 
                covMethod=covMethod,
                optExpression=optExpression,
+               literalFix=literalFix,
                sumProd=sumProd,
                rxControl=rxControl,
                returnNlminb=returnNlminb, addProp=addProp, calcTables=calcTables,
@@ -466,6 +469,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 covMethod=0L,
                                 sumProd=.nlminbControl$sumProd,
                                 optExpression=.nlminbControl$optExpression,
+                                literalFix=.nlminbControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.nlminbControl$calcTables,
                                 addProp=.nlminbControl$addProp,
