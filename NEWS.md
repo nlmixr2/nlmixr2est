@@ -15,8 +15,7 @@
 - In `nlmixr2`, expressions are optimized.  Because of that
   optimization, numerical rounding differences can cause different
   directions in optimization when fixing parameters in the model
-  vs. fixing the parameters manually.  Additionally `saem` has fixed
-  thetas approach the value during optimization (to help convergence).
+  vs. fixing the parameters manually.
 
   This means that the fixed parameters in a model vs hard-coded fixed
   parameters could give different values in the final model.
