@@ -15,13 +15,19 @@
 - In `nlmixr2`, expressions are optimized.  Because of that
   optimization, numerical rounding differences can cause different
   directions in optimization when fixing parameters in the model
-  vs. fixing the parameters manually.  A new option `literalFix` was
-  introduced which change the fixed population parameters to constants
-  in the model while running the optimization.  This makes the values
-  the same (which is what is likely expected). The default is for this
-  to be turned on (ie. `literalFix=TRUE`).  You can get back the old
-  behavior by using the option `literalFix=FALSE`.
+  vs. fixing the parameters manually.  Additionally `saem` has fixed
+  thetas approach the value during optimization (to help convergence).
 
+  This means that the fixed parameters in a model vs hard-coded fixed
+  parameters could give different values in the final model.
+
+  A new option `literalFix` was introduced which change the fixed
+  population parameters to constants in the model while running the
+  optimization.  This makes the output of fixing within the model and
+  fixing manually the same (which is what is likely expected). The
+  default is for this to be turned on (ie. `literalFix=TRUE`).  You
+  can get back the old behavior by using the option
+  `literalFix=FALSE`.
 
 ## New features
 
