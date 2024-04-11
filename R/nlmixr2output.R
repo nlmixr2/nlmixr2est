@@ -272,6 +272,97 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
+  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
+    .ui <- .nlmixr2EstEnv$uiUnfix
+    .theta <- .ui$theta
+    .tn <- names(.theta)
+    .fmt <- paste0("%.", .ret$control$sigdig, "g")
+    .popDf <-
+      data.frame(
+        `Estimate`=vapply(.tn,
+                          function(n) {
+                            .ret <- .ret$popDf[n, "Estimate"]
+                            if (is.na(.ret)) {
+                              .ret <- .theta[n]
+                            }
+                            .ret
+                          }, double(1), USE.NAMES = FALSE),
+        `SE`=vapply(.tn,
+                    function(n) {
+                      .ret <- .ret$popDf[n, "SE"]
+                      setNames(.ret, NULL)
+                    }, double(1), USE.NAMES = FALSE),
+        `%RSE`=vapply(.tn,
+                    function(n) {
+                      .ret <- .ret$popDf[n, "%RSE"]
+                      setNames(.ret, NULL)
+                    }, double(1), USE.NAMES = FALSE),
+        `Back-transformed`=vapply(.tn,
+                                  function(n) {
+                                    .ret <- .ret$popDf[n, "Back-transformed"]
+                                    if (is.na(.ret)) {
+                                      .ret <- .theta[n]
+                                    }
+                                    .ret
+                                  }, double(1), USE.NAMES = FALSE),
+        `CI Lower`=vapply(.tn,
+                      function(n) {
+                        .ret <- .ret$popDf[n, "CI Lower"]
+                        setNames(.ret, NULL)
+                      }, double(1), USE.NAMES = FALSE),
+        `CI Upper`=vapply(.tn,
+                          function(n) {
+                            .ret <- .ret$popDf[n, "CI Upper"]
+                            setNames(.ret, NULL)
+                          }, double(1), USE.NAMES = FALSE),
+        row.names = .tn,
+        check.rows = FALSE, check.names = FALSE
+      )
+    .popDfSig <-
+      data.frame(
+        `Est.`=vapply(.tn,
+                          function(n) {
+                            .ret <- .ret$popDfSig[n, "Est."]
+                            if (is.na(.ret)) {
+                              .ret <- sprintf(.fmt, .theta[n])
+                            }
+                            .ret
+                          }, character(1), USE.NAMES = FALSE),
+        `SE`=vapply(.tn,
+                    function(n) {
+                      .ret <- .ret$popDfSig[n, "SE"]
+                      if (is.na(.ret)) {
+                        .ret <- "FIXED"
+                      }
+                      setNames(.ret, NULL)
+                    }, character(1), USE.NAMES = FALSE),
+        `%RSE`=vapply(.tn,
+                      function(n) {
+                        .ret <- .ret$popDfSig[n, "%RSE"]
+                        if (is.na(.ret)) {
+                          .ret <- "FIXED"
+                        }
+                        setNames(.ret, NULL)
+                      }, character(1), USE.NAMES = FALSE),
+        `Back-transformed`=vapply(.tn,
+                                  function(n) {
+                                    .ret <- .ret$popDfSig[n, 4]
+                                    if (is.na(.ret)) {
+                                      .ret <- sprintf(.fmt, .theta[n])
+                                    }
+                                    .ret
+                                  }, character(1), USE.NAMES = FALSE),
+        row.names = .tn,
+        check.rows = FALSE, check.names = FALSE
+      )
+
+    names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
+    .ret$popDfSig <- .popDfSig
+    .ret$popDf <- .popDf
+    ##           Est.    SE  %RSE Back-transformed(95%CI)
+    ## ALLC      0.75 FIXED FIXED                    0.75
+    ## ALLV         1 FIXED FIXED                       1
+  }
   .updateParFixedApplyManualBacktransformations(.ret, .ui)
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
@@ -603,6 +694,21 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     }
     .ui <- rxode2::rxUiDecompress(.ui)
     assign("iniDf", .iniDf, envir=.ui)
+    .ui <- rxode2::rxUiCompress(.ui)
+    assign("ui", .ui, envir=x)
+  }
+  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
+    # Adjust to original model without literal fix
+    .iniDf0 <- x$ui$iniDf
+    .iniDf2 <- .nlmixr2EstEnv$uiUnfix$iniDf
+    .iniDf2$est <- vapply(.iniDf2$name,
+                          function(n) {
+                            .w <- which(.iniDf0$name == n)
+                            if (length(.w) == 1L) return(.iniDf0$est[.w])
+                            .iniDf2[.iniDf2$name == n, "est"]
+                          }, double(1), USE.NAMES = FALSE)
+    .ui <- rxode2::rxUiDecompress(.nlmixr2EstEnv$uiUnfix)
+    assign("iniDf", .iniDf2, envir=.ui)
     .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   }

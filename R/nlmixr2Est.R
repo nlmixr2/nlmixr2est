@@ -1,4 +1,5 @@
 .nlmixr2EstEnv <- new.env(parent=emptyenv())
+.nlmixr2EstEnv$uiUnfix <- NULL
 
 #' Generic for nlmixr2 estimation methods
 #'
@@ -44,9 +45,23 @@ nlmixr2Est <- function(env, ...) {
     stop("'data' is not a data.frame", call.=FALSE)
   }
   assign("data", as.data.frame(get("data", envir=env)), envir=env)
+  .checkLiteralFix <- TRUE
   if (!exists("control", envir=env)) {
     stop("need 'control' object", call.=FALSE)
   } else if (is.null(get("control", envir=env))) {
+  } else {
+    if (checkmate::testLogical(env$control$literalFix, any.missing=FALSE, len=1, null.ok=FALSE)) {
+      .checkLiteralFix <- env$control$literalFix
+    }
+  }
+  .nlmixr2EstEnv$uiUnfix <- NULL
+  if (.checkLiteralFix) {
+    .ui <- rxode2::rxFixPop(get("ui", envir=env), returnNull=TRUE)
+    if (!is.null(.ui)) {
+      .ui <- rxode2::rxUiDecompress(.ui)
+      .nlmixr2EstEnv$uiUnfix <- get("ui", envir=env)
+      assign("ui", .ui, envir=env)
+    }
   }
   if (!exists("table", envir=env)) {
     stop("need 'table' object", call.=FALSE)

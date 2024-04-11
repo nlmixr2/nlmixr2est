@@ -170,6 +170,10 @@
 #' @param optExpression Optimize the rxode2 expression to speed up
 #'     calculation. By default this is turned on.
 #'
+#' @param literalFix boolean, substitute fixed population values as
+#'   literals and re-adjust ui and parameter estimates after
+#'   optimization; Default is `TRUE`.
+#'
 #' @param ci Confidence level for some tables.  By default this is
 #'     0.95 or 95\% confidence.
 #'
@@ -712,6 +716,7 @@ foceiControl <- function(sigdig = 3, #
                          diagXform = c("sqrt", "log", "identity"), #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
+                         literalFix=TRUE,
                          ci = 0.95, #
                          useColor = crayon::has_color(), #
                          boundTol = NULL, #
@@ -942,6 +947,7 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
+  checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
@@ -1211,6 +1217,7 @@ foceiControl <- function(sigdig = 3, #
     diagXform = match.arg(diagXform),
     sumProd = sumProd,
     optExpression = optExpression,
+    literalFix=literalFix,
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
