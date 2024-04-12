@@ -126,7 +126,7 @@
     .ui <- rxode2::rxFixPop(ui, returnNull=TRUE)
     if (!is.null(.ui)) {
       .ret <- rxode2::rxUiDecompress(.ui)
-      .nlmixr2EstEnv$uiUnfix <- .ret
+      .nlmixr2EstEnv$uiUnfix <- ui
     }
   }
   .zeroEtas <- .getZeroEtasFromModel(.ret)
