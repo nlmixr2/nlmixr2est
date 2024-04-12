@@ -28,19 +28,15 @@ nmTest({
   nid <- 12
 
   dat <- rxode2::rxWithSeed(102478, {
-
     cov <- data.frame(id=seq(nid), logWt70=log(rnorm(nid, 70, 10) / 70), sexf=round(runif(nid)))
-
     ev <- et() %>%
       et(amt=320) %>%
       et(c(0.25, 0.5, 1, 2, 4, 6, 8, 10, 12, 24)) %>%
       et(id=1:nid) %>%
       merge(cov)
-
     rxSolve(mod, ev, addDosing=TRUE, returnType="data.frame") %>%
       dplyr::select(id, evid, cmt, amt, time, sim, logWt70, sexf) %>%
       dplyr::rename(dv=sim)
-
   })
 
 
@@ -48,11 +44,9 @@ nmTest({
 
     mod2 <- function() {
       ini({
-
         wt.cl <- 3
         sexf.cl <- 1.5
         wt.v2 <- -3
-
         tka <- 0.45 ; label("Log Ka")
         tcl <- 1 ; label("Log Cl")
         tv <- 3.45 ; label("Log V")
@@ -127,6 +121,10 @@ nmTest({
                  c(tka = 1L, tcl = 1L, wt.cl = 1L, tv = 1L, wt.v2 = 1L, sexf.cl = 0L))
 
     fit1 <- nlmixr(mod, dat, "saem")
+
+    expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
+
+    fit1 <- nlmixr(mod, dat, "saem", saemControl(literalFix=FALSE))
 
     expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
 

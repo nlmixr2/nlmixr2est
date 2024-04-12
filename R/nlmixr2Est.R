@@ -131,8 +131,8 @@ nlmixr2Est.default <- function(env, ...) {
                             }, double(1), USE.NAMES = FALSE)
       assign("iniDf", .iniDf2, envir=.final)
       assign("ui", .final, envir=ret$env)
+      assign("fixef", .final$theta, envir=ret$env)
     }
-
   }
   .nlmixr2EstEnv$uiUnfix <- NULL
   .nlmixr2EstEnv$nlmixrPureInputUi <- NULL

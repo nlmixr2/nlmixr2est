@@ -359,9 +359,6 @@
     names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
     .ret$popDfSig <- .popDfSig
     .ret$popDf <- .popDf
-    ##           Est.    SE  %RSE Back-transformed(95%CI)
-    ## ALLC      0.75 FIXED FIXED                    0.75
-    ## ALLV         1 FIXED FIXED                       1
   }
   .updateParFixedApplyManualBacktransformations(.ret, .ui)
   .updateParFixedAddParameterLabel(.ret, .ui)
