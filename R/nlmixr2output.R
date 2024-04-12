@@ -697,19 +697,4 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   }
-  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
-    # Adjust to original model without literal fix
-    .iniDf0 <- x$ui$iniDf
-    .iniDf2 <- .nlmixr2EstEnv$uiUnfix$iniDf
-    .iniDf2$est <- vapply(.iniDf2$name,
-                          function(n) {
-                            .w <- which(.iniDf0$name == n)
-                            if (length(.w) == 1L) return(.iniDf0$est[.w])
-                            .iniDf2[.iniDf2$name == n, "est"]
-                          }, double(1), USE.NAMES = FALSE)
-    .ui <- rxode2::rxUiDecompress(.nlmixr2EstEnv$uiUnfix)
-    assign("iniDf", .iniDf2, envir=.ui)
-    .ui <- rxode2::rxUiCompress(.ui)
-    assign("ui", .ui, envir=x)
-  }
 }

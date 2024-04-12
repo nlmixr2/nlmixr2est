@@ -194,14 +194,14 @@
         if (length(.w3) > 0) {
           .w2 <- .w2[.w3]
           .texp <- ui$muRefCurEval$parameter[.w2]
-          # now get parameters 
+          # now get parameters
           .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
           warning(paste0("log-scale mu referenced time varying covariates (",
                          paste(.pars, collapse=", "),
                          ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
                   call.=FALSE)
         }
-        
+
       }
       .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
