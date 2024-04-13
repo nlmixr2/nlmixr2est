@@ -624,7 +624,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
       .all.zero <<- FALSE
     }
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
   if (.all.zero) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)

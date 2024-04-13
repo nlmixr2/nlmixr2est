@@ -327,7 +327,7 @@
                              return(TRUE)
                            }
                          }
-                         return(FALSE)
+                         FALSE
                        },
                        logical(1),
                        USE.NAMES=FALSE))
@@ -799,7 +799,7 @@ nmObjGet.saemDopredIpred <- function(x, ...) {
     .dopred <- attr(.saem, "dopred")
     .dopred(.saem$mpost_phi, .saemCfg$evt, .saemCfg$opt)
   } else {
-    return(NULL)
+    NULL
   }
 }
 

@@ -771,9 +771,9 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   setNames(vapply(seq_along(.iniDf$name),
          function(i) {
            if (.iniDf$fix[i]) {
-             return(.iniDf$est[i])
+             .iniDf$est[i]
            } else {
-             return(nlm$estimate[.iniDf$name[i]])
+             nlm$estimate[.iniDf$name[i]]
            }
          }, double(1), USE.NAMES=FALSE),
          .iniDf$name)

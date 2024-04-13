@@ -19,6 +19,7 @@
   if (length(.w) == 1L) {
     return("")
   }
+  NULL
 }
 #' Get the parameter label and apply to parameter dataset
 #'
@@ -253,12 +254,12 @@
     } else if (.v < 30) {
       .t <- "="
     }
-    return(data.frame(
+    data.frame(
       ch = sprintf("%s%%%s", formatC(signif(.v, digits = .sigdig),
                                      digits = .sigdig, format = "fg", flag = "#"
                                      ), .t),
       v = .v
-    ))
+    )
   })
   .sh <- do.call("rbind", .sh)
   .ret$popDfSig <- data.frame(.ret$popDfSig, "Shrink(SD)%" = .sh$ch, check.names = FALSE)
@@ -495,9 +496,8 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
       .errs <- paste(.df[which(!is.na(.df$err)), "name"])
       return(fixef(x)[.errs])
     }
-  } else {
-    return(.ret$sigma)
   }
+  .ret$sigma
 }
 
 #' @export
