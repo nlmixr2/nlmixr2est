@@ -321,7 +321,7 @@
           `Est.`=vapply(.tn,
                         function(n) {
                           .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Est."], NULL))
+                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
                           sprintf(.fmt, .theta[n])
                         }, character(1), USE.NAMES = FALSE),
           `SE`=vapply(.tn,

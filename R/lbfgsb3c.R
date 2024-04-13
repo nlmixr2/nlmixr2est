@@ -289,7 +289,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 covMethod=0L,
                                 sumProd=.lbfgsb3cControl$sumProd,
                                 optExpression=.lbfgsb3cControl$optExpression,
-                                literalFix=lbfgsb3cControl$optExpression,
+                                literalFix=.lbfgsb3cControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.lbfgsb3cControl$calcTables,
                                 addProp=.lbfgsb3cControl$addProp,

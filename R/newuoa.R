@@ -248,7 +248,7 @@ getValidNlmixrCtl.newuoa <- function(control) {
                                 covMethod=0L,
                                 sumProd=.newuoaControl$sumProd,
                                 optExpression=.newuoaControl$optExpression,
-                                literalFix=.newuoa$literalFix,
+                                literalFix=.newuoaControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.newuoaControl$calcTables,
                                 addProp=.newuoaControl$addProp,
