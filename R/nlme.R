@@ -284,7 +284,7 @@ nlmeControl <- nlmixr2NlmeControl
       .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
-      return(c(.f, .add, .prop))
+      c(.f, .add, .prop)
     } else {
       stop("add+prop combined2 does not support nlme power currently",
            call.=FALSE)

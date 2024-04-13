@@ -573,7 +573,7 @@ ofv <- function(x, type, ...) {
 #' @export
 ofv.nlmixr2FitData <- function(x, type, ...) {
   if (!missing(type)) setOfv(x, type)
-  return(x$ofv)
+  x$ofv
 }
 
 #' @export
