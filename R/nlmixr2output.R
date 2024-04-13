@@ -277,15 +277,14 @@
     .theta <- .ui$theta
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
+    .row.names <- row.names(.ret$popDf)
     .popDf <-
       data.frame(
         `Estimate`=vapply(.tn,
                           function(n) {
-                            .ret <- .ret$popDf[n, "Estimate"]
-                            if (is.na(.ret)) {
-                              .ret <- .theta[n]
-                            }
-                            .ret
+                            .w <- which(.row.names == n)
+                            if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
+                            .theta[n]
                           }, double(1), USE.NAMES = FALSE),
         `SE`=vapply(.tn,
                     function(n) {
@@ -299,11 +298,9 @@
                     }, double(1), USE.NAMES = FALSE),
         `Back-transformed`=vapply(.tn,
                                   function(n) {
-                                    .ret <- .ret$popDf[n, "Back-transformed"]
-                                    if (is.na(.ret)) {
-                                      .ret <- .theta[n]
-                                    }
-                                    .ret
+                                    .w <- which(.row.names == n)
+                                    if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Back-transformed"], NULL))
+                                    .theta[n]
                                   }, double(1), USE.NAMES = FALSE),
         `CI Lower`=vapply(.tn,
                       function(n) {
@@ -314,49 +311,61 @@
                           function(n) {
                             .ret <- .ret$popDf[n, "CI Upper"]
                             setNames(.ret, NULL)
-                          }, double(1), USE.NAMES = FALSE),
+                           }, double(1), USE.NAMES = FALSE),
         row.names = .tn,
         check.rows = FALSE, check.names = FALSE
       )
-    .popDfSig <-
-      data.frame(
-        `Est.`=vapply(.tn,
-                          function(n) {
-                            .ret <- .ret$popDfSig[n, "Est."]
-                            if (is.na(.ret)) {
-                              .ret <- sprintf(.fmt, .theta[n])
-                            }
-                            .ret
-                          }, character(1), USE.NAMES = FALSE),
-        `SE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDfSig[n, "SE"]
-                      if (is.na(.ret)) {
-                        .ret <- "FIXED"
-                      }
-                      setNames(.ret, NULL)
-                    }, character(1), USE.NAMES = FALSE),
-        `%RSE`=vapply(.tn,
+    if (any(names(.ret$popDfSig) == "SE")) {
+      .popDfSig <-
+        data.frame(
+          `Est.`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Est."], NULL))
+                          sprintf(.fmt, .theta[n])
+                        }, character(1), USE.NAMES = FALSE),
+          `SE`=vapply(.tn,
                       function(n) {
-                        .ret <- .ret$popDfSig[n, "%RSE"]
-                        if (is.na(.ret)) {
-                          .ret <- "FIXED"
-                        }
-                        setNames(.ret, NULL)
+                        .w <- which(.row.names == n)
+                        if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
+                        "FIXED"
                       }, character(1), USE.NAMES = FALSE),
-        `Back-transformed`=vapply(.tn,
-                                  function(n) {
-                                    .ret <- .ret$popDfSig[n, 4]
-                                    if (is.na(.ret)) {
-                                      .ret <- sprintf(.fmt, .theta[n])
-                                    }
-                                    .ret
-                                  }, character(1), USE.NAMES = FALSE),
-        row.names = .tn,
-        check.rows = FALSE, check.names = FALSE
-      )
-
-    names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
+          `%RSE`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "%RSE"], NULL))
+                          "FIXED"
+                        }, character(1), USE.NAMES = FALSE),
+          `Back-transformed`=vapply(.tn,
+                                    function(n) {
+                                      .w <- which(.row.names == n)
+                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 4], NULL))
+                                      sprintf(.fmt, .theta[n])
+                                    }, character(1), USE.NAMES = FALSE),
+          row.names = .tn,
+          check.rows = FALSE, check.names = FALSE
+        )
+      names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
+    } else {
+      .popDfSig <-
+        data.frame(
+          `Est.`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
+                          sprintf(.fmt, .theta[n])
+                        }, character(1), USE.NAMES = FALSE),
+          `Back-transformed`=vapply(.tn,
+                                    function(n) {
+                                      .w <- which(.row.names == n)
+                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 2], NULL))
+                                      sprintf(.fmt, .theta[n])
+                                    }, character(1), USE.NAMES = FALSE),
+          row.names = .tn,
+          check.rows = FALSE, check.names = FALSE
+        )
+      names(.popDfSig)[2] <- names(.ret$popDfSig)[2]
+    }
     .ret$popDfSig <- .popDfSig
     .ret$popDf <- .popDf
   }
