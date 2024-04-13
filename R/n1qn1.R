@@ -68,6 +68,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
 
                          rxControl=NULL,
                          optExpression=TRUE, sumProd=FALSE,
+                         literalFix=TRUE,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=TRUE,
                          covMethod=c("r", "n1qn1", ""),
@@ -80,6 +81,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertLogical(print.functions, len=1, any.missing=FALSE)
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnN1qn1, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -159,6 +161,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     print.functions=print.functions,
     covMethod=match.arg(covMethod),
     optExpression=optExpression,
+    literalFix=literalFix,
     sumProd=sumProd,
     rxControl=rxControl,
     returnN1qn1=returnN1qn1,
@@ -251,6 +254,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 covMethod=0L,
                                 sumProd=.n1qn1Control$sumProd,
                                 optExpression=.n1qn1Control$optExpression,
+                                literalFix=.n1qn1Control$literalFix,
                                 scaleTo=0,
                                 calcTables=.n1qn1Control$calcTables,
                                 addProp=.n1qn1Control$addProp,
@@ -302,9 +306,9 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   setNames(vapply(seq_along(.iniDf$name),
                   function(i) {
                     if (.iniDf$fix[i]) {
-                      return(.iniDf$est[i])
+                      .iniDf$est[i]
                     } else {
-                      return(nlm$par[.iniDf$name[i]])
+                      nlm$par[.iniDf$name[i]]
                     }
                   }, double(1), USE.NAMES=FALSE),
            .iniDf$name)

@@ -170,12 +170,14 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
 
                          rxControl=NULL,
                          optExpression=TRUE, sumProd=FALSE,
+                         literalFix=TRUE,
                          returnOptim=FALSE,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=TRUE,
                          covMethod=c("r", "optim", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnOptim, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -311,6 +313,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                temp=temp,
                tmax=tmax,
                optExpression=optExpression,
+               literalFix=literalFix,
                sumProd=sumProd,
                solveType=solveType,
                stickyRecalcN=as.integer(stickyRecalcN),
@@ -506,9 +509,9 @@ rxUiGet.optimParUpper <- function(x, ...) {
   setNames(vapply(seq_along(.iniDf$name),
                   function(i) {
                     if (.iniDf$fix[i]) {
-                      return(.iniDf$est[i])
+                      .iniDf$est[i]
                     } else {
-                      return(nlm$par[.iniDf$name[i]])
+                      nlm$par[.iniDf$name[i]]
                     }
                   }, double(1), USE.NAMES=FALSE),
            .iniDf$name)
@@ -523,6 +526,7 @@ rxUiGet.optimParUpper <- function(x, ...) {
                                 covMethod=0L,
                                 sumProd=.optimControl$sumProd,
                                 optExpression=.optimControl$optExpression,
+                                literalFix=.optimControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.optimControl$calcTables,
                                 addProp=.optimControl$addProp,

@@ -22,7 +22,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     returnObject = FALSE, msVerbose = FALSE, msWarnNoConv = TRUE,
     gradHess = TRUE, apVar = TRUE, .relStep = .Machine$double.eps^(1/3),
     minAbsParApVar = 0.05, opt = c("nlminb", "nlm"), natural = TRUE,
-    sigma = NULL, optExpression=TRUE, sumProd=FALSE,
+    sigma = NULL, optExpression=TRUE, literalFix=TRUE, sumProd=FALSE,
     rxControl=NULL,
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
@@ -30,6 +30,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnObject, len=1, any.missing=FALSE)
   checkmate::assertLogical(msVerbose, len=1, any.missing=FALSE)
@@ -107,7 +108,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
                msVerbose = msVerbose, msWarnNoConv = msWarnNoConv, gradHess = gradHess,
                apVar = apVar, .relStep = .relStep, minAbsParApVar = minAbsParApVar,
                opt = match.arg(opt), natural = natural, sigma = sigma,
-               optExpression=optExpression, sumProd=sumProd,
+               optExpression=optExpression, literalFix=literalFix, sumProd=sumProd,
                rxControl=rxControl, method=method,verbose=verbose,
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
@@ -220,7 +221,7 @@ nlmeControl <- nlmixr2NlmeControl
       control=.(.ctl),
       verbose=.(.verbose),
       na.action=function(object, ...) {
-        return(object)
+        object
       }
     )))
   ret
@@ -265,7 +266,7 @@ nlmeControl <- nlmixr2NlmeControl
       .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
-      return(c(.f, .add, .prop))
+      c(.f, .add, .prop)
     } else {
       .nlmePars <- coef(nlme$modelStruct$varStruct)
       .w <- which(ui$iniDf$err == "add")
@@ -274,7 +275,7 @@ nlmeControl <- nlmixr2NlmeControl
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow2")
       .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
-      return(c(.f, .add, .prop, .pow))
+      c(.f, .add, .prop, .pow)
     }
   } else {
     if (.errType == "add + prop") {
@@ -283,7 +284,7 @@ nlmeControl <- nlmixr2NlmeControl
       .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(.nlmePars["prop"], ui$iniDf$name[.w])
-      return(c(.f, .add, .prop))
+      c(.f, .add, .prop)
     } else {
       stop("add+prop combined2 does not support nlme power currently",
            call.=FALSE)
@@ -410,6 +411,7 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 etaMat=env$etaMat,
                                 sumProd=.nlmeControl$sumProd,
                                 optExpression=.nlmeControl$optExpression,
+                                literalFix=.nlmeControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.nlmeControl$calcTables,
                                 addProp=.nlmeControl$addProp,

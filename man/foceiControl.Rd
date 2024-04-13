@@ -40,6 +40,7 @@ foceiControl(
   diagXform = c("sqrt", "log", "identity"),
   sumProd = FALSE,
   optExpression = TRUE,
+  literalFix = TRUE,
   ci = 0.95,
   useColor = crayon::has_color(),
   boundTol = NULL,
@@ -435,6 +436,10 @@ this is \code{FALSE}.}
 
 \item{optExpression}{Optimize the rxode2 expression to speed up
 calculation. By default this is turned on.}
+
+\item{literalFix}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}

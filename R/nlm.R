@@ -112,6 +112,7 @@ nlmControl <- function(typsize = NULL,
 
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
+                       literalFix=TRUE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
                        covMethod=c("r", "nlm", ""),
@@ -123,6 +124,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertIntegerish(shi21maxHess, lower=1, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
   checkmate::assertIntegerish(print.level, lower=0, upper=2, any.missing=FALSE)
@@ -237,6 +239,7 @@ nlmControl <- function(typsize = NULL,
                steptol = steptol, iterlim = iterlim,
                check.analyticals = check.analyticals,
                optExpression=optExpression,
+               literalFix=literalFix,
                sumProd=sumProd,
                rxControl=rxControl,
                returnNlm=returnNlm,
@@ -428,7 +431,7 @@ rxUiGet.nlmParams <- function(x, ...) {
   paste0("params(",
          paste(c(vapply(.w, function(i) {
            .env$t <- .env$t + 1
-           return(paste0("THETA[", .env$t, "]"))
+           paste0("THETA[", .env$t, "]")
          }, character(1), USE.NAMES = FALSE), "DV"),
          collapse=","), ")")
 }
@@ -526,7 +529,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
       .all.zero <<- FALSE
     }
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
   if (.all.zero) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)
@@ -768,9 +771,9 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   setNames(vapply(seq_along(.iniDf$name),
          function(i) {
            if (.iniDf$fix[i]) {
-             return(.iniDf$est[i])
+             .iniDf$est[i]
            } else {
-             return(nlm$estimate[.iniDf$name[i]])
+             nlm$estimate[.iniDf$name[i]]
            }
          }, double(1), USE.NAMES=FALSE),
          .iniDf$name)
@@ -785,6 +788,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 covMethod=0L,
                                 sumProd=.nlmControl$sumProd,
                                 optExpression=.nlmControl$optExpression,
+                                literalFix=.nlmControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.nlmControl$calcTables,
                                 addProp=.nlmControl$addProp,

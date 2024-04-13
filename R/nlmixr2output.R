@@ -19,6 +19,7 @@
   if (length(.w) == 1L) {
     return("")
   }
+  NULL
 }
 #' Get the parameter label and apply to parameter dataset
 #'
@@ -253,12 +254,12 @@
     } else if (.v < 30) {
       .t <- "="
     }
-    return(data.frame(
+    data.frame(
       ch = sprintf("%s%%%s", formatC(signif(.v, digits = .sigdig),
                                      digits = .sigdig, format = "fg", flag = "#"
                                      ), .t),
       v = .v
-    ))
+    )
   })
   .sh <- do.call("rbind", .sh)
   .ret$popDfSig <- data.frame(.ret$popDfSig, "Shrink(SD)%" = .sh$ch, check.names = FALSE)
@@ -272,6 +273,103 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
+  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
+    .ui <- .nlmixr2EstEnv$uiUnfix
+    .theta <- .ui$theta
+    .tn <- names(.theta)
+    .fmt <- paste0("%.", .ret$control$sigdig, "g")
+    .row.names <- row.names(.ret$popDf)
+    .popDf <-
+      data.frame(
+        `Estimate`=vapply(.tn,
+                          function(n) {
+                            .w <- which(.row.names == n)
+                            if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
+                            .theta[n]
+                          }, double(1), USE.NAMES = FALSE),
+        `SE`=vapply(.tn,
+                    function(n) {
+                      .ret <- .ret$popDf[n, "SE"]
+                      setNames(.ret, NULL)
+                    }, double(1), USE.NAMES = FALSE),
+        `%RSE`=vapply(.tn,
+                    function(n) {
+                      .ret <- .ret$popDf[n, "%RSE"]
+                      setNames(.ret, NULL)
+                    }, double(1), USE.NAMES = FALSE),
+        `Back-transformed`=vapply(.tn,
+                                  function(n) {
+                                    .w <- which(.row.names == n)
+                                    if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Back-transformed"], NULL))
+                                    .theta[n]
+                                  }, double(1), USE.NAMES = FALSE),
+        `CI Lower`=vapply(.tn,
+                      function(n) {
+                        .ret <- .ret$popDf[n, "CI Lower"]
+                        setNames(.ret, NULL)
+                      }, double(1), USE.NAMES = FALSE),
+        `CI Upper`=vapply(.tn,
+                          function(n) {
+                            .ret <- .ret$popDf[n, "CI Upper"]
+                            setNames(.ret, NULL)
+                           }, double(1), USE.NAMES = FALSE),
+        row.names = .tn,
+        check.rows = FALSE, check.names = FALSE
+      )
+    if (any(names(.ret$popDfSig) == "SE")) {
+      .popDfSig <-
+        data.frame(
+          `Est.`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
+                          sprintf(.fmt, .theta[n])
+                        }, character(1), USE.NAMES = FALSE),
+          `SE`=vapply(.tn,
+                      function(n) {
+                        .w <- which(.row.names == n)
+                        if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
+                        "FIXED"
+                      }, character(1), USE.NAMES = FALSE),
+          `%RSE`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "%RSE"], NULL))
+                          "FIXED"
+                        }, character(1), USE.NAMES = FALSE),
+          `Back-transformed`=vapply(.tn,
+                                    function(n) {
+                                      .w <- which(.row.names == n)
+                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 4], NULL))
+                                      sprintf(.fmt, .theta[n])
+                                    }, character(1), USE.NAMES = FALSE),
+          row.names = .tn,
+          check.rows = FALSE, check.names = FALSE
+        )
+      names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
+    } else {
+      .popDfSig <-
+        data.frame(
+          `Est.`=vapply(.tn,
+                        function(n) {
+                          .w <- which(.row.names == n)
+                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
+                          sprintf(.fmt, .theta[n])
+                        }, character(1), USE.NAMES = FALSE),
+          `Back-transformed`=vapply(.tn,
+                                    function(n) {
+                                      .w <- which(.row.names == n)
+                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 2], NULL))
+                                      sprintf(.fmt, .theta[n])
+                                    }, character(1), USE.NAMES = FALSE),
+          row.names = .tn,
+          check.rows = FALSE, check.names = FALSE
+        )
+      names(.popDfSig)[2] <- names(.ret$popDfSig)[2]
+    }
+    .ret$popDfSig <- .popDfSig
+    .ret$popDf <- .popDf
+  }
   .updateParFixedApplyManualBacktransformations(.ret, .ui)
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
@@ -398,9 +496,8 @@ VarCorr.nlmixr2FitCoreSilent <- VarCorr.nlmixr2FitCore
       .errs <- paste(.df[which(!is.na(.df$err)), "name"])
       return(fixef(x)[.errs])
     }
-  } else {
-    return(.ret$sigma)
   }
+  .ret$sigma
 }
 
 #' @export
@@ -410,9 +507,9 @@ str.nlmixr2FitData <- function(object, ...) {
   cat(paste(strtrim(paste(vapply(names(.s), function(x){
     .nchar <- nchar(x)
     if (.nchar >= 10) {
-      return(paste0(" $ ", x, ": "))
+      paste0(" $ ", x, ": ")
     } else {
-      return(paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": "))
+      paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": ")
     }
   }, character(1), USE.NAMES=FALSE), .s), 128), collapse="\n"))
   cat("\n")
@@ -476,7 +573,7 @@ ofv <- function(x, type, ...) {
 #' @export
 ofv.nlmixr2FitData <- function(x, type, ...) {
   if (!missing(type)) setOfv(x, type)
-  return(x$ofv)
+  x$ofv
 }
 
 #' @export
@@ -486,20 +583,21 @@ logLik.nlmixr2FitData <- function(object, ...) {
   if (!is.null(.lst$type)) {
     .new <- setOfv(object, .lst$type)
     .parent <- globalenv()
-    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-      if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
-        return(.cur)
-      }
-      return(NULL)
-    }))
+    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE),
+      function(.cur) {
+       if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
+         return(.cur)
+       }
+       NULL
+      }))
     if (length(.bound) == 1) {
       if (exists(.bound, envir = .parent)) {
         assign(.bound, .new, envir = .parent)
       }
     }
-    return(get("logLik", .new$env))
+    get("logLik", .new$env)
   } else {
-    return(object$logLik)
+    object$logLik
   }
 }
 

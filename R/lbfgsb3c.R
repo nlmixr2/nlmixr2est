@@ -99,6 +99,7 @@ lbfgsb3cControl <- function(trace=0,
 
                             rxControl=NULL,
                             optExpression=TRUE, sumProd=FALSE,
+                            literalFix=TRUE,
                             addProp = c("combined2", "combined1"),
                             calcTables=TRUE, compress=TRUE,
                             covMethod=c("r", ""),
@@ -112,6 +113,7 @@ lbfgsb3cControl <- function(trace=0,
   checkmate::assertIntegerish(lmm, len=1, any.missing=FALSE, lower=1)
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnLbfgsb3c, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -194,6 +196,7 @@ lbfgsb3cControl <- function(trace=0,
 
     covMethod=match.arg(covMethod),
     optExpression=optExpression,
+    literalFix=literalFix,
     sumProd=sumProd,
     rxControl=rxControl,
     returnLbfgsb3c=returnLbfgsb3c,
@@ -286,6 +289,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 covMethod=0L,
                                 sumProd=.lbfgsb3cControl$sumProd,
                                 optExpression=.lbfgsb3cControl$optExpression,
+                                literalFix=.lbfgsb3cControl$literalFix,
                                 scaleTo=0,
                                 calcTables=.lbfgsb3cControl$calcTables,
                                 addProp=.lbfgsb3cControl$addProp,
@@ -340,9 +344,9 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   setNames(vapply(seq_along(.iniDf$name),
                   function(i) {
                     if (.iniDf$fix[i]) {
-                      return(.iniDf$est[i])
+                      .iniDf$est[i]
                     } else {
-                      return(nlm$par[.iniDf$name[i]])
+                      nlm$par[.iniDf$name[i]]
                     }
                   }, double(1), USE.NAMES=FALSE),
            .iniDf$name)

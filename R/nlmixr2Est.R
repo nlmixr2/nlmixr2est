@@ -1,4 +1,6 @@
 .nlmixr2EstEnv <- new.env(parent=emptyenv())
+.nlmixr2EstEnv$uiUnfix <- NULL
+.nlmixr2EstEnv$nlmixrPureInputUi <- NULL
 
 #' Generic for nlmixr2 estimation methods
 #'
@@ -47,6 +49,7 @@ nlmixr2Est <- function(env, ...) {
   if (!exists("control", envir=env)) {
     stop("need 'control' object", call.=FALSE)
   } else if (is.null(get("control", envir=env))) {
+  } else {
   }
   if (!exists("table", envir=env)) {
     stop("need 'table' object", call.=FALSE)
@@ -73,42 +76,66 @@ nlmixr2Est.default <- function(env, ...) {
   stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",
        call.=FALSE)
 }
-
+#' For models with zero omega values, update the original model
+#'
+#' @param ret input for updating
+#' @return nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
 .nlmixrEstUpdatesOrigModel <- function(ret) {
   .ui <- try(ret$ui)
   if (inherits(.ui, "rxUi")) {
-    .final <- .nlmixrPureInputUi
-    .finalIni <- .final$iniDf
-    .iniDf <- .ui$iniDf
-    .theta <- .iniDf[is.na(.iniDf$neta1), ]
-    for (.i in seq_along(.theta$name)) {
-      .w <- which(.finalIni$name == .theta$name[.i])
-      if (length(.w) == 1) {
-        .finalIni$est[.w] <- .theta$est[.i]
+    # this needs to be in reverse order of the changes, which means apply zero omegas then fixed
+    if (!is.null(.nlmixr2EstEnv$nlmixrPureInputUi)) {
+      .final <- .nlmixr2EstEnv$nlmixrPureInputUi
+      .finalIni <- .final$iniDf
+      .iniDf <- .ui$iniDf
+      .theta <- .iniDf[is.na(.iniDf$neta1), ]
+      for (.i in seq_along(.theta$name)) {
+        .w <- which(.finalIni$name == .theta$name[.i])
+        if (length(.w) == 1) {
+          .finalIni$est[.w] <- .theta$est[.i]
+        }
       }
-    }
-    .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
-    if (length(.etas$name) > 0) {
-      .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
-      .etaFinal <- vapply(.etaNames, function(n) {
-        .finalIni[which(.finalIni$name == n), "neta1"]
-      }, double(1), USE.NAMES=TRUE)
+      .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
+      if (length(.etas$name) > 0) {
+        .etaNames <- .etas[.etas$neta1 == .etas$neta2, "name"]
+        .etaFinal <- vapply(.etaNames, function(n) {
+          .finalIni[which(.finalIni$name == n), "neta1"]
+        }, double(1), USE.NAMES=TRUE)
 
-      .etaCur <- vapply(.etaNames, function(n) {
-        .etas[which(.etas$name == n), "neta1"]
-      }, double(1), USE.NAMES=TRUE)
-      for (.i in seq_along(.etas$name)) {
-        .eta1 <- .etaFinal[names(.etaCur)[which(.etas$neta1[.i] == .etaCur)]]
-        .eta2 <- .etaFinal[names(.etaCur)[which(.etas$neta2[.i] == .etaCur)]]
-        .finalIni$est[which(.finalIni$neta1 == .eta1 & .finalIni$neta2 == .eta2)] <- .etas$est[.i]
+        .etaCur <- vapply(.etaNames, function(n) {
+          .etas[which(.etas$name == n), "neta1"]
+        }, double(1), USE.NAMES=TRUE)
+        for (.i in seq_along(.etas$name)) {
+          .eta1 <- .etaFinal[names(.etaCur)[which(.etas$neta1[.i] == .etaCur)]]
+          .eta2 <- .etaFinal[names(.etaCur)[which(.etas$neta2[.i] == .etaCur)]]
+          .finalIni$est[which(.finalIni$neta1 == .eta1 & .finalIni$neta2 == .eta2)] <- .etas$est[.i]
+        }
       }
+      assign("iniDf", .finalIni, .final)
+      assign("ui", .final, envir=ret$env)
+      assign("omega", .final$omega, envir=ret$env)
+      .minfo("initial model updated with final estimates, some zero etas are excluded from output")
     }
-    assign("iniDf", .finalIni, .final)
-    assign("ui", .final, envir=ret$env)
-    assign("omega", .final$omega, envir=ret$env)
-    .minfo("initial model updated with final estimates, some zero etas are excluded from output")
+    if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
+      # Adjust to original model without literal fix
+      .final <- .nlmixr2EstEnv$uiUnfix
+      .iniDf0 <- ret$env$ui$iniDf
+      .iniDf2 <- .final$iniDf
+      .iniDf2$est <- vapply(.iniDf2$name,
+                            function(n) {
+                              .w <- which(.iniDf0$name == n)
+                              if (length(.w) == 1L) return(.iniDf0$est[.w])
+                              .iniDf2[.iniDf2$name == n, "est"]
+                            }, double(1), USE.NAMES = FALSE)
+      assign("iniDf", .iniDf2, envir=.final)
+      assign("ui", .final, envir=ret$env)
+      assign("fixef", .final$theta, envir=ret$env)
+    }
   }
-  assignInMyNamespace(".nlmixrPureInputUi", NULL)
+  .nlmixr2EstEnv$uiUnfix <- NULL
+  .nlmixr2EstEnv$nlmixrPureInputUi <- NULL
 }
 
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")
@@ -249,8 +276,6 @@ nlmixr2Est0 <- function(env, ...) {
   } else {
     try(assign("runInfo", .lst[[2]], .ret$env), silent=TRUE)
   }
-  if (!is.null(.nlmixrPureInputUi)) {
-    .nlmixrEstUpdatesOrigModel(.ret)
-  }
+  .nlmixrEstUpdatesOrigModel(.ret)
   .ret
 }
