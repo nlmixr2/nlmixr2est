@@ -431,7 +431,7 @@ rxUiGet.nlmParams <- function(x, ...) {
   paste0("params(",
          paste(c(vapply(.w, function(i) {
            .env$t <- .env$t + 1
-           return(paste0("THETA[", .env$t, "]"))
+           paste0("THETA[", .env$t, "]")
          }, character(1), USE.NAMES = FALSE), "DV"),
          collapse=","), ")")
 }
@@ -529,7 +529,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
       .all.zero <<- FALSE
     }
     rxode2::rxTick()
-    return(.ret)
+    .ret
   })
   if (.all.zero) {
     stop("none of the predictions depend on 'THETA'", call. = FALSE)

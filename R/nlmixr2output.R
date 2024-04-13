@@ -594,9 +594,9 @@ logLik.nlmixr2FitData <- function(object, ...) {
         assign(.bound, .new, envir = .parent)
       }
     }
-    return(get("logLik", .new$env))
+    get("logLik", .new$env)
   } else {
-    return(object$logLik)
+    object$logLik
   }
 }
 

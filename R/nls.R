@@ -944,11 +944,11 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
   }
   setNames(vapply(seq_along(.iniDf$ntheta), function(t) {
     if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
-      return(.sd)
+      .sd
     } else if (.iniDf$fix[t]) {
-      return(.iniDf$est[t])
+      .iniDf$est[t]
     } else {
-      return(.theta0[.iniDf$name[t]])
+      .theta0[.iniDf$name[t]]
     }
   }, double(1), USE.NAMES=FALSE), .iniDf$name)
 }

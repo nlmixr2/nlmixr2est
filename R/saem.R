@@ -814,7 +814,7 @@ nmObjGet.saemDopredPred <- function(x, ...) {
     .dopred <- attr(.saem, "dopred")
     .dopred(.saem$mprior_phi, .saemCfg$evt, .saemCfg$opt)
   } else {
-    return(NULL)
+    NULL
   }
 }
 #attr(nmObjGet.saemDopredIpred, "desc") <- "Get ipred from low level saem"
