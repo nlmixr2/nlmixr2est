@@ -123,7 +123,8 @@
     .checkLiteralFix <- control$literalFix
   }
   if (.checkLiteralFix) {
-    .ui <- rxode2::rxFixPop(ui, returnNull=TRUE)
+    .ui <- try(rxode2::rxFixPop(ui, returnNull=TRUE))
+    if (inherits(.ui, "try-error")) .ui <- NULL
     if (!is.null(.ui)) {
       .ret <- rxode2::rxUiDecompress(.ui)
       .nlmixr2EstEnv$uiUnfix <- ui
