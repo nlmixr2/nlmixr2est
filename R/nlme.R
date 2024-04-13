@@ -221,7 +221,7 @@ nlmeControl <- nlmixr2NlmeControl
       control=.(.ctl),
       verbose=.(.verbose),
       na.action=function(object, ...) {
-        return(object)
+        object
       }
     )))
   ret
@@ -266,7 +266,7 @@ nlmeControl <- nlmixr2NlmeControl
       .add <- setNames(exp(.nlmePars["const"]), ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "prop")
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
-      return(c(.f, .add, .prop))
+      c(.f, .add, .prop)
     } else {
       .nlmePars <- coef(nlme$modelStruct$varStruct)
       .w <- which(ui$iniDf$err == "add")
@@ -275,7 +275,7 @@ nlmeControl <- nlmixr2NlmeControl
       .prop <- setNames(nlme$sigma, ui$iniDf$name[.w])
       .w <- which(ui$iniDf$err == "pow2")
       .pow <- setNames(.nlmePars["power"], ui$iniDf$name[.w])
-      return(c(.f, .add, .prop, .pow))
+      c(.f, .add, .prop, .pow)
     }
   } else {
     if (.errType == "add + prop") {

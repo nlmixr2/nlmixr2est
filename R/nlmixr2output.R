@@ -507,9 +507,9 @@ str.nlmixr2FitData <- function(object, ...) {
   cat(paste(strtrim(paste(vapply(names(.s), function(x){
     .nchar <- nchar(x)
     if (.nchar >= 10) {
-      return(paste0(" $ ", x, ": "))
+      paste0(" $ ", x, ": ")
     } else {
-      return(paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": "))
+      paste0(" $ ",x, paste(rep(" ", 10 - .nchar), collapse=""), ": ")
     }
   }, character(1), USE.NAMES=FALSE), .s), 128), collapse="\n"))
   cat("\n")
@@ -583,12 +583,13 @@ logLik.nlmixr2FitData <- function(object, ...) {
   if (!is.null(.lst$type)) {
     .new <- setOfv(object, .lst$type)
     .parent <- globalenv()
-    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE), function(.cur) {
-      if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
-        return(.cur)
-      }
-      return(NULL)
-    }))
+    .bound <- do.call("c", lapply(ls(.parent, all.names = TRUE),
+      function(.cur) {
+       if (.cur == .objName && identical(.parent[[.cur]]$env, object$env)) {
+         return(.cur)
+       }
+       NULL
+      }))
     if (length(.bound) == 1) {
       if (exists(.bound, envir = .parent)) {
         assign(.bound, .new, envir = .parent)
