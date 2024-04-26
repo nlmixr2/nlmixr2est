@@ -1350,7 +1350,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   requiredCols <- c("ID", "DV", "TIME", .covNames)
   if (is.null(data$ID)) data$ID <- 1L
   checkmate::assert_names(names(data), must.include = requiredCols)
-  if (is.null(data$EVID)) data$EVID <- 0
+  if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
   for (.v in c("DV", "TIME")) {
