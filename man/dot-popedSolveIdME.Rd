@@ -12,6 +12,8 @@
 \arguments{
 \item{theta}{parameters (includes covariates and modeling times)}
 
+\item{umt}{unique times sampled}
+
 \item{mt}{original unsorted time (to match the f/w against)}
 
 \item{ms}{model switch parameter integer starting with 1 (related to dvid in rxode2)}
@@ -21,8 +23,6 @@
 \item{id}{this is the design identifier}
 
 \item{totn}{This is the total number of design points tested}
-
-\item{uxt}{unique times sampled}
 }
 \value{
 a data frame with $f and $w corresponding to the function

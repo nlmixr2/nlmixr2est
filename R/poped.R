@@ -54,7 +54,7 @@
 #' can crash R)
 #'
 #' @param theta parameters (includes covariates and modeling times)
-#' @param uxt unique times sampled
+#' @param umt unique times sampled
 #' @param mt original unsorted time (to match the f/w against)
 #' @param ms model switch parameter integer starting with 1 (related to dvid in rxode2)
 #' @param nend specifies the number of endpoints in this model
