@@ -264,7 +264,7 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
   int kk, k=0;
   double curT, lastTime;
   lastTime = getTimeF(ind->ix[0], ind)-1;
-  bool isMT;
+  bool isMT = false;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
@@ -372,7 +372,6 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
   int kk, k=0;
   double curT, lastTime;
   lastTime = getTimeF(ind->ix[0], ind)-1;
-  bool isMT;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
@@ -392,13 +391,6 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else if (isMT) {
-      // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
-        popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
-      }
     } else if (ind->evid[kk] == 0) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       if (ISNA(ind->lhs[0])) {
