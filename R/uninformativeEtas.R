@@ -1,4 +1,18 @@
-#' Get the parameter values for
+#' @export
+rxUiGet.transUE <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .w <- which(.iniDf$neta1 == .iniDf$neta2)
+  if (length(.w) == 0L) return(NULL)
+  .n <- .iniDf$name[.w]
+  .muRef <- .ui$muRefDataFrame
+  vapply(.n, function(cur) {
+    .w <- which(.muRef$eta == cur)
+    if (length(.w) == 0L) return(cur)
+    .muRef$theta[.w]
+  }, character(1), USE.NAMES = TRUE)
+}
+#' Get the parameter values for uninformative eta calculation
 #'
 #' @param name name of the eta parameter
 #' @param ui rxode2 user interface object
@@ -6,25 +20,30 @@
 #' @param plus What type of deviate is this:
 #'
 #' - `plus=TRUE`: high estimate
+#'
 #' - `plus=FALSE`: low estimate
+#'
 #' - `plus=NA`: middle estimate
+#'
 #' @param saem is this a saem-style mu-referenced model?
+#'
 #' @return the named parameter value for plus/minus/mid calculation
+#'
 #' @noRd
+#'
 #' @author Matthew L. Fidler
-.getMuValForUE <- function(name, ui, pm, plus=TRUE, saem=TRUE, retName=FALSE) {
+.getMuValForUE <- function(name, trans, ui, pm, plus=TRUE, saem=TRUE, retName=FALSE) {
   if (!saem || name %in% ui$nonMuEtas) {
     if (retName) return(name)
     if (is.na(plus)) {
-      return(setName(0, name))
+      return(setNames(0, name))
     } else if (plus) {
       return(pm[name])
     } else {
       return(-pm[name])
     }
   }
-  .w <- which(ui$muRefDataFrame$eta == name)
-  .n2 <- ui$muRefDataFrame$theta[.w]
+  .n2 <- trans[name]
   .v0 <- ui$theta[.n2]
   if (retName) return(.n2)
   if (is.na(plus)) {
@@ -39,18 +58,24 @@
 #'
 #' @param ui user interface function
 #' @param data data.frame that will be used for fitting
-#' @param alpha The alpha value to scale the interval from -1 to 1 when choosing the quadrature points
+#' @param alpha The alpha value to scale the interval from -1 to 1
+#'   when choosing the quadrature points
 #' @param saem boolean indicating if the model is a mu-referenced.
 #' @param q plus or minus quadrature
 #' @return a list with:
-#' - `low` lower parameters
-#' - `mid` middle individual parameters
-#' - `hi` high individual parameters
+#'
+#' - `trans` the translation of the parameters
+#'   from etas to model pars (useful in mu-referenced modeling
+#'   algorithms like `saem`)
+#'
+#' - `dat` rxode2 translated dataset (using etTrans)
+#'
+#' - `param` full list of parameters to solve for
+#'
 #' @noRd
 #' @author Matthew L. Fidler
-.uninformativeEtas <- function(ui, data, alpha=0.05,
+.uninformativeEtasExpand <- function(ui, data, trans, alpha=0.05,
                                saem=TRUE, q=sqrt(3/5)) {
-  ui <- rxode2::assertRxUi(ui)
   .trans <- rxode2::etTrans(data, ui)
   .lst <- attr(class(.trans), ".rxode2.lst")
   .n <- .lst$nid
@@ -59,26 +84,61 @@
 
   .pm <- setNames(qnorm(1 - alpha / 2) * sqrt(.eta$est) * q, .eta$name)
 
-  .nn <- vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=TRUE, saem=saem, retName=TRUE,
-                character(1), USE.NAMES=FALSE)
+  .nn <- trans
 
   .p <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=TRUE, saem=saem,
+    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=TRUE, saem=saem, trans=trans,
                            double(1), USE.NAMES=FALSE)))
   }))
   names(.p) <- .nn
 
   .m <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=FALSE, saem=saem,
+    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=FALSE, saem=saem, trans=trans,
                            double(1), USE.NAMES = FALSE)))
   }))
   names(.m) <- .nn
 
   .z <- do.call("rbind", lapply(seq_len(.n), function(i) {
-    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=NA, saem=saem,
+    as.data.frame(t(vapply(names(.pm), .getMuValForUE, ui=ui, pm=.pm, plus=NA, saem=saem, trans=trans,
                            double(1), USE.NAMES = FALSE)))
   }))
   names(.z) <- .nn
 
-  list(trans=setNames(names(.pm), .nn), low=.m, mid=.z, hi=.p)
+  .etas <- do.call("rbind", lapply(.nn, function(nm) {
+    .df <- rbind(.m, .z, .p)
+    for (cur in .nn) {
+      if (cur == nm) next
+      .df[[cur]] <- c(.z[[cur]], .z[[cur]], .z[[cur]])
+    }
+    .df$rxW <- which(nm == .nn)
+    .df$rxPmz <- c(rep(-1L, .n), rep(0L, .n), rep(1L, .n))
+    .df
+  }))
+
+  .fullN <- unique(c(names(.etas), names(ui$theta)))
+  .full <- .etas
+  for (n in .fullN) {
+    if (n %in% names(.full)) next
+    .full[[n]] <- ui$theta[n]
+  }
+
+  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n)
+}
+
+.uninformativeEtas <- function(ui, data, model, alpha=0.05,
+                               saem=TRUE, q=sqrt(3/5),
+                               rxControl=NULL) {
+  .rxControl <- rxControl
+  if (is.null(rxControl)) .rxControl <- rxode2::rxControl()
+  if (saem) {
+    ui <- rxode2::assertRxUi(ui)
+    .trans <- rxUiGet.transUE(list(ui))
+    .pars <- .uninformativeEtasExpand(ui, data, trans=.trans, alpha=alpha, saem=TRUE, q=q)
+    .rxControl$returnType <- setNames(2L, "data.frame")
+    # Get the predictions at +- etas
+    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, .pars$dat), .rxControl))[, c("sim.id", "id", "rx_pred_")]
+    .ind <- .pars$param[,c("rxW", "rxPmz")]
+
+#    s <- rxSolve(model, pars$param, events=pars$dat, returnType="data.frame")
+  }
 }

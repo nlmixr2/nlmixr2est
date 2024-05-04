@@ -274,7 +274,7 @@
                                            list(id),
                                            unique)[, -1, drop = FALSE])
   }
-  if (!is.null(covariables)){
+  if (!is.null(covariables)) {
     if (length(covariables) == N * data$N.covar) {
       dim(covariables) <- c(N, data$N.covar)
     } else {
