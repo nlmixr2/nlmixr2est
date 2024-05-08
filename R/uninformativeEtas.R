@@ -84,6 +84,8 @@ rxUiGet.transUE <- function(x, ...) {
 
   .pm <- setNames(qnorm(1 - alpha / 2) * sqrt(.eta$est) * q, .eta$name)
 
+  .neta <- length(.eta$name)
+
   .nn <- trans
 
   .p <- do.call("rbind", lapply(seq_len(.n), function(i) {
@@ -103,7 +105,8 @@ rxUiGet.transUE <- function(x, ...) {
                            double(1), USE.NAMES = FALSE)))
   }))
   names(.z) <- .nn
-
+  .env <- new.env(parent=emptyenv())
+  .env$sim.id <- 1L
   .etas <- do.call("rbind", lapply(.nn, function(nm) {
     .df <- rbind(.m, .z, .p)
     for (cur in .nn) {
@@ -112,6 +115,15 @@ rxUiGet.transUE <- function(x, ...) {
     }
     .df$rxW <- which(nm == .nn)
     .df$rxPmz <- c(rep(-1L, .n), rep(0L, .n), rep(1L, .n))
+    .df$id <- c(seq_len(.n), seq_len(.n), seq_len(.n))
+    .df$sim.id <- .env$sim.id
+    .tmp <- rep(.env$sim.id, .n)
+    .env$sim.id <- .env$sim.id + 1L
+    .tmp <- c(.tmp, rep(.env$sim.id, .n))
+    .env$sim.id <-.env$sim.id  + 1L
+    .tmp <- c(.tmp, rep(.env$sim.id, .n))
+    .env$sim.id <- .env$sim.id + 1L
+    .df$sim.id <- .tmp
     .df
   }))
 
@@ -122,12 +134,13 @@ rxUiGet.transUE <- function(x, ...) {
     .full[[n]] <- ui$theta[n]
   }
 
-  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n)
+  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n,
+       neta=.neta)
 }
 
 .uninformativeEtas <- function(ui, data, model, alpha=0.05,
                                saem=TRUE, q=sqrt(3/5),
-                               rxControl=NULL) {
+                               rxControl=NULL, tol=1e-7) {
   .rxControl <- rxControl
   if (is.null(rxControl)) .rxControl <- rxode2::rxControl()
   if (saem) {
@@ -136,9 +149,21 @@ rxUiGet.transUE <- function(x, ...) {
     .pars <- .uninformativeEtasExpand(ui, data, trans=.trans, alpha=alpha, saem=TRUE, q=q)
     .rxControl$returnType <- setNames(2L, "data.frame")
     # Get the predictions at +- etas
-    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, .pars$dat), .rxControl))[, c("sim.id", "id", "rx_pred_")]
-    .ind <- .pars$param[,c("rxW", "rxPmz")]
-
+    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, .pars$dat), .rxControl))
+    .val$id <- as.integer(.val$id)
+    .ind <- .pars$param[,c("id", "sim.id", "rxW", "rxPmz")]
+    .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)
+    .env <- new.env(parent=emptyenv())
+    .env$nid <- .pars$n
+    .env$neta <- .pars$neta
+    .env$simId <- .val[["sim.id"]]
+    .env$id <- .val[["id"]]
+    .env$val <- .val[["rx_pred_"]]
+    .env$w <- .val[["rxW"]]
+    .env$pm <- .val[["rxPmz"]]
+    .env$tol <- tol
+    .mat <- .Call(`_nlmixr2est_uninformativeEta`, .env)
+    dimnames(.mat) <- list(NULL, names(.pars$trans))
 #    s <- rxSolve(model, pars$param, events=pars$dat, returnType="data.frame")
   }
 }

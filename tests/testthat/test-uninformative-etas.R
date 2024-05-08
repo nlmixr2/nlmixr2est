@@ -1,6 +1,6 @@
 test_that("uninformative etas", {
 
-  dat <- data.frame(ID = c(11, 11, 11, 11, 11, 11, 11, 12, 12, 12,
+  data <- data.frame(ID = c(11, 11, 11, 11, 11, 11, 11, 12, 12, 12,
                            12, 12, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 21, 21, 21, 21,
                            21, 21, 21, 22, 22, 22, 22, 22, 22, 22, 23, 23, 23, 23, 23, 23, 23),
                     TIME = c(0, 0.05, 0.25, 0.5, 1, 3, 5, 0, 0.05, 0.25, 0.5,
@@ -43,6 +43,9 @@ test_that("uninformative etas", {
   }
 
   ui <- modA()
+
+  alpha=0.05; saem=TRUE; q=sqrt(3/5); .rxControl <- rxode2::rxControl(); tol <- 1e-7
+  model <- rxode2(ui$saemModel)
 
   # First fit with if statement to indicate diff IV/PO
   modB <- function() {
