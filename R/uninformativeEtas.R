@@ -164,6 +164,7 @@ rxUiGet.transUE <- function(x, ...) {
     .env$tol <- tol
     .mat <- .Call(`_nlmixr2est_uninformativeEta`, .env)
     dimnames(.mat) <- list(NULL, names(.pars$trans))
+    return(.mat)
 #    s <- rxSolve(model, pars$param, events=pars$dat, returnType="data.frame")
   }
 }

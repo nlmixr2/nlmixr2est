@@ -217,11 +217,12 @@
     })
     .model <- ui$saemModelList
     .inits <- ui$saemInit
+    .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
     .cfg <- .configsaem(model=.model,
                         data=data,
                         inits=.inits,
                         mcmc=rxode2::rxGetControl(ui, "mcmc", list(niter = c(200, 300), nmc = 3, nu = c(2, 2, 2))),
-                        rxControl=rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()),
+                        rxControl=.rxControl,
                         distribution="normal",
                         fixedOmega=ui$saemModelOmegaFixed,
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
@@ -241,7 +242,9 @@
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
-                        resFixed=ui$saemResFixed)
+                        resFixed=ui$saemResFixed,
+                        ue=.uninformativeEtas(ui, data=data, attr(.model$saem_mod, "rx"),
+                                              rxControl=.rxControl))
     .print <- rxode2::rxGetControl(ui, "print", 1)
     if (inherits(.print, "numeric")) {
       .cfg$print <- as.integer(.print)

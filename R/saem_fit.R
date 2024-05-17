@@ -113,7 +113,8 @@
                        perNoCor=0.75,
                        perFixOmega=0.5,
                        perFixResid=0.75,
-                       resFixed) {
+                       resFixed,
+                       ue) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -437,10 +438,16 @@
   .tmp <- diag(sqrt(inits$omega))
   if (model$N.eta == 1) .tmp <- matrix(sqrt(inits$omega))
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
+  .ue <- ue[rep(1:N, nmc),, drop = FALSE] * 1.0
+  .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
 
+  # Since the .mat2 is adjusted for uninformative etas, the phiM stats
+  # do not need to be adjusted
   mc.idx <- rep(1:N, nmc)
-  statphi <- sapply(1:nphi, function(x) tapply(phiM[, x], mc.idx, mean))
+  statphi <- sapply(1:nphi, function(x) {
+    tapply(phiM[, x], mc.idx, mean)
+  })
   statphi11 <- statphi[, i1]
   dim(statphi11) <- c(N, length(i1))
   statphi01 <- statphi[, i0]
@@ -486,6 +493,7 @@
   optM$rxControl <- rxControl
   cfg <- list(
     rxControl = rxControl,
+    ue=.ue,
     inits = inits.save,
     nu = mcmc$nu,
     niter = niter,

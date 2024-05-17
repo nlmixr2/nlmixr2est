@@ -44,8 +44,12 @@ test_that("uninformative etas", {
 
   ui <- modA()
 
+  f <- nlmixr2(modA, data, "saem")
+
   alpha=0.05; saem=TRUE; q=sqrt(3/5); .rxControl <- rxode2::rxControl(); tol <- 1e-7
   model <- rxode2(ui$saemModel)
+
+  fit <- nlmixr2(modA, data, "saem")
 
   # First fit with if statement to indicate diff IV/PO
   modB <- function() {

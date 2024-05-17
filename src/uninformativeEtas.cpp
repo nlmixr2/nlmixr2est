@@ -17,7 +17,7 @@ extern "C" SEXP _nlmixr2est_uninformativeEta(SEXP rhoS) {
   NumericVector val = as<NumericVector>(rho["val"]);
   NumericMatrix ret=NumericMatrix(nid, neta);
   std::fill(ret.begin(), ret.end(), 0.0);
-  LogicalMatrix retL=LogicalMatrix(nid, neta);
+  IntegerMatrix retL=IntegerMatrix(nid, neta);
   for (int i = 0; i < simId.size(); i++) {
     int curid = id[i] - 1;
     int curpm = pm[i];
@@ -33,7 +33,7 @@ extern "C" SEXP _nlmixr2est_uninformativeEta(SEXP rhoS) {
   }
   for (int i = 0; i < nid; ++i) {
     for (int j = 0; j < neta; ++j) {
-      retL(i, j) = std::abs(ret(i, j)) <= tol;
+      retL(i, j) = std::abs(ret(i, j)) > tol;
     }
   }
   return as<SEXP>(retL);
