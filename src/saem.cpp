@@ -575,7 +575,9 @@ public:
   mat get_eta() {
     mat eta = mpost_phi.cols(i1);
     eta -= mprior_phi1;
-    eta = eta % _saemUE.rows(0, eta.n_rows - 1);
+    mat ue = _saemUE.rows(0, eta.n_rows - 1);
+    ue = ue.cols(i1);
+    eta = eta % ue;
     return eta;
   }
 
@@ -1875,12 +1877,12 @@ private:
         mat phiMc=phiM;
         switch (method) {
         case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % _saemUE +
+          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % _saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
         case 2:
           phiMc.cols(i)=phiM.cols(i) +
-            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % _saemUE;
+            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % _saemUE.cols(i);
           break;
         case 3:
           phiMc.col(i(k1))=phiM.col(i(k1))+

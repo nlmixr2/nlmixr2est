@@ -437,10 +437,19 @@
   phiM <- phiM[rep(1:N, nmc), , drop = FALSE]
   .tmp <- diag(sqrt(inits$omega))
   if (model$N.eta == 1) .tmp <- matrix(sqrt(inits$omega))
+  .dim <- dimnames(ue)[[2]]
+  .ue <- do.call("cbind",
+                 lapply(names(model$log.eta),
+                        function(n) {
+                          if (n %in% .dim) return(ue[, n])
+                          rep(1L, length(ue[, 1]))
+                        }))
+  dimnames(.ue) <- list(NULL, names(model$log.eta))
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
-  .ue <- ue[rep(1:N, nmc),, drop = FALSE] * 1.0
+  .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
+  # now replace with what is needed inside saem sampling
 
   # Since the .mat2 is adjusted for uninformative etas, the phiM stats
   # do not need to be adjusted
