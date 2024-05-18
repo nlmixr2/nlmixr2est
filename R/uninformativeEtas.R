@@ -138,7 +138,7 @@ rxUiGet.transUE <- function(x, ...) {
        neta=.neta)
 }
 
-.uninformativeEtas <- function(ui, data, model, alpha=0.05,
+.uninformativeEtas <- function(ui, handleUninformativeEtas=TRUE, data, model, alpha=0.05,
                                saem=TRUE, q=sqrt(3/5),
                                rxControl=NULL, tol=1e-7) {
   .rxControl <- rxControl
@@ -147,8 +147,20 @@ rxUiGet.transUE <- function(x, ...) {
     ui <- rxode2::assertRxUi(ui)
     .trans <- rxUiGet.transUE(list(ui))
     .pars <- .uninformativeEtasExpand(ui, data, trans=.trans, alpha=alpha, saem=TRUE, q=q)
+    if (!handleUninformativeEtas) {
+      .lst <- attr(class(.pars$dat), ".rxode2.lst")
+      .n <- .lst$nid
+      .mat <- matrix(rep(1L, .n*length(.pars$trans)),
+                     nrow=.n,
+                     ncol=length(.pars$trans),
+                     dimnames=list(NULL, .pars$trans))
+      return(.mat)
+    }
+    .minfo("calculate uninformed etas")
     .rxControl$returnType <- setNames(2L, "data.frame")
     # Get the predictions at +- etas
+    .lst <- attr(class(.trans), ".rxode2.lst")
+
     .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, .pars$dat), .rxControl))
     .val$id <- as.integer(.val$id)
     .ind <- .pars$param[,c("id", "sim.id", "rxW", "rxPmz")]
@@ -164,6 +176,7 @@ rxUiGet.transUE <- function(x, ...) {
     .env$tol <- tol
     .mat <- .Call(`_nlmixr2est_uninformativeEta`, .env)
     dimnames(.mat) <- list(NULL, names(.pars$trans))
+    .minfo("done")
     return(.mat)
 #    s <- rxSolve(model, pars$param, events=pars$dat, returnType="data.frame")
   }

@@ -243,7 +243,9 @@
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
-                        ue=.uninformativeEtas(ui, data=data, attr(.model$saem_mod, "rx"),
+                        ue=.uninformativeEtas(ui,
+                                              handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
+                                              data=data, attr(.model$saem_mod, "rx"),
                                               rxControl=.rxControl))
     .print <- rxode2::rxGetControl(ui, "print", 1)
     if (inherits(.print, "numeric")) {

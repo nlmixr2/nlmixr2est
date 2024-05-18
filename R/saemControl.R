@@ -122,6 +122,10 @@
 #' In general, these covariates should be more accurate since it
 #' changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.
 #'
+#' @param handleUninformativeEtas boolean that tells nlmixr2's saem to
+#'   calculate uninformative etas and handle them specially (default
+#'   is `TRUE`).
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -166,6 +170,7 @@ saemControl <- function(seed = 99,
                         ci=0.95,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
+                        handleUninformativeEtas=TRUE,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -216,6 +221,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(perFixResid, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
+  checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -297,7 +303,8 @@ saemControl <- function(seed = 99,
     logLik=logLik,
     calcTables=calcTables,
     muRefCov=muRefCov,
-    muRefCovAlg=muRefCovAlg
+    muRefCovAlg=muRefCovAlg,
+    handleUninformativeEtas=handleUninformativeEtas
   )
   class(.ret) <- "saemControl"
   .ret
