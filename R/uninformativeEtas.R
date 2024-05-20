@@ -134,7 +134,7 @@ rxUiGet.transUE <- function(x, ...) {
     .full[[n]] <- ui$theta[n]
   }
 
-  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n,
+  list(trans=setNames(names(.pm), .nn), dat=data, param=.full, n=.n,
        neta=.neta)
 }
 
