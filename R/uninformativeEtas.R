@@ -134,7 +134,7 @@ rxUiGet.transUE <- function(x, ...) {
     .full[[n]] <- ui$theta[n]
   }
 
-  list(trans=setNames(names(.pm), .nn), dat=data, param=.full, n=.n,
+  list(trans=setNames(names(.pm), .nn), dat=.trans, param=.full, n=.n,
        neta=.neta)
 }
 
@@ -161,7 +161,7 @@ rxUiGet.transUE <- function(x, ...) {
     # Get the predictions at +- etas
     .lst <- attr(class(.trans), ".rxode2.lst")
 
-    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, .pars$dat), .rxControl))
+    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, data), .rxControl))
     .val$id <- as.integer(.val$id)
     .ind <- .pars$param[,c("id", "sim.id", "rxW", "rxPmz")]
     .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)

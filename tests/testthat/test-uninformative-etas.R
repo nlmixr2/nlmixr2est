@@ -47,7 +47,8 @@ test_that("uninformative etas", {
   expect_true(all(f$etaObf$eta.ka[1:3] == 0))
 
   f2 <- nlmixr2(modA, data, "saem", control=saemControl(handleUninformativeEtas=FALSE, print=0))
-  expect_false(all(f$etaObf$eta.ka[1:3] == 0))
+
+  expect_false(all(f2$etaObf$eta.ka[1:3] == 0))
 
   # First fit with if statement to indicate diff IV/PO
   modB <- function() {
@@ -72,5 +73,11 @@ test_that("uninformative etas", {
   }
 
   f <- nlmixr2(modB, data, "saem", control=saemControl(print=0))
+
   expect_true(all(f$etaObf$eta.ka[1:3] == 0))
+
+  f2 <- nlmixr2(modB, data, "saem", control=saemControl(handleUninformativeEtas=FALSE, print=0))
+
+  expect_false(all(f2$etaObf$eta.ka[1:3] == 0))
+
 })
