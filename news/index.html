@@ -54,6 +54,7 @@
 <p>This means that the fixed parameters in a model vs hard-coded fixed parameters could give different values in the final model.</p>
 <p>A new option <code>literalFix</code> was introduced which change the fixed population parameters to constants in the model while running the optimization. This makes the output of fixing within the model and fixing manually the same (which is what is likely expected). The default is for this to be turned on (ie. <code>literalFix=TRUE</code>). You can get back the old behavior by using the option <code>literalFix=FALSE</code>.</p>
 </li>
+<li><p>In <code>saem</code>, the monte-carlo sampling occurs for all parameters including non-informative ETAs. A fix ensure that non-informative etas in <code>saem</code> are fixed to zero while sampling the <code>phi</code> values. This may change results for models with uninformative etas. To ignore the uninformative etas with <code>saem</code> you ca use use the prior <code>saem</code> handling with <code>saemControl(handleUninformativeEtas=FALSE)</code>.</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>

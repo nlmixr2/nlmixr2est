@@ -87,6 +87,7 @@
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  muRefCov <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  muRefCovAlg <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  handleUninformativeEtas <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -327,6 +328,12 @@ other input parameter.</p></dd>
 <p>5. Remove `nlmixrMuDerCov#` from nlmix2 output</p>
 <p>In general, these covariates should be more accurate since it
 changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.</p></dd>
+
+
+<dt>handleUninformativeEtas</dt>
+<dd><p>boolean that tells nlmixr2's saem to
+calculate uninformative etas and handle them specially (default
+is `TRUE`).</p></dd>
 
 
 <dt>...</dt>
