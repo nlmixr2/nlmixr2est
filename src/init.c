@@ -68,6 +68,9 @@ SEXP _nlmixr2est_saem_do_pred(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_augPredTrans(SEXP, SEXP, SEXP, SEXP, SEXP,
                               SEXP);
 
+
+SEXP _nlmixr2est_uninformativeEta(SEXP);
+
 static const R_CMethodDef CEntries[] = {
   {NULL, NULL, 0}
 };
@@ -124,6 +127,7 @@ SEXP _nlmixr2est_popedSolveIdME2(SEXP, SEXP, SEXP, SEXP, SEXP,
 
 
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
   {"_nlmixr2est_popedSolveIdME2", (DL_FUNC) &_nlmixr2est_popedSolveIdME2, 7},
   {"_nlmixr2est_popedSolveIdME", (DL_FUNC) &_nlmixr2est_popedSolveIdME, 7},
   {"_nlmixr2est_popedFree", (DL_FUNC) &_nlmixr2est_popedFree, 0},

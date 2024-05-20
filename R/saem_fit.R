@@ -113,7 +113,8 @@
                        perNoCor=0.75,
                        perFixOmega=0.5,
                        perFixResid=0.75,
-                       resFixed) {
+                       resFixed,
+                       ue) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -128,7 +129,6 @@
   }
   rxControl <- do.call(rxode2::rxControl, rxControl)
   rxControl$envir <- .env
-  # mcmc=list(niter=c(200,300), nmc=3, nu=c(2,2,2));ODEopt = list(atol=1e-6, rtol=1e-4, stiff=1, transit_abs=0);distribution=c("normal","poisson","binomial");seed=99;data=dat;distribution=1;fixed=NULL
   set.seed(seed)
   distribution.idx <- c("normal" = 1, "poisson" = 2, "binomial" = 3)
   distribution <- match.arg(distribution)
@@ -274,7 +274,7 @@
                                            list(id),
                                            unique)[, -1, drop = FALSE])
   }
-  if (!is.null(covariables)){
+  if (!is.null(covariables)) {
     if (length(covariables) == N * data$N.covar) {
       dim(covariables) <- c(N, data$N.covar)
     } else {
@@ -436,11 +436,26 @@
   phiM <- phiM[rep(1:N, nmc), , drop = FALSE]
   .tmp <- diag(sqrt(inits$omega))
   if (model$N.eta == 1) .tmp <- matrix(sqrt(inits$omega))
+  .dim <- dimnames(ue)[[2]]
+  .ue <- do.call("cbind",
+                 lapply(names(model$log.eta),
+                        function(n) {
+                          if (n %in% .dim) return(ue[, n])
+                          rep(1L, length(ue[, 1]))
+                        }))
+  dimnames(.ue) <- list(NULL, names(model$log.eta))
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
+  .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
+  .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
+  # now replace with what is needed inside saem sampling
 
+  # Since the .mat2 is adjusted for uninformative etas, the phiM stats
+  # do not need to be adjusted
   mc.idx <- rep(1:N, nmc)
-  statphi <- sapply(1:nphi, function(x) tapply(phiM[, x], mc.idx, mean))
+  statphi <- sapply(1:nphi, function(x) {
+    tapply(phiM[, x], mc.idx, mean)
+  })
   statphi11 <- statphi[, i1]
   dim(statphi11) <- c(N, length(i1))
   statphi01 <- statphi[, i0]
@@ -486,6 +501,7 @@
   optM$rxControl <- rxControl
   cfg <- list(
     rxControl = rxControl,
+    ue=.ue,
     inits = inits.save,
     nu = mcmc$nu,
     niter = niter,
@@ -679,12 +695,12 @@ print.saemFit <- function(x, ...) {
 
 ##' @export
 ranef.saemFit <- function(object, ...) {
-  return(object$eta)
+  object$eta
 }
 
 ##' @export
 fixef.saemFit <- function(object, ...) {
-  return(object$Plambda)
+  object$Plambda
 }
 
 ## FIXME: coef_phi0, rmcmc, coef_sa

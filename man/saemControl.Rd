@@ -40,6 +40,7 @@ saemControl(
   ci = 0.95,
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
+  handleUninformativeEtas = TRUE,
   ...
 )
 }
@@ -234,6 +235,10 @@ other input parameter.}
 
 In general, these covariates should be more accurate since it
 changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.}
+
+\item{handleUninformativeEtas}{boolean that tells nlmixr2's saem to
+calculate uninformative etas and handle them specially (default
+is `TRUE`).}
 
 \item{...}{Other arguments to control SAEM.}
 }

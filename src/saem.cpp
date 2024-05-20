@@ -55,6 +55,7 @@ int _saemIncreaseTol=0;
 int _saemIncreasedTol2=0;
 double _saemOdeRecalcFactor = 1.0;
 int _saemMaxOdeRecalc = 0;
+mat _saemUE;
 
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
@@ -574,6 +575,9 @@ public:
   mat get_eta() {
     mat eta = mpost_phi.cols(i1);
     eta -= mprior_phi1;
+    mat ue = _saemUE.rows(0, eta.n_rows - 1);
+    ue = ue.cols(i1);
+    eta = eta % ue;
     return eta;
   }
 
@@ -587,6 +591,7 @@ public:
     _saemIncreasedTol2=0;
     _saemMaxOdeRecalc = abs(as<int>(x["maxOdeRecalc"]));
     _saemOdeRecalcFactor = fabs(as<double>(x["odeRecalcFactor"]));
+    _saemUE = as<mat>(x["ue"]);
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
@@ -1870,16 +1875,19 @@ private:
     for (int u=0; u<nu; u++)
       for (int k1=0; k1<mphi.nphi; k1++) {
         mat phiMc=phiM;
-
         switch (method) {
         case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi+mphi.mprior_phiM;
+          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % _saemUE.cols(i) +
+            mphi.mprior_phiM;
           break;
         case 2:
-          phiMc.cols(i)=phiM.cols(i)+randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi;
+          phiMc.cols(i)=phiM.cols(i) +
+            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % _saemUE.cols(i);
           break;
         case 3:
-          phiMc.col(i(k1))=phiM.col(i(k1))+randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1);
+          phiMc.col(i(k1))=phiM.col(i(k1))+
+            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % _saemUE.col(k1);
+          // Rcpp::print(Rcpp::wrap(phiM.cols(i(k1))));
           break;
         }
 
@@ -2186,4 +2194,3 @@ SEXP saem_fit(SEXP xSEXP) {
   out.attr("class") = "saemFit";
   return out;
 }
-

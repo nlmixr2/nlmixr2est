@@ -28,6 +28,13 @@
   can get back the old behavior by using the option
   `literalFix=FALSE`.
 
+- In `saem`, the monte-carlo sampling occurs for all parameters
+  including non-informative ETAs.  A fix ensure that non-informative
+  etas in `saem` are fixed to zero while sampling the `phi` values.
+  This may change results for models with uninformative etas. To
+  ignore the uninformative etas with `saem` you ca use use the prior
+  `saem` handling with `saemControl(handleUninformativeEtas=FALSE)`.
+
 ## New features
 
 - Gracefully degrade when $cov is not in the right form (see #423)
