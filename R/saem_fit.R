@@ -695,12 +695,12 @@ print.saemFit <- function(x, ...) {
 
 ##' @export
 ranef.saemFit <- function(object, ...) {
-  return(object$eta)
+  object$eta
 }
 
 ##' @export
 fixef.saemFit <- function(object, ...) {
-  return(object$Plambda)
+  object$Plambda
 }
 
 ## FIXME: coef_phi0, rmcmc, coef_sa
