@@ -322,11 +322,16 @@
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params
   .pars <- setNames(rep(1.1, length(.pars)), .pars)
+  .pars <- .pars[!(names(.pars) %in% inPars)]
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
   dat <- .as.data.frame(dat[, -6])
-  names(dat) <- toupper(names(dat))
+  names(dat) <- vapply(names(dat), function(n) {
+    if (n %in% inPars) return(n)
+    return(toupper(n))
+  }, character(1), USE.NAMES = FALSE)
+
   dat$ID <- as.integer(dat$ID)
 
   evt <- dat

@@ -625,7 +625,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
   .ret <- vapply(seq_along(.logEta),
-                  function(i){
+                   function(i) {
                     .isEta <- any(.names[i] %in% .etaNames)
                     if (.logEta[i]) {
                       if (.isEta) {

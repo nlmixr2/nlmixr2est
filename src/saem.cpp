@@ -2015,7 +2015,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
-	ind->par_ptr[_j] = _phi(_i, k++);
+        ind->par_ptr[_j] = _phi(_i, k++);
       }
     }
   }
