@@ -2,6 +2,9 @@
 
 ## Breaking changes
 
+- Saem non-mu reference input parameters/covariates were fixed so they
+  work correctly with fixed parameters (Issue #445)
+
 - Focei changed back to having a lower bound for standard deviations
   when not specified. This means that best model fits may change.  You
   can revert to the old settings by using
