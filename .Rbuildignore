@@ -17,7 +17,7 @@
 ^vignettes/figure/.*$
 ^appveyor\.yml$
 rx_.*\.(so|dll)$
-.*\.(o|a|dll)$
+.*\.(o|a|dll|so)$
 testthat/.*\.(so|dll)$
 BinaryFiles$
 ^/?inst/Install-windows.md
