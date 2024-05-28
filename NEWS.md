@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 2.2.2
 
 ## Breaking changes
 
