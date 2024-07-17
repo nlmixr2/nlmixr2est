@@ -136,7 +136,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree() # rxSolveFree unlocks evaluation environment
   # Add UDF environment for querying nlmixr2/rxode2 r-based user defined functions
-  rxode2parse::.udfEnvSet(.nlmixrEvalEnv$envir)
+  rxode2::.udfEnvSet(.nlmixrEvalEnv$envir)
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
