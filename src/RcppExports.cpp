@@ -3,6 +3,7 @@
 
 #include "../inst/include/nlmixr2est.h"
 #include "../inst/include/nlmixr2est_types.h"
+#include <RcppEigen.h>
 #include <Rcpp.h>
 #include <string>
 #include <set>

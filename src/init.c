@@ -205,7 +205,7 @@ void R_init_nlmixr2est(DllInfo *dll)
   R_registerRoutines(dll, CEntries, CallEntries, NULL, NULL);
   R_useDynamicSymbols(dll, TRUE);
   R_forceSymbols(dll,FALSE);
-  rxRmvnSEXPnlmixrEst = (_rxode2random_rxRmvnSEXP_t)R_GetCCallable("rxode2random","_rxode2random_rxRmvnSEXP");
+  rxRmvnSEXPnlmixrEst = (_rxode2random_rxRmvnSEXP_t)R_GetCCallable("rxode2","_rxode2_rxRmvnSEXP");
 }
 
 void rxOptionsFreeFocei(void);
