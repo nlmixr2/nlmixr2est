@@ -25,7 +25,7 @@ if (rxode2hasLlik()) {
         })
       }
 
-      skip_if_not(rxode2parse::.linCmtSens())
+      skip_if_not(rxode2::.linCmtSensB())
 
       f <- nlmixr(one.cmt, theo_sd, "focei")
       expect_true("CWRES" %in% names(f))

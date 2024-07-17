@@ -22,7 +22,7 @@ test_that("manual back-transform", {
     })
   }
 
-  skip_if_not(rxode2parse::.linCmtSens())
+  skip_if_not(rxode2::.linCmtSensB())
 
   fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
 

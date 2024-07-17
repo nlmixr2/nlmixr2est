@@ -21,7 +21,7 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
 
     expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem"), NA)

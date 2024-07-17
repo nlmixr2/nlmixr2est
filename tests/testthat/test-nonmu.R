@@ -27,7 +27,7 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
     fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
 
@@ -86,7 +86,7 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
     cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
                            control=list(print=0),

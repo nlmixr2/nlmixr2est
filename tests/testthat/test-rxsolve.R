@@ -22,7 +22,7 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
     f <- nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve")
 
@@ -55,7 +55,7 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
     expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "matt"))
 
