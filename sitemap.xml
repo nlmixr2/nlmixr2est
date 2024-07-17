@@ -1,297 +1,101 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/404.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/LICENSE-text.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/authors.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/index.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/news/index.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/addCwres.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/addNpde.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/addTable.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/boxCox.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/cholSE.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-foceiPreProcessData.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFunC.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlminbFunC.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsData.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFun.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrOptimFunC.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedFree.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSetup.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSolveIdME.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSolveIdN.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiFinalizeMu2.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiFitCpp_.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AllEst.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AugPredSolve.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2CreateOutputFromUi.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Est.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Keywords.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Logo.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Print.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Validate.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Version.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrAddObjectiveFunctionDataFrame.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrAddTiming.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrCbind.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrClone.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrUpdateObject.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrWithTiming.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmGetDistributionSaemLines.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmNearPD.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGet.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetData.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetEstimationModel.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetFoceiControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetIpredModel.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetPredOnly.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetRxSolve.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjHandleControlObject.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjHandleModelObject.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjUiSetCompressed.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmSuppressMsg.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/reexports.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/setOfv.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/summary.saemFit.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/tableControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcNameDataCmts.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.html</loc>
-  </url>
-  <url>
-    <loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcSimExpand.html</loc>
-  </url>
+<urlset xmlns = 'http://www.sitemaps.org/schemas/sitemap/0.9'>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/404.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/LICENSE-text.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/authors.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/index.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/news/index.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addCwres.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addNpde.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addTable.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/boxCox.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/cholSE.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-foceiPreProcessData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2estLastPredSimulationInfo.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr2objectNameAssign.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmFunC.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlmeFun.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlminbFunC.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFun.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrOptimFunC.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedFree.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSetup.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSolveIdME.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-popedSolveIdN.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiFinalizeMu2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiFitCpp_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AllEst.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2AugPredSolve.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2CreateOutputFromUi.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Est.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Gill83.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2GradFun.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Hess.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Keywords.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Logo.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2NlmeControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Print.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Validate.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2Version.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrAddObjectiveFunctionDataFrame.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrAddTiming.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrCbind.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrClone.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrUpdateObject.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlmixrWithTiming.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nlsControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmGetDistributionSaemLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmNearPD.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGet.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetEstimationModel.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetFoceiControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetIpredModel.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetPredOnly.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjGetRxSolve.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjHandleControlObject.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjHandleModelObject.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmObjUiSetCompressed.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmSuppressMsg.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/reexports.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setOfv.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/sqrtm.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/summary.saemFit.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/tableControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/uobyqaControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcNameDataCmts.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcSim.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/vpcSimExpand.html</loc></url>
 </urlset>
+
