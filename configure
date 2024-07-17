@@ -1,7 +1,8 @@
 #! /bin/sh
-
+#echo --------[begin Workaround]--------
 ${R_HOME}/bin/R CMD BATCH  inst/tools/workaround.R
 rm workaround.Rout
+#echo --------[end Workaround]--------
 
 echo --------[begin src/Makevars]--------
 cat src/Makevars
