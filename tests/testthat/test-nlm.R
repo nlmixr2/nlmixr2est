@@ -68,7 +68,7 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2parse::.linCmtSens())
+    skip_if_not(rxode2::.linCmtSensB())
 
     fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
 

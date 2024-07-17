@@ -27,7 +27,7 @@ close(md5file)
 .in <- gsub("@ARMA@", file.path(find.package("RcppArmadillo"),"include"), .in)
 .in <- gsub("@BH@", file.path(find.package("BH"),"include"), .in)
 .in <- gsub("@RCPP@", file.path(find.package("Rcpp"),"include"), .in)
-.in <- gsub("@RXP@", file.path(find.package("rxode2parse"),"include"), .in)
+.in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
 
 if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {
   writeLines(gsub("@ISYSTEM@", "I",

@@ -14,7 +14,7 @@
 #' @examples
 #' \donttest{
 #'
-#' if (rxode2parse::.linCmtSens()) {
+#' if (rxode2::.linCmtSensB()) {
 #'
 #' one.cmt <- function() {
 #'   ini({
