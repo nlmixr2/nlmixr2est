@@ -31,7 +31,7 @@ mu2env$expit <- rxode2::expit
 #'
 #' In general the dataset is modified with nlmixrMuDerCov# and the mu2
 #' expressions are changed to traditional mu-expressions
-#'  
+#'
 #' @param data input dataset
 #' @param ui input ui
 #' @return a list with list(ui=mu referenced ui, data=mu referenced dataset)
@@ -73,7 +73,7 @@ mu2env$expit <- rxode2::expit
 #' mu2 referencing is algebraic mu-referencing by converting to the
 #' transformation to a single value in the original dataset, and
 #' moving that around
-#'  
+#'
 #' @param env Environment needed for nlmixr2 fits
 #' @return Either the original model({}) block (if changed) or NULL if
 #'   not changed
@@ -104,7 +104,9 @@ mu2env$expit <- rxode2::expit
 #' @keywords internal
 .uiFinalizeMu2 <- function(ret, model) {
   if (!is.null(model)) {
+    if (is.null(ret$ui)) return(ret)
     .ui2 <- rxode2::rxUiDecompress(ret$ui)
+    if (is.null(.ui2)) return(ret)
     rm("control", envir=.ui2)
     rxode2::model(.ui2) <- model
     assign("ui", .ui2, envir=ret$env)
