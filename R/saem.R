@@ -437,6 +437,11 @@
       .ini <- .ini[!is.na(.ini$ntheta), ]
       .ini <- .ini[!.ini$fix, ]
       .ini <- paste(.ini$name)
+      if (.calcCov && .nth == 0) {
+        warning("no population parameters in the model, no covariance matrix",
+                call.=FALSE)
+        .calcCov <- FALSE
+      }
       if (.calcCov) {
         .covm <- .saem$Ha[1:.nth, 1:.nth]
         .covm <- try(calc.COV(.saem))
