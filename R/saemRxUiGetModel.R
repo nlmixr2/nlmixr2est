@@ -332,7 +332,12 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
-  .thetaValue <- setNames(paste0("THETA[", .thetaNames$ntheta, "]"), .thetaNames$name)
+  if (length(.thetaNames$name) == 0L) {
+    .thetaValue <- character(0L)
+  } else {
+    .thetaValue <- setNames(paste0("THETA[", .thetaNames$ntheta, "]"), .thetaNames$name)
+  }
+
   if (length(.ui$nonMuEtas) > 0) {
     .nonMuThetas <- setNames(rep("", length(.ui$nonMuEtas)), .ui$nonMuEtas)
     .thetaValue <- c(.thetaValue, .nonMuThetas)

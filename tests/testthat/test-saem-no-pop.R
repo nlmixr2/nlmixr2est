@@ -23,5 +23,13 @@ test_that("all theta parameters are fixed", {
 
   expect_true(inherits(f, "nlmixr2FitData"))
 
+  m2 <- rxode2::rxFixPop(one.compartment)
+
+  expect_error(m2$saemModelPred, NA)
+
+  f <- nlmixr2(
+    one.compartment, data = theo_sd, est="saem", control = saemControl(print=0, nEm=10, nBurn=10, literalFix=TRUE))
+
+  expect_true(inherits(f, "nlmixr2FitData"))
 
 })
