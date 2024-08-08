@@ -438,7 +438,7 @@
       .ini <- .ini[!.ini$fix, ]
       .ini <- paste(.ini$name)
       if (.calcCov && .nth == 0) {
-        warning("no population parameters in the model, no covariance matrix",
+        warning("no population parameters in the model, no covariance matrix calculated",
                 call.=FALSE)
         .calcCov <- FALSE
       }
