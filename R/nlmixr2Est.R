@@ -76,7 +76,9 @@ nlmixr2Est.default <- function(env, ...) {
   stop("nlmixr2 estimation '", .curEst, "' not supported\n can be one of '", paste(nlmixr2AllEst(), collapse="', '"), "'",
        call.=FALSE)
 }
-#' For models with zero omega values, update the original model
+
+#' For models with zero omega values or fixed values, update the
+#' original model
 #'
 #' @param ret input for updating
 #' @return nothing, called for side effects
