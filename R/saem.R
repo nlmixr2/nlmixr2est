@@ -437,7 +437,15 @@
       .ini <- .ini[!is.na(.ini$ntheta), ]
       .ini <- .ini[!.ini$fix, ]
       .ini <- paste(.ini$name)
-      if (.calcCov) {
+      if (.calcCov && .nth == 0) {
+        warning("no population parameters in the model, no covariance matrix calculated",
+                call.=FALSE)
+        .calcCov <- FALSE
+        .addCov <- FALSE
+        env$cov <- NULL
+        .cov <- NULL
+        env$covMethod <- "none"
+      } else if (.calcCov) {
         .covm <- .saem$Ha[1:.nth, 1:.nth]
         .covm <- try(calc.COV(.saem))
         .doIt <- !inherits(.covm, "try-error")

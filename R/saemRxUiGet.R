@@ -456,7 +456,7 @@ rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2,]
   .names <- rxUiGet.saemEtaNames(x, ...)
-  vapply(.names, function(etaName){
+  vapply(.names, function(etaName) {
     .w <- which(.etaNames$name == etaName)
     if (length(.w) == 1) {
       return(1L - as.integer(.etaNames$fix[.w]))
