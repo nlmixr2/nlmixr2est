@@ -3121,7 +3121,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(rx->nsub, focei_ind);
-  etaMat0 = transpose(etaMat0);
+  RObject etaMat0s = transpose(etaMat0);
+  double *etaMat0d = REAL(etaMat0s);
   op_focei.gEtaGTransN=(op_focei.neta+1)*rx->nsub;
   int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*rx->nsub;
 
@@ -3188,7 +3189,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
-    std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->eta[0]);
+    std::copy(&etaMat0d[i*op_focei.neta], &etaMat0d[(i+1)*op_focei.neta], &fInd->eta[0]);
 
     fInd->eta[op_focei.neta] = i;
     fInd->saveEta[op_focei.neta] = i;
