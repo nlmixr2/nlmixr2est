@@ -122,31 +122,9 @@ for an <b>a</b>symmetric input <code>x</code>, is typically nonsense!</p></dd>
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>If <code>only.values = TRUE</code>, a numeric vector of eigenvalues of the
-  approximating matrix;
-  Otherwise, as by default, an S3 object of <code><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></code>
-  <code>"nearPD"</code>, basically a list with components</p>
-<dl><dt>mat</dt>
-<dd><p>a matrix of class <code>dpoMatrix</code>, the
-  computed positive-definite matrix.</p></dd>
-
-  <dt>eigenvalues</dt>
-<dd><p>numeric vector of eigenvalues of <code>mat</code>.</p></dd>
-
-  <dt>corr</dt>
-<dd><p>logical, just the argument <code>corr</code>.</p></dd>
-
-  <dt>normF</dt>
-<dd><p>the Frobenius norm (<code><a href="https://rdrr.io/pkg/Matrix/man/norm-methods.html" class="external-link">norm</a>(x-X, "F")</code>) of the
-  difference between the original and the resulting matrix.</p></dd>
-
-  <dt>iterations</dt>
-<dd><p>number of iterations needed.</p></dd>
-
-  <dt>converged</dt>
-<dd><p>logical indicating if iterations converged.</p></dd>
-
-</dl></div>
+    <p>unlike the matrix package, this simply returns the nearest
+  positive definite matrix</p>
+    </div>
     <div class="section level2">
     <h2 id="details">Details<a class="anchor" aria-label="anchor" href="#details"></a></h2>
     <p>This implements the algorithm of Higham (2002), and then (if

@@ -74,11 +74,18 @@ When this happens, the time varying covariates are
 interpolated.  Currently this can be:</p><ul><li><p><code>"linear"</code> interpolation, which interpolates the covariate
 by solving the line between the observed covariates and extrapolating the new
 covariate value.</p></li>
-<li><p><code>"constant"</code> – Last observation carried forward (the default).</p></li>
-<li><p><code>"NOCB"</code> – Next Observation Carried Backward.  This is the same method
+<li><p><code>"locf"</code> – Last observation carried forward (the default).</p></li>
+<li><p><code>"nocb"</code> – Next Observation Carried Backward.  This is the same method
 that NONMEM uses.</p></li>
 <li><p><code>"midpoint"</code> Last observation carried forward to midpoint; Next observation
-carried backward to midpoint.</p></li>
+carried backward to midpoint.</p>
+<p>For time-varying covariates where a missing value is present, the
+interpolation method will use either "locf" or "nocb" throughout
+if they are the type of covariate interpolation that is selected.</p>
+<p>When using the linear or midpoint interpolation, the lower point
+in the interpolation will use locf to interpolate missing
+covariates and the upper point will use the nocb to interpolate
+missing covariates.</p></li>
 </ul></dd>
 
 
