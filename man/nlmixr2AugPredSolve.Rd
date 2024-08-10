@@ -35,11 +35,20 @@ interpolated.  Currently this can be:
 \item \code{"linear"} interpolation, which interpolates the covariate
 by solving the line between the observed covariates and extrapolating the new
 covariate value.
-\item \code{"constant"} -- Last observation carried forward (the default).
-\item \code{"NOCB"} -- Next Observation Carried Backward.  This is the same method
+\item \code{"locf"} -- Last observation carried forward (the default).
+\item \code{"nocb"} -- Next Observation Carried Backward.  This is the same method
 that NONMEM uses.
 \item \code{"midpoint"} Last observation carried forward to midpoint; Next observation
 carried backward to midpoint.
+
+For time-varying covariates where a missing value is present, the
+interpolation method will use either "locf" or "nocb" throughout
+if they are the type of covariate interpolation that is selected.
+
+When using the linear or midpoint interpolation, the lower point
+in the interpolation will use locf to interpolate missing
+covariates and the upper point will use the nocb to interpolate
+missing covariates.
 }}
 
 \item{minimum}{an optional lower limit for the primary
