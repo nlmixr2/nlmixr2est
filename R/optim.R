@@ -373,10 +373,16 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   if (is.null(.control)) {
     .control <- nlmixr2est::optimControl()
   }
-  if (!inherits(.control, "optimControl")){
+  if (!inherits(.control, "optimControl")) {
     .control <- do.call(nlmixr2est::optimControl, .control)
   }
   assign("control", .control, envir=.ui)
+  if (.control$method %in% c("L-BFGS-B", "Brent")) {
+  } else {
+    .methodWarn <- paste0(" which are ignored in 'optim' with method='",
+                          .control$method, "'")
+    rxode2::warnRxBounded(.ui, .methodWarn, .var.name=.ui$modelName)
+  }
 }
 
 #' @rdname nmObjHandleControlObject

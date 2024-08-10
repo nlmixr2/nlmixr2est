@@ -1053,10 +1053,15 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
 #' @export
 nlmixr2Est.nls <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nls', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
-  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
-  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nls'", .var.name=.ui$modelName)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nls', try 'focei'",
+                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nls'",
+                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nls'",
+                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nls'",
+                                       .var.name=.ui$modelName)
+  rxode2::warnRxBounded(.ui, " which are ignored in 'nls'", .var.name=.ui$modelName)
   # No add+prop or add+pow
   # Single endpoint
   .nlsFamilyControl(env, ...)

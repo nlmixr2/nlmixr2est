@@ -49,6 +49,8 @@
 - If `est=foceiControl()` or other nlmixr2 control with the class
   `foceiControl` infer the estimation method is `focei`
 
+- Add back the warnings when estimation methods ignore the boundaries
+
 # nlmixr2est 2.2.1
 
 - Align with the possibility that linCmt sensitivities may not be

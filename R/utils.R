@@ -350,6 +350,9 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #' symmetry test. \emph{Beware} however that setting it \code{FALSE}
 #' for an \bold{a}symmetric input \code{x}, is typically nonsense!
 #'
+#' @return unlike the matrix package, this simply returns the nearest
+#'   positive definite matrix
+#'
 #' @examples
 #'
 #' set.seed(27)

@@ -891,8 +891,12 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @export
 nlmixr2Est.nlm <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlm', try 'focei'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlm'", .var.name=.ui$modelName)
+  rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nlm', try 'focei'",
+                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nlm'",
+                                   .var.name=.ui$modelName)
+  rxode2::warnRxBounded(.ui, " which are ignored in 'nlm'",
+                        .var.name=.ui$modelName)
   .nlmFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .nlmFamilyFit(env,  ...)

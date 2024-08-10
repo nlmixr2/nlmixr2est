@@ -61,18 +61,8 @@ for an \bold{a}symmetric input \code{x}, is typically nonsense!}
     should be traced.}
 }
 \value{
-If \code{only.values = TRUE}, a numeric vector of eigenvalues of the
-  approximating matrix;
-  Otherwise, as by default, an S3 object of \code{\link{class}}
-  \code{"nearPD"}, basically a list with components
-  \item{mat}{a matrix of class \code{\linkS4class{dpoMatrix}}, the
-  computed positive-definite matrix.}
-  \item{eigenvalues}{numeric vector of eigenvalues of \code{mat}.}
-  \item{corr}{logical, just the argument \code{corr}.}
-  \item{normF}{the Frobenius norm (\code{\link[Matrix]{norm}(x-X, "F")}) of the
-  difference between the original and the resulting matrix.}
-  \item{iterations}{number of iterations needed.}
-  \item{converged}{logical indicating if iterations converged.}
+unlike the matrix package, this simply returns the nearest
+  positive definite matrix
 }
 \description{
 With `ensureSymmetry` it makes sure it is symmetric by applying 0.5*(t(x) + x) before using nmNearPD
