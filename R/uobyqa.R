@@ -197,7 +197,7 @@ uobyqaControl <- function(npt=NULL,
   if (is.null(.control)) {
     .control <- nlmixr2est::uobyqaControl()
   }
-  if (!inherits(.control, "uobyqaControl")){
+  if (!inherits(.control, "uobyqaControl")) {
     .control <- do.call(nlmixr2est::uobyqaControl, .control)
   }
   assign("control", .control, envir=.ui)
@@ -276,7 +276,9 @@ getValidNlmixrCtl.uobyqa <- function(control) {
   .mi <-  ui$nlmRxModel
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
                        lower=ui$optimParLower, upper=ui$optimParUpper)
-  on.exit({.nlmFreeEnv()})
+  on.exit({
+    .nlmFreeEnv()
+  })
   # support gradient
   .ret <- bquote(minqa::uobyqa(
     par=.(.env$par.ini),
@@ -378,8 +380,13 @@ nlmixr2Est.uobyqa <- function(env, ...) {
   .ui <- env$ui
   rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'uobyqa', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'uobyqa'", .var.name=.ui$modelName)
+  rxode2::warnRxBounded(.ui, " which are ignored in 'uobyqa'", .var.name=.ui$modelName)
   .uobyqaFamilyControl(env, ...)
-  on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
+  on.exit({
+    if (exists("control", envir=.ui)) {
+      rm("control", envir=.ui)
+    }
+  }, add=TRUE)
   .uobyqaFamilyFit(env,  ...)
 }
 

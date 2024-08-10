@@ -214,6 +214,9 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
     covMethod <- "optim"
   } else {
     covMethod <- match.arg(covMethod)
+    .methodWarn <- paste0(" which are ignored in 'optim' with method='", method, "'")
+    rxode2::warnRxBounded(.ui, .methodWarn, .var.name=.ui$modelName)
+
   }
 
   .eventTypeIdx <- c("central" =2L, "forward"=1L)

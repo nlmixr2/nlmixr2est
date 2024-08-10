@@ -1104,7 +1104,7 @@ foceiControl <- function(sigdig = 3, #
   }
   if (!is.null(.xtra$resetThetaSize)) {
     .resetThetaSize <- .xtra$resetThetaSize
-  } else{
+  } else {
     checkmate::assertNumeric(resetThetaP, lower=0, upper=1, len=1)
     if (resetThetaP > 0 & resetThetaP < 1) {
       .resetThetaSize <- qnorm(1 - (resetThetaP / 2))
