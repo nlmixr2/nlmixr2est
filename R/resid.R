@@ -637,7 +637,16 @@ tableControl <- function(npde = NULL,
   checkmate::assertLogical(covariates, len=1, any.missing=FALSE)
   checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
   checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
-  checkmate::assertCharacter(keep, null.ok=TRUE)
+  checkmate::assertCharacter(keep, null.ok=TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                             any.missing = FALSE,min.chars=1)
+  .invalidKeep <- c("nlmixrRowNums", "id", "sim.id", "resetno", "evid", "cmt", "ss", "amt",
+                    "rate", "dur", "ii", "time", "rxLambda",
+                    "rxYj", "rxLow", "rxHi", "rxLambda", "rxYj", "rxLow", "rxHi")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider either addDosing=TRUE or $dataMergeLeft $dataMergeRight or $dataMergeInner", call.=FALSE)
+  }
+
   checkmate::assertCharacter(drop, null.ok=TRUE)
   if (inherits(censMethod, "character")) {
     .censMethod <- setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL)
