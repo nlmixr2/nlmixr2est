@@ -482,7 +482,12 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "population log-likelihood model")
     .msuccess("done")
   }
-  list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+  .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
+  .interp <- rxUiGet.interpLinesStr(x, ...)
+  if (.interp != "") {
+    .cmt <-paste0(.cmt, "\n", .interp)
+  }
+  list(predOnly=rxode2::rxode2(paste(c(rxUiGet.nlmParams(x, ...), .cmt,
                                        .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")),
        eventTheta=.eventTheta)
 }

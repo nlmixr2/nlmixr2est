@@ -1,5 +1,47 @@
 nmTest({
 
+  test_that("nlm models add interp", {
+
+    mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+        E50 <- 2
+        g <- fix(2)
+      })
+      model({
+        v <- E0+Em*time^g/(E50^g+time^g)+wt
+        p <- expit(v)
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+
+    m <- mod()
+
+    expect_false(grepl("linear\\(wt\\)", rxode2::rxNorm(m$nlmRxModel$predOnly)))
+
+    mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+        E50 <- 2
+        g <- fix(2)
+      })
+      model({
+        linear(wt)
+        v <- E0+Em*time^g/(E50^g+time^g)+wt
+        p <- expit(v)
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+
+    m <- mod()
+
+    expect_true(grepl("linear\\(wt\\)", rxode2::rxNorm(m$nlmRxModel$predOnly)))
+
+
+  })
+
   test_that("nlm makes sense", {
 
     dsn <- data.frame(i=1:1000)
@@ -19,6 +61,8 @@ nmTest({
         ll(bin) ~ DV * v - log(1 + exp(v))
       })
     }
+
+
 
     fit2 <- nlmixr(mod, dsn, est="nlm")
 

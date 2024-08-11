@@ -114,7 +114,6 @@ nlmixr2Est.simulation <- function(env, ...) {
                              list(theta = NULL, eta = NULL)))
 }
 
-
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.predict <- function(env, ...) {

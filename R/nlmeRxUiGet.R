@@ -147,7 +147,12 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "nlme model")
      .msuccess("done")
   }
-  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+  .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
+  .interp <- rxUiGet.interpLinesStr(x, ...)
+  if (.interp != "") {
+    .cmt <-paste0(.cmt, "\n", .interp)
+  }
+  paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
@@ -258,4 +263,3 @@ rxUiGet.nlmeWeights <- function(x, ...) {
     }
   }
 }
-
