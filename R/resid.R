@@ -639,12 +639,22 @@ tableControl <- function(npde = NULL,
   checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
   checkmate::assertCharacter(keep, null.ok=TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
                              any.missing = FALSE,min.chars=1)
-  .invalidKeep <- c("nlmixrRowNums", "id", "sim.id", "resetno", "evid", "cmt", "ss", "amt",
-                    "rate", "dur", "ii", "time", "rxLambda",
-                    "rxYj", "rxLow", "rxHi")
+  .invalidKeep <- c("id", "sim.id", "resetno", "time", "nlmixrRowNums")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
-    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider either addDosing=TRUE or $dataMergeLeft $dataMergeRight or $dataMergeInner", call.=FALSE)
+    .w <- which(tolower(keep) %in% .invalidKeep)
+    keep <- keep[-.w]
+    warning("'keep' contains ", paste(.invalidKeep, collapse=", "), "\nwhich are output when needed, ignoring these items", call.=FALSE)
+  }
+  .invalidKeep <- c("evid",  "ss", "amt", "rate", "dur", "ii")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner", call.=FALSE)
+  }
+  .invalidKeep <- c ("rxLambda", "rxYj", "rxLow", "rxHi")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), call.=FALSE)
   }
 
   checkmate::assertCharacter(drop, null.ok=TRUE)
