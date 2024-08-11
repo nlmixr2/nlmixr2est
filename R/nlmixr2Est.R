@@ -273,10 +273,18 @@ nlmixr2Est0 <- function(env, ...) {
   }
   .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
-  if (is.environment(.ret)) {
-    try(assign("runInfo", .lst[[2]], .ret), silent=TRUE)
+  if (inherits(.ret, "nlmixr2FitCore") ||
+        inherits(.ret, "nlmixr2Fit")) {
+    if (is.environment(.ret)) {
+      try(assign("runInfo", .lst[[2]], .ret), silent=TRUE)
+    } else {
+      try(assign("runInfo", .lst[[2]], .ret$env), silent=TRUE)
+    }
   } else {
-    try(assign("runInfo", .lst[[2]], .ret$env), silent=TRUE)
+    .w <-.lst[[2]]
+    lapply(seq_along(.w), function(i) {
+      warning(.w[[i]])
+    })
   }
   .nlmixrEstUpdatesOrigModel(.ret)
   .ret
