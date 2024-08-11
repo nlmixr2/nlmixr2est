@@ -1,4 +1,49 @@
 nmTest({
+
+  test_that("nls supports interp", {
+
+    one.cmt <- function() {
+      ini({
+        tka <- fix(0.45)
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl) + wt
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    f <- one.cmt()
+
+    expect_false(grepl("linear\\(wt\\)", rxode2::rxNorm(f$nlsRxModel$predOnly)))
+
+    one.cmt <- function() {
+      ini({
+        tka <- fix(0.45)
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        linear(wt)
+        ka <- exp(tka)
+        cl <- exp(tcl) + wt
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    f <- one.cmt()
+
+    expect_true(grepl("linear\\(wt\\)", rxode2::rxNorm(f$nlsRxModel$predOnly)))
+
+
+  })
+
   test_that("nls makes sense", {
 
     d <- nlmixr2data::theo_sd
