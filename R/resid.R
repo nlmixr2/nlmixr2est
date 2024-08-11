@@ -641,7 +641,7 @@ tableControl <- function(npde = NULL,
                              any.missing = FALSE,min.chars=1)
   .invalidKeep <- c("nlmixrRowNums", "id", "sim.id", "resetno", "evid", "cmt", "ss", "amt",
                     "rate", "dur", "ii", "time", "rxLambda",
-                    "rxYj", "rxLow", "rxHi", "rxLambda", "rxYj", "rxLow", "rxHi")
+                    "rxYj", "rxLow", "rxHi")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
     stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider either addDosing=TRUE or $dataMergeLeft $dataMergeRight or $dataMergeInner", call.=FALSE)
