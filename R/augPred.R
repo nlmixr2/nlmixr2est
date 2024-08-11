@@ -1,8 +1,38 @@
+#' Augment Prediction for Ipred Model
+#'
+#' This function augments the prediction for an individual prediction
+#' (Ipred) model.  It retrieves the simulation model from the fit
+#' object and evaluates the model variables.
+#'
+#' @param fit The fitted model object from which to retrieve the simulation model.
+#' @return The evaluated model variables for the Ipred model.
+#' @details
+#'
+#' The function performs the following steps:
+#'
+#' - Retrieves the simulation model from the provided `fit` object using `.getSimModel` with `hideIpred` and `tad` set to `FALSE`.
+#'
+#' - Evaluates the model variables using `rxModelVars`.
+#'
 .augPredIpredModel <- function(fit) {
   .ipredModel <- .getSimModel(fit, hideIpred=FALSE,tad=FALSE)
   eval(as.call(list(quote(`rxModelVars`), .ipredModel[[-1]])))
 }
 
+#' This expands data based on predicted data for `augPred` style solves
+#'
+#'
+#' This method will:
+#'
+#' - Interpolates covariate values based on the specified
+#' interpolation method.
+#'
+#' - Combines the original data with the expanded data and ensures all
+#' necessary columns are present.
+#'
+#' - Orders the resulting data frame by ID and TIME.
+#'
+#' @noRd
 .augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
   .origData <- rxode2::etTrans(fit$dataSav, .augPredIpredModel(fit), addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE,
