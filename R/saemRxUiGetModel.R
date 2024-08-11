@@ -323,7 +323,12 @@ rxUiGet.saemModel <- function(x, ...) {
     .ret <- rxode2::rxOptExpr(.ret, "saem model")
      .msuccess("done")
   }
-  paste(c(rxUiGet.saemParams(x, ...), rxUiGet.foceiCmtPreModel(x, ...),
+  .cmt <-  rxUiGet.foceiCmtPreModel(x, ...)
+  .interp <- rxUiGet.interpLinesStr(x, ...)
+  if (.interp != "") {
+    .cmt <-paste0(.cmt, "\n", .interp)
+  }
+  paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
 
@@ -374,6 +379,18 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 #attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
 
 .saemModelPredSymengineEnvironment <- NULL
+
+#' @export
+rxUiGet.interpLinesStr <- function(x, ...) {
+  .ui <- x[[1]]
+  .interp <- x[[1]]$interpLines
+  if (is.null(.interp)) {
+    .interp <- ""
+  } else {
+    .interp <- vapply(.interp, deparse1, character(1), USE.NAMES = FALSE)
+  }
+  .interp
+}
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
@@ -439,8 +456,10 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ret,
     .ret2
   ), collapse = "\n")
+  .interp <- rxUiGet.interpLinesStr(x, ...)
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
+            .interp,
             "rx_pred_=NA\nrx_r_=NA\n",
             paste(names(.replaceLst), "<-", .replaceLst),
             .ret,
