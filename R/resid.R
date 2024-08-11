@@ -637,7 +637,26 @@ tableControl <- function(npde = NULL,
   checkmate::assertLogical(covariates, len=1, any.missing=FALSE)
   checkmate::assertLogical(addDosing, len=1, any.missing=FALSE)
   checkmate::assertLogical(subsetNonmem, len=1, any.missing=FALSE)
-  checkmate::assertCharacter(keep, null.ok=TRUE)
+  checkmate::assertCharacter(keep, null.ok=TRUE, pattern = "^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                             any.missing = FALSE,min.chars=1)
+  .invalidKeep <- c("id", "sim.id", "resetno", "time", "nlmixrRowNums")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    .w <- which(tolower(keep) %in% .invalidKeep)
+    keep <- keep[-.w]
+    warning("'keep' contains ", paste(.invalidKeep, collapse=", "), "\nwhich are output when needed, ignoring these items", call.=FALSE)
+  }
+  .invalidKeep <- c("evid",  "ss", "amt", "rate", "dur", "ii")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), "\nconsider using addDosing=TRUE or merging to original dataset\nfor a fit the merge can be called by fit$dataMergeLeft fit$dataMergeRight or fit$dataMergeInner", call.=FALSE)
+  }
+  .invalidKeep <- c ("rxLambda", "rxYj", "rxLow", "rxHi")
+  .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
+  if (length(.invalidKeep) > 0) {
+    stop("'keep' cannot contain ", paste(.invalidKeep, collapse=", "), call.=FALSE)
+  }
+
   checkmate::assertCharacter(drop, null.ok=TRUE)
   if (inherits(censMethod, "character")) {
     .censMethod <- setNames(c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)[match.arg(censMethod)], NULL)
