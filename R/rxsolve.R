@@ -84,25 +84,29 @@
       .rxControl$sigma <- .nlmixr2SimInfo$sigma
     }
   }
-  if (exists("table", envir=env)) {
+  if (exists("table", envir=env) &&
+        !is.null(env$table)) {
     .table <- env$table
-    if (!.table$covariates && .rxControl$addCov) {
+    if (checkmate::testLogical(.table$covariates, any.missing=FALSE, len=1) &&
+          !.table$covariates && .rxControl$addCov) {
       .rxControl$addCov <- FALSE
     }
-    if (.table$addDosing && !.rxControl$addDosing) {
+    if (checkmate::testLogical(.table$addDosing, any.missing=FALSE, len=1) &&
+        .table$addDosing && !.rxControl$addDosing) {
       .rxControl$addDosing <- TRUE
     }
-    if (!.table$subsetNonmem && .rxControl$subsetNonmem) {
+    if (checkmate::testLogical(.table$subsetNonmem, any.missing=FALSE, len=1) &&
+          !.table$subsetNonmem && .rxControl$subsetNonmem) {
       .rxControl$subsetNonmem <- FALSE
     }
     if (checkmate::testIntegerish(.table$cores, len=1, lower=1, any.missing=FALSE)) {
       .rxControl$cores <-.table$cores
     }
-    if (!is.null(.table$keep)) {
+    if (checkmate::testCharacter(.table$keep, any.missing=FALSE)) {
       .keep <- unique(c(.table$keep, .rxControl$keep))
       .rxControl$keep <- .keep
     }
-    if (!is.null(.table$drop)) {
+    if (checkmate::testCharacter(.table$drop, any.missing=FALSE)) {
       .drop <- unique(c(.table$drop, .rxControl$drop))
       .rxControl$drop <- .drop
     }
