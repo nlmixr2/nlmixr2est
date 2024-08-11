@@ -1,3 +1,35 @@
+#' Get Control Settings for nlmixr
+#'
+#' This function retrieves and sets control settings for the `nlmixr`
+#' package from the given environment.  It ensures that the control
+#' settings are valid and, if necessary, uses default settings from
+#' `rxode2::rxControl()`.
+#'
+#' @param env Environment from which to retrieve control settings.
+#' @return A list of control settings for `rxSolve`.
+#' @details
+#' The function performs the following steps:
+#'
+#' - Retrieves the `ui` object from the provided environment.
+#'
+#' - Checks if a `control` object exists in the environment and
+#' retrieves it.
+#'
+#' - Validates if the retrieved `control` object is of class
+#' `rxControl`. If not, it attempts to retrieve the `rxControl`
+#' element from the `control` object.
+#'
+#' - If the `rxControl` object is still not valid, it uses default
+#' solving options from `rxode2::rxControl()`.
+#'
+#' - Determines if the model is a prediction model based on the `omega` and `sigma` values.
+#'
+#' - If additional simulation information (`.nlmixr2SimInfo`) is
+#' available, it updates the `rxControl` object with population
+#' uncertainty, number of observations, number of subjects, and
+#' diagonal `sigma` based on the fitted model.
+#'
+#' @noRd
 .rxSolveGetControlForNlmixr <- function(env) {
   .ui <- get("ui", envir=env)
   if (exists("control", envir=env)) {
