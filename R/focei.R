@@ -723,8 +723,13 @@ rxUiGet.predDfFocei <- function(x, ...) {
 }
 
 .innerInternal <- function(ui, s) {
+  .cmt <-  ui$foceiCmtPreModel
+  .interp <- ui$interpLinesStr
+  if (.interp != "") {
+    .cmt <-paste0(.cmt, "\n", .interp)
+  }
   assignInMyNamespace(".toRxParam", paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
-                                           ui$foceiCmtPreModel, "\n"))
+                                           .cmt, "\n"))
   assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
   if (exists("..maxTheta", s)) {
     .eventTheta <- rep(0L, s$..maxTheta)
