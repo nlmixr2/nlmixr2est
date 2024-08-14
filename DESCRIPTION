@@ -85,6 +85,7 @@ Suggests:
 LinkingTo:
     BH,
     lbfgsb3c,
+    lotri (>= 0.5.0),
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
