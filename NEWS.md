@@ -51,6 +51,9 @@
 
 - Add back the warnings when estimation methods ignore the boundaries
 
+- When using `rxSolve`, now respects the values from `tableControl()`
+  (#465 and #297)
+
 ## Bug fixes
 
 - Will emit warnings when the return object is not a nlmixr2 fit

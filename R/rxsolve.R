@@ -22,12 +22,19 @@
 #' - If the `rxControl` object is still not valid, it uses default
 #' solving options from `rxode2::rxControl()`.
 #'
-#' - Determines if the model is a prediction model based on the `omega` and `sigma` values.
+#' - Determines if the model is a prediction model based on the
+#' `omega` and `sigma` values.
 #'
 #' - If additional simulation information (`.nlmixr2SimInfo`) is
 #' available, it updates the `rxControl` object with population
 #' uncertainty, number of observations, number of subjects, and
 #' diagonal `sigma` based on the fitted model.
+#'
+#' - Checks if a `table` object exists in the environment.  If it
+#' does, adjust the rxode2 solving control options by preferring
+#' non-default values from table as well as combining `keep` and
+#' `drop` from `tableControl()`.  If `cores` is non-NULL, use that
+#' instead of the value from `rxControl()`.
 #'
 #' @noRd
 .rxSolveGetControlForNlmixr <- function(env) {
@@ -75,6 +82,33 @@
     if (is.null(.rxControl$sigma) & !.isPred) {
       .minfo("using diagonal `sigma` based on model")
       .rxControl$sigma <- .nlmixr2SimInfo$sigma
+    }
+  }
+  if (exists("table", envir=env) &&
+        !is.null(env$table)) {
+    .table <- env$table
+    if (checkmate::testLogical(.table$covariates, any.missing=FALSE, len=1) &&
+          !.table$covariates && .rxControl$addCov) {
+      .rxControl$addCov <- FALSE
+    }
+    if (checkmate::testLogical(.table$addDosing, any.missing=FALSE, len=1) &&
+        .table$addDosing && !.rxControl$addDosing) {
+      .rxControl$addDosing <- TRUE
+    }
+    if (checkmate::testLogical(.table$subsetNonmem, any.missing=FALSE, len=1) &&
+          !.table$subsetNonmem && .rxControl$subsetNonmem) {
+      .rxControl$subsetNonmem <- FALSE
+    }
+    if (checkmate::testIntegerish(.table$cores, len=1, lower=1, any.missing=FALSE)) {
+      .rxControl$cores <-.table$cores
+    }
+    if (checkmate::testCharacter(.table$keep, any.missing=FALSE)) {
+      .keep <- unique(c(.table$keep, .rxControl$keep))
+      .rxControl$keep <- .keep
+    }
+    if (checkmate::testCharacter(.table$drop, any.missing=FALSE)) {
+      .drop <- unique(c(.table$drop, .rxControl$drop))
+      .rxControl$drop <- .drop
     }
   }
   .rxControl
