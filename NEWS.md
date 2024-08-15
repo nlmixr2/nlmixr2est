@@ -59,6 +59,11 @@
 - Will emit warnings when the return object is not a nlmixr2 fit
   (#453)
 
+## Other things
+
+- Moved actual code of some matrix libraries to `lotri` and import
+  them via function pointers
+
 # nlmixr2est 2.2.1
 
 - Align with the possibility that linCmt sensitivities may not be
