@@ -11,7 +11,6 @@ bool nmNearPD(mat &ret, mat x, bool keepDiag = true,
              );
 
 bool chol_sym(mat &Hout, mat& Hin);
-bool inv_sym(mat &Hout, mat& Hin);
 
 #endif
 #endif

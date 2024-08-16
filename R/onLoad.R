@@ -14,8 +14,15 @@
   }
 }
 
+.iniLotriPtr <- function() {
+  .Call(`_nlmixr2est_iniLotriPtr`,
+        lotri::.lotriPointers(),
+        PACKAGE = "nlmixr2est")
+}
+
 .onLoad <- function(libname, pkgname) {
   backports::import(pkgname)
+  .iniLotriPtr()
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
     rxode2::.s3register("generics::tidy", "nlmixr2FitCoreSilent")
@@ -30,6 +37,7 @@
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitData")
   .resetCacheIfNeeded()
+
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
@@ -37,6 +45,7 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
 .onAttach <- function(libname, pkgname) {
   ## nocov start
   ## Setup rxode2.prefer.tbl
+  .iniLotriPtr()
   if (compiled.rxode2.md5 != rxode2::rxMd5()) {
     stop("nlmixr2 compiled against different version of rxode2, cannot run nlmixr2est\ntry `install.packages(\"nlmixr2est\", type = \"source\")` to recompile", call.=FALSE)
   }
