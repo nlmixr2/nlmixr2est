@@ -127,6 +127,13 @@
 #' @author Matthew L. Fidler and Bill Denney
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
+  if (is.null(.ome)) {
+    # This can happen if there are no BSV parameters in a model
+    return("")
+  } else if (!(.eta %in% rownames(.ome))) {
+    # This can happen if .eta is a fixed BSV parameter
+    return("")
+  }
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (.muRefCurEval$curEval[.w] == "exp") {
