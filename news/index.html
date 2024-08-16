@@ -53,10 +53,15 @@
 <li><p>Add support for PopED in place solving (used in babelmixr2)</p></li>
 <li><p>If <code>est=foceiControl()</code> or other nlmixr2 control with the class <code>foceiControl</code> infer the estimation method is <code>focei</code></p></li>
 <li><p>Add back the warnings when estimation methods ignore the boundaries</p></li>
+<li><p>When using <code>rxSolve</code>, now respects the values from <code><a href="../reference/tableControl.html">tableControl()</a></code> (<a href="https://github.com/nlmixr2/nlmixr2est/issues/465" class="external-link">#465</a> and <a href="https://github.com/nlmixr2/nlmixr2est/issues/297" class="external-link">#297</a>)</p></li>
 </ul></div>
 <div class="section level3">
 <h3 id="bug-fixes-2-2-2">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-2-2-2"></a></h3>
 <ul><li>Will emit warnings when the return object is not a nlmixr2 fit (<a href="https://github.com/nlmixr2/nlmixr2est/issues/453" class="external-link">#453</a>)</li>
+</ul></div>
+<div class="section level3">
+<h3 id="other-things-2-2-2">Other things<a class="anchor" aria-label="anchor" href="#other-things-2-2-2"></a></h3>
+<ul><li>Moved actual code of some matrix libraries to <code>lotri</code> and import them via function pointers</li>
 </ul></div>
 </div>
     <div class="section level2">
