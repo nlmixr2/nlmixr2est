@@ -22,9 +22,6 @@
 #define NPDE_CHOLSE_PINV 5
 #define NPDE_NPD 99
 
-typedef const char *(*rxGetId2_t)(int id);
-extern rxGetId2_t rxGetId2;
-
 struct calcNpdeInfoId {
   arma::mat matsim;
   arma::umat namat;

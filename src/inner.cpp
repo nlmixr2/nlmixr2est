@@ -69,24 +69,7 @@ extern "C" {
                 double pgtol, int *fncount, int *grcount,
                 int maxit, char *msg, int trace, int nREPORT);
 
-  ind_solve_t ind_solve;
-  typedef int (*par_progress_t)(int c, int n, int d, int cores, clock_t t0, int stop);
-  par_progress_t par_progress;
-  typedef rx_solve* (*getRxSolve_t)();
-  isRstudio_t isRstudio;
-  getRxSolve_t getRx;
-  typedef const char *(*rxGetId_t)(int id);
-  rxGetId_t rxGetId;
-  typedef double (*getTime_t)(int idx, rx_solving_options_ind *ind);
-  getTime_t getTimeF;
-  typedef void (*sortIds_t)(rx_solve* rx, int ini);
-  sortIds_t sortIdsF;
 }
-
-typedef int (*iniSubjectI_t)(int solveid, int inLhs, rx_solving_options_ind *ind, rx_solving_options *op, rx_solve *rx,
-                             t_update_inis u_inis);
-iniSubjectI_t iniSubjectI;
-
 
 bool assignFn_ = false;
 
@@ -631,7 +614,7 @@ void updateTheta(double *theta){
     op_focei.fullTheta[j] = unscalePar(theta, k);
   }
   // Update theta parameters in each individual
-  rx = getRx();
+  rx = getRxSolve_();
   for (int id = rx->nsub; id--;){
     rx_solving_options_ind *ind = &(rx->subjects[id]);
     for (j = op_focei.ntheta; j--;){
@@ -699,15 +682,15 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   int kk, k=0;
   double curT;
   if (predSolve) {
-    iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+    iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   } else {
-    iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+    iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   }
-  iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       if (predSolve) {
         rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
@@ -751,12 +734,12 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   op->neq = op_focei.predNeq;
   predOde(id); // Assumes same order of parameters
   int kk, k = 0;
-  iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   double curT;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
@@ -810,7 +793,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
   return ret;
 }
 double likInner0(double *eta, int id){
-  rx = getRx();
+  rx = getRxSolve_();
   rx_solving_options_ind *ind = &(rx->subjects[id]);
   rx_solving_options *op = rx->op;
   int i, j;
@@ -1026,16 +1009,16 @@ double likInner0(double *eta, int id){
       double f, err, r, fpm, rp = 0,lnr, limit, dv,dv0, curT;
       int cens = 0;
       if (predSolve) {
-        iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+        iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
       } else {
-        iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+        iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
       }
       int dist=0, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
       for (j = 0; j < ind->n_all_times; ++j){
         ind->idx=j;
         kk = ind->ix[j];
-        curT = getTimeF(kk, ind);
+        curT = getTime(kk, ind);
         dv0 = ind->dv[kk];
         yj = (int)(ind->yj);
         _splitYj(&yj, &dist,  &yj0);
@@ -1311,7 +1294,7 @@ double LikInner2(double *eta, int likId, int id){
     // print(wrap(op_focei.logDetOmegaInv5));
     lik = -likInner0(eta, id) + op_focei.logDetOmegaInv5;
     // print(wrap(lik));
-    rx = getRx();
+    rx = getRxSolve_();
     rx_solving_options_ind *ind = &(rx->subjects[id]);
     rx_solving_options *op = rx->op;
     if (op->neq > 0 && ISNA(ind->solve[0])){
@@ -1489,7 +1472,7 @@ extern "C" void innerOptimG(int n, double *x, double *g, void *ex) {
 
 // Scli-lab style cost function for inner
 void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float *tr, double *td, int *id){
-  rx = getRx();
+  rx = getRxSolve_();
   // if (*id < 0 || *id >= rx->nsub){
   //   // Stops from accessing bad memory, but it doesn't fix any
   //   // problems here.  Rather, this allows the error without a R
@@ -2148,7 +2131,7 @@ void innerOpt(){
   // #ifdef _OPENMP
   //   int cores = rx->op->cores;
   // #endif
-  rx = getRx();
+  rx = getRxSolve_();
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
@@ -2205,11 +2188,6 @@ static inline double foceiLik0(double *theta){
   for (int id=rx->nsub; id--;){
     focei_ind *fInd = &(inds_focei[id]);
     cur = fInd->lik[0];
-    // if (std::isnan(cur)) {
-    //   REprintf(_("likelihood of id: %s is NaN\n"), rxGetId(id));
-    // } else if (std::isinf(cur)) {
-    //   REprintf(_("likelihood of id: %s is infinite\n"), rxGetId(id));
-    // }
     if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
       cur = -op_focei.badSolveObjfAdj;
     }
@@ -2331,7 +2309,7 @@ SEXP foceiEtas(Environment e) {
   if (op_focei.neta==0) return R_NilValue;
   List ret(op_focei.neta+2);
   CharacterVector nm(op_focei.neta+2);
-  rx = getRx();
+  rx = getRxSolve_();
   IntegerVector ids(rx->nsub);
   NumericVector ofv(rx->nsub);
   int j,eta;
@@ -2796,7 +2774,7 @@ void numericGrad(double *theta, double *g){
       op_focei.totTick = op_focei.npars * 2;
     }
     op_focei.calcGrad=1;
-    rx = getRx();
+    rx = getRxSolve_();
     int npars = op_focei.npars;
     int cpar;
     double cur, delta, tmp, tmp0=NA_REAL;
@@ -3073,7 +3051,7 @@ static inline void foceiSetupTheta_(List mvi,
 }
 
 static inline void foceiSetupNoEta_(){
-  rx = getRx();
+  rx = getRxSolve_();
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(rx->nsub, focei_ind);
@@ -3117,7 +3095,7 @@ static inline void foceiSetupNoEta_(){
 }
 
 static inline void foceiSetupEta_(NumericMatrix etaMat0){
-  rx = getRx();
+  rx = getRxSolve_();
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(rx->nsub, focei_ind);
@@ -3388,7 +3366,7 @@ NumericVector foceiSetup_(const RObject &obj,
                      data,//const RObject &events =
                      R_NilValue, // inits
                      1);//const int setupOnly = 0
-    rx = getRx();
+    rx = getRxSolve_();
     if (op_focei.neta == 0) foceiSetupNoEta_();
     else foceiSetupEta_(etaMat0);
   }
@@ -4818,7 +4796,6 @@ RObject nlmixr2ParHist_(std::string md5){
 //[[Rcpp::export]]
 RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
                      RObject gillInfoT){
-  par_progress = (par_progress_t) R_GetCCallable("rxode2", "par_progress");
   List par(1);
   NumericVector theta = as<NumericVector>(thetaT);
   Function f = as<Function>(fT);
@@ -4909,7 +4886,7 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
 ////////////////////////////////////////////////////////////////////////////////
 // Covariance functions
 int foceiCalcR(Environment e){
-  rx = getRx();
+  rx = getRxSolve_();
   arma::mat H(op_focei.npars, op_focei.npars);
   arma::vec theta(op_focei.npars);
   unsigned int i, j, k;
@@ -5061,9 +5038,8 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   numericGrad(theta, gfull.memptr());
   op_focei.calcGrad = oldCalcGrad;
   hasZero = false;
-  rx = getRx();
+  rx = getRxSolve_();
   op_focei.calcGrad=1;
-  rx = getRx();
   int cpar, gid;
   double cur, delta;
   focei_ind *fInd;
@@ -5208,7 +5184,7 @@ NumericMatrix foceiCalcCov(Environment e){
       bool boundary=false;
       bool checkLowerBound=false;
       bool checkUpperBound=false;
-      rx = getRx();
+      rx = getRxSolve_();
       if (op_focei.neta == 0) op_focei.covMethod = 2; // Always use hessian for NLS
       for (unsigned int k = op_focei.npars; k--;){
         if (R_FINITE(op_focei.lower[k])){
@@ -5278,7 +5254,7 @@ NumericMatrix foceiCalcCov(Environment e){
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
-        rx = getRx();
+        rx = getRxSolve_();
         op_focei.t0 = clock();
         op_focei.totTick=0;
         op_focei.cur=0;
@@ -5728,7 +5704,7 @@ NumericMatrix foceiCalcCov(Environment e){
 
 void addLlikObs(Environment e) {
   if (op_focei.didLikCalc) {
-    rx = getRx();
+    rx = getRxSolve_();
     NumericVector llikObs(rx->nall);
     std::copy(&op_focei.llikObsFull[0], &op_focei.llikObsFull[0] + rx->nall, llikObs.begin());
     e["llikObs"] = llikObs;
@@ -6339,14 +6315,6 @@ void foceiFinalizeTables(Environment e){
 void doAssignFn(void) {
   if (!assignFn_){
     n1qn1_ = (n1qn1_fp) R_GetCCallable("n1qn1","n1qn1_");
-    par_progress = (par_progress_t) R_GetCCallable("rxode2", "par_progress");
-    getRx = (getRxSolve_t) R_GetCCallable("rxode2", "getRxSolve_");
-    isRstudio = (isRstudio_t) R_GetCCallable("rxode2", "isRstudio");
-    ind_solve=(ind_solve_t) R_GetCCallable("rxode2", "ind_solve");
-    rxGetId = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
-    getTimeF = (getTime_t) R_GetCCallable("rxode2", "getTime");
-    iniSubjectI = (iniSubjectI_t) R_GetCCallable("rxode2","iniSubjectE");
-    sortIdsF = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
     assignFn_=true;
   }
 }

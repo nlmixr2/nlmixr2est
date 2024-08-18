@@ -17,11 +17,6 @@
 #define normTypeLen      5
 #define normTypeConstant 6
 
-extern "C" {
-  typedef int (*isRstudio_t)();
-  extern isRstudio_t isRstudio;
-}
-
 struct scaling {
   int npars; // number of parameters
   int scaleType; // scaling type

@@ -89,8 +89,6 @@ SEXP _nlmixr2est_filterNormalLikeAndDoses(SEXP, SEXP, SEXP);
 
 SEXP _nlmixr2est_rxode2hasLlik(void);
 
-typedef SEXP (*_rxode2random_rxRmvnSEXP_t)(SEXP nSSEXP, SEXP muSSEXP, SEXP sigmaSSEXP, SEXP lowerSSEXP, SEXP upperSSEXP, SEXP ncoresSSEXP, SEXP isCholSSEXP, SEXP keepNamesSSEXP, SEXP aSSEXP, SEXP tolSSEXP, SEXP nlTolSSEXP, SEXP nlMaxiterSSEXP);
-_rxode2random_rxRmvnSEXP_t rxRmvnSEXPnlmixrEst;
 SEXP _nlmixr2est_RcppExport_registerCCallable(void);
 
 SEXP _nlmixr2est_nlmSetup(SEXP);
@@ -207,7 +205,6 @@ void R_init_nlmixr2est(DllInfo *dll)
   R_registerRoutines(dll, CEntries, CallEntries, NULL, NULL);
   R_useDynamicSymbols(dll, TRUE);
   R_forceSymbols(dll,FALSE);
-  rxRmvnSEXPnlmixrEst = (_rxode2random_rxRmvnSEXP_t)R_GetCCallable("rxode2","_rxode2_rxRmvnSEXP");
 }
 
 void rxOptionsFreeFocei(void);

@@ -23,13 +23,7 @@ extern void doAssignFn(void);
 extern rxSolveF rxInner;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
-extern ind_solve_t ind_solve;
-extern getRxSolve_t getRx;
 extern rx_solve *rx;
-extern getTime_t getTimeF;
-extern iniSubjectI_t iniSubjectI;
-extern isRstudio_t isRstudio;
-
 
 struct popedOptions {
   int ntheta=0;
@@ -107,7 +101,7 @@ RObject popedSetup(Environment e, bool full) {
                    data,//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
-  rx = getRx();
+  rx = getRxSolve_();
   return R_NilValue;
 }
 
@@ -137,7 +131,7 @@ void popedSolve(int &id) {
 }
 
 static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, int &id) {
-  rx = getRx();
+  rx = getRxSolve_();
   rx_solving_options_ind *ind = &(rx->subjects[id]);
   for (int i = popedOp.ntheta; i--;) {
     ind->par_ptr[i]=theta[i];
@@ -150,14 +144,14 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
@@ -185,14 +179,14 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
@@ -259,16 +253,16 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTimeF(ind->ix[0], ind)-1;
+  lastTime = getTime(ind->ix[0], ind)-1;
   bool isMT = false;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     isMT = ind->evid[kk] >= 10 && ind->evid[kk] <= 99;
     if (isMT && isSameTime(curT, lastTime)) {
       matMT(k, 0) = curT;
@@ -367,15 +361,15 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTimeF(ind->ix[0], ind)-1;
+  lastTime = getTime(ind->ix[0], ind)-1;
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (ind->evid[kk] == 0 && isSameTime(curT, lastTime)) {
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {

@@ -28,13 +28,8 @@ extern rxSolveF rxInner;
 extern rxSolveF rxPred;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
-extern ind_solve_t ind_solve;
-extern getRxSolve_t getRx;
 extern rx_solve *rx;
 extern getTime_t getTimeF;
-extern iniSubjectI_t iniSubjectI;
-extern isRstudio_t isRstudio;
-
 
 struct nlmOptions {
   int ntheta=0;
@@ -169,7 +164,7 @@ RObject nlmSetup(Environment e) {
                    e["data"],//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
-  rx = getRx();
+  rx = getRxSolve_();
 
   nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + rx->nsub*3, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
@@ -374,7 +369,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
   rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
@@ -435,7 +430,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   arma::mat ret(nlmOp.nobs[id], nlmOp.ntheta+1);
   int kk, k=0;
   double curT;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   nlmSolveNlm(id);
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;

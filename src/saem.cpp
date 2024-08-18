@@ -1956,34 +1956,11 @@ private:
 
 using namespace Rcpp;
 
-typedef rx_solve *(*getRxSolve_t)();
-getRxSolve_t getRx_ = NULL;
 
-typedef t_calc_lhs (*getRxLhs_t)();
-
-typedef double (*getTime_t)(int idx, rx_solving_options_ind *ind);
-getTime_t getTimeS;
-
-getRxLhs_t getRxLhs;
-
-typedef void (*sortIds_t)(rx_solve* rx, int ini);
-
-sortIds_t sortIds;
-
-typedef t_update_inis (*getUpdateInis_t)();
-getUpdateInis_t getUpdateInis;
 
 t_calc_lhs saem_lhs = NULL;
 t_update_inis saem_inis = NULL;
 
-typedef void (*par_solve_t)(rx_solve *rx);
-
-par_solve_t saem_solve;
-
-typedef int (*iniSubjectE_t)(int solveid, int inLhs, rx_solving_options_ind *ind, rx_solving_options *op, rx_solve *rx,
-			     t_update_inis u_inis);
-
-iniSubjectE_t iniSubjectE;
 
 rx_solve* _rx = NULL;
 
@@ -1992,9 +1969,6 @@ RObject mat2NumMat(const mat &m) {
   x.attr( "dim" ) = Dimension( m.n_rows, m.n_cols ) ;
   return x;
 }
-
-typedef const char *(*rxGetId_t)(int id);
-rxGetId_t rxGetIdS;
 
 CharacterVector parNames;
 
@@ -2020,13 +1994,13 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     }
   }
   _rx->op->badSolve = 0;
-  saem_solve(_rx); // Solve the complete system (possibly in parallel)
+  par_solve(_rx); // Solve the complete system (possibly in parallel)
   int j=0;
   while (_rx->op->badSolve && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
     rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
     _rx->op->badSolve = 0;
-    saem_solve(_rx);
+    par_solve(_rx);
     j++;
   }
   if (j != 0) {
@@ -2041,7 +2015,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < ind->n_all_times; ++j){
       ind->idx=j;
-      double curT = getTimeS(ind->ix[ind->idx], ind);
+      double curT = getTime(ind->ix[ind->idx], ind);
       if (isDose(ind->evid[ind->ix[ind->idx]])){
 	// Need to calculate for advan sensitivities
 	saem_lhs((int)id, curT,
@@ -2087,24 +2061,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   return g;
 }
 
-typedef SEXP(*mv_t)(SEXP);
-
-mv_t rxModelVarsS;
-
 void setupRx(List &opt, SEXP evt, SEXP evtM) {
   RObject obj = opt[".rx"];
-  if (getRx_ == NULL) {
-    getRx_ = (getRxSolve_t) R_GetCCallable("rxode2","getRxSolve_");
-    getTimeS = (getTime_t) R_GetCCallable("rxode2", "getTime");
-    getRxLhs = (getRxLhs_t) R_GetCCallable("rxode2","getRxLhs");
-    sortIds = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
-    getUpdateInis = (getUpdateInis_t) R_GetCCallable("rxode2", "getUpdateInis");
-    saem_solve = (par_solve_t) R_GetCCallable("rxode2","par_solve");
-    iniSubjectE = (iniSubjectE_t) R_GetCCallable("rxode2","iniSubjectE");
-    rxGetIdS = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
-    rxModelVarsS = (mv_t)R_GetCCallable("rxode2", "_rxode2_rxModelVars_");
-  }
-  List mv = rxModelVarsS(obj);
+  List mv = _rxode2_rxModelVars_(obj);
   parNames = mv[RxMv_params];
 
   if (!Rf_isNull(obj)){
@@ -2142,7 +2101,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   setupRx(opt, in_evt, in_evt);
   saem_lhs = getRxLhs();
   saem_inis = getUpdateInis();
-  _rx=getRx_();
+  _rx=getRxSolve_();
   mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
   mat gMat = user_function(phi, evt, opt);
@@ -2153,24 +2112,12 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
 
 //[[Rcpp::export]]
 SEXP saem_fit(SEXP xSEXP) {
-  if (getRx_ == NULL) {
-    getRx_ = (getRxSolve_t) R_GetCCallable("rxode2","getRxSolve_");
-    getTimeS = (getTime_t) R_GetCCallable("rxode2", "getTime");
-    getRxLhs = (getRxLhs_t) R_GetCCallable("rxode2","getRxLhs");
-    sortIds = (sortIds_t) R_GetCCallable("rxode2", "sortIds");
-    getUpdateInis = (getUpdateInis_t) R_GetCCallable("rxode2", "getUpdateInis");
-    saem_solve = (par_solve_t) R_GetCCallable("rxode2","par_solve");
-    iniSubjectE = (iniSubjectE_t) R_GetCCallable("rxode2","iniSubjectE");
-    rxGetIdS = (rxGetId_t) R_GetCCallable("rxode2", "rxGetId");
-    rxModelVarsS = (mv_t)R_GetCCallable("rxode2", "_rxode2_rxModelVars_");
-  }
   List x(xSEXP);
   List opt = x["opt"];
   setupRx(opt,x["evt"],x["evtM"]);
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
-  saem_lhs = getRxLhs();
   saem_inis = getUpdateInis();
-  _rx=getRx_();
+  _rx=getRxSolve_();
 
   SAEM saem;
   saem.inits(x);
