@@ -106,8 +106,8 @@ RObject popedSetup(Environment e, bool full) {
 }
 
 void popedSolve(int &id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   popedOde(id);
   int j=0;
   while (popedOp.stickyRecalcN2 <= popedOp.stickyRecalcN &&
@@ -132,7 +132,7 @@ void popedSolve(int &id) {
 
 static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, int &id) {
   rx = getRxSolve_();
-  rx_solving_options_ind *ind = &(rx->subjects[id]);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = popedOp.ntheta; i--;) {
     ind->par_ptr[i]=theta[i];
   }
@@ -143,7 +143,7 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
 void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
@@ -178,7 +178,7 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
 void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
@@ -252,7 +252,7 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
 void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
@@ -360,7 +360,7 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
 void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+-  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;

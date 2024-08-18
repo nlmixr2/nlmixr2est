@@ -169,7 +169,7 @@ RObject nlmSetup(Environment e) {
   // now calculate nobs per id
   nlmOp.nobsTot = 0;
   for (int id = 0; id < rx->nsub; ++id) {
-    rx_solving_options_ind *ind = &(rx->subjects[id]);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     int no = 0;
     for (int j = 0; j < ind->n_all_times; ++j) {
       if (ind->evid[j] == 0) {
@@ -287,8 +287,8 @@ NumericVector nlmUnscalePar(NumericVector p) {
 }
 
 void nlmSolveNlm(int id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   nlmOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
@@ -312,8 +312,8 @@ void nlmSolveNlm(int id) {
 }
 
 void nlmSolvePred(int &id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   predOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
@@ -340,7 +340,7 @@ extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);
 extern arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0, arma::vec &grPH,  double h);
 
 static inline rx_solving_options_ind* updateParamRetInd(arma::vec &theta, int &id) {
-  rx_solving_options_ind *ind = &(rx->subjects[id]);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = nlmOp.ntheta; i--;) {
     ind->par_ptr[i]=scaleUnscalePar(&(nlmOp.scale), &theta[0], i);
   }
@@ -362,7 +362,7 @@ static inline void saveTheta(arma::vec &theta) {
 void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   nlmSolvePred(id);
   int kk, k=0;
@@ -397,7 +397,7 @@ arma::vec nlmSolveFid(arma::vec &theta, int id) {
 arma::vec nlmSolveF(arma::vec &theta) {
   arma::vec ret(nlmOp.nobsTot);
   double *retD = ret.memptr();
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   int cores = op->cores;
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
@@ -420,7 +420,7 @@ double nlmSolveR(arma::vec &theta) {
 arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   // first solve the nlm problem
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   arma::mat ret(nlmOp.nobs[id], nlmOp.ntheta+1);
   int kk, k=0;
   double curT;
@@ -529,7 +529,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
 
 arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   int cores = op->cores;
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)

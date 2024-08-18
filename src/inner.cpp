@@ -622,7 +622,7 @@ void updateTheta(double *theta){
   // Update theta parameters in each individual
   rx = getRxSolve_();
   for (int id = rx->nsub; id--;){
-    rx_solving_options_ind *ind = &(rx->subjects[id]);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (j = op_focei.ntheta; j--;){
       ind->par_ptr[op_focei.thetaTrans[j]] = op_focei.fullTheta[j];
     }
@@ -678,7 +678,7 @@ arma::vec getCurEta(int cid) {
 }
 
 arma::mat grabRFmatFromInner(int id, bool predSolve) {
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec retF(ind->n_all_times);
   arma::vec retR(ind->n_all_times);
@@ -734,7 +734,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   updateEta(eta.memptr(), id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec ret(fInd->nObs);
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
   int oldNeq = op->neq;
   op->neq = op_focei.predNeq;
@@ -800,7 +800,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 }
 double likInner0(double *eta, int id){
   rx = getRxSolve_();
-  rx_solving_options_ind *ind = &(rx->subjects[id]);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
   int i, j;
   bool recalc = false;
@@ -1301,7 +1301,7 @@ double LikInner2(double *eta, int likId, int id){
     lik = -likInner0(eta, id) + op_focei.logDetOmegaInv5;
     // print(wrap(lik));
     rx = getRxSolve_();
-    rx_solving_options_ind *ind = &(rx->subjects[id]);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     rx_solving_options *op = getSolvingOptions(rx);
     if (op->neq > 0 && ISNA(ind->solve[0])){
       //return 1e300;

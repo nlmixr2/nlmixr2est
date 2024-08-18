@@ -1976,7 +1976,7 @@ CharacterVector parNames;
 mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
-  rx_solving_options *op = _rx->op;
+  rx_solving_options *op = getSolvingOptions(_rx);
   vec _id = _evt.col(0);
   int _Nnlmixr2=(int)(_id.max()+1);
   SEXP paramUpdate = _opt["paramUpdate"];
@@ -2012,7 +2012,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int elt=0;
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
-    ind = &(_rx->subjects[id]);
+    ind = getSolvingOptionsInd(_rx, id);
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < ind->n_all_times; ++j){
       ind->idx=j;
