@@ -684,7 +684,7 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   arma::vec retR(ind->n_all_times);
   // this assumes the inner problem has been solved
   fInd->nObs = 0;
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   int kk, k=0;
   double curT;
   if (predSolve) {
@@ -735,7 +735,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec ret(fInd->nObs);
   rx_solving_options_ind *ind =  &(rx->subjects[id]);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   int oldNeq = op->neq;
   op->neq = op_focei.predNeq;
   predOde(id); // Assumes same order of parameters
@@ -801,7 +801,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
 double likInner0(double *eta, int id){
   rx = getRxSolve_();
   rx_solving_options_ind *ind = &(rx->subjects[id]);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   int i, j;
   bool recalc = false;
   focei_ind *fInd= &(inds_focei[id]);
@@ -1302,7 +1302,7 @@ double LikInner2(double *eta, int likId, int id){
     // print(wrap(lik));
     rx = getRxSolve_();
     rx_solving_options_ind *ind = &(rx->subjects[id]);
-    rx_solving_options *op = rx->op;
+    rx_solving_options *op = getSolvingOptions(rx);
     if (op->neq > 0 && ISNA(ind->solve[0])){
       //return 1e300;
       return NA_REAL;
