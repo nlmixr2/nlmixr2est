@@ -360,7 +360,7 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
 void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
--  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options *op = getSolvingOptions(rx);
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
