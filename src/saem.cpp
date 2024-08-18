@@ -9,6 +9,7 @@
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"
+#include "inner.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -2064,6 +2065,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
 void setupRx(List &opt, SEXP evt, SEXP evtM) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);
+  rxUpdateFuns(mv["trans"], &rxInner);
   parNames = mv[RxMv_params];
 
   if (!Rf_isNull(obj)){
@@ -2099,8 +2101,8 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   List opt = List(in_opt);
   setupRx(opt, in_evt, in_evt);
-  saem_lhs = getRxLhs();
-  saem_inis = getUpdateInis();
+  saem_lhs = rxInner.calc_lhs;
+  saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
   mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
@@ -2115,8 +2117,10 @@ SEXP saem_fit(SEXP xSEXP) {
   List x(xSEXP);
   List opt = x["opt"];
   setupRx(opt,x["evt"],x["evtM"]);
+
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
-  saem_inis = getUpdateInis();
+  saem_lhs = rxInner.calc_lhs;
+  saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
 
   SAEM saem;

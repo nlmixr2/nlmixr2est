@@ -1,3 +1,5 @@
+#ifndef __INNER_H__
+#define __INNER_H__
 struct rxSolveF {
   //
   // std::string estStr;
@@ -18,3 +20,10 @@ struct rxSolveF {
   int global_debug = 0;
   int neq = NA_INTEGER;
 };
+
+extern rxSolveF rxInner;
+extern rxSolveF rxPred;
+extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
+extern void rxClearFuns(rxSolveF *inner);
+extern rx_solve *rx;
+#endif

@@ -24,11 +24,6 @@
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
 extern void doAssignFn(void);
-extern rxSolveF rxInner;
-extern rxSolveF rxPred;
-extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
-extern void rxClearFuns(rxSolveF *inner);
-extern rx_solve *rx;
 
 struct nlmOptions {
   int ntheta=0;
