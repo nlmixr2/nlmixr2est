@@ -10,7 +10,7 @@
 #include <time.h>
 #include <Rmath.h>
 #include <RcppArmadillo.h>
-#include <rxode2.h>
+#include <rxode2ptr.h>
 
 
 #ifndef rxDistributionNorm

@@ -5,7 +5,7 @@
 #include <chrono>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
-#include <rxode2.h>
+#include <rxode2ptr.h>
 #include "utilc.h"
 #include "censEst.h"
 #include "nearPD.h"

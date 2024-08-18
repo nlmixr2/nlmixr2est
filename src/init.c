@@ -125,7 +125,10 @@ SEXP _nlmixr2est_popedSolveIdME2(SEXP, SEXP, SEXP, SEXP, SEXP,
 
 SEXP _nlmixr2est_iniLotriPtr(SEXP ptr);
 
+SEXP _nlmixr2est_iniRxodePtrs(SEXP ptr);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},
   {"_nlmixr2est_popedSolveIdME2", (DL_FUNC) &_nlmixr2est_popedSolveIdME2, 7},

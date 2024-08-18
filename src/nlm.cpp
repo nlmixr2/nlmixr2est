@@ -29,7 +29,6 @@ extern rxSolveF rxPred;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
 extern rx_solve *rx;
-extern getTime_t getTimeF;
 
 struct nlmOptions {
   int ntheta=0;
@@ -376,7 +375,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
@@ -435,7 +434,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   for (int j = 0; j < ind->n_all_times; ++j) {
     ind->idx=j;
     kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
+    curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;

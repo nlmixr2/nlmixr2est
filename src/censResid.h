@@ -16,18 +16,18 @@ static inline double truncnorm(double mean, double sd, double low, double hi){
   if (R_finite(mean) && R_finite(sd)) {
     NumericMatrix sigma(1,1);
     sigma(0,0)=sd;
-    SEXP ret = rxRmvnSEXP(wrap(IntegerVector::create(1)),
-                          wrap(NumericVector::create(mean)),
-                          wrap(sigma),
-                          wrap(NumericVector::create(low)),
-                          wrap(NumericVector::create(hi)),
-                          wrap(IntegerVector::create(1)),
-                          wrap(LogicalVector::create(false)),
-                          wrap(LogicalVector::create(false)),
-                          wrap(NumericVector::create(0.4)),
-                          wrap(NumericVector::create(2.05)),
-                          wrap(NumericVector::create(1e-10)),
-                          wrap(IntegerVector::create(100)));
+    SEXP ret = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create(1)),
+                                   wrap(NumericVector::create(mean)),
+                                   wrap(sigma),
+                                   wrap(NumericVector::create(low)),
+                                   wrap(NumericVector::create(hi)),
+                                   wrap(IntegerVector::create(1)),
+                                   wrap(LogicalVector::create(false)),
+                                   wrap(LogicalVector::create(false)),
+                                   wrap(NumericVector::create(0.4)),
+                                   wrap(NumericVector::create(2.05)),
+                                   wrap(NumericVector::create(1e-10)),
+                                   wrap(IntegerVector::create(100)));
     return REAL(ret)[0];
   }
   return NA_REAL;

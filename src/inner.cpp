@@ -1,6 +1,7 @@
 // [[Rcpp::plugins(openmp)]]
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
+#define iniRxodePtrs0 _nlmixr2est_iniRxodePtrs0
 #include "armahead.h"
 #include "utilc.h"
 #include <lbfgsb3c.h>
@@ -8,6 +9,11 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+
+extern "C" {
+#define iniRxodePtrs _nlmixr2est_iniRxodePtrs
+  iniRxode2ptr
+}
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
