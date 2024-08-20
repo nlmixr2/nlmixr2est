@@ -621,7 +621,7 @@ void updateTheta(double *theta){
   }
   // Update theta parameters in each individual
   rx = getRxSolve_();
-  for (int id = rx->nsub; id--;){
+  for (int id = getRxNsub(rx); id--;){
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (j = op_focei.ntheta; j--;){
       setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
@@ -1483,11 +1483,11 @@ extern "C" void innerOptimG(int n, double *x, double *g, void *ex) {
 // Scli-lab style cost function for inner
 void innerCost(int *ind, int *n, double *x, double *f, double *g, int *ti, float *tr, double *td, int *id){
   rx = getRxSolve_();
-  // if (*id < 0 || *id >= rx->nsub){
+  // if (*id < 0 || *id >= getRxNsub(rx)){
   //   // Stops from accessing bad memory, but it doesn't fix any
   //   // problems here.  Rather, this allows the error without a R
   //   // session crash.
-  //   stop("Unexpected id for solving (id=%d and should be between 0 and %d)", *id, rx->nsub);
+  //   stop("Unexpected id for solving (id=%d and should be between 0 and %d)", *id, getRxNsub(rx));
   // }
   focei_ind *fInd = &(inds_focei[*id]);
   if (fInd->badSolve==1) {
@@ -1952,8 +1952,8 @@ static inline bool thetaReset0(bool forceReset = false) {
     return false;
   }
 
-  arma::mat etaMat(rx->nsub, op_focei.neta);
-  for (int ii = rx->nsub; ii--;){
+  arma::mat etaMat(getRxNsub(rx), op_focei.neta);
+  for (int ii = getRxNsub(rx); ii--;){
     focei_ind *fInd = &(inds_focei[ii]);
     for (int jj = op_focei.neta; jj--; ){
       if (op_focei.muRef[jj] != -1  && op_focei.muRef[jj] < (int)op_focei.ntheta &&
@@ -2036,7 +2036,7 @@ void thetaResetObj(Environment e) {
           // }
           // print(wrap(thetaIni));
           // print(wrap(omegaTheta));
-          // arma::mat etaMat(rx->nsub, op_focei.neta, arma::fill::zeros);
+          // arma::mat etaMat(getRxNsub(rx), op_focei.neta, arma::fill::zeros);
           // thetaReset00(thetaIni, omegaTheta, etaMat);
           warning(_("last objective function was not at minimum, possible problems in optimization"));
           // stop("theta resetZ");
@@ -2148,7 +2148,7 @@ void innerOpt(){
     // #ifdef _OPENMP
     // #pragma omp parallel for num_threads(cores)
     // #endif
-    for (int id = 0; id < rx->nsub; id++){
+    for (int id = 0; id < getRxNsub(rx); id++){
       focei_ind *indF = &(inds_focei[id]);
       indF->doChol = 1;
       if (!innerEval(id)) {
@@ -2163,7 +2163,7 @@ void innerOpt(){
     // #ifdef _OPENMP
     // #pragma omp parallel for num_threads(cores)
     // #endif
-    for (int id = 0; id < rx->nsub; id++){
+    for (int id = 0; id < getRxNsub(rx); id++){
       innerOptId(id);
     }
     // Reset ETA variances for next step
@@ -2192,7 +2192,7 @@ static inline double foceiLik0(double *theta){
   double lik = 0.0;
   double cur;
 
-  for (int id=rx->nsub; id--;){
+  for (int id=getRxNsub(rx); id--;){
     focei_ind *fInd = &(inds_focei[id]);
     cur = fInd->lik[0];
     if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
@@ -2272,8 +2272,8 @@ double foceiOfv(NumericVector theta){
 
 void foceiPhi(Environment e) {
   if (op_focei.neta==0) return;
-  List retH(rx->nsub);
-  List retC(rx->nsub);
+  List retH(getRxNsub(rx));
+  List retC(getRxNsub(rx));
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
     retH.attr("names") = idl;
@@ -2286,7 +2286,7 @@ void foceiPhi(Environment e) {
     dimn[0] = e["etaNames"];
     dimn[1] = e["etaNames"];
   }
-  for (int j=rx->nsub; j--;){
+  for (int j=getRxNsub(rx); j--;){
     arma::mat H(op_focei.gH + j*op_focei.neta*op_focei.neta, op_focei.neta, op_focei.neta, false, true);
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
@@ -2317,15 +2317,15 @@ SEXP foceiEtas(Environment e) {
   List ret(op_focei.neta+2);
   CharacterVector nm(op_focei.neta+2);
   rx = getRxSolve_();
-  IntegerVector ids(rx->nsub);
-  NumericVector ofv(rx->nsub);
+  IntegerVector ids(getRxNsub(rx));
+  NumericVector ofv(getRxNsub(rx));
   int j,eta;
   for (j = op_focei.neta; j--;){
-    ret[j+1]=NumericVector(rx->nsub);
+    ret[j+1]=NumericVector(getRxNsub(rx));
     nm[j+1] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-  for (j=rx->nsub; j--;){
+  for (j=getRxNsub(rx); j--;){
     ids[j] = j+1;
     focei_ind *fInd = &(inds_focei[j]);
     ofv[j] = -2*fInd->lik[0];
@@ -2348,7 +2348,7 @@ SEXP foceiEtas(Environment e) {
   nm[op_focei.neta+1] = "OBJI";
   ret.attr("names") = nm;
   ret.attr("class") = "data.frame";
-  ret.attr("row.names") = IntegerVector::create(NA_INTEGER,-rx->nsub);
+  ret.attr("row.names") = IntegerVector::create(NA_INTEGER,-getRxNsub(rx));
   return(wrap(ret));
 }
 
@@ -3061,8 +3061,8 @@ static inline void foceiSetupNoEta_(){
   rx = getRxSolve_();
 
   if (inds_focei != NULL) R_Free(inds_focei);
-  inds_focei = R_Calloc(rx->nsub, focei_ind);
-  op_focei.gEtaGTransN=(op_focei.neta)*rx->nsub;
+  inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
+  op_focei.gEtaGTransN=(op_focei.neta)*getRxNsub(rx);
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
   op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN + rx->nall, double);
@@ -3071,7 +3071,7 @@ static inline void foceiSetupNoEta_(){
   op_focei.mGthetaGrad = true;
   focei_ind *fInd;
   int jj = 0, iLO=0;
-  for (int i = rx->nsub; i--;){
+  for (int i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = &(rx->subjects[i]);
     fInd->doChol=!(op_focei.cholSEOpt);
@@ -3105,17 +3105,17 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   rx = getRxSolve_();
 
   if (inds_focei != NULL) R_Free(inds_focei);
-  inds_focei = R_Calloc(rx->nsub, focei_ind);
+  inds_focei = R_Calloc(getRxNsub(rx), focei_ind);
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
-  op_focei.gEtaGTransN=(op_focei.neta+1)*rx->nsub;
-  int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*rx->nsub;
+  op_focei.gEtaGTransN=(op_focei.neta+1)*getRxNsub(rx);
+  int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*getRxNsub(rx);
 
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
 
-  op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(rx->nsub + 1)+nz+
+  op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
                                2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*rx->nsub + rx->nall,
+                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + rx->nall,
                                double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -3128,13 +3128,13 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gVar     = op_focei.gG + op_focei.gEtaGTransN;
   op_focei.gX       = op_focei.gVar + op_focei.gEtaGTransN;
   op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
-  op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(rx->nsub + 1)
-  op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(rx->nsub + 1); // nz
+  op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(getRxNsub(rx) + 1)
+  op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(getRxNsub(rx) + 1); // nz
   op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * rx->nall]
   op_focei.gc       = op_focei.ga + op_focei.neta * rx->nall;//[op_focei.neta * rx->nall]
   op_focei.gB       = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
-  op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*rx->nsub]
-  op_focei.llikObsFull =   op_focei.gH + op_focei.neta*op_focei.neta*rx->nsub; // [rx->nall]
+  op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
+  op_focei.llikObsFull =   op_focei.gH + op_focei.neta*op_focei.neta*getRxNsub(rx); // [rx->nall]
   op_focei.gVid     = op_focei.llikObsFull + rx->nall;
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
@@ -3150,7 +3150,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   unsigned int i, j = 0, k = 0, ii=0, jj = 0, iA=0, iB=0, iH=0, iVid=0, iLO=0;
   focei_ind *fInd;
-  for (i = rx->nsub; i--;){
+  for (i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = &(rx->subjects[i]);
     fInd->doChol=!(op_focei.cholSEOpt);
@@ -3435,7 +3435,7 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
   op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
-                             rx->nsub, double);
+                             getRxNsub(rx), double);
   op_focei.gillDf2 = op_focei.gillDf+totN;
   op_focei.gillErr = op_focei.gillDf2+totN;
   op_focei.rEps=op_focei.gillErr + totN;
@@ -3444,7 +3444,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.aEpsC = op_focei.rEpsC + totN;
   op_focei.lower = op_focei.aEpsC + totN;
   op_focei.upper = op_focei.lower +op_focei.npars;
-  op_focei.likSav      = op_focei.upper + op_focei.npars;//[rx->nsub]
+  op_focei.likSav      = op_focei.upper + op_focei.npars;//[getRxNsub(rx)]
 
   if (op_focei.derivMethod){
     std::fill_n(&op_focei.rEps[0], totN, std::fabs(cEps[0])/2.0);
@@ -3759,7 +3759,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
       e["nobs"] = rx->nobs;
     }
     if (!e.exists("nsub")) {
-      e["nsub"] = rx->nsub;
+      e["nsub"] = getRxNsub(rx);
     }
     logLik.attr("class") = "logLik";
     e["logLik"] = logLik;
@@ -5060,7 +5060,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     }
     if (doForward){
       // Fill in lik0
-      for (gid = rx->nsub; gid--;){
+      for (gid = getRxNsub(rx); gid--;){
         fInd = &(inds_focei[gid]);
         op_focei.likSav[gid] = -2*fInd->lik[0];
       }
@@ -5070,7 +5070,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   if (op_focei.needOptimHess) {
     smatNorm = op_focei.smatNormLlik;
   }
-  double sInfoPer = npars * rx->nsub;
+  double sInfoPer = npars * getRxNsub(rx);
   for (cpar = npars; cpar--;){
     double rEps = op_focei.rEps[cpar];
     double rEpsC = op_focei.rEpsC[cpar];
@@ -5091,7 +5091,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
-    for (gid = rx->nsub; gid--;){
+    for (gid = getRxNsub(rx); gid--;){
       fInd = &(inds_focei[gid]);
       fInd->thetaGrad[cpar] = NA_REAL;
       if (!innerOpt1(gid,2)) {
@@ -5115,7 +5115,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
       if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
       theta[cpar] = cur - delta;
       updateTheta(theta);
-      for (gid = rx->nsub; gid--;){
+      for (gid = getRxNsub(rx); gid--;){
         fInd = &(inds_focei[gid]);
         if (ISNA(fInd->thetaGrad[cpar])) {
           if (!innerOpt1(gid,1)) {
@@ -5135,7 +5135,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   op_focei.calcGrad=0;
   // Now calculate S matrix
   arma::mat m1(1, op_focei.npars), S(op_focei.npars, op_focei.npars, fill::zeros), s1(1, op_focei.npars,fill::ones);
-  for (gid = rx->nsub; gid--;){
+  for (gid = getRxNsub(rx); gid--;){
     fInd = &(inds_focei[gid]);
     std::copy(&fInd->thetaGrad[0],&fInd->thetaGrad[0]+op_focei.npars,&m1[0]);
     S = S + m1.t() * m1;
@@ -5144,7 +5144,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
   // According to https://github.com/cran/nmw/blob/59478fcc91f368bb3bbc23e55d8d1d5d53726a4b/R/Objs.R
   S=S*0.25;
   e["S0"] = wrap(S);
-  sInfoPer = sInfoPer / (npars * rx->nsub);
+  sInfoPer = sInfoPer / (npars * getRxNsub(rx));
   e["Sper"] = sInfoPer;
   // fixme hard coded
   if (sInfoPer < op_focei.smatPer) {
@@ -5227,7 +5227,7 @@ NumericMatrix foceiCalcCov(Environment e){
           }
         }
       }
-      for (unsigned int j = rx->nsub; j--;){
+      for (unsigned int j = getRxNsub(rx); j--;){
         focei_ind *fInd = &(inds_focei[j]);
         fInd->doChol=!(op_focei.cholSECov);
         fInd->doFD = 0;
@@ -6619,7 +6619,7 @@ Environment foceiFitCpp_(Environment e){
       op_focei.etaM.zeros();
       op_focei.etaS.zeros();
       double n = 1.0;
-      for (int id=rx->nsub; id--;){
+      for (int id=getRxNsub(rx); id--;){
         focei_ind *fInd = &(inds_focei[id]);
         mat etaMat(fop->neta, 1);
         std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
@@ -6764,18 +6764,18 @@ void saveIntoEnvrionment(Environment e) {
     arma::vec gthetaGrad(op_focei.fullTheta, 4*(op_focei.ntheta+op_focei.omegan));
     e[".gthetaGrad"] = gthetaGrad;
   } else {
-    int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*rx->nsub;
+    int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*getRxNsub(rx);
     arma::vec etaUpper(op_focei.etaUpper,
-                       op_focei.gEtaGTransN*10+ op_focei.npars*(rx->nsub + 1)+nz+
+                       op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
                        2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                       op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*rx->nsub + rx->nall);
+                       op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + rx->nall);
     e[".etaUpper"] = etaUpper;
   }
   arma::Col<int> gillRet(op_focei.gillRet,
                      2*totN+op_focei.npars+
                               op_focei.muRefN + op_focei.skipCovN);
   e[".gillRet"] = gillRet;
-  arma::vec gillDf(op_focei.gillDf,7*totN + 2*op_focei.npars + rx->nsub);
+  arma::vec gillDf(op_focei.gillDf,7*totN + 2*op_focei.npars + getRxNsub(rx));
   e[".gillDf"] = gillDf;
 }
 

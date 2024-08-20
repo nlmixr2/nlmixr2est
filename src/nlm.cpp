@@ -160,15 +160,15 @@ RObject nlmSetup(Environment e) {
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + rx->nsub*3, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + getRxNsub(rx)*3, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
-  nlmOp.idS = nlmOp.nobs + rx->nsub; // [nsub]
-  nlmOp.idF = nlmOp.idS + rx->nsub; // [nsub]
-  nlmOp.xPar = nlmOp.idF + rx->nsub; // [ntheta]
+  nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
+  nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
+  nlmOp.xPar = nlmOp.idF + getRxNsub(rx); // [ntheta]
 
   // now calculate nobs per id
   nlmOp.nobsTot = 0;
-  for (int id = 0; id < rx->nsub; ++id) {
+  for (int id = 0; id < getRxNsub(rx); ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     int no = 0;
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
@@ -193,8 +193,8 @@ RObject nlmSetup(Environment e) {
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+rx->nsub) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
-    nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
@@ -203,8 +203,8 @@ RObject nlmSetup(Environment e) {
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+rx->nsub), double);// [ntheta*nsub]
-    nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+getRxNsub(rx)), double);// [ntheta*nsub]
+    nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
@@ -213,7 +213,7 @@ RObject nlmSetup(Environment e) {
     // 7*ntheta + nsub*ntheta + 1 + ntheta*ntheta
     // ntheta*(7+nsub+ntheta) + 1
 #define ntheta nlmOp.ntheta
-#define nsub rx->nsub
+#define nsub getRxNsub(rx)
     //nsub*ntheta
     nlmOp.thetahf = R_Calloc(ntheta*(nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
     nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
@@ -403,7 +403,7 @@ arma::vec nlmSolveF(arma::vec &theta) {
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
-  for (int id = 0; id < rx->nsub; ++id) {
+  for (int id = 0; id < getRxNsub(rx); ++id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
   }
   return ret;
@@ -529,7 +529,7 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
-  for (int id = 0; id < rx->nsub; ++id) {
+  for (int id = 0; id < getRxNsub(rx); ++id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
   }
   return ret;
