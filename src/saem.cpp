@@ -2015,13 +2015,14 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
-      double curT = getTime(ind->ix[ind->idx], ind);
+      int kk = getIndIx(ind, getIndIdx(ind));
+      double curT = getTime(kk, ind);
       double *lhs = getIndLhs(ind);
-      if (isDose(ind->evid[ind->ix[ind->idx]])){
+      if (isDose(getIndEvid(ind, kk))){
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
                  getSolve(j), lhs);
-      } else if (ind->evid[ind->ix[ind->idx]] == 0) {
+      } else if (getIndEvid(ind,kk) == 0) {
         saem_lhs((int)id, curT,
                  getSolve(j), lhs);
         double cur = lhs[0];
@@ -2031,12 +2032,12 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
         }
         g(elt, 0) = cur;
         if (_rx->cens) {
-          g(elt, 1) = getIndCens(ind, ind->ix[ind->idx]);
+          g(elt, 1) = getIndCens(ind, kk);
         } else {
           g(elt, 1) = 0;
         }
         if (_rx->limit) {
-          g(elt, 2) = getIndLimit(ind, ind->ix[ind->idx]);
+          g(elt, 2) = getIndLimit(ind, kk);
         } else {
           g(elt, 2) = R_NegInf;
         }
