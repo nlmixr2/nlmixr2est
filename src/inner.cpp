@@ -695,9 +695,9 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
-    kk = ind->ix[j];
+    kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    if (isDose(ind->evid[kk])) {
+    if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
         rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       } else {
@@ -744,9 +744,9 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
-    kk = ind->ix[j];
+    kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    if (isDose(ind->evid[kk])) {
+    if (isDose(getIndEvid(ind, kk))) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
     }
@@ -1023,12 +1023,12 @@ double likInner0(double *eta, int id){
       double *llikObs = fInd->llikObs;
       for (j = 0; j < getIndNallTimes(ind); ++j){
         setIndIdx(ind, j);
-        kk = ind->ix[j];
+        kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
         dv0 = ind->dv[kk];
         yj = (int)(ind->yj);
         _splitYj(&yj, &dist,  &yj0);
-        if (isDose(ind->evid[kk])) {
+        if (isDose(getIndEvid(ind, kk))) {
           llikObs[kk] = NA_REAL;
           // ind->tlast = ind->all_times[ind->ix[ind->idx]];
           // Need to calculate for advan sensitivities
@@ -1039,7 +1039,7 @@ double likInner0(double *eta, int id){
           else {
             rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
           }
-        } else if (ind->evid[kk] == 0) {
+        } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
             rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
             ind->lhs[op_focei.neta + 1] = ind->lhs[1];

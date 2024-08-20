@@ -172,7 +172,7 @@ RObject nlmSetup(Environment e) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     int no = 0;
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
-      if (ind->evid[j] == 0) {
+      if (getIndEvid(ind, j) == 0) {
         nlmOp.nobsTot++;
         no++;
       }
@@ -369,12 +369,12 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
-    kk = ind->ix[j];
+    kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    if (isDose(ind->evid[kk])) {
+    if (isDose(getIndEvid(ind, kk))) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
+    } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
       if (ISNA(ind->lhs[0])) {
         nlmOp.naZero=1;
@@ -428,12 +428,12 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   nlmSolveNlm(id);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
-    kk = ind->ix[j];
+    kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
-    if (isDose(ind->evid[kk])) {
+    if (isDose(getIndEvid(ind, kk))) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
+    } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
       for (int kk = 0; kk < op->nlhs; ++kk) {
         if (ISNA(ind->lhs[kk])) {
