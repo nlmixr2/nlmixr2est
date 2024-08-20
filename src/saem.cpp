@@ -2031,7 +2031,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
         }
         g(elt, 0) = cur;
         if (_rx->cens) {
-          g(elt, 1) = ind->cens[ind->ix[ind->idx]];
+          g(elt, 1) = getIndCens(ind, ind->ix[ind->idx]);
         } else {
           g(elt, 1) = 0;
         }
