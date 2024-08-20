@@ -1034,7 +1034,6 @@ double likInner0(double *eta, int id) {
         double *lhs = getIndLhs(ind);
         if (isDose(getIndEvid(ind, kk))) {
           llikObs[kk] = NA_REAL;
-          // ind->tlast = ind->all_times[ind->ix[ind->idx]];
           // Need to calculate for advan sensitivities
           if (predSolve) {
             rxPred.calc_lhs(id, curT, getSolve(j), lhs);
@@ -1061,7 +1060,7 @@ double likInner0(double *eta, int id) {
           err = f - dv;
           limit = R_NegInf;
           if (rx->limit) {
-            limit = ind->limit[kk];
+            limit = getIndLimit(ind, kk);
             if (ISNA(limit)) {
               limit = R_NegInf;
             } else if (R_FINITE(limit)) {
