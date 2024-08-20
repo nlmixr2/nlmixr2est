@@ -460,7 +460,6 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   //int nsolve = (op->neq + op->nlin)*getIndNallTimes(ind);
   //arma::vec solveSave(nsolve);
   // save and restore memory pointer
-  // std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
   arma::vec f0 = ret.col(0);
@@ -524,7 +523,6 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     }
   }
   // restore save (may not be needed)
-  //std::copy(solveSave.begin(), solveSave.end(), ind->solve);
   //  }
   return ret;
 }

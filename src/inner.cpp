@@ -800,7 +800,7 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
   ret.zeros();
   return ret;
 }
-double likInner0(double *eta, int id){
+double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
@@ -808,6 +808,7 @@ double likInner0(double *eta, int id){
   bool recalc = false;
   focei_ind *fInd= &(inds_focei[id]);
   op_focei.didLikCalc = true;
+  double *solve = getIndSolve(ind);
   if (op_focei.neta > 0){
     if (!fInd->setup){
       recalc = true;
@@ -864,8 +865,8 @@ double likInner0(double *eta, int id){
     int nsolve = (op->neq + op->nlin)*getIndNallTimes(ind);
     if (op->neq > 0) {
       for (int ns = 0; ns < nsolve; ++ns) {
-        if (ISNA(ind->solve[ns]) || std::isnan(ind->solve[ns]) ||
-            std::isinf(ind->solve[ns])) {
+        if (ISNA(solve[ns]) || std::isnan(solve[ns]) ||
+            std::isinf(solve[ns])) {
           isBadSolve = true;
           break;
         }
@@ -902,7 +903,7 @@ double likInner0(double *eta, int id){
         etaGradR = arma::mat(fInd->nObs, op_focei.neta);
         // now save the prior solve
         arma::vec solveSave(nsolve);
-        std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());
+        std::copy(solve, solve + nsolve, solveSave.memptr());
         arma::vec f0 = rf0mat.col(0);
         arma::vec r0 = rf0mat.col(1);
         arma::vec curEta = getCurEta(id);
@@ -1002,12 +1003,12 @@ double likInner0(double *eta, int id){
           }
         }
         // restore the prior solve
-        std::copy(solveSave.begin(), solveSave.end(), ind->solve);
+        std::copy(solveSave.begin(), solveSave.end(), solve);
       }
       if (op_focei.fo == 1){
         Vid.zeros();
       }
-      // RSprintf("ID: %d; Solve #2: %f\n", id, ind->solve[2]);
+      // RSprintf("ID: %d; Solve #2: %f\n", id, solve[2]);
       // Calculate matricies
       int k = 0, kk=0;//getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind) - 1;
       fInd->llik=0.0;
@@ -1291,7 +1292,7 @@ arma::vec getGradForOptimHess(arma::vec &t, int id) {
 
 bool _finalObfCalc = false;
 
-double LikInner2(double *eta, int likId, int id){
+double LikInner2(double *eta, int likId, int id) {
   focei_ind *fInd = &(inds_focei[id]);
   double lik=0;
   if (op_focei.neta == 0) {
@@ -1306,7 +1307,8 @@ double LikInner2(double *eta, int likId, int id){
     rx = getRxSolve_();
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     rx_solving_options *op = getSolvingOptions(rx);
-    if (op->neq > 0 && ISNA(ind->solve[0])){
+    double *solve = getIndSolve(ind);
+    if (op->neq > 0 && ISNA(solve[0])){
       //return 1e300;
       return NA_REAL;
     }
