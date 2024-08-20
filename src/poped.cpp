@@ -116,7 +116,7 @@ void popedSolve(int &id) {
     popedOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(popedOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     popedOde(id);
     j++;
   }

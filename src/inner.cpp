@@ -831,7 +831,7 @@ double likInner0(double *eta, int id){
     if (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN){
       op_focei.stickyRecalcN2=0;
     }
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     // Solve ODE
     bool predSolve = false;
     if (fInd->doFD == 0) {
@@ -843,7 +843,7 @@ double likInner0(double *eta, int id){
         op_focei.reducedTol2 = 1;
         // Not thread safe
         rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
-        ind->solved = -1;
+        setIndSolve(ind,-1);
         innerOde(id);
         j++;
       }

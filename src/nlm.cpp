@@ -297,7 +297,7 @@ void nlmSolveNlm(int id) {
     nlmOp.reducedTol  = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     nlmOde(id);
     j++;
   }
@@ -322,7 +322,7 @@ void nlmSolvePred(int &id) {
     nlmOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     predOde(id);
     j++;
   }
