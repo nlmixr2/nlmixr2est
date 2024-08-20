@@ -2014,7 +2014,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     ind = getSolvingOptionsInd(_rx, id);
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j){
-      ind->idx=j;
+      setIndIdx(ind, j);
       double curT = getTime(ind->ix[ind->idx], ind);
       if (isDose(ind->evid[ind->ix[ind->idx]])){
 	// Need to calculate for advan sensitivities

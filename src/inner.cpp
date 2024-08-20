@@ -694,7 +694,7 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
   }
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
@@ -743,7 +743,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
@@ -1022,7 +1022,7 @@ double likInner0(double *eta, int id){
       int dist=0, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
       for (j = 0; j < getIndNallTimes(ind); ++j){
-        ind->idx=j;
+        setIndIdx(ind, j);
         kk = ind->ix[j];
         curT = getTime(kk, ind);
         dv0 = ind->dv[kk];

@@ -368,7 +368,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   int kk, k=0;
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
@@ -427,7 +427,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   nlmSolveNlm(id);
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {

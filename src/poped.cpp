@@ -149,7 +149,7 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
   int kk, k=0;
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
@@ -184,7 +184,7 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
   int kk, k=0;
   double curT;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (isDose(ind->evid[kk])) {
@@ -260,7 +260,7 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
   lastTime = getTime(ind->ix[0], ind)-1;
   bool isMT = false;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     isMT = ind->evid[kk] >= 10 && ind->evid[kk] <= 99;
@@ -367,7 +367,7 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
   double curT, lastTime;
   lastTime = getTime(ind->ix[0], ind)-1;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
-    ind->idx=j;
+    setIndIdx(ind, j);
     kk = ind->ix[j];
     curT = getTime(kk, ind);
     if (ind->evid[kk] == 0 && isSameTime(curT, lastTime)) {
