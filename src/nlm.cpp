@@ -455,11 +455,6 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       break;
     }
   }
-  //if (nlmOp.needFD) {
-  // Save solve; not needed can corrupt memory space with preds
-  //int nsolve = (getOpNeq(op) + op->nlin)*getIndNallTimes(ind);
-  //arma::vec solveSave(nsolve);
-  // save and restore memory pointer
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
   arma::vec f0 = ret.col(0);

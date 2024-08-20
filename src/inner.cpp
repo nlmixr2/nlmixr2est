@@ -862,7 +862,7 @@ double likInner0(double *eta, int id) {
       op_focei.didPredSolve = true;
     }
     bool isBadSolve = false;
-    int nsolve = (getOpNeq(op) + op->nlin)*getIndNallTimes(ind);
+    int nsolve = (getOpNeq(op) + getOpNlin(op))*getIndNallTimes(ind);
     if (getOpNeq(op) > 0) {
       for (int ns = 0; ns < nsolve; ++ns) {
         if (ISNA(solve[ns]) || std::isnan(solve[ns]) ||

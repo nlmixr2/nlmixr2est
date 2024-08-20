@@ -1996,7 +1996,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   _rx->op->badSolve = 0;
   par_solve(_rx); // Solve the complete system (possibly in parallel)
   int j=0;
-  while (_rx->op->badSolve && j < _saemMaxOdeRecalc){
+  while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
     rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
     _rx->op->badSolve = 0;
