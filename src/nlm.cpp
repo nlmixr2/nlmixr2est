@@ -437,7 +437,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(id, curT, getSolve(j), lhs);
-      for (int kk = 0; kk < op->nlhs; ++kk) {
+      for (int kk = 0; kk < getOpNlhs(op); ++kk) {
         if (ISNA(lhs[kk])) {
           lhs[kk] = 0.0;
           nlmOp.naZero=1;
