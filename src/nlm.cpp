@@ -371,16 +371,17 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         nlmOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      ret(k) = ind->lhs[0];
+      ret(k) = lhs[0];
       k++;
     }
   }
@@ -430,20 +431,21 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       for (int kk = 0; kk < op->nlhs; ++kk) {
-        if (ISNA(ind->lhs[kk])) {
-          ind->lhs[kk] = 0.0;
+        if (ISNA(lhs[kk])) {
+          lhs[kk] = 0.0;
           nlmOp.naZero=1;
         }
         if (kk == 0) {
-          ret(k, kk) = ind->lhs[kk];
+          ret(k, kk) = lhs[kk];
         } else {
-          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), ind->lhs[kk], &theta[0], kk-1);
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[kk], &theta[0], kk-1);
         }
       }
       k++;

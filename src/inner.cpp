@@ -697,23 +697,24 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
-        rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+        rxPred.calc_lhs(id, curT, getSolve(j), lhs);
       } else {
-        rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+        rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       }
       continue;
     }
     fInd->nObs++;
     if (predSolve) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      retF(k) = ind->lhs[0];
-      retR(k) = ind->lhs[1];
+      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      retF(k) = lhs[0];
+      retR(k) = lhs[1];
     } else {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      retF(k) = ind->lhs[0];
-      retR(k) = ind->lhs[op_focei.neta + 1];
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      retF(k) = lhs[0];
+      retR(k) = lhs[op_focei.neta + 1];
     }
     k++;
     if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
@@ -746,12 +747,13 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     }
-    rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-    ret(k) = ind->lhs[w];
+    rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+    ret(k) = lhs[w];
     k++;
     if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
@@ -1021,39 +1023,40 @@ double likInner0(double *eta, int id){
       }
       int dist=0, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
-      for (j = 0; j < getIndNallTimes(ind); ++j){
+      for (j = 0; j < getIndNallTimes(ind); ++j) {
         setIndIdx(ind, j);
         kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
         dv0 = ind->dv[kk];
         yj = (int)(ind->yj);
         _splitYj(&yj, &dist,  &yj0);
+        double *lhs = getIndLhs(ind);
         if (isDose(getIndEvid(ind, kk))) {
           llikObs[kk] = NA_REAL;
           // ind->tlast = ind->all_times[ind->ix[ind->idx]];
           // Need to calculate for advan sensitivities
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-            ind->lhs[op_focei.neta + 1] = ind->lhs[1];
+            rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+            lhs[op_focei.neta + 1] = lhs[1];
           }
           else {
-            rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+            rxInner.calc_lhs(id, curT, getSolve(j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-            ind->lhs[op_focei.neta + 1] = ind->lhs[1];
+            rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+            lhs[op_focei.neta + 1] = lhs[1];
           } else {
-            rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+            rxInner.calc_lhs(id, curT, getSolve(j), lhs);
           }
 
-          f = ind->lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
+          f = lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
           if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
-          // fInd->f(k, 0) = ind->lhs[0];
+          // fInd->f(k, 0) = lhs[0];
           err = f - dv;
           limit = R_NegInf;
           if (rx->limit) {
@@ -1067,13 +1070,13 @@ double likInner0(double *eta, int id){
           cens = 0;
           if (rx->cens) cens = ind->cens[kk];
           fInd->tbsLik+=tbsL(dv0);
-          // fInd->err(k, 0) = ind->lhs[0] - ind->dv[k]; // pred-dv
-          if (ISNA(ind->lhs[op_focei.neta + 1])){
+          // fInd->err(k, 0) = lhs[0] - ind->dv[k]; // pred-dv
+          if (ISNA(lhs[op_focei.neta + 1])){
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
           if (dist == rxDistributionNorm) {
-            r = ind->lhs[op_focei.neta + 1];
+            r = lhs[op_focei.neta + 1];
             if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
               r = 1.0;
             }
@@ -1104,7 +1107,7 @@ double likInner0(double *eta, int id){
               if (predSolve || op_focei.etaFD[i]==1) {
                 a(k, i) = etaGradF(k, i);
               } else {
-                a(k, i) = ind->lhs[i+1];
+                a(k, i) = lhs[i+1];
               }
             }
             // Ci = fpm %*% omega %*% t(fpm) + Vi; Vi=diag(r)
@@ -1113,10 +1116,10 @@ double likInner0(double *eta, int id){
             // This way, the dose-based etas use the same approach for
             // normal and non-normal log likelikoods
             // The err and r terms are garbgage, though
-            if (dist == rxDistributionNorm) lnr =_safe_log(ind->lhs[op_focei.neta + 1]);
+            if (dist == rxDistributionNorm) lnr =_safe_log(lhs[op_focei.neta + 1]);
             else lnr = 0;
-            // fInd->r(k, 0) = ind->lhs[op_focei.neta+1];
-            // B(k, 0) = 2.0/ind->lhs[op_focei.neta+1];
+            // fInd->r(k, 0) = lhs[op_focei.neta+1];
+            // B(k, 0) = 2.0/lhs[op_focei.neta+1];
             // lhs 0 = F
             // lhs 1-eta = df/deta
             // FIXME faster initialization via copy or elm
@@ -1131,8 +1134,8 @@ double likInner0(double *eta, int id){
                     rp = etaGradR(k, i);
                   }
                 } else {
-                  fpm = a(k, i) = ind->lhs[i + 1]; // Almquist uses different a (see eq #15)
-                  rp  = (dist == rxDistributionNorm)*ind->lhs[i + op_focei.neta + 2];
+                  fpm = a(k, i) = lhs[i + 1]; // Almquist uses different a (see eq #15)
+                  rp  = (dist == rxDistributionNorm)*lhs[i + op_focei.neta + 2];
                 }
                 if (fpm == 0.0) {
                   a(k, i) = fpm = sqrt(DBL_EPSILON);
@@ -1170,7 +1173,7 @@ double likInner0(double *eta, int id){
                 if (predSolve || op_focei.etaFD[i]==1) {
                   a(k, i) = fpm = etaGradF(k, i);
                 } else {
-                  a(k, i) = fpm = ind->lhs[i + 1];
+                  a(k, i) = fpm = lhs[i + 1];
                 }
                 if (dist == rxDistributionNorm) {
                   double lpCur = -0.5 * err * fpm * B(k, 0);

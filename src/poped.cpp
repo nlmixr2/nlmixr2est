@@ -152,22 +152,23 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      // ret(k) = ind->lhs[0];
+      // ret(k) = lhs[0];
       // k++;
     } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      f[k] = ind->lhs[0];
-      w[k] = sqrt(ind->lhs[1]);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      f[k] = lhs[0];
+      w[k] = sqrt(lhs[1]);
       t[k] = curT;
       k++;
       if (k >= totn) return; // vector has been created, break
@@ -187,25 +188,26 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      // ret(k) = ind->lhs[0];
+      // ret(k) = lhs[0];
       // k++;
-      f[k] = ind->lhs[0];
-      w[k] = sqrt(ind->lhs[1]);
+      f[k] = lhs[0];
+      w[k] = sqrt(lhs[1]);
       t[k] = curT;
       k++;
       if (k >= totn) return; // vector has been created, break
     } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
     }
   }
 }
@@ -257,7 +259,7 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTime(ind->ix[0], ind)-1;
+  lastTime = getTime(getIndIx(ind, 0), ind)-1;
   bool isMT = false;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
@@ -276,20 +278,21 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
       }
       continue;
     }
+    double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (isMT) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
-        matMT(k, i*2+1) = ind->lhs[i*2];
-        matMT(k, i*2+2) = ind->lhs[i*2+1];
+        matMT(k, i*2+1) = lhs[i*2];
+        matMT(k, i*2+2) = lhs[i*2+1];
       }
       k++;
       if (k >= nrow) {
@@ -297,10 +300,10 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
       }
       lastTime = curT;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
     }
   }
@@ -365,11 +368,12 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTime(ind->ix[0], ind)-1;
+  lastTime = getTime(getIndIx(ind, 0), ind)-1;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
     if (getIndEvid(ind, kk) == 0 && isSameTime(curT, lastTime)) {
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
@@ -383,18 +387,18 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
       continue;
     }
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
-        matMT(k, i*2+1) = ind->lhs[i*2];
-        matMT(k, i*2+2) = ind->lhs[i*2+1];
+        matMT(k, i*2+1) = lhs[i*2];
+        matMT(k, i*2+2) = lhs[i*2+1];
       }
       k++;
       if (k >= nrow) {

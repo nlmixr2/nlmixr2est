@@ -2013,33 +2013,34 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
     iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
-    for (int j = 0; j < getIndNallTimes(ind); ++j){
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       double curT = getTime(ind->ix[ind->idx], ind);
+      double *lhs = getIndLhs(ind);
       if (isDose(ind->evid[ind->ix[ind->idx]])){
-	// Need to calculate for advan sensitivities
-	saem_lhs((int)id, curT,
-		 getSolve(j), ind->lhs);
+        // Need to calculate for advan sensitivities
+        saem_lhs((int)id, curT,
+                 getSolve(j), lhs);
       } else if (ind->evid[ind->ix[ind->idx]] == 0) {
-	saem_lhs((int)id, curT,
-		 getSolve(j), ind->lhs);
-	double cur = ind->lhs[0];
-	if (std::isnan(cur)) {
-	  cur = 1.0e99;
-	  hasNan = true;
-	}
-	g(elt, 0) = cur;
-	if (_rx->cens) {
-	  g(elt, 1) = ind->cens[ind->ix[ind->idx]];
-	} else {
-	  g(elt, 1) = 0;
-	}
-	if (_rx->limit) {
-	  g(elt, 2) = ind->limit[ind->ix[ind->idx]];
-	} else {
-	  g(elt, 2) = R_NegInf;
-	}
-	elt++;
+        saem_lhs((int)id, curT,
+                 getSolve(j), lhs);
+        double cur = lhs[0];
+        if (std::isnan(cur)) {
+          cur = 1.0e99;
+          hasNan = true;
+        }
+        g(elt, 0) = cur;
+        if (_rx->cens) {
+          g(elt, 1) = ind->cens[ind->ix[ind->idx]];
+        } else {
+          g(elt, 1) = 0;
+        }
+        if (_rx->limit) {
+          g(elt, 2) = ind->limit[ind->ix[ind->idx]];
+        } else {
+          g(elt, 2) = R_NegInf;
+        }
+        elt++;
       } // evid=2 does not need to be calculated
     }
   }
