@@ -1028,7 +1028,7 @@ double likInner0(double *eta, int id) {
         setIndIdx(ind, j);
         kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
-        dv0 = ind->dv[kk];
+        dv0 = getIndDv(ind, kk);
         yj = (int)(ind->yj);
         _splitYj(&yj, &dist,  &yj0);
         double *lhs = getIndLhs(ind);
@@ -1071,7 +1071,7 @@ double likInner0(double *eta, int id) {
           cens = 0;
           if (rx->cens) cens = ind->cens[kk];
           fInd->tbsLik+=tbsL(dv0);
-          // fInd->err(k, 0) = lhs[0] - ind->dv[k]; // pred-dv
+          // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
           if (ISNA(lhs[op_focei.neta + 1])){
             return NA_REAL;
             //throw std::runtime_error("bad solve");
