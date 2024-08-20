@@ -3065,9 +3065,9 @@ static inline void foceiSetupNoEta_(){
   op_focei.gEtaGTransN=(op_focei.neta)*getRxNsub(rx);
 
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
-  op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN + rx->nall, double);
-  op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [rx->nall]
-  std::fill_n(op_focei.llikObsFull, rx->nall, NA_REAL);
+  op_focei.gthetaGrad = R_Calloc(op_focei.gEtaGTransN + getRxNall(rx), double);
+  op_focei.llikObsFull = op_focei.gthetaGrad + op_focei.gEtaGTransN; // [getRxNall(rx)]
+  std::fill_n(op_focei.llikObsFull, getRxNall(rx), NA_REAL);
   op_focei.mGthetaGrad = true;
   focei_ind *fInd;
   int jj = 0, iLO=0;
@@ -3114,8 +3114,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   if (op_focei.etaUpper != NULL) R_Free(op_focei.etaUpper);
 
   op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
-                               2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + rx->nall,
+                               2*op_focei.neta * getRxNall(rx) + getRxNall(rx)+ getRxNall(rx)*getRxNall(rx) +
+                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx),
                                double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
@@ -3130,12 +3130,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.glp      = op_focei.gX + op_focei.gEtaGTransN;
   op_focei.gthetaGrad = op_focei.glp + op_focei.gEtaGTransN;  // op_focei.npars*(getRxNsub(rx) + 1)
   op_focei.gZm      = op_focei.gthetaGrad + op_focei.npars*(getRxNsub(rx) + 1); // nz
-  op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * rx->nall]
-  op_focei.gc       = op_focei.ga + op_focei.neta * rx->nall;//[op_focei.neta * rx->nall]
-  op_focei.gB       = op_focei.gc + op_focei.neta * rx->nall;//[rx->nall]
-  op_focei.gH       = op_focei.gB + rx->nall; //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
-  op_focei.llikObsFull =   op_focei.gH + op_focei.neta*op_focei.neta*getRxNsub(rx); // [rx->nall]
-  op_focei.gVid     = op_focei.llikObsFull + rx->nall;
+  op_focei.ga       = op_focei.gZm + nz;//[op_focei.neta * getRxNall(rx)]
+  op_focei.gc       = op_focei.ga + op_focei.neta * getRxNall(rx);//[op_focei.neta * getRxNall(rx)]
+  op_focei.gB       = op_focei.gc + op_focei.neta * getRxNall(rx);//[getRxNall(rx)]
+  op_focei.gH       = op_focei.gB + getRxNall(rx); //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
+  op_focei.llikObsFull =   op_focei.gH + op_focei.neta*op_focei.neta*getRxNsub(rx); // [getRxNall(rx)]
+  op_focei.gVid     = op_focei.llikObsFull + getRxNall(rx);
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -5709,8 +5709,8 @@ NumericMatrix foceiCalcCov(Environment e){
 void addLlikObs(Environment e) {
   if (op_focei.didLikCalc) {
     rx = getRxSolve_();
-    NumericVector llikObs(rx->nall);
-    std::copy(&op_focei.llikObsFull[0], &op_focei.llikObsFull[0] + rx->nall, llikObs.begin());
+    NumericVector llikObs(getRxNall(rx));
+    std::copy(&op_focei.llikObsFull[0], &op_focei.llikObsFull[0] + getRxNall(rx), llikObs.begin());
     e["llikObs"] = llikObs;
   }
 }
@@ -6767,8 +6767,8 @@ void saveIntoEnvrionment(Environment e) {
     int nz = ((op_focei.neta+1)*(op_focei.neta+2)/2+6*(op_focei.neta+1)+1)*getRxNsub(rx);
     arma::vec etaUpper(op_focei.etaUpper,
                        op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
-                       2*op_focei.neta * rx->nall + rx->nall+ rx->nall*rx->nall +
-                       op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + rx->nall);
+                       2*op_focei.neta * getRxNall(rx) + getRxNall(rx)+ getRxNall(rx)*getRxNall(rx) +
+                       op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx));
     e[".etaUpper"] = etaUpper;
   }
   arma::Col<int> gillRet(op_focei.gillRet,
