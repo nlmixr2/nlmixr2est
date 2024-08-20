@@ -1068,7 +1068,7 @@ double likInner0(double *eta, int id) {
             }
           }
           cens = 0;
-          if (rx->cens) cens = getIndCens(ind, kk);
+          if (hasRxCens(rx)) cens = getIndCens(ind, kk);
           fInd->tbsLik+=tbsL(dv0);
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
           if (ISNA(lhs[op_focei.neta + 1])){

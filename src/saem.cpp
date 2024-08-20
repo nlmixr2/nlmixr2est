@@ -2031,7 +2031,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
           hasNan = true;
         }
         g(elt, 0) = cur;
-        if (_rx->cens) {
+        if (hasRxCens(_rx)) {
           g(elt, 1) = getIndCens(ind, kk);
         } else {
           g(elt, 1) = 0;
