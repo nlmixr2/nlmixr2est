@@ -342,7 +342,7 @@ extern arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0, arma::vec &grPH
 static inline rx_solving_options_ind* updateParamRetInd(arma::vec &theta, int &id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = nlmOp.ntheta; i--;) {
-    ind->par_ptr[i]=scaleUnscalePar(&(nlmOp.scale), &theta[0], i);
+    setIndParPtr(ind, i, scaleUnscalePar(&(nlmOp.scale), &theta[0], i));
   }
   return ind;
 }

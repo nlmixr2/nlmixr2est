@@ -624,7 +624,7 @@ void updateTheta(double *theta){
   for (int id = rx->nsub; id--;){
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (j = op_focei.ntheta; j--;){
-      ind->par_ptr[op_focei.thetaTrans[j]] = op_focei.fullTheta[j];
+      setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
     }
   }
   // Update setOmegaTheta
@@ -664,7 +664,7 @@ gill83fn_type gill83fnG = &gill83fnF;
 void updateEta(double *eta, int cid) {
   rx_solving_options_ind *ind =  &(rx->subjects[cid]);
   for (int i = op_focei.neta; i--;) {
-    ind->par_ptr[op_focei.etaTrans[i]]=eta[i];
+    setIndParPtr(ind, op_focei.etaTrans[i], eta[i]);
   }
 }
 
@@ -824,7 +824,7 @@ double likInner0(double *eta, int id){
   }
   if (recalc){
     for (j = op_focei.neta; j--;){
-      ind->par_ptr[op_focei.etaTrans[j]] = eta[j];
+      setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
     if (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN){
       op_focei.stickyRecalcN2=0;

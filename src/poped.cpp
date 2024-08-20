@@ -134,7 +134,7 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = popedOp.ntheta; i--;) {
-    ind->par_ptr[i]=theta[i];
+    setIndParPtr(ind, i, theta[i]);
   }
   return ind;
 }

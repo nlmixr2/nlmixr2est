@@ -1986,11 +1986,10 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = &(_rx->subjects[_i]);
     ind->solved = -1;
-    // ind->par_ptr
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
-        ind->par_ptr[_j] = _phi(_i, k++);
+        setIndParPtr(ind, _j, _phi(_i, k++));
       }
     }
   }
@@ -2028,12 +2027,6 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
 	if (std::isnan(cur)) {
 	  cur = 1.0e99;
 	  hasNan = true;
-	  // NumericVector par(nPar);
-	  // for (int _j = 0; _j < nPar; _j++){
-	  //   par[_j] = ind->par_ptr[_j];
-	  // }
-	  // par.names() = parNames;
-	  // Rcpp::print(par);
 	}
 	g(elt, 0) = cur;
 	if (_rx->cens) {
