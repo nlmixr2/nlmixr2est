@@ -838,7 +838,7 @@ double likInner0(double *eta, int id) {
     if (fInd->doFD == 0) {
       innerOde(id);
       j=0;
-      while (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN && op->badSolve && j < op_focei.maxOdeRecalc) {
+      while (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
         op_focei.stickyRecalcN2++;
         op_focei.reducedTol  = 1;
         op_focei.reducedTol2 = 1;

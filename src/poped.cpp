@@ -111,7 +111,7 @@ void popedSolve(int &id) {
   popedOde(id);
   int j=0;
   while (popedOp.stickyRecalcN2 <= popedOp.stickyRecalcN &&
-         op->badSolve && j < popedOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < popedOp.maxOdeRecalc) {
     popedOp.stickyRecalcN2++;
     popedOp.reducedTol2 = 1;
     // Not thread safe

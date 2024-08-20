@@ -292,7 +292,7 @@ void nlmSolveNlm(int id) {
   nlmOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         op->badSolve && j < nlmOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol  = 1;
     // Not thread safe
@@ -317,7 +317,7 @@ void nlmSolvePred(int &id) {
   predOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         op->badSolve && j < nlmOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol2 = 1;
     // Not thread safe
