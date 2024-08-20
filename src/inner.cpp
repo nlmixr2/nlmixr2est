@@ -672,7 +672,7 @@ arma::vec getCurEta(int cid) {
   rx_solving_options_ind *ind =  &(rx->subjects[cid]);
   arma::vec eta(op_focei.neta);
   for (int i = op_focei.neta; i--;) {
-    eta[i] = ind->par_ptr[op_focei.etaTrans[i]];
+    eta[i] = getIndParPtr(ind, op_focei.etaTrans[i]);
   }
   return eta;
 }
