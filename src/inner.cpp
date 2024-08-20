@@ -738,7 +738,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
   int oldNeq = getOpNeq(op);
-  op->neq = op_focei.predNeq;
+  setOpNeq(op, op_focei.predNeq);
   predOde(id); // Assumes same order of parameters
   int kk, k = 0;
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
@@ -762,7 +762,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   }
   // reset eta
   updateEta(curEta.memptr(), id);
-  op->neq = oldNeq;
+  setOpNeq(op, oldNeq);
   return ret;
 }
 
