@@ -171,7 +171,7 @@ RObject nlmSetup(Environment e) {
   for (int id = 0; id < rx->nsub; ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     int no = 0;
-    for (int j = 0; j < ind->n_all_times; ++j) {
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
       if (ind->evid[j] == 0) {
         nlmOp.nobsTot++;
         no++;
@@ -367,7 +367,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -426,7 +426,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   double curT;
   iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   nlmSolveNlm(id);
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -448,14 +448,14 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       }
       k++;
     }
-    if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+    if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
       break;
     }
   }
   //if (nlmOp.needFD) {
   // Save solve; not needed can corrupt memory space with preds
-  //int nsolve = (op->neq + op->nlin)*ind->n_all_times;
+  //int nsolve = (op->neq + op->nlin)*getIndNallTimes(ind);
   //arma::vec solveSave(nsolve);
   // save and restore memory pointer
   // std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());

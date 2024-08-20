@@ -148,7 +148,7 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
   popedSolve(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -183,7 +183,7 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
   popedSolve(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -259,7 +259,7 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
   double curT, lastTime;
   lastTime = getTime(ind->ix[0], ind)-1;
   bool isMT = false;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -366,7 +366,7 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
   int kk, k=0;
   double curT, lastTime;
   lastTime = getTime(ind->ix[0], ind)-1;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);

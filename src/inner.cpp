@@ -680,8 +680,8 @@ arma::vec getCurEta(int cid) {
 arma::mat grabRFmatFromInner(int id, bool predSolve) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   focei_ind *fInd = &(inds_focei[id]);
-  arma::vec retF(ind->n_all_times);
-  arma::vec retR(ind->n_all_times);
+  arma::vec retF(getIndNallTimes(ind));
+  arma::vec retR(getIndNallTimes(ind));
   // this assumes the inner problem has been solved
   fInd->nObs = 0;
   rx_solving_options *op = getSolvingOptions(rx);
@@ -693,7 +693,7 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   }
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -716,7 +716,7 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
       retR(k) = ind->lhs[op_focei.neta + 1];
     }
     k++;
-    if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+    if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
       break;
     }
@@ -742,7 +742,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   int kk, k = 0;
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
     ind->idx=j;
     kk = ind->ix[j];
     curT = getTime(kk, ind);
@@ -753,7 +753,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
     ret(k) = ind->lhs[w];
     k++;
-    if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+    if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
       break;
     }
@@ -859,7 +859,7 @@ double likInner0(double *eta, int id){
       op_focei.didPredSolve = true;
     }
     bool isBadSolve = false;
-    int nsolve = (op->neq + op->nlin)*ind->n_all_times;
+    int nsolve = (op->neq + op->nlin)*getIndNallTimes(ind);
     if (op->neq > 0) {
       for (int ns = 0; ns < nsolve; ++ns) {
         if (ISNA(ind->solve[ns]) || std::isnan(ind->solve[ns]) ||
@@ -876,12 +876,12 @@ double likInner0(double *eta, int id){
       // Update eta.
       arma::mat lp(fInd->lp, op_focei.neta, 1, false, true);
       lp.zeros();
-      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
-      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
-      arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2,
+      arma::mat a(fInd->a, getIndNallTimes(ind) - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      arma::mat B(fInd->B, getIndNallTimes(ind) - ind->ndoses - ind->nevid2, 1, false, true);
+      arma::mat c(fInd->c, getIndNallTimes(ind) - ind->ndoses - ind->nevid2,
                   op_focei.neta, false, true);
-      arma::mat Vid(fInd->Vid, ind->n_all_times - ind->ndoses - ind->nevid2,
-                    ind->n_all_times - ind->ndoses - ind->nevid2, false, true);
+      arma::mat Vid(fInd->Vid, getIndNallTimes(ind) - ind->ndoses - ind->nevid2,
+                    getIndNallTimes(ind) - ind->ndoses - ind->nevid2, false, true);
       // Check to see if finite difference step size needs to be optimized
       bool finiteDiffNeeded = predSolve;
       for (int ii = 0; ii < op_focei.neta; ++ii) {
@@ -1007,7 +1007,7 @@ double likInner0(double *eta, int id){
       }
       // RSprintf("ID: %d; Solve #2: %f\n", id, ind->solve[2]);
       // Calculate matricies
-      int k = 0, kk=0;//ind->n_all_times - ind->ndoses - ind->nevid2 - 1;
+      int k = 0, kk=0;//getIndNallTimes(ind) - ind->ndoses - ind->nevid2 - 1;
       fInd->llik=0.0;
       fInd->nNonNormal = 0;
       fInd->nObs = 0;
@@ -1021,7 +1021,7 @@ double likInner0(double *eta, int id){
       }
       int dist=0, yj0=0, yj = 0;
       double *llikObs = fInd->llikObs;
-      for (j = 0; j < ind->n_all_times; ++j){
+      for (j = 0; j < getIndNallTimes(ind); ++j){
         ind->idx=j;
         kk = ind->ix[j];
         curT = getTime(kk, ind);
@@ -1197,7 +1197,7 @@ double likInner0(double *eta, int id){
           }
           // k--;
           k++;
-          if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+          if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
             // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
             break;
           }
@@ -1388,9 +1388,9 @@ double LikInner2(double *eta, int likId, int id){
       // Note that since the gradient includes omegaInv*etam,
       // op_focei.omegaInv(k, l) shouldn't be added.
     } else if (op_focei.interaction) {
-      arma::mat a(fInd->a, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
-      arma::mat B(fInd->B, ind->n_all_times - ind->ndoses - ind->nevid2, 1, false, true);
-      arma::mat c(fInd->c, ind->n_all_times - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      arma::mat a(fInd->a, getIndNallTimes(ind) - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
+      arma::mat B(fInd->B, getIndNallTimes(ind) - ind->ndoses - ind->nevid2, 1, false, true);
+      arma::mat c(fInd->c, getIndNallTimes(ind) - ind->ndoses - ind->nevid2, op_focei.neta, false, true);
       for (k = op_focei.neta; k--;){
         for (l = k+1; l--;){
           // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
@@ -3095,7 +3095,7 @@ static inline void foceiSetupNoEta_(){
     fInd->doEtaNudge=0;
     // llikObs
     fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += ind->n_all_times;
+    iLO += getIndNallTimes(ind);
   }
   op_focei.alloc=true;
 }
@@ -3167,9 +3167,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->lp = &op_focei.glp[j];
     fInd->Vid = &op_focei.gVid[iVid];
     iH += op_focei.neta*op_focei.neta;
-    iVid += (ind->n_all_times - ind->ndoses - ind->nevid2)*(ind->n_all_times - ind->ndoses - ind->nevid2);
+    iVid += (getIndNallTimes(ind) - ind->ndoses - ind->nevid2)*(getIndNallTimes(ind) - ind->ndoses - ind->nevid2);
     fInd->llikObs = &op_focei.llikObsFull[iLO];
-    iLO += ind->n_all_times;
+    iLO += getIndNallTimes(ind);
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
@@ -3185,10 +3185,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     fInd->a = &op_focei.ga[iA];
     fInd->c = &op_focei.gc[iA];
-    iA += op_focei.neta * (ind->n_all_times - ind->ndoses - ind->nevid2);
+    iA += op_focei.neta * (getIndNallTimes(ind) - ind->ndoses - ind->nevid2);
 
     fInd->B = &op_focei.gB[iB];
-    iB += (ind->n_all_times - ind->ndoses - ind->nevid2);
+    iB += (getIndNallTimes(ind) - ind->ndoses - ind->nevid2);
 
     fInd->zm = &op_focei.gZm[ii];
     ii+=(op_focei.neta+1) * (op_focei.neta + 2) / 2 + 6*(op_focei.neta + 1)+1;
