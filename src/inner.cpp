@@ -1029,7 +1029,7 @@ double likInner0(double *eta, int id) {
         kk = getIndIx(ind, j);
         curT = getTime(kk, ind);
         dv0 = getIndDv(ind, kk);
-        yj = (int)(ind->yj);
+        yj = getIndYj(ind);
         _splitYj(&yj, &dist,  &yj0);
         double *lhs = getIndLhs(ind);
         if (isDose(getIndEvid(ind, kk))) {
