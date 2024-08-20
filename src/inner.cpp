@@ -2138,9 +2138,6 @@ static inline void innerOptId(int id) {
 
 
 void innerOpt(){
-  // #ifdef _OPENMP
-  //   int cores = rx->op->cores;
-  // #endif
   rx = getRxSolve_();
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
@@ -3388,9 +3385,6 @@ NumericVector foceiSetup_(const RObject &obj,
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
   op_focei.printOuter=as<int>(foceiO["print"]);
   if (op_focei.printOuter < 0) op_focei.printOuter = -op_focei.printOuter;
-  // if (op_focei.printInner > 0){
-  //   rx->op->cores=1;
-  // }
   int totN=op_focei.ntheta + op_focei.omegan;
   NumericVector cEps=foceiO["derivEps"];
   if (cEps.size() != 2){
@@ -5432,7 +5426,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 Rinv = as<arma::mat>(e["Rinv"]);
               }
               op_focei.cur++;
-              op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, rx->op->cores, op_focei.t0, 0);
+              op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, getRxCores(rx), op_focei.t0, 0);
               if (!e.exists("covR")){
                 e["covR"] = wrap(2*Rinv);
               }

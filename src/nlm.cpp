@@ -399,7 +399,7 @@ arma::vec nlmSolveF(arma::vec &theta) {
   arma::vec ret(nlmOp.nobsTot);
   double *retD = ret.memptr();
   rx_solving_options *op = getSolvingOptions(rx);
-  int cores = op->cores;
+  int cores = getOpCores(op);
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
@@ -525,7 +525,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
 arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
-  int cores = op->cores;
+  int cores = getOpCores(op);
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
