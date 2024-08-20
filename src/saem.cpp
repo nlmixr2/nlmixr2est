@@ -2036,7 +2036,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
         } else {
           g(elt, 1) = 0;
         }
-        if (_rx->limit) {
+        if (hasRxLimit(_rx)) {
           g(elt, 2) = getIndLimit(ind, kk);
         } else {
           g(elt, 2) = R_NegInf;

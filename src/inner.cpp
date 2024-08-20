@@ -1059,7 +1059,7 @@ double likInner0(double *eta, int id) {
           // fInd->f(k, 0) = lhs[0];
           err = f - dv;
           limit = R_NegInf;
-          if (rx->limit) {
+          if (hasRxLimit(rx)) {
             limit = getIndLimit(ind, kk);
             if (ISNA(limit)) {
               limit = R_NegInf;
