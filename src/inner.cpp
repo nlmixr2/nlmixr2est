@@ -737,7 +737,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   arma::vec ret(fInd->nObs);
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
-  int oldNeq = op->neq;
+  int oldNeq = getOpNeq(op);
   op->neq = op_focei.predNeq;
   predOde(id); // Assumes same order of parameters
   int kk, k = 0;
@@ -862,8 +862,8 @@ double likInner0(double *eta, int id) {
       op_focei.didPredSolve = true;
     }
     bool isBadSolve = false;
-    int nsolve = (op->neq + op->nlin)*getIndNallTimes(ind);
-    if (op->neq > 0) {
+    int nsolve = (getOpNeq(op) + op->nlin)*getIndNallTimes(ind);
+    if (getOpNeq(op) > 0) {
       for (int ns = 0; ns < nsolve; ++ns) {
         if (ISNA(solve[ns]) || std::isnan(solve[ns]) ||
             std::isinf(solve[ns])) {
@@ -1307,7 +1307,7 @@ double LikInner2(double *eta, int likId, int id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     rx_solving_options *op = getSolvingOptions(rx);
     double *solve = getIndSolve(ind);
-    if (op->neq > 0 && ISNA(solve[0])){
+    if (getOpNeq(op) > 0 && ISNA(solve[0])){
       //return 1e300;
       return NA_REAL;
     }

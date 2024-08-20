@@ -2012,7 +2012,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
     ind = getSolvingOptionsInd(_rx, id);
-    iniSubjectE(op->neq, 1, ind, op, _rx, saem_inis);
+    iniSubjectE(getOpNeq(op), 1, ind, op, _rx, saem_inis);
     for (int j = 0; j < getIndNallTimes(ind); ++j) {
       setIndIdx(ind, j);
       int kk = getIndIx(ind, getIndIdx(ind));
