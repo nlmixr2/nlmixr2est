@@ -450,7 +450,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       }
       k++;
     }
-    if (k >= getIndNallTimes(ind) - ind->ndoses - ind->nevid2) {
+    if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - ind->nevid2) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
       break;
     }
