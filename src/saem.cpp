@@ -1993,13 +1993,13 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       }
     }
   }
-  _rx->op->badSolve = 0;
+  resetRxBadSolve(_rx);
   par_solve(_rx); // Solve the complete system (possibly in parallel)
   int j=0;
   while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
     rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
-    _rx->op->badSolve = 0;
+    resetRxBadSolve(_rx);
     par_solve(_rx);
     j++;
   }
