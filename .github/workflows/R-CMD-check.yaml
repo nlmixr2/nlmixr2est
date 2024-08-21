@@ -54,6 +54,7 @@ jobs:
           pak-version: stable
           extra-packages: |
             any::rcmdcheck
+            nlmixr2/lbfgsb3c
             nlmixr2/dparser-R
             nlmixr2/n1qn1c
             nlmixr2/lotri
