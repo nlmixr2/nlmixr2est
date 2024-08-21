@@ -1984,7 +1984,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int nPar = Rf_length(paramUpdate);
   // Fill in subject parameter information
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
-    ind = &(_rx->subjects[_i]);
+    ind = getSolvingOptionsInd(_rx, _i);
     setIndSolve(ind, -1);
     int k=0;
     for (int _j = 0; _j < nPar; _j++){

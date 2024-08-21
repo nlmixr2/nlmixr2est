@@ -662,14 +662,14 @@ gill83fn_type gill83fnG = &gill83fnF;
 
 
 void updateEta(double *eta, int cid) {
-  rx_solving_options_ind *ind =  &(rx->subjects[cid]);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, cid);
   for (int i = op_focei.neta; i--;) {
     setIndParPtr(ind, op_focei.etaTrans[i], eta[i]);
   }
 }
 
 arma::vec getCurEta(int cid) {
-  rx_solving_options_ind *ind =  &(rx->subjects[cid]);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, cid);
   arma::vec eta(op_focei.neta);
   for (int i = op_focei.neta; i--;) {
     eta[i] = getIndParPtr(ind, op_focei.etaTrans[i]);
@@ -3073,7 +3073,7 @@ static inline void foceiSetupNoEta_(){
   int jj = 0, iLO=0;
   for (int i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
-    rx_solving_options_ind *ind = &(rx->subjects[i]);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD=0;
     // ETA ini
@@ -3152,7 +3152,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   focei_ind *fInd;
   for (i = getRxNsub(rx); i--;){
     fInd = &(inds_focei[i]);
-    rx_solving_options_ind *ind = &(rx->subjects[i]);
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, i);
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD = 0;
     // ETA ini
