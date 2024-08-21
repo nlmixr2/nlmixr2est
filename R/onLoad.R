@@ -27,12 +27,12 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   .ptr <- rxode2::.rxode2ptrs()
   .nptr <- names(.ptr)
   if (length(rxode2.api) > length(.nptr)) {
-    stop("nlmixr2est a newer version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2", call.=FALSE)
+    stop("nlmixr2est requires a newer version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2", call.=FALSE)
   } else {
     .nptr <- .nptr[seq_along(rxode2.api)]
     if (!identical(rxode2.api, .nptr)) {
       .bad <- TRUE
-      stop("nlmixr2est a different version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2, or update both packages", call.=FALSE)
+      stop("nlmixr2est needs a different version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2, or update both packages", call.=FALSE)
     }
   }
   .Call(`_nlmixr2est_iniRxodePtrs`, .ptr,
