@@ -3718,7 +3718,7 @@ LogicalVector nlmixr2EnvSetup(Environment e, double fmin){
     if (e.exists("nobs2")) {
       nobs2=as<int>(e["nobs2"]);
     } else {
-      nobs2 = rx->nobs2;
+      nobs2 = getRxNobs2(rx);
     }
     if (op_focei.scaleObjective) {
       fmin = fmin * op_focei.initObjective / op_focei.scaleObjectiveTo;

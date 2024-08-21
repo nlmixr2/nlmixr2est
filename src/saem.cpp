@@ -2007,7 +2007,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     // Not thread safe
     rxode2::atolRtolFactor_(pow(_saemOdeRecalcFactor, -j));
   }
-  mat g(_rx->nobs2, 3); // nobs EXCLUDING EVID=2
+  mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
   int elt=0;
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
