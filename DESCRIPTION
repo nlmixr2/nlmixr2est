@@ -57,7 +57,7 @@ Imports:
     Matrix,
     methods,
     minqa,
-    n1qn1 (>= 6.0.1-10),
+    n1qn1 (>= 6.0.1-12),
     nlme,
     Rcpp,
     rex,
@@ -85,7 +85,7 @@ Suggests:
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
-    lbfgsb3c,
+    lbfgsb3c (>= 2024-3.5),
     lotri (>= 0.5.0),
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),

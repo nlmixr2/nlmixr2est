@@ -4,7 +4,7 @@
 #define iniRxodePtrs0 _nlmixr2est_iniRxodePtrs0
 #include "armahead.h"
 #include "utilc.h"
-#include <lbfgsb3c.h>
+#include <lbfgsb3ptr.h>
 #include "censEst.h"
 #include "nearPD.h"
 #include "shi21.h"
@@ -12,6 +12,8 @@
 #include <n1qn1c.h>
 
 extern "C" {
+#define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
+  iniLbfgsb3
 #define iniRxodePtrs _nlmixr2est_iniRxodePtrs
   iniRxode2ptr
 #define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs

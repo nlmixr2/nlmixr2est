@@ -45,11 +45,18 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
         PACKAGE = "nlmixr2est")
 }
 
+.iniLbfgsb3c <- function() {
+  .Call(`_nlmixr2est_iniLbfgsb3ptr`,
+        lbfgsb3c::.lbfgsb3cPtr(),
+        PACKAGE = "nlmixr2est")
+}
+
 .onLoad <- function(libname, pkgname) {
   backports::import(pkgname)
   .iniLotriPtr()
   .iniRxode2Ptr()
   .iniN1qn1ptr()
+  .iniLbfgsb3c()
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
     rxode2::.s3register("generics::tidy", "nlmixr2FitCoreSilent")
@@ -76,6 +83,7 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   .iniLotriPtr()
   .iniRxode2Ptr()
   .iniN1qn1ptr()
+  .iniLbfgsb3c()
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end

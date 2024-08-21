@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- No binary linking to `rxode2`, `lbfgsb3c` and `n1q1`, which means
+  that updating these will not make `nlmixr2est` crash without
+  recompiling.
+
 # nlmixr2est 2.2.2
 
 ## Breaking changes
