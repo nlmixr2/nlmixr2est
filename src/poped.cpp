@@ -23,13 +23,7 @@ extern void doAssignFn(void);
 extern rxSolveF rxInner;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
-extern ind_solve_t ind_solve;
-extern getRxSolve_t getRx;
 extern rx_solve *rx;
-extern getTime_t getTimeF;
-extern iniSubjectI_t iniSubjectI;
-extern isRstudio_t isRstudio;
-
 
 struct popedOptions {
   int ntheta=0;
@@ -107,22 +101,22 @@ RObject popedSetup(Environment e, bool full) {
                    data,//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
-  rx = getRx();
+  rx = getRxSolve_();
   return R_NilValue;
 }
 
 void popedSolve(int &id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   popedOde(id);
   int j=0;
   while (popedOp.stickyRecalcN2 <= popedOp.stickyRecalcN &&
-         op->badSolve && j < popedOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < popedOp.maxOdeRecalc) {
     popedOp.stickyRecalcN2++;
     popedOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(popedOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     popedOde(id);
     j++;
   }
@@ -137,10 +131,10 @@ void popedSolve(int &id) {
 }
 
 static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, int &id) {
-  rx = getRx();
-  rx_solving_options_ind *ind = &(rx->subjects[id]);
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = popedOp.ntheta; i--;) {
-    ind->par_ptr[i]=theta[i];
+    setIndParPtr(ind, i, theta[i]);
   }
   return ind;
 }
@@ -149,31 +143,32 @@ static inline rx_solving_options_ind* updateParamRetInd(NumericVector &theta, in
 void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  rx_solving_options *op = getSolvingOptions(rx);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    if (isDose(ind->evid[kk])) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      // ret(k) = ind->lhs[0];
+      // ret(k) = lhs[0];
       // k++;
-    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+    } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      f[k] = ind->lhs[0];
-      w[k] = sqrt(ind->lhs[1]);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      f[k] = lhs[0];
+      w[k] = sqrt(lhs[1]);
       t[k] = curT;
       k++;
       if (k >= totn) return; // vector has been created, break
@@ -184,34 +179,35 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
 void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int id, int totn) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  rx_solving_options *op = getSolvingOptions(rx);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    if (isDose(ind->evid[kk])) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      // ret(k) = ind->lhs[0];
+      // ret(k) = lhs[0];
       // k++;
-      f[k] = ind->lhs[0];
-      w[k] = sqrt(ind->lhs[1]);
+      f[k] = lhs[0];
+      w[k] = sqrt(lhs[1]);
       t[k] = curT;
       k++;
       if (k >= totn) return; // vector has been created, break
-    } else if (ind->evid[kk] >= 10 && ind->evid[kk] <= 99) {
+    } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
     }
   }
 }
@@ -258,18 +254,18 @@ Rcpp::DataFrame popedSolveIdN(NumericVector &theta, NumericVector &mt, int id, i
 void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  rx_solving_options *op = getSolvingOptions(rx);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTimeF(ind->ix[0], ind)-1;
+  lastTime = getTime(getIndIx(ind, 0), ind)-1;
   bool isMT = false;
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    isMT = ind->evid[kk] >= 10 && ind->evid[kk] <= 99;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    isMT = getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99;
     if (isMT && isSameTime(curT, lastTime)) {
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
@@ -282,31 +278,32 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
       }
       continue;
     }
-    if (isDose(ind->evid[kk])) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (isMT) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
-        matMT(k, i*2+1) = ind->lhs[i*2];
-        matMT(k, i*2+2) = ind->lhs[i*2+1];
+        matMT(k, i*2+1) = lhs[i*2];
+        matMT(k, i*2+2) = lhs[i*2+1];
       }
       k++;
       if (k >= nrow) {
         return; // vector has been created, break
       }
       lastTime = curT;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
     }
   }
@@ -366,17 +363,18 @@ Rcpp::DataFrame popedSolveIdME(NumericVector &theta,
 void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow, int nend) {
   // arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  rx_solving_options *op = getSolvingOptions(rx);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   popedSolve(id);
   int kk, k=0;
   double curT, lastTime;
-  lastTime = getTimeF(ind->ix[0], ind)-1;
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    if (ind->evid[kk] == 0 && isSameTime(curT, lastTime)) {
+  lastTime = getTime(getIndIx(ind, 0), ind)-1;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (getIndEvid(ind, kk) == 0 && isSameTime(curT, lastTime)) {
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
         matMT(k, i*2+1) = matMT(k-1, i*2+1);
@@ -388,19 +386,19 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
       }
       continue;
     }
-    if (isDose(ind->evid[kk])) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         popedOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
       matMT(k, 0) = curT;
       for (int i = 0; i < nend; ++i) {
-        matMT(k, i*2+1) = ind->lhs[i*2];
-        matMT(k, i*2+2) = ind->lhs[i*2+1];
+        matMT(k, i*2+1) = lhs[i*2];
+        matMT(k, i*2+2) = lhs[i*2+1];
       }
       k++;
       if (k >= nrow) {

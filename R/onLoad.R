@@ -20,9 +20,29 @@
         PACKAGE = "nlmixr2est")
 }
 
+# This will be saved when compiled
+rxode2.api <- names(rxode2::.rxode2ptrs())
+
+.iniRxode2Ptr <- function() {
+  .ptr <- rxode2::.rxode2ptrs()
+  .nptr <- names(.ptr)
+  if (length(rxode2.api) > length(.nptr)) {
+    stop("nlmixr2est requires a newer version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2", call.=FALSE)
+  } else {
+    .nptr <- .nptr[seq_along(rxode2.api)]
+    if (!identical(rxode2.api, .nptr)) {
+      .bad <- TRUE
+      stop("nlmixr2est needs a different version of rxode2 api, cannot run nlmixr2est\ntry `install.packages(\"rxode2\")` to get a newer version of rxode2, or update both packages", call.=FALSE)
+    }
+  }
+  .Call(`_nlmixr2est_iniRxodePtrs`, .ptr,
+        PACKAGE = "nlmixr2est")
+}
+
 .onLoad <- function(libname, pkgname) {
   backports::import(pkgname)
   .iniLotriPtr()
+  .iniRxode2Ptr()
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
     rxode2::.s3register("generics::tidy", "nlmixr2FitCoreSilent")
@@ -42,13 +62,12 @@
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
 
+
 .onAttach <- function(libname, pkgname) {
   ## nocov start
   ## Setup rxode2.prefer.tbl
   .iniLotriPtr()
-  if (compiled.rxode2.md5 != rxode2::rxMd5()) {
-    stop("nlmixr2 compiled against different version of rxode2, cannot run nlmixr2est\ntry `install.packages(\"nlmixr2est\", type = \"source\")` to recompile", call.=FALSE)
-  }
+  .iniRxode2Ptr()
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end

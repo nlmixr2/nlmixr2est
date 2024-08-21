@@ -24,17 +24,6 @@
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
 extern void doAssignFn(void);
-extern rxSolveF rxInner;
-extern rxSolveF rxPred;
-extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
-extern void rxClearFuns(rxSolveF *inner);
-extern ind_solve_t ind_solve;
-extern getRxSolve_t getRx;
-extern rx_solve *rx;
-extern getTime_t getTimeF;
-extern iniSubjectI_t iniSubjectI;
-extern isRstudio_t isRstudio;
-
 
 struct nlmOptions {
   int ntheta=0;
@@ -169,21 +158,21 @@ RObject nlmSetup(Environment e) {
                    e["data"],//const RObject &events =
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
-  rx = getRx();
+  rx = getRxSolve_();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + rx->nsub*3, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + getRxNsub(rx)*3, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
-  nlmOp.idS = nlmOp.nobs + rx->nsub; // [nsub]
-  nlmOp.idF = nlmOp.idS + rx->nsub; // [nsub]
-  nlmOp.xPar = nlmOp.idF + rx->nsub; // [ntheta]
+  nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
+  nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
+  nlmOp.xPar = nlmOp.idF + getRxNsub(rx); // [ntheta]
 
   // now calculate nobs per id
   nlmOp.nobsTot = 0;
-  for (int id = 0; id < rx->nsub; ++id) {
-    rx_solving_options_ind *ind = &(rx->subjects[id]);
+  for (int id = 0; id < getRxNsub(rx); ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     int no = 0;
-    for (int j = 0; j < ind->n_all_times; ++j) {
-      if (ind->evid[j] == 0) {
+    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+      if (getIndEvid(ind, j) == 0) {
         nlmOp.nobsTot++;
         no++;
       }
@@ -204,8 +193,8 @@ RObject nlmSetup(Environment e) {
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+rx->nsub) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
-    nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
@@ -214,8 +203,8 @@ RObject nlmSetup(Environment e) {
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+rx->nsub), double);// [ntheta*nsub]
-    nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*rx->nsub; // [ntheta]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+getRxNsub(rx)), double);// [ntheta*nsub]
+    nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
@@ -224,7 +213,7 @@ RObject nlmSetup(Environment e) {
     // 7*ntheta + nsub*ntheta + 1 + ntheta*ntheta
     // ntheta*(7+nsub+ntheta) + 1
 #define ntheta nlmOp.ntheta
-#define nsub rx->nsub
+#define nsub getRxNsub(rx)
     //nsub*ntheta
     nlmOp.thetahf = R_Calloc(ntheta*(nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
     nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
@@ -298,17 +287,17 @@ NumericVector nlmUnscalePar(NumericVector p) {
 }
 
 void nlmSolveNlm(int id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   nlmOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         op->badSolve && j < nlmOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol  = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     nlmOde(id);
     j++;
   }
@@ -323,17 +312,17 @@ void nlmSolveNlm(int id) {
 }
 
 void nlmSolvePred(int &id) {
-  rx_solving_options *op = rx->op;
-  rx_solving_options_ind *ind =  &(rx->subjects[id]);
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   predOde(id);
   int j=0;
   while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         op->badSolve && j < nlmOp.maxOdeRecalc) {
+         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol2 = 1;
     // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
-    ind->solved = -1;
+    setIndSolve(ind, -1);
     predOde(id);
     j++;
   }
@@ -351,9 +340,9 @@ extern arma::vec calcGradForward(arma::vec &f0, arma::vec &grPH,  double h);
 extern arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0, arma::vec &grPH,  double h);
 
 static inline rx_solving_options_ind* updateParamRetInd(arma::vec &theta, int &id) {
-  rx_solving_options_ind *ind = &(rx->subjects[id]);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (int i = nlmOp.ntheta; i--;) {
-    ind->par_ptr[i]=scaleUnscalePar(&(nlmOp.scale), &theta[0], i);
+    setIndParPtr(ind, i, scaleUnscalePar(&(nlmOp.scale), &theta[0], i));
   }
   return ind;
 }
@@ -373,25 +362,26 @@ static inline void saveTheta(arma::vec &theta) {
 void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
   arma::vec ret(retD, nobs, false, true);
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
-  iniSubjectI(id, 1, ind, op, rx, rxPred.update_inis);
+  rx_solving_options *op = getSolvingOptions(rx);
+  iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   nlmSolvePred(id);
   int kk, k=0;
   double curT;
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    if (isDose(ind->evid[kk])) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxPred.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      if (ISNA(ind->lhs[0])) {
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      if (ISNA(lhs[0])) {
         nlmOp.naZero=1;
-        ind->lhs[0] = 0.0;
+        lhs[0] = 0.0;
       }
-      ret(k) = ind->lhs[0];
+      ret(k) = lhs[0];
       k++;
     }
   }
@@ -408,12 +398,12 @@ arma::vec nlmSolveFid(arma::vec &theta, int id) {
 arma::vec nlmSolveF(arma::vec &theta) {
   arma::vec ret(nlmOp.nobsTot);
   double *retD = ret.memptr();
-  rx_solving_options *op = rx->op;
-  int cores = op->cores;
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
-  for (int id = 0; id < rx->nsub; ++id) {
+  for (int id = 0; id < getRxNsub(rx); ++id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
   }
   return ret;
@@ -431,45 +421,40 @@ double nlmSolveR(arma::vec &theta) {
 arma::mat nlmSolveGradId(arma::vec &theta, int id) {
   // first solve the nlm problem
   rx_solving_options_ind *ind =  updateParamRetInd(theta, id);
-  rx_solving_options *op = rx->op;
+  rx_solving_options *op = getSolvingOptions(rx);
   arma::mat ret(nlmOp.nobs[id], nlmOp.ntheta+1);
   int kk, k=0;
   double curT;
-  iniSubjectI(id, 1, ind, op, rx, rxInner.update_inis);
+  iniSubjectE(id, 1, ind, op, rx, rxInner.update_inis);
   nlmSolveNlm(id);
-  for (int j = 0; j < ind->n_all_times; ++j) {
-    ind->idx=j;
-    kk = ind->ix[j];
-    curT = getTimeF(kk, ind);
-    if (isDose(ind->evid[kk])) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (ind->evid[kk] == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), ind->lhs);
-      for (int kk = 0; kk < op->nlhs; ++kk) {
-        if (ISNA(ind->lhs[kk])) {
-          ind->lhs[kk] = 0.0;
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      for (int kk = 0; kk < getOpNlhs(op); ++kk) {
+        if (ISNA(lhs[kk])) {
+          lhs[kk] = 0.0;
           nlmOp.naZero=1;
         }
         if (kk == 0) {
-          ret(k, kk) = ind->lhs[kk];
+          ret(k, kk) = lhs[kk];
         } else {
-          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), ind->lhs[kk], &theta[0], kk-1);
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[kk], &theta[0], kk-1);
         }
       }
       k++;
     }
-    if (k >= ind->n_all_times - ind->ndoses - ind->nevid2) {
+    if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
       // With moving doses this may be at the very end, so drop out now if all the observations were accounted for
       break;
     }
   }
-  //if (nlmOp.needFD) {
-  // Save solve; not needed can corrupt memory space with preds
-  //int nsolve = (op->neq + op->nlin)*ind->n_all_times;
-  //arma::vec solveSave(nsolve);
-  // save and restore memory pointer
-  // std::copy(ind->solve, ind->solve + nsolve, solveSave.memptr());
   double *thetahf = nlmOp.thetahf + id*nlmOp.ntheta;
 
   arma::vec f0 = ret.col(0);
@@ -533,19 +518,18 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     }
   }
   // restore save (may not be needed)
-  //std::copy(solveSave.begin(), solveSave.end(), ind->solve);
   //  }
   return ret;
 }
 
 arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
-  rx_solving_options *op = rx->op;
-  int cores = op->cores;
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
   // #ifdef _OPENMP
   // #pragma omp parallel for num_threads(cores)
   // #endif
-  for (int id = 0; id < rx->nsub; ++id) {
+  for (int id = 0; id < getRxNsub(rx); ++id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
   }
   return ret;

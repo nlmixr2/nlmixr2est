@@ -304,11 +304,8 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
   return ret;
 }
 
-rxGetId2_t rxGetId2;
-
 extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
-    rxGetId2 = (rxGetId2_t) R_GetCCallable("rxode2", "rxGetId");
   if (TYPEOF(npdeSim) != VECSXP) {
     Rf_errorcall(R_NilValue, "npdeSim needs to be a data.frame");
   }
@@ -458,50 +455,50 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   for (unsigned int curid = 0; curid < warn.size(); ++curid) {
     switch(warn[curid]) {
     case NPDE_CHOL_PINV:
-      if (sCholPinv == "") sCholPinv = rxGetId2(curid);
+      if (sCholPinv == "") sCholPinv = rxGetId(curid);
       else {
         sCholPinv += ", ";
-        sCholPinv += rxGetId2(curid);
+        sCholPinv += rxGetId(curid);
       }
       nCholPinv++;
       break;
     case NPDE_DECORRELATE_EIGEN:
-      if (sEigen == "") sEigen = rxGetId2(curid);
+      if (sEigen == "") sEigen = rxGetId(curid);
       else {
         sEigen += ", ";
-        sEigen += rxGetId2(curid);
+        sEigen += rxGetId(curid);
       }
       nEigen++;
       break;
     case NPDE_DECORRELATE_EIGEN_PINV:
-      if (sEigenPinv == "")  sEigenPinv =  rxGetId2(curid);
+      if (sEigenPinv == "")  sEigenPinv =  rxGetId(curid);
       else {
         sEigenPinv += ", ";
-        sEigenPinv += rxGetId2(curid);
+        sEigenPinv += rxGetId(curid);
       }
       nEigenPinv++;
       break;
     case NPDE_CHOLSE:
-      if (sCholSE == "") sCholSE = rxGetId2(curid);
+      if (sCholSE == "") sCholSE = rxGetId(curid);
       else {
         sCholSE += ", ";
-        sCholSE += rxGetId2(curid);
+        sCholSE += rxGetId(curid);
       }
       nCholSE++;
       break;
     case NPDE_CHOLSE_PINV:
-      if (sCholSEPinv == "") sCholSEPinv = rxGetId2(curid);
+      if (sCholSEPinv == "") sCholSEPinv = rxGetId(curid);
       else {
         sCholSEPinv += ", ";
-        sCholSEPinv += rxGetId2(curid);
+        sCholSEPinv += rxGetId(curid);
       }
       nCholSEPinv++;
       break;
     case NPDE_NPD:
-      if (sPD == "") sPD = rxGetId2(curid);
+      if (sPD == "") sPD = rxGetId(curid);
       else {
         sPD += ", ";
-        sPD += rxGetId2(curid);
+        sPD += rxGetId(curid);
       }
       nPD++;
       break;
