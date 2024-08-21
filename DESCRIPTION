@@ -84,6 +84,7 @@ Suggests:
     minpack.lm
 LinkingTo:
     BH,
+    n1qn1 (>= 6.0.1-12),
     lbfgsb3c,
     lotri (>= 0.5.0),
     Rcpp,

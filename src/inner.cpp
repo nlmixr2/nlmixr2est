@@ -9,11 +9,15 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include <n1qn1c.h>
 
 extern "C" {
 #define iniRxodePtrs _nlmixr2est_iniRxodePtrs
   iniRxode2ptr
+#define iniN1qn1cPtrs _nlmixr2est_iniN1qn1cPtrs
+  iniN1qn1c
 }
+
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -56,15 +60,6 @@ void restoreFromEnvrionment(Environment e);
 #define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
 
 extern "C" {
-  typedef void (*S2_fp) (int *, int *, double *, double *, double *, int *, float *,
-                         double *, int *);
-  typedef void (*n1qn1_fp)(S2_fp simul, int n[], double x[], double f[], double g[],
-                           double var[], double eps[], int mode[], int niter[], int nsim[],
-                           int imp[], double zm[], int izs[], float rzs[], double dzs[],
-                           int id[]);
-
-  n1qn1_fp n1qn1_;
-
   typedef double optimfn(int n, double *par, void *ex);
 
   typedef void optimgr(int n, double *par, double *gr, void *ex);
@@ -6314,14 +6309,6 @@ void foceiFinalizeTables(Environment e){
   e.attr("class") = "nlmixr2FitCore";
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// FOCEi fit
-void doAssignFn(void) {
-  if (!assignFn_){
-    n1qn1_ = (n1qn1_fp) R_GetCCallable("n1qn1","n1qn1_");
-    assignFn_=true;
-  }
-}
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
@@ -6334,7 +6321,6 @@ void doAssignFn(void) {
 //' @export
 //[[Rcpp::export]]
 Environment foceiFitCpp_(Environment e){
-  doAssignFn();
   clock_t t0 = clock();
   List model = e["model"];
   bool doPredOnly = false;

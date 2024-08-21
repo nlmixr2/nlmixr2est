@@ -30,6 +30,7 @@ jobs:
           extra-packages: |
             any::covr
             nlmixr2/dparser-R
+            nlmixr2/n1qn1c
             nlmixr2/lotri
             nlmixr2/rxode2ll
             nlmixr2/rxode2

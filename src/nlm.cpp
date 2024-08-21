@@ -23,8 +23,6 @@
 #define nlmOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
-extern void doAssignFn(void);
-
 struct nlmOptions {
   int ntheta=0;
   int *thetaFD=NULL; // theta needs finite difference?
@@ -104,7 +102,6 @@ RObject nlmFree() {
 
 //[[Rcpp::export]]
 RObject nlmSetup(Environment e) {
-  doAssignFn();
   nlmFree();
   List control = e["control"];
 

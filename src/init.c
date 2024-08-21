@@ -127,7 +127,10 @@ SEXP _nlmixr2est_iniLotriPtr(SEXP ptr);
 
 SEXP _nlmixr2est_iniRxodePtrs(SEXP ptr);
 
+SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
   {"_nlmixr2est_iniLotriPtr", (DL_FUNC) &_nlmixr2est_iniLotriPtr, 1},
   {"_nlmixr2est_uninformativeEta", (DL_FUNC) &_nlmixr2est_uninformativeEta, 1},

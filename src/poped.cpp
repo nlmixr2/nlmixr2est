@@ -19,7 +19,6 @@
 
 #define popedOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 
-extern void doAssignFn(void);
 extern rxSolveF rxInner;
 extern void rxUpdateFuns(SEXP trans, rxSolveF *inner);
 extern void rxClearFuns(rxSolveF *inner);
@@ -50,7 +49,6 @@ Environment _popedE;
 
 //[[Rcpp::export]]
 RObject popedSetup(Environment e, bool full) {
-  doAssignFn();
   popedFree();
   _popedE=e;
   List control = e["control"];
