@@ -373,10 +373,10 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         nlmOp.naZero=1;
         lhs[0] = 0.0;
@@ -433,10 +433,10 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       for (int kk = 0; kk < getOpNlhs(op); ++kk) {
         if (ISNA(lhs[kk])) {
           lhs[kk] = 0.0;

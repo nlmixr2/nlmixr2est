@@ -154,10 +154,10 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         popedOp.naZero=1;
         lhs[0] = 0.0;
@@ -166,7 +166,7 @@ void popedSolveFid(double *f, double *w, double *t, NumericVector &theta, int id
       // k++;
     } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       f[k] = lhs[0];
       w[k] = sqrt(lhs[1]);
       t[k] = curT;
@@ -190,10 +190,10 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         popedOp.naZero=1;
         lhs[0] = 0.0;
@@ -207,7 +207,7 @@ void popedSolveFid2(double *f, double *w, double *t, NumericVector &theta, int i
       if (k >= totn) return; // vector has been created, break
     } else if (getIndEvid(ind, kk) >= 10 && getIndEvid(ind, kk) <= 99) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
     }
   }
 }
@@ -280,11 +280,11 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
     }
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (isMT) {
       // mtimes to calculate information
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         popedOp.naZero=1;
         lhs[0] = 0.0;
@@ -300,7 +300,7 @@ void popedSolveFidMat(arma::mat &matMT, NumericVector &theta, int id, int nrow, 
       }
       lastTime = curT;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         popedOp.naZero=1;
         lhs[0] = 0.0;
@@ -387,10 +387,10 @@ void popedSolveFidMat2(arma::mat &matMT, NumericVector &theta, int id, int nrow,
       continue;
     }
     if (isDose(getIndEvid(ind, kk))) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
         popedOp.naZero=1;
         lhs[0] = 0.0;

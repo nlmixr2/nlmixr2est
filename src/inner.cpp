@@ -700,19 +700,19 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
-        rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+        rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       } else {
-        rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+        rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       }
       continue;
     }
     fInd->nObs++;
     if (predSolve) {
-      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[0];
       retR(k) = lhs[1];
     } else {
-      rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[0];
       retR(k) = lhs[op_focei.neta + 1];
     }
@@ -749,10 +749,10 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
-    rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+    rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
     ret(k) = lhs[w];
     k++;
     if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
@@ -1036,18 +1036,18 @@ double likInner0(double *eta, int id) {
           llikObs[kk] = NA_REAL;
           // Need to calculate for advan sensitivities
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+            rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
             lhs[op_focei.neta + 1] = lhs[1];
           }
           else {
-            rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+            rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getSolve(j), lhs);
+            rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
             lhs[op_focei.neta + 1] = lhs[1];
           } else {
-            rxInner.calc_lhs(id, curT, getSolve(j), lhs);
+            rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
           }
 
           f = lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated

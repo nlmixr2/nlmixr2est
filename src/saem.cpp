@@ -2021,10 +2021,10 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       if (isDose(getIndEvid(ind, kk))){
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
-                 getSolve(j), lhs);
+                 getOpIndSolve(op, ind, j), lhs);
       } else if (getIndEvid(ind,kk) == 0) {
         saem_lhs((int)id, curT,
-                 getSolve(j), lhs);
+                 getOpIndSolve(op, ind, j), lhs);
         double cur = lhs[0];
         if (std::isnan(cur)) {
           cur = 1.0e99;
