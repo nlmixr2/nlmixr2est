@@ -386,9 +386,13 @@ rxUiGet.nlmModel0 <- function(x, ...) {
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE)
-  as.call(c(list(quote(`rxModelVars`)), as.call(c(list(quote(`{`)),
-    lapply(seq_along(.ret)[-1], function(i) .ret[[i]]),
-    list(str2lang("rx_pred_ <- -rx_pred_"))))))
+  .ret <- .ret[[2]]
+  .ret <- as.call(c(quote(`{`),
+                    lapply(seq_along(.ret)[-1], function(i) {
+                      .ret[[i]]
+                    }),
+                    list(str2lang("rx_pred_ <- -rx_pred_"))))
+  as.call(c(list(quote(`rxModelVars`)), .ret))
 }
 
 #' Load the nlm model into symengine
