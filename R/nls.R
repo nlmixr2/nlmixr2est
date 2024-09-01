@@ -508,7 +508,8 @@ rxUiGet.nlsModel0 <- function(x, ...) {
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of nls model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .ret <- rxode2::.rxPrune(.x, envir = .env,
+                           strAssign=rxode2::rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
