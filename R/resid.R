@@ -416,6 +416,26 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     warning("some duplicate columns were dropped", call.=FALSE)
     .ret <- .ret[, -.dups]
   }
+  .levels <-  fit$ui$levels
+  if (!is.null(.levels)) {
+    .ret1 <- .ret[[1]]
+    for (i in seq_along(.levels)) {
+      .cur <- .levels[[i]]
+      .var <- deparse1(.cur[[2]][[2]])
+      .w <- which(names(.ret1) == .var)
+      if (length(.w) == 1) {
+        .ret1[[.var]] <- as.integer(.ret1[[.var]])
+        .w <- which(.ret1[[.var]] < 1L)
+        .ret1[[.var]][.w] <- NA_integer_
+        .lvls <- eval(.cur[[3]])
+        .w <- which(.ret1[[.var]] > length(.lvls))
+        .ret1[[.var]][.w] <- NA_integer_
+        attr(.ret1[[.var]], "levels") <- .lvls
+        attr(.ret1[[.var]], "class") <- "factor"
+        .ret[[1]] <- .ret1
+      }
+    }
+  }
   .ret
 }
 
