@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.2.2.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -149,7 +149,10 @@
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  fallbackFD <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  smatPer <span class="op">=</span> <span class="fl">0.6</span>,</span>
-<span>  sdLowerFact <span class="op">=</span> <span class="fl">0.001</span></span>
+<span>  sdLowerFact <span class="op">=</span> <span class="fl">0.001</span>,</span>
+<span>  zeroGradFirstReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  zeroGradRunReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  zeroGradBobyqa <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -931,6 +934,29 @@ standard deviation of a parameter (like add.sd, prop.sd, pow.sd,
 lnorm.sd, etc).  When zero, no factor is applied.  If your
 initial estimate is 0.15 and your lower bound is zero, then the
 lower bound would be assumed to be 0.00015.</p></dd>
+
+
+<dt id="arg-zerogradfirstreset">zeroGradFirstReset<a class="anchor" aria-label="anchor" href="#arg-zerogradfirstreset"></a></dt>
+<dd><p>boolean, when `TRUE` if the first
+gradient is zero, reset the zero gradient to
+`sqrt(.Machine$double.eps)` to get past the bad initial estimate,
+otherwise error (and possibly reset), when `FALSE` error when the
+first gradient is zero.  When `NA` on the last reset, have the
+zero gradient ignored, otherwise error and look for another
+value.  Default is `NA`</p></dd>
+
+
+<dt id="arg-zerogradrunreset">zeroGradRunReset<a class="anchor" aria-label="anchor" href="#arg-zerogradrunreset"></a></dt>
+<dd><p>boolean, when `TRUE` if a gradient is zero,
+reset the zero gradient to `sqrt(.Machine$double.eps)` to get
+past the bad estimate while running.  Otherwise error (and
+possibly reset).</p></dd>
+
+
+<dt id="arg-zerogradbobyqa">zeroGradBobyqa<a class="anchor" aria-label="anchor" href="#arg-zerogradbobyqa"></a></dt>
+<dd><p>boolean, when `TRUE` if a gradient is zero,
+the reset will change the method to the gradient free bobyqa
+method.</p></dd>
 
 </dl></div>
     <div class="section level2">
