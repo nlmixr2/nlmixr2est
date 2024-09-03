@@ -43,7 +43,7 @@ nmTest({
     }
     dat <- qs::qread(test_path("test-resume-bobyqa.qs"))
 
-    d <- suppressMessages(nlmixr2(model, dat, "focei", control=list(print=0)))
+    d <- nlmixr2(model, dat, "focei")
 
     expect_true(grepl("bobyqa", d$extra))
 
