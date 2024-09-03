@@ -116,8 +116,9 @@ foceiControl(
   fallbackFD = FALSE,
   smatPer = 0.6,
   sdLowerFact = 0.001,
-  zeroGradFirstReset = NA,
-  zeroGradRunReset = TRUE
+  zeroGradFirstReset = TRUE,
+  zeroGradRunReset = TRUE,
+  zeroGradBobyqa = TRUE
 )
 }
 \arguments{
@@ -774,6 +775,10 @@ value.  Default is `NA`}
 reset the zero gradient to `sqrt(.Machine$double.eps)` to get
 past the bad estimate while running.  Otherwise error (and
 possibly reset).}
+
+\item{zeroGradBobyqa}{boolean, when `TRUE` if a gradient is zero,
+the reset will change the method to the gradient free bobyqa
+method.}
 }
 \value{
 The control object that changes the options for the FOCEi

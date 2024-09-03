@@ -821,7 +821,7 @@ foceiControl <- function(sigdig = 3, #
                          fallbackFD=FALSE,
                          smatPer=0.6,
                          sdLowerFact=0.001,
-                         zeroGradFirstReset=NA,
+                         zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE) { #
   if (!is.null(sigdig)) {
