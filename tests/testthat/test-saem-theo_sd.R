@@ -1,6 +1,6 @@
 nmTest({
 
-  skip_if_not(file.exists("test-saem-theo_sd.qs"))
+  skip_if_not(file.exists(test_path("test-saem-theo_sd.qs")))
 
   mod <- function() {
     ini({
@@ -182,10 +182,10 @@ nmTest({
     val[, .n] <- round(val[[.n]], 2)
   }
 
-  ##qs::qsave(val, file="test-saem-theo_sd.qs")
+  ##qs::qsave(val, file=test_path("test-saem-theo_sd.qs"))
 
-  .test <- qs::qread("test-saem-theo_sd.qs")
-  
+  .test <- qs::qread(test_path("test-saem-theo_sd.qs"))
+
   for (i in seq_along(.test$add)) {
     test_that(
       with(
