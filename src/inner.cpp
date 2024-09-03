@@ -303,6 +303,10 @@ struct focei_options {
   int optimHessCovType = 1;
   double smatPer;
   bool didLikCalc=false;
+  bool zeroGradFirstReset= false;
+  bool zeroGradRunReset=false;
+  bool zeroGradBobyqa=false;
+  bool zeroGradBobyqaRun=false;
 };
 
 focei_options op_focei;
@@ -3259,6 +3263,30 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.repeatGillMax=as<int>(foceiO["repeatGillMax"]);
   op_focei.stickyRecalcN=as<int>(foceiO["stickyRecalcN"]);
   op_focei.neta = as<int>(foceiO["neta"]);
+  // this sets up the zero gradient reset
+  //
+  // When 'NA' the zeroGradReset is FALSE and the zeroGradBobyqa is
+  // 'FALSE' and zeroGradBobyqaRun matches the option
+  // zeroGradBobyqa. This way the last reset will call the bobyqa instead
+  //
+  // When 'TRUE' or 'FALSE' both zeroGradBobyqaRun and zeroGradBobyqa
+  // match zeroGradBobyqa.
+  //
+  //
+  int curI = as<int>(foceiO["zeroGradFirstReset"]);
+  if (curI == 1) {
+    op_focei.zeroGradFirstReset = true;
+    op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = as<bool>(foceiO["zeroGradBobyqa"]);
+  } else {
+    op_focei.zeroGradFirstReset = false;
+    if (curI == NA_INTEGER) {
+      op_focei.zeroGradBobyqa = false;
+      op_focei.zeroGradBobyqaRun = as<bool>(foceiO["zeroGradBobyqa"]);
+    } else {
+      op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = as<bool>(foceiO["zeroGradBobyqa"]);
+    }
+  }
+  op_focei.zeroGradRunReset = as<bool>(foceiO["zeroGradRunReset"]);
   if (op_focei.neta != 0) {
     if (!rxode2::rxIs(rxInv, "rxSymInvCholEnv")){
       stop(_("Omega isn't in the proper format"));
@@ -4083,11 +4111,30 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
-      if (op_focei.nF+op_focei.nF2 == 1){
-        stop("On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\")");
+      if (op_focei.nF+op_focei.nF2 == 1) {
+        if (op_focei.zeroGradFirstReset) {
+          REprintf("here\n");
+          op_focei.zeroGrad=true;
+          gr[i]=sqrt(DBL_EPSILON);
+        } else {
+          if (op_focei.zeroGradBobyqa) {
+            stop("On initial gradient evaluation, one or more parameters have a zero gradient\ntrying outerOpt=\"bobyqa\")");
+          }  else {
+            stop("On initial gradient evaluation, one or more parameters have a zero gradient");
+          }
+        }
       } else {
-        op_focei.zeroGrad=true;
-        gr[i]=sqrt(DBL_EPSILON);
+        if (op_focei.zeroGradRunReset) {
+          REprintf("here2\n");
+          op_focei.zeroGrad=true;
+          gr[i]=sqrt(DBL_EPSILON);
+        } else {
+          if (op_focei.zeroGradBobyqaRun) {
+            stop("Zero gradient while searching, trying outerOpt=\"bobyqa\"");
+          } else {
+            stop("Zero gradient while searching");
+          }
+        }
       }
     }
     vGrad.push_back(gr[i]);

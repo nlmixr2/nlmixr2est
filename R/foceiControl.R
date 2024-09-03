@@ -623,7 +623,6 @@
 #'
 #' @param rxControl `rxode2` ODE solving options during fitting, created with `rxControl()`
 #'
-#'
 #' @param fallbackFD Fallback to the finite differences if the
 #'   sensitivity equations do not solve.
 #'
@@ -639,6 +638,23 @@
 #'   lnorm.sd, etc).  When zero, no factor is applied.  If your
 #'   initial estimate is 0.15 and your lower bound is zero, then the
 #'   lower bound would be assumed to be 0.00015.
+#'
+#' @param zeroGradFirstReset boolean, when `TRUE` if the first
+#'   gradient is zero, reset the zero gradient to
+#'   `sqrt(.Machine$double.eps)` to get past the bad initial estimate,
+#'   otherwise error (and possibly reset), when `FALSE` error when the
+#'   first gradient is zero.  When `NA` on the last reset, have the
+#'   zero gradient ignored, otherwise error and look for another
+#'   value.  Default is `NA`
+#'
+#' @param zeroGradRunReset boolean, when `TRUE` if a gradient is zero,
+#'   reset the zero gradient to `sqrt(.Machine$double.eps)` to get
+#'   past the bad estimate while running.  Otherwise error (and
+#'   possibly reset).
+#'
+#' @param zeroGradBobyqa boolean, when `TRUE` if a gradient is zero,
+#'   the reset will change the method to the gradient free bobyqa
+#'   method.
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -804,7 +820,10 @@ foceiControl <- function(sigdig = 3, #
                          sigdigTable=NULL,
                          fallbackFD=FALSE,
                          smatPer=0.6,
-                         sdLowerFact=0.001) { #
+                         sdLowerFact=0.001,
+                         zeroGradFirstReset=NA,
+                         zeroGradRunReset=TRUE,
+                         zeroGradBobyqa=TRUE) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1190,6 +1209,9 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
+  checkmate::assertLogical(zeroGradFirstReset, any.missing=TRUE, len=1)
+  checkmate::assertLogical(zeroGradRunReset, any.missing=FALSE, len=1)
+  checkmate::assertLogical(zeroGradBobyqa, any.missing=FALSE, len=1)
 
   checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
@@ -1313,7 +1335,10 @@ foceiControl <- function(sigdig = 3, #
     shi21maxInnerCov=shi21maxInnerCov,
     shi21maxFD=shi21maxFD,
     smatPer=smatPer,
-    sdLowerFact=sdLowerFact
+    sdLowerFact=sdLowerFact,
+    zeroGradFirstReset=zeroGradFirstReset,
+    zeroGradRunReset=zeroGradRunReset,
+    zeroGradBobyqa=zeroGradBobyqa
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
