@@ -1458,15 +1458,18 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         .ret$control$c2 <- .thetaReset$c2
         if (this.env$zeroOuter) {
           message("Posthoc reset")
+          warning("Posthoc reset")
           .ret$control$maxOuterIterations <- 0L
         } else if (this.env$zeroGrad && isTRUE(.ret$control$zeroGradBobyqa)) {
           message("Theta reset (zero/bad gradient values); Switch to bobyqa")
+          warning("Theta reset (zero/bad gradient values); Switch to bobyqa")
           rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
           .ret$control$outerOptTxt <- "bobyqa"
         } else {
           message("Theta reset (ETA drift)")
+          warning("Theta reset (ETA drift)")
         }
       } else if (this.env$err != "") {
         stop(this.env$err)
