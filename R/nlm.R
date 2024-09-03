@@ -386,9 +386,13 @@ rxUiGet.nlmModel0 <- function(x, ...) {
                               modelVars=TRUE,
                               cmtLines=FALSE,
                               dvidLine=FALSE)
-  as.call(c(list(quote(`rxModelVars`)), as.call(c(list(quote(`{`)),
-    lapply(seq_along(.ret)[-1], function(i) .ret[[i]]),
-    list(str2lang("rx_pred_ <- -rx_pred_"))))))
+  .ret <- .ret[[2]]
+  .ret <- as.call(c(quote(`{`),
+                    lapply(seq_along(.ret)[-1], function(i) {
+                      .ret[[i]]
+                    }),
+                    list(str2lang("rx_pred_ <- -rx_pred_"))))
+  as.call(c(list(quote(`rxModelVars`)), .ret))
 }
 
 #' Load the nlm model into symengine
@@ -404,7 +408,8 @@ rxUiGet.nlmModel0 <- function(x, ...) {
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of population log-likelihood model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .ret <- rxode2::.rxPrune(.x, envir = .env,
+                           strAssign = rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {

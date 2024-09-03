@@ -362,13 +362,68 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     warning("some duplicate columns were dropped", call.=FALSE)
     .ret <- .ret[, -.dups]
   }
-  .ret
+  .addLevels(fit, .ret)
 }
 
 .calcShrinkOnly <- function(fit, thetaEtaParameters=fit$foceiThetaEtaParameters) {
   .omega <- fit$omega
   .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
   .ret[, -dim(.omega)[1] - 1]
+}
+
+#' Add Levels to Data Based on Fit Object
+#'
+#' This function modifies a data frame by adding levels to a specified
+#' variable based on the levels defined in a fit$ui$levels
+#'
+#' @param fit A list object that contains a `ui` element with `levels`
+#'   to be added to the data.
+#' @param data A data frame that will be modified by adding levels to
+#'   one or more of its variables.
+#' @return A modified data frame with levels added to the specified
+#'   variables. If the variable's values are out of the defined range,
+#'   they are set to `NA`.
+#' @details The function checks if the `fit` object contains
+#'   levels.
+#'
+#' If levels are present, it iterates through them and modifies the
+#' corresponding variable in the data frame:
+#'
+#' - Converts the variable to integer type.
+#'
+#' - Sets values less than 1 to `NA_integer_`.
+#'
+#' - Sets values greater than the number of levels to `NA_integer_`.
+#'
+#' - Assigns the levels and sets the class of the variable to
+#'   "factor".
+#'
+#'
+#' @author Matthew L. Fidler
+#'
+#' @noRd
+.addLevels <- function(fit, data) {
+  .levels <-  fit$ui$levels
+  if (!is.null(.levels)) {
+    for (i in seq_along(.levels)) {
+      .cur <- .levels[[i]] # language expression of levels() declaration
+      .var <- deparse1(.cur[[2]][[2]]) # levels variable
+      .w <- which(names(data) == .var) # does one of the output
+                                       # variables match?
+      if (length(.w) == 1) {
+        # now change to a factor
+        data[[.var]] <- as.integer(data[[.var]])
+        .w <- which(data[[.var]] < 1L)
+        data[[.var]][.w] <- NA_integer_
+        .lvls <- eval(.cur[[3]])
+        .w <- which(data[[.var]] > length(.lvls))
+        data[[.var]][.w] <- NA_integer_
+        attr(data[[.var]], "levels") <- .lvls
+        attr(data[[.var]], "class") <- "factor"
+      }
+    }
+  }
+  data
 }
 
 .calcTables <- function(fit, data=fit$dataSav, thetaEtaParameters=fit$foceiThetaEtaParameters,
@@ -416,6 +471,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     warning("some duplicate columns were dropped", call.=FALSE)
     .ret <- .ret[, -.dups]
   }
+  .ret[[1]] <- .addLevels(fit, .ret[[1]])
   .ret
 }
 
@@ -471,8 +527,11 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' print(f)
 #'
 #' }
-addTable <- function(object, updateObject = FALSE, data=object$dataSav, thetaEtaParameters=object$foceiThetaEtaParameters,
-                     table=tableControl(), keep=NULL, drop=NULL,
+addTable <- function(object, updateObject = FALSE,
+                     data=object$dataSav,
+                     thetaEtaParameters=object$foceiThetaEtaParameters,
+                     table=tableControl(),
+                     keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
   assignInMyNamespace(".finalUiCompressed", FALSE)
   on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))

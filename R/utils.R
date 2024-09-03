@@ -45,6 +45,8 @@
 #' iYeoJohnson(yeoJohnson(seq(-3,3),0),0)
 #' @export
 boxCox <- function(x, lambda = 1) {
+  checkmate::assert_numeric(x)
+  checkmate::assert_numeric(lambda)
   .Call(`_nlmixr2est_boxCox_`, x, lambda, 0L)
 }
 

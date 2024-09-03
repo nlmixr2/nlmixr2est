@@ -199,7 +199,8 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of saem model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .ret <- rxode2::.rxPrune(.x, envir = .env,
+                           strAssign=rxode2::rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -218,12 +219,14 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
 #' @noRd
 .saemPrunePred <- function(x) {
   .x <- x[[1]]
+  .ui0 <- .x
   .x <- .x$saemModelPred0[[-1]]
   .env <- new.env(parent = emptyenv())
   .env$.if <- NULL
   .env$.def1 <- NULL
   .malert("pruning branches ({.code if}/{.code else}) of saem model...")
-  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .ret <- rxode2::.rxPrune(.x, envir = .env,
+                           strAssign=rxode2::rxModelVars(.ui0)$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -394,6 +397,16 @@ rxUiGet.interpLinesStr <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {
+  .ui0 <- x[[1]]
+  .levels  <- .ui0$levels
+  if (!is.null(.levels)) {
+    .levels <- vapply(seq_along(.levels),
+                      function(i){
+                        deparse1(.levels[[i]])
+                      },
+                      character(1), USE.NAMES=FALSE)
+    .levels <- paste(.levels, collapse="\n")
+  }
   .s <- rxUiGet.loadPruneSaemPred(x, ...)
   .replaceLst <- rxUiGet.saemModelPredReplaceLst(x, ...)
   assignInMyNamespace(".saemModelPredSymengineEnvironment", .s)

@@ -1,5 +1,32 @@
 nmTest({
 
+  test_that("nlm models convert strings to numbers", {
+
+    mod <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+        E50 <- 2
+        g <- fix(2)
+      })
+      model({
+        v <- E0+Em*time^g/(E50^g+time^g)+wt
+        p <- expit(v)
+        if (p < 0.5) {
+          a <- "good"
+        }  else {
+          a <- "bad"
+        }
+        ll(bin) ~ DV * v - log(1 + exp(v)) + (a=="good")*0.5
+      })
+    }
+
+    m <- mod()
+
+    expect_error(rxode2::rxNorm(m$nlmRxModel$predOnly), NA)
+
+  })
+
   test_that("nlm models add interp", {
 
     mod <- function() {

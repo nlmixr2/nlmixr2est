@@ -381,7 +381,8 @@ rxUiGet.foceiModel0ll <- function(x, ...) {
       .malert("pruning branches ({.code if}/{.code else}) of model...")
     }
   }
-  .ret <- rxode2::.rxPrune(.x, envir = .env)
+  .ret <- rxode2::.rxPrune(.x, envir = .env,
+                           strAssign=rxode2::rxModelVars(x[[1]])$strAssign)
   .mv <- rxode2::rxModelVars(.ret)
   ## Need to convert to a function
   if (rxode2::.rxIsLinCmt() == 1L) {
@@ -1457,15 +1458,18 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
         .ret$control$c2 <- .thetaReset$c2
         if (this.env$zeroOuter) {
           message("Posthoc reset")
+          warning("Posthoc reset")
           .ret$control$maxOuterIterations <- 0L
-        } else if (this.env$zeroGrad) {
+        } else if (this.env$zeroGrad && isTRUE(.ret$control$zeroGradBobyqa)) {
           message("Theta reset (zero/bad gradient values); Switch to bobyqa")
+          warning("Theta reset (zero/bad gradient values); Switch to bobyqa")
           rxode2::rxReq("minqa")
           .ret$control$outerOptFun <- .bobyqa
           .ret$control$outerOpt <- -1L
           .ret$control$outerOptTxt <- "bobyqa"
         } else {
           message("Theta reset (ETA drift)")
+          warning("Theta reset (ETA drift)")
         }
       } else if (this.env$err != "") {
         stop(this.env$err)
@@ -1515,7 +1519,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   upper <- .ret$upper
   while (inherits(.ret0, "try-error") && control$maxOuterIterations != 0 && .n <= control$nRetries) {
     .draw <- TRUE
-    if (attr(.ret0, "condition")$message == "Evaluation error: On initial gradient evaluation, one or more parameters have a zero gradient\nChange model, try different initial estimates or use outerOpt=\"bobyqa\").") {
+    if (isFALSE(control$zeroGradFirstReset) && grepl("bobyqa", attr(.ret0, "condition")$message)) {
       message("Changing to \"bobyqa\"")
       rxode2::rxReq("minqa")
       .ret$control$outerOpt <- -1L
@@ -1524,7 +1528,10 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .draw <- FALSE
     }
     ## Maybe change scale?
-    message(sprintf("Restart %s", .n))
+    message(sprintf("Restart %s/%s", .n, control$nRetries))
+    if (is.na(control$zeroGradFirstReset) && .n ==control$nRetries) {
+      .ret$control$zeroGradFirstReset <- TRUE
+    }
     .ret$control$nF <- 0
     .estNew <- .est0 + 0.2 * .n * abs(.est0) * stats::runif(length(.est0)) - 0.1 * .n
     .estNew <- vapply(

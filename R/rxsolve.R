@@ -1,7 +1,7 @@
 #' Get Control Settings for nlmixr
 #'
 #' This function retrieves and sets control settings for the `nlmixr`
-#' package from the given environment.  It ensures that the control
+#' package from the given environment  It ensures that the control
 #' settings are valid and, if necessary, uses default settings from
 #' `rxode2::rxControl()`.
 #'

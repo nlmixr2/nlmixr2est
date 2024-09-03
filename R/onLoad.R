@@ -71,11 +71,9 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitData")
   .resetCacheIfNeeded()
-
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
-
 
 .onAttach <- function(libname, pkgname) {
   ## nocov start
