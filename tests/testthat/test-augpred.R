@@ -1,6 +1,7 @@
 nmTest({
 
   test_that("test augPred", {
+
     PKdata <- nlmixr2data::warfarin %>%
       dplyr::filter(dvid == "cp") %>%
       dplyr::select(-dvid) %>%
@@ -76,6 +77,7 @@ nmTest({
   })
 
   test_that("test augPred with xgxr dataset", {
+
     dat <- xgxr::case1_pkpd %>%
       dplyr::rename(DV=LIDV) %>%
       dplyr::filter(CMT %in% 1:2) %>%
