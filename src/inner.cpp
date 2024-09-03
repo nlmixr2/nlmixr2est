@@ -4113,7 +4113,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
     if (gr[i] == 0){
       if (op_focei.nF+op_focei.nF2 == 1) {
         if (op_focei.zeroGradFirstReset) {
-          REprintf("here\n");
           op_focei.zeroGrad=true;
           gr[i]=sqrt(DBL_EPSILON);
         } else {
@@ -4125,7 +4124,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
         }
       } else {
         if (op_focei.zeroGradRunReset) {
-          REprintf("here2\n");
           op_focei.zeroGrad=true;
           gr[i]=sqrt(DBL_EPSILON);
         } else {
