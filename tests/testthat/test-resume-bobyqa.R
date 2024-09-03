@@ -45,5 +45,7 @@ nmTest({
 
     d <- suppressMessages(nlmixr2(model, dat, "focei", control=list(print=0)))
 
+    expect_true(grepl("bobyqa", d$extra))
+
   })
 })
