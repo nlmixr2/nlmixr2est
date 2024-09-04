@@ -943,20 +943,21 @@ gradient is zero, reset the zero gradient to
 otherwise error (and possibly reset), when `FALSE` error when the
 first gradient is zero.  When `NA` on the last reset, have the
 zero gradient ignored, otherwise error and look for another
-value.  Default is `NA`</p></dd>
+value.  Default is `TRUE`</p></dd>
 
 
 <dt id="arg-zerogradrunreset">zeroGradRunReset<a class="anchor" aria-label="anchor" href="#arg-zerogradrunreset"></a></dt>
 <dd><p>boolean, when `TRUE` if a gradient is zero,
 reset the zero gradient to `sqrt(.Machine$double.eps)` to get
 past the bad estimate while running.  Otherwise error (and
-possibly reset).</p></dd>
+possibly reset). Default is `TRUE`</p></dd>
 
 
 <dt id="arg-zerogradbobyqa">zeroGradBobyqa<a class="anchor" aria-label="anchor" href="#arg-zerogradbobyqa"></a></dt>
 <dd><p>boolean, when `TRUE` if a gradient is zero,
 the reset will change the method to the gradient free bobyqa
-method.</p></dd>
+method. When `NA`, the zero gradient will change to bobyqa only
+when the first gradient is zero.  Default is `TRUE`</p></dd>
 
 </dl></div>
     <div class="section level2">
