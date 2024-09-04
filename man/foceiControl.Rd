@@ -769,16 +769,17 @@ gradient is zero, reset the zero gradient to
 otherwise error (and possibly reset), when `FALSE` error when the
 first gradient is zero.  When `NA` on the last reset, have the
 zero gradient ignored, otherwise error and look for another
-value.  Default is `NA`}
+value.  Default is `TRUE`}
 
 \item{zeroGradRunReset}{boolean, when `TRUE` if a gradient is zero,
 reset the zero gradient to `sqrt(.Machine$double.eps)` to get
 past the bad estimate while running.  Otherwise error (and
-possibly reset).}
+possibly reset). Default is `TRUE`}
 
 \item{zeroGradBobyqa}{boolean, when `TRUE` if a gradient is zero,
 the reset will change the method to the gradient free bobyqa
-method.}
+method. When `NA`, the zero gradient will change to bobyqa only
+when the first gradient is zero.  Default is `TRUE`}
 }
 \value{
 The control object that changes the options for the FOCEi

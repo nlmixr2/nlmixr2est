@@ -645,16 +645,17 @@
 #'   otherwise error (and possibly reset), when `FALSE` error when the
 #'   first gradient is zero.  When `NA` on the last reset, have the
 #'   zero gradient ignored, otherwise error and look for another
-#'   value.  Default is `NA`
+#'   value.  Default is `TRUE`
 #'
 #' @param zeroGradRunReset boolean, when `TRUE` if a gradient is zero,
 #'   reset the zero gradient to `sqrt(.Machine$double.eps)` to get
 #'   past the bad estimate while running.  Otherwise error (and
-#'   possibly reset).
+#'   possibly reset). Default is `TRUE`
 #'
 #' @param zeroGradBobyqa boolean, when `TRUE` if a gradient is zero,
 #'   the reset will change the method to the gradient free bobyqa
-#'   method.
+#'   method. When `NA`, the zero gradient will change to bobyqa only
+#'   when the first gradient is zero.  Default is `TRUE`
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -1211,7 +1212,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
   checkmate::assertLogical(zeroGradFirstReset, any.missing=TRUE, len=1)
   checkmate::assertLogical(zeroGradRunReset, any.missing=FALSE, len=1)
-  checkmate::assertLogical(zeroGradBobyqa, any.missing=FALSE, len=1)
+  checkmate::assertLogical(zeroGradBobyqa, any.missing=TRUE, len=1)
 
   checkmate::assertIntegerish(shi21maxOuter, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)

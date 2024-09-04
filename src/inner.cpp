@@ -3272,18 +3272,37 @@ NumericVector foceiSetup_(const RObject &obj,
   // When 'TRUE' or 'FALSE' both zeroGradBobyqaRun and zeroGradBobyqa
   // match zeroGradBobyqa.
   //
+  // When zeroGradBobyqa is 'NA', whenever zeroGradBobya can be 'TRUE'
+  // or 'FALSE' the op_focei.zeroGradBobya = true and the
+  // op_focei.zeroGradBobyqaRun=false
   //
   int curI = as<int>(foceiO["zeroGradFirstReset"]);
   if (curI == 1) {
     op_focei.zeroGradFirstReset = true;
-    op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = as<bool>(foceiO["zeroGradBobyqa"]);
+    curI = as<int>(foceiO["zeroGradBobyqa"]);
+    if (curI == 1) {
+      op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = true;
+    } else if (curI == 0) {
+      op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = false;
+    } else {
+      op_focei.zeroGradBobyqaRun = false;
+      op_focei.zeroGradBobyqa = true;
+    }
   } else {
     op_focei.zeroGradFirstReset = false;
     if (curI == NA_INTEGER) {
       op_focei.zeroGradBobyqa = false;
       op_focei.zeroGradBobyqaRun = as<bool>(foceiO["zeroGradBobyqa"]);
     } else {
-      op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = as<bool>(foceiO["zeroGradBobyqa"]);
+      curI = as<int>(foceiO["zeroGradBobyqa"]);
+      if (curI == 1) {
+        op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = true;
+      } else if (curI == 0)  {
+        op_focei.zeroGradBobyqaRun = op_focei.zeroGradBobyqa = false;
+      } else {
+        op_focei.zeroGradBobyqaRun = false;
+        op_focei.zeroGradBobyqa = true;
+      }
     }
   }
   op_focei.zeroGradRunReset = as<bool>(foceiO["zeroGradRunReset"]);
