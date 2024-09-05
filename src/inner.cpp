@@ -510,17 +510,17 @@ static inline double getScaleC(int i){
       op_focei.scaleC[i]=1.0;
       break;
     case 2: // diag^2
-      op_focei.scaleC[i]=1.0/fabs(op_focei.initPar[i]);
+      op_focei.scaleC[i]=fabs(op_focei.initPar[i]);
       break;
     case 3: // exp(diag)
-      op_focei.scaleC[i] = 1.0/2.0;
+      op_focei.scaleC[i] = 2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      op_focei.scaleC[i] = 1.0/(2.0*fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i] = (2.0*fabs(op_focei.initPar[i]));
       break;
     default:
-      op_focei.scaleC[i]= 1.0/(fabs(op_focei.initPar[i]));
+      op_focei.scaleC[i]= (fabs(op_focei.initPar[i]));
       break;
     }
   }
