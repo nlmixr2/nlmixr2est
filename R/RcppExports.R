@@ -208,30 +208,6 @@ nlmAdjustCov <- function(CovIn, theta) {
     .Call(`_nlmixr2est_nlmAdjustCov`, CovIn, theta)
 }
 
-popedFree <- function() {
-    .Call(`_nlmixr2est_popedFree`)
-}
-
-popedSetup <- function(e, full) {
-    .Call(`_nlmixr2est_popedSetup`, e, full)
-}
-
-popedSolveIdN2 <- function(theta, mt, id, totn) {
-    .Call(`_nlmixr2est_popedSolveIdN2`, theta, mt, id, totn)
-}
-
-popedSolveIdN <- function(theta, mt, id, totn) {
-    .Call(`_nlmixr2est_popedSolveIdN`, theta, mt, id, totn)
-}
-
-popedSolveIdME <- function(theta, umt, mt, ms, nend, id, totn) {
-    .Call(`_nlmixr2est_popedSolveIdME`, theta, umt, mt, ms, nend, id, totn)
-}
-
-popedSolveIdME2 <- function(theta, umt, mt, ms, nend, id, totn) {
-    .Call(`_nlmixr2est_popedSolveIdME2`, theta, umt, mt, ms, nend, id, totn)
-}
-
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
