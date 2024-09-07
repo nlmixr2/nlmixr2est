@@ -85,7 +85,8 @@ nlmixr2Est.default <- function(env, ...) {
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixrEstUpdatesOrigModel <- function(ret) {
-  .ui <- try(ret$ui)
+  .ui <- try(ret$ui, silent=TRUE)
+  if (inherits(.ui, "try-error")) return(ret)
   if (inherits(.ui, "rxUi")) {
     # this needs to be in reverse order of the changes, which means apply zero omegas then fixed
     if (!is.null(.nlmixr2EstEnv$nlmixrPureInputUi)) {
