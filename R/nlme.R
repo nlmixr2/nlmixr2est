@@ -533,3 +533,25 @@ nlmixr2Est.nlme <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }
+
+
+#' @export
+rxUiDeparse.nlmeControl <- function(object, var) {
+  .default <- nlmixr2NlmeControl()
+  .w <- which(vapply(names(.default), function(n) {
+    if (n %in% c("genRxControl", "covMethod")) return(FALSE)
+    !identical(.default[[n]], object[[n]])
+  }, logical(1)))
+  if (length(.w) == 0) {
+    return(str2lang(paste0(var, " <- nlmeControl()")))
+  }
+  str2lang(paste(var, " <- nlmeControl(",
+                 vapply(names(.default)[.w],
+                        function(n) {
+                          if (n == "rxControl") {
+                            return(paste0("rxControl=", deparse1(rxUiDeparse(object[[n]], "n")[[3]])))
+                          }
+                          paste(n, "=", deparse1(object[[n]]))
+                        }, character(1), USE.NAMES=FALSE),
+                 ")"))
+}

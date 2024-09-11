@@ -1074,3 +1074,24 @@ nlmixr2Est.nls <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .nlsFamilyFit(env,  ...)
 }
+
+#' @export
+rxUiDeparse.nlsControl <- function(object, var) {
+  .default <- nlsControl()
+  .w <- which(vapply(names(.default), function(n) {
+    if (n %in% c("genRxControl")) return(FALSE)
+    !identical(.default[[n]], object[[n]])
+  }, logical(1)))
+  if (length(.w) == 0) {
+    return(str2lang(paste0(var, " <- nlsControl()")))
+  }
+  str2lang(paste(var, " <- nlsControl(",
+                 paste(vapply(names(.default)[.w],
+                              function(n) {
+                                .v <-.rxUiDeparseFocei(object, n)
+                                if (n == "covMethod") .v <- NULL
+                                if (!is.null(.v)) return(.v)
+                                paste(n, "=", deparse1(object[[n]]))
+                              }, character(1), USE.NAMES=FALSE), collapse=", "),
+                 ")"))
+}

@@ -343,7 +343,7 @@ rxUiDeparse.saemControl <- function(object, var) {
             vapply(names(.default)[.w],
                    function(n) {
                      if (n == "rxControl") {
-                       return(paste0("rxControl=", rxUiDeparse(object[[n]], "n")[[3]]))
+                       return(paste0("rxControl=", deparse1(rxUiDeparse(object[[n]], "n")[[3]])))
                      }
                      paste0(n, "=", deparse1(object[[n]]))
                    }, character(1), USE.NAMES=FALSE))

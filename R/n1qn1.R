@@ -393,3 +393,24 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .n1qn1FamilyFit(env,  ...)
 }
+
+#' @export
+rxUiDeparse.n1qn1Control <- function(object, var) {
+  .default <- n1qn1Control()
+  .w <- which(vapply(names(.default), function(n) {
+    if (n %in% c("genRxControl")) return(FALSE)
+    !identical(.default[[n]], object[[n]])
+  }, logical(1)))
+  if (length(.w) == 0) {
+    return(str2lang(paste0(var, " <- n1qn1Control()")))
+  }
+  str2lang(paste(var, " <- n1qn1Control(",
+                 paste(vapply(names(.default)[.w],
+                              function(n) {
+                                .v <-.rxUiDeparseFocei(object, n)
+                                if (n == "covMethod") .v <- NULL
+                                if (!is.null(.v)) return(.v)
+                                paste(n, "=", deparse1(object[[n]]))
+                              }, character(1), USE.NAMES=FALSE), collapse=", "),
+                 ")"))
+}
