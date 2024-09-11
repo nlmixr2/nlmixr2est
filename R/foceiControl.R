@@ -1,3 +1,9 @@
+.foceiControlInternal <- c("genRxControl", "resetEtaSize",
+                           "resetThetaSize", "resetThetaFinalSize",
+                           "outerOptFun", "outerOptTxt", "skipCov",
+                           "foceiMuRef", "predNeq", "nfixed", "nomega",
+                           "neta", "ntheta", "nF", "printTop", "needOptimHess")
+
 #' Control Options for FOCEi
 #'
 #' @param sigdig Optimization significant digits. This controls:
@@ -1048,11 +1054,7 @@ foceiControl <- function(sigdig = 3, #
   }
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "resetEtaSize",
-                             "resetThetaSize", "resetThetaFinalSize",
-                             "outerOptFun", "outerOptTxt", "skipCov",
-                             "foceiMuRef", "predNeq", "nfixed", "nomega",
-                             "neta", "ntheta", "nF", "printTop", "needOptimHess"))]
+  .bad <- .bad[!(.bad %in% .foceiControlInternal)]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -1353,4 +1355,58 @@ foceiControl <- function(sigdig = 3, #
   }
   class(.ret) <- "foceiControl"
   return(.ret)
+}
+
+# devtools::load_all("~/src/nlmixr2est");rxUiDeparse.foceiControl(foceiControl(innerOpt="BFGS", scaleType="norm", normType="std", derivMethod="central", covDerivMethod="forward", covMethod="s",diagXform="identity", addProp= "combined1"), "ctl")
+
+#' @export
+rxUiDeparse.foceiControl <- function(object, var) {
+  .ret <- foceiControl()
+  .outerOpt <- character(0)
+  if (object$outerOptTxt != "nlminb") {
+    .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
+  }
+
+  .w <- which(vapply(names(.ret), function(x) {
+    if (x == "outerOpt" && is.function(object[[x]])) {
+      warning("outerOpt as a function not supported in foceiControl()
+deparse",
+call.=FALSE)
+      FALSE
+    } else if (x %in% .foceiControlInternal){
+      FALSE
+    } else {
+      !identical(.ret[[x]], object[[x]])
+    }
+  }, logical(1)))
+
+  if (length(.w) == 0 && length(.outerOpt) == 0) {
+    return(str2lang(paste0(var, " <- foceiControl()")))
+  }
+  .retD <- c(vapply(names(.ret)[.w], function(x) {
+    if (x == "innerOpt") {
+      .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
+      paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x == "scaleType")  {
+      .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+      paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(object[[x]] == .scaleTypeIdx)])))
+    } else if (x == "normType") {
+      .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+      paste0("normType =", deparse1(names(.normTypeIdx[which(object[[x]] == .normTypeIdx)])))
+    } else if (x %in% c("derivMethod", "covDerivMethod", "optimHessType", "optimHessCovType",
+                        "eventType")) {
+      .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "covMethod") {
+      if (object[[x]] == 0L) {
+        paste0(x, " = \"\"")
+      } else {
+        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+        paste0(x, " =", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
+      }
+    } else {
+      paste0(x, "=", deparse1(object[[x]]))
+    }
+  }, character(1)), .outerOpt)
+  str2lang(paste(var, " <- foceiControl(", paste(.retD, collapse=","),")"))
 }
