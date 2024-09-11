@@ -70,6 +70,8 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCoreSilent")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitData")
+
+  rxode2::.s3register("rxode2::rxUiDeparse", "foceiControl")
   .resetCacheIfNeeded()
 }
 

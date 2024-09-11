@@ -2,6 +2,10 @@
 #' @export
 magrittr::`%>%`
 
+#' @importFrom rxode2 rxUiDeparse
+#' @export
+rxode2::rxUiDeparse
+
 #' @importFrom rxode2 rxode2
 #' @export
 rxode2::rxode2

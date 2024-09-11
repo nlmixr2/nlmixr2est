@@ -1357,7 +1357,7 @@ foceiControl <- function(sigdig = 3, #
   return(.ret)
 }
 
-# devtools::load_all("~/src/nlmixr2est");rxUiDeparse.foceiControl(foceiControl(innerOpt="BFGS", scaleType="norm", normType="std", derivMethod="central", covDerivMethod="forward", covMethod="s",diagXform="identity", addProp= "combined1"), "ctl")
+# devtools::load_all("~/src/nlmixr2est");rxUiDeparse.foceiControl(foceiControl(innerOpt="BFGS", scaleType="norm", normType="std", derivMethod="central", covDerivMethod="forward", covMethod="s",diagXform="identity", addProp= "combined1", rxControl=rxControl()), "ctl")
 
 #' @export
 rxUiDeparse.foceiControl <- function(object, var) {
@@ -1375,6 +1375,8 @@ call.=FALSE)
       FALSE
     } else if (x %in% .foceiControlInternal){
       FALSE
+    } else if (is.integer(.ret[[x]]) && is.integer(object[[x]])) {
+      .ret[[x]] != object[[x]]
     } else {
       !identical(.ret[[x]], object[[x]])
     }
@@ -1384,7 +1386,11 @@ call.=FALSE)
     return(str2lang(paste0(var, " <- foceiControl()")))
   }
   .retD <- c(vapply(names(.ret)[.w], function(x) {
-    if (x == "innerOpt") {
+    if (x == "rxControl") {
+      .rxControl <- do.call(rxode2::rxControl, object[[x]])
+      .rxControl <- rxUiDeparse(.rxControl, "rxControl")
+      paste0("rxControl=", deparse1(.rxControl[[3]]))
+    } else if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x == "scaleType")  {
