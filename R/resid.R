@@ -735,3 +735,24 @@ tableControl <- function(npde = NULL,
   class(.ret) <- "tableControl"
   return(.ret)
 }
+
+#'@export
+rxUiDeparse.tableControl <- function(object, var) {
+  .default <- tableControl()
+  .w <- which(vapply(names(.default), function(n) {
+    !identical(.default[[n]], object[[n]])
+  }, logical(1)))
+  if (length(.w) == 0) {
+    return(str2lang(paste0(var, " <- tableControl()")))
+  }
+  str2lang(paste(var, " <- tableControl(",
+                 paste(vapply(names(.default)[.w],
+                              function(n) {
+                                if (n == "censMethod") {
+                                  .censMethod <- c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)
+                                  return(paste0(n, " =", deparse1(names(.censMethod[which(object[[n]] == .censMethod)]))))
+                                }
+                                paste(n, "=", deparse1(object[[n]]))
+                              }, character(1), USE.NAMES=FALSE), collapse=", "),
+                 ")"))
+}

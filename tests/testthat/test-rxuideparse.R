@@ -69,3 +69,11 @@ test_that("saemControl()", {
   expect_equal(rxUiDeparse(saemControl(nEm=4), "ctl"),
                quote(ctl <- saemControl(nEm=4)))
 })
+
+## S3method(rxUiDeparse,tableControl)
+test_that("tableControl()", {
+  expect_equal(rxUiDeparse(tableControl(), "ctl"),
+               quote(ctl <- tableControl()))
+  expect_equal(rxUiDeparse(tableControl(censMethod="epred", npde=TRUE), "ctl"),
+               quote(ctl <- tableControl(npde = TRUE, censMethod = "epred")))
+})
