@@ -309,3 +309,46 @@ saemControl <- function(seed = 99,
   class(.ret) <- "saemControl"
   .ret
 }
+
+#' @export
+rxUiDeparse.saemControl <- function(object, var) {
+  .default <- saemControl()
+  .defaultMcmc <- .default$mcmc
+  .curMcmc <- object$mcmc
+  .ret <- character(0)
+  if (object$mcmc$niter[1] != .defaultMcmc$niter[1]) {
+    .ret <- c(.ret, paste0("nBurn = ", .curMcmc$niter[1]))
+  }
+  if (object$mcmc$niter[2] != .defaultMcmc$niter[2]) {
+    .ret <- c(.ret, paste0("nEm = ", .curMcmc$niter[2]))
+  }
+  if (object$mcmc$nmc != .defaultMcmc$nmc) {
+    .ret <- c(.ret, paste0("nmc = ", .curMcmc$nmc))
+  }
+  if (!identical(object$mcmc$nu, .defaultMcmc$nu)) {
+    .ret <- c(.ret, paste0("nu = ", deparse1(.curMcmc$nu)))
+  }
+  .w <- which(vapply(names(.default),
+                     function(n) {
+                       if (n %in% c("genRxControl", "mcmc",
+                                    "DEBUG")) {
+                         return(FALSE)
+                       }
+                        !identical(object[[n]], .default[[n]])
+                     }, logical(1), USE.NAMES=FALSE))
+  if (length(.w)== 0 && length(.ret) == 0) {
+    return(str2lang(paste0(var, " <- saemControl()")))
+  }
+  .ret <- c(.ret,
+            vapply(names(.default)[.w],
+                   function(n) {
+                     if (n == "rxControl") {
+                       return(paste0("rxControl=", rxUiDeparse(object[[n]], "n")[[3]]))
+                     }
+                     paste0(n, "=", deparse1(object[[n]]))
+                   }, character(1), USE.NAMES=FALSE))
+  str2lang(paste0(var, "<- saemControl(",
+                  paste(.ret, collapse=", "),
+                  ")"))
+
+}
