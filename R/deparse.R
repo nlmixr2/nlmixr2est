@@ -76,11 +76,11 @@
 .deparseDifferent <- function(standard, new, internal=character(0)) {
   which(vapply(names(standard),
                function(x) {
-                 if (is.function(standard[[x]])) {
-                   warning(paste0(x, "as a function not supported in ",
-                                  class(standard), "()"), call.=FALSE)
+                 if (x %in% internal){
                    FALSE
-                 } else if (x %in% internal){
+                 } else if (is.function(standard[[x]])) {
+                   warning(paste0("'", x, "' as a function not supported in ",
+                                  class(standard), "() deparsing"), call.=FALSE)
                    FALSE
                  } else {
                    !identical(standard[[x]], new[[x]])
