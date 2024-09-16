@@ -21,4 +21,31 @@ test_that("saemControl() deparse", {
                                         nu = c(3, 3, 3))))
   expect_equal(rxUiDeparse.saemControl(saemControl(), "ctl"),
                quote(ctl <- saemControl()))
+
+})
+
+test_that("bobyqaControl()",{
+
+  expect_equal(rxUiDeparse.bobyqaControl(bobyqaControl(), "var"),
+               quote(var <- bobyqaControl()))
+
+  expect_equal(rxUiDeparse.bobyqaControl(bobyqaControl(scaleType="multAdd"), "var"),
+               quoate(var <- bobyqaControl(scaleType = "multAdd")))
+
+})
+
+test_that("lbfgsb3cControl()", {
+  expect_equal(rxUiDeparse.lbfgsb3cControl(lbfgsb3cControl(), "var"),
+               quote(var <- lbfgsb3cControl()))
+
+  expect_equal(rxUiDeparse.lbfgsb3cControl(lbfgsb3cControl(normType="len"), "var"),
+               quote(var <- lbfgsb3cControl(normType = "len")))
+})
+
+test_that("n1qn1Control()", {
+  expect_equal(rxUiDeparse.n1qn1Control(n1qn1Control(), "var"),
+               quote(var <- n1qn1Control()))
+
+  expect_equal(rxUiDeparse.n1qn1Control(n1qn1Control(covMethod="n1qn1"), "var"),
+               quote(var <- n1qn1Control(covMethod = "n1qn1")))
 })

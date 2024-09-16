@@ -4,43 +4,43 @@
     .rx <- .rx[[3]]
     paste0("rxControl = ", deparse1(.rx))
   } else if (x == "scaleType")  {
-    if (is.integer(object[[x]])) {
+    if (is.integer(value)) {
       .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-      paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(object[[x]] == .scaleTypeIdx)])))
+      paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(value == .scaleTypeIdx)])))
     } else {
-      paste0("scaleType =", deparse1(object[[x]]))
+      paste0("scaleType =", deparse1(value))
     }
   } else if (x == "normType") {
-    if (is.integer(object[[x]])) {
+    if (is.integer(value)) {
       .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-      paste0("normType =", deparse1(names(.normTypeIdx[which(object[[x]] == .normTypeIdx)])))
+      paste0("normType =", deparse1(names(.normTypeIdx[which(value == .normTypeIdx)])))
     } else {
-      paste0("normType =", deparse1(object[[x]]))
+      paste0("normType =", deparse1(value))
     }
   } else if (x == "solveType") {
-    if (is.integer(object[[x]])) {
+    if (is.integer(value)) {
       .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
-      paste0("solveType =", deparse1(names(.solveTypeIdx[which(object[[x]] == .solveTypeIdx)])))
+      paste0("solveType =", deparse1(names(.solveTypeIdx[which(value == .solveTypeIdx)])))
     } else {
-      paste0("normType =", deparse1(object[[x]]))
+      paste0("normType =", deparse1(value))
     }
   } else if (x == "eventType") {
-    if (is.integer(object[[x]])) {
+    if (is.integer(value)) {
       .eventTypeIdx <- c("central" =2L, "forward"=1L)
       paste0("eventType = ",
-             deparse1(names(.eventTypeIdx[which(object[[x]] == .eventTypeIdx)])))
+             deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
     } else {
       paste0("eventType = ",
-             deparse1(object[[x]]))
+             deparse1(value))
     }
   } else if (x == "censMethod")  {
-    if (is.integer(object[[x]])) {
+    if (is.integer(value)) {
       .censMethodIdx <- c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)
       paste0("censMethod = ",
-             deparse1(names(.eventTypeIdx[which(object[[x]] == .eventTypeIdx)])))
+             deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
     } else {
       paste0("censMethod = ",
-             deparse1(object[[x]]))
+             deparse1(value))
     }
   } else {
     NA_character_
