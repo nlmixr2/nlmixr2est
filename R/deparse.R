@@ -2,7 +2,7 @@
   if (x == "rxControl") {
     .rx <- rxUiDeparse(value, "a")
     .rx <- .rx[[3]]
-    return(paste0("rxControl = ", deparse1(.rx)))
+    paste0("rxControl = ", deparse1(.rx))
   } else if (x == "scaleType")  {
     if (is.integer(object[[x]])) {
       .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
