@@ -80,6 +80,11 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::rxUiDeparse", "n1qn1Control")
   rxode2::.s3register("rxode2::rxUiDeparse", "newuoaControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "nlmeControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlminbControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlmControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlsControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "optimControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "uobyqaControl")
   .resetCacheIfNeeded()
 }
 

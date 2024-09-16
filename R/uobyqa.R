@@ -184,6 +184,12 @@ uobyqaControl <- function(npt=NULL,
   .ret
 }
 
+rxUiDeparse.uobyqaControl <- function(object, var) {
+  .default <- uobyqaControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' Get the uobyqa family control
 #'
 #' @param env uobyqa optimization environment

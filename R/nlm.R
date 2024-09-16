@@ -277,6 +277,13 @@ nlmControl <- function(typsize = NULL,
   .ret
 }
 
+rxUiDeparse.nlmControl <- function(object, var) {
+  .default <- nlmControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
+
 #' Get the nlm family control
 #'
 #' @param env nlm optimization environment

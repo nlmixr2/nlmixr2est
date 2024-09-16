@@ -105,7 +105,6 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
 
-
   .eventTypeIdx <- c("central" =2L, "forward"=1L)
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=6, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
@@ -248,6 +247,13 @@ nlsControl <- function(maxiter=10000,
   .ret
 }
 
+
+rxUiDeparse.nlsControl <- function(object, var) {
+  .default <- nlsControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' Get the nls family control
 #'
 #' @param env nlme optimization environment
@@ -304,6 +310,7 @@ getValidNlmixrCtl.nls <- function(control) {
   }
   .ctl
 }
+
 
 .nlsEnv <- new.env(parent=emptyenv())
 

@@ -24,6 +24,15 @@
     } else {
       paste0("normType =", deparse1(object[[x]]))
     }
+  } else if (x == "") {
+    if (is.integer(object[[x]])) {
+      .eventTypeIdx <- c("central" =2L, "forward"=1L)
+      paste0("eventType = ",
+             deparse1(names(.eventTypeIdx[which(object[[x]] == .eventTypeIdx)])))
+    } else {
+      paste0("eventType = ",
+             deparse1(object[[x]]))
+    }
   } else {
     NA_character_
   }
