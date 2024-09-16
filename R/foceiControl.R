@@ -1360,7 +1360,7 @@ foceiControl <- function(sigdig = 3, #
 rxUiDeparse.foceiControl <- function(object, var) {
   .ret <- foceiControl()
   .outerOpt <- character(0)
-  if (object$outerOpt == -1L) {
+  if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
   } else if (object$outerOptTxt != "nlminb") {

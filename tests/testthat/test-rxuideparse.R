@@ -79,3 +79,11 @@ test_that("nlmControl()", {
   expect_equal(rxUiDeparse.nlmControl(nlmControl(covMethod="r"), "var"),
                quote(var <- nlmControl(covMethod = "r")))
 })
+
+
+test_that("nlsControl()", {
+  expect_equal(rxUiDeparse.nlsControl(nlsControl(), "var"),
+               quote(var <- nlsControl()))
+  expect_equal(rxUiDeparse.nlsControl(nlsControl(algorithm="port"), "var"),
+               quote(var <- nlsControl(algorithm = "port")))
+})
