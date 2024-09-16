@@ -26,7 +26,7 @@
     }
   } else if (x == "eventType") {
     if (is.integer(value)) {
-      .eventTypeIdx <- c("central" =2L, "forward"=1L)
+      .eventTypeIdx <- c("central" =2L, "forward"=1L, "forward"=3L)
       paste0("eventType = ",
              deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
     } else {
@@ -37,7 +37,7 @@
     if (is.integer(value)) {
       .censMethodIdx <- c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)
       paste0("censMethod = ",
-             deparse1(names(.eventTypeIdx[which(value == .eventTypeIdx)])))
+             deparse1(names(.censMethodIdx[which(value == .censMethodIdx)])))
     } else {
       paste0("censMethod = ",
              deparse1(value))

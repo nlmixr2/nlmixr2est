@@ -5,6 +5,9 @@ test_that("foceiControl() deparse", {
                                          covMethod = "s", diagXform = "identity", innerOpt = "BFGS",
                                          scaleType = "norm", normType = "std", addProp = "combined1")))
 
+  expect_equal(rxUiDeparse.foceiControl(foceiControl(eventType="forward"), "ctl"),
+               quote(ctl <- foceiControl(eventType = "forward")))
+
   expect_equal(rxUiDeparse.foceiControl(foceiControl(), "ctl"),
                quote(ctl <- foceiControl()))
 
@@ -80,10 +83,34 @@ test_that("nlmControl()", {
                quote(var <- nlmControl(covMethod = "r")))
 })
 
-
 test_that("nlsControl()", {
   expect_equal(rxUiDeparse.nlsControl(nlsControl(), "var"),
                quote(var <- nlsControl()))
   expect_equal(rxUiDeparse.nlsControl(nlsControl(algorithm="port"), "var"),
                quote(var <- nlsControl(algorithm = "port")))
+})
+
+test_that("optimControl()", {
+  expect_equal(rxUiDeparse.optimControl(optimControl(), "var"),
+               quote(var <- optimControl()))
+  expect_equal(rxUiDeparse.optimControl(optimControl(method="L-BFGS-B"), "var"),
+               quote(var <- optimControl(method = "L-BFGS-B")))
+
+  expect_equal(rxUiDeparse.optimControl(optimControl(eventType="forward"), "var"),
+               quote(var <- optimControl(eventType = "forward")))
+})
+
+test_that("uobyqaControl()", {
+  expect_equal(rxUiDeparse.uobyqaControl(uobyqaControl(), "var"),
+               quote(var <- uobyqaControl()))
+  expect_equal(rxUiDeparse.uobyqaControl(uobyqaControl(scaleTo=4), "var"),
+               quote(var <- uobyqaControl(scaleTo = 4)))
+})
+
+
+test_that("tableControl()", {
+  expect_equal(rxUiDeparse.tableControl(tableControl(), "var"),
+               quote(var <- tableControl()))
+  expect_equal(rxUiDeparse.tableControl(tableControl(censMethod="epred"), "var"),
+               quote(var <- tableControl(censMethod = "epred")))
 })
