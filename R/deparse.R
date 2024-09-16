@@ -24,13 +24,22 @@
     } else {
       paste0("normType =", deparse1(object[[x]]))
     }
-  } else if (x == "") {
+  } else if (x == "eventType") {
     if (is.integer(object[[x]])) {
       .eventTypeIdx <- c("central" =2L, "forward"=1L)
       paste0("eventType = ",
              deparse1(names(.eventTypeIdx[which(object[[x]] == .eventTypeIdx)])))
     } else {
       paste0("eventType = ",
+             deparse1(object[[x]]))
+    }
+  } else if (x == "censMethod")  {
+    if (is.integer(object[[x]])) {
+      .censMethodIdx <- c("truncated-normal"=3L, "cdf"=2L, "omit"=1L, "pred"=5L, "ipred"=4L, "epred"=6L)
+      paste0("censMethod = ",
+             deparse1(names(.eventTypeIdx[which(object[[x]] == .eventTypeIdx)])))
+    } else {
+      paste0("censMethod = ",
              deparse1(object[[x]]))
     }
   } else {
