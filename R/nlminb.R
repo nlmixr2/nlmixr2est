@@ -285,6 +285,12 @@ nlminbControl <- function(eval.max=200,
   .ret
 }
 
+rxUiDeparse.nlminbControl <- function(object, var) {
+  .default <- nlminbControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' A surrogate function for nlminb to call for ode solving
 #'
 #' @param pars Parameters that will be estimated

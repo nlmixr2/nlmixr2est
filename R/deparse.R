@@ -4,13 +4,29 @@
     .rx <- .rx[[3]]
     return(paste0("rxControl = ", deparse1(.rx)))
   } else if (x == "scaleType")  {
-    .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-    paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(object[[x]] == .scaleTypeIdx)])))
+    if (is.integer(object[[x]])) {
+      .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
+      paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(object[[x]] == .scaleTypeIdx)])))
+    } else {
+      paste0("scaleType =", deparse1(object[[x]]))
+    }
   } else if (x == "normType") {
-    .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-    paste0("normType =", deparse1(names(.normTypeIdx[which(object[[x]] == .normTypeIdx)])))
+    if (is.integer(object[[x]])) {
+      .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
+      paste0("normType =", deparse1(names(.normTypeIdx[which(object[[x]] == .normTypeIdx)])))
+    } else {
+      paste0("normType =", deparse1(object[[x]]))
+    }
+  } else if (x == "solveType") {
+    if (is.integer(object[[x]])) {
+      .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
+      paste0("solveType =", deparse1(names(.solveTypeIdx[which(object[[x]] == .solveTypeIdx)])))
+    } else {
+      paste0("normType =", deparse1(object[[x]]))
+    }
+  } else {
+    NA_character_
   }
-  return(NA_character_)
 }
 
 .deparseDifferent <- function(standard, new, internal=character(0)) {

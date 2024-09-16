@@ -190,6 +190,13 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   .ret
 }
 
+rxUiDeparse.n1qn1Control <- function(object, var) {
+  .default <- n1qn1Control()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
+
 #' Get the n1qn1 family control
 #'
 #' @param env n1qn1 optimization environment

@@ -184,6 +184,12 @@ newuoaControl <- function(npt=NULL,
   .ret
 }
 
+rxUiDeparse.newuoaControl <- function(object, var) {
+  .default <- newuoaControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' Get the newuoa family control
 #'
 #' @param env newuoa optimization environment
