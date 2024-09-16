@@ -81,7 +81,8 @@ Suggests:
     withr,
     xgxr,
     sfsmisc,
-    minpack.lm
+    minpack.lm,
+    remotes
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
