@@ -30,7 +30,7 @@ test_that("bobyqaControl()",{
                quote(var <- bobyqaControl()))
 
   expect_equal(rxUiDeparse.bobyqaControl(bobyqaControl(scaleType="multAdd"), "var"),
-               quoate(var <- bobyqaControl(scaleType = "multAdd")))
+               quote(var <- bobyqaControl(scaleType = "multAdd")))
 
 })
 
@@ -48,4 +48,34 @@ test_that("n1qn1Control()", {
 
   expect_equal(rxUiDeparse.n1qn1Control(n1qn1Control(covMethod="n1qn1"), "var"),
                quote(var <- n1qn1Control(covMethod = "n1qn1")))
+})
+
+test_that("newuoaControl()", {
+  expect_equal(rxUiDeparse.newuoaControl(newuoaControl(), "var"),
+               quote(var <- newuoaControl()))
+  expect_equal(rxUiDeparse.newuoaControl(newuoaControl(addProp="combined1"), "var"),
+               quote(var <- newuoaControl(addProp = "combined1")))
+})
+
+test_that("nlmeControl()", {
+  expect_equal(rxUiDeparse.nlmeControl(nlmeControl(), "var"),
+               quote(var <- nlmeControl()))
+
+  expect_equal(rxUiDeparse.nlmeControl(nlmeControl(opt="nlm"), "var"),
+               quote(var <- nlmeControl(opt = "nlm")))
+})
+
+test_that("nlminbControl()", {
+  expect_equal(rxUiDeparse.nlminbControl(nlminbControl(), "var"),
+               quote(var <- nlminbControl()))
+
+  expect_equal(rxUiDeparse.nlminbControl(nlminbControl(solveType="grad"), "var"),
+               quote(var <- nlminbControl(solveType = "grad")))
+})
+
+test_that("nlmControl()", {
+  expect_equal(rxUiDeparse.nlmControl(nlmControl(), "var"),
+               quote(var <- nlmControl()))
+  expect_equal(rxUiDeparse.nlmControl(nlmControl(covMethod="r"), "var"),
+               quote(var <- nlmControl(covMethod = "r")))
 })
