@@ -1357,9 +1357,6 @@ foceiControl <- function(sigdig = 3, #
   return(.ret)
 }
 
-# devtools::load_all("~/src/nlmixr2est");rxUiDeparse.foceiControl(foceiControl(innerOpt="BFGS", scaleType="norm", normType="std", derivMethod="central", covDerivMethod="forward", covMethod="s",diagXform="identity", addProp= "combined1"), "ctl")
-
-#' @export
 rxUiDeparse.foceiControl <- function(object, var) {
   .ret <- foceiControl()
   .outerOpt <- character(0)
