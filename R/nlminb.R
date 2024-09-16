@@ -285,6 +285,7 @@ nlminbControl <- function(eval.max=200,
   .ret
 }
 
+#' @export
 rxUiDeparse.nlminbControl <- function(object, var) {
   .default <- nlminbControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

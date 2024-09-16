@@ -736,6 +736,7 @@ tableControl <- function(npde = NULL,
   return(.ret)
 }
 
+#' @export
 rxUiDeparse.tableControl <- function(object, var) {
   .default <- tableControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

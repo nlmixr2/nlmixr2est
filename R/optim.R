@@ -338,6 +338,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   .ret
 }
 
+#' @export
 rxUiDeparse.optimControl <- function(object, var) {
   .default <- optimControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

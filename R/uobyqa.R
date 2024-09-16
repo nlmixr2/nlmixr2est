@@ -184,6 +184,7 @@ uobyqaControl <- function(npt=NULL,
   .ret
 }
 
+#' @export
 rxUiDeparse.uobyqaControl <- function(object, var) {
   .default <- uobyqaControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

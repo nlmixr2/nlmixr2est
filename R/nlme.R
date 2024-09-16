@@ -118,6 +118,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
   .ret
 }
 
+#' @export
 rxUiDeparse.nlmeControl <- function(object, var) {
   .default <- nlmeControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

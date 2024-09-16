@@ -1357,6 +1357,7 @@ foceiControl <- function(sigdig = 3, #
   return(.ret)
 }
 
+#' @export
 rxUiDeparse.foceiControl <- function(object, var) {
   .ret <- foceiControl()
   .outerOpt <- character(0)

@@ -190,6 +190,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   .ret
 }
 
+#' @export
 rxUiDeparse.n1qn1Control <- function(object, var) {
   .default <- n1qn1Control()
   .w <- .deparseDifferent(.default, object, "genRxControl")

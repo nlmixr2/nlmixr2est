@@ -277,6 +277,7 @@ nlmControl <- function(typsize = NULL,
   .ret
 }
 
+#' @export
 rxUiDeparse.nlmControl <- function(object, var) {
   .default <- nlmControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

@@ -332,6 +332,7 @@ saemControl <- function(seed = 99,
   NA_character_
 }
 
+#' @export
 rxUiDeparse.saemControl <- function(object, var) {
   .default <- saemControl()
   .w <- .deparseDifferent(.default, object, c("genRxControl", "DEBUG"))

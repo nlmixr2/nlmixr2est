@@ -184,6 +184,7 @@ newuoaControl <- function(npt=NULL,
   .ret
 }
 
+#' @export
 rxUiDeparse.newuoaControl <- function(object, var) {
   .default <- newuoaControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")

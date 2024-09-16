@@ -247,7 +247,7 @@ nlsControl <- function(maxiter=10000,
   .ret
 }
 
-
+#' @export
 rxUiDeparse.nlsControl <- function(object, var) {
   .default <- nlsControl()
   .w <- .deparseDifferent(.default, object, "genRxControl")
