@@ -107,7 +107,6 @@
 #' @export
 nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                 minimum = NULL, maximum = NULL, length.out = 51L, ...) {
-  browser()
   .si <- fit$simInfo
   .rx <- .getSimModel(fit, hideIpred=TRUE)
   .rx <- eval(.rx)
