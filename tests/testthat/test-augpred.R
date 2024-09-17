@@ -38,7 +38,12 @@ nmTest({
         tableControl(cwres = TRUE, npde=TRUE)
       )
 
-      expect_error(augPred(fitOne.comp.KA.solved_S), NA)
+    expect_error(augPred(fitOne.comp.KA.solved_S), NA)
+
+    ap <- augPred(fitOne.comp.KA.solved_S)
+
+    expect_equal(as.character(ap[ap$id == 1 & ap$time == 120, "ind"]),
+                 c("Individual", "Population"))
 
     skip_if_not(rxode2::.linCmtSensB())
 
