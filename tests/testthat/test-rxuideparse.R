@@ -93,7 +93,7 @@ test_that("nlsControl()", {
 test_that("optimControl()", {
   expect_equal(rxUiDeparse.optimControl(optimControl(), "var"),
                quote(var <- optimControl()))
-  expect_equal(rxUiDeparse.optimControl(optimControl(method="L-BFGS-B"), "var"),
+  expect_equal(rxUiDeparse.optimControl(optimControl(method="L-BFGS-B", covMethod = "optim"), "var"),
                quote(var <- optimControl(method = "L-BFGS-B")))
 
   expect_equal(rxUiDeparse.optimControl(optimControl(eventType="forward"), "var"),
