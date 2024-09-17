@@ -214,6 +214,13 @@ bobyqaControl <- function(npt=NULL,
   .ret
 }
 
+#' @export
+rxUiDeparse.bobyqaControl <- function(object, var) {
+  .default <- bobyqaControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' Get the bobyqa family control
 #'
 #' @param env bobyqa optimization environment

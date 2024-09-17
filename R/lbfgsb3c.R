@@ -225,6 +225,13 @@ lbfgsb3cControl <- function(trace=0,
   .ret
 }
 
+#' @export
+rxUiDeparse.lbfgsb3cControl <- function(object, var) {
+  .default <- lbfgsb3cControl()
+  .w <- .deparseDifferent(.default, object, "genRxControl")
+  .deparseFinal(.default, object, .w, var)
+}
+
 #' Get the lbfgsb3c family control
 #'
 #' @param env lbfgsb3c optimization environment

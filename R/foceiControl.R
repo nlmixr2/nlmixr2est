@@ -1357,42 +1357,28 @@ foceiControl <- function(sigdig = 3, #
   return(.ret)
 }
 
-# devtools::load_all("~/src/nlmixr2est");rxUiDeparse.foceiControl(foceiControl(innerOpt="BFGS", scaleType="norm", normType="std", derivMethod="central", covDerivMethod="forward", covMethod="s",diagXform="identity", addProp= "combined1"), "ctl")
-
 #' @export
 rxUiDeparse.foceiControl <- function(object, var) {
   .ret <- foceiControl()
   .outerOpt <- character(0)
-  if (object$outerOptTxt != "nlminb") {
+  if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
+    warning("functions for `outerOpt` cannot be deparsed, reset to default",
+            call.=FALSE)
+  } else if (object$outerOptTxt != "nlminb") {
     .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
-
-  .w <- which(vapply(names(.ret), function(x) {
-    if (x == "outerOpt" && is.function(object[[x]])) {
-      warning("outerOpt as a function not supported in foceiControl()
-deparse",
-call.=FALSE)
-      FALSE
-    } else if (x %in% .foceiControlInternal){
-      FALSE
-    } else {
-      !identical(.ret[[x]], object[[x]])
-    }
-  }, logical(1)))
-
+  .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
     return(str2lang(paste0(var, " <- foceiControl()")))
   }
   .retD <- c(vapply(names(.ret)[.w], function(x) {
+    .val <- .deparseShared(x, object[[x]])
+    if (!is.na(.val)) {
+      return(.val)
+    }
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-    } else if (x == "scaleType")  {
-      .scaleTypeIdx <- c("norm" = 1L, "nlmixr2" = 2L, "mult" = 3L, "multAdd" = 4L)
-      paste0("scaleType =", deparse1(names(.scaleTypeIdx[which(object[[x]] == .scaleTypeIdx)])))
-    } else if (x == "normType") {
-      .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
-      paste0("normType =", deparse1(names(.normTypeIdx[which(object[[x]] == .normTypeIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod", "optimHessType", "optimHessCovType",
                         "eventType")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)

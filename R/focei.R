@@ -1684,6 +1684,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .ret <- .tmp
     }
   }
+  assign("sessioninfo", .sessionInfo(), envir=.env)
   nlmixrWithTiming("compress", {
     if (exists("saem", .env)) {
       .saem <- get("saem", envir=.env)

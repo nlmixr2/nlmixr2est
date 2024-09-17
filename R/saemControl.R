@@ -309,3 +309,32 @@ saemControl <- function(seed = 99,
   class(.ret) <- "saemControl"
   .ret
 }
+
+.saemDeparseExtra <- function(default, name, value) {
+  if (name == "mcmc") {
+    .ret <- character(0)
+    if (!identical(default$mcmc$niter, value$niter)) {
+      if (default$mcmc$niter[1] != value$niter[1]) {
+        .ret <- c(.ret, paste0("nBurn=", value$niter[1]))
+      }
+      if (default$mcmc$niter[2] != value$niter[2]) {
+        .ret <- c(.ret, paste0("nEm=", value$niter[2]))
+      }
+    }
+    if (default$mcmc$nmc != value$nmc) {
+      .ret <- c(.ret, paste0("nmc=", value$nmc))
+    }
+    if (!identical(default$mcmc$nu, value$nu)) {
+      .ret <- c(.ret, paste0("nu=", deparse1(value$nu)))
+    }
+    return(paste0(.ret, collapse=","))
+  }
+  NA_character_
+}
+
+#' @export
+rxUiDeparse.saemControl <- function(object, var) {
+  .default <- saemControl()
+  .w <- .deparseDifferent(.default, object, c("genRxControl", "DEBUG"))
+  .deparseFinal(.default, object, .w, var, fun=.saemDeparseExtra)
+}

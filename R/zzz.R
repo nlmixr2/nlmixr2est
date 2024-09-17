@@ -51,12 +51,14 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
         PACKAGE = "nlmixr2est")
 }
 
-.onLoad <- function(libname, pkgname) {
-  backports::import(pkgname)
+.iniPtrs <- function() {
   .iniLotriPtr()
   .iniRxode2Ptr()
   .iniN1qn1ptr()
   .iniLbfgsb3c()
+}
+
+.iniS3 <- function() {
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
     rxode2::.s3register("generics::tidy", "nlmixr2FitCoreSilent")
@@ -70,7 +72,28 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCoreSilent")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitData")
+
+  rxode2::.s3register("rxode2::rxUiDeparse", "foceiControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "saemControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "bobyqaControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "lbfgsb3cControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "n1qn1Control")
+  rxode2::.s3register("rxode2::rxUiDeparse", "newuoaControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlmeControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlminbControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlmControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "nlsControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "optimControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "uobyqaControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   .resetCacheIfNeeded()
+}
+
+.onLoad <- function(libname, pkgname) {
+  backports::import(pkgname)
+  .iniPtrs()
+  .iniS3()
+
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
@@ -78,10 +101,8 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
 .onAttach <- function(libname, pkgname) {
   ## nocov start
   ## Setup rxode2.prefer.tbl
-  .iniLotriPtr()
-  .iniRxode2Ptr()
-  .iniN1qn1ptr()
-  .iniLbfgsb3c()
+  .iniPtrs()
+  .iniS3()
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end

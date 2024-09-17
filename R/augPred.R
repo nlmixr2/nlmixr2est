@@ -127,6 +127,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
 
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
+                          keepInterpolation="na",
                           keep=c("DV", "CMT"), returnType="data.frame")
   # now do pred
   if (is.null(.omega)) {
