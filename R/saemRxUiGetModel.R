@@ -300,6 +300,7 @@ attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
 #' @export
 rxUiGet.saemModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaem(x, ...)
+
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
@@ -381,7 +382,10 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 }
 #attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
 
-.saemModelPredSymengineEnvironment <- NULL
+.saemModelEnv <- NULL
+.saemModelEnv$symengine <- NULL
+.saemModelEnv$predSymengine <- NULL
+
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
@@ -408,8 +412,9 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .levels <- paste(.levels, collapse="\n")
   }
   .s <- rxUiGet.loadPruneSaemPred(x, ...)
+  .saemModelEnv$symengine <- .s
   .replaceLst <- rxUiGet.saemModelPredReplaceLst(x, ...)
-  assignInMyNamespace(".saemModelPredSymengineEnvironment", .s)
+  .saemModelEnv$predSymengine <- .s
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
