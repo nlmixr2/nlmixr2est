@@ -1,8 +1,12 @@
-# nlmixr2est (development version)
+# nlmixr2est 3.0.0
 
 - No binary linking to `rxode2`, `lbfgsb3c` and `n1q1`, which means
   that updating these will not make `nlmixr2est` crash without
   recompiling.
+
+- New `mu`3 referencing will take context from the model to see if the
+  algebraic expression can be completed from defined model variables;
+  These variable would have to be unique.
 
 # nlmixr2est 2.2.2
 
