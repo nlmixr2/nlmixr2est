@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Now when optimizing only a single parameter with `focei`-family, will
+  change to use stats::optimize for the outer problem (#481)
+
 - Fix `focei` covariance step when many `omega` values are fixed #482
 
 # nlmixr2est 3.0.0
