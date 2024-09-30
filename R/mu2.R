@@ -27,7 +27,54 @@ mu2env$expit <- rxode2::expit
     expr
   }
 }
+
 .uiGetMu3 <- function(data, .datEnv, .tmp) {
+  .tmp <- eval(str2lang(paste0("rxode2::rxToSE(", .tmp, ", NULL)")))
+  .tmp <- str2lang(paste0("with(.datEnv$symengine, ", .tmp, ")"))
+  .tmp <- eval(.tmp)
+  .tmp <- as.character(.tmp)
+  .tmp <- str2lang(paste0("rxode2::rxFromSE(", .tmp, ")"))
+  .tmp <- eval(.tmp)
+  .tmp <- str2lang(paste0("with(.datEnv, with(data,",  .tmp, "))"))
+  eval(.tmp)
+}
+
+.uiGetMu4f <- function(x, strAssign) {
+  if (is.call(x)) {
+    if (identical(x[[1]], quote(`==`)) ||
+          identical(x[[1]], quote(`!=`))) {
+      .d1 <- deparse1(x[[2]])
+      .w <- which(.d1 == names(strAssign))
+      if (length(.w) == 1L)  {
+        .d2 <- x[[3]]
+        .w <- which(.d2 == strAssign[[.d1]])
+        if (length(.w) == 1) {
+          x[[3]] <- as.numeric(.w)
+          return(x)
+        }
+      } else {
+        .d2 <- deparse1(x[[3]])
+        .w <- which(.d2 == names(strAssign))
+        if (length(.w) == 1L) {
+          .d1 <- x[[2]]
+          .w <- which(.d1 == strAssign[[.d2]])
+          if (length(.w) == 1L) {
+            x[[2]] <- as.numeric(.w)
+            return(x)
+          }
+        }
+      }
+    }
+    return(as.call(c(x[[1]],lapply(x[-1], .uiGetMu4f, strAssign=strAssign))))
+  }
+  return(x)
+}
+
+.uiGetMu4 <- function(data, .datEnv, .tmp) {
+  .sa <- rxModelVars(.datEnv$ui)$strAssign
+  .lang <- str2lang(.tmp)
+  .lang <-.uiGetMu4f(.lang, .sa)
+  .tmp <- deparse1(.lang)
   .tmp <- eval(str2lang(paste0("rxode2::rxToSE(", .tmp, ", NULL)")))
   .tmp <- str2lang(paste0("with(.datEnv$symengine, ", .tmp, ")"))
   .tmp <- eval(.tmp)
@@ -56,13 +103,16 @@ mu2env$expit <- rxode2::expit
   if (use.utf()) {
     .mu2 <- "\u03BC\u2082"
     .mu3 <- "\u03BC\u2083"
+    .mu4 <- "\u03BC\u2084"
   } else {
     .mu2 <- "mu2"
     .mu3 <- "mu3"
+    .mu4 <- "mu4"
   }
-
   lapply(seq_along(ui$mu2RefCovariateReplaceDataFrame$covariate),
          function(i) {
+           .bad <- paste0("not ",.mu2,", ", .mu3, " or ", .mu4, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
+
            .datEnv$i <- i
            .tmp <- try(with(.datEnv,
                         with(data,
@@ -70,7 +120,8 @@ mu2env$expit <- rxode2::expit
                        silent=TRUE)
            if (inherits(.tmp, "try-error")) {
              if (is.null(.datEnv$symengine)) {
-               .minfo(paste0("loading model to look for ", .mu3, "references"))
+               .minfo(paste0("loading model to look for ", .mu3, "/", .mu4,
+                             " references"))
                .datEnv$symengine <- ui$loadPruneSaem
                .minfo("done")
              }
@@ -81,6 +132,19 @@ mu2env$expit <- rxode2::expit
                .minfo(.txt)
                # Will put into the fit information
                warning(.txt, call.=FALSE)
+             } else {
+               .tmp <- try(.uiGetMu4(data, .datEnv,
+                                     ui$mu2RefCovariateReplaceDataFrame$covariate[i]),
+                           silent=TRUE)
+               if (!inherits(.tmp, "try-error")) {
+                 .txt <- paste0(.mu4, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
+                 .minfo(.txt)
+                 warning(.txt, call.=FALSE)
+               } else {
+                 .txt <- paste0("not ",.mu2,", ", .mu3, " or ", .mu4," item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
+                 .minfo(.txt)
+                 warning(.txt, call.=FALSE)
+               }
              }
            } else {
              .txt <- paste0(.mu2, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
@@ -94,7 +158,7 @@ mu2env$expit <- rxode2::expit
              .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
              .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
            } else {
-             .txt <- paste0("not ",.mu2," or ", .mu3, " item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
+             .txt <- paste0("not ",.mu2,", ", .mu3, " or ", .mu4," item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
              .minfo(.txt)
              warning(.txt, call.=FALSE)
            }
