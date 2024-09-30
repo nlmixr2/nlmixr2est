@@ -61,7 +61,7 @@ nmTest({
         eta.ka ~ fix(0.6)
         eta.cl ~ fix(0.3)
         eta.v ~ fix(0.1)
-        add.sd <- fix(0.7)
+        add.sd <- 0.7
       })
       model({
         ka <- exp(tka + eta.ka)
