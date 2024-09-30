@@ -1,5 +1,7 @@
 # nlmixr2est (development version)
 
+- Fix `focei` covariance step when many `omega` values are fixed #482
+
 # nlmixr2est 3.0.0
 
 - No binary linking to `rxode2`, `lbfgsb3c` and `n1q1`, which means
