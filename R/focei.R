@@ -64,6 +64,32 @@ is.latex <- function() {
   .ret
 }
 
+.optimize <- function(par, fn, gr, lower=-Inf, upper=Inf, control=list(), ...) {
+  # focei assumes par is the initial estimate (ignored in Brent's method)
+  # fn  is the function to calculate the objective function
+  # gr  is the function to calculate the gradient (ignored)
+  # lower is the lower bound, in this case it must be length 1
+  # upper is the upper bound, in this case it must be length 1
+  .lower <- rxode2::expit(lower)
+  if (is.na(.lower)) .lower <- 0.0
+  .upper <- rxode2::expit(upper)
+  if (is.na(.upper)) .upper <- 1.0
+  f <- function(x) {
+    fn(rxode2::logit(x))
+  }
+  .ret <- stats::optimize(f, c(.lower, .upper), tol=control$abstol)
+  f <- fn
+  .range <- rxode2::logit(.ret$minimum) + c(-4,4)*control$abstol
+  .range[1] <- max(lower, .range[1])
+  .range[2] <- min(upper, .range[2])
+  .ret <- stats::optimize(f, .range, tol=control$abstol)
+  .ret$x <- .ret$minimum
+  .ret$message <- "stats::optimize for 1 dimensional optimization"
+  .ret$convergence <- 0L
+  .ret$value <- .ret$objective
+  .ret
+}
+
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   .ctl <- .ctl[names(.ctl) %in% c(
@@ -1276,6 +1302,8 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
       assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
     }
   }
+  assign("nEstOmega", length(which(!is.na(ui$iniDf$neta1) & !ui$iniDf$fix)),
+         env)
   if (length(env$skipCov) != .maxTheta) {
     stop("'skipCov' improperly specified", call.=FALSE)
   }
@@ -1573,6 +1601,19 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- foceiControl()
   }
   if (!inherits(.control, "foceiControl")) {
+    .control <- do.call(nlmixr2est::foceiControl, .control)
+  }
+  # Change control when there is only 1 item being optimized
+  .iniDf <- .ui$iniDf
+  .est <- .ui$iniDf[!.iniDf$fix,,drop=FALSE]
+  if (length(.est$name) == 0L) {
+    stop("No parameters to estimate", call.=FALSE)
+  } else if (length(.est$name) == 1L) {
+    .minfo("Only one parameter to estimate, using stats::optimize")
+    .control$outerOpt <- -1L
+    .control$outerOptFun <- .optimize
+    .control$normType <- "constant"
+    .control$outerOptTxt <- "stats::optimize"
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   .control$needOptimHess <- any(.ui$predDfFocei$distribution != "norm")
