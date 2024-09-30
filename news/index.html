@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,6 +31,11 @@
       <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<ul><li><p>Now when optimizing only a single parameter with <code>focei</code>-family, will change to use stats::optimize for the outer problem (<a href="https://github.com/nlmixr2/nlmixr2est/issues/481" class="external-link">#481</a>)</p></li>
+<li><p>Fix <code>focei</code> covariance step when many <code>omega</code> values are fixed <a href="https://github.com/nlmixr2/nlmixr2est/issues/482" class="external-link">#482</a></p></li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="3.0.0" id="nlmixr2est-300">nlmixr2est 3.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-300"></a></h2><p class="text-muted">CRAN release: 2024-09-18</p>
 <ul><li><p>No binary linking to <code>rxode2</code>, <code>lbfgsb3c</code> and <code>n1q1</code>, which means that updating these will not make <code>nlmixr2est</code> crash without recompiling.</p></li>
