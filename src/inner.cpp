@@ -307,6 +307,7 @@ struct focei_options {
   bool zeroGradRunReset=false;
   bool zeroGradBobyqa=false;
   bool zeroGradBobyqaRun=false;
+  int nEstOmega=0;
 };
 
 focei_options op_focei;
@@ -5260,8 +5261,8 @@ NumericMatrix foceiCalcCov(Environment e){
         }
       }
       if (op_focei.boundTol > 0){
-        // Subtract omegan so that Omega boundaries are not counted.
-        for (k = op_focei.npars-op_focei.omegan; k--;){
+        // Subtract nEstOmega so that Omega boundaries are not counted.
+        for (k = op_focei.npars-op_focei.nEstOmega; k--;){
           if (op_focei.nbd[k] != 0){
             // bounds
             j=op_focei.fixedTrans[k];
@@ -6391,6 +6392,11 @@ Environment foceiFitCpp_(Environment e){
   List model = e["model"];
   bool doPredOnly = false;
   op_focei.canDoFD = false;
+  if (e.exists("nEstOmega")) {
+    op_focei.nEstOmega = e["nEstOmega"];
+  } else {
+    op_focei.nEstOmega = 0;
+  }
   if (model.containsElementNamed("inner")) {
     RObject inner;
     if (model.containsElementNamed("innerLlik")) {
