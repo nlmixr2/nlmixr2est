@@ -1616,7 +1616,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       .control$normType <- "constant"
       .control$interaction <- 0L
       .control$covMethod <- 0L
-      .control <- do.call(nlmixr2est::foceiControl, .control)
       warning("no population parameters to estimate; changing to a EBE estimation",
               call.=FALSE)
     }
@@ -1626,7 +1625,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control$outerOptFun <- .optimize
     .control$normType <- "constant"
     .control$outerOptTxt <- "stats::optimize"
-    .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   .optimHess <- any(.ui$predDfFocei$distribution != "norm")
   if (length(.optimHess) != 1) {
