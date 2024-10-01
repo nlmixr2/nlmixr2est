@@ -1605,9 +1605,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   # Change control when there is only 1 item being optimized
   .iniDf <- .ui$iniDf
-  .est <- .ui$iniDf[!.iniDf$fix,,drop=FALSE]
+  .est <- .iniDf[!.iniDf$fix,,drop=FALSE]
   if (length(.est$name) == 0L) {
-    .etas <- .est[which(!is.na(.est$neta1)),,drop=FALSE]
+    .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
     if (length(.etas$name) == 0L) {
       stop("no parameters to estimate", call.=FALSE)
     } else {
@@ -1628,7 +1628,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control$outerOptTxt <- "stats::optimize"
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
-  .control$needOptimHess <- any(.ui$predDfFocei$distribution != "norm")
+  .optimHess <- any(.ui$predDfFocei$distribution != "norm")
+  if (length(.optimHess) != 1) {
+    .optimHess <- FALSE
+  }
+  .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
   }
