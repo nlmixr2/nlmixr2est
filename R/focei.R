@@ -1607,13 +1607,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   .iniDf <- .ui$iniDf
   .est <- .ui$iniDf[!.iniDf$fix,,drop=FALSE]
   if (length(.est$name) == 0L) {
-    .etas <- .ui$iniDf[which(!is.na(.ui$iniDf$neta1)) ,,drop=FALSE]
+    .etas <- .est[which(!is.na(.est$neta1)),,drop=FALSE]
     if (length(.etas$name) == 0L) {
       stop("no parameters to estimate", call.=FALSE)
     } else {
       .minfo("no population parameters to estimate; changing to a EBE estimation")
       .control$maxOuterIterations <- 0L
       .control$normType <- "constant"
+      .control$interaction <- 0L
       .control$covMethod <- 0L
       .control <- do.call(nlmixr2est::foceiControl, .control)
       warning("no population parameters to estimate; changing to a EBE estimation",
