@@ -3,6 +3,13 @@
 - Now when optimizing only a single parameter with `focei`-family, will
   change to use stats::optimize for the outer problem (#481)
 
+## New features
+
+- Added `mu`4 referencing that will change string expressions to
+  `rxode2` numeric values.  This allows derived strings to also be
+  treated as `mu` expressions (#484)
+
+## Bug Fixes
 - Fix `focei` covariance step when many `omega` values are fixed #482
 
 # nlmixr2est 3.0.0
