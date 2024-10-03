@@ -95,7 +95,6 @@ nlmixr2Gill83 <- function(what, args, envir = parent.frame(),
   ))
 }
 
-.nlmixr2GradInfo <- new.env(parent = emptyenv())
 ##' Create a gradient function based on gill numerical differences
 ##'
 ##' @param thetaNames Names for the theta parameters
@@ -138,23 +137,23 @@ nlmixr2GradFun <- function(what, envir = parent.frame(), which, thetaNames,
                           printNcol = floor((getOption("width") - 23) / 12),
                           print = 1) {
   .md5 <- digest::digest(list(what, gillRtol, gillK, gillStep, gillFtol))
-  .nlmixr2GradInfo[["printNcol"]] <- printNcol
-  .nlmixr2GradInfo[["useColor"]] <- useColor
-  .nlmixr2GradInfo[["isRstudio"]] <- (Sys.getenv("RSTUDIO") == "1")
-  .nlmixr2GradInfo[["print"]] <- print
+  nlmixr2global$nlmixr2GradInfo[["printNcol"]] <- printNcol
+  nlmixr2global$nlmixr2GradInfo[["useColor"]] <- useColor
+  nlmixr2global$nlmixr2GradInfo[["isRstudio"]] <- (Sys.getenv("RSTUDIO") == "1")
+  nlmixr2global$nlmixr2GradInfo[["print"]] <- print
   if (!missing(which)) {
-    .nlmixr2GradInfo[[paste0(.md5, ".w")]] <- which
+    nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".w")]] <- which
   }
   if (!missing(thetaNames)) {
-    .nlmixr2GradInfo[["thetaNames"]] <- thetaNames
+    nlmixr2global$nlmixr2GradInfo[["thetaNames"]] <- thetaNames
   }
-  .nlmixr2GradInfo[[paste0(.md5, ".n")]] <- 0L
-  .nlmixr2GradInfo[[paste0(.md5, ".f")]] <- what
-  .nlmixr2GradInfo[[paste0(.md5, ".e")]] <- envir
-  .nlmixr2GradInfo[[paste0(.md5, ".rtol")]] <- gillRtol
-  .nlmixr2GradInfo[[paste0(.md5, ".k")]] <- gillK
-  .nlmixr2GradInfo[[paste0(.md5, ".s")]] <- gillStep
-  .nlmixr2GradInfo[[paste0(.md5, ".ftol")]] <- gillFtol
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".n")]] <- 0L
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".f")]] <- what
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".e")]] <- envir
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".rtol")]] <- gillRtol
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".k")]] <- gillK
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".s")]] <- gillStep
+  nlmixr2global$nlmixr2GradInfo[[paste0(.md5, ".ftol")]] <- gillFtol
   .eval <- eval(parse(text = paste0("function(theta){
         nlmixr2Eval_(theta, \"", .md5, "\");
     }")))
