@@ -1,5 +1,4 @@
 .extraTimingTable <- NULL
-.timingStack <- NULL
 
 #' Push the nlmixr timing stack for a nested nlmixr call
 #'
@@ -10,11 +9,11 @@
   nlmixr2global$timingStackNlmixr <-
     c(nlmixr2global$timingStackNlmixr,
       list(list(nlmixr2global$nlmixr2Time,
-                nlmixr2global$currentTimingEnvironment, .extraTimingTable, .timingStack)))
+                nlmixr2global$currentTimingEnvironment, .extraTimingTable, nlmixr2global$timingStack)))
   nlmixr2global$nlmixr2Time <- NULL
   nlmixr2global$currentTimingEnvironment <- NULL
   assignInMyNamespace(".extraTimingTable", NULL)
-  assignInMyNamespace(".timingStack", NULL)
+  nlmixr2global$timingStack <- NULL
 }
 #' Pop the full nlmixr timing stack (if needed)
 #'
@@ -27,7 +26,7 @@
     nlmixr2global$nlmixr2Time <- NULL
     nlmixr2global$currentTimingEnvironment <- NULL
     assignInMyNamespace(".extraTimingTable", NULL)
-    assignInMyNamespace(".timingStack", NULL)
+    nlmixr2global$timingStack <- NULL
   } else {
     .cur <- nlmixr2global$timingStackNlmixr[[.l]]
     if (.l == 1) {
@@ -38,7 +37,7 @@
     nlmixr2global$nlmixr2Time <- .cur[[1]]
     nlmixr2global$currentTimingEnvironment <- .cur[[2]]
     assignInMyNamespace(".extraTimingTable", .cur[[3]])
-    assignInMyNamespace(".timingStack", .cur[[4]])
+    nlmixr2global$timingStack <- .cur[[4]]
   }
 }
 
@@ -69,17 +68,17 @@
 
 
 .nlmixrPushTimingStack <- function(name) {
-  assignInMyNamespace(".timingStack", c(.timingStack, setNames(0, name)))
+  nlmixr2global$timingStack <- c(nlmixr2global$timingStack, setNames(0, name))
 }
 
 .nlmixrPopTimingStack <- function(preTiming) {
-  .lastTime <- setNames(.timingStack[length(.timingStack)], NULL)
-  if (length(.timingStack) == 1L) {
-    assignInMyNamespace(".timingStack", NULL)
+  .lastTime <- setNames(nlmixr2global$timingStack[length(nlmixr2global$timingStack)], NULL)
+  if (length(nlmixr2global$timingStack) == 1L) {
+    nlmixr2global$timingStack <- NULL
     .time <- setNames((proc.time() - preTiming)["elapsed"], NULL)
   } else {
     .time <- setNames((proc.time() - preTiming)["elapsed"], NULL)
-    assignInMyNamespace(".timingStack", .timingStack[-length(.timingStack)] + .time)
+    nlmixr2global$timingStack <- nlmixr2global$timingStack[-length(nlmixr2global$timingStack)] + .time
   }
   .time - .lastTime
 }
