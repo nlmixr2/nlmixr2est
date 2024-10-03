@@ -312,8 +312,6 @@ getValidNlmixrCtl.nls <- function(control) {
 }
 
 
-.nlsEnv <- new.env(parent=emptyenv())
-
 #' A surrogate function for nls to call for ode solving
 #'
 #' @param DV dependent variable
@@ -326,10 +324,10 @@ getValidNlmixrCtl.nls <- function(control) {
 #' @export
 .nlmixrNlsFun <- function(DV, ...) {
   do.call(rxode2::rxSolve,
-          c(list(object=.nlsEnv$model,
-                 params=.nlsEnv$parFun(...),
-                 events=.nlsEnv$data),
-            .nlsEnv$rxControl))$rx_pred_
+          c(list(object=nlmixr2global$nlsEnv$model,
+                 params=nlmixr2global$nlsEnv$parFun(...),
+                 events=nlmixr2global$nlsEnv$data),
+            nlmixr2global$nlsEnv$rxControl))$rx_pred_
 }
 #' @rdname dot-nlmixrNlsFun
 #' @export
@@ -359,7 +357,7 @@ getValidNlmixrCtl.nls <- function(control) {
 #' @author Matthew L. Fidler
 #' @keywords internal
 .nlmixrNlsData <- function() {
-  .nlsEnv$dataNls
+  nlmixr2global$nlsEnv$dataNls
 }
 
 #'@export
@@ -868,8 +866,8 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
       stop("'nls' does not work with censored data", call. =FALSE)
     }
   }
-  .nlsEnv$dataNls <- .dsAll[.dsAll$EVID == 0, ] # only observations are passed to nls
-  .nlsEnv$data <- rxode2::etTrans(.dsAll, .nlsEnv$model)
+  nlmixr2global$nlsEnv$dataNls <- .dsAll[.dsAll$EVID == 0, ] # only observations are passed to nls
+  nlmixr2global$nlsEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlsEnv$model)
 }
 
 .nlsFitModel <- function(ui, dataSav) {
@@ -922,7 +920,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
     .ret$sd <- sd(.ret$fvec)
     .ret$logLik <- sum(stats::dnorm(.ret$fvec, log=TRUE))
   } else {
-    .nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
+    nlmixr2global$nlsEnv$dataNls <- dataSav[dataSav$EVID == 0, ]
     .nls.control <- stats::nls.control(
       maxiter = .ctl$maxiter, tol = .ctl$tol, minFactor = .ctl$minFactor,
       printEval = .ctl$printEval, warnOnly = .ctl$warnOnly,
