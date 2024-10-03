@@ -380,8 +380,8 @@ getValidNlmixrCtl.nlm <- function(control) {
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
   .ui <- rxode2::rxUiDecompress(x[[1]])
-  assignInMyNamespace(".rxPredLlik", TRUE)
-  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  nlmixr2global$rxPredLlik <- TRUE
+  on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .predDf <- .ui$predDf
   .save <- .predDf
   .predDf[.predDf$distribution == "norm", "distribution"] <- "dnorm"

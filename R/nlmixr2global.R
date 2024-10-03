@@ -3,6 +3,5 @@ nlmixr2global <- new.env(parent = emptyenv())
 
 .nlmixr2globalReset <- function() {
   nlmixr2global$finalUiCompressed <- TRUE
-  assignInMyNamespace(".rxPredLlik", TRUE)
-
+  nlmixr2global$rxPredLlik <- TRUE
 }

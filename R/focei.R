@@ -283,7 +283,6 @@ rxGetDistributionFoceiLines <- function(line) {
   UseMethod("rxGetDistributionFoceiLines")
 }
 
-.rxPredLlik <- NULL
 #' Get pred only options
 #'
 #' @param env  rxode2 environment option
@@ -295,10 +294,7 @@ rxGetDistributionFoceiLines <- function(line) {
 #'
 #' @noRd
 .getRxPredLlikOption <-function() {
-  if (inherits(.rxPredLlik, "logical")) {
-    return(.rxPredLlik)
-  }
-  FALSE
+  nlmixr2global$rxPredLlik
 }
 
 #' @export
@@ -376,8 +372,8 @@ rxUiGet.foceiModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModel0ll <- function(x, ...) {
-  assignInMyNamespace(".rxPredLlik", TRUE)
-  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  nlmixr2global$rxPredLlik <- TRUE
+  on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               prefixLines=.uiGetThetaEta(.f),
@@ -834,13 +830,13 @@ rxUiGet.predDfFocei <- function(x, ...) {
 rxUiGet.focei <- function(x, ...) {
   .ui <- x[[1]]
   # For t/cauchy/dnorm, predOnly model
-  assignInMyNamespace(".rxPredLlik", FALSE)
-  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  nlmixr2global$rxPredLlik <- TRUE
+  on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
-    assignInMyNamespace(".rxPredLlik", TRUE)
+    nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -860,13 +856,13 @@ rxUiGet.focei <- function(x, ...) {
 #' @export
 rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
-  assignInMyNamespace(".rxPredLlik", FALSE)
-  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  nlmixr2global$rxPredLlik <- TRUE
+  on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
-    assignInMyNamespace(".rxPredLlik", TRUE)
+    nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -887,13 +883,13 @@ rxUiGet.foce <- function(x, ...) {
 #' @export
 rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
-  assignInMyNamespace(".rxPredLlik", FALSE)
-  on.exit(assignInMyNamespace(".rxPredLlik", NULL))
+  nlmixr2global$rxPredLlik <- TRUE
+  on.exit(  nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
-    assignInMyNamespace(".rxPredLlik", TRUE)
+    nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
