@@ -41,8 +41,6 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
-.nlmixr2objectName <- NULL
-
 #' Allows external methods (like those in nlmixr2) to assign object name
 #'
 #' @param x String or null for assigning a nlmixr object name
@@ -51,7 +49,7 @@ nlmixr2Version <- function() {
 #' @export
 #' @keywords internal
 .nlmixr2objectNameAssign <- function(x) {
-  assignInMyNamespace(".nlmixr2objectName",x)
+  nlmixr2global$nlmixr2objectName <- x
   invisible()
 }
 
@@ -130,7 +128,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
-    assignInMyNamespace(".nlmixr2objectName", .objectName)
+    nlmixr2global$nlmixr2objectName <- .objectName
   }
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
@@ -200,9 +198,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- rxode2::rxode2(object)
   .uif <- rxode2::rxUiDecompress(.uif)
-  if (!is.null(.nlmixr2objectName)) {
-    if (!identical(.nlmixr2objectName, "object")) {
-      assign("modelName", .nlmixr2objectName, envir=.uif)
+  if (!is.null(nlmixr2global$nlmixr2objectName)) {
+    if (!identical(nlmixr2global$nlmixr2objectName, "object")) {
+      assign("modelName", nlmixr2global$nlmixr2objectName, envir=.uif)
     }
   }
   .missingData <- FALSE
