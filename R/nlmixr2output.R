@@ -136,7 +136,7 @@
   }
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
-  if (.muRefCurEval$curEval[.w] == "exp") {
+  if (length(.w) == 1L && .muRefCurEval$curEval[.w] == "exp") {
     assign(".sdOnly", FALSE, envir=.env)
     .valNumber <- sqrt(exp(.v) - 1) * 100
     .valCharPrep <- .valNumber
@@ -145,7 +145,7 @@
     .valNumber <- .v
     .valCharPrep <- sqrt(.v)
   }
-  if (.omegaFix[.eta]) {
+  if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
     .charPrefix <- "fix("
     .charSuffix <- ")"
   } else {
