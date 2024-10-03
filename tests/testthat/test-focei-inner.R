@@ -88,6 +88,7 @@ nmTest({
   })
 
   test_that("boundary value is not triggered by bounds on both sides of zero (#318)", {
+
     one.compartment <- function() {
       ini({
         tka <- c(-6, -4, 2)
@@ -108,9 +109,14 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
+
     fit <- .nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
     # SE being present indicates that the covariance matrix was estimated
     expect_true("SE" %in% names(fit$parFixedDf))
+
+    # Also make sure that it correctly identifies mu-ref
+    expect_equal(c("tka", "tcl", "tv", "add.sd"), row.names(fit$parFixedDf))
+
   })
 
 })
