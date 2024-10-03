@@ -1612,10 +1612,10 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       stop("no parameters to estimate", call.=FALSE)
     } else {
       .minfo("no population parameters to estimate; changing to a EBE estimation")
-      .control$maxOuterIterations <- 0L
-      .control$normType <- "constant"
-      .control$interaction <- 0L
-      .control$covMethod <- 0L
+      .control$maxOuterIterations <- 0L # no outer optimization
+      .control$normType <- 6L #"constant"
+      .control$interaction <- 0L # focei
+      .control$covMethod <- 0L # ""
       warning("no population parameters to estimate; changing to a EBE estimation",
               call.=FALSE)
     }
@@ -1623,7 +1623,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .minfo("only one parameter to estimate, using stats::optimize")
     .control$outerOpt <- -1L
     .control$outerOptFun <- .optimize
-    .control$normType <- "constant"
+    .control$normType <- 6L #"constant"
     .control$outerOptTxt <- "stats::optimize"
   }
   .optimHess <- any(.ui$predDfFocei$distribution != "norm")
