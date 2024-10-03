@@ -124,7 +124,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
   .nlmixr2globalReset()
-  assignInMyNamespace(".nlmixr2Time", proc.time())
+  nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
   .nlmixrEvalEnv$envir <- envir
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
@@ -331,18 +331,17 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
   nlmixr2Est0(.env)
 }
 
-.nlmixr2SimInfo <- NULL
 #' @rdname nlmixr2
 #' @export
 nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                                    save = NULL, envir = parent.frame()) {
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
-  assignInMyNamespace(".nlmixr2SimInfo", .simInfo(object))
+  nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")

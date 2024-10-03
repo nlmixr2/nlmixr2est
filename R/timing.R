@@ -1,9 +1,5 @@
-.nlmixr2Time <- NULL
-.currentTimingEnvironment <- NULL
 .extraTimingTable <- NULL
 .timingStack <- NULL
-
-.timingStackNlmixr <- NULL
 
 #' Push the nlmixr timing stack for a nested nlmixr call
 #'
@@ -11,11 +7,12 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .pushNlmixr2timing <- function() {
-  assignInMyNamespace(".timingStackNlmixr",
-                      c(.timingStackNlmixr,
-                        list(list(.nlmixr2Time, .currentTimingEnvironment, .extraTimingTable, .timingStack))))
-  assignInMyNamespace(".nlmixr2Time", NULL)
-  assignInMyNamespace(".currentTimingEnvironment", NULL)
+  nlmixr2global$timingStackNlmixr <-
+    c(nlmixr2global$timingStackNlmixr,
+      list(list(nlmixr2global$nlmixr2Time,
+                nlmixr2global$currentTimingEnvironment, .extraTimingTable, .timingStack)))
+  nlmixr2global$nlmixr2Time <- NULL
+  nlmixr2global$currentTimingEnvironment <- NULL
   assignInMyNamespace(".extraTimingTable", NULL)
   assignInMyNamespace(".timingStack", NULL)
 }
@@ -25,22 +22,21 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .popNlmixr2Timing <- function() {
-  .l <- length(.timingStackNlmixr)
+  .l <- length(nlmixr2global$timingStackNlmixr)
   if (.l == 0) {
-    assignInMyNamespace(".nlmixr2Time", NULL)
-    assignInMyNamespace(".currentTimingEnvironment", NULL)
+    nlmixr2global$nlmixr2Time <- NULL
+    nlmixr2global$currentTimingEnvironment <- NULL
     assignInMyNamespace(".extraTimingTable", NULL)
     assignInMyNamespace(".timingStack", NULL)
   } else {
-    .cur <- .timingStackNlmixr[[.l]]
+    .cur <- nlmixr2global$timingStackNlmixr[[.l]]
     if (.l == 1) {
-      assignInMyNamespace(".timingStackNlmixr", NULL)
+      nlmixr2global$timingStackNlmixr <- NULL
     } else {
-      assignInMyNamespace(".timingStackNlmixr",
-                          .timingStackNlmixr[[-.l]])
+      nlmixr2global$timingStackNlmixr <- nlmixr2global$timingStackNlmixr[[-.l]]
     }
-    assignInMyNamespace(".nlmixr2Time", .cur[[1]])
-    assignInMyNamespace(".currentTimingEnvironment", .cur[[2]])
+    nlmixr2global$nlmixr2Time <- .cur[[1]]
+    nlmixr2global$currentTimingEnvironment <- .cur[[2]]
     assignInMyNamespace(".extraTimingTable", .cur[[3]])
     assignInMyNamespace(".timingStack", .cur[[4]])
   }
@@ -50,9 +46,9 @@
   on.exit({
     .popNlmixr2Timing()
   })
-  if (is.environment(.currentTimingEnvironment) &
-        inherits(.nlmixr2Time, "proc_time")) {
-    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=.currentTimingEnvironment))
+  if (is.environment(nlmixr2global$currentTimingEnvironment) &
+        inherits(nlmixr2global$nlmixr2Time, "proc_time")) {
+    .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=nlmixr2global$currentTimingEnvironment))
     # Keep non-zero times
     .keep <- vapply(seq_along(names(.time)),
                     function(i){
@@ -63,11 +59,11 @@
                        function(i) {
                          .time[[i]]
                        }, numeric(1), USE.NAMES=TRUE))
-    .other <- (proc.time() - .nlmixr2Time)["elapsed"] - .sum
+    .other <- (proc.time() - nlmixr2global$nlmixr2Time)["elapsed"] - .sum
     if (.other > 5e-5) {
       .time <- cbind(.time, data.frame(other=.other, row.names="elapsed"))
     }
-    assign("time", .time, envir=.currentTimingEnvironment)
+    assign("time", .time, envir=nlmixr2global$currentTimingEnvironment)
   }
 }
 
@@ -153,8 +149,8 @@
   if (inherits(envir, "nlmixr2FitData")) {
     envir <- envir$env
   }
-  if (is.environment(.currentTimingEnvironment) & !is.environment(envir)) {
-    envir <- .currentTimingEnvironment
+  if (is.environment(nlmixr2global$currentTimingEnvironment) & !is.environment(envir)) {
+    envir <- nlmixr2global$currentTimingEnvironment
   }
   if (is.environment(envir)) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=envir))

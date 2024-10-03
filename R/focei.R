@@ -1725,7 +1725,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   assign("skipCov", .env$skipCov, envir=.ret)
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
-  assignInMyNamespace(".currentTimingEnvironment", .ret) # add environment for updating timing info
+  nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                          table=.ret$table), silent=TRUE)

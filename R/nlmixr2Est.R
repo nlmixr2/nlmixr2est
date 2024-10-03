@@ -30,7 +30,7 @@
 nlmixr2Est <- function(env, ...) {
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
