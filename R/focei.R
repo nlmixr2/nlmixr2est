@@ -829,7 +829,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
 rxUiGet.focei <- function(x, ...) {
   .ui <- x[[1]]
   # For t/cauchy/dnorm, predOnly model
-  nlmixr2global$rxPredLlik <- TRUE
+  nlmixr2global$rxPredLlik <- FALSE
   on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
@@ -855,7 +855,7 @@ rxUiGet.focei <- function(x, ...) {
 #' @export
 rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
-  nlmixr2global$rxPredLlik <- TRUE
+  nlmixr2global$rxPredLlik <- FALSE
   on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
@@ -882,7 +882,7 @@ rxUiGet.foce <- function(x, ...) {
 #' @export
 rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
-  nlmixr2global$rxPredLlik <- TRUE
+  nlmixr2global$rxPredLlik <- FALSE
   on.exit(  nlmixr2global$rxPredLlik <- FALSE)
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
