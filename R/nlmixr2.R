@@ -123,7 +123,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
-  nlmixr2globalReset()
+  .nlmixr2globalReset()
   assignInMyNamespace(".nlmixr2Time", proc.time())
   nlmixr2global$finalUiCompressed <- FALSE
   .nlmixrEvalEnv$envir <- envir
