@@ -1595,7 +1595,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @author Matthew L. Fidler
 #' @noRd
 .foceiFamilyControl <- function(env, ...) {
-  .ui <- env$ui
+  .ui <- get("ui", envir=env)
   .control <- env$control
   if (is.null(.control)) {
     .control <- foceiControl()
@@ -1604,7 +1604,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
   # Change control when there is only 1 item being optimized
-  .iniDf <- .ui$iniDf
+  .iniDf <- get("iniDf", envir=.ui)
   .est <- .iniDf[!.iniDf$fix,,drop=FALSE]
   if (length(.est$name) == 0L) {
     .etas <- .iniDf[!is.na(.iniDf$neta1),, drop = FALSE]
