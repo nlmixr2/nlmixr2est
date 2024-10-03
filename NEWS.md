@@ -3,6 +3,13 @@
 - Now when optimizing only a single parameter with `focei`-family, will
   change to use stats::optimize for the outer problem (#481)
 
+- When estimating with all fixed population parameters, do a posthoc
+  estimation.
+
+- Internally removed `assignInMyNamespace()` replacing with
+  `nlmixr2global`, which fixes some edge case bugs where the nlmixr2
+  environment was not reset properly.
+
 ## New features
 
 - Added `mu`4 referencing that will change string expressions to
