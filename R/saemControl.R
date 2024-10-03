@@ -250,7 +250,7 @@ saemControl <- function(seed = 99,
     sigdigTable <- 3
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }

@@ -58,7 +58,7 @@
   if (length(.w) == 1L) {
     .b <- .ui$iniDf$backTransform[.w]
     if (!is.na(.b)) {
-      .bfun <- try(get(.b, envir=.nlmixrEvalEnv$envir, mode="function"), silent=TRUE)
+      .bfun <- try(get(.b, envir=nlmixr2global$nlmixrEvalEnv$envir, mode="function"), silent=TRUE)
       if (inherits(.bfun, "try-error")) {
         warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
                 call.=FALSE)

@@ -53,8 +53,6 @@ nlmixr2Version <- function() {
   invisible()
 }
 
-.nlmixrEvalEnv <- new.env(parent=emptyenv())
-
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
 #' nlmixr2 is an R package for fitting population pharmacokinetic (PK)
@@ -124,7 +122,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   .nlmixr2globalReset()
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
-  .nlmixrEvalEnv$envir <- envir
+  nlmixr2global$nlmixrEvalEnv$envir <- envir
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
@@ -135,7 +133,7 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree() # rxSolveFree unlocks evaluation environment
   # Add UDF environment for querying nlmixr2/rxode2 r-based user defined functions
-  rxode2::.udfEnvSet(.nlmixrEvalEnv$envir)
+  rxode2::.udfEnvSet(nlmixr2global$nlmixrEvalEnv$envir)
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html

@@ -994,7 +994,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
     .len0 <- length(env$model$inner$state)
     .len2 <- .len0 - .len
     if (.len2 > 0) {
-      .env <- .nlmixrEvalEnv$envir
+      .env <- nlmixr2global$nlmixrEvalEnv$envir
       if (!is.environment(.env)) {
         .env <- parent.frame(1)
       }
@@ -1022,7 +1022,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
       }
     }, integer(1), USE.NAMES=FALSE))
     if (.maxLl > 0) {
-      .env <- .nlmixrEvalEnv$envir
+      .env <- nlmixr2global$nlmixrEvalEnv$envir
       if (!is.environment(.env)) {
         .env <- parent.frame(1)
       }
@@ -1360,7 +1360,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @export
 .foceiPreProcessData <- function(data, env, ui, rxControl=NULL) {
   if (is.null(rxControl)) {
-    .env <- .nlmixrEvalEnv$envir
+    .env <- nlmixr2global$nlmixrEvalEnv$envir
     if (!is.environment(.env)) {
       .env <- parent.frame(1)
     }

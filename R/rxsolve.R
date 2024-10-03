@@ -228,14 +228,14 @@ predict.nlmixr2FitCore <- function(object, ...) {
     .nlmixr2clearPipe()
     nlmixr2global$nlmixr2SimInfo <- NULL
   })
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
   .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
   .both$ctl$omega <- NA
   .both$ctl$sigma <- NA
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
@@ -257,7 +257,7 @@ simulate.nlmixr2FitCore <- function(object, ...) {
     .nlmixr2clearPipe()
     nlmixr2global$nlmixr2SimInfo <- NULL
   })
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
