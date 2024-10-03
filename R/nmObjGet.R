@@ -35,8 +35,6 @@ nmObjGet.iniUi <- function(x, ...) {
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 
 
-.finalUiCompressed <- TRUE
-
 #' Set if the nlmixr2 object will return a compressed ui
 #'
 #'
@@ -52,7 +50,7 @@ attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 #'
 nmObjUiSetCompressed <- function(type) {
   checkmate::assertLogical(type,len=1, any.missing=FALSE)
-  assignInMyNamespace(".finalUiCompressed", type)
+  nlmixr2global$finalUiCompressed <- type
   invisible(type)
 }
 
@@ -60,7 +58,7 @@ nmObjUiSetCompressed <- function(type) {
 nmObjGet.finalUi <- function(x, ...) {
   .env <- x[[1]]
   .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
-  if (.finalUiCompressed) {
+  if (nlmixr2global$finalUiCompressed) {
     rxode2::rxUiCompress(.ui)
   } else {
     rxode2::rxUiDecompress(.ui)

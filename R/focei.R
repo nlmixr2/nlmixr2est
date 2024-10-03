@@ -2007,8 +2007,8 @@ nlmixr2Est.output <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @export
 nlmixr2CreateOutputFromUi <- function(ui, data=NULL, control=NULL, table=NULL, env=NULL, est="none") {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   if (inherits(ui, "function")) {
     ui <- rxode2::rxode2(ui)
   }

@@ -47,8 +47,8 @@
 addNpde <- function(object, updateObject = TRUE,
                     table = tableControl(), ...,
                     envir=parent.frame(1)) {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   assertNlmixrFitData(object)
   if (any(names(object) == "NPDE")) {
     warning("already contains NPDE", call.=FALSE)

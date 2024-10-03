@@ -123,8 +123,9 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
+  nlmixr2globalReset()
   assignInMyNamespace(".nlmixr2Time", proc.time())
-  assignInMyNamespace(".finalUiCompressed", FALSE)
+  nlmixr2global$finalUiCompressed <- FALSE
   .nlmixrEvalEnv$envir <- envir
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
@@ -165,7 +166,7 @@ nlmixr <- nlmixr2
   assignInMyNamespace(".nlmixr2pipeControl", NULL)
   assignInMyNamespace(".nlmixr2pipeTable", NULL)
   assignInMyNamespace(".nlmixr2pipeEst", NULL)
-  assignInMyNamespace(".finalUiCompressed", TRUE)
+  nlmixr2global$finalUiCompressed <- TRUE
   rxode2::rxSetCovariateNamesForPiping(NULL)
 }
 #' Infer missing estimation routine

@@ -67,8 +67,8 @@
 #' @author Matthew L. Fidler
 #' @export
 addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(1)) {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   assertNlmixrFitData(fit)
   checkmate::assertLogical(updateObject, len=1, any.missing=FALSE)
   checkmate::assertLogical(focei, len=1, any.missing=FALSE)

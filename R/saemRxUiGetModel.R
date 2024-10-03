@@ -382,10 +382,9 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 }
 #attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
 
-.saemModelEnv <- NULL
+.saemModelEnv <- new.env(parent = emptyenv())
 .saemModelEnv$symengine <- NULL
 .saemModelEnv$predSymengine <- NULL
-
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {

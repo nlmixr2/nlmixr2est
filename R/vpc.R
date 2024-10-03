@@ -60,8 +60,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   checkmate::assertLogical(normRelated, len=1, any.missing=FALSE)
   checkmate::assertCharacter(keep, null.ok=TRUE, pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
   checkmate::assertIntegerish(seed)
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   set.seed(seed)
   .si <- object$simInfo
   .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
@@ -184,8 +184,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
 #' @keywords internal
 #' @export
 vpcNameDataCmts <- function(object, data) {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   .wdvid <- which(tolower(names(data)) == "dvid")
   .wcmt <- which(tolower(names(data)) == "cmt")
   .info <- get("predDf", object$ui)
