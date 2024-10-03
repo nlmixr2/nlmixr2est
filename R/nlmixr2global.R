@@ -17,6 +17,7 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$extraTimingTable <- NULL
 
   nlmixr2global$toRxParam <- "" # string of the params() + cmt() for rx model in focei
+  nlmixr2global$toRxDvidCmt <- "" # string of dvid() spec in rxode2 focei model
   if (ini) {
   }
 }

@@ -640,14 +640,13 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 }
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 
-.toRxDvidCmt <- ""
-
 .toRx <- function(x, msg) {
   if (is.null(x)) {
     return(NULL)
   }
   .malert(msg)
-  .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x, .toRxDvidCmt))
+  .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
+                               nlmixr2global$toRxDvidCmt))
   .msuccess("done")
   .ret
 }
@@ -753,7 +752,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n",
            .cmt, "\n")
-  assignInMyNamespace(".toRxDvidCmt", .foceiToCmtLinesAndDvid(ui))
+  nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
   if (exists("..maxTheta", s)) {
     .eventTheta <- rep(0L, s$..maxTheta)
   } else {
