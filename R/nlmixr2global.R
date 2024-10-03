@@ -13,7 +13,8 @@ nlmixr2global <- new.env(parent = emptyenv())
   nlmixr2global$nlmixr2Time <- NULL # timer for nlmixr2 steps
   nlmixr2global$currentTimingEnvironment <- new.env(parent=emptyenv()) # current timing environment
   nlmixr2global$timingStackNlmixr <- NULL
+  nlmixr2global$timingStack <- NULL
+  nlmixr2global$extraTimingTable <- NULL
   if (ini) {
-    nlmixr2global$timingStack <- NULL
   }
 }

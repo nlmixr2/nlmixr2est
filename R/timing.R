@@ -1,5 +1,3 @@
-.extraTimingTable <- NULL
-
 #' Push the nlmixr timing stack for a nested nlmixr call
 #'
 #' @return Nothing, called for side effects
@@ -9,10 +7,12 @@
   nlmixr2global$timingStackNlmixr <-
     c(nlmixr2global$timingStackNlmixr,
       list(list(nlmixr2global$nlmixr2Time,
-                nlmixr2global$currentTimingEnvironment, .extraTimingTable, nlmixr2global$timingStack)))
+                nlmixr2global$currentTimingEnvironment,
+                nlmixr2global$extraTimingTable,
+                nlmixr2global$timingStack)))
   nlmixr2global$nlmixr2Time <- NULL
   nlmixr2global$currentTimingEnvironment <- NULL
-  assignInMyNamespace(".extraTimingTable", NULL)
+  nlmixr2global$extraTimingTable <- NULL
   nlmixr2global$timingStack <- NULL
 }
 #' Pop the full nlmixr timing stack (if needed)
@@ -25,7 +25,7 @@
   if (.l == 0) {
     nlmixr2global$nlmixr2Time <- NULL
     nlmixr2global$currentTimingEnvironment <- NULL
-    assignInMyNamespace(".extraTimingTable", NULL)
+    nlmixr2global$extraTimingTable <- NULL
     nlmixr2global$timingStack <- NULL
   } else {
     .cur <- nlmixr2global$timingStackNlmixr[[.l]]
@@ -36,7 +36,7 @@
     }
     nlmixr2global$nlmixr2Time <- .cur[[1]]
     nlmixr2global$currentTimingEnvironment <- .cur[[2]]
-    assignInMyNamespace(".extraTimingTable", .cur[[3]])
+    nlmixr2global$extraTimingTable <- .cur[[3]]
     nlmixr2global$timingStack <- .cur[[4]]
   }
 }
@@ -121,10 +121,10 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmixrMergeTimeWithExtraTime <- function(time) {
-  if (!inherits(.extraTimingTable, "data.frame")) return(time)
-  on.exit({assignInMyNamespace(".extraTimingTable", NULL)})
+  if (!inherits(nlmixr2global$extraTimingTable, "data.frame")) return(time)
+  on.exit({nlmixr2global$extraTimingTable <- NULL})
   .time <- time
-  .df <- .extraTimingTable
+  .df <- nlmixr2global$extraTimingTable
   .dropNames <- NULL
   for (.n in names(.df)) {
     .w <- which(names(time) == .n)
@@ -155,9 +155,9 @@
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=envir))
     assign("time", .nlmixrFinalizeTimingConstructTable(.time, name, preTiming), envir=envir)
   } else {
-    if (inherits(.extraTimingTable, "data.frame")) {
-      assignInMyNamespace(".extraTimingTable",
-                          .nlmixrFinalizeTimingConstructTable(.extraTimingTable, name, preTiming))
+    if (inherits(nlmixr2global$extraTimingTable, "data.frame")) {
+      nlmixr2global$extraTimingTable <-
+                          .nlmixrFinalizeTimingConstructTable(nlmixr2global$extraTimingTable, name, preTiming)
     } else {
       .df <- list(0)
       names(.df) <- name
@@ -166,7 +166,7 @@
       if (length(.amt) == 1) {
         if (!is.na(.amt)) {
           .df[, 1] <- .amt
-          assignInMyNamespace(".extraTimingTable", .df)
+          nlmixr2global$extraTimingTable <- .df
         }
       }
     }
