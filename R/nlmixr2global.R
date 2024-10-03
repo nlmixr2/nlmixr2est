@@ -23,7 +23,12 @@ nlmixr2global <- new.env(parent = emptyenv())
                                           # (like those in nlmixr2) to
                                           # assign object name
 
+  nlmixr2global$lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 
   if (ini) {
+    nlmixr2global$nlmixr2pipeData <- NULL
+    nlmixr2global$nlmixr2pipeControl <- NULL
+    nlmixr2global$nlmixr2pipeTable <- NULL
+    nlmixr2global$nlmixr2pipeEst <- NULL
   }
 }

@@ -8,7 +8,7 @@
 #' @importFrom rxode2 rxode2
 #' @importFrom graphics abline lines matplot plot points title
 #' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
-#' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
+#' @importFrom utils getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
@@ -152,18 +152,18 @@ nlmixr <- nlmixr2
 .nlmixr2pipeEst <- NULL
 
 .nlmixr2savePipe <- function(x) {
-  assignInMyNamespace(".nlmixr2pipeData", x$origData)
+  nlmixr2global$nlmixr2pipeData <- x$origData
   rxode2::rxSetCovariateNamesForPiping(names(x$origData))
-  assignInMyNamespace(".nlmixr2pipeControl", x$control)
-  assignInMyNamespace(".nlmixr2pipeTable", x$table)
-  assignInMyNamespace(".nlmixr2pipeEst", x$est)
+  nlmixr2global$nlmixr2pipeControl <- x$control
+  nlmixr2global$nlmixr2pipeTable <- x$table
+  nlmixr2global$nlmixr2pipeEst <- x$est
 }
 
 .nlmixr2clearPipe <- function(x) {
-  assignInMyNamespace(".nlmixr2pipeData", NULL)
-  assignInMyNamespace(".nlmixr2pipeControl", NULL)
-  assignInMyNamespace(".nlmixr2pipeTable", NULL)
-  assignInMyNamespace(".nlmixr2pipeEst", NULL)
+  nlmixr2global$nlmixr2pipeData <- NULL
+  nlmixr2global$nlmixr2pipeControl <- NULL
+  nlmixr2global$nlmixr2pipeTable <- NULL
+  nlmixr2global$nlmixr2pipeEst <- NULL
   nlmixr2global$finalUiCompressed <- TRUE
   rxode2::rxSetCovariateNamesForPiping(NULL)
 }

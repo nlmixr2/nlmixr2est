@@ -1,4 +1,3 @@
-.lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
@@ -161,7 +160,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .si2$returnType <- "data.frame"
     .si2$nStud <- 1
     .si2$nsim <- NULL
-    assignInMyNamespace(".lastPredSimulationInfo", .si2)
+    nlmixr2global$lastPredSimulationInfo <- .si2
     .sim2 <- do.call(rxode2::rxSolve, .si2)
     .sim$pred <- .sim2$sim
   }
@@ -277,5 +276,5 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
 #' @export
 #' @keywords internal
 .nlmixr2estLastPredSimulationInfo <- function() {
-  .lastPredSimulationInfo
+  nlmixr2global$lastPredSimulationInfo
 }
