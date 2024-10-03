@@ -27,9 +27,13 @@ nlmixr2global <- new.env(parent = emptyenv())
 
   nlmixr2global$nlmixr2GradInfo <- new.env(parent = emptyenv()) # Gradient information for nlmixr2hess
 
-  nlmixr2global$nlmixrEvalEnv <- new.env(parent=emptyenv())
+  nlmixr2global$nlmixrEvalEnv <- new.env(parent=emptyenv()) # evaluate environment for udf
 
+  nlmixr2global$nlmEnv <- new.env(parent=emptyenv()) # nlmEnv data etc for nlm related methods
 
+  nlmixr2global$nlmixr2EstEnv <- new.env(parent=emptyenv())
+  nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
+  nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
 
   if (ini) {
     nlmixr2global$nlmixr2pipeData <- NULL

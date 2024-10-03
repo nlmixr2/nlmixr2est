@@ -341,8 +341,6 @@ getValidNlmixrCtl.nlm <- function(control) {
   .ctl
 }
 
-.nlmEnv <- new.env(parent=emptyenv())
-
 #' A surrogate function for nlm to call for ode solving
 #'
 #' @param pars Parameters that will be estimated
@@ -733,7 +731,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
       stop("'nlm' does not work with censored data", call. =FALSE)
     }
   }
-  .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
+  nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
 .nlmFitModel <- function(ui, dataSav) {

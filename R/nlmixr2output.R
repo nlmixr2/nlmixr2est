@@ -280,8 +280,8 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
-  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
-    .ui <- .nlmixr2EstEnv$uiUnfix
+  if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
@@ -664,7 +664,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
   .iniDf <- .ui$iniDf
-  assign("iniDf0", .nlmixr2EstEnv$iniDf0, envir=x)
+  assign("iniDf0", nlmixr2global$nlmixr2EstEnv$iniDf0, envir=x)
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {

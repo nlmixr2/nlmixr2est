@@ -1,5 +1,9 @@
 nmTest({
 
+  .nlmixr2 <- function(...) {
+    suppressMessages(nlmixr2(...))
+  }
+
   test_that("nlm models convert strings to numbers", {
 
     mod <- function() {
@@ -91,27 +95,27 @@ nmTest({
 
 
 
-    fit2 <- nlmixr(mod, dsn, est="nlm")
+    fit2 <- .nlmixr2(mod, dsn, est="nlm")
 
     expect_true(inherits(fit2, "nlmixr2.nlm"))
 
-    fit2 <- nlmixr(mod, dsn, est="bobyqa")
+    fit2 <- .nlmixr2(mod, dsn, est="bobyqa")
 
     expect_true(inherits(fit2, "nlmixr2.bobyqa"))
 
-    fit2 <- nlmixr(mod, dsn, est="uobyqa")
+    fit2 <- .nlmixr2(mod, dsn, est="uobyqa")
 
     expect_true(inherits(fit2, "nlmixr2.uobyqa"))
 
-    fit2 <- nlmixr(mod, dsn, est="newuoa")
+    fit2 <- .nlmixr2(mod, dsn, est="newuoa")
 
     expect_true(inherits(fit2, "nlmixr2.newuoa"))
 
-    fit2 <- nlmixr(mod, dsn, est="n1qn1")
+    fit2 <- .nlmixr2(mod, dsn, est="n1qn1")
 
     expect_true(inherits(fit2, "nlmixr2.n1qn1"))
 
-    fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
+    fit2 <- .nlmixr2(mod, dsn, est="lbfgsb3c")
 
     expect_true(inherits(fit2, "nlmixr2.lbfgsb3c"))
 
@@ -141,9 +145,9 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+    fit2 <- .nlmixr2(one.cmt, nlmixr2data::theo_sd, est="nlm")
 
-    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm",
+    fit1 <- .nlmixr2(one.cmt, nlmixr2data::theo_sd, est="nlm",
                    nlmControl(scaleTo=0.0, scaleType="multAdd"))
 
     expect_true(inherits(fit1, "nlmixr2.nlm"))

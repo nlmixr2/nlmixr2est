@@ -383,7 +383,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
       stop("'nlminb' does not work with censored data", call. =FALSE)
     }
   }
-  .nlmEnv$data <- rxode2::etTrans(.dsAll, .nlmEnv$model)
+  nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
 .nlminbFitModel <- function(ui, dataSav) {
