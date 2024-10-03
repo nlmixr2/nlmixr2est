@@ -11,10 +11,12 @@ nlmixr2global <- new.env(parent = emptyenv())
 
   ## Timer information
   nlmixr2global$nlmixr2Time <- NULL # timer for nlmixr2 steps
-  nlmixr2global$currentTimingEnvironment <- new.env(parent=emptyenv()) # current timing environment
+  nlmixr2global$currentTimingEnvironment <- NULL # current timing environment
   nlmixr2global$timingStackNlmixr <- NULL
   nlmixr2global$timingStack <- NULL
   nlmixr2global$extraTimingTable <- NULL
+
+  nlmixr2global$toRxParam <- "" # string of the params() + cmt() for rx model in focei
   if (ini) {
   }
 }
