@@ -148,7 +148,6 @@ nlmeControl <- nlmixr2NlmeControl
   assign("control", .control, envir=.ui)
 }
 
-.nlmeFitDataAll   <- NULL
 .nlmeFitRxModel   <- NULL
 .nlmeFitRxControl <- NULL
 
@@ -165,7 +164,7 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmixrNlmeFun <- function(pars, id) {
   .ids <- as.character(unique(id))
   .datF <- do.call(rbind, lapply(seq_along(.ids), function(i){
-    .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID == .ids[i], ]
+    .datF <- nlmixr2global$nlmeFitDataAll[nlmixr2global$nlmeFitDataAll$ID == .ids[i], ]
     .datF$ID <- i
     .datF
   }))
@@ -187,7 +186,7 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  assignInMyNamespace(".nlmeFitDataAll", .dsAll)
+  nlmixr2global$nlmeFitDataAll <- .dsAll
 }
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
