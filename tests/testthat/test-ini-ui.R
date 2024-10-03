@@ -25,8 +25,10 @@ nmTest({
 
     f <-  one.compartment()
 
+    .nlmixr2 <- function(...){suppressMessages(suppressWarnings(nlmixr2(...)))}
+
     ## fit the model
-    fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
+    fit <- .nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 
     expect_equal(fit$iniUi$iniDf, f$iniDf)
 
