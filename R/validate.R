@@ -8,6 +8,7 @@
 ##' @return Nothing, called for its side effects
 ##' @export
 nlmixr2Validate <- function(type = NULL, skipOnCran=TRUE) {
+  rxode2::rxReq("withr")
   if (is(substitute(type), "{")) {
     if (isTRUE(skipOnCran)) {
       if (!identical(Sys.getenv("NOT_CRAN"), "true") ||
@@ -17,7 +18,8 @@ nlmixr2Validate <- function(type = NULL, skipOnCran=TRUE) {
     }
     gc()
     rxode2::rxUnloadAll()
-    return(force(type))
+    return(withr::with_options(list(rxode2.verbose.pipe=FALSE),
+                               force(type)))
   }
 
   pt <- proc.time()
