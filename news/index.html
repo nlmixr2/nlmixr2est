@@ -33,7 +33,9 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li>Now when optimizing only a single parameter with <code>focei</code>-family, will change to use stats::optimize for the outer problem (<a href="https://github.com/nlmixr2/nlmixr2est/issues/481" class="external-link">#481</a>)</li>
+<ul><li><p>Now when optimizing only a single parameter with <code>focei</code>-family, will change to use stats::optimize for the outer problem (<a href="https://github.com/nlmixr2/nlmixr2est/issues/481" class="external-link">#481</a>)</p></li>
+<li><p>When estimating with all fixed population parameters, do a posthoc estimation.</p></li>
+<li><p>Internally removed <code><a href="https://rdrr.io/r/utils/getFromNamespace.html" class="external-link">assignInMyNamespace()</a></code> replacing with <code>nlmixr2global</code>, which fixes some edge case bugs where the nlmixr2 environment was not reset properly.</p></li>
 </ul><div class="section level3">
 <h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
 <ul><li>Added <code>mu</code>4 referencing that will change string expressions to <code>rxode2</code> numeric values. This allows derived strings to also be treated as <code>mu</code> expressions (<a href="https://github.com/nlmixr2/nlmixr2est/issues/484" class="external-link">#484</a>)</li>
