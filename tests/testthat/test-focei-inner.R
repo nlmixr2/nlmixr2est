@@ -1,5 +1,7 @@
 nmTest({
 
+  .nlmixr2 <- function(...) {suppressWarnings(suppressMessages(nlmixr2(...)))}
+
   test_that("focei complex event info", {
 
     pheno <- function() {
@@ -72,7 +74,7 @@ nmTest({
 
     ETA <- matrix(c(-0.147736086922763, -0.294637022436797), ncol = 2)
 
-    fitPi <- suppressMessages(nlmixr(
+    fitPi <- .nlmixr2(
       m1, w7,
       est="focei",
       foceiControl(
@@ -80,12 +82,13 @@ nmTest({
         maxOuterIterations = 0, maxInnerIterations = 0,
         covMethod = ""
       )
-    ))
+    )
 
     expect_equal(418.935, round(fitPi$objective, 3))
   })
 
   test_that("boundary value is not triggered by bounds on both sides of zero (#318)", {
+
     one.compartment <- function() {
       ini({
         tka <- c(-6, -4, 2)
@@ -106,9 +109,14 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
+
+    fit <- .nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
     # SE being present indicates that the covariance matrix was estimated
     expect_true("SE" %in% names(fit$parFixedDf))
+
+    # Also make sure that it correctly identifies mu-ref
+    expect_equal(c("tka", "tcl", "tv", "add.sd"), row.names(fit$parFixedDf))
+
   })
 
 })

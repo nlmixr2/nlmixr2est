@@ -110,15 +110,15 @@
   .f <- modelInfo
   if (any(names(.f) == "thetaGrad")) {
     .env$predOnly <- .f$predOnly
-    .nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
+    nlmixr2global$nlmEnv$model <- .env$thetaGrad <- .f$thetaGrad
   } else {
-    .nlmEnv$model <- .env$predOnly <- .f$predOnly
+    nlmixr2global$nlmEnv$model <- .env$predOnly <- .f$predOnly
   }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
   .env$control <- .ctl
-  .env$data <- .nlmEnv$data
+  .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
   if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
     .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)

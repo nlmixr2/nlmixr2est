@@ -1,5 +1,9 @@
 nmTest({
 
+  .nlmixr <- function(...) {
+    suppressMessages(nlmixr2(...))
+  }
+
   test_that("nls supports interp", {
 
     one.cmt <- function() {
@@ -66,11 +70,11 @@ nmTest({
     }
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit1 <- nlmixr(one.cmt, d, est="nls")
+    fit1 <- .nlmixr(one.cmt, d, est="nls")
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
 
-    fit1 <- nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun"))
+    fit1 <- .nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun"))
 
     Treated <- Puromycin[Puromycin$state == "treated", ]
     names(Treated) <- gsub("rate", "DV", gsub("conc", "time", names(Treated)))
@@ -88,7 +92,7 @@ nmTest({
       })
     }
 
-    fit1 <- nlmixr(f, Treated, est="nls", control=nlsControl(algorithm="default"))
+    fit1 <- .nlmixr(f, Treated, est="nls", control=nlsControl(algorithm="default"))
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
   })

@@ -58,7 +58,7 @@
   if (length(.w) == 1L) {
     .b <- .ui$iniDf$backTransform[.w]
     if (!is.na(.b)) {
-      .bfun <- try(get(.b, envir=.nlmixrEvalEnv$envir, mode="function"), silent=TRUE)
+      .bfun <- try(get(.b, envir=nlmixr2global$nlmixrEvalEnv$envir, mode="function"), silent=TRUE)
       if (inherits(.bfun, "try-error")) {
         warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
                 call.=FALSE)
@@ -136,7 +136,7 @@
   }
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
-  if (.muRefCurEval$curEval[.w] == "exp") {
+  if (length(.w) == 1L && .muRefCurEval$curEval[.w] == "exp") {
     assign(".sdOnly", FALSE, envir=.env)
     .valNumber <- sqrt(exp(.v) - 1) * 100
     .valCharPrep <- .valNumber
@@ -145,7 +145,7 @@
     .valNumber <- .v
     .valCharPrep <- sqrt(.v)
   }
-  if (.omegaFix[.eta]) {
+  if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
     .charPrefix <- "fix("
     .charSuffix <- ")"
   } else {
@@ -280,8 +280,8 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
-  if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
-    .ui <- .nlmixr2EstEnv$uiUnfix
+  if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
@@ -664,7 +664,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Update initial estimates to match current initial estimates
   .ui <- x$ui
   .iniDf <- .ui$iniDf
-  assign("iniDf0", .nlmixr2EstEnv$iniDf0, envir=x)
+  assign("iniDf0", nlmixr2global$nlmixr2EstEnv$iniDf0, envir=x)
   if (exists("fullTheta", x)) {
     .thetas <- x$fullTheta
   } else if (exists("fixef", x)) {

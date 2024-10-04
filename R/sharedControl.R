@@ -97,7 +97,7 @@ getValidNlmixrCtl.rxSolve <- function(control) {
   .ctl <- control
   class(.ctl) <- NULL
   .ctl <- .ctl[[1]]
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }

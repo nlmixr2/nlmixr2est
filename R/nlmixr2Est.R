@@ -1,7 +1,3 @@
-.nlmixr2EstEnv <- new.env(parent=emptyenv())
-.nlmixr2EstEnv$uiUnfix <- NULL
-.nlmixr2EstEnv$nlmixrPureInputUi <- NULL
-
 #' Generic for nlmixr2 estimation methods
 #'
 #' @param env Environment for the nlmixr2 estimation routines.
@@ -30,7 +26,7 @@
 nlmixr2Est <- function(env, ...) {
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   if (!exists("ui", envir=env)) {
     stop("need 'ui' object", call.=FALSE)
@@ -38,7 +34,7 @@ nlmixr2Est <- function(env, ...) {
     stop("'ui' is not an rxode2 object", call.=FALSE)
   }
   if (!inherits(env, "output")) {
-    .nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir=env)$iniDf)
+    nlmixr2global$nlmixr2EstEnv$iniDf0 <- data.frame(get("ui", envir=env)$iniDf)
   }
   if (!exists("data", envir=env)) {
     stop("need 'data' object", call.=FALSE)
@@ -89,8 +85,8 @@ nlmixr2Est.default <- function(env, ...) {
   if (inherits(.ui, "try-error")) return(ret)
   if (inherits(.ui, "rxUi")) {
     # this needs to be in reverse order of the changes, which means apply zero omegas then fixed
-    if (!is.null(.nlmixr2EstEnv$nlmixrPureInputUi)) {
-      .final <- .nlmixr2EstEnv$nlmixrPureInputUi
+    if (!is.null(nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi)) {
+      .final <- nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi
       .finalIni <- .final$iniDf
       .iniDf <- .ui$iniDf
       .theta <- .iniDf[is.na(.iniDf$neta1), ]
@@ -121,9 +117,9 @@ nlmixr2Est.default <- function(env, ...) {
       assign("omega", .final$omega, envir=ret$env)
       .minfo("initial model updated with final estimates, some zero etas are excluded from output")
     }
-    if (!is.null(.nlmixr2EstEnv$uiUnfix)) {
+    if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
       # Adjust to original model without literal fix
-      .final <- .nlmixr2EstEnv$uiUnfix
+      .final <- nlmixr2global$nlmixr2EstEnv$uiUnfix
       .iniDf0 <- ret$env$ui$iniDf
       .iniDf2 <- .final$iniDf
       .iniDf2$est <- vapply(.iniDf2$name,
@@ -137,8 +133,8 @@ nlmixr2Est.default <- function(env, ...) {
       assign("fixef", .final$theta, envir=ret$env)
     }
   }
-  .nlmixr2EstEnv$uiUnfix <- NULL
-  .nlmixr2EstEnv$nlmixrPureInputUi <- NULL
+  nlmixr2global$nlmixr2EstEnv$uiUnfix <- NULL
+  nlmixr2global$nlmixr2EstEnv$nlmixrPureInputUi <- NULL
 }
 
 .tablePassthrough <- c("addDosing", "subsetNonmem", "cores", "keep", "drop")

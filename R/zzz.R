@@ -90,6 +90,7 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
 }
 
 .onLoad <- function(libname, pkgname) {
+  .nlmixr2globalReset(TRUE)
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
@@ -101,6 +102,7 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
 .onAttach <- function(libname, pkgname) {
   ## nocov start
   ## Setup rxode2.prefer.tbl
+  .nlmixr2globalReset(TRUE)
   .iniPtrs()
   .iniS3()
   ## nlmixr2SetupMemoize()

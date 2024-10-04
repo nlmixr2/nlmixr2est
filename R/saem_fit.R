@@ -123,7 +123,7 @@
   type <- match.arg(type)
   type <- type.idx[type]
   force(rxControl)
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }

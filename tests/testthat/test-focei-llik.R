@@ -1,5 +1,6 @@
 if (rxode2hasLlik()) {
   nmTest({
+    .nlmixr2 <- function(...) {suppressWarnings(suppressMessages(nlmixr2(...)))}
     test_that("test focei llik", {
       # dnorm() works
 
@@ -27,7 +28,7 @@ if (rxode2hasLlik()) {
 
       skip_if_not(rxode2::.linCmtSensB())
 
-      f <- nlmixr(one.cmt, theo_sd, "focei")
+      f <- .nlmixr2(one.cmt, theo_sd, "focei")
       expect_true("CWRES" %in% names(f))
 
       of1     <- f$objf
@@ -36,7 +37,7 @@ if (rxode2hasLlik()) {
       omega1  <- f$omega
       etaO1   <- f$etaObf
 
-      f <- nlmixr(one.cmt, theo_sd, "foce")
+      f <- .nlmixr2(one.cmt, theo_sd, "foce")
       expect_true("CWRES" %in% names(f))
 
       of2 <- f$objf
@@ -44,7 +45,7 @@ if (rxode2hasLlik()) {
       theta2 <- f$theta
       omega2 <- f$omega
 
-      expect_error(nlmixr(one.cmt, theo_sd, "fo"))
+      expect_error(.nlmixr2(one.cmt, theo_sd, "fo"))
 
       one.cmt.ll <- function() {
         ini({
@@ -80,7 +81,7 @@ if (rxode2hasLlik()) {
         ini(omega1) ->
         one.cmt.ll
 
-      f <- try(nlmixr(one.cmt.ll, theo_sd, "focei",
+      f <- try(.nlmixr2(one.cmt.ll, theo_sd, "focei",
                       control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
                                            maxOuterIterations=0)))
 
@@ -95,7 +96,7 @@ if (rxode2hasLlik()) {
         ini(omega2) ->
         one.cmt.ll
 
-      f <- try(nlmixr(one.cmt.ll, theo_sd, "foce",
+      f <- try(.nlmixr2(one.cmt.ll, theo_sd, "foce",
                       control=foceiControl(etaMat=etaMat2, maxInnerIterations=0,
                                            maxOuterIterations=0)))
 
@@ -124,7 +125,7 @@ if (rxode2hasLlik()) {
         })
       }
 
-      f <- nlmixr(one.cmt.noeta, theo_sd, "focei")
+      f <- .nlmixr2(one.cmt.noeta, theo_sd, "focei")
 
       of1 <-f$objf
       theta1 <- f$theta
@@ -153,7 +154,7 @@ if (rxode2hasLlik()) {
         ini(theta1) ->
         one.cmt.ll.noeta
 
-      f <- nlmixr(one.cmt.ll.noeta, theo_sd, "focei",
+      f <- .nlmixr2(one.cmt.ll.noeta, theo_sd, "focei",
                   control=foceiControl(maxOuterIterations=0))
 
       expect_equal(of1, f$objf)
@@ -266,14 +267,14 @@ if (rxode2hasLlik()) {
       })
     }
 
-    f <- nlmixr2(pk.turnover.emax3.n1)
-    f2 <- nlmixr2(pk.turnover.emax3.n2)
+    f <- .nlmixr2(pk.turnover.emax3.n1)
+    f2 <- .nlmixr2(pk.turnover.emax3.n2)
 
     expect_equal(f$foceiModel0, f2$foceiModel0)
 
     expect_equal(f$foceModel0, f2$foceModel0)
 
-    f <- nlmixr(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
+    f <- .nlmixr2(pk.turnover.emax3.n1, nlmixr2data::warfarin, "focei",
                 control=foceiControl(covMethod = "",
                                      maxOuterIterations=0))
 
@@ -342,7 +343,7 @@ if (rxode2hasLlik()) {
       ini(omega1) ->
       pk.turnover.emax3.ll
 
-    f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+    f2 <- .nlmixr2(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
                  control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
                                       maxOuterIterations=0,
                                       optimHessType="forward"))
@@ -353,7 +354,7 @@ if (rxode2hasLlik()) {
       expect_equal(f$eta, f2$eta)
     })
 
-    f2 <- nlmixr(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
+    f2 <- .nlmixr2(pk.turnover.emax3.ll, nlmixr2data::warfarin, "focei",
                  control=foceiControl(etaMat=etaMat1, maxInnerIterations=0,
                                       maxOuterIterations=0,
                                       optimHessType="central"))

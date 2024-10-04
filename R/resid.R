@@ -533,8 +533,8 @@ addTable <- function(object, updateObject = FALSE,
                      table=tableControl(),
                      keep=NULL, drop=NULL,
                      envir = parent.frame(1)) {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   nlmixrWithTiming("table", {
     keep <- unique(c(keep, "nlmixrRowNums"))
     .malert("Calculating residuals/tables")

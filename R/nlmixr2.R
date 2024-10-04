@@ -8,7 +8,7 @@
 #' @importFrom rxode2 rxode2
 #' @importFrom graphics abline lines matplot plot points title
 #' @importFrom stats as.formula nlminb optimHess rnorm terms predict anova optim sd var AIC BIC asOneSidedFormula coef end fitted resid setNames start simulate nobs qnorm quantile time
-#' @importFrom utils assignInMyNamespace getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
+#' @importFrom utils getFromNamespace head stack sessionInfo tail str getParseData .DollarNames
 #' @importFrom methods is
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
@@ -41,8 +41,6 @@ nlmixr2Version <- function() {
   nlmixr2Logo()
 }
 
-.nlmixr2objectName <- NULL
-
 #' Allows external methods (like those in nlmixr2) to assign object name
 #'
 #' @param x String or null for assigning a nlmixr object name
@@ -51,11 +49,9 @@ nlmixr2Version <- function() {
 #' @export
 #' @keywords internal
 .nlmixr2objectNameAssign <- function(x) {
-  assignInMyNamespace(".nlmixr2objectName",x)
+  nlmixr2global$nlmixr2objectName <- x
   invisible()
 }
-
-.nlmixrEvalEnv <- new.env(parent=emptyenv())
 
 #' nlmixr2 fits population PK and PKPD non-linear mixed effects models.
 #'
@@ -123,20 +119,21 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
   rxode2::rxUnloadAll()
-  assignInMyNamespace(".nlmixr2Time", proc.time())
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  .nlmixrEvalEnv$envir <- envir
+  .nlmixr2globalReset()
+  nlmixr2global$nlmixr2Time <- proc.time()
+  nlmixr2global$finalUiCompressed <- FALSE
+  nlmixr2global$nlmixrEvalEnv$envir <- envir
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
-    assignInMyNamespace(".nlmixr2objectName", .objectName)
+    nlmixr2global$nlmixr2objectName <- .objectName
   }
   on.exit(.finalizeOverallTiming(), add=TRUE)
   nmSuppressMsg()
   rxode2::rxSuppressMsg()
   rxode2::rxSolveFree() # rxSolveFree unlocks evaluation environment
   # Add UDF environment for querying nlmixr2/rxode2 r-based user defined functions
-  rxode2::.udfEnvSet(.nlmixrEvalEnv$envir)
+  rxode2::.udfEnvSet(nlmixr2global$nlmixrEvalEnv$envir)
   force(est)
   ## verbose?
   ## https://tidymodels.github.io/model-implementation-principles/general-conventions.html
@@ -153,19 +150,19 @@ nlmixr <- nlmixr2
 .nlmixr2pipeEst <- NULL
 
 .nlmixr2savePipe <- function(x) {
-  assignInMyNamespace(".nlmixr2pipeData", x$origData)
+  nlmixr2global$nlmixr2pipeData <- x$origData
   rxode2::rxSetCovariateNamesForPiping(names(x$origData))
-  assignInMyNamespace(".nlmixr2pipeControl", x$control)
-  assignInMyNamespace(".nlmixr2pipeTable", x$table)
-  assignInMyNamespace(".nlmixr2pipeEst", x$est)
+  nlmixr2global$nlmixr2pipeControl <- x$control
+  nlmixr2global$nlmixr2pipeTable <- x$table
+  nlmixr2global$nlmixr2pipeEst <- x$est
 }
 
 .nlmixr2clearPipe <- function(x) {
-  assignInMyNamespace(".nlmixr2pipeData", NULL)
-  assignInMyNamespace(".nlmixr2pipeControl", NULL)
-  assignInMyNamespace(".nlmixr2pipeTable", NULL)
-  assignInMyNamespace(".nlmixr2pipeEst", NULL)
-  assignInMyNamespace(".finalUiCompressed", TRUE)
+  nlmixr2global$nlmixr2pipeData <- NULL
+  nlmixr2global$nlmixr2pipeControl <- NULL
+  nlmixr2global$nlmixr2pipeTable <- NULL
+  nlmixr2global$nlmixr2pipeEst <- NULL
+  nlmixr2global$finalUiCompressed <- TRUE
   rxode2::rxSetCovariateNamesForPiping(NULL)
 }
 #' Infer missing estimation routine
@@ -199,9 +196,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .uif <- rxode2::rxode2(object)
   .uif <- rxode2::rxUiDecompress(.uif)
-  if (!is.null(.nlmixr2objectName)) {
-    if (!identical(.nlmixr2objectName, "object")) {
-      assign("modelName", .nlmixr2objectName, envir=.uif)
+  if (!is.null(nlmixr2global$nlmixr2objectName)) {
+    if (!identical(nlmixr2global$nlmixr2objectName, "object")) {
+      assign("modelName", nlmixr2global$nlmixr2objectName, envir=.uif)
     }
   }
   .missingData <- FALSE
@@ -330,18 +327,17 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
   nlmixr2Est0(.env)
 }
 
-.nlmixr2SimInfo <- NULL
 #' @rdname nlmixr2
 #' @export
 nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL, table = tableControl(), ...,
                                    save = NULL, envir = parent.frame()) {
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
-  assignInMyNamespace(".nlmixr2SimInfo", .simInfo(object))
+  nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")

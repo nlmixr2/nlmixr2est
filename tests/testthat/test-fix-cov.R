@@ -1,5 +1,9 @@
 nmTest({
 
+  .nlmixr2 <- function(...) {
+    suppressMessages(nlmixr2(...))
+  }
+
   mod <- function() {
     ini({
       tka <- 0.45 ; label("Log Ka")
@@ -67,15 +71,15 @@ nmTest({
     }
 
 
-    f1 <- nlmixr(mod)
+    f1 <- .nlmixr2(mod)
 
-    f2 <- nlmixr(mod2)
+    f2 <- .nlmixr2(mod2)
     expect_equal(f1$saemParamsToEstimate, f2$saemParamsToEstimate)
     expect_equal(f1$saemInitTheta, f2$saemInitTheta)
 
-    fit1 <- nlmixr(mod, dat, "saem")
+    fit1 <- .nlmixr2(mod, dat, "saem")
 
-    fit2 <- nlmixr(mod2, dat, "saem")
+    fit2 <- .nlmixr2(mod2, dat, "saem")
 
     for (n in names(fit1$theta)) {
       expect_equal(fit1$theta[n], fit2$theta[n])
@@ -111,7 +115,7 @@ nmTest({
       })
     }
 
-    f <- nlmixr(mod)
+    f <- .nlmixr2(mod)
 
     expect_equal(f$saemParamsToEstimateCov, c("tka", "tcl", "tv", "sexf.cl"))
 
@@ -120,11 +124,11 @@ nmTest({
     expect_equal(setNames(f$saemParHistThetaKeep, f$saemParamsToEstimate),
                  c(tka = 1L, tcl = 1L, wt.cl = 1L, tv = 1L, wt.v2 = 1L, sexf.cl = 0L))
 
-    fit1 <- nlmixr(mod, dat, "saem")
+    fit1 <- .nlmixr2(mod, dat, "saem")
 
     expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
 
-    fit1 <- nlmixr(mod, dat, "saem", saemControl(literalFix=FALSE))
+    fit1 <- .nlmixr2(mod, dat, "saem", saemControl(literalFix=FALSE))
 
     expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
 
@@ -159,11 +163,11 @@ nmTest({
         })
       }
 
-      f <- nlmixr(mod)
+      f <- .nlmixr2(mod)
 
       expect_equal(f$saemParamsToEstimateCov, f$saemParamsToEstimate)
 
-      fit1 <- nlmixr(mod, dat, "saem")
+      fit1 <- .nlmixr2(mod, dat, "saem")
 
 
     })

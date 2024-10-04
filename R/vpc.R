@@ -1,4 +1,3 @@
-.lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 #' VPC simulation
 #'
 #' @param object This is the nlmixr2 fit object
@@ -60,8 +59,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   checkmate::assertLogical(normRelated, len=1, any.missing=FALSE)
   checkmate::assertCharacter(keep, null.ok=TRUE, pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$")
   checkmate::assertIntegerish(seed)
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   set.seed(seed)
   .si <- object$simInfo
   .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
@@ -161,7 +160,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
     .si2$returnType <- "data.frame"
     .si2$nStud <- 1
     .si2$nsim <- NULL
-    assignInMyNamespace(".lastPredSimulationInfo", .si2)
+    nlmixr2global$lastPredSimulationInfo <- .si2
     .sim2 <- do.call(rxode2::rxSolve, .si2)
     .sim$pred <- .sim2$sim
   }
@@ -184,8 +183,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
 #' @keywords internal
 #' @export
 vpcNameDataCmts <- function(object, data) {
-  assignInMyNamespace(".finalUiCompressed", FALSE)
-  on.exit(assignInMyNamespace(".finalUiCompressed", TRUE))
+  nlmixr2global$finalUiCompressed <- FALSE
+  on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   .wdvid <- which(tolower(names(data)) == "dvid")
   .wcmt <- which(tolower(names(data)) == "cmt")
   .info <- get("predDf", object$ui)
@@ -277,5 +276,5 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
 #' @export
 #' @keywords internal
 .nlmixr2estLastPredSimulationInfo <- function() {
-  .lastPredSimulationInfo
+  nlmixr2global$lastPredSimulationInfo
 }

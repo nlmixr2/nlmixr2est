@@ -25,7 +25,7 @@
 #' - Determines if the model is a prediction model based on the
 #' `omega` and `sigma` values.
 #'
-#' - If additional simulation information (`.nlmixr2SimInfo`) is
+#' - If additional simulation information (`nlmixr2global$nlmixr2SimInfo`) is
 #' available, it updates the `rxControl` object with population
 #' uncertainty, number of observations, number of subjects, and
 #' diagonal `sigma` based on the fitted model.
@@ -62,26 +62,26 @@
       .isPred <- TRUE
     }
   }
-  if (!is.null(.nlmixr2SimInfo)) {
-    .thetaMat <- .nlmixr2SimInfo$thetaMat
+  if (!is.null(nlmixr2global$nlmixr2SimInfo)) {
+    .thetaMat <- nlmixr2global$nlmixr2SimInfo$thetaMat
     if (is.null(.rxControl$thetaMat) & !.isPred) {
       .minfo("using population uncertainty from fitted model (`thetaMat`)")
       .rxControl$thetaMat <- .thetaMat
     }
     if (.rxControl$dfObs == 0L & !.isPred) {
-      .minfo(paste0("using `dfObs=", .nlmixr2SimInfo$dfObs,
+      .minfo(paste0("using `dfObs=", nlmixr2global$nlmixr2SimInfo$dfObs,
              "` from the number of observations in fitted model"))
-      .rxControl$dfObs <- .nlmixr2SimInfo$dfObs
+      .rxControl$dfObs <- nlmixr2global$nlmixr2SimInfo$dfObs
     }
     if (.rxControl$dfSub == 0L & !.isPred) {
-      .minfo(paste0("using `dfSub=", .nlmixr2SimInfo$dfSub,
+      .minfo(paste0("using `dfSub=", nlmixr2global$nlmixr2SimInfo$dfSub,
              "` from the number of subjects in fitted model"))
-      .rxControl$dfSub <- .nlmixr2SimInfo$dfSub
+      .rxControl$dfSub <- nlmixr2global$nlmixr2SimInfo$dfSub
     }
 
     if (is.null(.rxControl$sigma) & !.isPred) {
       .minfo("using diagonal `sigma` based on model")
-      .rxControl$sigma <- .nlmixr2SimInfo$sigma
+      .rxControl$sigma <- nlmixr2global$nlmixr2SimInfo$sigma
     }
   }
   if (exists("table", envir=env) &&
@@ -118,12 +118,12 @@
 ##' @export
 nmObjGet.rxControlWithVar <- function(x, ...) {
   .tmp <- x[[1]]
-  assignInMyNamespace(".nlmixr2SimInfo", .tmp$simInfo)
+  nlmixr2global$nlmixr2SimInfo <- .tmp$simInfo
   .env <- .tmp$env
   if (exists("control", .env)) {
     .oldControl <- get("control", .env)
     on.exit({
-      assignInMyNamespace(".nlmixr2SimInfo", NULL)
+      nlmixr2global$nlmixr2SimInfo <- NULL
       assign("control", .oldControl, envir=.env)})
     if (!inherits(.oldControl, "rxControl")) {
       .rxControl <- nmObjGet.rxControl(x, ...)
@@ -135,7 +135,7 @@ nmObjGet.rxControlWithVar <- function(x, ...) {
     .rxControl <- nmObjGet.rxControl(x, ...)
     assign("control", .rxControl, envir=.env)
     on.exit({
-      assignInMyNamespace(".nlmixr2SimInfo", NULL)
+      nlmixr2global$nlmixr2SimInfo <- NULL
       if (exists("control", envir=.env)) {
         rm(list="control", envir=.env)
       }
@@ -167,10 +167,10 @@ nlmixr2Est.simulate <- function(env, ...) {
 #'@export
 nlmixr2Est.simulation <- function(env, ...) {
   .nlmixr2clearPipe()
-  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   env$control <- .rxControl
@@ -184,10 +184,10 @@ nlmixr2Est.simulation <- function(env, ...) {
 #'@export
 nlmixr2Est.predict <- function(env, ...) {
   .nlmixr2clearPipe()
-  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
   .rxControl <- .rxSolveGetControlForNlmixr(env)
   .rxControl$omega <- NA
@@ -223,19 +223,19 @@ nlmixr2Est.predict <- function(env, ...) {
 #' @export
 predict.nlmixr2FitCore <- function(object, ...) {
   .nlmixr2clearPipe()
-  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
   .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
   .both$ctl$omega <- NA
   .both$ctl$sigma <- NA
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
@@ -252,12 +252,12 @@ predict.nlmixr2FitCore <- function(object, ...) {
 #' @export
 simulate.nlmixr2FitCore <- function(object, ...) {
   .nlmixr2clearPipe()
-  assignInMyNamespace(".nlmixr2SimInfo", NULL)
+  nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
     .nlmixr2clearPipe()
-    assignInMyNamespace(".nlmixr2SimInfo", NULL)
+    nlmixr2global$nlmixr2SimInfo <- NULL
   })
-  .env <- .nlmixrEvalEnv$envir
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }

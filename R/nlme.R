@@ -148,10 +148,6 @@ nlmeControl <- nlmixr2NlmeControl
   assign("control", .control, envir=.ui)
 }
 
-.nlmeFitDataAll   <- NULL
-.nlmeFitRxModel   <- NULL
-.nlmeFitRxControl <- NULL
-
 #' A surrogate function for nlme to call for ode solving
 #'
 #' @param pars Parameters that will be estimated
@@ -165,7 +161,7 @@ nlmeControl <- nlmixr2NlmeControl
 .nlmixrNlmeFun <- function(pars, id) {
   .ids <- as.character(unique(id))
   .datF <- do.call(rbind, lapply(seq_along(.ids), function(i){
-    .datF <- .nlmeFitDataAll[.nlmeFitDataAll$ID == .ids[i], ]
+    .datF <- nlmixr2global$nlmeFitDataAll[nlmixr2global$nlmeFitDataAll$ID == .ids[i], ]
     .datF$ID <- i
     .datF
   }))
@@ -173,8 +169,8 @@ nlmeControl <- nlmixr2NlmeControl
   .pars <- .pars[!duplicated(.pars$ID),]
   .pars$ID <- seq_along(.pars$ID)
   row.names(.pars) <- NULL
-  .retF <- do.call(rxode2::rxSolve, c(list(object=.nlmeFitRxModel, params=.pars, events=.datF),
-                                      .nlmeFitRxControl))
+  .retF <- do.call(rxode2::rxSolve, c(list(object=nlmixr2global$nlmeFitRxModel, params=.pars, events=.datF),
+                                      nlmixr2global$nlmeFitRxControl))
   .ret <- .retF$rx_pred_
   .ret
 }
@@ -187,13 +183,13 @@ nlmeControl <- nlmixr2NlmeControl
 #' @noRd
 .nlmeFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  assignInMyNamespace(".nlmeFitDataAll", .dsAll)
+  nlmixr2global$nlmeFitDataAll <- .dsAll
 }
 
 .nlmeFitModel <- function(ui, dataSav, timeVaryingCovariates) {
   .nlmeFitDataSetup(dataSav)
-  assignInMyNamespace(".nlmeFitRxModel", rxode2::rxode2(ui$nlmeRxModel))
-  assignInMyNamespace(".nlmeFitRxControl",  rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl()))
+  nlmixr2global$nlmeFitRxModel <- rxode2::rxode2(ui$nlmeRxModel)
+  nlmixr2global$nlmeFitRxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
 
   .ctl <- ui$control
   class(.ctl) <- NULL
