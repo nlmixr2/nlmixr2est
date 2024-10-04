@@ -4392,8 +4392,7 @@ List nlmixr2Gill83_(Function what, NumericVector args, Environment envir,
 double nlmixr2Eval_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Environment nlmixr2global = nlmixr2["nlmixr2global"];
-  Environment gradInfo = nlmixr2global[".nlmixr2GradInfo"];
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EF = md5 + ".f";
   std::string EE = md5 + ".e";
   std::string EW = md5 + ".w";
@@ -4653,8 +4652,7 @@ RObject nlmixr2Unscaled_(NumericVector theta, std::string md5){
   // Unscaled
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Environment nlmixr2global = nlmixr2["nlmixr2global"];
-  Environment gradInfo = nlmixr2global[".nlmixr2GradInfo"];
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string unscaledPar = md5 + ".uPar";
   gradInfo[unscaledPar] = theta;
   return R_NilValue;
@@ -4666,8 +4664,7 @@ RObject nlmixr2Unscaled_(NumericVector theta, std::string md5){
 NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Environment nlmixr2global = nlmixr2["nlmixr2global"];
-  Environment gradInfo = nlmixr2global[".nlmixr2GradInfo"];
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
 
   std::string Egill = md5 + ".g";
   std::string EF = md5 + ".f";
@@ -4828,8 +4825,7 @@ NumericVector nlmixr2Grad_(NumericVector theta, std::string md5){
 RObject nlmixr2ParHist_(std::string md5){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Environment nlmixr2global = nlmixr2["nlmixr2global"];
-  Environment gradInfo = nlmixr2global[".nlmixr2GradInfo"];
+  Environment gradInfo = nlmixr2[".nlmixr2GradInfo"];
   std::string EW = md5 + ".w";
   LogicalVector lEW;
   if (!gradInfo.exists(EW)){

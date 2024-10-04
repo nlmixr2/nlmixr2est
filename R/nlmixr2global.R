@@ -25,8 +25,6 @@ nlmixr2global <- new.env(parent = emptyenv())
 
   nlmixr2global$lastPredSimulationInfo <- NULL # to get observation dataset with pred attached for pred_corr
 
-  nlmixr2global$nlmixr2GradInfo <- new.env(parent = emptyenv()) # Gradient information for nlmixr2hess
-
   nlmixr2global$nlmixrEvalEnv <- new.env(parent=emptyenv()) # evaluate environment for udf
 
   nlmixr2global$nlmEnv <- new.env(parent=emptyenv()) # nlmEnv data etc for nlm related methods
