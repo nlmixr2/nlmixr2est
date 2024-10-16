@@ -1,3 +1,4 @@
+#include <math.h>
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
@@ -123,14 +124,21 @@ static inline void scaleSetup(scaling *scale,
       mx = max2(scale->initPar[k],mx);
       scale->scaleC[k] = NA_REAL;
     }
-    if (mx == mn) {
-      warning(_("all parameters are the same value, switch to length normType"));
+    if (fabs(mx-mn) < DBL_EPSILON) {
       for (unsigned int k = scale->npars-1; k--;){
         len += scale->initPar[k]*scale->initPar[k];
       }
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-      scale->normType = 5;
+      if (len < DBL_EPSILON){
+        warning(_("all parameters are zero, cannot scale, run unscaled"));
+        scale->c1 = 0;
+        scale->c2 = 1;
+        scale->normType = normTypeConstant;
+      } else {
+        warning(_("all parameters are the same value, switch to length normType"));
+        scale->c1 = 0;
+        scale->c2 = sqrt(len);
+        scale->normType = 5;
+      }
     } else {
       scale->c1 = (mx+mn)/2;
       scale->c2 = (mx-mn)/2;
@@ -142,14 +150,21 @@ static inline void scaleSetup(scaling *scale,
       mx = max2(scale->initPar[k],mx);
       scale->scaleC[k] = NA_REAL;
     }
-    if (mx == mn) {
-      warning(_("all parameters are the same value, switch to length normType"));
+    if (fabs(mx-mn) < DBL_EPSILON) {
       for (unsigned int k = scale->npars-1; k--;){
         len += scale->initPar[k]*scale->initPar[k];
       }
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-      scale->normType = 5;
+      if (len < DBL_EPSILON){
+        warning(_("all parameters are zero, cannot scale, run unscaled"));
+        scale->c1 = 0;
+        scale->c2 = 1;
+        scale->normType = normTypeConstant;
+      } else {
+        warning(_("all parameters are the same value, switch to length normType"));
+        scale->c1 = 0;
+        scale->c2 = sqrt(len);
+        scale->normType = 5;
+      }
     } else {
       scale->c1 = mn;
       scale->c2 = (mx-mn);
@@ -163,14 +178,21 @@ static inline void scaleSetup(scaling *scale,
       mean += (scale->initPar[k]-mean)/oN;
       scale->scaleC[k] = NA_REAL;
     }
-    if (mx == mn) {
-      warning(_("all parameters are the same value, switch to length normType"));
+    if (fabs(mx-mn) < DBL_EPSILON) {
       for (unsigned int k = scale->npars-1; k--;){
         len += scale->initPar[k]*scale->initPar[k];
       }
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-      scale->normType = 5;
+      if (len < DBL_EPSILON){
+        warning(_("all parameters are zero, cannot scale, run unscaled"));
+        scale->c1 = 0;
+        scale->c2 = 1;
+        scale->normType = normTypeConstant;
+      } else {
+        warning(_("all parameters are the same value, switch to length normType"));
+        scale->c1 = 0;
+        scale->c2 = sqrt(len);
+        scale->normType = 5;
+      }
     } else {
       scale->c1 = mean;
       scale->c2 = (mx-mn);
@@ -186,14 +208,21 @@ static inline void scaleSetup(scaling *scale,
       s += (scale->initPar[k]-mean)*(scale->initPar[k]-oM);
       scale->scaleC[k] = NA_REAL;
     }
-    if (mx == mn) {
-      warning("all parameters are the same value, switch to length norm type");
+    if (fabs(mx-mn) < DBL_EPSILON) {
       for (unsigned int k = scale->npars-1; k--;){
         len += scale->initPar[k]*scale->initPar[k];
       }
-      scale->c1 = 0;
-      scale->c2 = sqrt(len);
-      scale->normType = 5;
+      if (len < DBL_EPSILON){
+        warning(_("all parameters are zero, cannot scale, run unscaled"));
+        scale->c1 = 0;
+        scale->c2 = 1;
+        scale->normType = normTypeConstant;
+      } else {
+        warning(_("all parameters are the same value, switch to length normType"));
+        scale->c1 = 0;
+        scale->c2 = sqrt(len);
+        scale->normType = 5;
+      }
     } else {
       scale->c1 = mean;
       scale->c2 = sqrt(s/(oN-1));
@@ -204,8 +233,15 @@ static inline void scaleSetup(scaling *scale,
       len += scale->initPar[k]*scale->initPar[k];
       scale->scaleC[k] = NA_REAL;
     }
-    scale->c1 = 0;
-    scale->c2 = sqrt(len);
+    if (len < DBL_EPSILON){
+      warning(_("all parameters are zero, cannot scale, run unscaled"));
+      scale->c1 = 0;
+      scale->c2 = 1;
+      scale->normType = normTypeConstant;
+    } else {
+      scale->c1 = 0;
+      scale->c2 = sqrt(len);
+    }
     break;
   case normTypeConstant:
     // No Normalization
@@ -222,23 +258,23 @@ static inline void scaleSetup(scaling *scale,
 
 
 static inline double scaleGetScaleC(scaling *scale, int i){
-  if (ISNA(scale->scaleC[i])){
+  if (ISNA(scale->scaleC[i]) || isnan(scale->scaleC[i])) {
     switch (scale->xPar[i]){
     case 1: // log
       scale->scaleC[i]=1.0;
       break;
     case 2: // diag^2
-      scale->scaleC[i]=1.0/fabs(scale->initPar[i]);
+      scale->scaleC[i]=1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
       break;
     case 3: // exp(diag)
       scale->scaleC[i] = 1.0/2.0;
       break;
     case 4: // Identity diagonal chol(Omega ^-1)
     case 5: // off diagonal chol(Omega^-1)
-      scale->scaleC[i] = 1.0/(2.0*fabs(scale->initPar[i]));
+      scale->scaleC[i] = 1.0/max2(2.0*fabs(scale->initPar[i]), scale->scaleCmin);
       break;
     default:
-      scale->scaleC[i]= 1.0/fabs(scale->initPar[i]);
+      scale->scaleC[i]= 1.0/max2(fabs(scale->initPar[i]), scale->scaleCmin);
       break;
     }
   }

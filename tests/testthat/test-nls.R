@@ -48,6 +48,28 @@ nmTest({
 
   })
 
+  test_that("nls all 1 issue", {
+
+    pheno <- function() {
+      ini({
+        tcl <- log(1) # typical value of clearance
+        tv <-  log(1)   # typical value of volume
+        add.err <- 0.1    # residual variability
+      })
+      model({
+        cl <- exp(tcl ) # individual value of clearance
+        v <- exp(tv)    # individual value of volume
+        ke <- cl / v            # elimination rate constant
+        d/dt(A1) = - ke * A1    # model differential equation
+        cp = A1 / v             # concentration in plasma
+        cp ~ add(add.err)       # define error model
+      })
+    }
+
+    expect_error(.nlmixr(pheno, nlmixr2data::pheno_sd, est="nls", nlsControl(algorithm="LM",print=0L)), NA)
+
+  })
+
   test_that("nls makes sense", {
 
     d <- nlmixr2data::theo_sd
