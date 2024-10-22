@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,16 +32,17 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>Now when optimizing only a single parameter with <code>focei</code>-family, will change to use stats::optimize for the outer problem (<a href="https://github.com/nlmixr2/nlmixr2est/issues/481" class="external-link">#481</a>)</p></li>
+<h2 class="pkg-version" data-toc-text="3.0.1" id="nlmixr2est-301">nlmixr2est 3.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-301"></a></h2>
+<div class="section level3">
+<h3 id="new-features-3-0-1">New features<a class="anchor" aria-label="anchor" href="#new-features-3-0-1"></a></h3>
+<ul><li><p>Now when optimizing only a single parameter with <code>focei</code>-family, will change to use <code><a href="https://rdrr.io/r/stats/optimize.html" class="external-link">stats::optimize()</a></code> for the outer problem (<a href="https://github.com/nlmixr2/nlmixr2est/issues/481" class="external-link">#481</a>)</p></li>
 <li><p>When estimating with all fixed population parameters, do a posthoc estimation.</p></li>
 <li><p>Internally removed <code><a href="https://rdrr.io/r/utils/getFromNamespace.html" class="external-link">assignInMyNamespace()</a></code> replacing with <code>nlmixr2global</code>, which fixes some edge case bugs where the nlmixr2 environment was not reset properly.</p></li>
-</ul><div class="section level3">
-<h3 id="new-features-development-version">New features<a class="anchor" aria-label="anchor" href="#new-features-development-version"></a></h3>
-<ul><li>Added <code>mu</code>4 referencing that will change string expressions to <code>rxode2</code> numeric values. This allows derived strings to also be treated as <code>mu</code> expressions (<a href="https://github.com/nlmixr2/nlmixr2est/issues/484" class="external-link">#484</a>)</li>
+<li><p>Treated edge case where all initial parameters are zero and change scaling from scaled to unscaled (<a href="https://github.com/nlmixr2/nlmixr2est/issues/486" class="external-link">#486</a>)</p></li>
+<li><p>Added <code>mu</code>4 referencing that will change string expressions to <code>rxode2</code> numeric values. This allows derived strings to also be treated as <code>mu</code> expressions (<a href="https://github.com/nlmixr2/nlmixr2est/issues/484" class="external-link">#484</a>)</p></li>
 </ul></div>
 <div class="section level3">
-<h3 id="bug-fixes-development-version">Bug Fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-development-version"></a></h3>
+<h3 id="bug-fixes-3-0-1">Bug Fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-3-0-1"></a></h3>
 <ul><li>Fix <code>focei</code> covariance step when many <code>omega</code> values are fixed <a href="https://github.com/nlmixr2/nlmixr2est/issues/482" class="external-link">#482</a></li>
 </ul></div>
 </div>
