@@ -34,6 +34,7 @@ nmTest({
   dat4$limit <- 12
 
   f.foce <- suppressMessages(suppressWarnings(nlmixr(f, dat, "posthoc", control = list(interaction = FALSE))))
+
   f.focei <- suppressWarnings(suppressMessages(nlmixr(f, dat, "posthoc")))
 
   test_that("censoring information is correct", {
@@ -42,6 +43,7 @@ nmTest({
   })
 
   f.focei2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))
+
   f.saem2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "saem")))
 
   test_that("censoring changes results", {
