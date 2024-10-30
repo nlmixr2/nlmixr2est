@@ -28,10 +28,6 @@ You can install the development version of nlmixr2est from
 
 ``` r
 # install.packages("remotes")
-remotes::install_github("nlmixr2/rxode2parse")
-remotes::install_github("nlmixr2/rxode2random")
-remotes::install_github("nlmixr2/rxode2et")
-remotes::install_github("nlmixr2/rxode2ll")
 remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2data")
 remotes::install_github("nlmixr2/lotri")
@@ -67,8 +63,10 @@ one.compartment <- function() {
   })
 }
 
-## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
+## The fit is performed by the function nlmixr/nlmixr2 specifying the model, data and estimate
 fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
+#> ℹ parameter labels from comments are typically ignored in non-interactive mode
+#> ℹ Need to run with the source intact to parse comments
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
 #> ✔ done
@@ -77,8 +75,16 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → optimizing duplicate expressions in saem model...
 #> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 #> ✔ done
-#> rxode2 2.0.11.9000 using 8 threads (see ?getRxThreads)
+#> using C compiler: 'gcc.exe (GCC) 13.2.0'
+#> ℹ calculate uninformed etas
+#> ℹ done
+#> rxode2 3.0.2 using 8 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
+#> 
+#> Attaching package: 'rxode2'
+#> The following objects are masked from 'package:nlmixr2est':
+#> 
+#>     boxCox, yeoJohnson
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -88,12 +94,13 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → optimizing duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
 #> ✔ done
+#> using C compiler: 'gcc.exe (GCC) 13.2.0'
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
-#> → compress phiM in nlmixr2 object, save 62360
-#> → compress parHist in nlmixr2 object, save 9592
-#> → compress saem0 in nlmixr2 object, save 27064
+#> → compress phiM in nlmixr2 object, save 63504
+#> → compress parHistData in nlmixr2 object, save 13928
+#> → compress saem0 in nlmixr2 object, save 30456
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -105,15 +112,15 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>         setup covariance saem table compress other
-#> elapsed 0.002       0.02 6.75  0.06     0.07 3.678
+#> elapsed 0.003       0.03 11.5  0.29     0.27 6.787
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka           Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% 
-#> tcl           Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% 
-#> tv             V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% 
-#> add.sd           0.693                               0.693                     
+#> tka           Ka 0.464  0.195   42       1.59 (1.09, 2.33)     71.1   -0.0900% 
+#> tcl           Cl  1.01  0.085 8.43       2.74 (2.32, 3.24)     27.4      4.80% 
+#> tv             V  3.46 0.0447 1.29         31.7 (29, 34.6)     13.1      8.77% 
+#> add.sd           0.696                               0.696                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -125,11 +132,12 @@ print(fit)
 #> # A tibble: 132 × 19
 #>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp
 #>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74   1.07   0.103 -0.491 -0.0820  0   
-#> 2 1      0.25  2.84  3.27 -0.426  3.87 -1.03  -1.48   0.103 -0.491 -0.0820  3.87
-#> 3 1      0.57  6.57  5.85  0.723  6.82 -0.246 -0.356  0.103 -0.491 -0.0820  6.82
-#> # … with 129 more rows, and 7 more variables: depot <dbl>, center <dbl>,
-#> #   ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>, dosenum <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74   1.06  0.0839 -0.477 -0.0849  0   
+#> 2 1      0.25  2.84  3.28 -0.437  3.83 -0.991 -1.42  0.0839 -0.477 -0.0849  3.83
+#> 3 1      0.57  6.57  5.86  0.715  6.76 -0.194 -0.278 0.0839 -0.477 -0.0849  6.76
+#> # ℹ 129 more rows
+#> # ℹ 7 more variables: depot <dbl>, center <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
+#> #   tad <dbl>, dosenum <dbl>
 
 # But plots are in the helper package `nlmixr2plot`, and therefore:
 plot(fit)

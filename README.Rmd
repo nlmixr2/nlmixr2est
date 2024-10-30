@@ -68,7 +68,7 @@ one.compartment <- function() {
   })
 }
 
-## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
+## The fit is performed by the function nlmixr/nlmixr2 specifying the model, data and estimate
 fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 
 # Since the fit is performed in `nlmixr2est` this code works
