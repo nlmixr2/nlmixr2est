@@ -67,10 +67,6 @@
 <p>You can install the development version of nlmixr2est from <a href="https://github.com/" class="external-link">GitHub</a> with:</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2parse"</span><span class="op">)</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2random"</span><span class="op">)</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2et"</span><span class="op">)</span></span>
-<span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2ll"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/rxode2"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/nlmixr2data"</span><span class="op">)</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu"><a href="https://remotes.r-lib.org/reference/install_github.html" class="external-link">install_github</a></span><span class="op">(</span><span class="st">"nlmixr2/lotri"</span><span class="op">)</span></span>
@@ -103,8 +99,10 @@
 <span>  <span class="op">}</span><span class="op">)</span></span>
 <span><span class="op">}</span></span>
 <span></span>
-<span><span class="co">## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate</span></span>
+<span><span class="co">## The fit is performed by the function nlmixr/nlmixr2 specifying the model, data and estimate</span></span>
 <span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/nlmixr2.html">nlmixr2</a></span><span class="op">(</span><span class="va">one.compartment</span>, <span class="va">theo_sd</span>,  est<span class="op">=</span><span class="st">"saem"</span>, <span class="fu"><a href="reference/saemControl.html">saemControl</a></span><span class="op">(</span>print<span class="op">=</span><span class="fl">0</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="co">#&gt; ℹ parameter labels from comments are typically ignored in non-interactive mode</span></span>
+<span><span class="co">#&gt; ℹ Need to run with the source intact to parse comments</span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
 <span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
@@ -113,8 +111,16 @@
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem model...</span></span>
 <span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; rxode2 2.0.11.9000 using 8 threads (see ?getRxThreads)</span></span>
+<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 13.2.0'</span></span>
+<span><span class="co">#&gt; ℹ calculate uninformed etas</span></span>
+<span><span class="co">#&gt; ℹ done</span></span>
+<span><span class="co">#&gt; rxode2 3.0.2 using 8 threads (see ?getRxThreads)</span></span>
 <span><span class="co">#&gt;   no cache: create with `rxCreateCache()`</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; Attaching package: 'rxode2'</span></span>
+<span><span class="co">#&gt; The following objects are masked from 'package:nlmixr2est':</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt;     boxCox, yeoJohnson</span></span>
 <span><span class="co">#&gt; Calculating covariance matrix</span></span>
 <span><span class="co">#&gt; → loading into symengine environment...</span></span>
 <span><span class="co">#&gt; → pruning branches (`if`/`else`) of saem model...</span></span>
@@ -124,12 +130,13 @@
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 13.2.0'</span></span>
 <span><span class="co">#&gt; → Calculating residuals/tables</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
 <span><span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span></span>
-<span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 62360</span></span>
-<span><span class="co">#&gt; → compress parHist in nlmixr2 object, save 9592</span></span>
-<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 27064</span></span>
+<span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 63504</span></span>
+<span><span class="co">#&gt; → compress parHistData in nlmixr2 object, save 13928</span></span>
+<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 30456</span></span>
 <span></span>
 <span><span class="co"># Since the fit is performed in `nlmixr2est` this code works</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
@@ -141,15 +148,15 @@
 <span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;         setup covariance saem table compress other</span></span>
-<span><span class="co">#&gt; elapsed 0.002       0.02 6.75  0.06     0.07 3.678</span></span>
+<span><span class="co">#&gt; elapsed 0.003       0.03 11.5  0.29     0.27 6.787</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt;        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%</span></span>
-<span><span class="co">#&gt; tka           Ka 0.454  0.196 43.1       1.57 (1.07, 2.31)     71.5   -0.0203% </span></span>
-<span><span class="co">#&gt; tcl           Cl  1.02 0.0853  8.4       2.76 (2.34, 3.26)     27.6      3.46% </span></span>
-<span><span class="co">#&gt; tv             V  3.45 0.0454 1.32       31.5 (28.8, 34.4)     13.4      9.89% </span></span>
-<span><span class="co">#&gt; add.sd           0.693                               0.693                     </span></span>
+<span><span class="co">#&gt; tka           Ka 0.464  0.195   42       1.59 (1.09, 2.33)     71.1   -0.0900% </span></span>
+<span><span class="co">#&gt; tcl           Cl  1.01  0.085 8.43       2.74 (2.32, 3.24)     27.4      4.80% </span></span>
+<span><span class="co">#&gt; tv             V  3.46 0.0447 1.29         31.7 (29, 34.6)     13.1      8.77% </span></span>
+<span><span class="co">#&gt; add.sd           0.696                               0.696                     </span></span>
 <span><span class="co">#&gt;  </span></span>
 <span><span class="co">#&gt;   Covariance Type ($covMethod): linFim</span></span>
 <span><span class="co">#&gt;   No correlations in between subject variability (BSV) matrix</span></span>
@@ -161,11 +168,12 @@
 <span><span class="co">#&gt; # A tibble: 132 × 19</span></span>
 <span><span class="co">#&gt;   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    cp</span></span>
 <span><span class="co">#&gt;   &lt;fct&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;</span></span>
-<span><span class="co">#&gt; 1 1      0     0.74  0     0.74   0     0.74   1.07   0.103 -0.491 -0.0820  0   </span></span>
-<span><span class="co">#&gt; 2 1      0.25  2.84  3.27 -0.426  3.87 -1.03  -1.48   0.103 -0.491 -0.0820  3.87</span></span>
-<span><span class="co">#&gt; 3 1      0.57  6.57  5.85  0.723  6.82 -0.246 -0.356  0.103 -0.491 -0.0820  6.82</span></span>
-<span><span class="co">#&gt; # … with 129 more rows, and 7 more variables: depot &lt;dbl&gt;, center &lt;dbl&gt;,</span></span>
-<span><span class="co">#&gt; #   ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;, dosenum &lt;dbl&gt;</span></span>
+<span><span class="co">#&gt; 1 1      0     0.74  0     0.74   0     0.74   1.06  0.0839 -0.477 -0.0849  0   </span></span>
+<span><span class="co">#&gt; 2 1      0.25  2.84  3.28 -0.437  3.83 -0.991 -1.42  0.0839 -0.477 -0.0849  3.83</span></span>
+<span><span class="co">#&gt; 3 1      0.57  6.57  5.86  0.715  6.76 -0.194 -0.278 0.0839 -0.477 -0.0849  6.76</span></span>
+<span><span class="co">#&gt; # ℹ 129 more rows</span></span>
+<span><span class="co">#&gt; # ℹ 7 more variables: depot &lt;dbl&gt;, center &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;,</span></span>
+<span><span class="co">#&gt; #   tad &lt;dbl&gt;, dosenum &lt;dbl&gt;</span></span>
 <span></span>
 <span><span class="co"># But plots are in the helper package `nlmixr2plot`, and therefore:</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/graphics/plot.default.html" class="external-link">plot</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span></code></pre></div>
@@ -216,7 +224,7 @@
 <ul class="list-unstyled">
 <li><a href="https://github.com/nlmixr2/nlmixr2est/actions" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg" alt="R build status"></a></li>
 <li><a href="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est" class="external-link"><img src="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge" alt="CodeFactor"></a></li>
-<li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="http://www.r-pkg.org/badges/version/nlmixr2est" alt="CRAN version"></a></li>
+<li><a href="https://CRAN.R-project.org/package=nlmixr2est" class="external-link"><img src="https://www.r-pkg.org/badges/version/nlmixr2est" alt="CRAN status"></a></li>
 <li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est" alt="CRAN total downloads"></a></li>
 <li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/nlmixr2est" alt="CRAN total downloads"></a></li>
 <li><a href="https://app.codecov.io/gh/nlmixr2/nlmixr2est" class="external-link"><img src="https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl" alt="codecov"></a></li>
