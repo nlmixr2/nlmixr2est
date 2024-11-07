@@ -182,7 +182,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     scaleC=scaleC,
     scaleTo=scaleTo,
 
-    addProp=addProp, calcTables=calcTables,
+    addProp=match.arg(addProp),
+    calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
     genRxControl=.genRxControl)

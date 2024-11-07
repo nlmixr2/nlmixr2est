@@ -217,7 +217,8 @@ lbfgsb3cControl <- function(trace=0,
     scaleC=scaleC,
     scaleTo=scaleTo,
 
-    addProp=addProp, calcTables=calcTables,
+    addProp=match.arg(addProp),
+    calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
     genRxControl=.genRxControl)
