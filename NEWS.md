@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fix bug where models where omega boundary warnings caused problems
+  in estimation (#490)
+
 # nlmixr2est 3.0.1
 
 ## New features
