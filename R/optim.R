@@ -330,7 +330,9 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                scaleTo=scaleTo,
                gradTo=gradTo,
                rxControl=rxControl,
-               returnOptim=returnOptim, addProp=addProp, calcTables=calcTables,
+               returnOptim=returnOptim,
+               addProp=match.arg(addProp),
+               calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl)
