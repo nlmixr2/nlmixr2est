@@ -5278,11 +5278,15 @@ NumericMatrix foceiCalcCov(Environment e){
               // Upper only
               checkUpperBound = true;
             }
-            if (checkLowerBound && (std::fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol)) {
+            if (checkLowerBound &&
+                j < thetaNames.size() &&
+                (std::fabs((cur-op_focei.lower[k])/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
             }
-            if (checkUpperBound && (std::fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol)) {
+            if (checkUpperBound &&
+                j < thetaNames.size() &&
+                (std::fabs((op_focei.upper[k]-cur)/cur) < op_focei.boundTol)) {
               boundary = true;
               boundStr += "\"" + thetaNames[j] + "\" ";
             }
