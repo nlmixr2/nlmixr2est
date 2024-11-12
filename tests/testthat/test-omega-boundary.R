@@ -37,8 +37,8 @@ nmTest({
       suppressWarnings(suppressMessages(nlmixr2(...)))
     }
 
-    expect_error(.nlmixr(one.compartment.IV.MM.model,dataX,est="focei",
-                         control=list(print=0)), NA)
+    expect_true(inherits(.nlmixr(one.compartment.IV.MM.model,dataX,est="focei",
+                                 control=list(print=0)), "nlmixr2FitCore"))
 
   })
 })
