@@ -22,8 +22,8 @@ nmTest({
         Vc <- exp(lVc + eta.Vc)
         VM <- exp(lVM + eta.VM)
         KM <- exp(lKM + eta.KM)
-        d/dt(centr)  = -(VM*centr/Vc)/(KM+centr/Vc);
-        cp = centr / Vc;
+        d/dt(centr)  <- -(VM*centr/Vc)/(KM+centr/Vc)
+        cp <- centr / Vc
         cp ~ prop(prop.err)
       })
     }
