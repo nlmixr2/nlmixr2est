@@ -55,14 +55,32 @@ preProcessHooksRm <- function(name) {
 }
 #' Return a list of all pre-processing hooks
 #'
-#' @return a charcter vector listing all pre-processing hooks
+#'
+#' @param name when specified, the name of the hook, otherwise `NULL`
+#'   to list all hooks
+#'
+#' @return a charcter vector listing all pre-processing hooks or the
+#'   function for the hook
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @family preProcessHooks
-preProcessHooks <- function() {
-  ls(envir=.preProcessHooks, all.names=TRUE)
+preProcessHooks <- function(name=NULL) {
+  if (is.null(name)) {
+    ls(envir=.preProcessHooks, all.names=TRUE)
+  } else {
+    checkmate::assertCharacter(name, len=1,
+                               pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                               min.chars=1)
+    if (exists(name, envir=.preProcessHooks)) {
+      get(name, envir=.preProcessHooks)
+    } else {
+      stop("nlmixr2est preprocessing hook '", name, "' does not exist",
+           call.=FALSE)
+    }
+  }
 }
+
 
 .preProcessHooksRun <- function(env, est) {
   .ui <- env$ui

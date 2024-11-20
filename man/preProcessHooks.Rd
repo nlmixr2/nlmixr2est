@@ -4,10 +4,15 @@
 \alias{preProcessHooks}
 \title{Return a list of all pre-processing hooks}
 \usage{
-preProcessHooks()
+preProcessHooks(name = NULL)
+}
+\arguments{
+\item{name}{when specified, the name of the hook, otherwise `NULL`
+to list all hooks}
 }
 \value{
-a charcter vector listing all pre-processing hooks
+a charcter vector listing all pre-processing hooks or the
+  function for the hook
 }
 \description{
 Return a list of all pre-processing hooks
