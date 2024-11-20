@@ -210,7 +210,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     return(.uif)
   }
   .env <- new.env(parent=emptyenv())
-  .env$ui <- .nlmixrPreprocessUi(.uif, control)
+  .env$ui <- .nlmixrPreprocessUi(.uif, control, est)
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
@@ -259,7 +259,7 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     return(.uif)
   }
   .env <- new.env(parent=emptyenv())
-  .env$ui <- .nlmixrPreprocessUi(.uif, control)
+  .env$ui <- .nlmixrPreprocessUi(.uif, control, est)
   .missingData <- FALSE
   if (is.null(data)) {
     data <- NULL
@@ -380,7 +380,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     table <- getValidNlmixrControl(table, "tableControl")
   }
   .ui <- rxode2::rxUiDecompress(object$ui)
-  .env$ui <- .nlmixrPreprocessUi(.ui, control)
+  .env$ui <- .nlmixrPreprocessUi(.ui, control, est)
   .env$data <- data
   .env$control <- control
   .env$table <- table

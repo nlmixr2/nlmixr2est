@@ -111,10 +111,12 @@
 #' This is used to apply the mu referencing bug fix for `rxode2`
 #'
 #' @param ui rxode2 UI
+#' @param control -- control list for the fit
+#' @param est -- the fit estimation method
 #' @return correct ui for say a fit (possibly a simulation)
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmixrPreprocessUi <- function(ui, control) {
+.nlmixrPreprocessUi <- function(ui, control, est) {
   ui <- rxode2::assertRxUi(ui)
   .ret <- rxode2::rxUiDecompress(ui)
   .checkLiteralFix <- TRUE
