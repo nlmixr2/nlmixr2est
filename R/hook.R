@@ -71,7 +71,7 @@ preProcessHooks <- function() {
   .control <- env$control
   for (name in preProcessHooks()) {
     .fun <- get(name, envir=.preProcessHooks)
-    .ret <- .fun(ui, est, data, control)
+    .ret <- .fun(.ui, .est, .data, .control)
     if (is.null(.ret) || length(.ret) == 0) {
     } else if (checkmate::testList(.ret, max.len=4, min.len=1) &&
           !is.null(names(.ret)) &&

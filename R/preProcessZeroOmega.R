@@ -121,3 +121,4 @@
   }
   list(ui=.ui)
 }
+preProcessHooksAdd(".preProcessZeroOmega", .preProcessZeroOmega)

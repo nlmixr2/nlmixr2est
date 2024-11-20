@@ -31,3 +31,4 @@
   }
   return(list(ui=.ui))
 }
+preProcessHooksAdd(".nlmixrPreprocessLiteralFix", .nlmixrPreprocessLiteralFix)
