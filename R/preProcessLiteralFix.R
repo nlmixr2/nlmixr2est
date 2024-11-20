@@ -29,6 +29,6 @@
       .ui <- ui
     }
   }
-  return(list(ui=.ui))
+  list(ui=.ui)
 }
 preProcessHooksAdd(".nlmixrPreprocessLiteralFix", .nlmixrPreprocessLiteralFix)
