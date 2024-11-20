@@ -3,6 +3,8 @@
 - Fix bug where models where omega boundary warnings caused problems
   in estimation (#490)
 
+- Allow pre-processing of model to include estimate type
+
 # nlmixr2est 3.0.1
 
 ## New features
