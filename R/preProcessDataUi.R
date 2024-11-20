@@ -1,0 +1,23 @@
+#' Preprocess the zero omegas
+#'
+#' @inheritParams nlmixr2
+#' @return list with the ui (possibly modified)
+#' @export
+#' @author Matthew L. Fidler
+.preProcessDataUi <- function(ui, est, data, control) {
+  .ui <- ui
+  if (isTRUE(.ui$uiUseData)) {
+    rxode2::rxUdfUiReset()
+    on.exit({
+      rxode2::rxUdfUiReset()
+    })
+    if (rxIs(data, "event.data.frame")) {
+      rxode2::rxUdfUiData(data)
+    }
+    rxode2::rxUdfUiEst(est)
+    rxode2::rxUdfUiControl(control)
+    .ui <- rxode2::rxode2(.ui)
+  }
+  list(ui=.ui)
+}
+preProcessHooksAdd(".preProcessZeroOmega", .preProcessZeroOmega)
