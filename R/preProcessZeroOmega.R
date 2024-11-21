@@ -106,6 +106,7 @@
 
 #' Preprocess the zero omegas
 #'
+#' @param ui rxode2 ui model
 #' @inheritParams nlmixr2
 #' @return list with the ui (possibly modified)
 #' @export

@@ -1,5 +1,6 @@
 #' Preprocess the zero omegas
 #'
+#' @param ui rxode2 ui
 #' @inheritParams nlmixr2
 #' @return list with the ui (possibly modified)
 #' @export
@@ -20,4 +21,4 @@
   }
   list(ui=.ui)
 }
-preProcessHooksAdd(".preProcessZeroOmega", .preProcessZeroOmega)
+preProcessHooksAdd(".preProcessDataUi", .preProcessDataUi)
