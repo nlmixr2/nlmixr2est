@@ -29,7 +29,8 @@ close(md5file)
 .in <- gsub("@RCPP@", file.path(find.package("Rcpp"),"include"), .in)
 .in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
 
-if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {
+if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win") ||
+      (R.version$os == "linux-musl")) {
   writeLines(gsub("@ISYSTEM@", "I",
                   gsub("@CXX14STD@", "CXX14STD = -std=c++1y", .in)),
              "src/Makevars.win")
