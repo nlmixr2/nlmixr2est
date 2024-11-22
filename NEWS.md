@@ -3,6 +3,10 @@
 - Fix bug where models where omega boundary warnings caused problems
   in estimation (#490)
 
+- Created a new api for pre-processing ui, allowing adding arbitrary
+  hooks.  As written now, this includes literal fix and zero omega as
+  well as added the new rxode2 ui processing.
+
 # nlmixr2est 3.0.1
 
 ## New features

@@ -29,12 +29,20 @@ close(md5file)
 .in <- gsub("@RCPP@", file.path(find.package("Rcpp"),"include"), .in)
 .in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
 
-if (.Platform$OS.type == "windows" && !file.exists("src/Makevars.win")) {
-  writeLines(gsub("@ISYSTEM@", "I",
-                  gsub("@CXX14STD@", "CXX14STD = -std=c++1y", .in)),
-             "src/Makevars.win")
+
+.in <- suppressWarnings(readLines("src/Makevars.in"))
+if (.Platform$OS.type == "windows") {
+  .makevars <- file("src/Makevars.win", "wb")
+  .i <- "I"
 } else {
-  writeLines(gsub("@ISYSTEM@", "isystem",
-                  gsub("@CXX14STD@", "CXX14STD = -std=gnu++14", .in)),
-             "src/Makevars")
+  .makevars <- file("src/Makevars", "wb")
+  if (any(grepl("Pop!_OS", utils::osVersion, fixed=TRUE))) {
+    .i <- "isystem"
+  } else {
+    .i <- "I"
+  }
 }
+
+writeLines(gsub("@ISYSTEM@", .i, .in),
+           .makevars)
+close(.makevars)

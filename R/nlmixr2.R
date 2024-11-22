@@ -210,7 +210,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     return(.uif)
   }
   .env <- new.env(parent=emptyenv())
-  .env$ui <- .nlmixrPreprocessUi(.uif, control, est)
+  .env$ui <- .uif
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     .env$data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
@@ -241,6 +241,7 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .minfo("use {.code est} from pipeline")
     est <- .nlmixr2pipeEst
   }
+  est <- .preProcessHooksRun(.env, est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -259,7 +260,7 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     return(.uif)
   }
   .env <- new.env(parent=emptyenv())
-  .env$ui <- .nlmixrPreprocessUi(.uif, control, est)
+  .env$ui <- .uif
   .missingData <- FALSE
   if (is.null(data)) {
     data <- NULL
@@ -323,6 +324,7 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   }
+  est <- .preProcessHooksRun(.env, est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -380,7 +382,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     table <- getValidNlmixrControl(table, "tableControl")
   }
   .ui <- rxode2::rxUiDecompress(object$ui)
-  .env$ui <- .nlmixrPreprocessUi(.ui, control, est)
+  .env$ui <- .ui
   .env$data <- data
   .env$control <- control
   .env$table <- table
@@ -388,6 +390,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .env$missingEst <- missing(est)
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
+  est <- .preProcessHooksRun(.env, est)
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
