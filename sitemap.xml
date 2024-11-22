@@ -29,6 +29,9 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFun.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrNlsFunVal.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrOptimFunC.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrPreprocessLiteralFix.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessDataUi.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-preProcessZeroOmega.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-rxGetDVFTransform.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc></url>
@@ -81,6 +84,9 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksAdd.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/reexports.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc></url>
