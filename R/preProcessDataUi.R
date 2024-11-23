@@ -12,7 +12,7 @@
     on.exit({
       rxode2::rxUdfUiReset()
     })
-    if (rxIs(data, "event.data.frame")) {
+    if (rxode2::rxIs(data, "event.data.frame")) {
       rxode2::rxUdfUiData(data)
     }
     rxode2::rxUdfUiEst(est)
