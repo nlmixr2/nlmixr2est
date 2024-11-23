@@ -16,7 +16,8 @@
       rxode2::rxUdfUiData(data)
     }
     rxode2::rxUdfUiEst(est)
-    rxode2::rxUdfUiControl(control)
+    # Add for next version of rxode2
+    ## rxode2::rxUdfUiControl(control)
     .ui <- rxode2::rxode2(.ui)
   }
   list(ui=.ui)
