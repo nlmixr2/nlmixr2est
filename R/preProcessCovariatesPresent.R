@@ -21,7 +21,7 @@
     if (is.null(data$ID)) data$ID <- 1L
     checkmate::assert_names(names(data), must.include = requiredCols)
   }
-  return(list(data=data))
+  list(data=data)
 }
 
 preProcessHooksAdd(".nlmixr0preProcessCovariatesPresent", .nlmixr0preProcessCovariatesPresent)
