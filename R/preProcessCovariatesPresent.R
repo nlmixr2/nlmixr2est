@@ -17,11 +17,10 @@
         toupper(x)
       }
     }, character(1))
-    requiredCols <- c("ID", "DV", "TIME", .covNames)
-    if (is.null(data$ID)) data$ID <- 1L
+    requiredCols <- c("DV", "TIME", .covNames)
     checkmate::assert_names(names(data), must.include = requiredCols)
   }
-  list(data=data)
+  NULL
 }
 
 preProcessHooksAdd(".nlmixr0preProcessCovariatesPresent", .nlmixr0preProcessCovariatesPresent)

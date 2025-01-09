@@ -1376,6 +1376,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       toupper(x)
     }
   }, character(1))
+  if (is.null(data$ID)) data$ID <- 1L
+  colnames(data) <- vapply(names(data), function(x) {
+    if (any(x == .covNames)) {
+      x
+    } else {
+      toupper(x)
+    }
+  }, character(1))
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   ## Make sure they are all double amounts.
