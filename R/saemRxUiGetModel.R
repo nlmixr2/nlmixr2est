@@ -341,12 +341,12 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
+  .etas <- .iniDf[which(.iniDf$neta1 == .iniDf$neta2),"name"]
   if (length(.thetaNames$name) == 0L) {
     .thetaValue <- character(0L)
   } else {
     .thetaValue <- setNames(paste0("THETA[", .thetaNames$ntheta, "]"), .thetaNames$name)
   }
-
   if (length(.ui$nonMuEtas) > 0) {
     .nonMuThetas <- setNames(rep("", length(.ui$nonMuEtas)), .ui$nonMuEtas)
     .thetaValue <- c(.thetaValue, .nonMuThetas)
@@ -355,15 +355,18 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 
   .thetaValueErr <- setNames(paste0("THETA[", .thetaErrNames$ntheta, "]"), .thetaErrNames$name)
   .thetaValue <- c(.thetaValue, .thetaValueErr)
-
-  .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
+  .etaTrans <- rxUiGet.saemEtaTransPred(x, ...)
   for (.e in seq_along(.etaTrans)) {
     .eta <- paste0("ETA[", .e, "]")
     .tn <- .etaTrans[.e]
-    if (.thetaValue[.tn] == "") {
-      .thetaValue[.tn] <- .eta
+    if (.tn < 0) {
+      .thetaValue[.etas[-.tn]] <- .eta
     } else {
-      .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
+      if (.thetaValue[.tn] == "") {
+        .thetaValue[.tn] <- .eta
+      } else {
+        .thetaValue[.tn] <- paste0(.thetaValue[.tn], " + ", .eta)
+      }
     }
   }
   .muRefFinal <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
@@ -413,6 +416,7 @@ rxUiGet.saemModelPred <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaemPred(x, ...)
   .saemModelEnv$symengine <- .s
   .replaceLst <- rxUiGet.saemModelPredReplaceLst(x, ...)
+
   .saemModelEnv$predSymengine <- .s
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
