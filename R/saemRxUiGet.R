@@ -156,12 +156,14 @@ rxUiGet.saemFixed <- function(x, ...) {
 }
 #attr(rxUiGet.saemFixed, "desc") <- "Get the saem fixed parameters"
 
-#' @export
-rxUiGet.saemEtaTrans <- function(x, ...) {
+.saemEtaTrans <- function(x, ..., nonMu=FALSE) {
   .ui <- x[[1]]
   .etas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
+  if (nonMu) {
+    .thetas <- .thetas[!(.thetas %in% .ui$nonMuEtas)]
+  }
   .muRefDataFrame <- .ui$muRefDataFrame
   vapply(.etas, function(eta) {
     .w <- which(eta == .muRefDataFrame$eta)
@@ -170,10 +172,24 @@ rxUiGet.saemEtaTrans <- function(x, ...) {
       .w <- which(.muTheta == .thetas)
       if (length(.w) == 1L) return(.w)
     }
+    if (nonMu && eta %in% .ui$nonMuEtas) {
+      .w <- which(eta == .etas)
+      if (length(.w) == 1L) return(-.w)
+    }
     .w <- which(eta == .thetas)
     if (length(.w) == 1L) return(.w)
     return(NA_integer_)
   }, integer(1), USE.NAMES=FALSE)
+}
+
+#' @export
+rxUiGet.saemEtaTrans <- function(x, ...) {
+  .saemEtaTrans(x, ...)
+}
+
+#' @export
+rxUiGet.saemEtaTransPred <- function(x, ...) {
+  .saemEtaTrans(x, ..., nonMu=TRUE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
 #' @export

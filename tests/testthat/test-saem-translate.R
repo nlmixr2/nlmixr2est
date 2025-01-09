@@ -1,3 +1,49 @@
+test_that("non mu reference saem", {
+
+  f <- function() {
+    ini({
+      tvCL <- 3.3594379124341
+      tvV <- 3.6094379124341
+      tvKTR <- -0.693147180559945
+      tvKM <- 5.29831736654804
+      F200 <- -0.0647845247561051
+      F400 <- 0.0715539674232866
+      F900 <- 0.00929098278954747
+      WTCL <- -1
+      WTV <- -1
+      add.sd <- c(0, 3.44017630095337e+25)
+      prop.sd <- c(0, 1.55138010877442e+25)
+      eta.CL ~ 0.09025
+      eta.V ~ 0.09025
+      eta.KTR ~ 0.09025
+      eta.BIO ~ 0.101204645585734
+      eta.KM ~ 0.09025
+    })
+    model({
+      CL <- exp(tvCL + nlmixrMuDerCov1 * WTCL + eta.CL)
+      V <- exp(tvV + nlmixrMuDerCov2 * WTV + eta.V)
+      KTR <- exp(tvKTR + eta.KTR)
+      BIO <- exp(0 + eta.BIO + DOSE3 * F200 + DOSE4 * F400 +
+                   DOSE5 * F900)
+      KM <- exp(tvKM + eta.KM)
+      F(trans1) = BIO
+      cp = central/V
+      CLTOT = CL * (1 + cp/(KM + cp))
+      k = CLTOT/V
+      d/dt(trans1) = -KTR * trans1
+      d/dt(trans2) = KTR * trans1 - KTR * trans2
+      d/dt(trans3) = KTR * trans2 - KTR * trans3
+      d/dt(central) = KTR * trans3 - k * central
+      cp ~ add(add.sd) + prop(prop.sd) + combined1()
+    })
+  }
+
+  f <- f()
+
+  expect_error(f$saemModelPred, NA)
+
+})
+
 test_that("Standard theo linCmt()", {
 
   one.cmt <- function() {
