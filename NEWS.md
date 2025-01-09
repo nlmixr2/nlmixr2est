@@ -1,13 +1,13 @@
 # nlmixr2est 3.0.2
 
-- Fix bug where models where omega boundary warnings caused problems
-  in estimation (#490)
-
 - Bug fix for non-mu referenced etas when combined with mu referenced
   covariate values. (See #498)
 
 - Changed option for `"saem"` to have `literalFix=FALSE`. This makes
   mu-referencing work better when fixing a population value.
+
+- Fix bug where models where omega boundary warnings caused problems
+  in estimation (#490)
 
 - Created a new api for pre-processing ui, allowing adding arbitrary
   hooks.  As written now, this includes literal fix and zero omega as
