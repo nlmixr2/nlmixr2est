@@ -1359,7 +1359,6 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @keywords internal
 #' @export
 .foceiPreProcessData <- function(data, env, ui, rxControl=NULL) {
-  .covNames <- ui$covariates
   if (is.null(rxControl)) {
     .env <- nlmixr2global$nlmixrEvalEnv$envir
     if (!is.environment(.env)) {
@@ -1369,6 +1368,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   env$origData <- as.data.frame(data)
   data <- env$origData
+  .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
     if (any(x == .covNames)) {
       x
