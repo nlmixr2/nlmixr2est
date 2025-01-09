@@ -1,0 +1,27 @@
+#' Preprocess Covariates needed (or other data items)
+#'
+#' @param ui rxode2 ui
+#' @inheritParams nlmixr2
+#' @return list with the ui (possibly modified)
+#' @export
+#' @author Matthew L. Fidler
+.nlmixr0preProcessCovariatesPresent <- function(ui, est, data, control) {
+  # Could possibly use to stack data or use an DV or IDV different
+  # than what is present in the data
+  if (!missing(data)) {
+    .covNames <- ui$covariates
+    colnames(data) <- vapply(names(data), function(x) {
+      if (any(x == .covNames)) {
+        x
+      } else {
+        toupper(x)
+      }
+    }, character(1))
+    requiredCols <- c("ID", "DV", "TIME", .covNames)
+    if (is.null(data$ID)) data$ID <- 1L
+    checkmate::assert_names(names(data), must.include = requiredCols)
+  }
+  return(list(data=data))
+}
+
+preProcessHooksAdd(".nlmixr0preProcessCovariatesPresent", .nlmixr0preProcessCovariatesPresent)
