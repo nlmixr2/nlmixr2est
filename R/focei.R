@@ -1386,7 +1386,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }, character(1))
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
-  checkmate::assert_names(names(data), must.include = "DV")
+  checkmate::assert_names(names(data), must.include = c("DV", "TIME"))
   ## Make sure they are all double amounts.
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
