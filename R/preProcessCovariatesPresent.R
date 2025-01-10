@@ -17,7 +17,7 @@
         toupper(x)
       }
     }, character(1))
-    requiredCols <- c("DV", "TIME", .covNames)
+    requiredCols <- c("TIME", .covNames)
     checkmate::assert_names(names(data), must.include = requiredCols)
   }
   NULL
