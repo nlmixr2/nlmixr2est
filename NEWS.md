@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Moved data check for covariates and required data items to a
+  pre-processing step. This fixes #499
+
 - Bug fix for non-mu referenced etas when combined with mu referenced
   covariate values. (See #498)
 
