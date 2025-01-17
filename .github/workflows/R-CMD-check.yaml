@@ -67,7 +67,7 @@ jobs:
         with:
           upload-snapshots: true
   dispatches:
-    needs: [check]
+    needs: [R-CMD-check]
     runs-on: ubuntu-latest
     steps:
       - name: slackthreads trigger
