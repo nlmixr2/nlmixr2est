@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 3.0.3
 
 - Moved data check for covariates and required data items to a
   pre-processing step. This fixes #499
