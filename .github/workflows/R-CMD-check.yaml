@@ -66,3 +66,14 @@ jobs:
       - uses: r-lib/actions/check-r-package@v2
         with:
           upload-snapshots: true
+  dispatches:
+    needs: [check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: slackthreads trigger
+        uses: peter-evans/repository-dispatch@v1.0.0
+        with:
+          token: ${{secrets.GH_PAT}}
+          repository: nlmixr2/babelmixr2
+          event-type: push
+          client-payload: '{"repository": "${{ github.repository }}", "ref": "${{ github.ref }}", "sha": "${{ github.sha }}"}'
