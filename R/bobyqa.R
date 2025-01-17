@@ -421,5 +421,6 @@ nlmixr2Est.bobyqa <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .bobyqaFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.bobyqa, "covPresent") <- TRUE
 
 #minqa::bobyqa()

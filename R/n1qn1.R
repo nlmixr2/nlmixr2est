@@ -402,3 +402,4 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .n1qn1FamilyFit(env,  ...)
 }
+attr(nlmixr2Est.n1qn1, "covPresent") <- TRUE

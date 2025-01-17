@@ -918,3 +918,4 @@ nlmixr2Est.nlm <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .nlmFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.nlm, "covPresent") <- TRUE
