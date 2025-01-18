@@ -1,7 +1,10 @@
 # nlmixr2est 3.0.3
 
 - Moved data check for covariates and required data items to a
-  pre-processing step. This fixes #499
+  pre-processing step. This fixes #499.  Each method that needs to
+  have a covariate check needs to have a property `covPresent`. For
+  example to apply the covariate data check to the `focei` method you
+  need `attr(nlmixr2Est.focei, "covPresent") <- TRUE`.
 
 - Bug fix for non-mu referenced etas when combined with mu referenced
   covariate values. (See #498)
