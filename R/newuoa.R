@@ -390,5 +390,6 @@ nlmixr2Est.newuoa <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .newuoaFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.newuoa, "covPresent") <- TRUE
 
 #minqa::newuoa()

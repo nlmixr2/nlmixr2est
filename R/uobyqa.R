@@ -397,5 +397,5 @@ nlmixr2Est.uobyqa <- function(env, ...) {
   }, add=TRUE)
   .uobyqaFamilyFit(env,  ...)
 }
-
+attr(nlmixr2Est.uobyqa, "covPresent") <- TRUE
 #minqa::uobyqa()

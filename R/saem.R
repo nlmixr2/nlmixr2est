@@ -805,6 +805,8 @@ nlmixr2Est.saem <- function(env, ...) {
   }, add=TRUE)
   .uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2)
 }
+attr(nlmixr2Est.saem, "covPresent") <- TRUE
+
 
 #' @rdname nmObjGet
 #' @export

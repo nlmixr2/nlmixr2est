@@ -152,6 +152,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
 }
+attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -162,6 +163,7 @@ nlmixr2Est.simulate <- function(env, ...) {
                                   events = .events, inits = NULL), .rxSolveGetControlForNlmixr(env),
                              list(theta = NULL, eta = NULL)))
 }
+attr(nlmixr2Est.simulate, "covPresent") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -179,6 +181,8 @@ nlmixr2Est.simulation <- function(env, ...) {
                                   events = .events, inits = NULL), .rxControl,
                              list(theta = NULL, eta = NULL)))
 }
+attr(nlmixr2Est.simulation, "covPresent") <- TRUE
+
 
 #'@rdname nlmixr2Est
 #'@export
@@ -199,6 +203,8 @@ nlmixr2Est.predict <- function(env, ...) {
   nlmixr2(object=get("ui", envir=env), data=.events,
           est="rxSolve", control=.rxControl)
 }
+attr(nlmixr2Est.predict, "covPresent") <- TRUE
+
 #' Get new data
 #'
 #'

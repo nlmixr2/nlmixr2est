@@ -625,3 +625,4 @@ nlmixr2Est.optim <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .optimFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.optim, "covPresent") <- TRUE

@@ -435,3 +435,4 @@ nlmixr2Est.lbfgsb3c <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .lbfgsb3cFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.lbfgsb3c, "covPresent") <- TRUE

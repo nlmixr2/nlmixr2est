@@ -566,3 +566,4 @@ nlmixr2Est.nlminb <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .nlminbFamilyFit(env,  ...)
 }
+attr(nlmixr2Est.nlminb, "covPresent") <- TRUE

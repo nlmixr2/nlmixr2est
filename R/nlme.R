@@ -537,3 +537,4 @@ nlmixr2Est.nlme <- function(env, ...) {
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }
+attr(nlmixr2Est.nlme, "covPresent") <- TRUE
