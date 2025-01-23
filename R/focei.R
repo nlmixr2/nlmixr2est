@@ -1300,7 +1300,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
   assign("nEstOmega", length(which(!is.na(ui$iniDf$neta1) & !ui$iniDf$fix)),
          env)
   if (length(env$skipCov) != .maxTheta) {
-    stop("'skipCov' improperly specified", call.=FALSE)
+    .iniTheta <- ui$iniDf[!is.na(ui$iniDf$ntheta), ]
+    env$skipCov <- is.na(.iniTheta$err)
+    warning("'skipCov' improperly specified, reset", call.=FALSE)
   }
 }
 
