@@ -29,4 +29,40 @@ nmTest({
       regexp = "cannot add CWRES to a model without etas"
     )
   })
+
+  test_that("cwres issue in 3.0.3", {
+
+    skip_if_not(file.exists(test_path("test-cwres-3.0.3.qs")))
+
+    data <- qs::qread(test_path("test-cwres-3.0.3.qs"))
+
+    test_model <- function() {
+      ini({
+        lcl  <- log(3)
+        lvc   <- log(40)
+        prop.err <- 0.1
+        eta.cl ~ 0.1
+        eta.vc  ~ 0.1
+        WT_Cl <- fix(0.75)
+        ClCrEff <- 1
+      })
+      model({
+        cl<- exp(lcl + eta.cl + WT_Cl * log(Weight/81.60) + ClCrEff * log(ClCr/77.73))
+        vc  <- exp(lvc + eta.vc)
+        d/dt(A_cen) = - cl/vc * A_cen
+        cp = A_cen/vc
+        cp ~ prop(prop.err)
+      })
+    }
+
+    test_run001 <-
+      nlmixr2(
+        test_model(),
+        data,
+        "saem",
+        control=list(print=0, nBurn=1, nEm=1))
+
+    expect_error(addCwres(test_run001), NA)
+
+  })
 })
