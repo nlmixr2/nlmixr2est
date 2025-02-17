@@ -85,11 +85,17 @@ preProcessHooks <- function(name=NULL) {
 .preProcessHooksRun <- function(env, est) {
   .ui <- env$ui
   .est <- est
+  if (is.null(.est) && inherits(nlmixr2global$nlmixr2pipeEst, "character") {
+    .est <- est <- nlmixr2global$nlmixr2pipeEst
+  }
   .data <- env$data
   if (is.null(.data) && inherits(nlmixr2global$nlmixr2pipeData, "data.frame")) {
     .data <- env$data <- nlmixr2global$nlmixr2pipeData
   }
   .control <- env$control
+  if (is.null(.control) && inherits(nlmixr2global$nlmixr2pipeControl, "list")) {
+    .control <- env$control <- nlmixr2global$nlmixr2pipeControl
+  }
   for (name in preProcessHooks()) {
     .fun <- get(name, envir=.preProcessHooks)
     .ret <- .fun(.ui, .est, .data, .control)
