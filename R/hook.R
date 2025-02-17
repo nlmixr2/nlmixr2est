@@ -85,7 +85,7 @@ preProcessHooks <- function(name=NULL) {
 .preProcessHooksRun <- function(env, est) {
   .ui <- env$ui
   .est <- est
-  if (is.null(.est) && inherits(nlmixr2global$nlmixr2pipeEst, "character") {
+  if (is.null(.est) && is.character(nlmixr2global$nlmixr2pipeEst)) {
     .est <- est <- nlmixr2global$nlmixr2pipeEst
   }
   .data <- env$data
