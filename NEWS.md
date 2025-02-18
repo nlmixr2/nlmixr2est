@@ -1,4 +1,9 @@
-# nlmixr2est (development version)
+# nlmixr2est 3.0.4
+
+- More robust covariance calculation in `focei`.
+
+- Allow hook mechanism to handle piped arguments.
+
 
 # nlmixr2est 3.0.3
 
