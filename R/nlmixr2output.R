@@ -420,7 +420,7 @@
       .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
     }
   }
-  return(.ret)
+  .ret
 }
 
 
@@ -435,7 +435,7 @@ VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
       row.names = names(.var)
     )
     .ret <- .ret[!is.na(.ret[, 1]), ]
-    return(.ret)
+    .ret
   } else {
     VarCorr(.ret, ...)
   }
@@ -482,7 +482,7 @@ str.nlmixr2FitData <- function(object, ...) {
 #' @author Matthew L. Fidler
 #' @export
 residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
-  return(object[, toupper(match.arg(type))])
+  object[, toupper(match.arg(type))]
 }
 
 #' Return the objective function
