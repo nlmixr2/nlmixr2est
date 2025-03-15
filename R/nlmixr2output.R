@@ -285,7 +285,7 @@
     .theta <- .ui$theta
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
-    .row.names <- row.names(.ret$popDf)
+
     .popDfEst <- .ret$popDf
     .popDfEst$Estimate <- unname(.popDfEst$Estimate)
     .popDfEst$SE <- unname(.popDfEst$SE)
