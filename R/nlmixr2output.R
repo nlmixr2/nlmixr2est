@@ -286,96 +286,43 @@
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
     .row.names <- row.names(.ret$popDf)
-    browser()
-    stop()
-    .popDf <-
+    .popDfEst <- .ret$popDf
+    .popDfEst$Estimate <- unname(.popDfEst$Estimate)
+    .popDfEst$SE <- unname(.popDfEst$SE)
+    .fixedNames <- setdiff(names(.theta), rownames(.popDfEst))
+    .popDfFixed <-
       data.frame(
-        Estimate=vapply(.tn,
-                    function(n) {
-                      .w <- which(.row.names == n)
-                      if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
-                      .theta[n]
-                    }, double(1), USE.NAMES = FALSE),
-        SE=vapply(.tn,
-                  function(n) {
-                    .ret <- .ret$popDf[n, "SE"]
-                    setNames(.ret, NULL)
-                  }, double(1), USE.NAMES = FALSE),
-        `%RSE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDf[n, "%RSE"]
-                      setNames(.ret, NULL)
-                    }, double(1), USE.NAMES = FALSE),
-        `Back-transformed`=vapply(.tn,
-                                  function(n) {
-                                    .w <- which(.row.names == n)
-                                    if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Back-transformed"], NULL))
-                                    .theta[n]
-                                  }, double(1), USE.NAMES = FALSE),
-        `CI Lower`=vapply(.tn,
-                      function(n) {
-                        .ret <- .ret$popDf[n, "CI Lower"]
-                        setNames(.ret, NULL)
-                      }, double(1), USE.NAMES = FALSE),
-        `CI Upper`=vapply(.tn,
-                          function(n) {
-                            .ret <- .ret$popDf[n, "CI Upper"]
-                            setNames(.ret, NULL)
-                           }, double(1), USE.NAMES = FALSE),
-        row.names = .tn,
+        Estimate = unname(.theta[.fixedNames]),
+        SE = NA_real_,
+        `%RSE` = NA_real_,
+        `Back-transformed` = unname(.theta[.fixedNames]),
+        `CI Lower` = NA_real_,
+        `CI Upper` = NA_real_,
+        row.names = .fixedNames,
+        check.names = FALSE,
+        check.rows = FALSE
+      )
+    # Combine estimated and fixed parameters, then order them by the theta names
+    .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
+
+    .popDfSigEst <- .ret$popDfSig
+    .popDfSigFixed <-
+      data.frame(
+        Est. = sprintf(.fmt, .theta[.fixedNames]),
+        SE = "FIXED",
+        `%RSE` = "FIXED",
+        BackTransformed = sprintf(.fmt, .theta[.fixedNames]),
+        row.names = .fixedNames,
         check.rows = FALSE, check.names = FALSE
       )
-    if (any(names(.ret$popDfSig) == "SE")) {
-      .popDfSig <-
-        data.frame(
-          Est.=vapply(.tn,
-                      function(n) {
-                        .w <- which(.row.names == n)
-                        if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                        sprintf(.fmt, .theta[n])
-                      }, character(1), USE.NAMES = FALSE),
-          SE=vapply(.tn,
-                    function(n) {
-                      .w <- which(.row.names == n)
-                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
-                      "FIXED"
-                    }, character(1), USE.NAMES = FALSE),
-          `%RSE`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "%RSE"], NULL))
-                          "FIXED"
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 4], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
-    } else {
-      .popDfSig <-
-        data.frame(
-          Est.=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 2], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[2] <- names(.ret$popDfSig)[2]
-    }
+    # Find the name of the back-transform column
+    .backtransName <- names(.popDfSigEst)[startsWith(names(.popDfSigEst), "Back-transformed")]
+    names(.popDfSigFixed)[names(.popDfSigFixed) == "BackTransformed"] <- .backtransName
+    # Drop "SE" and "%RSE" if they're not present in the original
+    .popDfSigFixed <- .popDfSigFixed[, intersect(names(.popDfEst), names(.popDfSigFixed))]
+    .popDfSig <- rbind(.popDfSigEst, .popDfSigFixed)[.tn, ]
+
+    # Show the fixed values in the model
     .ret$popDfSig <- .popDfSig
     .ret$popDf <- .popDf
   }
