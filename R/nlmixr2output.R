@@ -286,19 +286,21 @@
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
     .row.names <- row.names(.ret$popDf)
+    browser()
+    stop()
     .popDf <-
       data.frame(
-        `Estimate`=vapply(.tn,
-                          function(n) {
-                            .w <- which(.row.names == n)
-                            if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
-                            .theta[n]
-                          }, double(1), USE.NAMES = FALSE),
-        `SE`=vapply(.tn,
+        Estimate=vapply(.tn,
                     function(n) {
-                      .ret <- .ret$popDf[n, "SE"]
-                      setNames(.ret, NULL)
+                      .w <- which(.row.names == n)
+                      if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
+                      .theta[n]
                     }, double(1), USE.NAMES = FALSE),
+        SE=vapply(.tn,
+                  function(n) {
+                    .ret <- .ret$popDf[n, "SE"]
+                    setNames(.ret, NULL)
+                  }, double(1), USE.NAMES = FALSE),
         `%RSE`=vapply(.tn,
                     function(n) {
                       .ret <- .ret$popDf[n, "%RSE"]
@@ -326,18 +328,18 @@
     if (any(names(.ret$popDfSig) == "SE")) {
       .popDfSig <-
         data.frame(
-          `Est.`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `SE`=vapply(.tn,
+          Est.=vapply(.tn,
                       function(n) {
                         .w <- which(.row.names == n)
-                        if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
-                        "FIXED"
+                        if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
+                        sprintf(.fmt, .theta[n])
                       }, character(1), USE.NAMES = FALSE),
+          SE=vapply(.tn,
+                    function(n) {
+                      .w <- which(.row.names == n)
+                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
+                      "FIXED"
+                    }, character(1), USE.NAMES = FALSE),
           `%RSE`=vapply(.tn,
                         function(n) {
                           .w <- which(.row.names == n)
@@ -357,7 +359,7 @@
     } else {
       .popDfSig <-
         data.frame(
-          `Est.`=vapply(.tn,
+          Est.=vapply(.tn,
                         function(n) {
                           .w <- which(.row.names == n)
                           if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
