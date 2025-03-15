@@ -712,3 +712,65 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     assign("ui", .ui, envir=x)
   }
 }
+
+#' Format numeric values to minimize the printing width
+#'
+#' Special values (`NA`, `NaN`, `Inf`, `-Inf`, and `0`) are returned as their
+#' character representation without additional modification.
+#'
+#' @param x The numeric vector to convert
+#' @param digits The number of significant digits to show
+#' @returns A character vector converting the numbers with minimum width
+#' @examples
+#' formatMinWidth(x = -123456*10^(-10:10))
+#' @export
+formatMinWidth <- function(x, digits = 3) {
+  checkmate::assert_numeric(x)
+  maskSpecialValue <- x %in% c(NA, NaN, Inf, -Inf, 0)
+  signifX <- signif(x[!maskSpecialValue], digits = digits)
+  # Generate scientific notation values
+  formatSN <- paste0("%1.", digits - 1, "e")
+  valueSN <- sprintf(formatSN, signifX)
+  # Drop the + and leading zeros for positive exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\+0*", replacement = "e")
+  # Drop the leading zeros for negative exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\-0*", replacement = "e-")
+
+  firstDigit <- floor(log10(abs(signifX)))
+  lastDigit <- firstDigit - digits + 1
+  formatNormal <-
+    paste0(
+      "%",
+      ifelse(
+        firstDigit < 0,
+        "0",
+        firstDigit
+      ),
+      ifelse(
+        lastDigit < 0,
+        paste0(".", abs(lastDigit)),
+        ".0"
+      ),
+      "f"
+    )
+  valueNormal <- sprintf(formatNormal, signifX)
+
+  # Prepare the return value with special values
+  ret <- rep(NA_character_, length(x))
+  if (any(maskSpecialValue)) {
+    ret[maskSpecialValue] <- as.character(x[maskSpecialValue])
+    maskNA <- !is.nan(x) & is.na(x)
+    if (any(maskNA)) {
+      ret[maskNA] <- "NA"
+    }
+  }
+
+  # Place in the normal values
+  ret[!maskSpecialValue] <-
+    ifelse(
+      nchar(valueSN) < nchar(valueNormal),
+      valueSN,
+      valueNormal
+    )
+  ret
+}
