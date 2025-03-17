@@ -21,7 +21,7 @@ test_that("print works with combined zero and correlated etas (#359)", {
   }
 
   suppressMessages(
-    fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0, nBurn = 10, nEm = 10))
+    fit <-.nlmixr(one.compartment, theo_sd, est="saem", control = saemControlFast)
   )
   expect_output(
     .getCorPrint(fit$omegaR),

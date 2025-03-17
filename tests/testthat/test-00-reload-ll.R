@@ -21,7 +21,7 @@ test_that("between session saem ll works", {
           linCmt() ~ add(add.sd)
         })
       }
-      fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
+      fit <- suppressMessages(nlmixr(one.cmt, theo_sd, est="saem", control = saemControl(print = 0, nBurn = 1, nEm = 1, nmc = 1, nu = c(1, 1, 1))))
       saveRDS(fit, "fit.rds")
     }))
 
@@ -37,5 +37,4 @@ test_that("between session saem ll works", {
   })
 
   expect_true(is.numeric(rds$objf))
-
 })

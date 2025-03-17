@@ -23,15 +23,12 @@ nmTest({
     }
 
     fit2 <-
-      suppressMessages(suppressWarnings(
-        nlmixr(
-          one.compartment, theo_sd,
-          est = "focei",
-          control = list(print = 0)
-        )
-      ))
+      .nlmixr(
+        one.compartment, theo_sd,
+        est = "focei",
+        control = list(print = 0)
+      )
 
     expect_equal(fit2$theta, fit2$ui$theta)
-
   })
 })

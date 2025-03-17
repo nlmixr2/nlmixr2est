@@ -1,9 +1,4 @@
 nmTest({
-
-  .nlmixr <- function(...) {
-    suppressMessages(suppressWarnings(nlmixr(...)))
-  }
-
   test_that("test focei", {
 
     one.compartment <- function() {
@@ -79,31 +74,14 @@ nmTest({
 
 
 
-    f <- .nlmixr(one.compartment, theo_sd, "saem",
-                 control=saemControl(print=0))
-
-    expect_true(inherits(f$a, "factor"))
-
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    f <- .nlmixr(one.compartment, theo_sd, "saem", control = saemControlFast)
+    expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
 
     f <- addNpde(f)
-
-    expect_true(inherits(f$a, "factor"))
-
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
+    expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
 
     f <- addCwres(f)
-
-    expect_true(inherits(f$a, "factor"))
-
-    expect_equal(unique(f$a),
-                 structure(1:2, levels = c("<5", ">=5"),
-                           class = "factor"))
-
+    expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
   })
 
   test_that("test nlme", {

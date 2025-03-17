@@ -66,7 +66,7 @@ test_that("Standard theo linCmt()", {
 
   skip_if_not(rxode2::.linCmtSensB())
 
-  f <- nlmixr(one.cmt)
+  f <- .nlmixr(one.cmt)
 
   expect_equal(f$saemModel0,
                quote(rxModelVars({
@@ -170,7 +170,7 @@ test_that("non mu-ref theo linCmt() with fixed components", {
     })
   }
 
-  f <- nlmixr(one.cmt)
+  f <- .nlmixr(one.cmt)
 
   expect_equal(f$saemModel0,
                quote(rxModelVars({
@@ -345,7 +345,7 @@ test_that("nimo parsing", {
     })
   }
 
-  f <- nlmixr(nimo)
+  f <- .nlmixr(nimo)
 
   expect_equal(
     f$saemModel0,

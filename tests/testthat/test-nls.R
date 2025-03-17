@@ -1,9 +1,4 @@
 nmTest({
-
-  .nlmixr <- function(...) {
-    suppressMessages(nlmixr2(...))
-  }
-
   test_that("nls supports interp", {
 
     one.cmt <- function() {

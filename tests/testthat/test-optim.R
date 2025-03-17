@@ -19,11 +19,11 @@ nmTest({
       })
     }
 
-    fit2 <- nlmixr(mod, dsn, est="optim")
+    fit2 <- .nlmixr(mod, dsn, est="optim")
 
     expect_true(inherits(fit2, "nlmixr2.optim"))
 
-    fit3 <- fit2 %>% ini(g=unfix) %>% nlmixr2(dsn, "optim", optimControl(covMethod="optim"))
+    fit3 <- fit2 %>% ini(g=unfix) %>%.nlmixr(dsn, "optim", optimControl(covMethod="optim"))
 
     expect_true(inherits(fit3, "nlmixr2.optim"))
 
@@ -44,7 +44,7 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="optim", optimControl(method="L-BFGS-B"))
+    fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="optim", optimControl(method="L-BFGS-B"))
 
     expect_true(inherits(fit1, "nlmixr2.optim"))
 

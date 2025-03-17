@@ -1,6 +1,5 @@
 nmTest({
   test_that("ini ui works", {
-
     one.compartment <- function() {
       ini({
         tka <- 0.45
@@ -25,12 +24,9 @@ nmTest({
 
     f <-  one.compartment()
 
-    .nlmixr2 <- function(...){suppressMessages(suppressWarnings(nlmixr2(...)))}
-
-    ## fit the model
-    fit <- .nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
+    # fit the model
+    fit <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
 
     expect_equal(fit$iniUi$iniDf, f$iniDf)
-
   })
 })

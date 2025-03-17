@@ -1,8 +1,5 @@
 nmTest({
-
   test_that("cwres (and focei objective fun) is added to saem with addCwres", {
-
-    .nlmixr <- function(...) suppressWarnings(suppressMessages(nlmixr(...)))
 
     one.cmt <- function() {
       ini({
@@ -26,7 +23,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)
 
     skip_if_not(rxode2::.linCmtSensB())
 
@@ -43,14 +40,14 @@ nmTest({
     expect_false(is.null(fit$etaR))
     expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
 
     expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     suppressMessages(expect_error(addCwres(fit, focei=FALSE), NA))
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_equal(row.names(fit$objDf), "FOCE")
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
 
     expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     fit2 <- suppressMessages(addCwres(fit, updateObject=FALSE))
@@ -59,8 +56,12 @@ nmTest({
     expect_equal(row.names(fit2$objDf), "FOCEi")
     expect_false(is.null(fit2$etaSE))
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem",
-                   table=tableControl(cwres=TRUE))
+    fit <-
+      .nlmixr(
+        one.cmt, theo_sd, est = "saem",
+        control = saemControlFast,
+        table = tableControl(cwres = TRUE)
+      )
 
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_false(is.null(fit$etaSE))
@@ -68,7 +69,5 @@ nmTest({
     expect_false(is.null(fit$etaR))
     expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
     expect_true(any(names(fit$fitMergeInner) == "nlmixrLlikObs"))
-
   })
-
 })

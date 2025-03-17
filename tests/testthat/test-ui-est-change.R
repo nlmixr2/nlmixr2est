@@ -25,14 +25,12 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    ui <- nlmixr(one.cmt)
+    ui <- .nlmixr(one.cmt)
 
     est0 <- ui$iniDf$est
 
-    fit <- nlmixr(ui, theo_sd, est="focei",
-                  control=list(print=0))
+    fit <- .nlmixr(ui, theo_sd, est="focei", control=list(print=0))
 
     expect_equal(est0, ui$iniDf$est)
-
   })
 })

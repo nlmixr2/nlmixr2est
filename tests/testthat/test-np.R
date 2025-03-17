@@ -23,8 +23,8 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    expect_error(suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"))), NA)
-    expect_error(suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"))), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
 
     one.cmt <- function() {
       ini({
@@ -48,10 +48,14 @@ nmTest({
       })
     }
 
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
 
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem"))
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
+    expect_error(
+      .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem"),
+      regexp = "needs to be a mixed effect model for the estimation routine 'saem'",
+      fixed = TRUE
+    )
 
     one.cmt <- function() {
       ini({
@@ -77,12 +81,9 @@ nmTest({
 
     expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
     expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem"), NA)
-
+    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast), NA)
   })
-
 })
-
 
 test_that("parameters are updated in fit object", {
 

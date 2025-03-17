@@ -1,9 +1,4 @@
 nmTest({
-
-  .nlmixr2 <- .nlmixr <- function(...) {
-    suppressMessages(nlmixr(...))
-  }
-
   test_that("test augPred", {
 
     PKdata <- nlmixr2data::warfarin %>%
@@ -36,12 +31,9 @@ nmTest({
         One.comp.KA.solved,
         PKdata,
         est = "saem",
-        saemControl(nBurn = 200,
-                    nEm   = 300,
-                    print = 50),
+        control = saemControlFast,
         tableControl(cwres = TRUE, npde=TRUE)
       )
-
     expect_error(augPred(fitOne.comp.KA.solved_S), NA)
 
     ap <- augPred(fitOne.comp.KA.solved_S)
@@ -130,9 +122,12 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-      cmt2fit.logn <- .nlmixr(cmt2, dat2, "saem",
-                                      control=saemControl(print=0, nBurn = 1, nEm = 1),
-                                      table=tableControl(cwres=TRUE, npde=TRUE))
+      cmt2fit.logn <-
+        .nlmixr(
+          cmt2, dat2, "saem",
+          control = saemControlFast,
+          table=tableControl(cwres=TRUE, npde=TRUE)
+        )
 
       expect_error(augPred(cmt2fit.logn), NA)
   })
@@ -155,10 +150,12 @@ nmTest({
     }
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei",
-                   control = foceiControl(eval.max = 1),
-                   table=tableControl(npde=TRUE))
-
+    fit2 <-
+      .nlmixr(
+        one.cmt, nlmixr2data::theo_sd, est="focei",
+        control = foceiControl(eval.max = 1),
+        table=tableControl(npde=TRUE)
+      )
     expect_error(augPred(fit2), NA)
   })
 
@@ -203,10 +200,8 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr2(mod, dat, "posthoc")
+    fit <- .nlmixr(mod, dat, "posthoc")
 
     expect_error(augPred(fit), NA)
-
-
   })
 })
