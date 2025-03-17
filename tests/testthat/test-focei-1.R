@@ -26,7 +26,7 @@ nmTest({
       .nlmixr(
         one.compartment, theo_sd,
         est="focei",
-        control = foceiControl(print=0))
+        control = foceiControl(print=0)
       )
     expect_equal(fit$message, "stats::optimize for 1 dimensional optimization")
   })
