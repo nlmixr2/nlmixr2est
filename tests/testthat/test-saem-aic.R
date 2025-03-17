@@ -21,12 +21,9 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-
-    fit <-
-      .nlmixr(
-        one.cmt, theo_sd, est = "saem",
-        control = append(list(calcTables = FALSE), saemControlFast)
-      )
+    currentControl <- saemControlFast
+    currentControl$calcTables <- FALSE
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = currentControl)
 
     expect_s3_class(fit, "nlmixr2FitCore")
     expect_false(inherits(fit, "data.frame"))

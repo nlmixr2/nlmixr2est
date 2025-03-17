@@ -1,5 +1,6 @@
 test_that("manual back-transform", {
-
+  # Throughout these tests, don't use .nlmixr() for quiet testing so that
+  # `t100()` is in the environment.
   t100 <- function(x) {
     x * 100
   }
@@ -24,7 +25,10 @@ test_that("manual back-transform", {
 
   skip_if_not(rxode2::.linCmtSensB())
 
-  fit <- .nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
+  fit <-
+    suppressMessages(nlmixr(
+      one.cmt, theo_sd, est="saem", control=saemControlFast
+    ))
 
   expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))
@@ -64,7 +68,11 @@ test_that("manual back-transform", {
 
   qn <- qnorm(1.0 - (1 - 0.80) / 2)
 
-  fit <- .nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1, ci=0.8))
+  # Test difference confidence intervals
+  fit <-
+    suppressMessages(nlmixr(
+      one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1, ci=0.8)
+    ))
 
   expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))
@@ -100,8 +108,13 @@ test_that("manual back-transform", {
   expect_equal(setNames(exp(fit$parFixedDf["tv", "Estimate"] - qn * fit$parFixedDf["tv", "SE"]), NULL),
                setNames(fit$parFixedDf["tv", "CI Lower"], NULL))
 
-  expect_error(nlmixr(one.cmt, theo_sd, est="focei",
-                      control=foceiControl(print=0, maxOuterIterations = 0, maxInnerIterations = 0,
-                                           covMethod = "")), NA)
-
+  expect_error(
+    suppressMessages(
+      nlmixr(
+        one.cmt, theo_sd, est="focei",
+        control=foceiControl(print=0, maxOuterIterations = 0, maxInnerIterations = 0, covMethod = "")
+      )
+    ),
+    NA
+  )
 })

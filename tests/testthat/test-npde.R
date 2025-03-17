@@ -25,7 +25,8 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
+    # Don't use saemControlFast because numeric results are tested below
+    fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
     suppressMessages(expect_error(addNpde(fit), NA))
@@ -63,11 +64,9 @@ nmTest({
                    table = tableControl(npde = TRUE))
 
     expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE","PD") %in% names(fit)))
-
   })
 
   test_that("pheno", {
-
     pheno <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance

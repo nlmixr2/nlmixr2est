@@ -116,7 +116,10 @@ nmTest({
 
     expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
 
-    fit1 <-.nlmixr(mod, dat, "saem", control = append(list(literalFix=FALSE), saemControlFast))
+    # Test literalFix (but it can be fast...)
+    currentControl <- saemControlFast
+    currentControl$literalFix <- FALSE
+    fit1 <-.nlmixr(mod, dat, "saem", control = currentControl)
 
     expect_equal(fit1$theta["sexf.cl"], c(sexf.cl=1.5))
   })
