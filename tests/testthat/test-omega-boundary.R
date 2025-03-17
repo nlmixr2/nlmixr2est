@@ -1,6 +1,5 @@
 nmTest({
   test_that("omega boundary", {
-
     one.compartment.IV.MM.model <- function(){
       ini({
         lVM <- 7
@@ -28,17 +27,13 @@ nmTest({
       })
     }
 
-
     datr <- nlmixr2data::Infusion_1CPTMM
 
     dataX<-datr[datr$SD==0, ]
 
-    .nlmixr <- function(...) {
-      suppressWarnings(suppressMessages(nlmixr2(...)))
-    }
-
-    expect_true(inherits(.nlmixr(one.compartment.IV.MM.model,dataX,est="focei",
-                                 control=list(print=0)), "nlmixr2FitCore"))
-
+    expect_s3_class(
+      .nlmixr(one.compartment.IV.MM.model,dataX,est="focei", control=list(print=0)),
+      "nlmixr2FitCore"
+    )
   })
 })

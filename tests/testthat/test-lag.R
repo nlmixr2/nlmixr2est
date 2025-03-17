@@ -1,6 +1,5 @@
 nmTest({
   test_that("test lag with warfarin", {
-
     KA1Lode <- function() {
       ini({
         # Where initial conditions/variables are specified
@@ -34,9 +33,8 @@ nmTest({
     d <- nlmixr2data::warfarin %>%
       dplyr::filter(dvid=="cp")
 
-    f <- nlmixr(KA1Lode, d, "focei")
+    f <- .nlmixr(KA1Lode, d, "focei")
 
     expect_true(f$objf < 500)
-
   })
 })

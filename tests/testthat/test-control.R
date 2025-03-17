@@ -42,7 +42,6 @@ test_that("test foceiControl option sanity", {
   expect_error(foceiControl(foceiControl="matt"))
 })
 
-
 test_that("saemControl sanity", {
   expect_error(saemControl(), NA)
   nlmixrControlTest(saemControl())

@@ -48,10 +48,12 @@ nmTest({
     }
 
     fitKA1tr1_PDimmemax1_F <-
-      nlmixr(KA1tr1_PDimmemax1,
-             PKPDdata,
-             est = "focei",
-             foceiControl(print = 5))
+      .nlmixr(
+        KA1tr1_PDimmemax1,
+        PKPDdata,
+        est = "focei",
+        foceiControl(print = 5)
+      )
 
     f <- vpcSim(fitKA1tr1_PDimmemax1_F)
 
@@ -95,9 +97,7 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    suppressMessages(
-      fit <- nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
-    )
+    fit <- .nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
     expect_s3_class(vpcSim(fit, pred=TRUE), "data.frame")
   })
 })

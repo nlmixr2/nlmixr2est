@@ -24,7 +24,7 @@ test_that("manual back-transform", {
 
   skip_if_not(rxode2::.linCmtSensB())
 
-  fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
+  fit <- .nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1))
 
   expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))
@@ -64,7 +64,7 @@ test_that("manual back-transform", {
 
   qn <- qnorm(1.0 - (1 - 0.80) / 2)
 
-  fit <- nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1, ci=0.8))
+  fit <- .nlmixr(one.cmt, theo_sd, est="saem", control=saemControl(print=0, nBurn = 1, nEm = 1, ci=0.8))
 
   expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))

@@ -139,7 +139,7 @@ if (FALSE) {
           "mod %>% model(ipre~", paste(.mod, collapse = "+"), ") %>% ",
           gsub("c[(]", "ini(", deparse1(.est))
         )))
-        v <- nlmixr(mod2, dat, est = "saem", control = ctl1)
+        v <- .nlmixr(mod2, dat, est = "saem", control = ctl1)
         assign("mod2", mod2, globalenv())
         if (!inherits(v, "nlmixr2FitCore")) {
           message(sprintf("bad model at %d", i))

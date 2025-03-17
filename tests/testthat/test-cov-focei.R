@@ -51,7 +51,6 @@ nmTest({
 
   })
 
-  .nlmixr <- function(...) suppressWarnings(suppressMessages(nlmixr(...)))
   test_that("covariance with many omegas fixed will not crash focei", {
     one.compartment <- function() {
       ini({
@@ -74,7 +73,6 @@ nmTest({
       })
     }
     fit <- .nlmixr(one.compartment, theo_sd,  est="focei", control=list(print=0))
-    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_s3_class(fit, "nlmixr2FitCore")
   })
-
 })

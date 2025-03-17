@@ -23,9 +23,9 @@ nmTest({
 
 
     fit <-
-      suppressMessages(
-        nlmixr(one.cmt, theo_sd, est = "saem",
-               control = saemControl(calcTables = FALSE, print = 0, nBurn=10, nEm=10))
+      .nlmixr(
+        one.cmt, theo_sd, est = "saem",
+        control = append(list(calcTables = FALSE), saemControlFast)
       )
 
     expect_s3_class(fit, "nlmixr2FitCore")

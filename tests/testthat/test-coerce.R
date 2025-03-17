@@ -21,10 +21,7 @@ nmTest({
     })
   }
 
-  fit <-
-    suppressMessages(
-      nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0, nBurn = 1, nEm = 1))
-    )
+  fit <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
 
   test_that("as.rxUi works for estimated models", {
     expect_s3_class(as.rxUi(fit), "rxUi")

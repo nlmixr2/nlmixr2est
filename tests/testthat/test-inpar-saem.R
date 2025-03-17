@@ -27,12 +27,12 @@ test_that("fix parameter saem (#445)", {
     })
   }
 
-  fit0 <- nlmixr2(one.compartment, theo_sd2,  est="saem",
-                  saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+  fit0 <- .nlmixr(one.compartment, theo_sd2, est="saem",
+                  saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
                               calcTables = FALSE))
 
-  fit1 <- nlmixr2(one.compartment %>% ini(covwt=fix(100)), theo_sd2,  est="saem",
-                  saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+  fit1 <- .nlmixr(one.compartment %>% ini(covwt=fix(100)), theo_sd2, est="saem",
+                  saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
                               calcTables = FALSE))
 
   theta0 <- fit0$theta
@@ -42,5 +42,4 @@ test_that("fix parameter saem (#445)", {
   theta1 <- theta1[names(theta1) != "covwt"]
 
   expect_true(!all(theta1 == theta0))
-
 })

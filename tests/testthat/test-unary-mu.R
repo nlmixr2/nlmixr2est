@@ -21,8 +21,8 @@ nmTest({
       })
     }
 
-    p1 <- nlmixr(pheno)
-    I
+    p1 <- .nlmixr(pheno)
+
     pheno2 <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance
@@ -43,9 +43,8 @@ nmTest({
       })
     }
 
-    p2 <- nlmixr(pheno2)
+    p2 <- .nlmixr(pheno2)
 
     expect_equal(p1$saemModel0, p2$saemModel0)
-
   })
 })

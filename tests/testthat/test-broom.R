@@ -50,7 +50,7 @@ nmTest({
     })
   }
 
-  fitS <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "saem", control=saemControl(print=0))))
+  fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
 
   test_that("tidy works on nlmixr fit SAEM fits", {
 
@@ -156,9 +156,7 @@ nmTest({
   skip_on_cran()
 
   for (f in c("focei", "foce")) {
-    suppressMessages(suppressWarnings(
-      fitF <- nlmixr(one.compartment, theo_sd, est = f, control=foceiControl(print = 0, eval.max = 1))
-    ))
+    fitF <- .nlmixr(one.compartment, theo_sd, est = f, control = foceiControlFast)
 
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
 
