@@ -53,7 +53,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd,  est="focei", control=list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est="focei", control=list(print=0))
     expect_s3_class(fit, "nlmixr2FitData")
   })
 
@@ -76,7 +76,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd,  est="focei", control=list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = focei", control=list(print=0))
     expect_equal(fit$message, "stats::optimize for 1 dimensional optimization")
   })
 
@@ -100,7 +100,7 @@ nmTest({
       })
     }
     expect_error(
-      .nlmixr(one.compartment, theo_sd,  est="focei", control=list(print=0)),
+      .nlmixr(one.compartment, theo_sd, est = focei", control=list(print=0)),
       regexp = "no parameters to estimate"
     )
   })

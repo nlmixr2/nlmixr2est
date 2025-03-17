@@ -25,7 +25,7 @@ nmTest({
     f <-  one.compartment()
 
     # fit the model
-    fit <- .nlmixr(one.compartment, theo_sd,  est="saem", control = saemControlFast)
+    fit <- .nlmixr(one.compartment, theo_sd, est = saem", control = saemControlFast)
 
     expect_equal(fit$iniUi$iniDf, f$iniDf)
   })
