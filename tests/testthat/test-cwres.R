@@ -60,7 +60,7 @@ nmTest({
       .nlmixr(
         one.cmt, theo_sd, est = "saem",
         control = saemControlFast,
-        table = tableControl(cwres = TRUE))
+        table = tableControl(cwres = TRUE)
       )
 
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
