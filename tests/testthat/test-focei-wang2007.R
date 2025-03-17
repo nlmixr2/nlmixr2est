@@ -121,7 +121,7 @@ nmTest({
         }))
       })
     }
-    return(invisible(ret))
+    invisible(ret)
   }
 
 

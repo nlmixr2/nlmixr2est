@@ -151,9 +151,9 @@ if (FALSE) {
           .sum[x]
         }), .nm)))
       }
-      return(sapply(.nm, function(x) {
+      sapply(.nm, function(x) {
         NA_real_
-      }))
+      })
     }
 
     ctl1 <- saemControl(nEm = 5, nBurn = 5, logLik = TRUE, print = 0, addProp = "combined1")
