@@ -106,7 +106,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.compartment, theo_sd, est = focei", control = list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print=0))
     # SE being present indicates that the covariance matrix was estimated
     expect_true("SE" %in% names(fit$parFixedDf))
 

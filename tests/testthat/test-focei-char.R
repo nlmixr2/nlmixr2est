@@ -40,7 +40,7 @@ nmTest({
     expect_equal(levels(fit$LowID), c("No", "Yes"))
 
     fitdata$LowID <- factor(fitdata$LowID, c("Yes", "No"))
-    fit <- .nlmixr(one_compartment_textcov, fitdata, est = focei", control = foceiControl(print = 0))
+    fit <- .nlmixr(one_compartment_textcov, fitdata, est = "focei", control = foceiControl(print = 0))
 
     expect_equal(.cllow, fit$theta["cllow"])
   })
