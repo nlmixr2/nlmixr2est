@@ -319,7 +319,7 @@
     .backtransName <- names(.popDfSigEst)[startsWith(names(.popDfSigEst), "Back-transformed")]
     names(.popDfSigFixed)[names(.popDfSigFixed) == "BackTransformed"] <- .backtransName
     # Drop "SE" and "%RSE" if they're not present in the original
-    .popDfSigFixed <- .popDfSigFixed[, intersect(names(.popDfEst), names(.popDfSigFixed))]
+    .popDfSigFixed <- .popDfSigFixed[, intersect(names(.popDfSigEst), names(.popDfSigFixed))]
     .popDfSig <- rbind(.popDfSigEst, .popDfSigFixed)[.tn, ]
 
     # Show the fixed values in the model
