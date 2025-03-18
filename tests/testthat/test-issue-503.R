@@ -27,7 +27,7 @@ nmTest({
     }
 
     fitOne.comp.KA.solved_S2 <-
-      suppressMessages(nlmixr(
+      .nlmixr(
         One.comp.KA.solved,    #the model definition
         PKdata,                #the data set
         est = "saem",          #the estimation algorithm (SAEM)
@@ -37,7 +37,7 @@ nmTest({
                             #type="newuoa",
                             addProp="combined1"),
         table=tableControl(npde=TRUE, cwres=TRUE)
-      ))
+      )
 
     expect_true(fitOne.comp.KA.solved_S2$theta["add.err"] > 0.4)
   })

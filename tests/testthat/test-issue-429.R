@@ -61,7 +61,7 @@ nmTest({
     }
 
     expect_error(
-      fit.TOF <- suppressWarnings(suppressMessages(nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0)))),
+      fit.TOF <- .nlmixr(pk.turnover.emax.lag, warfarin, "focei", foceiControl(print=0, maxOuterIterations = 0)),
       NA
     )
 

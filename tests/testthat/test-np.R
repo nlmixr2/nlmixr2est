@@ -79,9 +79,9 @@ nmTest({
       })
     }
 
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast), NA)
   })
 })
 
@@ -106,10 +106,9 @@ test_that("parameters are updated in fit object", {
     })
   }
 
-  fit <- suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei")))
+  fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "focei")
 
   f1 <- one.cmt()
 
   expect_false(isTRUE(all.equal(f1$iniDf$est, fit$iniDf$est)))
-
 })

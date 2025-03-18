@@ -23,10 +23,9 @@ test_that("nmObject get tests", {
   }
   skip_if_not(rxode2::.linCmtSensB())
 
-  fit <- suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei")))
+  fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei", control = foceiControlFast)
 
   expect_equal(fit$modelName, "one.cmt")
-
 
   one.cmt <- function() {
     ini({
@@ -47,8 +46,7 @@ test_that("nmObject get tests", {
     })
   }
 
-  fit2 <- suppressMessages(suppressWarnings(nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei")))
+  fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei", control = foceiControlFast)
 
   expect_equal(fit2$modelName, "one.cmt")
-
 })
