@@ -285,95 +285,44 @@
     .theta <- .ui$theta
     .tn <- names(.theta)
     .fmt <- paste0("%.", .ret$control$sigdig, "g")
-    .row.names <- row.names(.ret$popDf)
-    .popDf <-
+
+    .popDfEst <- .ret$popDf
+    .popDfEst$Estimate <- unname(.popDfEst$Estimate)
+    .popDfEst$SE <- unname(.popDfEst$SE)
+    .fixedNames <- setdiff(names(.theta), rownames(.popDfEst))
+    .popDfFixed <-
       data.frame(
-        `Estimate`=vapply(.tn,
-                          function(n) {
-                            .w <- which(.row.names == n)
-                            if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
-                            .theta[n]
-                          }, double(1), USE.NAMES = FALSE),
-        `SE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDf[n, "SE"]
-                      setNames(.ret, NULL)
-                    }, double(1), USE.NAMES = FALSE),
-        `%RSE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDf[n, "%RSE"]
-                      setNames(.ret, NULL)
-                    }, double(1), USE.NAMES = FALSE),
-        `Back-transformed`=vapply(.tn,
-                                  function(n) {
-                                    .w <- which(.row.names == n)
-                                    if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Back-transformed"], NULL))
-                                    .theta[n]
-                                  }, double(1), USE.NAMES = FALSE),
-        `CI Lower`=vapply(.tn,
-                      function(n) {
-                        .ret <- .ret$popDf[n, "CI Lower"]
-                        setNames(.ret, NULL)
-                      }, double(1), USE.NAMES = FALSE),
-        `CI Upper`=vapply(.tn,
-                          function(n) {
-                            .ret <- .ret$popDf[n, "CI Upper"]
-                            setNames(.ret, NULL)
-                           }, double(1), USE.NAMES = FALSE),
-        row.names = .tn,
+        Estimate = unname(.theta[.fixedNames]),
+        SE = NA_real_,
+        `%RSE` = NA_real_,
+        `Back-transformed` = unname(.theta[.fixedNames]),
+        `CI Lower` = NA_real_,
+        `CI Upper` = NA_real_,
+        row.names = .fixedNames,
+        check.names = FALSE,
+        check.rows = FALSE
+      )
+    # Combine estimated and fixed parameters, then order them by the theta names
+    .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
+
+    .popDfSigEst <- .ret$popDfSig
+    .popDfSigFixed <-
+      data.frame(
+        Est. = sprintf(.fmt, .theta[.fixedNames]),
+        SE = "FIXED",
+        `%RSE` = "FIXED",
+        BackTransformed = sprintf(.fmt, .theta[.fixedNames]),
+        row.names = .fixedNames,
         check.rows = FALSE, check.names = FALSE
       )
-    if (any(names(.ret$popDfSig) == "SE")) {
-      .popDfSig <-
-        data.frame(
-          `Est.`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `SE`=vapply(.tn,
-                      function(n) {
-                        .w <- which(.row.names == n)
-                        if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
-                        "FIXED"
-                      }, character(1), USE.NAMES = FALSE),
-          `%RSE`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "%RSE"], NULL))
-                          "FIXED"
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 4], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
-    } else {
-      .popDfSig <-
-        data.frame(
-          `Est.`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 2], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[2] <- names(.ret$popDfSig)[2]
-    }
+    # Find the name of the back-transform column
+    .backtransName <- names(.popDfSigEst)[startsWith(names(.popDfSigEst), "Back-transformed")]
+    names(.popDfSigFixed)[names(.popDfSigFixed) == "BackTransformed"] <- .backtransName
+    # Drop "SE" and "%RSE" if they're not present in the original
+    .popDfSigFixed <- .popDfSigFixed[, intersect(names(.popDfSigEst), names(.popDfSigFixed))]
+    .popDfSig <- rbind(.popDfSigEst, .popDfSigFixed)[.tn, ]
+
+    # Show the fixed values in the model
     .ret$popDfSig <- .popDfSig
     .ret$popDf <- .popDf
   }
@@ -471,7 +420,7 @@
       .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
     }
   }
-  return(.ret)
+  .ret
 }
 
 
@@ -486,7 +435,7 @@ VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
       row.names = names(.var)
     )
     .ret <- .ret[!is.na(.ret[, 1]), ]
-    return(.ret)
+    .ret
   } else {
     VarCorr(.ret, ...)
   }
@@ -533,7 +482,7 @@ str.nlmixr2FitData <- function(object, ...) {
 #' @author Matthew L. Fidler
 #' @export
 residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
-  return(object[, toupper(match.arg(type))])
+  object[, toupper(match.arg(type))]
 }
 
 #' Return the objective function
@@ -711,4 +660,66 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   }
+}
+
+#' Format numeric values to minimize the printing width
+#'
+#' Special values (`NA`, `NaN`, `Inf`, `-Inf`, and `0`) are returned as their
+#' character representation without additional modification.
+#'
+#' @param x The numeric vector to convert
+#' @param digits The number of significant digits to show
+#' @returns A character vector converting the numbers with minimum width
+#' @examples
+#' formatMinWidth(x = -123456*10^(-10:10))
+#' @export
+formatMinWidth <- function(x, digits = 3) {
+  checkmate::assert_numeric(x)
+  maskSpecialValue <- x %in% c(NA, NaN, Inf, -Inf, 0)
+  signifX <- signif(x[!maskSpecialValue], digits = digits)
+  # Generate scientific notation values
+  formatSN <- paste0("%1.", digits - 1, "e")
+  valueSN <- sprintf(formatSN, signifX)
+  # Drop the + and leading zeros for positive exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\+0*", replacement = "e")
+  # Drop the leading zeros for negative exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\-0*", replacement = "e-")
+
+  firstDigit <- floor(log10(abs(signifX)))
+  lastDigit <- firstDigit - digits + 1
+  formatNormal <-
+    paste0(
+      "%",
+      ifelse(
+        firstDigit < 0,
+        "0",
+        firstDigit
+      ),
+      ifelse(
+        lastDigit < 0,
+        paste0(".", abs(lastDigit)),
+        ".0"
+      ),
+      "f"
+    )
+  valueNormal <- sprintf(formatNormal, signifX)
+
+  # Prepare the return value with special values
+  ret <- rep(NA_character_, length(x))
+  if (any(maskSpecialValue)) {
+    ret[maskSpecialValue] <- as.character(x[maskSpecialValue])
+    maskNA <- !is.nan(x) & is.na(x)
+    if (any(maskNA)) {
+      ret[maskNA] <- "NA"
+    }
+  }
+
+  # Place in the normal values
+  ret[!maskSpecialValue] <-
+    ifelse(
+      nchar(valueSN) < nchar(valueNormal),
+      valueSN,
+      valueNormal
+    )
+  ret
 }

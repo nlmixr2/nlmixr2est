@@ -252,7 +252,7 @@ nmTest({
   }
 
   for (f in c("foi", "fo")) {
-    fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
+    fitF <- .nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
       td <- broom.mixed::tidy(fitF, exponentiate = NA)
       check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
@@ -344,7 +344,7 @@ nmTest({
     })
   }
 
-  fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc")))
+  fitP <- .nlmixr(one.compartment, theo_sd, est = "posthoc")
 
   test_that("tidy works on posthoc fit fits", {
 
