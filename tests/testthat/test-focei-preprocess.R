@@ -8,7 +8,7 @@ model <- function() {
   })
 }
 
-ui <- nlmixr(model)
+ui <- .nlmixr(model)
 
 test_that(".foceiPreProcessData errors with missing info", {
 

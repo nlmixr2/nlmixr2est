@@ -29,7 +29,7 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    fit <- nlmixr2(fun, df, list(print=0), est="posthoc")
+    fit <-.nlmixr(fun, df, list(print=0), est="posthoc")
 
     expect_error(fit$dataMergeInner, NA)
     expect_error(fit$fitMergeInner, NA)
@@ -88,9 +88,12 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
-    cmt2fit.logn <- nlmixr(cmt2, dat2, "posthoc",
-                           control=list(print=0),
-                           table=tableControl(cwres=TRUE, npde=TRUE))
+    cmt2fit.logn <-
+      .nlmixr(
+        cmt2, dat2, "posthoc",
+        control=list(print=0),
+        table=tableControl(cwres=TRUE, npde=TRUE)
+      )
 
     expect_error(cmt2fit.logn$dataMergeLeft, NA)
     expect_error(cmt2fit.logn$fitMergeLeft, NA)

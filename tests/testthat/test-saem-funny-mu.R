@@ -23,10 +23,8 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast), NA)
 
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "saem"), NA)
-
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
-
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei", control = foceiControlFast), NA)
   })
 })

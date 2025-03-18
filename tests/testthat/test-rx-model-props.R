@@ -1,5 +1,4 @@
 nmTest({
-
   test_that("rxode2 model properties work with fits", {
 
     one.cmt <- function() {
@@ -26,15 +25,12 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
+    f <- .nlmixr(one.cmt)
 
-    f <- nlmixr(one.cmt)
-
-    fit <- nlmixr(one.cmt, theo_sd, est="saem")
+    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
 
     expect_equal(rxModelVars(one.cmt), rxModelVars(f))
 
     expect_equal(rxModelVars(f), rxModelVars(fit))
-
   })
-
 })

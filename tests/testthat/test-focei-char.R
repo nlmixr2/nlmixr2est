@@ -1,9 +1,5 @@
 nmTest({
-
-  .nlmixr2 <- function(...) {suppressWarnings(suppressMessages(nlmixr2(...)))}
-
   test_that("character estimation works", {
-
     one_compartment_textcov <- function() {
       ini({
         tka <- 0.45
@@ -30,7 +26,7 @@ nmTest({
     fitdata <- theo_sd
     fitdata$ID <- paste("theo", fitdata$ID)
     fitdata$LowID <- ifelse(as.numeric(theo_sd$ID) < 7, "Yes", "No")
-    fit <- .nlmixr2(one_compartment_textcov, fitdata,  est="focei", control = foceiControl(print = 0))
+    fit <- .nlmixr(one_compartment_textcov, fitdata, est="focei", control = foceiControl(print = 0))
 
     .cllow <- fit$theta["cllow"]
 
@@ -44,9 +40,8 @@ nmTest({
     expect_equal(levels(fit$LowID), c("No", "Yes"))
 
     fitdata$LowID <- factor(fitdata$LowID, c("Yes", "No"))
-    fit <- .nlmixr2(one_compartment_textcov, fitdata,  est="focei", control = foceiControl(print = 0))
+    fit <- .nlmixr(one_compartment_textcov, fitdata, est = "focei", control = foceiControl(print = 0))
 
     expect_equal(.cllow, fit$theta["cllow"])
-
   })
 })

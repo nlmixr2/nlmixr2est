@@ -1,9 +1,6 @@
 nmTest({
 
   test_that("npde", {
-
-    .nlmixr <- function(...) suppressWarnings(suppressMessages(nlmixr(...)))
-
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -28,6 +25,7 @@ nmTest({
 
     skip_if_not(rxode2::.linCmtSensB())
 
+    # Don't use saemControlFast because numeric results are tested below
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD", "PDE", "PD") %in% names(fit)))
@@ -55,8 +53,6 @@ nmTest({
     expect_true(.range4[1] > -0.1)
     expect_true(.range4[2] > 7)
 
-
-
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 
     expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
@@ -64,15 +60,13 @@ nmTest({
     expect_false(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit)))
     expect_true(all(c("EPRED","ERES","NPDE","NPD","PDE","PD") %in% names(fit2)))
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem",
-                   table=tableControl(npde=TRUE))
+    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast,
+                   table = tableControl(npde = TRUE))
 
     expect_true(all(c("EPRED","ERES","NPDE","NPD", "PDE","PD") %in% names(fit)))
-
   })
 
   test_that("pheno", {
-
     pheno <- function() {
       ini({
         tcl <- log(0.008) # typical value of clearance
@@ -93,16 +87,11 @@ nmTest({
       })
     }
 
-    fit <- nlmixr(pheno, pheno_sd, "saem", control=list(print=0), table=list(npde=TRUE))
-
+    fit <- .nlmixr(pheno, pheno_sd, est = "saem", control = saemControlFast, table = list(npde = TRUE))
 
     # Since there is a correlation here the npde and npd
 
     expect_false(isTRUE(all.equal(fit$NPDE, fit$NPD)))
     expect_false(isTRUE(all.equal(fit$PDE, fit$PD)))
-
-
-
   })
-
 })

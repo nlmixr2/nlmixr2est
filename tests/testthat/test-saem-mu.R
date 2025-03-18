@@ -1,7 +1,4 @@
 test_that("saem mu reference 1", {
-
-  .nlmixr2 <- function(...) { suppressMessages(nlmixr2est::nlmixr2(...)) }
-
   theo_sd2 <- nlmixr2data::theo_sd
 
   theo_sd2$lwt<-log(theo_sd2$WT/70)
@@ -30,8 +27,8 @@ test_that("saem mu reference 1", {
     })
   }
 
-  fit1 <- .nlmixr2(one.compartment, theo_sd2,  est="saem",
-                  control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+  fit1 <- .nlmixr(one.compartment, theo_sd2, est="saem",
+                  control=saemControl(print = 0,seed = 1234, nBurn = 1, nEm = 1,
                                       calcTables = FALSE))
 
   # true mu expression should not have information in $runInfo
@@ -64,8 +61,8 @@ test_that("saem mu reference 1", {
 
   fit2 <-
     withr::with_options(list(cli.unicode=FALSE),{
-      .nlmixr2(one.compartment, theo_sd2,  est="saem",
-              control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+      .nlmixr(one.compartment, theo_sd2, est="saem",
+              control=saemControl(print = 0,seed = 1234, nBurn = 1, nEm = 1,
                                   calcTables = FALSE))
     })
 
@@ -96,8 +93,8 @@ test_that("saem mu reference 1", {
   }
 
   fit3 <-   withr::with_options(list(cli.unicode=FALSE), {
-    .nlmixr2(one.compartment, theo_sd2,  est="saem",
-            control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+    .nlmixr(one.compartment, theo_sd2, est="saem",
+            control=saemControl(print = 0, seed = 1234, nBurn = 1, nEm = 1,
                                 calcTables = FALSE))
   })
 
@@ -134,9 +131,9 @@ test_that("saem mu reference 1", {
   }
 
   fit4 <- withr::with_options(list(cli.unicode=FALSE), {
-    .nlmixr2(one.compartment, theo_sd2,  est="saem",
-             control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
-                                 calcTables = FALSE))
+    .nlmixr(one.compartment, theo_sd2, est="saem",
+            control=saemControl(print=0,seed = 1234, nBurn = 1, nEm = 1,
+                                calcTables = FALSE))
   })
 
   expect_true(grepl("mu4 item", fit4$runInfo[1]))

@@ -1,12 +1,4 @@
 nmTest({
-
-  .nlmixr <- function(...) {
-    rxode2::rxUnloadAll()
-    suppressMessages(suppressWarnings(nlmixr(...)))
-  }
-  #.nlmixr <- function(...) nlmixr(...)
-
-
   dat <- Wang2007
   dat$DV <- dat$Y
 
@@ -39,7 +31,7 @@ nmTest({
     })
   }
 
-  f <- nlmixr(f)
+  f <- .nlmixr(f)
 
   fit.prop <- .nlmixr(f, dat, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
 
@@ -59,7 +51,7 @@ nmTest({
     })
   }
 
-  fo <- nlmixr(fo)
+  fo <- .nlmixr(fo)
 
   testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2, log=FALSE) {
     .f <- fun(f)
@@ -129,7 +121,7 @@ nmTest({
         }))
       })
     }
-    return(invisible(ret))
+    invisible(ret)
   }
 
 

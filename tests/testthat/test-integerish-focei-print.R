@@ -38,11 +38,12 @@ nmTest({
       ## estimate parameters using nlmixr/FOCEI:
 
       fitOne.comp.KA.ODE_F <-
-        nlmixr(One.comp.KA.ODE,          #the model definition
-               PKdata,                   #the data set
-               est = "focei",            #the estimation algorithm (FOCEi)
-               #FOCEi options:
-               foceiControl(print = 5))  #only print every 5th estimation step
+        .nlmixr(
+          One.comp.KA.ODE,          #the model definition
+          PKdata,                   #the data set
+          est = "focei",            #the estimation algorithm (FOCEi)
+          #FOCEi options:
+          foceiControl(print = 5))  #only print every 5th estimation step
 
   })
 })

@@ -24,14 +24,13 @@ nmTest({
     }
     skip_if_not(rxode2::.linCmtSensB())
 
-    f <- nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve")
+    f <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve")
 
-    expect_true(inherits(f, "rxSolve"))
+    expect_s3_class(f, "rxSolve")
 
-    f2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve", rxControl(returnType="data.frame"))
+    f2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "rxSolve", rxControl(returnType="data.frame"))
 
-    expect_true(inherits(f, "data.frame"))
-
+    expect_s3_class(f, "data.frame")
 
     one.cmt <- function() {
       ini({
@@ -58,7 +57,6 @@ nmTest({
     skip_if_not(rxode2::.linCmtSensB())
 
     expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "matt"))
-
   })
 
   test_that("rxSolve will warn when necessary", {

@@ -1,5 +1,4 @@
 nmTest({
-
   test_that("add+prop saem; issue nlmixr#503", {
 
     PKdata <- warfarin[warfarin$dvid == "cp", ]
@@ -42,5 +41,4 @@ nmTest({
 
     expect_true(fitOne.comp.KA.solved_S2$theta["add.err"] > 0.4)
   })
-
 })

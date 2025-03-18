@@ -1,6 +1,4 @@
 nmTest({
-  .nlmixr <- function(...) suppressWarnings(suppressMessages(nlmixr(...)))
-
   test_that("nlme will pick up interpolation", {
 
     one.compartment <- function() {

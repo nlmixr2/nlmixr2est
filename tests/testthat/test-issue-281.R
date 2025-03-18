@@ -41,7 +41,7 @@ nmTest({
       })
     }
 
-    tmp <- nlmixr(Lesion7)
+    tmp <- .nlmixr(Lesion7)
 
     expect_error(tmp$saemModel, NA)
 
@@ -102,7 +102,7 @@ nmTest({
       })
     }
 
-    tmp <- nlmixr(Lesion7)
+    tmp <- .nlmixr(Lesion7)
 
     expect_error(tmp$saemModel, NA)
     expect_true(grepl("linear\\(TRX\\)", tmp$saemModel))

@@ -1,7 +1,4 @@
 nmTest({
-
-  .nlmixr2 <- function(...) {suppressWarnings(suppressMessages(nlmixr2(...)))}
-
   test_that("focei complex event info", {
 
     pheno <- function() {
@@ -27,9 +24,8 @@ nmTest({
       })
     }
 
-    f <- pheno()
+    f <- suppressMessages(pheno())
     expect_error(f$foceiModel, NA)
-
   })
 
   test_that("Inner test", {
@@ -74,7 +70,7 @@ nmTest({
 
     ETA <- matrix(c(-0.147736086922763, -0.294637022436797), ncol = 2)
 
-    fitPi <- .nlmixr2(
+    fitPi <- .nlmixr(
       m1, w7,
       est="focei",
       foceiControl(
@@ -110,13 +106,11 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control = list(print=0))
     # SE being present indicates that the covariance matrix was estimated
     expect_true("SE" %in% names(fit$parFixedDf))
 
     # Also make sure that it correctly identifies mu-ref
     expect_equal(c("tka", "tcl", "tv", "add.sd"), row.names(fit$parFixedDf))
-
   })
-
 })

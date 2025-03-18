@@ -1,6 +1,4 @@
 nmTest({
-  .nlmixr <- .nlmixr2 <- function(...) suppressMessages(nlmixr(...))
-
   test_that("eta fixed saem", {
     one.cmt <- function() {
       ini({
@@ -24,7 +22,7 @@ nmTest({
       })
     }
 
-    f <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem")
+    f <- .nlmixr(one.cmt, nlmixr2data::theo_sd, "saem", control = saemControlFast)
     expect_equal(names(f$eta),
                  c("ID", "eta.ka", "eta.cl", "eta.v"))
     expect_equal(names(f$parHist),
