@@ -398,7 +398,11 @@
   .lst <- list(obj, exact)
   class(.lst) <- c(.arg, "nmObjGet")
   .ret <- nmObjGet(.lst)
-  if (!is.null(.ret)) return(.ret)
+  if (!is.null(.ret)) {
+    .ret
+  } else {
+    invisible()
+  }
 }
 
 #' @export
