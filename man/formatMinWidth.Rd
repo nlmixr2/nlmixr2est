@@ -4,19 +4,22 @@
 \alias{formatMinWidth}
 \title{Format numeric values to minimize the printing width}
 \usage{
-formatMinWidth(x, digits = 3)
+formatMinWidth(x, digits = 3, naValue = "NA")
 }
 \arguments{
 \item{x}{The numeric vector to convert}
 
 \item{digits}{The number of significant digits to show}
+
+\item{naValue}{The value to return if `is.na(x)`}
 }
 \value{
 A character vector converting the numbers with minimum width
 }
 \description{
-Special values (`NA`, `NaN`, `Inf`, `-Inf`, and `0`) are returned as their
-character representation without additional modification.
+Special values (`NaN`, `Inf`, `-Inf`, and `0`) are returned as their
+character representation without additional modification. `NA` is returned as
+the value of the `naValue` argument.
 }
 \examples{
 formatMinWidth(x = -123456*10^(-10:10))

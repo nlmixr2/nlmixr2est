@@ -330,10 +330,40 @@
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)
-  .ret$parFixed <- .ret$popDfSig
+  # .ret$popDfSig
+  .ret$parFixed <- .updateParFixedApplySig(.ret$popDf, digits = .ret$control$sigdig)
   .ret$parFixedDf <- .ret$popDf
   rm(list=c("popDfSig", "popDf"), envir=.ret)
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
+}
+
+# Apply significant digits and use `formatMinWidth()` for $parFixed
+.updateParFixedApplySig <- function(df, digits) {
+  ret <-
+    data.frame(
+      Est. = formatMinWidth(df$Estimate, digits = digits, naValue = ""),
+      SE = formatMinWidth(df$SE, digits = digits, naValue = ""),
+      `%RSE` = formatMinWidth(df$`%RSE`, digits = digits, naValue = ""),
+      `Back-transformed(95%CI)` =
+        ifelse(
+          !is.na(df$`CI Lower`),
+          sprintf(
+            "%s (%s, %s)",
+            formatMinWidth(df$`Back-transformed`, naValue = "", digits = digits),
+            formatMinWidth(df$`CI Lower`, naValue = "", digits = digits),
+            formatMinWidth(df$`CI Upper`, naValue = "", digits = digits)
+          ),
+          formatMinWidth(df$`Back-transformed`, naValue = "", digits = digits)
+        ),
+      `BSV(SD)` = formatMinWidth(df$`BSV(SD)`, digits = digits, naValue = ""),
+      `Shrink(SD)%` = formatMinWidth(df$`Shrink(SD)%`, digits = digits, naValue = ""),
+      check.names = FALSE,
+      row.names = rownames(df)
+    )
+  if ("Parameter" %in% names(df)) {
+    ret <- cbind(df[, "Parameter", drop = FALSE], ret)
+  }
+  ret
 }
 
 .nmObjEnsureObjective <- function(obj) {
@@ -664,16 +694,18 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 
 #' Format numeric values to minimize the printing width
 #'
-#' Special values (`NA`, `NaN`, `Inf`, `-Inf`, and `0`) are returned as their
-#' character representation without additional modification.
+#' Special values (`NaN`, `Inf`, `-Inf`, and `0`) are returned as their
+#' character representation without additional modification. `NA` is returned as
+#' the value of the `naValue` argument.
 #'
 #' @param x The numeric vector to convert
 #' @param digits The number of significant digits to show
+#' @param naValue The value to return if `is.na(x)`
 #' @returns A character vector converting the numbers with minimum width
 #' @examples
 #' formatMinWidth(x = -123456*10^(-10:10))
 #' @export
-formatMinWidth <- function(x, digits = 3) {
+formatMinWidth <- function(x, digits = 3, naValue = "NA") {
   checkmate::assert_numeric(x)
   maskSpecialValue <- x %in% c(NA, NaN, Inf, -Inf, 0)
   signifX <- signif(x[!maskSpecialValue], digits = digits)
@@ -710,7 +742,7 @@ formatMinWidth <- function(x, digits = 3) {
     ret[maskSpecialValue] <- as.character(x[maskSpecialValue])
     maskNA <- !is.nan(x) & is.na(x)
     if (any(maskNA)) {
-      ret[maskNA] <- "NA"
+      ret[maskNA] <- naValue
     }
   }
 

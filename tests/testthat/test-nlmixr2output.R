@@ -94,10 +94,27 @@ test_that("formatMinWidth in parFixed", {
     })
   }
 
+  # Simple ----
   suppressMessages(
-    fit <- nlmixr2(one.compartment, theo_sd,  est="focei", control = list(print=0))
+    fit <- nlmixr2(one.compartment, theo_sd, est="focei", control = list(print=0))
+  )
+  expect_equal(
+    fit$parFixed,
+    structure(
+      list(
+        Est. = c("0.446", "0.960", "3.49", "1.40"),
+        SE = c("0.213", "0.139", "0.0881", ""),
+        `%RSE` = c("47.8", "14.5", "2.52", ""),
+        `Back-transformed(95%CI)` = c("1.56 (1.03, 2.37)", "2.61 (1.99, 3.43)", "32.9 (27.6, 39.0)", "1.40"),
+        `BSV(SD)` = c("", "", "", ""),
+        `Shrink(SD)%` = c("", "", "", "")
+      ),
+      class = c("nlmixr2ParFixed", "data.frame"),
+      row.names = c("tka", "tcl", "tv", "add.sd")
+    )
   )
 
+  # Fixed parameter ----
   one.compartment.fixed <- function() {
     ini({
       tka <- fixed(log(1.57))
@@ -117,6 +134,60 @@ test_that("formatMinWidth in parFixed", {
   }
 
   suppressMessages(
-    fit <- nlmixr2(one.compartment.fixed, theo_sd,  est="focei", control = list(print=0))
+    fitFixed <- nlmixr2(one.compartment.fixed, theo_sd,  est="focei", control = list(print=0))
+  )
+  expect_equal(
+    fitFixed$parFixed,
+    structure(
+      list(
+        Est. = c("0.451", "0.959", "3.50", "1.39"),
+        SE = c("", "0.125", "0.0609", ""),
+        `%RSE` = c("", "13.1", "1.74", ""),
+        `Back-transformed(95%CI)` = c("0.451", "2.61 (2.04, 3.33)", "33.0 (29.3, 37.1)", "1.39"),
+        `BSV(SD)` = c("", "", "", ""),
+        `Shrink(SD)%` = c("", "", "", "")
+      ),
+      class = c("nlmixr2ParFixed", "data.frame"),
+      row.names = c("tka", "tcl", "tv", "add.sd")
+    )
+  )
+
+  # Fixed parameter ----
+  one.compartment.labeled <- function() {
+    ini({
+      tka <- fixed(log(1.57)); label("ka")
+      tcl <- log(2.72); label("clearance")
+      tv <- log(31.5)
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  suppressMessages(
+    fitFixedLabel <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print=0))
+  )
+  expect_equal(
+    fitFixedLabel$parFixed,
+    structure(
+      list(
+        Parameter = c("ka", "clearance", "", ""),
+        Est. = c("0.451", "0.959", "3.50", "1.39"),
+        SE = c("", "0.125", "0.0609", ""),
+        `%RSE` = c("", "13.1", "1.74", ""),
+        `Back-transformed(95%CI)` = c("0.451", "2.61 (2.04, 3.33)", "33.0 (29.3, 37.1)", "1.39"),
+        `BSV(SD)` = c("", "", "", ""),
+        `Shrink(SD)%` = c("", "", "", "")
+      ),
+      class = c("nlmixr2ParFixed", "data.frame"),
+      row.names = c("tka", "tcl", "tv", "add.sd")
+    )
   )
 })
