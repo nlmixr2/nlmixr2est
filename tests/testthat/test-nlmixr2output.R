@@ -80,12 +80,13 @@ test_that("formatMinWidth in parFixed", {
     ini({
       tka <- log(1.57)
       tcl <- log(2.72)
+      bsvCl ~ 0.1
       tv <- log(31.5)
       add.sd <- 0.7
     })
     model({
       ka <- exp(tka)
-      cl <- exp(tcl)
+      cl <- exp(tcl + bsvCl)
       v <- exp(tv)
       d/dt(depot) <- -ka * depot
       d/dt(center) <- ka * depot - cl / v * center
@@ -102,12 +103,12 @@ test_that("formatMinWidth in parFixed", {
     fit$parFixed,
     structure(
       list(
-        Est. = c("0.446", "0.960", "3.49", "1.40"),
-        SE = c("0.213", "0.139", "0.0881", ""),
-        `%RSE` = c("47.8", "14.5", "2.52", ""),
-        `Back-transformed(95%CI)` = c("1.56 (1.03, 2.37)", "2.61 (1.99, 3.43)", "32.9 (27.6, 39.0)", "1.40"),
-        `BSV(SD)` = c("", "", "", ""),
-        `Shrink(SD)%` = c("", "", "", "")
+        Est. = c("0.389", "1.00", "3.46", "1.17"),
+        SE = c("0.167", "0.0783", "0.0450", ""),
+        `%RSE` = c("43.0", "7.81", "1.30", ""),
+        `Back-transformed(95%CI)` = c("1.48 (1.06, 2.05)", "2.72 (2.34, 3.18)", "31.8 (29.1, 34.7)", "1.17"),
+        `BSV(CV%)` = c("", "34.3", "", ""),
+        `Shrink(SD)%` = c("", "6.74", "", "")
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -183,6 +184,27 @@ test_that("formatMinWidth in parFixed", {
         SE = c("", "0.125", "0.0609", ""),
         `%RSE` = c("", "13.1", "1.74", ""),
         `Back-transformed(95%CI)` = c("0.451", "2.61 (2.04, 3.33)", "33.0 (29.3, 37.1)", "1.39"),
+        `BSV(SD)` = c("", "", "", ""),
+        `Shrink(SD)%` = c("", "", "", "")
+      ),
+      class = c("nlmixr2ParFixed", "data.frame"),
+      row.names = c("tka", "tcl", "tv", "add.sd")
+    )
+  )
+
+  # Works with .ret$control$ci and .ret$control$sigdig ----
+  suppressMessages(
+    fitFixedLabelCI <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print=0, ci = 0.9, sigdig = 4))
+  )
+  expect_equal(
+    fitFixedLabelCI$parFixed,
+    structure(
+      list(
+        Parameter = c("ka", "clearance", "", ""),
+        Est. = c("0.4511", "0.9585", "3.495", "1.395"),
+        SE = c("", "0.1253", "0.06091", ""),
+        `%RSE` = c("", "13.07", "1.743", ""),
+        `Back-transformed(90%CI)` = c("0.4511", "2.608 (2.122, 3.205)", "32.97 (29.82, 36.44)", "1.395"),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
       ),

@@ -34,7 +34,6 @@
   .lab <- gsub(" *$", "", gsub("^ *", "", .lab))
   if (!all(.lab == "")) {
     ret$popDf <- data.frame(Parameter = .lab, ret$popDf, check.names = FALSE)
-    ret$popDfSig <- data.frame(Parameter = .lab, ret$popDfSig, check.names = FALSE)
   }
 }
 #' Apply the manual translation for only one item
@@ -43,7 +42,6 @@
 #' @param .ret return environment
 #' @param .ui user interface function
 #' @param .qn The qn for the
-#' @param .btName Back-transform name
 #' @param .fmt format for one estimate
 #' @param .fmt2 format for estimate and ci
 #' @return nothing, called for side effects
@@ -51,7 +49,7 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui,
-                                                           .qn, .btName,
+                                                           .qn,
                                                            .fmt, .fmt2) {
   theta <- row.names(.ret$popDf)[i]
   .w <- which(.ui$iniDf$name == theta)
@@ -78,14 +76,6 @@
         .hi <- .bfun(.est + .se * .qn)
         .i1[i] <- .hi
         .ret$popDf[["CI Upper"]] <- .i1
-        .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt, .bfun(.est),
-                           .low, .hi)
-        .ret$popDfSig[[.btName]] <- .bt2
-      } else {
-        .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt2, .bfun(.est))
-        .ret$popDfSig[[.btName]] <- .bt2
       }
     }
   }
@@ -100,18 +90,14 @@
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
   .n <- names(.ret$popDfSig)
-  if (length(.n) >= 4) {
-    .btName <- names(.ret$popDfSig)[4]
-  } else if (length(.n) >= 2) {
-    .btName <- names(.ret$popDfSig)[2]
-  } else {
+  if (length(.n) <= 1) {
     return(NULL)
   }
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
   .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
   .fmt2 <- paste0("%", .sigdig, "g")
   lapply(seq_along(.ret$popDf$Estimate), .updateParFixedApplyManualBacktransformationsI,
-         .ret=.ret, .ui=.ui, .qn=.qn, .btName=.btName,
+         .ret=.ret, .ui=.ui, .qn=.qn,
          .fmt=.fmt, .fmt2=.fmt2)
 }
 
@@ -272,6 +258,32 @@
   .ret$popDfSig <- data.frame(.ret$popDfSig, "Shrink(SD)%" = .sh$ch, check.names = FALSE)
   .ret$popDf <- data.frame(.ret$popDf, "Shrink(SD)%" = .sh$v, check.names = FALSE)
 }
+
+# Apply significant digits and use `formatMinWidth()` for $parFixed
+.updateParFixedApplySig <- function(df, digits, ci) {
+  ret <- df
+  colNumEst <- which(names(ret) %in% "Estimate")
+  names(ret)[colNumEst] <- "Est."
+  for (nm in names(ret)) {
+    if (!is.character(ret[[nm]])) {
+      ret[[nm]] <- formatMinWidth(ret[[nm]], digits = digits, naValue = "")
+    }
+  }
+  if ("CI Lower" %in% names(ret)) {
+    colNumBt <- which(startsWith(names(ret), "Back"))
+    ret[[colNumBt]] <-
+      ifelse(
+        ret$`CI Lower` == "",
+        ret[[colNumBt]],
+        sprintf("%s (%s, %s)", ret[[colNumBt]], ret$`CI Lower`, ret$`CI Upper`)
+      )
+    names(ret)[colNumBt] <- sprintf("Back-transformed(%g%%CI)", 100*ci)
+    ret$`CI Lower` <- NULL
+    ret$`CI Upper` <- NULL
+  }
+  ret
+}
+
 #' Create the parFixed dataset
 #'
 #' @param .ret focei style environment
@@ -330,40 +342,17 @@
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)
-  # .ret$popDfSig
-  .ret$parFixed <- .updateParFixedApplySig(.ret$popDf, digits = .ret$control$sigdig)
+  # Applying significant digits happens via .updateParFixedApplySig
+  # (.ret$popDfSig is ignored)
+  .ret$parFixed <-
+    .updateParFixedApplySig(
+      .ret$popDf,
+      digits = .ret$control$sigdig,
+      ci = .ret$control$ci
+    )
   .ret$parFixedDf <- .ret$popDf
   rm(list=c("popDfSig", "popDf"), envir=.ret)
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
-}
-
-# Apply significant digits and use `formatMinWidth()` for $parFixed
-.updateParFixedApplySig <- function(df, digits) {
-  ret <-
-    data.frame(
-      Est. = formatMinWidth(df$Estimate, digits = digits, naValue = ""),
-      SE = formatMinWidth(df$SE, digits = digits, naValue = ""),
-      `%RSE` = formatMinWidth(df$`%RSE`, digits = digits, naValue = ""),
-      `Back-transformed(95%CI)` =
-        ifelse(
-          !is.na(df$`CI Lower`),
-          sprintf(
-            "%s (%s, %s)",
-            formatMinWidth(df$`Back-transformed`, naValue = "", digits = digits),
-            formatMinWidth(df$`CI Lower`, naValue = "", digits = digits),
-            formatMinWidth(df$`CI Upper`, naValue = "", digits = digits)
-          ),
-          formatMinWidth(df$`Back-transformed`, naValue = "", digits = digits)
-        ),
-      `BSV(SD)` = formatMinWidth(df$`BSV(SD)`, digits = digits, naValue = ""),
-      `Shrink(SD)%` = formatMinWidth(df$`Shrink(SD)%`, digits = digits, naValue = ""),
-      check.names = FALSE,
-      row.names = rownames(df)
-    )
-  if ("Parameter" %in% names(df)) {
-    ret <- cbind(df[, "Parameter", drop = FALSE], ret)
-  }
-  ret
 }
 
 .nmObjEnsureObjective <- function(obj) {
