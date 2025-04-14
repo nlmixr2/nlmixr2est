@@ -233,6 +233,16 @@
 #' @returns `df` with formatting applied
 #' @noRd
 .updateParFixedApplySig <- function(df, digits, ci, fixedNames) {
+  if (is.null(digits)) {
+    # The FO method does not have a `control` element (see to
+    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
+    digits <- 3
+  }
+  if (is.null(ci)) {
+    # The FO method does not have a `control` element (see to
+    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
+    ci <- 0.95
+  }
   ret <- df
   colNumEst <- which(names(ret) %in% "Estimate")
   names(ret)[colNumEst] <- "Est."
