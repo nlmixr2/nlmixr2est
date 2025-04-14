@@ -437,8 +437,7 @@
   if (is.na(.arg)) .arg <- arg
   .lst <- list(obj, exact)
   class(.lst) <- c(.arg, "nmObjGet")
-  .ret <- nmObjGet(.lst)
-  if (!is.null(.ret)) return(.ret)
+  nmObjGet(.lst)
 }
 
 #' @export
