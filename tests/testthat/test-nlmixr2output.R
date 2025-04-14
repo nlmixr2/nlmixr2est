@@ -96,9 +96,7 @@ test_that("formatMinWidth in parFixed", {
   }
 
   # Simple ----
-  suppressMessages(
-    fit <- nlmixr2(one.compartment, theo_sd, est="focei", control = list(print = 0))
-  )
+  fit <- .nlmixr(one.compartment, theo_sd, est="focei", control = list(print = 0))
   expect_equal(
     fit$parFixed,
     structure(
@@ -134,9 +132,7 @@ test_that("formatMinWidth in parFixed", {
     })
   }
 
-  suppressMessages(
-    fitFixed <- nlmixr2(one.compartment.fixed, theo_sd, est="focei", control = list(print = 0))
-  )
+  fitFixed <- .nlmixr(one.compartment.fixed, theo_sd, est="focei", control = list(print = 0))
   expect_equal(
     fitFixed$parFixed,
     structure(
@@ -172,9 +168,7 @@ test_that("formatMinWidth in parFixed", {
     })
   }
 
-  suppressMessages(
-    fitFixedLabel <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0))
-  )
+  fitFixedLabel <- .nlmixr(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0))
   expect_equal(
     fitFixedLabel$parFixed,
     structure(
@@ -193,9 +187,7 @@ test_that("formatMinWidth in parFixed", {
   )
 
   # Works with .ret$control$ci and .ret$control$sigdig ----
-  suppressMessages(
-    fitFixedLabelCI <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0, ci = 0.9, sigdig = 4))
-  )
+  fitFixedLabelCI <- .nlmixr(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0, ci = 0.9, sigdig = 4))
   expect_equal(
     fitFixedLabelCI$parFixed,
     structure(

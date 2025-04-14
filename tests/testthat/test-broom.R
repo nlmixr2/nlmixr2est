@@ -205,47 +205,47 @@ nmTest({
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
         td1 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = FALSE)
         td2 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = TRUE)
         td3 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         expect_equal(td1, td2)
         expect_equal(td2, td3)
       }
 
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = NA)
       td1 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = FALSE)
       td2 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = TRUE)
       td3 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       expect_equal(log(td1), td2)
       expect_equal(td2, log(td3))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = NA)
       td1 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = FALSE)
       td2 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = TRUE)
       td3 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       expect_equal(td1, td2, tolerance = tol)
       expect_equal(td2, td3, tolerance = tol)
     })
@@ -299,46 +299,46 @@ nmTest({
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = NA)
         td1 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = FALSE)
         td2 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         td <- broom.mixed::tidy(fitF, effects = ef, exponentiate = TRUE)
         td3 <- td$estimate
         check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-        ##
+
         expect_equal(td1, td2, tolerance = tol)
         expect_equal(td2, td3, tolerance = tol)
       }
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = NA)
       td1 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = FALSE)
       td2 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_coef", exponentiate = TRUE)
       td3 <- td$estimate
       check_tidy(td, 36, 5, c("effect", "group", "level", "term", "estimate"))
-      ##
+
       expect_equal(log(td1), td2, tolerance = tol)
       expect_equal(td2, log(td3), tolerance = tol)
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = NA)
       td1 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = FALSE)
       td2 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       td <- broom.mixed::tidy(fitF, effects = "ran_pars", exponentiate = TRUE)
       td3 <- td$estimate
       check_tidy(td, 4, 4, c("effect", "group", "term", "estimate"))
-      ##
+
       expect_equal(td1, td2, tolerance = tol)
       expect_equal(td2, td3, tolerance = tol)
     })
@@ -457,5 +457,4 @@ nmTest({
     expect_equal(td1, td2, tolerance = tol)
     expect_equal(td2, td3, tolerance = tol)
   })
-
 })
