@@ -151,7 +151,6 @@
 
 #'  This will add the between subject variability to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
 #'
-#'
 #' @param .ret The focei return environment
 #' @param .ui The rxode2 ui environment
 #' @return Nothing called for side effects on popDf and popDfSig in the .ret environment
@@ -240,6 +239,7 @@
     if (is.na(.v)) {
       return(data.frame(ch = " ", v = NA_real_))
     }
+    # TODO: This addition of the shrinkage suffix is probably obsolete
     .t <- ">"
     if (.v < 0) {
     } else if (.v < 20) {
@@ -260,7 +260,7 @@
 }
 
 # Apply significant digits and use `formatMinWidth()` for $parFixed
-.updateParFixedApplySig <- function(df, digits, ci) {
+.updateParFixedApplySig <- function(df, digits, ci, fixedNames) {
   ret <- df
   colNumEst <- which(names(ret) %in% "Estimate")
   names(ret)[colNumEst] <- "Est."
@@ -281,6 +281,25 @@
     ret$`CI Lower` <- NULL
     ret$`CI Upper` <- NULL
   }
+  # Add the suffix to the shrinkage
+  if ("Shrink(SD)%" %in% names(df)) {
+    # Only add the suffix if they are not NA
+    shrinkMask <- !is.na(df$`Shrink(SD)%`)
+    if (any(shrinkMask)) {
+      shrinkSuffix <-
+        as.character(cut(
+          df$`Shrink(SD)%`,
+          breaks = c(-Inf, 0, 20, 30, Inf),
+          labels = c(">", "<", "=", ">")
+        ))
+      ret$`Shrink(SD)%`[shrinkMask] <- paste0(ret$`Shrink(SD)%`[shrinkMask], shrinkSuffix[shrinkMask])
+    }
+  }
+  # Add SE and RSE FIXED
+  if (length(fixedNames) > 0) {
+    ret[fixedNames, "SE"] <- "FIXED"
+    ret[fixedNames, "%RSE"] <- "FIXED"
+  }
   ret
 }
 
@@ -292,6 +311,7 @@
 #' @noRd
 .updateParFixed <- function(.ret) {
   .ui <- .ret$ui
+  .fixedNames <- character()
   if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
     .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
@@ -348,7 +368,8 @@
     .updateParFixedApplySig(
       .ret$popDf,
       digits = .ret$control$sigdig,
-      ci = .ret$control$ci
+      ci = .ret$control$ci,
+      fixedNames = .fixedNames
     )
   .ret$parFixedDf <- .ret$popDf
   rm(list=c("popDfSig", "popDf"), envir=.ret)

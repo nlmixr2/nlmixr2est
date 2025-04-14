@@ -97,7 +97,7 @@ test_that("formatMinWidth in parFixed", {
 
   # Simple ----
   suppressMessages(
-    fit <- nlmixr2(one.compartment, theo_sd, est="focei", control = list(print=0))
+    fit <- nlmixr2(one.compartment, theo_sd, est="focei", control = list(print = 0))
   )
   expect_equal(
     fit$parFixed,
@@ -135,15 +135,15 @@ test_that("formatMinWidth in parFixed", {
   }
 
   suppressMessages(
-    fitFixed <- nlmixr2(one.compartment.fixed, theo_sd,  est="focei", control = list(print=0))
+    fitFixed <- nlmixr2(one.compartment.fixed, theo_sd, est="focei", control = list(print = 0))
   )
   expect_equal(
     fitFixed$parFixed,
     structure(
       list(
         Est. = c("0.451", "0.959", "3.50", "1.39"),
-        SE = c("", "0.125", "0.0609", ""),
-        `%RSE` = c("", "13.1", "1.74", ""),
+        SE = c("FIXED", "0.125", "0.0609", ""),
+        `%RSE` = c("FIXED", "13.1", "1.74", ""),
         `Back-transformed(95%CI)` = c("0.451", "2.61 (2.04, 3.33)", "33.0 (29.3, 37.1)", "1.39"),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -153,7 +153,7 @@ test_that("formatMinWidth in parFixed", {
     )
   )
 
-  # Fixed parameter ----
+  # Fixed parameter, labeled ----
   one.compartment.labeled <- function() {
     ini({
       tka <- fixed(log(1.57)); label("ka")
@@ -173,7 +173,7 @@ test_that("formatMinWidth in parFixed", {
   }
 
   suppressMessages(
-    fitFixedLabel <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print=0))
+    fitFixedLabel <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0))
   )
   expect_equal(
     fitFixedLabel$parFixed,
@@ -181,8 +181,8 @@ test_that("formatMinWidth in parFixed", {
       list(
         Parameter = c("ka", "clearance", "", ""),
         Est. = c("0.451", "0.959", "3.50", "1.39"),
-        SE = c("", "0.125", "0.0609", ""),
-        `%RSE` = c("", "13.1", "1.74", ""),
+        SE = c("FIXED", "0.125", "0.0609", ""),
+        `%RSE` = c("FIXED", "13.1", "1.74", ""),
         `Back-transformed(95%CI)` = c("0.451", "2.61 (2.04, 3.33)", "33.0 (29.3, 37.1)", "1.39"),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -194,7 +194,7 @@ test_that("formatMinWidth in parFixed", {
 
   # Works with .ret$control$ci and .ret$control$sigdig ----
   suppressMessages(
-    fitFixedLabelCI <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print=0, ci = 0.9, sigdig = 4))
+    fitFixedLabelCI <- nlmixr2(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0, ci = 0.9, sigdig = 4))
   )
   expect_equal(
     fitFixedLabelCI$parFixed,
