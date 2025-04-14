@@ -42,15 +42,11 @@
 #' @param .ret return environment
 #' @param .ui user interface function
 #' @param .qn The qn for the
-#' @param .fmt format for one estimate
-#' @param .fmt2 format for estimate and ci
 #' @return nothing, called for side effects
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui,
-                                                           .qn,
-                                                           .fmt, .fmt2) {
+.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui, .qn) {
   theta <- row.names(.ret$popDf)[i]
   .w <- which(.ui$iniDf$name == theta)
   if (length(.w) == 1L) {
@@ -94,11 +90,8 @@
     return(NULL)
   }
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
-  .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
-  .fmt2 <- paste0("%", .sigdig, "g")
   lapply(seq_along(.ret$popDf$Estimate), .updateParFixedApplyManualBacktransformationsI,
-         .ret=.ret, .ui=.ui, .qn=.qn,
-         .fmt=.fmt, .fmt2=.fmt2)
+         .ret=.ret, .ui=.ui, .qn=.qn)
 }
 
 #' This gets the CV/SD for a single ETA
@@ -295,7 +288,6 @@
     .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
     .tn <- names(.theta)
-    .fmt <- paste0("%.", .ret$control$sigdig, "g")
 
     .popDfEst <- .ret$popDf
     .popDfEst$Estimate <- unname(.popDfEst$Estimate)
