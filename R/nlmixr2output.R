@@ -153,7 +153,7 @@
 #'
 #' @param .ret The focei return environment
 #' @param .ui The rxode2 ui environment
-#' @return Nothing called for side effects on popDf and popDfSig in the .ret environment
+#' @returns Nothing called for side effects on popDf in the .ret environment
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(.ret, .ui) {
@@ -316,25 +316,7 @@
     # Combine estimated and fixed parameters, then order them by the theta names
     .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
 
-    .popDfSigEst <- .ret$popDfSig
-    .popDfSigFixed <-
-      data.frame(
-        Est. = sprintf(.fmt, .theta[.fixedNames]),
-        SE = "FIXED",
-        `%RSE` = "FIXED",
-        BackTransformed = sprintf(.fmt, .theta[.fixedNames]),
-        row.names = .fixedNames,
-        check.rows = FALSE, check.names = FALSE
-      )
-    # Find the name of the back-transform column
-    .backtransName <- names(.popDfSigEst)[startsWith(names(.popDfSigEst), "Back-transformed")]
-    names(.popDfSigFixed)[names(.popDfSigFixed) == "BackTransformed"] <- .backtransName
-    # Drop "SE" and "%RSE" if they're not present in the original
-    .popDfSigFixed <- .popDfSigFixed[, intersect(names(.popDfSigEst), names(.popDfSigFixed))]
-    .popDfSig <- rbind(.popDfSigEst, .popDfSigFixed)[.tn, ]
-
     # Show the fixed values in the model
-    .ret$popDfSig <- .popDfSig
     .ret$popDf <- .popDf
   }
   .updateParFixedApplyManualBacktransformations(.ret, .ui)
