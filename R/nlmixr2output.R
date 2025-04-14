@@ -89,7 +89,7 @@
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
-  .n <- names(.ret$popDfSig)
+  .n <- names(.ret$popDf)
   if (length(.n) <= 1) {
     return(NULL)
   }
@@ -102,7 +102,6 @@
 }
 
 #' This gets the CV/SD for a single ETA
-#'
 #'
 #' @param .eta Eta Name
 #' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
@@ -149,7 +148,8 @@
   )
 }
 
-#'  This will add the between subject variability to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
+#'  This will add the between subject variability to the mu-referenced theta.
+#'  It also expands the table to include non-mu referenced ETAs
 #'
 #' @param .ret The focei return environment
 #' @param .ui The rxode2 ui environment
@@ -169,7 +169,7 @@
   .env$.cvOnly <- TRUE
   .env$.sdOnly <- TRUE
   .env$.muRefVars <- NULL
-  .cvp <- lapply(row.names(.ret$popDfSig), function(x) {
+  .cvp <- lapply(row.names(.ret$popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
@@ -181,29 +181,19 @@
   .cvp <- do.call("rbind", .cvp)
   .nonMuRef <- setdiff(dimnames(.ome)[[1]], .env$.muRefVars)
   if (length(.nonMuRef) > 0) {
-    .ret$popDfSig2 <- as.data.frame(lapply(names(.ret$popDfSig), function(x) { rep("", length(.nonMuRef))}))
-    names(.ret$popDfSig2) <- names(.ret$popDfSig)
     .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
     names(.ret$popDf2) <- names(.ret$popDf)
-    row.names(.ret$popDfSig2) <- .nonMuRef
     row.names(.ret$popDf2) <- .nonMuRef
   }
-  .ret$popDfSig <- data.frame(.ret$popDfSig, "BSD" = .cvp$ch, check.names = FALSE)
   .ret$popDf <- data.frame(.ret$popDf, "BSD" = .cvp$v, check.names = FALSE)
   if (length(.nonMuRef) > 0) {
-    .cvp <- lapply(row.names(.ret$popDfSig2), function(x) {
+    .cvp <- lapply(row.names(.ret$popDf2), function(x) {
       .updateParFixedGetEtaRow(x, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
     })
     .cvp <- do.call("rbind", .cvp)
-    .ret$popDfSig2 <- data.frame(.ret$popDfSig2, "BSD" = .cvp$ch, check.names = FALSE)
     .ret$popDf2 <- data.frame(.ret$popDf2, "BSD" = .cvp$v, check.names = FALSE)
-    .ret$popDfSig <- rbind(.ret$popDfSig, .ret$popDfSig2)
     .ret$popDf <- rbind(.ret$popDf, .ret$popDf2)
-    rm(list=c("popDf2", "popDfSig2"), envir=.ret)
-  }
-  .w <- which(names(.ret$popDfSig) == "BSD")
-  if (length(.w) == 1) {
-    names(.ret$popDfSig)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+    rm(list=c("popDf2", "popDfSig2"), envir=.ret) # popDfSig2 may no longer exist
   }
   .w <- which(names(.ret$popDf) == "BSD")
   if (length(.w) == 1) {
@@ -216,8 +206,7 @@
   .errs <- as.data.frame(.ui$ini)
   .errs <- paste(.errs[which(!is.na(.errs$err)), "name"])
   .muRefDataFrame <- .ui$muRefDataFrame
-  .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
-  .sh <- lapply(row.names(.ret$popDfSig), function(x) {
+  .sh <- lapply(row.names(.ret$popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       .w <- which(names(.shrink) == x)
@@ -225,7 +214,7 @@
         if (any(x == .errs)) {
           x <- "IWRES"
         } else {
-          return(data.frame(ch = " ", v = NA_real_))
+          return(data.frame(v = NA_real_))
         }
       }
       .eta <- x
@@ -234,32 +223,22 @@
     }
     .v <- .shrink[7, .eta]
     if (length(.v) != 1) {
-      return(data.frame(ch = " ", v = NA_real_))
+      return(data.frame(v = NA_real_))
     }
-    if (is.na(.v)) {
-      return(data.frame(ch = " ", v = NA_real_))
-    }
-    # TODO: This addition of the shrinkage suffix is probably obsolete
-    .t <- ">"
-    if (.v < 0) {
-    } else if (.v < 20) {
-      .t <- "<"
-    } else if (.v < 30) {
-      .t <- "="
-    }
-    data.frame(
-      ch = sprintf("%s%%%s", formatC(signif(.v, digits = .sigdig),
-                                     digits = .sigdig, format = "fg", flag = "#"
-                                     ), .t),
-      v = .v
-    )
+    data.frame(v = .v)
   })
   .sh <- do.call("rbind", .sh)
-  .ret$popDfSig <- data.frame(.ret$popDfSig, "Shrink(SD)%" = .sh$ch, check.names = FALSE)
   .ret$popDf <- data.frame(.ret$popDf, "Shrink(SD)%" = .sh$v, check.names = FALSE)
 }
 
-# Apply significant digits and use `formatMinWidth()` for $parFixed
+#' Create the $popDfSig data.frame with all formatting
+#'
+#' @param df The $popDf data.frame
+#' @param digits The number of significant digits
+#' @param ci The confidence interval (for the column name of the back-transformed column)
+#' @param fixedNames Character vector of parameters that are fixed
+#' @returns `df` with formatting applied
+#' @noRd
 .updateParFixedApplySig <- function(df, digits, ci, fixedNames) {
   ret <- df
   colNumEst <- which(names(ret) %in% "Estimate")

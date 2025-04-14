@@ -108,7 +108,7 @@ test_that("formatMinWidth in parFixed", {
         `%RSE` = c("43.0", "7.81", "1.30", ""),
         `Back-transformed(95%CI)` = c("1.48 (1.06, 2.05)", "2.72 (2.34, 3.18)", "31.8 (29.1, 34.7)", "1.17"),
         `BSV(CV%)` = c("", "34.3", "", ""),
-        `Shrink(SD)%` = c("", "6.74", "", "")
+        `Shrink(SD)%` = c("", "6.74<", "", "")
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
