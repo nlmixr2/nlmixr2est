@@ -23,18 +23,19 @@
 }
 #' Get the parameter label and apply to parameter dataset
 #'
-#' @param ret Final fit environment
-#' @param ui UI fit information
-#' @return Nothing, called for side effects
+#' @param popDf data.frame of parameter estimates
+#' @param iniDf The ini data.frame from the rxUi object
+#' @return `popDf` with a "Parameter" column added if labels are present
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedAddParameterLabel <- function(ret, ui) {
-  .lab <- paste(ui$iniDf$label[!is.na(ui$iniDf$ntheta)])
+.updateParFixedAddParameterLabel <- function(popDf, iniDf) {
+  .lab <- paste(iniDf$label[!is.na(iniDf$ntheta)])
   .lab[.lab == "NA"] <- ""
   .lab <- gsub(" *$", "", gsub("^ *", "", .lab))
   if (!all(.lab == "")) {
-    ret$popDf <- data.frame(Parameter = .lab, ret$popDf, check.names = FALSE)
+    popDf <- data.frame(Parameter = .lab, popDf, check.names = FALSE)
   }
+  popDf
 }
 #' Apply the manual translation for only one item
 #'
@@ -50,8 +51,9 @@
   if (!is.na(btFun)) {
     .bfun <- try(get(btFun, envir = btEnv, mode="function"), silent=TRUE)
     if (inherits(.bfun, "try-error")) {
-      warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
+      warning("unknown function '", btFun, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
               call.=FALSE)
+      .bfun <- NULL
     }
   }
   if (!is.null(.bfun)) {
@@ -69,16 +71,21 @@
 #'  This applies the manually specified back-transformations
 #'
 #' @param popDf data.frame of parameter estimates
-#' @param btFun The back-transformation function name as a named character vector
+#' @param iniDf The ini data.frame from the rxUi object
 #' @param ci The confidence-interval level
 #' @param env The environment to find back-transform functions
 #' @returns popDf with back-transform and CIs updated
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedApplyManualBacktransformations <- function(popDf, btFun, ci, btEnv) {
+.updateParFixedApplyManualBacktransformations <- function(popDf, iniDf, ci, btEnv) {
   if (nrow(popDf) == 0) {
     return(popDf)
   }
+  btFun =
+    stats::setNames(
+      .ret$iniDf$backTransform[!is.na(iniDf$ntheta)],
+      .ret$iniDf$name[!is.na(iniDf$ntheta)]
+    )
   for (currentTheta in rownames(popDf)) {
     if (currentTheta %in% names(btFun)) {
       popDf <-
@@ -322,20 +329,15 @@
     .ret$popDf <- .popDf
   }
   popDf <- .ret$popDf
-
   popDf <-
     .updateParFixedApplyManualBacktransformations(
       popDf = popDf,
-      btFun =
-        stats::setNames(
-          .ret$iniDf$backTransform[!is.na(.ret$iniDf$ntheta)],
-          .ret$iniDf$name[!is.na(.ret$iniDf$ntheta)]
-        ),
+      iniDf = .ui$iniDf,
       ci = .ret$control$ci,
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
+  popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
   .ret$popDf <- popDf
-  .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)
   # Applying significant digits happens via .updateParFixedApplySig
