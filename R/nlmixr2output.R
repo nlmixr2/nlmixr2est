@@ -38,60 +38,60 @@
 }
 #' Apply the manual translation for only one item
 #'
-#' @param i Which parameter should be updated
-#' @param .ret return environment
-#' @param .ui user interface function
-#' @param .qn The qn for the
-#' @return nothing, called for side effects
+#' @param theta The current parameter name as a character string
+#' @inheritParams .updateParFixedApplyManualBacktransformations
+#' @returns popDf with back-transform and CIs updated for `theta`
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui, .qn) {
-  theta <- row.names(.ret$popDf)[i]
-  .w <- which(.ui$iniDf$name == theta)
-  if (length(.w) == 1L) {
-    .b <- .ui$iniDf$backTransform[.w]
-    if (!is.na(.b)) {
-      .bfun <- try(get(.b, envir=nlmixr2global$nlmixrEvalEnv$envir, mode="function"), silent=TRUE)
-      if (inherits(.bfun, "try-error")) {
-        warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
-                call.=FALSE)
-        return(invisible())
-      }
-      .est <- .ret$popDf$Estimate[i]
-      .se <- .ret$popDf$SE[i]
-      .bt <- .ret$popDf[["Back-transformed"]]
-      .bt[i] <- .bfun(.est)
-      .ret$popDf[["Back-transformed"]] <- .bt
-      if (!is.na(.se)) {
-        .i1 <- .ret$popDf[["CI Lower"]]
-        .low <- .bfun(.est - .se * .qn)
-        .i1[i] <- .low
-        .ret$popDf[["CI Lower"]] <- .i1
-        .i1 <- .ret$popDf[["CI Upper"]]
-        .hi <- .bfun(.est + .se * .qn)
-        .i1[i] <- .hi
-        .ret$popDf[["CI Upper"]] <- .i1
-      }
+.updateParFixedApplyManualBacktransformationsI <- function(theta, popDf, btFun, ci, btEnv) {
+  .qn <- qnorm(1.0-(1-ci)/2)
+  .bfun <- NULL
+  if (!is.na(btFun)) {
+    .bfun <- try(get(btFun, envir = btEnv, mode="function"), silent=TRUE)
+    if (inherits(.bfun, "try-error")) {
+      warning("unknown function '", .b, "' for manual backtransform, revert to nlmixr2 back-transformation detection for, '", theta, "'",
+              call.=FALSE)
     }
   }
+  if (!is.null(.bfun)) {
+    .est <- popDf[theta, "Estimate"]
+    .se <- popDf[theta, "SE"]
+    popDf[theta, "Back-transformed"] <- .bfun(.est)
+    if (!is.na(.se)) {
+      popDf[theta, "CI Lower"] <- .bfun(.est - .se * .qn)
+      popDf[theta, "CI Upper"] <- .bfun(.est + .se * .qn)
+    }
+  }
+  popDf
 }
 
 #'  This applies the manually specified back-transformations
 #'
-#' @param .ret focei environment
-#' @return Nothing, called for side effects
+#' @param popDf data.frame of parameter estimates
+#' @param btFun The back-transformation function name as a named character vector
+#' @param ci The confidence-interval level
+#' @param env The environment to find back-transform functions
+#' @returns popDf with back-transform and CIs updated
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
-  .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
-  .n <- names(.ret$popDf)
-  if (length(.n) <= 1) {
-    return(NULL)
+.updateParFixedApplyManualBacktransformations <- function(popDf, btFun, ci, btEnv) {
+  if (nrow(popDf) == 0) {
+    return(popDf)
   }
-  .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
-  lapply(seq_along(.ret$popDf$Estimate), .updateParFixedApplyManualBacktransformationsI,
-         .ret=.ret, .ui=.ui, .qn=.qn)
+  for (currentTheta in rownames(popDf)) {
+    if (currentTheta %in% names(btFun)) {
+      popDf <-
+        .updateParFixedApplyManualBacktransformationsI(
+          theta = currentTheta,
+          popDf = popDf,
+          btFun = btFun[[currentTheta]],
+          ci = ci,
+          btEnv = btEnv
+        )
+    }
+  }
+  popDf
 }
 
 #' This gets the CV/SD for a single ETA
@@ -321,7 +321,20 @@
     # Show the fixed values in the model
     .ret$popDf <- .popDf
   }
-  .updateParFixedApplyManualBacktransformations(.ret, .ui)
+  popDf <- .ret$popDf
+
+  popDf <-
+    .updateParFixedApplyManualBacktransformations(
+      popDf = popDf,
+      btFun =
+        stats::setNames(
+          .ret$iniDf$backTransform[!is.na(.ret$iniDf$ntheta)],
+          .ret$iniDf$name[!is.na(.ret$iniDf$ntheta)]
+        ),
+      ci = .ret$control$ci,
+      btEnv = nlmixr2global$nlmixrEvalEnv$envir
+    )
+  .ret$popDf <- popDf
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)
