@@ -74,7 +74,7 @@
 #' @param iniDf The ini data.frame from the rxUi object
 #' @param ci The confidence-interval level
 #' @param env The environment to find back-transform functions
-#' @returns popDf with back-transform and CIs updated
+#' @returns `popDf` with back-transform and CIs updated
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(popDf, iniDf, ci, btEnv) {
@@ -83,8 +83,8 @@
   }
   btFun =
     stats::setNames(
-      .ret$iniDf$backTransform[!is.na(iniDf$ntheta)],
-      .ret$iniDf$name[!is.na(iniDf$ntheta)]
+      iniDf$backTransform[!is.na(iniDf$ntheta)],
+      iniDf$name[!is.na(iniDf$ntheta)]
     )
   for (currentTheta in rownames(popDf)) {
     if (currentTheta %in% names(btFun)) {
@@ -156,49 +156,46 @@
 #' @returns Nothing called for side effects on popDf in the .ret environment
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedAddBsv <- function(.ret, .ui) {
-  .ome <- .ret$omega
-  .omegaFix <- as.data.frame(.ui$ini)
+.updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {
+  .omegaFix <- as.data.frame(iniDf)
   .omegaFix <- .omegaFix[is.na(.omegaFix$ntheta), ]
   .omegaFix <- setNames(.omegaFix$fix, paste(.omegaFix$name))
-  .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
 
-  .muRefDataFrame <- .ui$muRefDataFrame
-  .muRefCurEval   <- .ui$muRefCurEval
   .env <- new.env(parent=emptyenv())
   .env$.cvOnly <- TRUE
   .env$.sdOnly <- TRUE
   .env$.muRefVars <- NULL
-  .cvp <- lapply(row.names(.ret$popDf), function(x) {
+  .cvp <- lapply(row.names(popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
     }
     .eta <- .muRefDataFrame$eta[.w]
     assign(".muRefVars", c(.env$.muRefVars, .eta), envir=.env)
-    .updateParFixedGetEtaRow(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+    .updateParFixedGetEtaRow(.eta, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
   })
   .cvp <- do.call("rbind", .cvp)
-  .nonMuRef <- setdiff(dimnames(.ome)[[1]], .env$.muRefVars)
+  .nonMuRef <- setdiff(dimnames(omega)[[1]], .env$.muRefVars)
+  popDf2 <- data.frame()
   if (length(.nonMuRef) > 0) {
-    .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
-    names(.ret$popDf2) <- names(.ret$popDf)
-    row.names(.ret$popDf2) <- .nonMuRef
+    popDf2 <- as.data.frame(lapply(names(popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
+    names(popDf2) <- names(popDf)
+    row.names(popDf2) <- .nonMuRef
   }
-  .ret$popDf <- data.frame(.ret$popDf, "BSD" = .cvp$v, check.names = FALSE)
+  popDf <- data.frame(popDf, "BSD" = .cvp$v, check.names = FALSE)
   if (length(.nonMuRef) > 0) {
-    .cvp <- lapply(row.names(.ret$popDf2), function(x) {
-      .updateParFixedGetEtaRow(x, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+    .cvp <- lapply(row.names(popDf2), function(x) {
+      .updateParFixedGetEtaRow(x, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
     })
     .cvp <- do.call("rbind", .cvp)
-    .ret$popDf2 <- data.frame(.ret$popDf2, "BSD" = .cvp$v, check.names = FALSE)
-    .ret$popDf <- rbind(.ret$popDf, .ret$popDf2)
-    rm(list=c("popDf2", "popDfSig2"), envir=.ret) # popDfSig2 may no longer exist
+    popDf2 <- data.frame(popDf2, "BSD" = .cvp$v, check.names = FALSE)
+    popDf <- rbind(popDf, .ret$popDf2)
   }
-  .w <- which(names(.ret$popDf) == "BSD")
+  .w <- which(names(popDf) == "BSD")
   if (length(.w) == 1) {
-    names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+    names(popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
+  popDf
 }
 
 .updateParFixedAddShrinkage <- function(.ret, .ui) {
@@ -338,7 +335,13 @@
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
   .ret$popDf <- popDf
-  .updateParFixedAddBsv(.ret, .ui)
+  browser()
+  stop()
+  popDf <-
+   .updateParFixedAddBsv(
+      popDf, iniDf = .ui$iniDf, omega = .ret$omega, .sigdig = rxode2::rxGetControl(.ui, "sigdig", 3L),
+      .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
+    )
   .updateParFixedAddShrinkage(.ret, .ui)
   # Applying significant digits happens via .updateParFixedApplySig
   # (.ret$popDfSig is ignored)
