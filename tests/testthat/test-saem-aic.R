@@ -19,7 +19,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
 
     currentControl <- saemControlFast
     currentControl$calcTables <- FALSE

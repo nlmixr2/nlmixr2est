@@ -137,8 +137,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
 
     fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm",

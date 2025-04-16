@@ -14,8 +14,6 @@
 #' @examples
 #' \donttest{
 #'
-#' if (rxode2::.linCmtSensB()) {
-#'
 #' one.cmt <- function() {
 #'   ini({
 #'    tka <- 0.45
@@ -40,7 +38,7 @@
 #'
 #' # You can access the underlying nls object with `$nls`
 #' fit2$nls
-#' }
+#'
 #' }
 nlsControl <- function(maxiter=10000,
                        tol = 1e-05,

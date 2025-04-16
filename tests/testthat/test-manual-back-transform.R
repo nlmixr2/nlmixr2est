@@ -23,8 +23,6 @@ test_that("manual back-transform", {
     })
   }
 
-  skip_if_not(rxode2::.linCmtSensB())
-
   fit <-
     suppressMessages(nlmixr(
       one.cmt, theo_sd, est="saem", control=saemControlFast
