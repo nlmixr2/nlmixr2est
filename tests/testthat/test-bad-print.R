@@ -23,16 +23,20 @@ test_that("odd message does not work", {
   }
   run <- function(){
     call <- '
-f <- nlmixr2(one.cmt, theo_sd, "focei",
+f <- suppressMessages(nlmixr2(one.cmt, theo_sd, "focei",
   control=foceiControl(print=0, outerOpt="lbfgsb3c"),
-    table = list(cwres = TRUE, npde = TRUE))
+    table = list(cwres = TRUE, npde = TRUE)))
 '
-    cat(call)
     eval(parse(text=call))
     return(f)
   }
 
-  ret_fit <- run()
-  expect_error(print(ret_fit), NA)
+  tf <- tempfile()
+
+  fit <- run()
+  withr::with_output_sink(tf,
+                          expect_error(print(fit), NA))
+  unlink(tf)
+
 
 })
