@@ -4,6 +4,8 @@
 
 - Allow hook mechanism to handle piped arguments.
 
+- Fix for when output message from optimizing doesn't print well
+  (#325)
 
 # nlmixr2est 3.0.3
 
