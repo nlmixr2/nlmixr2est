@@ -34,7 +34,6 @@
   .lab <- gsub(" *$", "", gsub("^ *", "", .lab))
   if (!all(.lab == "")) {
     ret$popDf <- data.frame(Parameter = .lab, ret$popDf, check.names = FALSE)
-    ret$popDfSig <- data.frame(Parameter = .lab, ret$popDfSig, check.names = FALSE)
   }
 }
 #' Apply the manual translation for only one item
@@ -43,16 +42,11 @@
 #' @param .ret return environment
 #' @param .ui user interface function
 #' @param .qn The qn for the
-#' @param .btName Back-transform name
-#' @param .fmt format for one estimate
-#' @param .fmt2 format for estimate and ci
 #' @return nothing, called for side effects
 #' @keywords internal
 #' @author Matthew L. Fidler
 #' @noRd
-.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui,
-                                                           .qn, .btName,
-                                                           .fmt, .fmt2) {
+.updateParFixedApplyManualBacktransformationsI <- function(i, .ret, .ui, .qn) {
   theta <- row.names(.ret$popDf)[i]
   .w <- which(.ui$iniDf$name == theta)
   if (length(.w) == 1L) {
@@ -78,14 +72,6 @@
         .hi <- .bfun(.est + .se * .qn)
         .i1[i] <- .hi
         .ret$popDf[["CI Upper"]] <- .i1
-        .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt, .bfun(.est),
-                           .low, .hi)
-        .ret$popDfSig[[.btName]] <- .bt2
-      } else {
-        .bt2 <- .ret$popDfSig[[.btName]]
-        .bt2[i] <- sprintf(.fmt2, .bfun(.est))
-        .ret$popDfSig[[.btName]] <- .bt2
       }
     }
   }
@@ -99,34 +85,25 @@
 #' @noRd
 .updateParFixedApplyManualBacktransformations <- function(.ret, .ui) {
   .qn <- qnorm(1.0-(1-.ret$control$ci)/2)
-  .n <- names(.ret$popDfSig)
-  if (length(.n) >= 4) {
-    .btName <- names(.ret$popDfSig)[4]
-  } else if (length(.n) >= 2) {
-    .btName <- names(.ret$popDfSig)[2]
-  } else {
+  .n <- names(.ret$popDf)
+  if (length(.n) <= 1) {
     return(NULL)
   }
   .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
-  .fmt <- paste0("%", .sigdig, "g (%", .sigdig, "g, %", .sigdig, "g)")
-  .fmt2 <- paste0("%", .sigdig, "g")
   lapply(seq_along(.ret$popDf$Estimate), .updateParFixedApplyManualBacktransformationsI,
-         .ret=.ret, .ui=.ui, .qn=.qn, .btName=.btName,
-         .fmt=.fmt, .fmt2=.fmt2)
+         .ret=.ret, .ui=.ui, .qn=.qn)
 }
 
 #' This gets the CV/SD for a single ETA
 #'
-#'
 #' @param .eta Eta Name
-#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
 #' @param .ome Omega fixed vector
 #' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
 #' @param .sigdig is the number of significant digits used in the evaluation
 #' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
 #' @author Matthew L. Fidler and Bill Denney
 #' @noRd
-.updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
+.updateParFixedGetEtaRow <- function(.eta, .ome, .omegaFix, .muRefCurEval, .sigdig) {
   if (is.null(.ome)) {
     # This can happen if there are no BSV parameters in a model
     return("")
@@ -137,15 +114,14 @@
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (length(.w) == 1L && .muRefCurEval$curEval[.w] == "exp") {
-    assign(".sdOnly", FALSE, envir=.env)
     .valNumber <- sqrt(exp(.v) - 1) * 100
     .valCharPrep <- .valNumber
   } else {
-    assign(".cvOnly", FALSE, envir=.env)
     .valNumber <- .v
     .valCharPrep <- sqrt(.v)
   }
   if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
+    # TODO: This is obsolete
     .charPrefix <- "fix("
     .charSuffix <- ")"
   } else {
@@ -163,12 +139,12 @@
   )
 }
 
-#'  This will add the between subject variability to the mu-referenced theta.  It also expands the table to include non-mu referenced ETAs
-#'
+#'  This will add the between subject variability to the mu-referenced theta.
+#'  It also expands the table to include non-mu referenced ETAs
 #'
 #' @param .ret The focei return environment
 #' @param .ui The rxode2 ui environment
-#' @return Nothing called for side effects on popDf and popDfSig in the .ret environment
+#' @returns Nothing called for side effects on popDf in the .ret environment
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(.ret, .ui) {
@@ -180,49 +156,39 @@
 
   .muRefDataFrame <- .ui$muRefDataFrame
   .muRefCurEval   <- .ui$muRefCurEval
-  .env <- new.env(parent=emptyenv())
-  .env$.cvOnly <- TRUE
-  .env$.sdOnly <- TRUE
-  .env$.muRefVars <- NULL
-  .cvp <- lapply(row.names(.ret$popDfSig), function(x) {
+  # Find mu-referenced ETAs
+  .muRefVars <- .muRefDataFrame$eta[.muRefDataFrame$theta %in% rownames(.ret$popDf)]
+  .cvp <- lapply(row.names(.ret$popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
     }
     .eta <- .muRefDataFrame$eta[.w]
-    assign(".muRefVars", c(.env$.muRefVars, .eta), envir=.env)
-    .updateParFixedGetEtaRow(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+    .updateParFixedGetEtaRow(.eta, .ome, .omegaFix, .muRefCurEval, .sigdig)
   })
   .cvp <- do.call("rbind", .cvp)
-  .nonMuRef <- setdiff(dimnames(.ome)[[1]], .env$.muRefVars)
+  .nonMuRef <- setdiff(dimnames(.ome)[[1]], .muRefVars)
   if (length(.nonMuRef) > 0) {
-    .ret$popDfSig2 <- as.data.frame(lapply(names(.ret$popDfSig), function(x) { rep("", length(.nonMuRef))}))
-    names(.ret$popDfSig2) <- names(.ret$popDfSig)
     .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
     names(.ret$popDf2) <- names(.ret$popDf)
-    row.names(.ret$popDfSig2) <- .nonMuRef
     row.names(.ret$popDf2) <- .nonMuRef
   }
-  .ret$popDfSig <- data.frame(.ret$popDfSig, "BSD" = .cvp$ch, check.names = FALSE)
   .ret$popDf <- data.frame(.ret$popDf, "BSD" = .cvp$v, check.names = FALSE)
   if (length(.nonMuRef) > 0) {
-    .cvp <- lapply(row.names(.ret$popDfSig2), function(x) {
-      .updateParFixedGetEtaRow(x, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+    .cvp <- lapply(row.names(.ret$popDf2), function(x) {
+      .updateParFixedGetEtaRow(x, .ome, .omegaFix, .muRefCurEval, .sigdig)
     })
     .cvp <- do.call("rbind", .cvp)
-    .ret$popDfSig2 <- data.frame(.ret$popDfSig2, "BSD" = .cvp$ch, check.names = FALSE)
     .ret$popDf2 <- data.frame(.ret$popDf2, "BSD" = .cvp$v, check.names = FALSE)
-    .ret$popDfSig <- rbind(.ret$popDfSig, .ret$popDfSig2)
     .ret$popDf <- rbind(.ret$popDf, .ret$popDf2)
-    rm(list=c("popDf2", "popDfSig2"), envir=.ret)
-  }
-  .w <- which(names(.ret$popDfSig) == "BSD")
-  if (length(.w) == 1) {
-    names(.ret$popDfSig)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+    rm(list=c("popDf2", "popDfSig2"), envir=.ret) # popDfSig2 may no longer exist
   }
   .w <- which(names(.ret$popDf) == "BSD")
   if (length(.w) == 1) {
-    names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+    muRefTrans <- .muRefCurEval$curEval[.muRefCurEval$parameter %in% rownames(.ome)]
+    cvOnly <- all(!(muRefTrans %in% "exp"))
+    sdOnly <- all(muRefTrans %in% "exp")
+    names(.ret$popDf)[.w] <- ifelse(sdOnly, "BSV(SD)", ifelse(cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
 }
 
@@ -231,8 +197,7 @@
   .errs <- as.data.frame(.ui$ini)
   .errs <- paste(.errs[which(!is.na(.errs$err)), "name"])
   .muRefDataFrame <- .ui$muRefDataFrame
-  .sigdig <- rxode2::rxGetControl(.ui, "sigdig", 3L)
-  .sh <- lapply(row.names(.ret$popDfSig), function(x) {
+  .sh <- lapply(row.names(.ret$popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       .w <- which(names(.shrink) == x)
@@ -240,7 +205,7 @@
         if (any(x == .errs)) {
           x <- "IWRES"
         } else {
-          return(data.frame(ch = " ", v = NA_real_))
+          return(data.frame(v = NA_real_))
         }
       }
       .eta <- x
@@ -249,29 +214,88 @@
     }
     .v <- .shrink[7, .eta]
     if (length(.v) != 1) {
-      return(data.frame(ch = " ", v = NA_real_))
+      return(data.frame(v = NA_real_))
     }
-    if (is.na(.v)) {
-      return(data.frame(ch = " ", v = NA_real_))
-    }
-    .t <- ">"
-    if (.v < 0) {
-    } else if (.v < 20) {
-      .t <- "<"
-    } else if (.v < 30) {
-      .t <- "="
-    }
-    data.frame(
-      ch = sprintf("%s%%%s", formatC(signif(.v, digits = .sigdig),
-                                     digits = .sigdig, format = "fg", flag = "#"
-                                     ), .t),
-      v = .v
-    )
+    data.frame(v = .v)
   })
   .sh <- do.call("rbind", .sh)
-  .ret$popDfSig <- data.frame(.ret$popDfSig, "Shrink(SD)%" = .sh$ch, check.names = FALSE)
   .ret$popDf <- data.frame(.ret$popDf, "Shrink(SD)%" = .sh$v, check.names = FALSE)
 }
+
+#' Create the $popDfSig data.frame with all formatting
+#'
+#' @param df The $popDf data.frame
+#' @param digits The number of significant digits
+#' @param ci The confidence interval (for the column name of the back-transformed column)
+#' @param fixedNames Character vector of parameters that are fixed
+#' @returns `df` with formatting applied
+#' @noRd
+.updateParFixedApplySig <- function(df, digits, ci, iniDf, muRefDf) {
+  fixedNames <- unique(iniDf$name[iniDf$fix])
+  fixedThetaNames <- intersect(fixedNames, iniDf$name[!is.na(iniDf$ntheta)])
+  fixedBSVNames <- setdiff(fixedNames, fixedThetaNames)
+  fixedBSVRowNames <-
+    c(
+      intersect(fixedBSVNames, rownames(df)),
+      muRefDf$theta[muRefDf$eta %in% fixedNames]
+    )
+
+  if (is.null(digits)) {
+    # The FO method does not have a `control` element (see to
+    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
+    digits <- 3
+  }
+  if (is.null(ci)) {
+    # The FO method does not have a `control` element (see to
+    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
+    ci <- 0.95
+  }
+  ret <- df
+  colNumEst <- which(names(ret) %in% "Estimate")
+  names(ret)[colNumEst] <- "Est."
+  for (nm in names(ret)) {
+    if (!is.character(ret[[nm]])) {
+      ret[[nm]] <- formatMinWidth(ret[[nm]], digits = digits, naValue = "")
+    }
+  }
+  if ("CI Lower" %in% names(ret)) {
+    colNumBt <- which(startsWith(names(ret), "Back"))
+    ret[[colNumBt]] <-
+      ifelse(
+        ret$`CI Lower` == "",
+        ret[[colNumBt]],
+        sprintf("%s (%s, %s)", ret[[colNumBt]], ret$`CI Lower`, ret$`CI Upper`)
+      )
+    names(ret)[colNumBt] <- sprintf("Back-transformed(%g%%CI)", 100*ci)
+    ret$`CI Lower` <- NULL
+    ret$`CI Upper` <- NULL
+  }
+  # Add the suffix to the shrinkage
+  if ("Shrink(SD)%" %in% names(df)) {
+    # Only add the suffix if they are not NA
+    shrinkMask <- !is.na(df$`Shrink(SD)%`)
+    if (any(shrinkMask)) {
+      shrinkSuffix <-
+        as.character(cut(
+          df$`Shrink(SD)%`,
+          breaks = c(-Inf, 0, 20, 30, Inf),
+          labels = c(">", "<", "=", ">")
+        ))
+      ret$`Shrink(SD)%`[shrinkMask] <- paste0(ret$`Shrink(SD)%`[shrinkMask], shrinkSuffix[shrinkMask])
+    }
+  }
+  # Add SE and RSE FIXED
+  if (length(fixedThetaNames) > 0) {
+    ret[fixedThetaNames, "SE"] <- "FIXED"
+    ret[fixedThetaNames, "%RSE"] <- "FIXED"
+  }
+  if (length(fixedBSVRowNames) > 0) {
+    bsvCol <- grep(x = names(ret), pattern = "^BSV", value = TRUE)
+    ret[fixedBSVRowNames, ][[bsvCol]] <- paste0("fix(", ret[fixedBSVRowNames, ][[bsvCol]], ")")
+  }
+  ret
+}
+
 #' Create the parFixed dataset
 #'
 #' @param .ret focei style environment
@@ -279,109 +303,54 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixed <- function(.ret) {
+  browser()
+  stop()
   .ui <- .ret$ui
+  .fixedNamesTheta <- character()
   if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    # This branch is only taken for fixed theta values (not omega)
     .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
     .tn <- names(.theta)
-    .fmt <- paste0("%.", .ret$control$sigdig, "g")
-    .row.names <- row.names(.ret$popDf)
-    .popDf <-
+
+    .popDfEst <- .ret$popDf
+    .popDfEst$Estimate <- unname(.popDfEst$Estimate)
+    .popDfEst$SE <- unname(.popDfEst$SE)
+    .fixedNamesTheta <- setdiff(names(.theta), rownames(.popDfEst))
+    .popDfFixed <-
       data.frame(
-        `Estimate`=vapply(.tn,
-                          function(n) {
-                            .w <- which(.row.names == n)
-                            if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Estimate"], NULL))
-                            .theta[n]
-                          }, double(1), USE.NAMES = FALSE),
-        `SE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDf[n, "SE"]
-                      setNames(.ret, NULL)
-                    }, double(1), USE.NAMES = FALSE),
-        `%RSE`=vapply(.tn,
-                    function(n) {
-                      .ret <- .ret$popDf[n, "%RSE"]
-                      setNames(.ret, NULL)
-                    }, double(1), USE.NAMES = FALSE),
-        `Back-transformed`=vapply(.tn,
-                                  function(n) {
-                                    .w <- which(.row.names == n)
-                                    if (length(.w) ==1L) return(setNames(.ret$popDf[.w, "Back-transformed"], NULL))
-                                    .theta[n]
-                                  }, double(1), USE.NAMES = FALSE),
-        `CI Lower`=vapply(.tn,
-                      function(n) {
-                        .ret <- .ret$popDf[n, "CI Lower"]
-                        setNames(.ret, NULL)
-                      }, double(1), USE.NAMES = FALSE),
-        `CI Upper`=vapply(.tn,
-                          function(n) {
-                            .ret <- .ret$popDf[n, "CI Upper"]
-                            setNames(.ret, NULL)
-                           }, double(1), USE.NAMES = FALSE),
-        row.names = .tn,
-        check.rows = FALSE, check.names = FALSE
+        Estimate = unname(.theta[.fixedNamesTheta]),
+        SE = NA_real_,
+        `%RSE` = NA_real_,
+        `Back-transformed` = unname(.theta[.fixedNamesTheta]),
+        `CI Lower` = NA_real_,
+        `CI Upper` = NA_real_,
+        row.names = .fixedNamesTheta,
+        check.names = FALSE,
+        check.rows = FALSE
       )
-    if (any(names(.ret$popDfSig) == "SE")) {
-      .popDfSig <-
-        data.frame(
-          `Est.`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `SE`=vapply(.tn,
-                      function(n) {
-                        .w <- which(.row.names == n)
-                        if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "SE"], NULL))
-                        "FIXED"
-                      }, character(1), USE.NAMES = FALSE),
-          `%RSE`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, "%RSE"], NULL))
-                          "FIXED"
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 4], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[4] <- names(.ret$popDfSig)[4]
-    } else {
-      .popDfSig <-
-        data.frame(
-          `Est.`=vapply(.tn,
-                        function(n) {
-                          .w <- which(.row.names == n)
-                          if (length(.w) ==1L) return(setNames(.ret$popDfSig[.w, "Est."], NULL))
-                          sprintf(.fmt, .theta[n])
-                        }, character(1), USE.NAMES = FALSE),
-          `Back-transformed`=vapply(.tn,
-                                    function(n) {
-                                      .w <- which(.row.names == n)
-                                      if (length(.w) == 1L) return(setNames(.ret$popDfSig[.w, 2], NULL))
-                                      sprintf(.fmt, .theta[n])
-                                    }, character(1), USE.NAMES = FALSE),
-          row.names = .tn,
-          check.rows = FALSE, check.names = FALSE
-        )
-      names(.popDfSig)[2] <- names(.ret$popDfSig)[2]
-    }
-    .ret$popDfSig <- .popDfSig
+    # Combine estimated and fixed parameters, then order them by the theta names
+    .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
+
+    # Show the fixed values in the model
     .ret$popDf <- .popDf
   }
   .updateParFixedApplyManualBacktransformations(.ret, .ui)
   .updateParFixedAddParameterLabel(.ret, .ui)
   .updateParFixedAddBsv(.ret, .ui)
   .updateParFixedAddShrinkage(.ret, .ui)
-  .ret$parFixed <- .ret$popDfSig
+  # Applying significant digits happens via .updateParFixedApplySig
+  # (.ret$popDfSig is ignored)
+  browser()
+  stop()
+  .ret$parFixed <-
+    .updateParFixedApplySig(
+      .ret$popDf,
+      digits = .ret$control$sigdig,
+      ci = .ret$control$ci,
+      iniDf = .ret$iniDf,
+      muRefDf = .ret$muRefDataFrame
+    )
   .ret$parFixedDf <- .ret$popDf
   rm(list=c("popDfSig", "popDf"), envir=.ret)
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
@@ -448,8 +417,7 @@
   if (is.na(.arg)) .arg <- arg
   .lst <- list(obj, exact)
   class(.lst) <- c(.arg, "nmObjGet")
-  .ret <- nmObjGet(.lst)
-  if (!is.null(.ret)) return(.ret)
+  nmObjGet(.lst)
 }
 
 #' @export
@@ -471,7 +439,7 @@
       .ret <- `$.nlmixr2FitCore`(.env, arg, exact)
     }
   }
-  return(.ret)
+  .ret
 }
 
 
@@ -486,7 +454,7 @@ VarCorr.nlmixr2FitCore <- function(x, sigma = NULL, ...) {
       row.names = names(.var)
     )
     .ret <- .ret[!is.na(.ret[, 1]), ]
-    return(.ret)
+    .ret
   } else {
     VarCorr(.ret, ...)
   }
@@ -533,7 +501,7 @@ str.nlmixr2FitData <- function(object, ...) {
 #' @author Matthew L. Fidler
 #' @export
 residuals.nlmixr2FitData <- function(object, ..., type = c("ires", "res", "iwres", "wres", "cwres", "cpred", "cres")) {
-  return(object[, toupper(match.arg(type))])
+  object[, toupper(match.arg(type))]
 }
 
 #' Return the objective function
@@ -711,4 +679,68 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
     .ui <- rxode2::rxUiCompress(.ui)
     assign("ui", .ui, envir=x)
   }
+}
+
+#' Format numeric values to minimize the printing width
+#'
+#' Special values (`NaN`, `Inf`, `-Inf`, and `0`) are returned as their
+#' character representation without additional modification. `NA` is returned as
+#' the value of the `naValue` argument.
+#'
+#' @param x The numeric vector to convert
+#' @param digits The number of significant digits to show
+#' @param naValue The value to return if `is.na(x)`
+#' @returns A character vector converting the numbers with minimum width
+#' @examples
+#' formatMinWidth(x = -123456*10^(-10:10))
+#' @export
+formatMinWidth <- function(x, digits = 3, naValue = "NA") {
+  checkmate::assert_numeric(x)
+  maskSpecialValue <- x %in% c(NA, NaN, Inf, -Inf, 0)
+  signifX <- signif(x[!maskSpecialValue], digits = digits)
+  # Generate scientific notation values
+  formatSN <- paste0("%1.", digits - 1, "e")
+  valueSN <- sprintf(formatSN, signifX)
+  # Drop the + and leading zeros for positive exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\+0*", replacement = "e")
+  # Drop the leading zeros for negative exponent SN values
+  valueSN <- gsub(x = valueSN, pattern = "e\\-0*", replacement = "e-")
+
+  firstDigit <- floor(log10(abs(signifX)))
+  lastDigit <- firstDigit - digits + 1
+  formatNormal <-
+    paste0(
+      "%",
+      ifelse(
+        firstDigit < 0,
+        "0",
+        firstDigit
+      ),
+      ifelse(
+        lastDigit < 0,
+        paste0(".", abs(lastDigit)),
+        ".0"
+      ),
+      "f"
+    )
+  valueNormal <- sprintf(formatNormal, signifX)
+
+  # Prepare the return value with special values
+  ret <- rep(NA_character_, length(x))
+  if (any(maskSpecialValue)) {
+    ret[maskSpecialValue] <- as.character(x[maskSpecialValue])
+    maskNA <- !is.nan(x) & is.na(x)
+    if (any(maskNA)) {
+      ret[maskNA] <- naValue
+    }
+  }
+
+  # Place in the normal values
+  ret[!maskSpecialValue] <-
+    ifelse(
+      nchar(valueSN) < nchar(valueNormal),
+      valueSN,
+      valueNormal
+    )
+  ret
 }

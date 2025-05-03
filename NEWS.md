@@ -1,3 +1,8 @@
+# nlmixr2est development version
+
+- New function `formatMinWidth()` to make $parFixed show shorter text and more
+  often show non-scientific notation representations. (#346)
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
