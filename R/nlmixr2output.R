@@ -97,14 +97,13 @@
 #' This gets the CV/SD for a single ETA
 #'
 #' @param .eta Eta Name
-#' @param .env Environment where the indicators of `.sdOnly`, `.cvOnly` are stored so the column name can be changed to match the data
 #' @param .ome Omega fixed vector
 #' @param .muRefCurEval The current mu ref evaluation.  This determines if the ETA is logit normal and %CV should be calculated.
 #' @param .sigdig is the number of significant digits used in the evaluation
 #' @return Data frame row with ch= the character representation and v is the vector representation of the CV or sd
 #' @author Matthew L. Fidler and Bill Denney
 #' @noRd
-.updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
+.updateParFixedGetEtaRow <- function(.eta, .ome, .omegaFix, .muRefCurEval, .sigdig) {
   if (is.null(.ome)) {
     # This can happen if there are no BSV parameters in a model
     return("")
@@ -115,15 +114,14 @@
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
   if (length(.w) == 1L && .muRefCurEval$curEval[.w] == "exp") {
-    assign(".sdOnly", FALSE, envir=.env)
     .valNumber <- sqrt(exp(.v) - 1) * 100
     .valCharPrep <- .valNumber
   } else {
-    assign(".cvOnly", FALSE, envir=.env)
     .valNumber <- .v
     .valCharPrep <- sqrt(.v)
   }
   if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
+    # TODO: This is obsolete
     .charPrefix <- "fix("
     .charSuffix <- ")"
   } else {
@@ -158,21 +156,18 @@
 
   .muRefDataFrame <- .ui$muRefDataFrame
   .muRefCurEval   <- .ui$muRefCurEval
-  .env <- new.env(parent=emptyenv())
-  .env$.cvOnly <- TRUE
-  .env$.sdOnly <- TRUE
-  .env$.muRefVars <- NULL
+  # Find mu-referenced ETAs
+  .muRefVars <- .muRefDataFrame$eta[.muRefDataFrame$theta %in% rownames(.ret$popDf)]
   .cvp <- lapply(row.names(.ret$popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
       return(data.frame(ch = " ", v = NA_real_))
     }
     .eta <- .muRefDataFrame$eta[.w]
-    assign(".muRefVars", c(.env$.muRefVars, .eta), envir=.env)
-    .updateParFixedGetEtaRow(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+    .updateParFixedGetEtaRow(.eta, .ome, .omegaFix, .muRefCurEval, .sigdig)
   })
   .cvp <- do.call("rbind", .cvp)
-  .nonMuRef <- setdiff(dimnames(.ome)[[1]], .env$.muRefVars)
+  .nonMuRef <- setdiff(dimnames(.ome)[[1]], .muRefVars)
   if (length(.nonMuRef) > 0) {
     .ret$popDf2 <- as.data.frame(lapply(names(.ret$popDf), function(x) { rep(NA_real_, length(.nonMuRef))}))
     names(.ret$popDf2) <- names(.ret$popDf)
@@ -181,7 +176,7 @@
   .ret$popDf <- data.frame(.ret$popDf, "BSD" = .cvp$v, check.names = FALSE)
   if (length(.nonMuRef) > 0) {
     .cvp <- lapply(row.names(.ret$popDf2), function(x) {
-      .updateParFixedGetEtaRow(x, .env, .ome, .omegaFix, .muRefCurEval, .sigdig)
+      .updateParFixedGetEtaRow(x, .ome, .omegaFix, .muRefCurEval, .sigdig)
     })
     .cvp <- do.call("rbind", .cvp)
     .ret$popDf2 <- data.frame(.ret$popDf2, "BSD" = .cvp$v, check.names = FALSE)
@@ -190,7 +185,10 @@
   }
   .w <- which(names(.ret$popDf) == "BSD")
   if (length(.w) == 1) {
-    names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+    muRefTrans <- .muRefCurEval$curEval[.muRefCurEval$parameter %in% rownames(.ome)]
+    cvOnly <- all(!(muRefTrans %in% "exp"))
+    sdOnly <- all(muRefTrans %in% "exp")
+    names(.ret$popDf)[.w] <- ifelse(sdOnly, "BSV(SD)", ifelse(cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
 }
 
@@ -232,7 +230,16 @@
 #' @param fixedNames Character vector of parameters that are fixed
 #' @returns `df` with formatting applied
 #' @noRd
-.updateParFixedApplySig <- function(df, digits, ci, fixedNames) {
+.updateParFixedApplySig <- function(df, digits, ci, iniDf, muRefDf) {
+  fixedNames <- unique(iniDf$name[iniDf$fix])
+  fixedThetaNames <- intersect(fixedNames, iniDf$name[!is.na(iniDf$ntheta)])
+  fixedBSVNames <- setdiff(fixedNames, fixedThetaNames)
+  fixedBSVRowNames <-
+    c(
+      intersect(fixedBSVNames, rownames(df)),
+      muRefDf$theta[muRefDf$eta %in% fixedNames]
+    )
+
   if (is.null(digits)) {
     # The FO method does not have a `control` element (see to
     # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
@@ -278,9 +285,13 @@
     }
   }
   # Add SE and RSE FIXED
-  if (length(fixedNames) > 0) {
-    ret[fixedNames, "SE"] <- "FIXED"
-    ret[fixedNames, "%RSE"] <- "FIXED"
+  if (length(fixedThetaNames) > 0) {
+    ret[fixedThetaNames, "SE"] <- "FIXED"
+    ret[fixedThetaNames, "%RSE"] <- "FIXED"
+  }
+  if (length(fixedBSVRowNames) > 0) {
+    bsvCol <- grep(x = names(ret), pattern = "^BSV", value = TRUE)
+    ret[fixedBSVRowNames, ][[bsvCol]] <- paste0("fix(", ret[fixedBSVRowNames, ][[bsvCol]], ")")
   }
   ret
 }
@@ -292,9 +303,12 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixed <- function(.ret) {
+  browser()
+  stop()
   .ui <- .ret$ui
-  .fixedNames <- character()
+  .fixedNamesTheta <- character()
   if (!is.null(nlmixr2global$nlmixr2EstEnv$uiUnfix)) {
+    # This branch is only taken for fixed theta values (not omega)
     .ui <- nlmixr2global$nlmixr2EstEnv$uiUnfix
     .theta <- .ui$theta
     .tn <- names(.theta)
@@ -302,16 +316,16 @@
     .popDfEst <- .ret$popDf
     .popDfEst$Estimate <- unname(.popDfEst$Estimate)
     .popDfEst$SE <- unname(.popDfEst$SE)
-    .fixedNames <- setdiff(names(.theta), rownames(.popDfEst))
+    .fixedNamesTheta <- setdiff(names(.theta), rownames(.popDfEst))
     .popDfFixed <-
       data.frame(
-        Estimate = unname(.theta[.fixedNames]),
+        Estimate = unname(.theta[.fixedNamesTheta]),
         SE = NA_real_,
         `%RSE` = NA_real_,
-        `Back-transformed` = unname(.theta[.fixedNames]),
+        `Back-transformed` = unname(.theta[.fixedNamesTheta]),
         `CI Lower` = NA_real_,
         `CI Upper` = NA_real_,
-        row.names = .fixedNames,
+        row.names = .fixedNamesTheta,
         check.names = FALSE,
         check.rows = FALSE
       )
@@ -327,12 +341,15 @@
   .updateParFixedAddShrinkage(.ret, .ui)
   # Applying significant digits happens via .updateParFixedApplySig
   # (.ret$popDfSig is ignored)
+  browser()
+  stop()
   .ret$parFixed <-
     .updateParFixedApplySig(
       .ret$popDf,
       digits = .ret$control$sigdig,
       ci = .ret$control$ci,
-      fixedNames = .fixedNames
+      iniDf = .ret$iniDf,
+      muRefDf = .ret$muRefDataFrame
     )
   .ret$parFixedDf <- .ret$popDf
   rm(list=c("popDfSig", "popDf"), envir=.ret)

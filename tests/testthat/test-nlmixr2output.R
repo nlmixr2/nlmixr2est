@@ -167,6 +167,72 @@ test_that("formatMinWidth in parFixed", {
     )
   )
 
+  # Fixed omega ----
+  one.compartment.danglingomega <- function() {
+    ini({
+      intercept <- log(1.57)
+      slope <- log(2.72)
+      bsvFoo ~ fixed(0.1)
+      add.sd <- 0.7
+    })
+    model({
+      interceptI <- intercept
+      slopeI <- slope
+      cp <- interceptI + slopeI*TIME + bsvFoo
+      cp ~ add(add.sd)
+    })
+  }
+
+  fitFixedDanglingOmega <- .nlmixr(one.compartment.danglingomega, theo_sd, est="focei", control = foceiControlFast)
+  stop("Untested")
+
+  # Fixed omega ----
+  one.compartment.fixedomega <- function() {
+    ini({
+      tka <- log(1.57)
+      tcl <- log(2.72)
+      bsvCl ~ fixed(0.1)
+      tv <- log(31.5)
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka)
+      cl <- exp(tcl + bsvCl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+
+  fitFixedOmega <- .nlmixr(one.compartment.fixedomega, theo_sd, est="focei", control = foceiControlFast)
+  stop("Untested")
+  expect_equal(
+    fitFixed$parFixed,
+    structure(
+      list(
+        Est. = formatMinWidth(fitFixed$parFixedDf$Estimate),
+        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:3]), ""),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:3]), ""),
+        `Back-transformed(95%CI)` = c(
+          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1]),
+          sprintf(
+            "%s (%s, %s)",
+            formatMinWidth(fitFixed$parFixedDf$`Back-transformed`),
+            formatMinWidth(fitFixed$parFixedDf$`CI Lower`),
+            formatMinWidth(fitFixed$parFixedDf$`CI Upper`)
+          )[2:3],
+          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[4])
+        ),
+        `BSV(SD)` = c("fix(0.1)", "", "", ""),
+        `Shrink(SD)%` = c("", "", "", "")
+      ),
+      class = c("nlmixr2ParFixed", "data.frame"),
+      row.names = c("tka", "tcl", "tv", "add.sd")
+    )
+  )
+
   # Fixed parameter, labeled ----
   one.compartment.labeled <- function() {
     ini({
