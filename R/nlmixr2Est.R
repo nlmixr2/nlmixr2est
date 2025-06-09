@@ -208,9 +208,10 @@ nlmixr2Est0 <- function(env, ...) {
     if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, envir=.envReset)
     while (get("reset", envir=.envReset)) {
       assign("reset", FALSE, envir=.envReset)
-      assign("ret", try(.collectWarn(nlmixr2Est(env, ...), lst = TRUE)), envir=.envReset)
-      if (inherits(get("ret", envir=.envReset), "try-error")) {
-        .msg <- attr(get("ret", envir=.envReset), "condition")$message
+      ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
+      assign("ret", ret, envir=.envReset)
+      if (!is.null(ret$error)) {
+        .msg <- attr(ret, "condition")$message
         if (regexpr("not provided by package", .msg) != -1) {
           if (get("cacheReset", envir=.envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
