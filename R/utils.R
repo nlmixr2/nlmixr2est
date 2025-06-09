@@ -112,7 +112,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   .ret <- try(rbind(p1, p2), silent=TRUE)
   if (inherits(.ret, "try-error")) {
     warning("parameter history may be incomplete")
-    return(p2)
+    .ret <- p2
   }
   .ret
 }
@@ -173,7 +173,7 @@ nsis <- function() { ## build installer...
     ret <- force(expr)
   }
   if (lst) {
-    return(list(ret, warning = ws, error = es))
+    ret <- list(ret, warning = ws, error = es)
   } else {
     for (w in ws) {
       warning(w)
@@ -181,8 +181,8 @@ nsis <- function() { ## build installer...
     for (e in es) {
       stop(paste(es, collapse = "\n"))
     }
-    return(ret)
   }
+  ret
 }
 # #########################################################################
 
