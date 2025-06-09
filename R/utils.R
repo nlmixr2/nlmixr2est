@@ -142,29 +142,44 @@ nsis <- function() { ## build installer...
 #'     the expression and a list of warning messages
 #' @author Matthew L. Fidler
 #' @noRd
-.collectWarn <- function(expr, lst = FALSE) {
+.collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
+  ws <- NULL
+  es <- NULL
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
-    ws <- c()
     this.env <- environment()
-    ret <-
-      suppressWarnings(withCallingHandlers(
-        expr,
-        warning = function(w) {
-          assign("ws", unique(c(w$message, ws)), this.env)
-        }
-      ))
-    if (lst) {
-      return(list(ret, ws))
+    if (collectErr) {
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          withRestarts(expr, keepGoing = function() {NULL}),
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          },
+          error = function(e) {
+            currentErr <- paste(deparse(e$call), e$message, sep = ": ")
+            assign("es", unique(c(currentErr, es)), this.env)
+            invokeRestart("keepGoing")
+          }
+        ))
     } else {
-      for (w in ws) {
-        warning(w)
-      }
-      return(ret)
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          }
+        ))
     }
   } else {
     ret <- force(expr)
-    if (lst) {
-      return(list(ret, NULL))
+  }
+  if (lst) {
+    return(list(ret, warning = ws, error = es))
+  } else {
+    for (w in ws) {
+      warning(w)
+    }
+    for (e in es) {
+      stop(paste(es, collapse = "\n"))
     }
     return(ret)
   }
