@@ -96,7 +96,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   if (is.null(.ret)) {
     .cls <- class(obj)
     .lst <- attr(.cls, ".nlmixr2Gill")
-    return(.lst[[arg]])
+    .ret <- .lst[[arg]]
   }
   .ret
 }
