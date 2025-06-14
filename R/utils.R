@@ -155,7 +155,7 @@ nsis <- function() { ## build installer...
             assign("ws", unique(c(w$message, ws)), this.env)
           },
           error = function(e) {
-            currentErr <- paste(deparse(e$call), e$message, sep = ": ")
+            currentErr <- e$message
             assign("es", unique(c(currentErr, es)), this.env)
             invokeRestart("keepGoing")
           }

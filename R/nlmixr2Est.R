@@ -209,13 +209,15 @@ nlmixr2Est0 <- function(env, ...) {
     while (get("reset", envir=.envReset)) {
       assign("reset", FALSE, envir=.envReset)
       ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
-      assign("ret", ret, envir=.envReset)
+      if (!is.null(ret[[1]])) {
+        # Only assign the new model if there is a model object (no errors)
+        assign("ret", ret[[1]], envir=.envReset)
+      }
       if (!is.null(ret$error)) {
-        .msg <- attr(ret, "condition")$message
-        if (regexpr("not provided by package", .msg) != -1) {
+        if (any(regexpr(pattern = "not provided by package", text = ret$error) != -1)) {
           if (get("cacheReset", envir=.envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
-            stop(.msg, call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
@@ -237,10 +239,10 @@ nlmixr2Est0 <- function(env, ...) {
             assign("reset", TRUE, envir=.envReset)
             .msuccess("done")
           }
-        } else if (regexpr("maximal number of DLLs reached", .msg) != -1) {
+        } else if (any(regexpr("maximal number of DLLs reached", ret$error) != -1)) {
           if (.envReset$unload) {
             .malert("Could not unload rxode2 models, try restarting R")
-            stop(.msg, call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
@@ -263,7 +265,7 @@ nlmixr2Est0 <- function(env, ...) {
             .msuccess("done")
           }
         } else {
-          stop(.msg, call.=FALSE)
+          stop(paste(ret$error, collapse = "\n"), call.=FALSE)
         }
       }
       if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, .envReset)

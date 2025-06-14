@@ -1,3 +1,7 @@
+# nlmixr2est (development version)
+
+- More detailed error messages will be reported for models with errors
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
