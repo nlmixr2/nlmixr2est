@@ -409,6 +409,7 @@
   support a literal fix of residuals have an option `literalFixRes`
   which defaults to `TRUE`.  To get the behavior from older models you can use
   `literalFixRes=FALSE`
+- More detailed error messages will be reported for models with errors
 
 # nlmixr2est 3.0.4
 
