@@ -30,6 +30,12 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
 
     steps:
+      - name: Install deps on MacOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install gettext
+        shell: bash
+
       - uses: actions/checkout@v4
 
       - uses: r-lib/actions/setup-pandoc@v2
