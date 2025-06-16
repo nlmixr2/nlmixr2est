@@ -157,7 +157,7 @@ is.latex <- function() {
 }
 
 .slsqp <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  return(.nloptr(par, fn, gr, lower, upper, control, ..., nloptrAlgoritm = "NLOPT_LD_SLSQP"))
+  .nloptr(par, fn, gr, lower, upper, control, ..., nloptrAlgoritm = "NLOPT_LD_SLSQP")
 }
 
 .lbfgsbLG <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
