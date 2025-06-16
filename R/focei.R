@@ -802,7 +802,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   }
   pred.opt <- NULL
   inner <- .toRx(s$..inner, "compiling inner model...")
-  innerOetsa <- s$..innerOeta
+  innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
   .predMinusDv <- rxode2::rxGetControl(ui, "predMinusDv", TRUE)
