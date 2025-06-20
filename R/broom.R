@@ -28,7 +28,7 @@ confint.nlmixr2FitCore <- function(object, parm, level = 0.95, ...) {
     .hi <- exp(.hi)
     .low <- exp(.low)
   }
-  .df <- data.frame(model.est = .df$model.est, estimate = .df$estimate, conf.low = .low, conf.high = .hi)
+  .df <- data.frame(model.est = .df$model.est, estimate = .df$estimate, conf.low = .low, conf.high = .hi, row.names=rownames(.df))
   if (.ciNames) names(.df)[3:4] <- paste(c((1 - level) / 2, (1 - (1 - level) / 2)) * 100, "%")
   .df
 }
