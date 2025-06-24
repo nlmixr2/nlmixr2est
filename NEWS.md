@@ -1,3 +1,6 @@
+
+- Support rxode2's new `+var()` definition in `saem`
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
