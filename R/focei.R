@@ -203,11 +203,16 @@ is.latex <- function() {
 .uiGetThetaEta <- function(rxui) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .thetas <- lapply(.w, function(i) {
-    eval(parse(text=paste0("quote(", .iniDf$name[i], " <- THETA[", .iniDf$ntheta[i],"])")))
-  })
   .etas <- NULL
-  .i2 <- .iniDf[-.w, ]
+  if (length(.w) > 0) {
+    .thetas <- lapply(.w, function(i) {
+      eval(parse(text=paste0("quote(", .iniDf$name[i], " <- THETA[", .iniDf$ntheta[i],"])")))
+    })
+    .i2 <- .iniDf[-.w, ]
+  } else {
+    .i2 <- .iniDf
+    .thetas <- NULL
+  }
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .etas <- lapply(seq_along(.i2$name), function(i) {
