@@ -75,6 +75,9 @@
 ##' @author Matthew Fidler
 ##' @noRd
 .pagedPrint <- function(x, name, bound) {
+  if (is.null(x)) {
+    return(invisible())
+  }
   access <- as.character(substitute(x))
   if (length(access) == 3) {
     if (access[1] == "$") {
@@ -90,9 +93,8 @@
     .df <- data.frame(Information = .df)
   }
   .cls <- c(
-    paste0(bound, access, ": ", gsub(" +", "\u00A0", name)),
-    "paged_df", "data.frame"
-  )
+    paste0(bound, access, ": ", gsub(" +", " ", name)),
+    "paged_df", "data.frame")
   class(.df) <- .cls
   return(length(utils::capture.output(print(.df))) == 0)
 }
