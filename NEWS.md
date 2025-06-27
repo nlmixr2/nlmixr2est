@@ -1,4 +1,6 @@
 
+- Fix Rstudio print (issue #536)
+
 - Support rxode2's new `+var()` definition in `saem`
 
 # nlmixr2est 3.0.4
