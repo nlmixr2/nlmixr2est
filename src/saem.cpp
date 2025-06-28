@@ -10,6 +10,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "rxomp.h"
 
 #ifdef ENABLE_NLS
 #include <libintl.h>
@@ -757,6 +758,7 @@ public:
     double xmax = 1e300;
     ofstream phiFile;
     _warnAtolRtol = false;
+#pragma omp critical
     phiFile.open(phiMFile[0].c_str());
 
     if (DEBUG>0) {
@@ -854,6 +856,7 @@ public:
         do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi);
       }
       if (DEBUG>0) Rcout << "mcmc successful\n";
+#pragma omp critical
       phiFile << phiM;
       //mat dphi=phiM.cols(i1)-mphi1.mprior_phiM;
       //vec U_phi=0.5*sum(dphi%(dphi*IGamma2_phi1),1);
@@ -1739,6 +1742,7 @@ public:
       }
       Rcpp::checkUserInterrupt();
     }//kiter
+#pragma omp critical
     phiFile.close();
   }
 
