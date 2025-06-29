@@ -346,6 +346,16 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ipred <- .residAdjustIpredNames(.foceiSolvePars(fit, fit$ipredModel, .thetas,
                                                    returnType="data.frame.TBS", keep=.keep, what="ipred",
                                                    addDosing=addDosing, subsetNonmem=subsetNonmem))
+  # Adjust names to match expectations
+  .first <- c("id", "time", "rx_pred_", "rx_r_")
+  .nipred <- names(.ipred)
+  .first <- .first[.first %in% .nipred]
+  .nipred <- .nipred[!(.nipred %in% .first)]
+  .last <- c("tad", "dosenum", "nlmixrRowNums", "dv", "rxLambda", "rxYj", "rxLow", "rxHi")
+  .last <- .last[.last %in% .nipred]
+  .nipred <- .nipred[!(.nipred %in% .last)]
+  .ipred <- .ipred[,c(.first, .nipred, .last)]
+
   if (!inherits(dv, "numeric")) {
     dv <- .ipred$dv
     table$doSim <- TRUE
