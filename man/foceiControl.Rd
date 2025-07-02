@@ -789,7 +789,7 @@ when the first gradient is zero.  Default is `TRUE`}
   - `-1` the last eta is used for the optimization
   - `0` eta=0 is used for each inner optimization
 
- For the rest of the `mcetas`, each parameter's inner objective
+ For the rest of the `mceta`, each parameter's inner objective
  function is calculated and the eta set with the best objective
  function is used.  With these further options:
 

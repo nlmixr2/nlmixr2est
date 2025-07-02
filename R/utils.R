@@ -393,3 +393,7 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
         trace # nolint
         )
 }
+
+.sampleOmega <- function(omega) {
+  return(rxode2::rxRmvn(1, sigma=omega))
+}

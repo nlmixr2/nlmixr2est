@@ -1,4 +1,6 @@
 
+- Add `mceta` option to focei
+
 - Fix Rstudio print (issue #536)
 
 - Support rxode2's new `+var()` definition in `saem`
