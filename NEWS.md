@@ -1,7 +1,13 @@
+- Fix individual predictions not matching in the case of models
+  without between subject variability and trying to keep values with
+  code in the model like `dummy=dummy`. (Issue #538)
 
 - Add `mceta` option to focei
 
 - Fix Rstudio print (issue #536)
+
+- Fix Rstudio print (Issue #536)
+
 
 - Support rxode2's new `+var()` definition in `saem`
 
