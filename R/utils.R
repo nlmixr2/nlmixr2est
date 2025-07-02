@@ -98,7 +98,7 @@ iYeoJohnson <- function(x, lambda = 1) {
     .lst <- attr(.cls, ".nlmixr2Gill")
     return(.lst[[arg]])
   }
-  return(.ret)
+  .ret
 }
 
 
