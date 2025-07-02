@@ -667,7 +667,8 @@
 #'   perform for the best initial ETA estimate (based on
 #'   `omega`). When:
 #'
-#'   - `-1` the last eta is used for the optimization
+#'   - `-1` the last eta is used for the optimization (default)
+#'
 #'   - `0` eta=0 is used for each inner optimization
 #'
 #'  For the rest of the `mceta`, each parameter's inner objective
@@ -681,8 +682,6 @@
 #'
 #'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
 #'   etas from the omega matrix
-#'
-#'
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -720,6 +719,7 @@
 #' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
 #' Finite-Difference Interval Estimation for Noisy Derivative-Free
 #' Optimization.
+#'
 #' @family Estimation control
 #' @export
 foceiControl <- function(sigdig = 3, #
@@ -1378,7 +1378,7 @@ foceiControl <- function(sigdig = 3, #
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
-  return(.ret)
+  .ret
 }
 
 #' @export

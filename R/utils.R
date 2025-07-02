@@ -154,19 +154,19 @@ nsis <- function() { ## build installer...
         }
       ))
     if (lst) {
-      return(list(ret, ws))
+      list(ret, ws)
     } else {
       for (w in ws) {
         warning(w)
       }
-      return(ret)
+      ret
     }
   } else {
     ret <- force(expr)
     if (lst) {
       return(list(ret, NULL))
     }
-    return(ret)
+    ret
   }
 }
 # #########################################################################
@@ -395,5 +395,5 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
 }
 
 .sampleOmega <- function(omega) {
-  return(rxode2::rxRmvn(1, sigma=omega))
+  rxode2::rxRmvn(1, sigma=omega)
 }
