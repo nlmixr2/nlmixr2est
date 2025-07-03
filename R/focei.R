@@ -1784,21 +1784,21 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       rm(list="saem", envir=.env)
       .env$saem0 <- .saem
     }
-    if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
-        if (exists(.item, .env)) {
-          .obj <- get(.item, envir=.env)
-          .size <- utils::object.size(.obj)
-          .objC <- qs::qserialize(.obj)
-          .size2 <- utils::object.size(.objC)
-          if (.size2 < .size) {
-            .size0 <- (.size - .size2)
-            .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
-            assign(.item, .objC, envir=.env)
-          }
-        }
-      }
-    }
+    ## if (.control$compress) {
+    ##   for (.item in c("origData", "phiM", "parHistData", "saem0")) {
+    ##     if (exists(.item, .env)) {
+    ##       .obj <- get(.item, envir=.env)
+    ##       .size <- utils::object.size(.obj)
+    ##       .objC <- qs::qserialize(.obj)
+    ##       .size2 <- utils::object.size(.objC)
+    ##       if (.size2 < .size) {
+    ##         .size0 <- (.size - .size2)
+    ##         .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
+    ##         assign(.item, .objC, envir=.env)
+    ##       }
+    ##     }
+    ##   }
+    ## }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
                     "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
