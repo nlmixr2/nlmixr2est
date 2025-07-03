@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -108,8 +108,6 @@ related variables only</p></dd>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># \donttest{</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu">rxode2</span><span class="fu">::</span><span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/dot-linCmtSensB.html" class="external-link">.linCmtSensB</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
-<span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">one.cmt</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span> <span class="fu"><a href="https://nlmixr2.github.io/rxode2/reference/ini.html" class="external-link">ini</a></span><span class="op">(</span><span class="op">{</span></span></span>
 <span class="r-in"><span>   <span class="co">## You may label each parameter with a comment</span></span></span>
@@ -133,10 +131,6 @@ related variables only</p></dd>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit</span> <span class="op">&lt;-</span> <span class="fu"><a href="nlmixr2.html">nlmixr</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="va">theo_sd</span>, est<span class="op">=</span><span class="st">"focei"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fu">vpcSim</span><span class="op">(</span><span class="va">fit</span>, pred<span class="op">=</span><span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
@@ -145,24 +139,24 @@ related variables only</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Need to run with the source intact to parse comments</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 5952</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 4856</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="fu">vpcSim</span><span class="op">(</span><span class="va">fit</span>, pred<span class="op">=</span><span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   sim.id id time    ipred        sim  tad nlmixrRowNums rxLambda rxYj rxLow</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1      1  1 0.00 0.000000 -0.2603687 0.00             2        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2      1  1 0.25 4.241461  3.8578359 0.25             3        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3      1  1 0.57 6.819229  7.1918839 0.57             4        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4      1  1 1.12 8.177318  7.2241716 1.12             5        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5      1  1 2.02 8.192648  8.2314881 2.02             6        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6      1  1 3.82 7.366554  7.6343568 3.82             7        1    2     0</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   rxHi     pred</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1    1 0.000000</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2    1 3.270856</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3    1 5.839073</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4    1 7.868363</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5    1 8.501092</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6    1 7.615773</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   sim.id id time    ipred        sim  tad        depot  central nlmixrRowNums</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1      1  1 0.00 0.000000 -0.2599637 0.00 319.99200000   0.0000             2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2      1  1 0.25 4.249815  3.8667868 0.25 170.36831700 148.3259             3</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3      1  1 0.57 6.836970  7.2090448 0.57  76.03060828 238.6220             4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4      1  1 1.12 8.203210  7.2515453 1.12  18.99931015 286.3061             5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5      1  1 2.02 8.219526  8.2583056 2.02   1.96443108 286.8756             6</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6      1  1 3.82 7.386852  7.6542381 3.82   0.02100075 257.8138             7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   rxLambda rxYj rxLow rxHi     pred</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1        1    2     0    1 0.000000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2        1    2     0    1 3.263294</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3        1    2     0    1 5.832159</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4        1    2     0    1 7.870179</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5        1    2     0    1 8.513144</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6        1    2     0    1 7.628606</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>

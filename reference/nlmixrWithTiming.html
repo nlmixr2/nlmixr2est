@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -124,10 +124,6 @@ after a fit is created, please supply this environmental variable</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 5952</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 63664</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 13816</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress saem0 in nlmixr2 object, save 29736</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu">nlmixrWithTiming</span><span class="op">(</span><span class="st">"time1"</span>, <span class="op">{</span></span></span>
 <span class="r-in"><span>   <span class="fu"><a href="https://rdrr.io/r/base/Sys.sleep.html" class="external-link">Sys.sleep</a></span><span class="op">(</span><span class="fl">1</span><span class="op">)</span></span></span>
@@ -145,15 +141,15 @@ after a fit is created, please supply this environmental variable</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>            setup covariance  saem table compress   other time2 time1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.001586   0.007004 1.519 0.075     0.02 1.79241 1.002 1.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup covariance  saem table compress    other time2 time1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.001622   0.006005 2.318 0.083    0.001 1.501373 1.002 1.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>              0.453  0.195 43.1       1.57 (1.07, 2.31)     71.4    <span style="color: #BB0000; font-weight: bold;">-0.445%</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.02 0.0843 8.29       2.76 (2.34, 3.26)     27.2      3.88% </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0467 1.35       31.5 (28.8, 34.5)     13.9      10.2% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>               0.46  0.195 42.3       1.58 (1.08, 2.32)     71.0    <span style="color: #BB0000; font-weight: bold;">-0.606%</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.01 0.0838 8.31       2.74 (2.33, 3.23)     27.0      4.04% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.4      9.53% </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.695                               0.695                     </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">linFim</span></span>
@@ -165,14 +161,15 @@ after a fit is created, please supply this environmental variable</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Fit Data (object is a modified </span><span style="color: #0000BB; font-weight: bold;">tibble</span><span style="font-weight: bold;">): ──</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 132 × 16</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v    ka</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 132 × 18</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1      0     0.74  0     0.74   0     0.74   1.07   0.107 -<span style="color: #BB0000;">0.485</span> -<span style="color: #BB0000;">0.080</span><span style="color: #BB0000; text-decoration: underline;">9</span>  1.75</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1      0.25  2.84  3.26 -<span style="color: #BB0000;">0.424</span>  3.87 -<span style="color: #BB0000;">1.03</span>  -<span style="color: #BB0000;">1.49</span>   0.107 -<span style="color: #BB0000;">0.485</span> -<span style="color: #BB0000;">0.080</span><span style="color: #BB0000; text-decoration: underline;">9</span>  1.75</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1      0.57  6.57  5.84  0.726  6.82 -<span style="color: #BB0000;">0.250</span> -<span style="color: #BB0000;">0.360</span>  0.107 -<span style="color: #BB0000;">0.485</span> -<span style="color: #BB0000;">0.080</span><span style="color: #BB0000; text-decoration: underline;">9</span>  1.75</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1      0     0.74  0     0.74   0     0.74   1.06  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  320.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1      0.25  2.84  3.27 -<span style="color: #BB0000;">0.431</span>  3.84 -<span style="color: #BB0000;">0.996</span> -<span style="color: #BB0000;">1.43</span>  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  208.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1      0.57  6.57  5.85  0.722  6.77 -<span style="color: #BB0000;">0.201</span> -<span style="color: #BB0000;">0.290</span> 0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  119.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 129 more rows</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 4 more variables: cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;, dosenum &lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   dosenum &lt;dbl&gt;</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>

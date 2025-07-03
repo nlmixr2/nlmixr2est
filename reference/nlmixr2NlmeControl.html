@@ -11,7 +11,7 @@ is used as the ‘control’ argument to the ‘nlme’ function."><meta propert
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">3.0.4</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -612,7 +612,7 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $maxSS</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $strictSS</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
@@ -719,18 +719,6 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> long double </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           1 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $sensType</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> advan </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     4 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $linDiff</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>    tlag       f    rate     dur   tlag2      f2   rate2    dur2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $linDiffCentral</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  tlag     f  rate   dur tlag2    f2 rate2  dur2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $resample</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -793,6 +781,54 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $safePow</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $ssSolved</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSensType</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> auto </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  100 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSensH</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillFtol</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillK</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillStep</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillRtol</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.490116e-08</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtShiErr</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.490116e-08</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtShiMax</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtScale</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0 0 0 0 0 0 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHcmt</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHmeanI</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> geometric </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHmeanO</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> geometric </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSuspect</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtForwardMax</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $.zeros</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
@@ -1035,7 +1071,7 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $maxSS</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1000</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10000</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $strictSS</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
@@ -1142,18 +1178,6 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> long double </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           1 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $sensType</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> advan </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     4 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $linDiff</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>    tlag       f    rate     dur   tlag2      f2   rate2    dur2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 1.5e-05 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $linDiffCentral</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  tlag     f  rate   dur tlag2    f2 rate2  dur2 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE  TRUE </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $resample</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -1216,6 +1240,54 @@ changes the system to a linear compartment model.  Therefore, by default this is
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $safePow</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $ssSolved</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSensType</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> auto </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  100 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSensH</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillFtol</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillK</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillStep</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtGillRtol</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.490116e-08</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtShiErr</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1.490116e-08</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtShiMax</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 20</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtScale</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0 0 0 0 0 0 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHcmt</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHmeanI</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> geometric </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtHmeanO</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> geometric </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         2 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtSuspect</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e-06</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $linCmtForwardMax</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $.zeros</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
