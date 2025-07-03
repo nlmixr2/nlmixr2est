@@ -1,6 +1,3 @@
-- Fix individual predictions not matching in the case of models
-  without between subject variability and trying to keep values with
-  code in the model like `dummy=dummy`. (Issue #538)
 
 - Add `mceta` option to focei
 
@@ -17,6 +14,8 @@
 
 - Allow hook mechanism to handle piped arguments.
 
+- Fix for when output message from optimizing doesn't print well
+  (#325)
 
 # nlmixr2est 3.0.3
 

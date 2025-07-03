@@ -23,8 +23,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     # Don't use saemControlFast because numeric results are tested below
     fit <- .nlmixr(one.cmt, theo_sd, est="saem")
 

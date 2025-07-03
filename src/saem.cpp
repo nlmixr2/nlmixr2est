@@ -2018,7 +2018,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
       double *lhs = getIndLhs(ind);
-      if (isDose(getIndEvid(ind, kk))){
+      if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);

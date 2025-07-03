@@ -336,8 +336,12 @@ print.nlmixr2FitCore <- function(x, ...) {
       if (length(.msg) == 1L && x$message == "") {
         .msg <- NULL
       } else {
-        .msg <- gsub("^ *", "", .msg)
-        .msg <- paste(paste0("    ", .msg), collapse="\n")
+        .msg <- suppressWarnings(try(gsub("^ *", "", .msg), silent=TRUE))
+        if (inherits(.msg, "try-error")) {
+          .msg <- "    $message cannot be displayed, examine manually"
+        } else {
+          .msg <- paste(paste0("    ", .msg), collapse="\n")
+        }
       }
     }
     if (length(.msg) > 0L) {

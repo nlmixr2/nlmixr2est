@@ -259,7 +259,7 @@ rxUiGet.foceiParams <- function(x, ...) {
 #' @export
 rxUiGet.foceiCmtPreModel <- function(x, ...) {
   .ui <- x[[1]]
-  .state <- rxode2::rxState(.ui$mv0)
+  .state <- rxode2::rxStateOde(.ui$mv0)
   if (length(.state) == 0) return("")
   paste(paste0("cmt(", .state, ")"), collapse="\n")
 }
@@ -463,7 +463,7 @@ rxUiGet.loadPrune <- function(x, ...) {
   if (length(.etaVars) == 0L) {
     stop("cannot identify parameters for sensitivity analysis\n   with nlmixr2 an 'eta' initial estimate must use '~'", call. = FALSE)
   }
-  .stateVars <- rxode2::rxState(s)
+  .stateVars <- rxode2::rxStateOde(s)
   rxode2::.rxJacobian(s, c(.stateVars, .etaVars))
   rxode2::.rxSens(s, .etaVars)
   s
@@ -487,7 +487,7 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2::rxStateOde(.s)
   # FIXME: take out pred.minus.dv
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
@@ -607,7 +607,7 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
 #' @export
 rxUiGet.foceiEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2::rxStateOde(.s)
   .grd <- rxode2::rxExpandFEta_(.stateVars, .s$..maxEta, FALSE)
   if (rxode2::.useUtf()) {
     .malert("calculate \u2202(R\u00B2)/\u2202(\u03B7)")
@@ -1784,21 +1784,21 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
       rm(list="saem", envir=.env)
       .env$saem0 <- .saem
     }
-    if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
-        if (exists(.item, .env)) {
-          .obj <- get(.item, envir=.env)
-          .size <- utils::object.size(.obj)
-          .objC <- qs::qserialize(.obj)
-          .size2 <- utils::object.size(.objC)
-          if (.size2 < .size) {
-            .size0 <- (.size - .size2)
-            .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
-            assign(.item, .objC, envir=.env)
-          }
-        }
-      }
-    }
+    ## if (.control$compress) {
+    ##   for (.item in c("origData", "phiM", "parHistData", "saem0")) {
+    ##     if (exists(.item, .env)) {
+    ##       .obj <- get(.item, envir=.env)
+    ##       .size <- utils::object.size(.obj)
+    ##       .objC <- qs::qserialize(.obj)
+    ##       .size2 <- utils::object.size(.objC)
+    ##       if (.size2 < .size) {
+    ##         .size0 <- (.size - .size2)
+    ##         .malert("compress {  .item } in nlmixr2 object, save { .size0 }" )
+    ##         assign(.item, .objC, envir=.env)
+    ##       }
+    ##     }
+    ##   }
+    ## }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
                     "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",

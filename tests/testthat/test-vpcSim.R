@@ -95,8 +95,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     fit <- .nlmixr(one.cmt, theo_sd, est="focei", control = foceiControl(print = 0, eval.max = 1))
     expect_s3_class(vpcSim(fit, pred=TRUE), "data.frame")
   })
