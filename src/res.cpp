@@ -114,6 +114,10 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
     UNPROTECT(1);
     return R_NilValue;
   }
+  if (TYPEOF(nmS) != STRSXP) {
+    UNPROTECT(1);
+    return R_NilValue;
+  }
   CharacterVector nm = as<CharacterVector>(nmS);
   const char *badNames[28] = {"IPRED", "IRES", "IWRES", "CENS", "LIMIT",
     "lowerLim", "upperLim","PRED", "RES", "CPRED",
