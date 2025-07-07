@@ -1,5 +1,5 @@
 #define STRICT_R_HEADER
-#include <sys/stat.h> 
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,13 +11,7 @@
 #include <R_ext/Rdynload.h>
 #include <Rmath.h>
 #include <rxode2.h>
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("rxode2", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #include "utilc.h"
 

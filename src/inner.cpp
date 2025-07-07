@@ -20,14 +20,7 @@ extern "C" {
   iniN1qn1c
 }
 
-
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("nlmixr2est", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
