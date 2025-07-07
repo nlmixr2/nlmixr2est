@@ -374,7 +374,7 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
     return (x[i]-scale->initPar[i])/C + scaleTo;
     break;
   case scaleTypeMult: // simple multiplicative scaling
-    if (scale->scaleTo > 0) {
+    if (scale->scaleTo > 0){
       return x[i]/scale->initPar[i]*scale->scaleTo;
     } else {
       return x[i];

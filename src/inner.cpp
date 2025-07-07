@@ -76,9 +76,6 @@ extern "C" {
 
 bool assignFn_ = false;
 
-int _vPar_theta_size = 0;
-NumericVector _thetaIni;
-
 List _rxInv;
 
 // These are focei inner options
@@ -620,7 +617,7 @@ static inline double scalePar(double *x, int i){
 }
 
 
-void updateTheta(double *theta) {
+void updateTheta(double *theta){
   // Theta is the acutal theta
   unsigned int j, k;
   for (k = op_focei.npars; k--;){
@@ -1957,8 +1954,7 @@ static inline bool thetaReset0(bool forceReset = false) {
   LogicalVector adjustEta(op_focei.muRefN);
   bool doAdjust = false;
   for (int ii = op_focei.ntheta; ii--;){
-    // Get the pre-calculated last unscaled theta
-    thetaIni[ii] = vPar[vPar.size()-2*_vPar_theta_size-1+ii];
+    thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
     if (R_FINITE(op_focei.lower[ii])){
       thetaDown[ii] = unscalePar(op_focei.lower, ii);
     } else {
@@ -1991,7 +1987,6 @@ static inline bool thetaReset0(bool forceReset = false) {
       adjustEta[ii] = false;
     }
   }
-
   if (!doAdjust && !forceReset) {
     return false;
   }
@@ -3054,7 +3049,7 @@ static inline void foceiSetupTheta_(List mvi,
   int fixedn = 0;
   int j;
   LogicalVector thetaFixed2;
-  if (!thetaFixed.isNull()) {
+  if (!thetaFixed.isNull()){
     thetaFixed2 = as<LogicalVector>(thetaFixed);
     for (j = thetaFixed2.size(); j--;){
       if (thetaFixed2[j]) fixedn++;
@@ -3080,19 +3075,19 @@ static inline void foceiSetupTheta_(List mvi,
   op_focei.ntheta = thetan;
   op_focei.omegan = omegan;
   int k = 0;
-  for (j = 0; j < npars+fixedn; j++) {
-    if (j < thetaFixed2.size() && !thetaFixed2[j]) {
-      if (j < theta.size()) {
+  for (j = 0; j < npars+fixedn; j++){
+    if (j < thetaFixed2.size() && !thetaFixed2[j]){
+      if (j < theta.size()){
         op_focei.initPar[k] = theta[j];
       } else if (j < theta.size() + omegan){
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
       }
       op_focei.fixedTrans[k++] = j;
-    } else if (j >= thetaFixed2.size()) {
-      if (j < theta.size()) {
+    } else if (j >= thetaFixed2.size()){
+      if (j < theta.size()){
         op_focei.initPar[k] = theta[j];
         op_focei.fixedTrans[k++] = j;
-      } else if (j < theta.size() + omegan) {
+      } else if (j < theta.size() + omegan){
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
         op_focei.fixedTrans[k++] = j;
       }
@@ -3267,7 +3262,7 @@ NumericVector foceiSetup_(const RObject &obj,
                           Nullable<NumericVector> lower      = R_NilValue,
                           Nullable<NumericVector> upper      = R_NilValue,
                           Nullable<NumericMatrix> etaMat     = R_NilValue,
-                          Nullable<List> control             = R_NilValue) {
+                          Nullable<List> control             = R_NilValue){
   if (control.isNull()){
     stop("ODE options must be specified.");
   }
@@ -4083,7 +4078,6 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
 //[[Rcpp::export]]
 double foceiOuterF(NumericVector &theta){
   int n = theta.size();
-  _vPar_theta_size = n;
   void *ex = NULL;
   return foceiOfvOptim(n, theta.begin(), ex);
 }
@@ -4222,15 +4216,8 @@ void foceiLbfgsb3(Environment e){
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
-  if (op_focei.nF2 == 0) {
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(op_focei.initPar, k);
-    }
-  } else {
-    double *theta = _thetaIni.begin();
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(theta, k);
-    }
+  for (unsigned int k = op_focei.npars; k--;){
+    x[k]=scalePar(op_focei.initPar, k);
   }
   char msg[100];
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -4254,15 +4241,8 @@ void foceiLbfgsb(Environment e){
   double Fmin;
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
-  if (op_focei.nF2 == 0) {
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(op_focei.initPar, k);
-    }
-  } else {
-    double *theta = _thetaIni.begin();
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(theta, k);
-    }
+  for (unsigned int k = op_focei.npars; k--;){
+    x[k]=scalePar(op_focei.initPar, k);
   }
   char msg[100];
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -4283,15 +4263,8 @@ void foceiCustomFun(Environment e){
   NumericVector x(op_focei.npars);
   NumericVector lower(op_focei.npars);
   NumericVector upper(op_focei.npars);
-  if (op_focei.nF2 == 0) {
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(op_focei.initPar, k);
-    }
-  } else {
-    double *theta = _thetaIni.begin();
-    for (unsigned int k = op_focei.npars; k--;){
-      x[k]=scalePar(theta, k);
-    }
+  for (unsigned int k = op_focei.npars; k--;){
+    x[k]=scalePar(op_focei.initPar, k);
   }
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
@@ -6479,7 +6452,7 @@ Environment foceiFitCpp_(Environment e){
     }
     if (rxode2::rxIs(inner, "rxode2")) {
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      _thetaIni = as<NumericVector>(e["thetaIni"]);
+      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6519,7 +6492,7 @@ Environment foceiFitCpp_(Environment e){
       }
       if (rxode2::rxIs(inner, "rxode2")){
         RObject _dataSav = as<RObject>(e["dataSav"]);
-        _thetaIni = as<NumericVector>(e["thetaIni"]);
+        NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
         Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
         Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
         RObject _rxInv = e["rxInv"];
@@ -6538,7 +6511,7 @@ Environment foceiFitCpp_(Environment e){
       doPredOnly=true;
       foceiSetupTrans_(as<CharacterVector>(e[".params"]));
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      _thetaIni = as<NumericVector>(e["thetaIni"]);
+      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6590,7 +6563,7 @@ Environment foceiFitCpp_(Environment e){
     }
     if (rxode2::rxIs(inner, "rxode2")){
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      _thetaIni = as<NumericVector>(e["thetaIni"]);
+      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
