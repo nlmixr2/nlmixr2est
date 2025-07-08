@@ -110,11 +110,14 @@
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem model...</span></span>
 <span><span class="co">#&gt; [====|====|====|====|====|====|====|====|====|====] 0:00:00</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 13.2.0'</span></span>
+<span><span class="co">#&gt; → creating rxode2 include directory</span></span>
+<span><span class="co">#&gt; → getting R compile options</span></span>
+<span><span class="co">#&gt; → precompiling headers</span></span>
+<span><span class="co">#&gt; ✔ done</span></span>
+<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 14.2.0'</span></span>
 <span><span class="co">#&gt; ℹ calculate uninformed etas</span></span>
 <span><span class="co">#&gt; ℹ done</span></span>
-<span><span class="co">#&gt; rxode2 3.0.2 using 8 threads (see ?getRxThreads)</span></span>
-<span><span class="co">#&gt;   no cache: create with `rxCreateCache()`</span></span>
+<span><span class="co">#&gt; rxode2 3.0.4.9000 using 8 threads (see ?getRxThreads)</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Attaching package: 'rxode2'</span></span>
 <span><span class="co">#&gt; The following objects are masked from 'package:nlmixr2est':</span></span>
@@ -129,13 +132,13 @@
 <span><span class="co">#&gt; → optimizing duplicate expressions in saem predOnly model 1...</span></span>
 <span><span class="co">#&gt; → finding duplicate expressions in saem predOnly model 2...</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
-<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 13.2.0'</span></span>
+<span><span class="co">#&gt; using C compiler: 'gcc.exe (GCC) 14.2.0'</span></span>
 <span><span class="co">#&gt; → Calculating residuals/tables</span></span>
 <span><span class="co">#&gt; ✔ done</span></span>
 <span><span class="co">#&gt; → compress origData in nlmixr2 object, save 5952</span></span>
 <span><span class="co">#&gt; → compress phiM in nlmixr2 object, save 63504</span></span>
 <span><span class="co">#&gt; → compress parHistData in nlmixr2 object, save 13928</span></span>
-<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 30456</span></span>
+<span><span class="co">#&gt; → compress saem0 in nlmixr2 object, save 30208</span></span>
 <span></span>
 <span><span class="co"># Since the fit is performed in `nlmixr2est` this code works</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit</span><span class="op">)</span></span>
@@ -146,8 +149,8 @@
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Time (sec $time): ──</span></span>
 <span><span class="co">#&gt; </span></span>
-<span><span class="co">#&gt;         setup covariance saem table compress other</span></span>
-<span><span class="co">#&gt; elapsed 0.003       0.03 11.5  0.29     0.27 6.787</span></span>
+<span><span class="co">#&gt;         setup covariance  saem table compress other</span></span>
+<span><span class="co">#&gt; elapsed 0.003       0.02 16.55  0.14     0.03 6.027</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; ── Population Parameters ($parFixed or $parFixedDf): ──</span></span>
 <span><span class="co">#&gt; </span></span>
@@ -221,12 +224,12 @@
 <div class="dev-status">
 <h2 data-toc-skip>Dev status</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/nlmixr2/nlmixr2est/actions" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg" alt="R build status"></a></li>
+<li><a href="https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
 <li><a href="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est" class="external-link"><img src="https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge" alt="CodeFactor"></a></li>
 <li><a href="https://CRAN.R-project.org/package=nlmixr2est" class="external-link"><img src="https://www.r-pkg.org/badges/version/nlmixr2est" alt="CRAN status"></a></li>
 <li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est" alt="CRAN total downloads"></a></li>
 <li><a href="https://cran.r-project.org/package=nlmixr2est" class="external-link"><img src="https://cranlogs.r-pkg.org/badges/nlmixr2est" alt="CRAN total downloads"></a></li>
-<li><a href="https://app.codecov.io/gh/nlmixr2/nlmixr2est" class="external-link"><img src="https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl" alt="codecov"></a></li>
+<li><a href="https://app.codecov.io/gh/nlmixr2/nlmixr2est" class="external-link"><img src="https://codecov.io/gh/nlmixr2/nlmixr2est/graph/badge.svg" alt="Codecov test coverage"></a></li>
 </ul>
 </div>
 
