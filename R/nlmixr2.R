@@ -123,6 +123,12 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
   nlmixr2global$nlmixrEvalEnv$envir <- envir
+  if (inherits(object, "nlmixr2FitCore") &&
+        !is.null(object$eta)) {
+    nlmixr2global$etaMat <- object
+  } else {
+    nlmixr2global$etaMat <- NULL
+  }
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {

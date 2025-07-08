@@ -1,10 +1,11 @@
+# nlmixr2est 4.0.0
+
+- When using a model to start a new focei model, the ETAs from the
+  last fit are used as the starting point
 
 - Add `mceta` option to focei
 
 - Fix Rstudio print (issue #536)
-
-- Fix Rstudio print (Issue #536)
-
 
 - Support rxode2's new `+var()` definition in `saem`
 
