@@ -1374,7 +1374,7 @@ foceiControl <- function(sigdig = 3, #
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta)
   )
-  if (!missing(etaMat)) {
+  if (!is.null(etaMat)) {
     .doWarn <- TRUE
     if (inherits(etaMat, "nlmixr2FitCore")) {
       etaMat <- as.matrix(etaMat$eta[-1])

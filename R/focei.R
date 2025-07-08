@@ -1634,12 +1634,11 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
   }
-  ## if (!is.null(nlmixr2global$etaMat) &&
-  ##       is.null(.control[["etaMat"]])) {
-  ##   browser()
-  ##   ## warning("Passed the initial etas from the last fit")
-  ##   ## .control[["etaMat"]] <- nlmixr2global$etaMat
-  ## }
+  if (!is.null(nlmixr2global$etaMat) &&
+        is.null(.control[["etaMat"]])) {
+    warning("Passed the initial etas from the last fit")
+    .control[["etaMat"]] <- as.matrix(nlmixr2global$etaMat$eta[-1])
+  }
   # Change control when there is only 1 item being optimized
   .iniDf <- get("iniDf", envir=.ui)
   .est <- .iniDf[!.iniDf$fix,,drop=FALSE]
