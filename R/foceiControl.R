@@ -1374,13 +1374,15 @@ foceiControl <- function(sigdig = 3, #
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta)
   )
-  if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
-            call.=FALSE)
-    .ret$maxInnerIterations <- 0L
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
-    .ret$etaMat <- etaMat
-  } else if (!is.null(etaMat)) {
+  if (!missing(etaMat)) {
+    .doWarn <- TRUE
+    if (inherits(etaMat, "nlmixr2FitCore")) {
+      etaMat <- as.matrix(etaMat$eta[-1])
+      .doWarn <- FALSE
+    }
+    if (.doWarn && missing(maxInnerIterations)) {
+      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+    }
     checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   }
