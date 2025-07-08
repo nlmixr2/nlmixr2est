@@ -96,7 +96,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   if (is.null(.ret)) {
     .cls <- class(obj)
     .lst <- attr(.cls, ".nlmixr2Gill")
-    return(.lst[[arg]])
+    .ret <- .lst[[arg]]
   }
   .ret
 }
@@ -112,7 +112,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   .ret <- try(rbind(p1, p2), silent=TRUE)
   if (inherits(.ret, "try-error")) {
     warning("parameter history may be incomplete")
-    return(p2)
+    .ret <- p2
   }
   .ret
 }
@@ -142,32 +142,47 @@ nsis <- function() { ## build installer...
 #'     the expression and a list of warning messages
 #' @author Matthew L. Fidler
 #' @noRd
-.collectWarn <- function(expr, lst = FALSE) {
+.collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
+  ws <- NULL
+  es <- NULL
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
-    ws <- c()
     this.env <- environment()
-    ret <-
-      suppressWarnings(withCallingHandlers(
-        expr,
-        warning = function(w) {
-          assign("ws", unique(c(w$message, ws)), this.env)
-        }
-      ))
-    if (lst) {
-      list(ret, ws)
+    if (collectErr) {
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          withRestarts(expr, keepGoing = function() {NULL}),
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          },
+          error = function(e) {
+            currentErr <- e$message
+            assign("es", unique(c(currentErr, es)), this.env)
+            invokeRestart("keepGoing")
+          }
+        ))
     } else {
-      for (w in ws) {
-        warning(w)
-      }
-      ret
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          }
+        ))
     }
   } else {
     ret <- force(expr)
-    if (lst) {
-      return(list(ret, NULL))
-    }
-    ret
   }
+  if (lst) {
+    ret <- list(ret, warning = ws, error = es)
+  } else {
+    for (w in ws) {
+      warning(w)
+    }
+    for (e in es) {
+      stop(paste(es, collapse = "\n"))
+    }
+  }
+  ret
 }
 # #########################################################################
 
