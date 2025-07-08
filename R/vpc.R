@@ -19,8 +19,6 @@
 #'
 #' \donttest{
 #'
-#' if (rxode2::.linCmtSensB()) {
-#'
 #' one.cmt <- function() {
 #'  ini({
 #'    ## You may label each parameter with a comment
@@ -46,8 +44,6 @@
 #' fit <- nlmixr(one.cmt, theo_sd, est="focei")
 #'
 #' head(vpcSim(fit, pred=TRUE))
-#'
-#' }
 #'
 #' }
 vpcSim <- function(object, ..., keep=NULL, n=300,

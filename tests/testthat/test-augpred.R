@@ -25,7 +25,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
     fitOne.comp.KA.solved_S <-
       .nlmixr(
         One.comp.KA.solved,
@@ -40,8 +39,6 @@ nmTest({
 
     expect_equal(as.character(ap[ap$id == 1 & ap$time == 120, "ind"]),
                  c("Individual", "Population"))
-
-    skip_if_not(rxode2::.linCmtSensB())
 
       df <-
         tibble::tibble(
@@ -120,8 +117,6 @@ nmTest({
         })
       }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
       cmt2fit.logn <-
         .nlmixr(
           cmt2, dat2, "saem",
@@ -133,7 +128,6 @@ nmTest({
   })
 
   test_that("augPred with pop only data", {
-    skip_if_not(rxode2::.linCmtSensB())
     one.cmt <- function() {
       ini({
         tka <- 0.45
@@ -148,7 +142,6 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    skip_if_not(rxode2::.linCmtSensB())
 
     fit2 <-
       .nlmixr(

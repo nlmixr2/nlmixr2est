@@ -43,7 +43,7 @@ nmTest({
     }
     dat <- qs::qread(test_path("test-resume-bobyqa.qs"))
 
-    d <-.nlmixr(model, dat, "focei")
+    d <- .nlmixr(model, dat, "focei")
 
     expect_true(grepl("bobyqa", d$extra))
   })

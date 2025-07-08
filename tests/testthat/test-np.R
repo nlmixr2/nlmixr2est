@@ -21,8 +21,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "foce"), NA)
     expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "focei"), NA)
 

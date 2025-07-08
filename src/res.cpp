@@ -3,14 +3,7 @@
 #include <boost/algorithm/string.hpp>
 #include <string>
 
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("rxode2", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
-
 
 void calculateDfFull(arma::Col<int>& ID, arma::mat &etas,
                      List &etasDfFull, int &nid, unsigned int &neta) {
@@ -111,6 +104,10 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
   if (TYPEOF(inS) != VECSXP) return R_NilValue;
   SEXP nmS = PROTECT(Rf_getAttrib(inS, R_NamesSymbol));
   if (Rf_isNull(nmS)) {
+    UNPROTECT(1);
+    return R_NilValue;
+  }
+  if (TYPEOF(nmS) != STRSXP) {
     UNPROTECT(1);
     return R_NilValue;
   }

@@ -118,7 +118,8 @@ foceiControl(
   sdLowerFact = 0.001,
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
-  zeroGradBobyqa = TRUE
+  zeroGradBobyqa = TRUE,
+  mceta = -1L
 )
 }
 \arguments{
@@ -780,6 +781,25 @@ possibly reset). Default is `TRUE`}
 the reset will change the method to the gradient free bobyqa
 method. When `NA`, the zero gradient will change to bobyqa only
 when the first gradient is zero.  Default is `TRUE`}
+
+\item{mceta}{Integer indicating the type of Monte Carlo sampling to
+  perform for the best initial ETA estimate (based on
+  `omega`). When:
+
+  - `-1` the last eta is used for the optimization
+  - `0` eta=0 is used for each inner optimization
+
+ For the rest of the `mceta`, each parameter's inner objective
+ function is calculated and the eta set with the best objective
+ function is used.  With these further options:
+
+  - `1` the last eta and eta=0 are used
+
+  - `2` the last eta and eta=0 are used, as well as 1 sampled eta
+  from the omega matrix
+
+  - `n` the last eta and eta=0 are used, as well as n-1 sampled
+  etas from the omega matrix}
 }
 \value{
 The control object that changes the options for the FOCEi

@@ -11,13 +11,7 @@
 #include "nearPD.h"
 #include "inner.h"
 
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("nlmixr2est", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
@@ -2018,7 +2012,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       int kk = getIndIx(ind, getIndIdx(ind));
       double curT = getTime(kk, ind);
       double *lhs = getIndLhs(ind);
-      if (isDose(getIndEvid(ind, kk))){
+      if (isDose(getIndEvid(ind, kk))) {
         // Need to calculate for advan sensitivities
         saem_lhs((int)id, curT,
                  getOpIndSolve(op, ind, j), lhs);

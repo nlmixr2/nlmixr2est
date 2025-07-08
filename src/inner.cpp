@@ -20,14 +20,7 @@ extern "C" {
   iniN1qn1c
 }
 
-
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("nlmixr2est", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
@@ -94,6 +87,7 @@ struct focei_options {
   double *getahr = NULL;
   double *getahh = NULL;
   double *goldEta = NULL;
+  double *gtryEta = NULL;
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
   bool mGthetaGrad = false;
@@ -308,6 +302,7 @@ struct focei_options {
   bool zeroGradBobyqa=false;
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
+  int mceta= -1; // number of mc samples of ETA
 };
 
 focei_options op_focei;
@@ -330,6 +325,7 @@ struct focei_ind {
 
   double *saveEta; // Saved when lik[0] is saved.
   double *oldEta;
+  double *tryEta;
 
   // Likilihood gradient
   double llik;
@@ -1542,9 +1538,43 @@ static inline int innerOpt1(int id, int likId) {
   bool n1qn1Inner = true;
   // Use eta
   // Convert Zm to Hessian, if applicable.
-  mat etaMat(fop->neta, 1);
-  if (!op_focei.calcGrad){
-    if (op_focei.resetEtaSize <= 0){
+  mat etaMat(fop->neta, 1) ;
+  if (op_focei.mceta == -1) {
+  } else if (op_focei.mceta == 0) {
+    // always reset to zero
+    std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+  } else if (op_focei.mceta >= 1) {
+    int nmc = op_focei.mceta-1;
+    double fcur = likInner0(fInd->eta, id); // last eta
+    std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
+    double ftry = likInner0(fInd->tryEta, id); // zero eta
+    // Not thread safe, accessing R memory stack
+    NumericMatrix omega;
+    if (nmc > 0) {
+      omega = getOmega();
+    }
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
+    Function f = as<Function>(nlmixr2[".sampleOmega"]);
+    NumericMatrix samp(op_focei.neta, 1);
+    // Get the lowest sampled eta for starting point
+    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
+    while (true) {
+      if (ftry < fcur) {
+        std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+        fcur = ftry;
+      }
+      if (nmc <= 0) break;
+      nmc--;
+      // Now sample a new eta from multivariate normal
+      samp = f(omega);
+      std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
+      ftry = likInner0(fInd->tryEta, id); // sampled eta
+    }
+    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
+  }
+  if (!op_focei.calcGrad) {
+    if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
         fInd->uzm = 1;
@@ -1629,7 +1659,7 @@ static inline int innerOpt1(int id, int likId) {
           }
         }
       }
-      if (tryAgain){
+      if (tryAgain) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset=1;
@@ -3081,6 +3111,7 @@ static inline void foceiSetupNoEta_(){
     // ETA ini
     fInd->eta = NULL;
     fInd->oldEta = NULL;
+    fInd->tryEta = NULL;
     fInd->saveEta = NULL;
     fInd->g = NULL;
     fInd->x = NULL;
@@ -3117,11 +3148,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
                                2*op_focei.neta * getRxNall(rx) + getRxNall(rx)+ getRxNall(rx)*getRxNall(rx) +
-                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx),
+                               op_focei.neta*6 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx),
                                double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
-  op_focei.goldEta  = op_focei.geta + op_focei.gEtaGTransN;
+  op_focei.gtryEta  = op_focei.geta + op_focei.neta;
+  op_focei.goldEta  = op_focei.gtryEta + op_focei.gEtaGTransN;
   op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
   op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
   op_focei.getahh   = op_focei.getahr + op_focei.gEtaGTransN;
@@ -3163,6 +3195,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->etahr = &op_focei.getahr[j];
     fInd->etahh = &op_focei.getahh[j];
     fInd->oldEta = &op_focei.goldEta[j];
+    fInd->tryEta = &op_focei.gtryEta[j];
     fInd->saveEta = &op_focei.gsaveEta[j];
     fInd->g = &op_focei.gG[j];
     fInd->x = &op_focei.gX[j];
@@ -3181,6 +3214,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->eta[op_focei.neta] = i;
     fInd->saveEta[op_focei.neta] = i;
     fInd->oldEta[op_focei.neta] = i;
+    fInd->tryEta[op_focei.neta] = i;
 
     j+=op_focei.neta+1;
 
@@ -3255,6 +3289,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.didLikCalc = false;
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
+  op_focei.mceta = as<int>(foceiO["mceta"]);
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
