@@ -213,7 +213,7 @@ nlmixr2Est0 <- function(env, ...) {
         # Only assign the new model if there is a model object (no errors)
         assign("ret", ret[[1]], envir=.envReset)
       }
-      if (!is.null(ret$error)) {
+      if (length(ret$error) > 0) {
         if (any(regexpr(pattern = "not provided by package", text = ret$error) != -1)) {
           if (get("cacheReset", envir=.envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
