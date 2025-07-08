@@ -30,7 +30,6 @@ close(md5file)
 .in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
 
 
-.in <- suppressWarnings(readLines("src/Makevars.in"))
 if (.Platform$OS.type == "windows") {
   .makevars <- file("src/Makevars.win", "wb")
   .i <- "I"

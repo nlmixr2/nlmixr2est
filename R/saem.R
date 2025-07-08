@@ -304,11 +304,13 @@
   .saemThetaNames <- .ui$saemParamsToEstimate
   .thetaSaem <- setNames(as.vector(fixed.effects(env$saem)), .saemThetaNames)
   .resMat <- .saem$resMat
+  .varSpec <- FALSE
   for (n in .thetaNames) {
     if (n %in% .saemThetaNames) {
       .theta[n] <- .thetaSaem[n]
     }
   }
+  .hasVariance <- any(names(.predDf) == "variance")
   for (i in seq_along(.predDf$cond)) {
     .x <- paste(.predDf$cond[i])
     .tmp <- .iniDf[which(.iniDf$condition == .x), ]
@@ -317,7 +319,16 @@
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
-      .theta[paste(.tmp$name[.w])] <- .resMat[i, 2]
+      .var <- FALSE
+      if (.hasVariance) {
+        .var <- .predDf$variance[i]
+      }
+      if (.var) {
+        .theta[paste(.tmp$name[.w])] <- .resMat[i, 2]^2
+        .varSpec <- TRUE
+      } else {
+        .theta[paste(.tmp$name[.w])] <- .resMat[i, 2]
+      }
     }
     .w <- which(vapply(.tmp$err,
                        function(x) any(x == c("pow2", "powT2")),
@@ -341,7 +352,16 @@
                        logical(1),
                        USE.NAMES=FALSE))
     if (length(.w) == 1) {
-      .theta[paste(.tmp$name[.w])] <- .resMat[i, 1]
+      .var <- FALSE
+      if (.hasVariance) {
+        .var <- .predDf$variance[i]
+      }
+      if (.var) {
+        .theta[paste(.tmp$name[.w])] <- .resMat[i, 1]^2
+        .varSpec <- TRUE
+      } else {
+        .theta[paste(.tmp$name[.w])] <- .resMat[i, 1]
+      }
     }
     .w <- which(vapply(.tmp$err, function(x) {
       any(x == c("boxCox", "yeoJohnson"))
@@ -351,6 +371,11 @@
     }
   }
   env$fullTheta <- .theta
+  if (.varSpec) {
+    .minfo("variance residual estimates transformed from standard deviation")
+    warning("variance residual estimates transformed from standard deviation",
+            call.=FALSE)
+  }
   invisible()
 }
 #' Get SAEM omega

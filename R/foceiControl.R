@@ -663,6 +663,26 @@
 #'   method. When `NA`, the zero gradient will change to bobyqa only
 #'   when the first gradient is zero.  Default is `TRUE`
 #'
+#' @param mceta Integer indicating the type of Monte Carlo sampling to
+#'   perform for the best initial ETA estimate (based on
+#'   `omega`). When:
+#'
+#'   - `-1` the last eta is used for the optimization (default)
+#'
+#'   - `0` eta=0 is used for each inner optimization
+#'
+#'  For the rest of the `mceta`, each parameter's inner objective
+#'  function is calculated and the eta set with the best objective
+#'  function is used.  With these further options:
+#'
+#'   - `1` the last eta and eta=0 are used
+#'
+#'   - `2` the last eta and eta=0 are used, as well as 1 sampled eta
+#'   from the omega matrix
+#'
+#'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
+#'   etas from the omega matrix
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -699,6 +719,7 @@
 #' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
 #' Finite-Difference Interval Estimation for Noisy Derivative-Free
 #' Optimization.
+#'
 #' @family Estimation control
 #' @export
 foceiControl <- function(sigdig = 3, #
@@ -765,7 +786,14 @@ foceiControl <- function(sigdig = 3, #
                          ## mma: 20974.20 (Time: Opt: 3000.501 Cov: 467.287)
                          ## slsqp: 21023.89 (Time: Opt: 460.099; Cov: 488.921)
                          ## lbfgsbLG: 20974.74 (Time: Opt: 946.463; Cov:397.537)
-                         outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "Rvmmin"), #
+                         outerOpt = c("nlminb",
+                                      "bobyqa",
+                                      "lbfgsb3c",
+                                      "L-BFGS-B",
+                                      "mma",
+                                      "lbfgsbLG",
+                                      "slsqp",
+                                      "Rvmmin"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #
@@ -830,7 +858,8 @@ foceiControl <- function(sigdig = 3, #
                          sdLowerFact=0.001,
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
-                         zeroGradBobyqa=TRUE) { #
+                         zeroGradBobyqa=TRUE,
+                         mceta=-1L) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1220,6 +1249,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   .ret <- list(
@@ -1341,7 +1371,8 @@ foceiControl <- function(sigdig = 3, #
     sdLowerFact=sdLowerFact,
     zeroGradFirstReset=zeroGradFirstReset,
     zeroGradRunReset=zeroGradRunReset,
-    zeroGradBobyqa=zeroGradBobyqa
+    zeroGradBobyqa=zeroGradBobyqa,
+    mceta=as.integer(mceta)
   )
   if (!missing(etaMat) && missing(maxInnerIterations)) {
     warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
@@ -1354,7 +1385,7 @@ foceiControl <- function(sigdig = 3, #
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
-  return(.ret)
+  .ret
 }
 
 #' @export

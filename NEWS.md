@@ -1,9 +1,21 @@
+
+- Add `mceta` option to focei
+
+- Fix Rstudio print (issue #536)
+
+- Fix Rstudio print (Issue #536)
+
+
+- Support rxode2's new `+var()` definition in `saem`
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
 
 - Allow hook mechanism to handle piped arguments.
 
+- Fix for when output message from optimizing doesn't print well
+  (#325)
 
 # nlmixr2est 3.0.3
 

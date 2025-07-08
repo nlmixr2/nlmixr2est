@@ -23,8 +23,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     ui <- .nlmixr(one.cmt)
 
     est0 <- ui$iniDf$est

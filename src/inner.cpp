@@ -20,14 +20,7 @@ extern "C" {
   iniN1qn1c
 }
 
-
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("nlmixr2est", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
 
@@ -76,6 +69,9 @@ extern "C" {
 
 bool assignFn_ = false;
 
+int _vPar_theta_size = 0;
+NumericVector _thetaIni;
+
 List _rxInv;
 
 // These are focei inner options
@@ -94,6 +90,7 @@ struct focei_options {
   double *getahr = NULL;
   double *getahh = NULL;
   double *goldEta = NULL;
+  double *gtryEta = NULL;
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
   bool mGthetaGrad = false;
@@ -308,6 +305,7 @@ struct focei_options {
   bool zeroGradBobyqa=false;
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
+  int mceta= -1; // number of mc samples of ETA
 };
 
 focei_options op_focei;
@@ -330,6 +328,7 @@ struct focei_ind {
 
   double *saveEta; // Saved when lik[0] is saved.
   double *oldEta;
+  double *tryEta;
 
   // Likilihood gradient
   double llik;
@@ -614,7 +613,7 @@ static inline double scalePar(double *x, int i){
 }
 
 
-void updateTheta(double *theta){
+void updateTheta(double *theta) {
   // Theta is the acutal theta
   unsigned int j, k;
   for (k = op_focei.npars; k--;){
@@ -1542,9 +1541,43 @@ static inline int innerOpt1(int id, int likId) {
   bool n1qn1Inner = true;
   // Use eta
   // Convert Zm to Hessian, if applicable.
-  mat etaMat(fop->neta, 1);
-  if (!op_focei.calcGrad){
-    if (op_focei.resetEtaSize <= 0){
+  mat etaMat(fop->neta, 1) ;
+  if (op_focei.mceta == -1) {
+  } else if (op_focei.mceta == 0) {
+    // always reset to zero
+    std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+  } else if (op_focei.mceta >= 1) {
+    int nmc = op_focei.mceta-1;
+    double fcur = likInner0(fInd->eta, id); // last eta
+    std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
+    double ftry = likInner0(fInd->tryEta, id); // zero eta
+    // Not thread safe, accessing R memory stack
+    NumericMatrix omega;
+    if (nmc > 0) {
+      omega = getOmega();
+    }
+    Function loadNamespace("loadNamespace", R_BaseNamespace);
+    Environment nlmixr2 = loadNamespace("nlmixr2est");
+    Function f = as<Function>(nlmixr2[".sampleOmega"]);
+    NumericMatrix samp(op_focei.neta, 1);
+    // Get the lowest sampled eta for starting point
+    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
+    while (true) {
+      if (ftry < fcur) {
+        std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
+        fcur = ftry;
+      }
+      if (nmc <= 0) break;
+      nmc--;
+      // Now sample a new eta from multivariate normal
+      samp = f(omega);
+      std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
+      ftry = likInner0(fInd->tryEta, id); // sampled eta
+    }
+    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
+  }
+  if (!op_focei.calcGrad) {
+    if (op_focei.resetEtaSize <= 0) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
         fInd->uzm = 1;
@@ -1629,7 +1662,7 @@ static inline int innerOpt1(int id, int likId) {
           }
         }
       }
-      if (tryAgain){
+      if (tryAgain) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset=1;
@@ -1917,7 +1950,8 @@ static inline bool thetaReset0(bool forceReset = false) {
   LogicalVector adjustEta(op_focei.muRefN);
   bool doAdjust = false;
   for (int ii = op_focei.ntheta; ii--;){
-    thetaIni[ii] = unscalePar(op_focei.fullTheta, ii);
+    // Get the pre-calculated last unscaled theta
+    thetaIni[ii] = vPar[vPar.size()-2*_vPar_theta_size-1+ii];
     if (R_FINITE(op_focei.lower[ii])){
       thetaDown[ii] = unscalePar(op_focei.lower, ii);
     } else {
@@ -1950,6 +1984,7 @@ static inline bool thetaReset0(bool forceReset = false) {
       adjustEta[ii] = false;
     }
   }
+
   if (!doAdjust && !forceReset) {
     return false;
   }
@@ -3012,7 +3047,7 @@ static inline void foceiSetupTheta_(List mvi,
   int fixedn = 0;
   int j;
   LogicalVector thetaFixed2;
-  if (!thetaFixed.isNull()){
+  if (!thetaFixed.isNull()) {
     thetaFixed2 = as<LogicalVector>(thetaFixed);
     for (j = thetaFixed2.size(); j--;){
       if (thetaFixed2[j]) fixedn++;
@@ -3038,19 +3073,19 @@ static inline void foceiSetupTheta_(List mvi,
   op_focei.ntheta = thetan;
   op_focei.omegan = omegan;
   int k = 0;
-  for (j = 0; j < npars+fixedn; j++){
-    if (j < thetaFixed2.size() && !thetaFixed2[j]){
-      if (j < theta.size()){
+  for (j = 0; j < npars+fixedn; j++) {
+    if (j < thetaFixed2.size() && !thetaFixed2[j]) {
+      if (j < theta.size()) {
         op_focei.initPar[k] = theta[j];
       } else if (j < theta.size() + omegan){
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
       }
       op_focei.fixedTrans[k++] = j;
-    } else if (j >= thetaFixed2.size()){
-      if (j < theta.size()){
+    } else if (j >= thetaFixed2.size()) {
+      if (j < theta.size()) {
         op_focei.initPar[k] = theta[j];
         op_focei.fixedTrans[k++] = j;
-      } else if (j < theta.size() + omegan){
+      } else if (j < theta.size() + omegan) {
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
         op_focei.fixedTrans[k++] = j;
       }
@@ -3081,6 +3116,7 @@ static inline void foceiSetupNoEta_(){
     // ETA ini
     fInd->eta = NULL;
     fInd->oldEta = NULL;
+    fInd->tryEta = NULL;
     fInd->saveEta = NULL;
     fInd->g = NULL;
     fInd->x = NULL;
@@ -3117,11 +3153,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   op_focei.etaUpper = R_Calloc(op_focei.gEtaGTransN*10+ op_focei.npars*(getRxNsub(rx) + 1)+nz+
                                2*op_focei.neta * getRxNall(rx) + getRxNall(rx)+ getRxNall(rx)*getRxNall(rx) +
-                               op_focei.neta*5 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx),
+                               op_focei.neta*6 + 2*op_focei.neta*op_focei.neta*getRxNsub(rx) + getRxNall(rx),
                                double);
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
   op_focei.geta     = op_focei.etaLower + op_focei.neta;
-  op_focei.goldEta  = op_focei.geta + op_focei.gEtaGTransN;
+  op_focei.gtryEta  = op_focei.geta + op_focei.neta;
+  op_focei.goldEta  = op_focei.gtryEta + op_focei.gEtaGTransN;
   op_focei.getahf   = op_focei.goldEta + op_focei.gEtaGTransN;
   op_focei.getahr   = op_focei.getahf + op_focei.gEtaGTransN;
   op_focei.getahh   = op_focei.getahr + op_focei.gEtaGTransN;
@@ -3163,6 +3200,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->etahr = &op_focei.getahr[j];
     fInd->etahh = &op_focei.getahh[j];
     fInd->oldEta = &op_focei.goldEta[j];
+    fInd->tryEta = &op_focei.gtryEta[j];
     fInd->saveEta = &op_focei.gsaveEta[j];
     fInd->g = &op_focei.gG[j];
     fInd->x = &op_focei.gX[j];
@@ -3181,6 +3219,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->eta[op_focei.neta] = i;
     fInd->saveEta[op_focei.neta] = i;
     fInd->oldEta[op_focei.neta] = i;
+    fInd->tryEta[op_focei.neta] = i;
 
     j+=op_focei.neta+1;
 
@@ -3221,7 +3260,7 @@ NumericVector foceiSetup_(const RObject &obj,
                           Nullable<NumericVector> lower      = R_NilValue,
                           Nullable<NumericVector> upper      = R_NilValue,
                           Nullable<NumericMatrix> etaMat     = R_NilValue,
-                          Nullable<List> control             = R_NilValue){
+                          Nullable<List> control             = R_NilValue) {
   if (control.isNull()){
     stop("ODE options must be specified.");
   }
@@ -3255,6 +3294,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.didLikCalc = false;
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
+  op_focei.mceta = as<int>(foceiO["mceta"]);
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
@@ -4036,6 +4076,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
 //[[Rcpp::export]]
 double foceiOuterF(NumericVector &theta){
   int n = theta.size();
+  _vPar_theta_size = n;
   void *ex = NULL;
   return foceiOfvOptim(n, theta.begin(), ex);
 }
@@ -4174,8 +4215,15 @@ void foceiLbfgsb3(Environment e){
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
   NumericVector g(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+  if (op_focei.nF2 == 0) {
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(op_focei.initPar, k);
+    }
+  } else {
+    double *theta = _thetaIni.begin();
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(theta, k);
+    }
   }
   char msg[100];
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -4199,8 +4247,15 @@ void foceiLbfgsb(Environment e){
   double Fmin;
   int fail, fncount=0, grcount=0;
   NumericVector x(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+  if (op_focei.nF2 == 0) {
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(op_focei.initPar, k);
+    }
+  } else {
+    double *theta = _thetaIni.begin();
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(theta, k);
+    }
   }
   char msg[100];
   lbfgsbRX(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
@@ -4221,8 +4276,15 @@ void foceiCustomFun(Environment e){
   NumericVector x(op_focei.npars);
   NumericVector lower(op_focei.npars);
   NumericVector upper(op_focei.npars);
-  for (unsigned int k = op_focei.npars; k--;){
-    x[k]=scalePar(op_focei.initPar, k);
+  if (op_focei.nF2 == 0) {
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(op_focei.initPar, k);
+    }
+  } else {
+    double *theta = _thetaIni.begin();
+    for (unsigned int k = op_focei.npars; k--;){
+      x[k]=scalePar(theta, k);
+    }
   }
   std::copy(&op_focei.upper[0], &op_focei.upper[0]+op_focei.npars, &upper[0]);
   std::copy(&op_focei.lower[0], &op_focei.lower[0]+op_focei.npars, &lower[0]);
@@ -6410,7 +6472,7 @@ Environment foceiFitCpp_(Environment e){
     }
     if (rxode2::rxIs(inner, "rxode2")) {
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+      _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6450,7 +6512,7 @@ Environment foceiFitCpp_(Environment e){
       }
       if (rxode2::rxIs(inner, "rxode2")){
         RObject _dataSav = as<RObject>(e["dataSav"]);
-        NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+        _thetaIni = as<NumericVector>(e["thetaIni"]);
         Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
         Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
         RObject _rxInv = e["rxInv"];
@@ -6469,7 +6531,7 @@ Environment foceiFitCpp_(Environment e){
       doPredOnly=true;
       foceiSetupTrans_(as<CharacterVector>(e[".params"]));
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+      _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6521,7 +6583,7 @@ Environment foceiFitCpp_(Environment e){
     }
     if (rxode2::rxIs(inner, "rxode2")){
       RObject _dataSav = as<RObject>(e["dataSav"]);
-      NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
+      _thetaIni = as<NumericVector>(e["thetaIni"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
