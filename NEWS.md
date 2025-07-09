@@ -1,7 +1,15 @@
 # nlmixr2est 4.0.0
 
 - When using a model to start a new focei model, the ETAs from the
-  last fit are used as the starting point
+  last fit are used as the starting point.  Now you can use
+  `foceiControl(etaMat=NA)` to skip this and use `eta=0` for all
+  items.
+
+- When using `foceiControl(etaMat=fit)`, this will extract the ETAs
+  from a fit for use in the next optimization.
+
+- When using a `foceiControl(etaMat=)` option nlmixr2 no longer only
+  evaluates the inner problem with the `etaMat` value.
 
 - Add `mceta` option to focei
 
