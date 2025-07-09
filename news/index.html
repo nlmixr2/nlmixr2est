@@ -36,7 +36,17 @@
 <ul><li><p>When using a model to start a new focei model, the ETAs from the last fit are used as the starting point. Now you can use <code>foceiControl(etaMat=NA)</code> to skip this and use <code>eta=0</code> for all items.</p></li>
 <li><p>When using <code>foceiControl(etaMat=fit)</code>, this will extract the ETAs from a fit for use in the next optimization.</p></li>
 <li><p>When using a <code>foceiControl(etaMat=)</code> option nlmixr2 no longer only evaluates the inner problem with the <code>etaMat</code> value.</p></li>
-<li><p>Add <code>mceta</code> option to focei</p></li>
+<li>
+<p>Add <code>mceta</code> option to <code>"focei"</code>.</p>
+<ul><li>
+<code>mceta=-1</code> is the default; the eta restarts at the best eta from the last step to start the inner optimization.</li>
+<li>
+<code>mceta=0</code> the eta starts at <code>0</code> to start the inner optimization.</li>
+<li>
+<code>mceta=1</code> the eta starts at either <code>0</code> or the best <code>eta</code>, which ever gives the lowest objective function to start the inner optimization.</li>
+<li>
+<code>mceta=n</code> under the assumption of <code>omega</code> sample <code>n-1</code> <code>eta</code> values and use the lowest objective function of eta sampled, last best eta and eta=0 to start the inner optimization.</li>
+</ul></li>
 <li><p>Fix Rstudio print (issue <a href="https://github.com/nlmixr2/nlmixr2est/issues/536" class="external-link">#536</a>)</p></li>
 <li><p>Support rxode2’s new <code>+var()</code> definition in <code>saem</code></p></li>
 </ul></div>
