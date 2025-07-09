@@ -1964,7 +1964,6 @@ nlmixr2Est.foi <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
-attr(nlmixr2Est.foi, "fixRes") <- TRUE
 
 
 #'@rdname nlmixr2Est
