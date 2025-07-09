@@ -1078,4 +1078,3 @@ nlmixr2Est.nls <- function(env, ...) {
   .nlsFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nls, "covPresent") <- TRUE
-attr(nlmixr2Est.fo, "fixRes") <- TRUE
