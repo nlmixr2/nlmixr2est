@@ -360,6 +360,17 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
         is.null(est)) {
     est <- data
     data <- NULL
+  } else {
+    .cls <- class(data)
+    if (grepl("^.*?Control$", .cls)) {
+      .est <- sub("^(.*?)Control$", "\\1", .cls)
+      if (is.null(control)) {
+        control <- getValidNlmixrControl(data, .est)
+        est <- .est
+        .minfo(paste0("infer estimation {.code ", est, "} from control"))
+        data <- NULL
+      }
+    }
   }
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
