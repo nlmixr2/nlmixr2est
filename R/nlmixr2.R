@@ -123,6 +123,12 @@ nlmixr2 <- function(object, data, est = NULL, control = list(),
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
   nlmixr2global$nlmixrEvalEnv$envir <- envir
+  if (inherits(object, "nlmixr2FitCore") &&
+        !is.null(object$eta)) {
+    nlmixr2global$etaMat <- object
+  } else {
+    nlmixr2global$etaMat <- NULL
+  }
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
@@ -340,12 +346,31 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
   nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
+  .cls <- class(est)
+  if (grepl("^.*?Control$", .cls)) {
+    .est <- sub("^(.*?)Control$", "\\1", .cls)
+    if (is.null(control)) {
+      control <- getValidNlmixrControl(est, .est)
+      est <- .est
+      .minfo(paste0("infer estimation {.code ", est, "} from control"))
+    }
+  }
+  if (is.character(data) && length(data) == 1 &&
+        data %in% nlmixr2AllEst() &&
+        is.null(est)) {
+    est <- data
+    data <- NULL
+  }
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
-  }  else if (missing(data)) {
+  } else if (missing(data)) {
     data <- object$origData
    .minfo("use {.code data} from prior/supplied fit")
+  }
+  if (!inherits(data, "data.frame")) {
+    data <- object$origData
+    .minfo("use {.code data} from prior/supplied fit")
   }
   if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
     est <- .nlmixr2pipeEst

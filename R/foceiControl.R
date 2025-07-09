@@ -600,6 +600,16 @@
 #' @param etaMat Eta matrix for initial estimates or final estimates
 #'   of the ETAs.
 #'
+#'   This can also be a fit to take use the final estimation estimates
+#'   and use them as the initial eta value of the next fit.
+#'
+#'   By default, it will be the initial values of the etas from the
+#'   last fit (if supplied) or missing, meaning all ETAs start at
+#'   zero (`NULL`)
+#'
+#'   When this value is `NA`, the initial ETA estimates are not taken
+#'   from the last fit.
+#'
 #' @param addProp specifies the type of additive plus proportional
 #'   errors, the one where standard deviations add (combined1) or the
 #'   type where the variances add (combined2).
@@ -1374,13 +1384,17 @@ foceiControl <- function(sigdig = 3, #
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta)
   )
-  if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
-            call.=FALSE)
-    .ret$maxInnerIterations <- 0L
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
-    .ret$etaMat <- etaMat
+  if (length(etaMat) == 1L && is.na(etaMat)) {
+    .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
+    .doWarn <- TRUE
+    if (inherits(etaMat, "nlmixr2FitCore")) {
+      etaMat <- as.matrix(etaMat$eta[-1])
+      .doWarn <- FALSE
+    }
+    if (.doWarn && missing(maxInnerIterations)) {
+      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+    }
     checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   }

@@ -1122,7 +1122,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   }
   env$lower <- .lower
   env$upper <- .upper
-  env$etaMat <- rxode2::rxGetControl(ui, "etaMat", NULL)
+  .etaMat <- rxode2::rxGetControl(ui, "etaMat", NULL)
+  if (length(.etaMat) == 1L && is.na(.etaMat)) .etaMat <- NULL
+  env$etaMat <- .etaMat
   env
 }
 
@@ -1555,6 +1557,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                            any.missing=FALSE, .var.name="focei$lower")
   checkmate::assertNumeric(ret$upper, null.ok=TRUE,
                            any.missing=FALSE, .var.name="focei$upper")
+  if (length(ret$etaMat) == 1L && is.na(ret$etaMat)) {
+    ret$etaMat <- NULL
+  }
   checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
                           any.missing=FALSE, .var.name="focei$etaMat")
   if (!inherits(ret$control, "foceiControl")) {
@@ -1633,6 +1638,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
+  }
+  if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
+        is.null(.control[["etaMat"]])) {
+    warning("Passed the initial etas from the last fit",
+            call.=FALSE)
+    .control[["etaMat"]] <- as.matrix(nlmixr2global$etaMat$eta[-1])
   }
   # Change control when there is only 1 item being optimized
   .iniDf <- get("iniDf", envir=.ui)
