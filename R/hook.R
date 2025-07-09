@@ -89,7 +89,8 @@ preProcessHooks <- function(name=NULL) {
     .est <- est <- nlmixr2global$nlmixr2pipeEst
   }
   .data <- env$data
-  if (is.null(.data) && inherits(nlmixr2global$nlmixr2pipeData, "data.frame")) {
+  if (is.null(.data) &&
+        inherits(nlmixr2global$nlmixr2pipeData, "data.frame")) {
     .data <- env$data <- nlmixr2global$nlmixr2pipeData
   }
   .control <- env$control

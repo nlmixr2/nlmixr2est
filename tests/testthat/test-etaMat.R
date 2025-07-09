@@ -1,5 +1,6 @@
 nmTest({
   test_that("etaMat works", {
+
     one.cmt <- function() {
       ini({
         ## You may label each parameter with a comment
@@ -26,12 +27,15 @@ nmTest({
 
     expect_null(f$foceiControl$etaMat)
 
-    f2 <- .nlmixr(f, est="focei", foceiControl(outerOpt="bobyqa"))
+    f2 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa"))
     expect_true(inherits(f2$foceiControl$etaMat, "matrix"))
 
-    f3 <- .nlmixr(f, est="focei", foceiControl(outerOpt="bobyqa", etaMat=f))
+    f3 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa", etaMat=f))
     expect_true(inherits(f3$foceiControl$etaMat, "matrix"))
 
+    f4 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa",
+                                                       etaMat=NA))
+    expect_true(is.na(f4$foceiControl$etaMat))
 
   })
 })

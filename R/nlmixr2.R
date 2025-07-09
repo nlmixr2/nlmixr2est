@@ -349,9 +349,13 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
-  }  else if (missing(data)) {
+  } else if (missing(data)) {
     data <- object$origData
    .minfo("use {.code data} from prior/supplied fit")
+  }
+  if (!inherits(data, "data.frame")) {
+    data <- object$origData
+    .minfo("use {.code data} from prior/supplied fit")
   }
   if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
     est <- .nlmixr2pipeEst

@@ -600,6 +600,16 @@
 #' @param etaMat Eta matrix for initial estimates or final estimates
 #'   of the ETAs.
 #'
+#'   This can also be a fit to take use the final estimation estimates
+#'   and use them as the initial eta value of the next fit.
+#'
+#'   By default, it will be the initial values of the etas from the
+#'   last fit (if supplied) or missing, meaning all ETAs start at
+#'   zero (`NULL`)
+#'
+#'   When this value is `NA`, the initial ETA estimates are not taken
+#'   from the last fit.
+#'
 #' @param addProp specifies the type of additive plus proportional
 #'   errors, the one where standard deviations add (combined1) or the
 #'   type where the variances add (combined2).
@@ -1374,7 +1384,9 @@ foceiControl <- function(sigdig = 3, #
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta)
   )
-  if (!is.null(etaMat)) {
+  if (length(etaMat) == 1L && is.na(etaMat)) {
+    .ret$etaMat <- NA
+  } else if (!is.null(etaMat)) {
     .doWarn <- TRUE
     if (inherits(etaMat, "nlmixr2FitCore")) {
       etaMat <- as.matrix(etaMat$eta[-1])
