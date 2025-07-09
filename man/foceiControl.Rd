@@ -699,7 +699,17 @@ generator should be initialized}
 \% percentage below which resetThetaP is checked.}
 
 \item{etaMat}{Eta matrix for initial estimates or final estimates
-of the ETAs.}
+  of the ETAs.
+
+  This can also be a fit to take use the final estimation estimates
+  and use them as the initial eta value of the next fit.
+
+  By default, it will be the initial values of the etas from the
+  last fit (if supplied) or missing, meaning all ETAs start at
+  zero (`NULL`)
+
+  When this value is `NA`, the initial ETA estimates are not taken
+  from the last fit.}
 
 \item{repeatGillMax}{If the tolerances were reduced when
 calculating the initial Gill differences, the Gill difference
