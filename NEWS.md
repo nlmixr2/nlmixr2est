@@ -11,7 +11,17 @@
 - When using a `foceiControl(etaMat=)` option nlmixr2 no longer only
   evaluates the inner problem with the `etaMat` value.
 
-- Add `mceta` option to focei
+- Add `mceta` option to `"focei"`.
+
+  - `mceta=-1` is the default; the eta restarts at the best eta from
+    the last step to start the inner optimization.
+  - `mceta=0` the eta starts at `0` to start the inner optimization.
+  - `mceta=1` the eta starts at either `0` or the best `eta`, which
+    ever gives the lowest objective function to start the inner
+    optimization.
+  - `mceta=n` under the assumption of `omega` sample `n-1` `eta`
+     values and use the lowest objective function of eta sampled, last
+     best eta and eta=0 to start the inner optimization.
 
 - Fix Rstudio print (issue #536)
 
