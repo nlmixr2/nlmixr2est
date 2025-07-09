@@ -626,4 +626,3 @@ nlmixr2Est.optim <- function(env, ...) {
   .optimFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.optim, "covPresent") <- TRUE
-attr(nlmixr2Est.optim, "fixRes") <- TRUE

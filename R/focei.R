@@ -1852,7 +1852,6 @@ nlmixr2Est.focei <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
-attr(nlmixr2Est.focei, "fixRes") <- TRUE
 
 
 #'@rdname nlmixr2Est
@@ -1875,7 +1874,6 @@ nlmixr2Est.foce <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 attr(nlmixr2Est.foce, "covPresent") <- TRUE
-attr(nlmixr2Est.foce, "fixRes") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -1895,7 +1893,6 @@ nlmixr2Est.posthoc <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="posthoc")
 }
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
-attr(nlmixr2Est.posthoc, "fixRes") <- TRUE
 
 #' Add objective function line to the return object
 #'
@@ -1998,7 +1995,6 @@ nlmixr2Est.fo <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.fo, "covPresent") <- TRUE
-attr(nlmixr2Est.fo, "fixRes") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
