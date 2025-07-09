@@ -832,7 +832,6 @@ nlmixr2Est.saem <- function(env, ...) {
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 
-
 #' @rdname nmObjGet
 #' @export
 nmObjGet.saemDopredIpred <- function(x, ...) {

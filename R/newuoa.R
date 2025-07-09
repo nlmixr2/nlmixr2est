@@ -391,5 +391,6 @@ nlmixr2Est.newuoa <- function(env, ...) {
   .newuoaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.newuoa, "covPresent") <- TRUE
+attr(nlmixr2Est.fo, "fixRes") <- TRUE
 
 #minqa::newuoa()

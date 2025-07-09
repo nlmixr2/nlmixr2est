@@ -919,3 +919,4 @@ nlmixr2Est.nlm <- function(env, ...) {
   .nlmFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nlm, "covPresent") <- TRUE
+attr(nlmixr2Est.nlm, "fixRes") <- TRUE

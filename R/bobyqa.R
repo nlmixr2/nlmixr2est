@@ -422,5 +422,7 @@ nlmixr2Est.bobyqa <- function(env, ...) {
   .bobyqaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.bobyqa, "covPresent") <- TRUE
+attr(nlmixr2Est.bobyqa, "fixRes") <- TRUE
+
 
 #minqa::bobyqa()

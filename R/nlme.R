@@ -538,3 +538,4 @@ nlmixr2Est.nlme <- function(env, ...) {
   .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }
 attr(nlmixr2Est.nlme, "covPresent") <- TRUE
+attr(nlmixr2Est.nlme, "fixRes") <- TRUE
