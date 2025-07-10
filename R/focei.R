@@ -231,11 +231,17 @@ is.latex <- function() {
 .uiGetThetaEtaParams <- function(rxui, str=FALSE) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .thetas <- vapply(.w, function(i) {
-    paste0("THETA[", .iniDf$ntheta[i],"]")
-  }, character(1), USE.NAMES=FALSE)
   .etas <- NULL
-  .i2 <- .iniDf[-.w, ]
+  if (length(.w) > 0) {
+    .thetas <- vapply(.w, function(i) {
+      paste0("THETA[", .iniDf$ntheta[i],"]")
+    }, character(1), USE.NAMES=FALSE)
+    .i2 <- .iniDf[-.w, ]
+  } else {
+    .etas <- NULL
+    .i2 <- .iniDf
+    .thetas <- character(0)
+  }
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .etas <- vapply(seq_along(.i2$name), function(i) {
@@ -1071,23 +1077,29 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 .foceiOptEnvSetupBounds <- function(ui, env) {
   .iniDf <- ui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .lower <- vapply(.w,
-                   function(i) {
-                     .low <- .iniDf$lower[i]
-                     .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
-                     if (.zeroRep <= 0) return(.low)
-                     if (.low <= 0 &&
-                           .iniDf$err[i] %in% c("add",
-                                                "lnorm", "logitNorm", "probitNorm",
-                                                "prop", "propT", "propF",
-                                                "pow", "powF", "powT")) {
-                       .low <- .iniDf$est[i] * 0.001
-                     }
-                     .low
-                   }, numeric(1), USE.NAMES=FALSE)
-  .upper <- .iniDf$upper[.w]
-  env$thetaIni <- ui$theta
-  env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
+  if (length(.w) > 0) {
+    .lower <- vapply(.w,
+                     function(i) {
+                       .low <- .iniDf$lower[i]
+                       .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
+                       if (.zeroRep <= 0) return(.low)
+                       if (.low <= 0 &&
+                             .iniDf$err[i] %in% c("add",
+                                                  "lnorm", "logitNorm", "probitNorm",
+                                                  "prop", "propT", "propF",
+                                                  "pow", "powF", "powT")) {
+                         .low <- .iniDf$est[i] * 0.001
+                       }
+                       .low
+                     }, numeric(1), USE.NAMES=FALSE)
+    .upper <- .iniDf$upper[.w]
+    env$thetaIni <- ui$theta
+    env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
+  } else {
+    .lower <- numeric(0)
+    .upper <- numeric(0)
+    env$thetaIni <- setNames(numeric(0), character(0))
+  }
   rxode2::rxAssignControlValue(ui, "nfixed", sum(ui$iniDf$fix))
   .mixed <- !is.null(env$etaNames)
   if (.mixed && length(env$etaNames) == 0L) .mixed <- FALSE
@@ -1300,11 +1312,15 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 rxUiGet.foceiSkipCov <- function(x, ...) {
   .ui <- x[[1]]
   .maxTheta <- max(.ui$iniDf$ntheta, na.rm=TRUE)
-  .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
-  .skipCov <- rep(FALSE, .maxTheta)
-  .skipCov[which(!is.na(.theta$err))] <- TRUE
-  .skipCov[.theta$fix] <- TRUE
-  .skipCov
+  if (!is.finite(.maxTheta)) {
+    logical(0)
+  } else {
+    .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .skipCov <- rep(FALSE, .maxTheta)
+    .skipCov[which(!is.na(.theta$err))] <- TRUE
+    .skipCov[.theta$fix] <- TRUE
+    .skipCov
+  }
 }
 #attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
 
@@ -1322,6 +1338,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     env$skipCov <- ui$foceiSkipCov
   }
   .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
+  if (!is.finite(.maxTheta)) {
+    .maxTheta <- 0
+  }
   if (length(env$skipCov) > .maxTheta) {
     if (all(env$skipCov[-seq_len(.maxTheta)])) {
       assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)

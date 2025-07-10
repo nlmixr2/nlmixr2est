@@ -95,6 +95,7 @@ bobyqaControl <- function(npt=NULL,
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
                           literalFix=TRUE,
+                          literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", ""),
@@ -108,6 +109,7 @@ bobyqaControl <- function(npt=NULL,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnBobyqa, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -186,6 +188,7 @@ bobyqaControl <- function(npt=NULL,
                covMethod=match.arg(covMethod),
                optExpression=optExpression,
                literalFix=literalFix,
+               literalFixRes=literalFixRes,
                sumProd=sumProd,
                rxControl=rxControl,
                returnBobyqa=returnBobyqa,
@@ -286,6 +289,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
                                 sumProd=.bobyqaControl$sumProd,
                                 optExpression=.bobyqaControl$optExpression,
                                 literalFix=.bobyqaControl$literalFix,
+                                literalFixRes=.bobyqaControl$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.bobyqaControl$calcTables,
                                 addProp=.bobyqaControl$addProp,

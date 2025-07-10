@@ -69,6 +69,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          rxControl=NULL,
                          optExpression=TRUE, sumProd=FALSE,
                          literalFix=TRUE,
+                         literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=TRUE,
                          covMethod=c("r", "n1qn1", ""),
@@ -82,6 +83,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnN1qn1, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -162,6 +164,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     covMethod=match.arg(covMethod),
     optExpression=optExpression,
     literalFix=literalFix,
+    literalFixRes=literalFixRes,
     sumProd=sumProd,
     rxControl=rxControl,
     returnN1qn1=returnN1qn1,
@@ -264,6 +267,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 sumProd=.n1qn1Control$sumProd,
                                 optExpression=.n1qn1Control$optExpression,
                                 literalFix=.n1qn1Control$literalFix,
+                                literalFixRes=.n1qn1Control$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.n1qn1Control$calcTables,
                                 addProp=.n1qn1Control$addProp,
