@@ -231,11 +231,17 @@ is.latex <- function() {
 .uiGetThetaEtaParams <- function(rxui, str=FALSE) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .thetas <- vapply(.w, function(i) {
-    paste0("THETA[", .iniDf$ntheta[i],"]")
-  }, character(1), USE.NAMES=FALSE)
   .etas <- NULL
-  .i2 <- .iniDf[-.w, ]
+  if (length(.w) > 0) {
+    .thetas <- vapply(.w, function(i) {
+      paste0("THETA[", .iniDf$ntheta[i],"]")
+    }, character(1), USE.NAMES=FALSE)
+    .i2 <- .iniDf[-.w, ]
+  } else {
+    .etas <- NULL
+    .i2 <- .iniDf
+    .thetas <- character(0)
+  }
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .etas <- vapply(seq_along(.i2$name), function(i) {
