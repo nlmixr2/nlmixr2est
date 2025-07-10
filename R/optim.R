@@ -171,6 +171,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          rxControl=NULL,
                          optExpression=TRUE, sumProd=FALSE,
                          literalFix=TRUE,
+                         literalFixRes=TRUE,
                          returnOptim=FALSE,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=TRUE,
@@ -178,6 +179,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnOptim, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -311,6 +313,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                tmax=tmax,
                optExpression=optExpression,
                literalFix=literalFix,
+               literalFixRes=literalFixRes,
                sumProd=sumProd,
                solveType=solveType,
                stickyRecalcN=as.integer(stickyRecalcN),
@@ -538,6 +541,7 @@ rxUiGet.optimParUpper <- function(x, ...) {
                                 sumProd=.optimControl$sumProd,
                                 optExpression=.optimControl$optExpression,
                                 literalFix=.optimControl$literalFix,
+                                literalFixRes=.optimControl$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.optimControl$calcTables,
                                 addProp=.optimControl$addProp,

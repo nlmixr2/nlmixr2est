@@ -972,6 +972,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
                                 sumProd=.nlsControl$sumProd,
                                 optExpression=.nlsControl$optExpression,
                                 literalFix=.nlsControl$literalFix,
+                                literalFixRes=FALSE,
                                 scaleTo=0,
                                 calcTables=.nlsControl$calcTables,
                                 addProp=.nlsControl$addProp,

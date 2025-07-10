@@ -41,6 +41,7 @@ foceiControl(
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   ci = 0.95,
   useColor = crayon::has_color(),
   boundTol = NULL,
@@ -442,6 +443,10 @@ this is \code{FALSE}.}
 calculation. By default this is turned on.}
 
 \item{literalFix}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
+\item{literalFixRes}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 

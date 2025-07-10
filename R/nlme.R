@@ -416,6 +416,7 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 sumProd=.nlmeControl$sumProd,
                                 optExpression=.nlmeControl$optExpression,
                                 literalFix=.nlmeControl$literalFix,
+                                literalFixRes=FALSE,
                                 scaleTo=0,
                                 calcTables=.nlmeControl$calcTables,
                                 addProp=.nlmeControl$addProp,
