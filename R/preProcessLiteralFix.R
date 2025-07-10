@@ -20,11 +20,15 @@
                                any.missing=FALSE, len=1,
                                null.ok=FALSE)) {
       .checkLiteralFix <- control$literalFix
+    } else if (is.null(control$literalFix)) {
+      .checkLiteralFix <- FALSE
     }
     if (checkmate::testLogical(control$literalFixRes,
                                any.missing=FALSE, len=1,
                                null.ok=FALSE)) {
       .checkLiteralFixRes <- control$literalFixRes
+    } else if (is.null(control$literalFixRes)) {
+      .checkLiteralFixRes <- FALSE
     }
   }
   .assignUnfix <- FALSE

@@ -27,6 +27,11 @@
 
 - Support rxode2's new `+var()` definition in `saem`
 
+- Support literal fixing of residuals (#524).  All methods that
+  support a literal fix of residuals have an option `literalFixRes`
+  which defaults to `TRUE`.  To get the behavior from older models you can use
+  `literalFixRes=FALSE`
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
