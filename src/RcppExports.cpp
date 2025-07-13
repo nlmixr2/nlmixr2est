@@ -580,6 +580,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rxode2stateOde
+SEXP rxode2stateOde(SEXP inp);
+RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inp(inpSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxode2stateOde(inp));
+    return rcpp_result_gen;
+END_RCPP
+}
 // saem_do_pred
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt);
 RcppExport SEXP _nlmixr2est_saem_do_pred(SEXP in_phiSEXP, SEXP in_evtSEXP, SEXP in_optSEXP) {

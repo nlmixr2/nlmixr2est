@@ -212,6 +212,10 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+rxode2stateOde <- function(inp) {
+    .Call(`_nlmixr2est_rxode2stateOde`, inp)
+}
+
 saem_do_pred <- function(in_phi, in_evt, in_opt) {
     .Call(`_nlmixr2est_saem_do_pred`, in_phi, in_evt, in_opt)
 }
