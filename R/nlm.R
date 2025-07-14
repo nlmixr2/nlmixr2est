@@ -521,7 +521,7 @@ rxUiGet.nlmThetaS <- function(x, ...) {
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
   .s <- rxUiGet.nlmThetaS(x)
-  .stateVars <- rxode2::rxStateOde(.s)
+  .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
     .stateVars, .s$..maxTheta,
