@@ -1,6 +1,6 @@
 nmTest({
   test_that("test eta only focei models work correctly", {
-
+    skip_if_not(packageVersion("rxode2") >= "4.0.0")
     f <- function() {
       ini({
         eta.cl ~ 0.0496342898304385

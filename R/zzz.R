@@ -106,6 +106,9 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   .nlmixr2globalReset(TRUE)
   .iniPtrs()
   .iniS3()
+  if (packageVersion("rxode2") < "4.0.0") {
+    packageStartupMessage("nlmixr2est ", packageVersion("nlmixr2est"), " works best with rxode2 >= 4.0.0, please update rxode2")
+  }
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end

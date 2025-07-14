@@ -1,4 +1,5 @@
 test_that("saem mu reference 1", {
+  skip_if_not(packageVersion("rxode2") >= "4.0.0")
   theo_sd2 <- nlmixr2data::theo_sd
 
   theo_sd2$lwt<-log(theo_sd2$WT/70)
