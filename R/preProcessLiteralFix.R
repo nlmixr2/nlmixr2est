@@ -43,7 +43,7 @@
         .ui <- ui
       }
     }
-    if (.checkLiteralFixRes && packageVersion("rxode2") >= "4.0.0") {
+    if (.checkLiteralFixRes && utils::packageVersion("rxode2") >= "4.0.0") {
       .ui2 <- .Call(`_rxode2rxFixRes`, .ui, TRUE)
       if (inherits(.ui2, "try-error")) .ui2 <- NULL
       if (!is.null(.ui2)) {
