@@ -4213,6 +4213,7 @@ void foceiLbfgsb3(Environment e){
     x[k]=scalePar(op_focei.initPar, k);
   }
   char msg[100];
+  std::fill_n(msg, 100, 0);
   lbfgsb3C(op_focei.npars, op_focei.lmm, x.begin(), op_focei.lower,
            op_focei.upper, op_focei.nbd, &Fmin, foceiOfvOptim,
            outerGradNumOptim, &fail, ex, op_focei.factr,
