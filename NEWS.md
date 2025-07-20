@@ -1,3 +1,8 @@
+# nlmixr2est 4.0.1
+
+- Initialize lbfgsb3 error message to an empty string to address
+  valgrind finding (as requested by CRAN).
+
 # nlmixr2est 4.0.0
 
 - When using a model to start a new focei model, the ETAs from the
