@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,9 +28,13 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v4.0.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.0.1" id="nlmixr2est-401">nlmixr2est 4.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-401"></a></h2><p class="text-muted">CRAN release: 2025-07-19</p>
+<ul><li>Initialize lbfgsb3 error message to an empty string to address valgrind finding (as requested by CRAN).</li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.0.0" id="nlmixr2est-400">nlmixr2est 4.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-400"></a></h2><p class="text-muted">CRAN release: 2025-07-15</p>
 <ul><li><p>When using a model to start a new focei model, the ETAs from the last fit are used as the starting point. Now you can use <code>foceiControl(etaMat=NA)</code> to skip this and use <code>eta=0</code> for all items.</p></li>
