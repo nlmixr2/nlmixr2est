@@ -19,7 +19,7 @@
 #'
 #' print(fit)
 #'
-#' try(rxSolve(fit)) # should error, but with try it will just displya the error
+#' try(rxSolve(fit)) # should error, but with try it will just display the error
 #'
 #' # This function attempts to fix it by regenerating the rxode2 model with the
 #' # new features
