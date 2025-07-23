@@ -11,6 +11,6 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
 
 rxode2::rxCreateCache()
 
-## test_check("nlmixr2est")
-test_check("nlmixr2est", stop_on_failure = TRUE,
-           reporter = testthat::LocationReporter)
+test_check("nlmixr2est")
+## test_check("nlmixr2est", stop_on_failure = TRUE,
+##            reporter = testthat::LocationReporter)
