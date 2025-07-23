@@ -34,7 +34,7 @@
 #'
 nlmixr2fix <- function(fit) {
   message("# This function is meant to load nlmixr2 fits from other versions")
-  message("# To reproduce the fit,you need to use the same version of nlmixr2")
+  message("# To reproduce the fit, you need to use the same version of nlmixr2")
   print(fit$env$sessioninfo)
   message("\n")
   message("# If all else fails you can try to install the version of nlmixr2 used to create the fit\n")
