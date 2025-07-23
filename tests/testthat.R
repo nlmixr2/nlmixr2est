@@ -7,10 +7,7 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
   # when testing CRAN, only use one thread
   setRxThreads(1L)
   setDTthreads(1L)
-  rxUnloadAll(FALSE) # don't unload any models (seems to affect ASAN checks)
 }
-
-rxode2::rxCreateCache()
 
 ## test_check("nlmixr2est")
 test_check("nlmixr2est", stop_on_failure = TRUE,
