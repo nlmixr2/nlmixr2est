@@ -33,7 +33,7 @@
 #' rxSolve(fit)
 #'
 nlmixr2fix <- function(fit) {
-  message("# This function is to meant to load nlmixr2 fits from other versions")
+  message("# This function is meant to load nlmixr2 fits from other versions")
   message("# To reproduce the fit,you need to use the same version of nlmixr2")
   print(fit$env$sessioninfo)
   message("\n")
