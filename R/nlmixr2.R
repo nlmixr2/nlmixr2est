@@ -118,7 +118,7 @@ nlmixr2Version <- function() {
 nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
-  rxode2::rxUnloadAll()
+  ## rxode2::rxUnloadAll() # don't unload everything anymore
   .nlmixr2globalReset()
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
