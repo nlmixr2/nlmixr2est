@@ -99,5 +99,3 @@ Language: en-US
 NeedsCompilation: yes
 RoxygenNote: 7.3.2
 LazyData: true
-Remotes:
-    nlmixr2/rxode2
