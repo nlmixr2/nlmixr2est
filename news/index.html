@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -31,6 +31,11 @@
       <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="4.0.2" id="nlmixr2est-402">nlmixr2est 4.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-402"></a></h2>
+<ul><li><p>The loading and unloading of DLLs has been minimized in this version of nlmixr2est. This avoids loading/reloading the same DLLs and causing the CRAN mac m1 ASAN/USBAN false positive issue observed in CRAN.</p></li>
+<li><p>Additionally a new function <code>nlmixr2fix(fit)</code> has been added to <code>nlmixr2est</code>. It attempts to make the fit loaded from a different version of nlmixr2 compatible with nlmixr2 4.0. It also prints out the versions of <code>nlmixr2</code> that were used when creating this fit. With this information you are more likely to find a way to use the fit in your current session (or in an old session). (Issue <a href="https://github.com/nlmixr2/nlmixr2est/issues/562" class="external-link">#562</a>)</p></li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.0.1" id="nlmixr2est-401">nlmixr2est 4.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-401"></a></h2><p class="text-muted">CRAN release: 2025-07-19</p>
 <ul><li>Initialize lbfgsb3 error message to an empty string to address valgrind finding (as requested by CRAN).</li>
