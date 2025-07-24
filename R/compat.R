@@ -10,6 +10,8 @@
 #' @author Matthew L. Fidler
 #' @examples
 #'
+#' \donttest{
+#'
 #' # This is a nlmixr2 v3 fit
 #' fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
 #' fit <- readRDS(fit)
@@ -32,6 +34,7 @@
 #'
 #' rxSolve(fit)
 #'
+#' }
 nlmixr2fix <- function(fit) {
   message("# This function is meant to load nlmixr2 fits from other versions")
   message("# To reproduce the fit, you need to use the same version of nlmixr2")

@@ -18,6 +18,8 @@ Currently this re-evaluates the function in the current version of rxode2.
 }
 \examples{
 
+\donttest{
+
 # This is a nlmixr2 v3 fit
 fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
 fit <- readRDS(fit)
@@ -40,6 +42,7 @@ fit <- nlmixr2fix(fit)
 
 rxSolve(fit)
 
+}
 }
 \author{
 Matthew L. Fidler
