@@ -7,6 +7,7 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
   # when testing CRAN, only use one thread
   setRxThreads(1L)
   setDTthreads(1L)
+  rxCreateCache() ## Required for m1-san rhub
 }
 
 test_check("nlmixr2est")
