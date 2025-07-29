@@ -34,11 +34,16 @@ nmTest({
       })
     }
 
+    <<<<<<< HEAD
+    run007F <-
+      .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
+    =======
     run007F <-
       suppressMessages(nlmixr(One.comp.transit.allo,
                               PKdata,
                               est = "focei",
                               foceiControl(print = 0)))
+    >>>>>>> main
 
     expect_true(all(run007F$theta[c("prop.err", "add.err")] > 0.0001))
 
@@ -71,13 +76,7 @@ nmTest({
     }
 
     run007F2 <-
-      suppressMessages(nlmixr(One.comp.transit.allo,
-                              PKdata,
-                              est = "focei",
-                              foceiControl(print = 0)))
+      .nlmixr(One.comp.transit.allo, PKdata, est = "focei", foceiControl(print = 0))
 
     expect_equal(run007F2$objf, run007F$objf)
-
-
   })
-})
