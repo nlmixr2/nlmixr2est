@@ -1649,14 +1649,14 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
 #' @return nothing, called for side effects
 #' @author Matthew L. Fidler
 #' @noRd
-.foceiFamilyControl <- function(env, ...) {
+.foceiFamilyControl <- function(env, ..., type="foceiControl") {
   .ui <- get("ui", envir=env)
   .control <- env$control
   if (is.null(.control)) {
-    .control <- foceiControl()
+    .control <- do.call(type)
   }
-  if (!inherits(.control, "foceiControl")) {
-    .control <- do.call(nlmixr2est::foceiControl, .control)
+  if (!inherits(.control, type)) {
+    .control <- do.call(type, .control)
   }
   if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
         is.null(.control[["etaMat"]])) {
@@ -1980,40 +1980,6 @@ nlmixr2Est.foi <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
-
-
-#'@rdname nlmixr2Est
-#'@export
-nlmixr2Est.fo <- function(env, ...) {
-  .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'fo'", .var.name=.ui$modelName)
-
-  .foceiFamilyControl(env, ...)
-  .control <- .ui$control
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
-  rxode2::rxAssignControlValue(.ui, "fo", TRUE)
-  rxode2::rxAssignControlValue(.ui, "boundTol", 0)
-  on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
-    }
-  })
-  env$skipTable <- TRUE
-  .ret <- .foceiFamilyReturn(env, .ui, ...)
-  .objDf <- .ret$objDf
-  .ui <- .ret$ui
-  assign("control", .control, envir=.ui)
-  .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="fo")
-  .addObjDfToReturn(.ret, .objDf)
-  .ret
-}
-attr(nlmixr2Est.fo, "covPresent") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export

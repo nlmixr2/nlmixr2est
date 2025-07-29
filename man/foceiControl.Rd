@@ -36,7 +36,6 @@ foceiControl(
   lbfgsPgtol = 0,
   lbfgsFactr = NULL,
   eigen = TRUE,
-  addPosthoc = TRUE,
   diagXform = c("sqrt", "log", "identity"),
   sumProd = FALSE,
   optExpression = TRUE,
@@ -418,9 +417,6 @@ exact tolerance by multiplying this value by
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
-
-\item{addPosthoc}{Boolean indicating if posthoc parameters are
-added to the table output.}
 
 \item{diagXform}{This is the transformation used on the diagonal
     of the \code{chol(solve(omega))}. This matrix and values are the
