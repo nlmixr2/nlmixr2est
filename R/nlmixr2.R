@@ -181,7 +181,7 @@ nlmixr <- nlmixr2
 .nlmixr2inferEst <- function(env, est) {
   if (!env$missingEst) {
     .cls <- class(est)
-    if (length(.cls) == 1L && any(grepl("^.*?Control$", .cls))) {
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (env$missingControl) {
         env$control <- getValidNlmixrControl(est, .est)
