@@ -101,8 +101,6 @@ test_that("test split", {
     })
   }
 
-  skip_if_not(rxode2::.linCmtSensB())
-
 
   mod <- PK_1cmt()
   expect_error(mod$getSplitMuModel, NA)

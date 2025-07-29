@@ -42,8 +42,6 @@ nmTest({
       })
     }
 
-    skip_if_not(rxode2::.linCmtSensB())
-
     fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="optim", optimControl(method="L-BFGS-B"))
 
     expect_true(inherits(fit1, "nlmixr2.optim"))

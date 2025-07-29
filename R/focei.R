@@ -157,7 +157,7 @@ is.latex <- function() {
 }
 
 .slsqp <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  return(.nloptr(par, fn, gr, lower, upper, control, ..., nloptrAlgoritm = "NLOPT_LD_SLSQP"))
+  .nloptr(par, fn, gr, lower, upper, control, ..., nloptrAlgoritm = "NLOPT_LD_SLSQP")
 }
 
 .lbfgsbLG <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
@@ -203,11 +203,16 @@ is.latex <- function() {
 .uiGetThetaEta <- function(rxui) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .thetas <- lapply(.w, function(i) {
-    eval(parse(text=paste0("quote(", .iniDf$name[i], " <- THETA[", .iniDf$ntheta[i],"])")))
-  })
   .etas <- NULL
-  .i2 <- .iniDf[-.w, ]
+  if (length(.w) > 0) {
+    .thetas <- lapply(.w, function(i) {
+      eval(parse(text=paste0("quote(", .iniDf$name[i], " <- THETA[", .iniDf$ntheta[i],"])")))
+    })
+    .i2 <- .iniDf[-.w, ]
+  } else {
+    .i2 <- .iniDf
+    .thetas <- NULL
+  }
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .etas <- lapply(seq_along(.i2$name), function(i) {
@@ -226,11 +231,17 @@ is.latex <- function() {
 .uiGetThetaEtaParams <- function(rxui, str=FALSE) {
   .iniDf <- rxui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .thetas <- vapply(.w, function(i) {
-    paste0("THETA[", .iniDf$ntheta[i],"]")
-  }, character(1), USE.NAMES=FALSE)
   .etas <- NULL
-  .i2 <- .iniDf[-.w, ]
+  if (length(.w) > 0) {
+    .thetas <- vapply(.w, function(i) {
+      paste0("THETA[", .iniDf$ntheta[i],"]")
+    }, character(1), USE.NAMES=FALSE)
+    .i2 <- .iniDf[-.w, ]
+  } else {
+    .etas <- NULL
+    .i2 <- .iniDf
+    .thetas <- character(0)
+  }
   if (length(.i2$name) > 0) {
     .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
     .etas <- vapply(seq_along(.i2$name), function(i) {
@@ -254,7 +265,7 @@ rxUiGet.foceiParams <- function(x, ...) {
 #' @export
 rxUiGet.foceiCmtPreModel <- function(x, ...) {
   .ui <- x[[1]]
-  .state <- rxode2::rxState(.ui$mv0)
+  .state <- rxode2stateOde(.ui$mv0)
   if (length(.state) == 0) return("")
   paste(paste0("cmt(", .state, ")"), collapse="\n")
 }
@@ -458,7 +469,7 @@ rxUiGet.loadPrune <- function(x, ...) {
   if (length(.etaVars) == 0L) {
     stop("cannot identify parameters for sensitivity analysis\n   with nlmixr2 an 'eta' initial estimate must use '~'", call. = FALSE)
   }
-  .stateVars <- rxode2::rxState(s)
+  .stateVars <- rxode2stateOde(s)
   rxode2::.rxJacobian(s, c(.stateVars, .etaVars))
   rxode2::.rxSens(s, .etaVars)
   s
@@ -482,7 +493,7 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2stateOde(.s)
   # FIXME: take out pred.minus.dv
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
@@ -566,9 +577,25 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
     .s$..stateInfo["dvid"],
     ""
   ), collapse = "\n")
+  .s$..innerOeta <- paste(c(
+    .ddt,
+    .sens,
+    .yj,
+    .lambda,
+    .hi,
+    .low,
+    .prd,
+    .s$..HdEta,
+    .r,
+    .s$..REta,
+    paste0("rx__ETA", seq_len(.s$..maxEta), "=ETA[",seq_len(.s$..maxEta), "]"),
+    .s$..stateInfo["statef"],
+    .s$..stateInfo["dvid"],
+    ""))
   if (sum.prod) {
     .malert("stabilizing round off errors in inner problem...")
     .s$..inner <- rxode2::rxSumProdModel(.s$..inner)
+    .s$..innerOeta <- rxode2::rxSumProdModel(.s$..innerOeta)
     .msuccess("done")
   }
   if (optExpression) {
@@ -576,13 +603,17 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
                                     ifelse(.getRxPredLlikOption(),
                                            "inner llik model",
                                            "inner model"))
+    suppressMessages(.s$..innerOeta <- rxode2::rxOptExpr(.s$..innerOeta,
+                                                         ifelse(.getRxPredLlikOption(),
+                                                                "inner llik model",
+                                                                "inner model")))
   }
 }
 
 #' @export
 rxUiGet.foceiEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2stateOde(.s)
   .grd <- rxode2::rxExpandFEta_(.stateVars, .s$..maxEta, FALSE)
   if (rxode2::.useUtf()) {
     .malert("calculate \u2202(R\u00B2)/\u2202(\u03B7)")
@@ -632,6 +663,7 @@ rxUiGet.foceEnv <- function(x, ...) {
 rxUiGet.getEBEEnv <- function(x, ...) {
   .s <- rxUiGet.loadPrune(x, ...)
   .s$..inner <- NULL
+  .s$..innerOeta <- NULL
   .s$..outer <- NULL
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
@@ -781,6 +813,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   }
   pred.opt <- NULL
   inner <- .toRx(s$..inner, "compiling inner model...")
+  innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
   .predMinusDv <- rxode2::rxGetControl(ui, "predMinusDv", TRUE)
@@ -802,6 +835,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   }
   .ret <- list(
     inner = inner,
+    innerOeta = innerOeta,
     predOnly = .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
                                       "compiling Llik EBE model...",
                                       "compiling EBE model...")),
@@ -1043,23 +1077,29 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 .foceiOptEnvSetupBounds <- function(ui, env) {
   .iniDf <- ui$iniDf
   .w <- which(!is.na(.iniDf$ntheta))
-  .lower <- vapply(.w,
-                   function(i) {
-                     .low <- .iniDf$lower[i]
-                     .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
-                     if (.zeroRep <= 0) return(.low)
-                     if (.low <= 0 &&
-                           .iniDf$err[i] %in% c("add",
-                                                "lnorm", "logitNorm", "probitNorm",
-                                                "prop", "propT", "propF",
-                                                "pow", "powF", "powT")) {
-                       .low <- .iniDf$est[i] * 0.001
-                     }
-                     .low
-                   }, numeric(1), USE.NAMES=FALSE)
-  .upper <- .iniDf$upper[.w]
-  env$thetaIni <- ui$theta
-  env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
+  if (length(.w) > 0) {
+    .lower <- vapply(.w,
+                     function(i) {
+                       .low <- .iniDf$lower[i]
+                       .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
+                       if (.zeroRep <= 0) return(.low)
+                       if (.low <= 0 &&
+                             .iniDf$err[i] %in% c("add",
+                                                  "lnorm", "logitNorm", "probitNorm",
+                                                  "prop", "propT", "propF",
+                                                  "pow", "powF", "powT")) {
+                         .low <- .iniDf$est[i] * 0.001
+                       }
+                       .low
+                     }, numeric(1), USE.NAMES=FALSE)
+    .upper <- .iniDf$upper[.w]
+    env$thetaIni <- ui$theta
+    env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
+  } else {
+    .lower <- numeric(0)
+    .upper <- numeric(0)
+    env$thetaIni <- setNames(numeric(0), character(0))
+  }
   rxode2::rxAssignControlValue(ui, "nfixed", sum(ui$iniDf$fix))
   .mixed <- !is.null(env$etaNames)
   if (.mixed && length(env$etaNames) == 0L) .mixed <- FALSE
@@ -1094,7 +1134,9 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   }
   env$lower <- .lower
   env$upper <- .upper
-  env$etaMat <- rxode2::rxGetControl(ui, "etaMat", NULL)
+  .etaMat <- rxode2::rxGetControl(ui, "etaMat", NULL)
+  if (length(.etaMat) == 1L && is.na(.etaMat)) .etaMat <- NULL
+  env$etaMat <- .etaMat
   env
 }
 
@@ -1270,11 +1312,15 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 rxUiGet.foceiSkipCov <- function(x, ...) {
   .ui <- x[[1]]
   .maxTheta <- max(.ui$iniDf$ntheta, na.rm=TRUE)
-  .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
-  .skipCov <- rep(FALSE, .maxTheta)
-  .skipCov[which(!is.na(.theta$err))] <- TRUE
-  .skipCov[.theta$fix] <- TRUE
-  .skipCov
+  if (!is.finite(.maxTheta)) {
+    logical(0)
+  } else {
+    .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
+    .skipCov <- rep(FALSE, .maxTheta)
+    .skipCov[which(!is.na(.theta$err))] <- TRUE
+    .skipCov[.theta$fix] <- TRUE
+    .skipCov
+  }
 }
 #attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
 
@@ -1292,6 +1338,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     env$skipCov <- ui$foceiSkipCov
   }
   .maxTheta <- max(ui$iniDf$ntheta, na.rm=TRUE)
+  if (!is.finite(.maxTheta)) {
+    .maxTheta <- 0
+  }
   if (length(env$skipCov) > .maxTheta) {
     if (all(env$skipCov[-seq_len(.maxTheta)])) {
       assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
@@ -1527,6 +1576,9 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
                            any.missing=FALSE, .var.name="focei$lower")
   checkmate::assertNumeric(ret$upper, null.ok=TRUE,
                            any.missing=FALSE, .var.name="focei$upper")
+  if (length(ret$etaMat) == 1L && is.na(ret$etaMat)) {
+    ret$etaMat <- NULL
+  }
   checkmate::assertMatrix(ret$etaMat, mode="double", null.ok=TRUE,
                           any.missing=FALSE, .var.name="focei$etaMat")
   if (!inherits(ret$control, "foceiControl")) {
@@ -1605,6 +1657,12 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
   }
   if (!inherits(.control, "foceiControl")) {
     .control <- do.call(nlmixr2est::foceiControl, .control)
+  }
+  if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
+        is.null(.control[["etaMat"]])) {
+    warning("Passed the initial etas from the last fit",
+            call.=FALSE)
+    .control[["etaMat"]] <- as.matrix(nlmixr2global$etaMat$eta[-1])
   }
   # Change control when there is only 1 item being optimized
   .iniDf <- get("iniDf", envir=.ui)

@@ -21,7 +21,6 @@ test_that("nmObject get tests", {
       linCmt() ~ add(add.sd)
     })
   }
-  skip_if_not(rxode2::.linCmtSensB())
 
   fit <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="focei", control = foceiControlFast)
 

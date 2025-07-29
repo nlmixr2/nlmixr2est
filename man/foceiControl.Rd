@@ -41,6 +41,7 @@ foceiControl(
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   ci = 0.95,
   useColor = crayon::has_color(),
   boundTol = NULL,
@@ -118,7 +119,8 @@ foceiControl(
   sdLowerFact = 0.001,
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
-  zeroGradBobyqa = TRUE
+  zeroGradBobyqa = TRUE,
+  mceta = -1L
 )
 }
 \arguments{
@@ -444,6 +446,10 @@ calculation. By default this is turned on.}
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 
+\item{literalFixRes}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
@@ -698,7 +704,17 @@ generator should be initialized}
 \% percentage below which resetThetaP is checked.}
 
 \item{etaMat}{Eta matrix for initial estimates or final estimates
-of the ETAs.}
+  of the ETAs.
+
+  This can also be a fit to take use the final estimation estimates
+  and use them as the initial eta value of the next fit.
+
+  By default, it will be the initial values of the etas from the
+  last fit (if supplied) or missing, meaning all ETAs start at
+  zero (`NULL`)
+
+  When this value is `NA`, the initial ETA estimates are not taken
+  from the last fit.}
 
 \item{repeatGillMax}{If the tolerances were reduced when
 calculating the initial Gill differences, the Gill difference
@@ -780,6 +796,26 @@ possibly reset). Default is `TRUE`}
 the reset will change the method to the gradient free bobyqa
 method. When `NA`, the zero gradient will change to bobyqa only
 when the first gradient is zero.  Default is `TRUE`}
+
+\item{mceta}{Integer indicating the type of Monte Carlo sampling to
+  perform for the best initial ETA estimate (based on
+  `omega`). When:
+
+  - `-1` the last eta is used for the optimization (default)
+
+  - `0` eta=0 is used for each inner optimization
+
+ For the rest of the `mceta`, each parameter's inner objective
+ function is calculated and the eta set with the best objective
+ function is used.  With these further options:
+
+  - `1` the last eta and eta=0 are used
+
+  - `2` the last eta and eta=0 are used, as well as 1 sampled eta
+  from the omega matrix
+
+  - `n` the last eta and eta=0 are used, as well as n-1 sampled
+  etas from the omega matrix}
 }
 \value{
 The control object that changes the options for the FOCEi

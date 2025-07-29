@@ -25,7 +25,6 @@ nmTest({
 
     fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)
 
-    skip_if_not(rxode2::.linCmtSensB())
 
     expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
     expect_warning(fit$etaSE)

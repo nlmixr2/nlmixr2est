@@ -87,6 +87,7 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::rxUiDeparse", "uobyqaControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
   .resetCacheIfNeeded()
+  .Call(`_rxode2version4`, as.integer(utils::packageVersion("rxode2") >= "4.0.0"))
 }
 
 .onLoad <- function(libname, pkgname) {
@@ -105,6 +106,9 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   .nlmixr2globalReset(TRUE)
   .iniPtrs()
   .iniS3()
+  if (utils::packageVersion("rxode2") < "4.0.0") {
+    packageStartupMessage("nlmixr2est ", utils::packageVersion("nlmixr2est"), " works best with rxode2 >= 4.0.0, please update rxode2")
+  }
   ## nlmixr2SetupMemoize()
   ## options(keep.source = TRUE)
   ## nocov end
