@@ -89,7 +89,6 @@
   .env$parFixedDf <- .fit2$parFixedDf
   .env$parFixed <- .fit2$parFixed
   .env$covMethod <- .fit2$covMethod
-  #.updateParFixed(.env)
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {
     if (identical(.parent[[.cur]], obj)) {

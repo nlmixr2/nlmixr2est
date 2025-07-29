@@ -1,3 +1,8 @@
+# nlmixr2est development version
+
+- New function `formatMinWidth()` to make $parFixed show shorter text and more
+  often show non-scientific notation representations. (#346)
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version

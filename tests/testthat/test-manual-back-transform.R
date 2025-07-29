@@ -35,10 +35,8 @@ nmTest({
     expect_equal(fit$parFixed["tka", "Back-transformed(95%CI)"],
                  sprintf("%3g", fit$parFixedDf["tka", "Estimate"] * 100))
 
-    expect_equal(NA_real_,
-                 setNames(fit$parFixedDf["tka", "CI Lower"], NULL))
-    expect_equal(NA_real_,
-                 setNames(fit$parFixedDf["tka", "CI Upper"], NULL))
+  expect_equal(fit$parFixed["tka", "Back-transformed(95%CI)"],
+               formatMinWidth(fit$parFixedDf["tka", "Estimate"] * 100))
 
     expect_equal(setNames(fit$parFixedDf["tcl", "Estimate"] * 100, NULL),
                  setNames(fit$parFixedDf["tcl", "Back-transformed"], NULL))
@@ -52,11 +50,19 @@ nmTest({
     expect_equal(setNames(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"]), NULL),
                  setNames(fit$parFixedDf["tcl", "CI Lower"], NULL))
 
+<<<<<<< HEAD
+  expect_equal(fit$parFixed["tcl", "Back-transformed(95%CI)"],
+               sprintf("%s (%s, %s)",
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"])),
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"])),
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"] + qn * fit$parFixedDf["tcl", "SE"]))))
+=======
     expect_equal(fit$parFixed["tcl", "Back-transformed(95%CI)"],
                  sprintf("%3g (%3g, %3g)",
                          t100(fit$parFixedDf["tcl", "Estimate"]),
                          setNames(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"]), NULL),
                          setNames(t100(fit$parFixedDf["tcl", "Estimate"] + qn * fit$parFixedDf["tcl", "SE"]), NULL)))
+>>>>>>> main
 
 
     expect_equal(setNames(exp(fit$parFixedDf["tv", "Estimate"] + qn * fit$parFixedDf["tv", "SE"]), NULL),
@@ -76,8 +82,13 @@ nmTest({
     expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                  setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))
 
+<<<<<<< HEAD
+  expect_equal(fit$parFixed["tka", "Back-transformed(80%CI)"],
+               formatMinWidth(fit$parFixedDf["tka", "Estimate"] * 100))
+=======
     expect_equal(fit$parFixed["tka", "Back-transformed(80%CI)"],
                  sprintf("%3g", fit$parFixedDf["tka", "Estimate"] * 100))
+>>>>>>> main
 
     expect_equal(NA_real_,
                  setNames(fit$parFixedDf["tka", "CI Lower"], NULL))
@@ -94,11 +105,19 @@ nmTest({
     expect_equal(setNames(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"]), NULL),
                  setNames(fit$parFixedDf["tcl", "CI Lower"], NULL))
 
+<<<<<<< HEAD
+  expect_equal(fit$parFixed["tcl", "Back-transformed(80%CI)"],
+               sprintf("%s (%s, %s)",
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"])),
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"])),
+                       formatMinWidth(t100(fit$parFixedDf["tcl", "Estimate"] + qn * fit$parFixedDf["tcl", "SE"]))))
+=======
     expect_equal(fit$parFixed["tcl", "Back-transformed(80%CI)"],
                  sprintf("%3g (%3g, %3g)",
                          t100(fit$parFixedDf["tcl", "Estimate"]),
                          setNames(t100(fit$parFixedDf["tcl", "Estimate"] - qn * fit$parFixedDf["tcl", "SE"]), NULL),
                          setNames(t100(fit$parFixedDf["tcl", "Estimate"] + qn * fit$parFixedDf["tcl", "SE"]), NULL)))
+>>>>>>> main
 
 
     expect_equal(setNames(exp(fit$parFixedDf["tv", "Estimate"] + qn * fit$parFixedDf["tv", "SE"]), NULL),
