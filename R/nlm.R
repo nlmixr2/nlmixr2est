@@ -113,6 +113,7 @@ nlmControl <- function(typsize = NULL,
                        rxControl=NULL,
                        optExpression=TRUE, sumProd=FALSE,
                        literalFix=TRUE,
+                       literalFixRes=TRUE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
                        covMethod=c("r", "nlm", ""),
@@ -125,6 +126,7 @@ nlmControl <- function(typsize = NULL,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertNumeric(stepmax, lower=0, len=1, null.ok=TRUE, any.missing=FALSE)
   checkmate::assertIntegerish(print.level, lower=0, upper=2, any.missing=FALSE)
@@ -240,6 +242,7 @@ nlmControl <- function(typsize = NULL,
                check.analyticals = check.analyticals,
                optExpression=optExpression,
                literalFix=literalFix,
+               literalFixRes=literalFixRes,
                sumProd=sumProd,
                rxControl=rxControl,
                returnNlm=returnNlm,
@@ -518,7 +521,7 @@ rxUiGet.nlmThetaS <- function(x, ...) {
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
   .s <- rxUiGet.nlmThetaS(x)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
     .stateVars, .s$..maxTheta,
@@ -806,6 +809,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 sumProd=.nlmControl$sumProd,
                                 optExpression=.nlmControl$optExpression,
                                 literalFix=.nlmControl$literalFix,
+                                literalFixRes=.nlmControl$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.nlmControl$calcTables,
                                 addProp=.nlmControl$addProp,

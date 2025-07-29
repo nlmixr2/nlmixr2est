@@ -1,13 +1,7 @@
 #ifndef __NPDE_H__
 #define __NPDE_H__
 
-#ifdef ENABLE_NLS
-#include <libintl.h>
-#define _(String) dgettext ("nlmixr2est", String)
-/* replace pkg as appropriate */
-#else
 #define _(String) (String)
-#endif
 
 #if defined(__cplusplus)
 #include "armahead.h"

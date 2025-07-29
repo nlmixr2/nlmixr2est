@@ -5,8 +5,7 @@
 
 <!-- badges: start -->
 
-[![R build
-status](https://github.com/nlmixr2/nlmixr2est/workflows/R-CMD-check/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions)
+[![R-CMD-check](https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/nlmixr2/nlmixr2est/actions/workflows/R-CMD-check.yaml)
 [![CodeFactor](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est/badge)](https://www.codefactor.io/repository/github/nlmixr2/nlmixr2est)
 [![CRAN
 status](https://www.r-pkg.org/badges/version/nlmixr2est)](https://CRAN.R-project.org/package=nlmixr2est)
@@ -14,7 +13,8 @@ status](https://www.r-pkg.org/badges/version/nlmixr2est)](https://CRAN.R-project
 downloads](https://cranlogs.r-pkg.org/badges/grand-total/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
 [![CRAN total
 downloads](https://cranlogs.r-pkg.org/badges/nlmixr2est)](https://cran.r-project.org/package=nlmixr2est)
-[![codecov](https://codecov.io/gh/nlmixr2/nlmixr2est/branch/main/graph/badge.svg?token=fv3YwWd9Nl)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
+[![Codecov test
+coverage](https://codecov.io/gh/nlmixr2/nlmixr2est/graph/badge.svg)](https://app.codecov.io/gh/nlmixr2/nlmixr2est)
 ![r-universe](https://nlmixr2.r-universe.dev/badges/nlmixr2est)
 <!-- badges: end -->
 
@@ -75,11 +75,14 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → optimizing duplicate expressions in saem model...
 #> [====|====|====|====|====|====|====|====|====|====] 0:00:00
 #> ✔ done
-#> using C compiler: 'gcc.exe (GCC) 13.2.0'
+#> → creating rxode2 include directory
+#> → getting R compile options
+#> → precompiling headers
+#> ✔ done
+#> using C compiler: 'gcc.exe (GCC) 14.2.0'
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> rxode2 3.0.2 using 8 threads (see ?getRxThreads)
-#>   no cache: create with `rxCreateCache()`
+#> rxode2 3.0.4.9000 using 8 threads (see ?getRxThreads)
 #> 
 #> Attaching package: 'rxode2'
 #> The following objects are masked from 'package:nlmixr2est':
@@ -94,13 +97,13 @@ fit <- nlmixr2(one.compartment, theo_sd,  est="saem", saemControl(print=0))
 #> → optimizing duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
 #> ✔ done
-#> using C compiler: 'gcc.exe (GCC) 13.2.0'
+#> using C compiler: 'gcc.exe (GCC) 14.2.0'
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 5952
 #> → compress phiM in nlmixr2 object, save 63504
 #> → compress parHistData in nlmixr2 object, save 13928
-#> → compress saem0 in nlmixr2 object, save 30456
+#> → compress saem0 in nlmixr2 object, save 30208
 
 # Since the fit is performed in `nlmixr2est` this code works
 print(fit)
@@ -111,8 +114,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>         setup covariance saem table compress other
-#> elapsed 0.003       0.03 11.5  0.29     0.27 6.787
+#>         setup covariance  saem table compress other
+#> elapsed 0.003       0.02 16.55  0.14     0.03 6.027
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

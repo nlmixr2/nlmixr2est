@@ -100,6 +100,7 @@ lbfgsb3cControl <- function(trace=0,
                             rxControl=NULL,
                             optExpression=TRUE, sumProd=FALSE,
                             literalFix=TRUE,
+                            literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
                             calcTables=TRUE, compress=TRUE,
                             covMethod=c("r", ""),
@@ -114,6 +115,7 @@ lbfgsb3cControl <- function(trace=0,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnLbfgsb3c, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -197,6 +199,7 @@ lbfgsb3cControl <- function(trace=0,
     covMethod=match.arg(covMethod),
     optExpression=optExpression,
     literalFix=literalFix,
+    literalFixRes=literalFixRes,
     sumProd=sumProd,
     rxControl=rxControl,
     returnLbfgsb3c=returnLbfgsb3c,
@@ -298,6 +301,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 sumProd=.lbfgsb3cControl$sumProd,
                                 optExpression=.lbfgsb3cControl$optExpression,
                                 literalFix=.lbfgsb3cControl$literalFix,
+                                literalFixRes=.lbfgsb3cControl$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.lbfgsb3cControl$calcTables,
                                 addProp=.lbfgsb3cControl$addProp,

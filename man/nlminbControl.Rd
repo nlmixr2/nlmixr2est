@@ -22,6 +22,7 @@ nlminbControl(
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   returnNlminb = FALSE,
   solveType = c("hessian", "grad", "fun"),
   stickyRecalcN = 4,
@@ -100,6 +101,10 @@ high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
 \item{literalFix}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
+\item{literalFixRes}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 

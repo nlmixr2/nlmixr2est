@@ -35,6 +35,8 @@ nlmixr2global <- new.env(parent = emptyenv())
 
   nlmixr2global$nlsEnv <- new.env(parent=emptyenv())
 
+  nlmixr2global$etaMat <- NULL # eta matrix for foceiControl
+
   if (ini) {
     nlmixr2global$nlmixr2pipeData <- NULL
     nlmixr2global$nlmixr2pipeControl <- NULL

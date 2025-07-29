@@ -3,12 +3,67 @@
 - New function `formatMinWidth()` to make $parFixed show shorter text and more
   often show non-scientific notation representations. (#346)
 
+# nlmixr2est 4.0.2
+
+- The loading and unloading of DLLs has been minimized in this version
+  of nlmixr2est. This avoids loading/reloading the same DLLs and causing the
+  CRAN mac m1 ASAN/USBAN false positive issue observed in CRAN.
+
+- Additionally a new function `nlmixr2fix(fit)` has been added to
+ `nlmixr2est`.  It attempts to make the fit loaded from a different
+ version of nlmixr2 compatible with nlmixr2 4.0.  It also prints out
+ the versions of `nlmixr2` that were used when creating this fit.
+ With this information you are more likely to find a way to use the
+ fit in your current session (or in an old session). (Issue #562)
+
+# nlmixr2est 4.0.1
+
+- Initialize lbfgsb3 error message to an empty string to address
+  valgrind finding (as requested by CRAN).
+
+# nlmixr2est 4.0.0
+
+- When using a model to start a new focei model, the ETAs from the
+  last fit are used as the starting point.  Now you can use
+  `foceiControl(etaMat=NA)` to skip this and use `eta=0` for all
+  items.
+
+- When using `foceiControl(etaMat=fit)`, this will extract the ETAs
+  from a fit for use in the next optimization.
+
+- When using a `foceiControl(etaMat=)` option nlmixr2 no longer only
+  evaluates the inner problem with the `etaMat` value.
+
+- Add `mceta` option to `"focei"`.
+
+  - `mceta=-1` is the default; the eta restarts at the best eta from
+    the last step to start the inner optimization.
+  - `mceta=0` the eta starts at `0` to start the inner optimization.
+  - `mceta=1` the eta starts at either `0` or the best `eta`, which
+    ever gives the lowest objective function to start the inner
+    optimization.
+  - `mceta=n` under the assumption of `omega` sample `n-1` `eta`
+     values and use the lowest objective function of eta sampled, last
+     best eta and eta=0 to start the inner optimization.
+
+- Fix Rstudio print (issue #536)
+
+- Support rxode2's new `+var()` definition in `saem`
+
+- Support literal fixing of residuals (#524).  All methods that
+  support a literal fix of residuals have an option `literalFixRes`
+  which defaults to `TRUE`.  To get the behavior from older models you can use
+  `literalFixRes=FALSE`
+>>>>>>> main
+
 # nlmixr2est 3.0.4
 
 - More robust covariance calculation in `focei`.
 
 - Allow hook mechanism to handle piped arguments.
 
+- Fix for when output message from optimizing doesn't print well
+  (#325)
 
 # nlmixr2est 3.0.3
 

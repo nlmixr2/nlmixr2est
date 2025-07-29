@@ -39,6 +39,7 @@ nlmControl(
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
   compress = TRUE,
@@ -323,6 +324,10 @@ high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
 \item{literalFix}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
+\item{literalFixRes}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 

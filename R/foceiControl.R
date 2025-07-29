@@ -180,6 +180,10 @@
 #'   literals and re-adjust ui and parameter estimates after
 #'   optimization; Default is `TRUE`.
 #'
+#' @param literalFixRes boolean, substitute fixed population values as
+#'   literals and re-adjust ui and parameter estimates after
+#'   optimization; Default is `TRUE`.
+#'
 #' @param ci Confidence level for some tables.  By default this is
 #'     0.95 or 95\% confidence.
 #'
@@ -600,6 +604,16 @@
 #' @param etaMat Eta matrix for initial estimates or final estimates
 #'   of the ETAs.
 #'
+#'   This can also be a fit to take use the final estimation estimates
+#'   and use them as the initial eta value of the next fit.
+#'
+#'   By default, it will be the initial values of the etas from the
+#'   last fit (if supplied) or missing, meaning all ETAs start at
+#'   zero (`NULL`)
+#'
+#'   When this value is `NA`, the initial ETA estimates are not taken
+#'   from the last fit.
+#'
 #' @param addProp specifies the type of additive plus proportional
 #'   errors, the one where standard deviations add (combined1) or the
 #'   type where the variances add (combined2).
@@ -663,6 +677,26 @@
 #'   method. When `NA`, the zero gradient will change to bobyqa only
 #'   when the first gradient is zero.  Default is `TRUE`
 #'
+#' @param mceta Integer indicating the type of Monte Carlo sampling to
+#'   perform for the best initial ETA estimate (based on
+#'   `omega`). When:
+#'
+#'   - `-1` the last eta is used for the optimization (default)
+#'
+#'   - `0` eta=0 is used for each inner optimization
+#'
+#'  For the rest of the `mceta`, each parameter's inner objective
+#'  function is calculated and the eta set with the best objective
+#'  function is used.  With these further options:
+#'
+#'   - `1` the last eta and eta=0 are used
+#'
+#'   - `2` the last eta and eta=0 are used, as well as 1 sampled eta
+#'   from the omega matrix
+#'
+#'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
+#'   etas from the omega matrix
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -699,6 +733,7 @@
 #' Shi, H.M., Xie, Y., Xuan, M.Q., & Nocedal, J. (2021). Adaptive
 #' Finite-Difference Interval Estimation for Noisy Derivative-Free
 #' Optimization.
+#'
 #' @family Estimation control
 #' @export
 foceiControl <- function(sigdig = 3, #
@@ -740,6 +775,7 @@ foceiControl <- function(sigdig = 3, #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
                          literalFix=TRUE,
+                         literalFixRes=TRUE,
                          ci = 0.95, #
                          useColor = crayon::has_color(), #
                          boundTol = NULL, #
@@ -765,7 +801,14 @@ foceiControl <- function(sigdig = 3, #
                          ## mma: 20974.20 (Time: Opt: 3000.501 Cov: 467.287)
                          ## slsqp: 21023.89 (Time: Opt: 460.099; Cov: 488.921)
                          ## lbfgsbLG: 20974.74 (Time: Opt: 946.463; Cov:397.537)
-                         outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp", "Rvmmin"), #
+                         outerOpt = c("nlminb",
+                                      "bobyqa",
+                                      "lbfgsb3c",
+                                      "L-BFGS-B",
+                                      "mma",
+                                      "lbfgsbLG",
+                                      "slsqp",
+                                      "Rvmmin"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #
@@ -830,7 +873,8 @@ foceiControl <- function(sigdig = 3, #
                          sdLowerFact=0.001,
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
-                         zeroGradBobyqa=TRUE) { #
+                         zeroGradBobyqa=TRUE,
+                         mceta=-1L) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -974,6 +1018,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
+  checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
@@ -1220,6 +1265,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   .ret <- list(
@@ -1243,6 +1289,7 @@ foceiControl <- function(sigdig = 3, #
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix=literalFix,
+    literalFixRes=literalFixRes,
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
@@ -1341,20 +1388,25 @@ foceiControl <- function(sigdig = 3, #
     sdLowerFact=sdLowerFact,
     zeroGradFirstReset=zeroGradFirstReset,
     zeroGradRunReset=zeroGradRunReset,
-    zeroGradBobyqa=zeroGradBobyqa
+    zeroGradBobyqa=zeroGradBobyqa,
+    mceta=as.integer(mceta)
   )
-  if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
-            call.=FALSE)
-    .ret$maxInnerIterations <- 0L
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
-    .ret$etaMat <- etaMat
+  if (length(etaMat) == 1L && is.na(etaMat)) {
+    .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
+    .doWarn <- TRUE
+    if (inherits(etaMat, "nlmixr2FitCore")) {
+      etaMat <- as.matrix(etaMat$eta[-1])
+      .doWarn <- FALSE
+    }
+    if (.doWarn && missing(maxInnerIterations)) {
+      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+    }
     checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   }
   class(.ret) <- "foceiControl"
-  return(.ret)
+  .ret
 }
 
 #' @export

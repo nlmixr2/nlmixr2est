@@ -1,24 +1,12 @@
-# CRAN Comments for nlmixr2est 3.0.1
+# nlmixr2est 4.0.2
 
-## New features
+- The loading and unloading of DLLs has been minimized in this version
+  of nlmixr2est. This avoids loading/reloading the same DLLs and causing the
+  CRAN mac m1 ASAN/USBAN false positive issue observed in CRAN.
 
-- Now when optimizing only a single parameter with `focei`-family,
-  will change to use `stats::optimize()` for the outer problem (#481)
-
-- When estimating with all fixed population parameters, do a posthoc
-  estimation.
-
-- Internally removed `assignInMyNamespace()` replacing with
-  `nlmixr2global`, which fixes some edge case bugs where the nlmixr2
-  environment was not reset properly.
-
-- Treated edge case where all initial parameters are zero and change
-  scaling from scaled to unscaled (#486)
-
-- Added `mu`4 referencing that will change string expressions to
-  `rxode2` numeric values.  This allows derived strings to also be
-  treated as `mu` expressions (#484)
-
-## Bug Fixes
-
-- Fix `focei` covariance step when many `omega` values are fixed #482
+- Additionally a new function `nlmixr2fix(fit)` has been added to
+ `nlmixr2est`.  It attempts to make the fit loaded from a different
+ version of nlmixr2 compatible with nlmixr2 4.0.  It also prints out
+ the versions of `nlmixr2` that were used when creating this fit.
+ With this information you are more likely to find a way to use the
+ fit in your current session (or in an old session). (Issue #562)

@@ -14,8 +14,6 @@
 #' @examples
 #' \donttest{
 #'
-#' if (rxode2::.linCmtSensB()) {
-#'
 #' one.cmt <- function() {
 #'   ini({
 #'    tka <- 0.45
@@ -40,7 +38,7 @@
 #'
 #' # You can access the underlying nls object with `$nls`
 #' fit2$nls
-#' }
+#'
 #' }
 nlsControl <- function(maxiter=10000,
                        tol = 1e-05,
@@ -607,7 +605,7 @@ rxUiGet.nlsThetaS <- function(x, ...) {
 #' @export
 rxUiGet.nlsHdTheta <- function(x, ...) {
   .s <- rxUiGet.nlsThetaS(x)
-  .stateVars <- rxode2::rxState(.s)
+  .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
     .stateVars, .s$..maxTheta,
@@ -974,6 +972,7 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
                                 sumProd=.nlsControl$sumProd,
                                 optExpression=.nlsControl$optExpression,
                                 literalFix=.nlsControl$literalFix,
+                                literalFixRes=FALSE,
                                 scaleTo=0,
                                 calcTables=.nlsControl$calcTables,
                                 addProp=.nlsControl$addProp,

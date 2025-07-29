@@ -98,7 +98,7 @@ iYeoJohnson <- function(x, lambda = 1) {
     .lst <- attr(.cls, ".nlmixr2Gill")
     return(.lst[[arg]])
   }
-  return(.ret)
+  .ret
 }
 
 
@@ -154,19 +154,19 @@ nsis <- function() { ## build installer...
         }
       ))
     if (lst) {
-      return(list(ret, ws))
+      list(ret, ws)
     } else {
       for (w in ws) {
         warning(w)
       }
-      return(ret)
+      ret
     }
   } else {
     ret <- force(expr)
     if (lst) {
       return(list(ret, NULL))
     }
-    return(ret)
+    ret
   }
 }
 # #########################################################################
@@ -392,4 +392,8 @@ nmNearPD <- function(x, keepDiag = FALSE, do2eigen = TRUE, doDykstra = TRUE, onl
   .Call(`_nlmixr2est_nmNearPD_`, x, keepDiag, do2eigen, doDykstra, only.values, eig.tol, conv.tol, posd.tol, maxit,
         trace # nolint
         )
+}
+
+.sampleOmega <- function(omega) {
+  rxode2::rxRmvn(1, sigma=omega)
 }
