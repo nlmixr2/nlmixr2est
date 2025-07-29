@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- Updated inferring the estimation method from the control
+  object. Requires the control object to have a class of length one
+  and match the estimation method.  For example `foceiControl()` would
+  assume that the estimation method is related to `focei`.
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
