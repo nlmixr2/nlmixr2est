@@ -181,7 +181,7 @@ nlmixr <- nlmixr2
 .nlmixr2inferEst <- function(env, est) {
   if (!env$missingEst) {
     .cls <- class(est)
-    if (length(.cls) >= 1L && grepl("^.*?Control$", .cls)) {
+    if (length(.cls) == 1L && any(grepl("^.*?Control$", .cls))) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (env$missingControl) {
         env$control <- getValidNlmixrControl(est, .est)
@@ -347,7 +347,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .modName <- deparse(substitute(object))
   nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
   .cls <- class(est)
-  if (length(.cls) >= 1L && grepl("^.*?Control$", .cls)) {
+  if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
     .est <- sub("^(.*?)Control$", "\\1", .cls)
     if (is.null(control)) {
       control <- getValidNlmixrControl(est, .est)
@@ -362,7 +362,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     data <- NULL
   } else {
     .cls <- class(data)
-    if (length(.cls) >= 1L && grepl("^.*?Control$", .cls)) {
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (is.null(control)) {
         control <- getValidNlmixrControl(data, .est)
