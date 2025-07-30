@@ -5,6 +5,12 @@
   and match the estimation method.  For example `foceiControl()` would
   assume that the estimation method is related to `focei`.
 
+- **Breaking change:** Changed the estimation method `posthoc` to add
+  tables and calculate the covariance by default.  It is now a method
+  with it's own control, `posthocControl()`.  As previously the
+  default is not to include the interaction term (but you can turn it
+  on with `posthocControl(interaction=TRUE)`).
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
