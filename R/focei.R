@@ -1946,40 +1946,6 @@ attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
   assign("objDf", rbind(.objDf1, objDf), envir=ret)
 }
 
-#'@rdname nlmixr2Est
-#'@export
-nlmixr2Est.foi <- function(env, ...) {
-  .ui <- env$ui
-  rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
-
-  .foceiFamilyControl(env, ...)
-  .control <- .ui$control
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
-  rxode2::rxAssignControlValue(.ui, "fo", TRUE)
-  rxode2::rxAssignControlValue(.ui, "boundTol", 0)
-  on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
-    }
-  })
-  env$skipTable <- TRUE
-  .ret <- .foceiFamilyReturn(env, .ui, ...)
-  .objDf <- .ret$objDf
-  .ui <- .ret$ui
-  assign("control", .control, envir=.ui)
-  .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 1L)
-  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  env$skipTable <- FALSE
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="foi")
-  .addObjDfToReturn(.ret, .objDf)
-  .ret
-}
-attr(nlmixr2Est.foi, "covPresent") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
