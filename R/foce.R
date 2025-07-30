@@ -4,9 +4,9 @@
 #' called the foce estimates
 #'
 #' @inheritParams foceiControl
-#' @param ... Parameters used in the default `foceiConrol()`
+#' @param ... Parameters used in the default `foceiControl()`
 #' @param interaction Interaction term for the model, in this case the
-#'   default is `FALSE`, though you can set it to be `TRUE` as well.
+#'   default is `FALSE`; it cannot be changed, use `focei` instead
 #' @return foceControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -17,7 +17,7 @@ foceControl <- function(sigdig=3,
                            ...,
                            interaction=FALSE) {
   .control <- foceiControl(sigdig=sigdig, ...,
-                           interaction=interaction)
+                           interaction=FALSE)
   class(.control) <- "foceControl"
   .control
 }
@@ -37,7 +37,13 @@ getValidNlmixrCtl.foce <- function(control) {
   if (is.null(.ctl)) .ctl <- foceControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("foceControl", .ctl)
-  if (!inherits(.ctl, "foceControl")) {
+  if (inherits(.ctl, "foceiControl") ||
+        inherits(.ctl, "foControl") ||
+        inherits(.ctl, "foiControl")) {
+    .minfo(paste0("converting ", class(.ctl)[1], " to foceControl"))
+    class(.ctl) <- NULL
+    .ctl <- do.call(foceControl, .ctl)
+  } else if (!inherits(.ctl, "foceControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- foceControl()
   } else {

@@ -23,6 +23,12 @@ foControl <- function(sigdig=3,
                       interaction=NULL,
                       fo=NULL) {
   checkmate::assertLogical(posthoc, len=1, any.missing=FALSE, null.ok=FALSE)
+  if (!missing(interaction)) {
+    .minfo("`interaction` is ignored in `foControl`")
+  }
+  if (!missing(fo)) {
+    .minfo("`fo` is ignored in `foControl`")
+  }
   .control <- foceiControl(sigdig=sigdig, ...,
                            interaction=0L,
                            fo=TRUE)
@@ -46,7 +52,17 @@ getValidNlmixrCtl.fo <- function(control) {
   if (is.null(.ctl)) .ctl <- foControl()
   if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
     .ctl <- do.call("foControl", .ctl)
-  if (!inherits(.ctl, "foControl")) {
+  if (inherits(.ctl, "foceiControl") ||
+        inherits(.ctl, "foceControl") ||
+        inherits(.ctl, "foiControl")) {
+    .minfo(paste0("converting ", class(.ctl)[1], " to foControl"))
+    class(.ctl) <- NULL
+    .ctl <- do.call(foControl, .ctl)
+  } else if (inherits(.ctl, "foceControl")) {
+    .minfo(paste0("converting foceControl to foControl"))
+    class(.ctl) <- NULL
+    .ctl <- do.call(foControl, .ctl)
+  } else if (!inherits(.ctl, "foControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- foControl()
   } else {
