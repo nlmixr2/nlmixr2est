@@ -138,17 +138,6 @@ nmObjGetControl.focei <- function(x, ...) {
 #' @export
 nmObjGetControl.foce <- nmObjGetControl.focei
 
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.foi <- nmObjGetControl.focei
-
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.fo <- nmObjGetControl.focei
-
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.posthoc <- nmObjGetControl.focei
 
 #' @rdname nmObjGetControl
 #' @export

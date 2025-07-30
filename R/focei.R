@@ -1795,6 +1795,7 @@ attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
     .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
                          table=.ret$table), silent=TRUE)
     if (inherits(.tmp, "try-error")) {
+
       warning("error calculating tables, returning without table step", call.=FALSE)
     } else {
       .ret <- .tmp
@@ -1893,25 +1894,6 @@ nlmixr2Est.foce <- function(env, ...) {
   .foceiFamilyReturn(env, .ui, ..., est="focei")
 }
 attr(nlmixr2Est.foce, "covPresent") <- TRUE
-
-#'@rdname nlmixr2Est
-#'@export
-nlmixr2Est.posthoc <- function(env, ...) {
-  .ui <- env$ui
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'posthoc'", .var.name=.ui$modelName)
-  .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  rxode2::rxAssignControlValue(.ui, "covMethod", 0L)
-  rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
-    }
-  })
-  env$est <- "posthoc"
-  .foceiFamilyReturn(env, .ui, ..., est="posthoc")
-}
-attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
 
 #' Add objective function line to the return object
 #'

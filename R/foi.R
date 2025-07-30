@@ -1,4 +1,4 @@
-#' Control options for the FO estimation method
+#' Control options for the FOI estimation method
 #'
 #' This is related to the focei methods and uses most of their control
 #' options.  Some are ignored, `posthoc` is an extra parameter

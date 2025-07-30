@@ -52,10 +52,6 @@ getValidNlmixrCtl.foi <- getValidNlmixrCtl.focei
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.posthoc <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
 getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
 
 #' @rdname getValidNlmixrControl
