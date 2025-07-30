@@ -44,15 +44,7 @@ getValidNlmixrCtl.focei <- function(control) {
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
 getValidNlmixrCtl.foi <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
 
 #' @rdname getValidNlmixrControl
 #' @export

@@ -1873,28 +1873,6 @@ nlmixr2Est.focei <- function(env, ...) {
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 
-
-#'@rdname nlmixr2Est
-#'@export
-nlmixr2Est.foce <- function(env, ...) {
-  .ui <- env$ui
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foce'", .var.name=.ui$modelName)
-  if (!rxode2hasLlik()) {
-    rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'", .var.name=.ui$modelName)
-  }
-
-  .foceiFamilyControl(env, ...)
-  rxode2::rxAssignControlValue(.ui, "interaction", 0L)
-  on.exit({
-    if (exists("control", envir=.ui)) {
-      rm("control", envir=.ui)
-    }
-  })
-  env$est <- "foce"
-  .foceiFamilyReturn(env, .ui, ..., est="focei")
-}
-attr(nlmixr2Est.foce, "covPresent") <- TRUE
-
 #' Add objective function line to the return object
 #'
 #' @param ret Return object

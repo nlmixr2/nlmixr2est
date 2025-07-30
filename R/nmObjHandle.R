@@ -134,10 +134,6 @@ nmObjGetControl.focei <- function(x, ...) {
   stop("cannot find focei related control object", call.=FALSE)
 }
 
-#' @rdname nmObjGetControl
-#' @export
-nmObjGetControl.foce <- nmObjGetControl.focei
-
 
 #' @rdname nmObjGetControl
 #' @export
