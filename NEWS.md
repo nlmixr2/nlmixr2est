@@ -11,6 +11,11 @@
   default is not to include the interaction term (but you can turn it
   on with `posthocControl(interaction=TRUE)`).
 
+- Added `foceControl()`, `foControl()` and `foiControl()` for the
+  `foce`, `fo` and `foi` methods, respectively.  They try to convert
+  the related control structures to the correct control structure for
+  the estimation method.
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
