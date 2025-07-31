@@ -7,7 +7,7 @@ if (!identical(Sys.getenv("NOT_CRAN"), "true")) {
   # when testing CRAN, only use one thread
   setRxThreads(1L)
   setDTthreads(1L)
-  rxode2::rxUnloadAll(FALSE)  # don't unload any models (seems to affect ASAN checks)
+  #rxode2::rxUnloadAll(FALSE)  # don't unload any models (seems to affect ASAN checks)
 }
 
 #rxCreateCache() ## Required for m1-san rhub

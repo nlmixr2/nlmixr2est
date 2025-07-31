@@ -208,9 +208,6 @@
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
 #'
-#' @param addPosthoc Boolean indicating if posthoc parameters are
-#'     added to the table output.
-#'
 #' @param printNcol Number of columns to printout before wrapping
 #'     parameter estimates/gradient
 #'
@@ -770,7 +767,6 @@ foceiControl <- function(sigdig = 3, #
                          lbfgsPgtol = 0, #
                          lbfgsFactr = NULL, #
                          eigen = TRUE, #
-                         addPosthoc = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
@@ -1009,11 +1005,6 @@ foceiControl <- function(sigdig = 3, #
     checkmate::assertLogical(eigen, any.missing=FALSE, len=1)
   }
   eigen <- as.integer(eigen)
-
-  if (!checkmate::testIntegerish(addPosthoc, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(addPosthoc, any.missing=FALSE, len=1)
-  }
-  addPosthoc <- as.integer(addPosthoc)
 
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
@@ -1284,7 +1275,6 @@ foceiControl <- function(sigdig = 3, #
     covMethod = covMethod,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
-    addPosthoc = addPosthoc,
     diagXform = match.arg(diagXform),
     sumProd = sumProd,
     optExpression = optExpression,

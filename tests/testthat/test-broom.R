@@ -344,7 +344,9 @@ nmTest({
     })
   }
 
-  fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc")))
+  fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc",
+                                                   control=posthocControl(covMethod=0,
+                                                                          calcTables=FALSE))))
 
   test_that("tidy works on posthoc fit fits", {
 
