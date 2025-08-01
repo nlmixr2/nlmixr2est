@@ -381,7 +381,7 @@ getValidNlmixrCtl.nlm <- function(control) {
 
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- rxode2::rxUiDecompress(x[[1]])
@@ -435,7 +435,7 @@ rxUiGet.nlmModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlm <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .p <- .nlmPrune(x)
@@ -444,7 +444,7 @@ rxUiGet.loadPruneNlm <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmParams <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -462,7 +462,7 @@ rxUiGet.nlmParams <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneNlm(x, ...)
@@ -521,7 +521,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlmSens <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.nlmPrune(x), promoteLinSens = TRUE)
@@ -529,7 +529,7 @@ rxUiGet.loadPruneNlmSens <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmThetaS <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
@@ -538,7 +538,7 @@ rxUiGet.nlmThetaS <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlmThetaS(x)
@@ -654,7 +654,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlmHdTheta(x, ...)
@@ -703,7 +703,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlmEnv(x, ...)
@@ -714,7 +714,7 @@ rxUiGet.nlmSensModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmParNameFun <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]

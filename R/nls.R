@@ -360,7 +360,7 @@ getValidNlmixrCtl.nls <- function(control) {
 
 #'@export
 rxUiGet.nlsModel0 <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- rxode2::rxUiDecompress(x[[1]])
@@ -483,7 +483,7 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
 
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .f <- x[[1]]
@@ -531,7 +531,7 @@ rxUiGet.nlsModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNls <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.nlsPrune(x), promoteLinSens = FALSE)
@@ -539,7 +539,7 @@ rxUiGet.loadPruneNls <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneNls(x, ...)
@@ -605,7 +605,7 @@ rxUiGet.nlsRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlsSens <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
@@ -613,7 +613,7 @@ rxUiGet.loadPruneNlsSens <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsThetaS <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneNlsSens(x, ...)
@@ -622,7 +622,7 @@ rxUiGet.nlsThetaS <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsHdTheta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlsThetaS(x)
@@ -738,7 +738,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlsHdTheta(x, ...)
@@ -769,7 +769,7 @@ rxUiGet.nlsEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlsEnv(x, ...)
@@ -781,7 +781,7 @@ rxUiGet.nlsSensModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParStart <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -794,7 +794,7 @@ rxUiGet.nlsParStart <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParStartTheta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -808,7 +808,7 @@ rxUiGet.nlsParStartTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParams <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -818,7 +818,7 @@ rxUiGet.nlsParams <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParLower <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -831,7 +831,7 @@ rxUiGet.nlsParLower <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParUpper <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -844,7 +844,7 @@ rxUiGet.nlsParUpper <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -891,7 +891,7 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .args <- .nlsFormulaArgs(x)

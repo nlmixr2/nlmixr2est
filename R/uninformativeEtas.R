@@ -1,6 +1,6 @@
 #' @export
 rxUiGet.transUE <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]

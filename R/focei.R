@@ -371,7 +371,7 @@ rxGetDistributionFoceiLines.rxUi <- function(line) {
 
 #' @export
 rxUiGet.foceiModel0 <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .f <- x[[1]]
@@ -386,7 +386,7 @@ rxUiGet.foceiModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModel0ll <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   nlmixr2global$rxPredLlik <- TRUE
@@ -455,7 +455,7 @@ rxUiGet.foceiModel0ll <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneSens <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.foceiPrune(x), promoteLinSens = TRUE)
@@ -464,7 +464,7 @@ rxUiGet.loadPruneSens <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPrune <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.foceiPrune(x), promoteLinSens = FALSE)
@@ -489,7 +489,7 @@ rxUiGet.loadPrune <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneSens(x, ...)
@@ -500,7 +500,7 @@ rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
 
 #' @export
 rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneSens(x, ...)
@@ -510,7 +510,7 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.foceiEtaS(x)
@@ -633,7 +633,7 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
 
 #' @export
 rxUiGet.foceiEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.foceiHdEta(x, ...)
@@ -669,7 +669,7 @@ rxUiGet.foceiEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.foceEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.foceiHdEta(x, ...)
@@ -688,7 +688,7 @@ rxUiGet.foceEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.getEBEEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPrune(x, ...)
@@ -723,7 +723,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.predDfFocei <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -894,7 +894,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
 
 #' @export
 rxUiGet.focei <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -924,7 +924,7 @@ rxUiGet.focei <- function(x, ...) {
 
 #' @export
 rxUiGet.foce <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -954,7 +954,7 @@ rxUiGet.foce <- function(x, ...) {
 
 #' @export
 rxUiGet.ebe <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <-x[[1]]
@@ -983,7 +983,7 @@ rxUiGet.ebe <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModelDigest <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -1008,7 +1008,7 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
@@ -1039,7 +1039,7 @@ rxUiGet.foceiModel <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiFixed <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .x <- x[[1]]
@@ -1053,7 +1053,7 @@ rxUiGet.foceiFixed <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiEtaNames <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .x <- x[[1]]
@@ -1337,7 +1337,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiMuRefVector <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -1367,7 +1367,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiSkipCov <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -1437,7 +1437,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiOptEnv <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .x <- x[[1]]

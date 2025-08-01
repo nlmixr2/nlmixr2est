@@ -1,6 +1,6 @@
 #' @export
 rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -31,7 +31,7 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -49,7 +49,7 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInPars <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ret <- rxUiGet.saemInParsAndMuRefCovariates(x, ...)
@@ -59,7 +59,7 @@ rxUiGet.saemInPars <- function(x, ...) {
 
 #' @export
 rxUiGet.saemCovars <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ret <- rxUiGet.saemInParsAndMuRefCovariates(x, ...)
@@ -69,7 +69,7 @@ rxUiGet.saemCovars <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .mod <- rxode2::rxode2(rxUiGet.saemModel(x, ...))
@@ -89,7 +89,7 @@ rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFunction <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   # This function depends on the number of time varying covariates in the data
@@ -144,7 +144,7 @@ rxUiGet.saemFunction <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFixed <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -205,7 +205,7 @@ rxUiGet.saemFixed <- function(x, ...) {
 
 #' @export
 rxUiGet.saemEtaTrans <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .saemEtaTrans(x, ...)
@@ -213,7 +213,7 @@ rxUiGet.saemEtaTrans <- function(x, ...) {
 
 #' @export
 rxUiGet.saemEtaTransPred <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .saemEtaTrans(x, ..., nonMu=TRUE)
@@ -221,7 +221,7 @@ rxUiGet.saemEtaTransPred <- function(x, ...) {
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
 #' @export
 rxUiGet.saemOmegaTrans <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -239,7 +239,7 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -259,7 +259,7 @@ rxUiGet.saemModelOmega <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -504,7 +504,7 @@ rxUiGet.saemEtaNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -524,7 +524,7 @@ rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistEtaNames <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -537,7 +537,7 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
@@ -548,7 +548,7 @@ rxUiGet.saemParHistNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemAres <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -574,7 +574,7 @@ rxUiGet.saemAres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemBres <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -604,7 +604,7 @@ rxUiGet.saemBres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemCres <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -646,7 +646,7 @@ rxUiGet.saemLres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemLogEta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -664,7 +664,7 @@ rxUiGet.saemLogEta <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -684,7 +684,7 @@ rxUiGet.saemModelList <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInitTheta <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .logEta <- rxUiGet.saemLogEta(x, ...)
@@ -745,7 +745,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInitOmega <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -770,7 +770,7 @@ rxUiGet.saemInitOmega <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInit <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   list(theta=rxUiGet.saemInitTheta(x, ...),
@@ -780,7 +780,7 @@ rxUiGet.saemInit <- function(x, ...) {
 
 #' @export
 rxUiGet.saemThetaDataFrame <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -798,7 +798,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
 
 #' @export
 rxUiGet.saemAddProp <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]

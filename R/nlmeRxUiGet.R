@@ -102,7 +102,7 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeFD <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
@@ -111,7 +111,7 @@ rxUiGet.nlmeFD <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -128,7 +128,7 @@ rxUiGet.nlmeFunction <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeRxModelFD <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.nlmeFD(x, ...)
@@ -168,7 +168,7 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeRxModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   rxUiGet.nlmeRxModelFD(x, ...)
@@ -179,7 +179,7 @@ rxUiGet.nlmeRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -204,7 +204,7 @@ rxUiGet.nlmeModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeGradDimnames <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
@@ -214,7 +214,7 @@ rxUiGet.nlmeGradDimnames <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -248,7 +248,7 @@ rxUiGet.nlmeStart <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeFixedFormula <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .start <- rxUiGet.nlmeStart(x, ...)
@@ -257,7 +257,7 @@ rxUiGet.nlmeFixedFormula <- function(x, ...) {
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
 #' @export
 rxUiGet.nlmeWeights <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]

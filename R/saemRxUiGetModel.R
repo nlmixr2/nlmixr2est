@@ -162,7 +162,7 @@ rxUiGet.saemParamsLine <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .f <- x[[1]]
@@ -243,7 +243,7 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneSaem <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.saemPrune(x), promoteLinSens = FALSE)
@@ -252,7 +252,7 @@ rxUiGet.loadPruneSaem <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneSaemPred <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .loadSymengine(.saemPrunePred(x), promoteLinSens = FALSE)
@@ -262,7 +262,7 @@ rxUiGet.loadPruneSaemPred <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -292,7 +292,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .pars <- rxUiGet.saemParamsToEstimate(x, ...)
@@ -306,7 +306,7 @@ rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -317,7 +317,7 @@ attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
 
 #' @export
 rxUiGet.saemModel <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .s <- rxUiGet.loadPruneSaem(x, ...)
@@ -359,7 +359,7 @@ rxUiGet.saemModel <- function(x, ...) {
 
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
@@ -415,7 +415,7 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
-  if (rxode2::.rstudioComplete()) {
+  if (.rstudioComplete()) {
     return(list("calculated"))
   }
   .ui <- x[[1]]
