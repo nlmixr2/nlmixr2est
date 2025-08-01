@@ -90,6 +90,9 @@ rxGetDistributionNlmeLines.rxUi <- function(line) {
 
 #' @export
 rxUiGet.nlmeModel0 <- function(x, ...) {
+  if (.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlmeLines(.f),
                               paramsLine=NA, #.uiGetThetaEtaParams(.f),
