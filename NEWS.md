@@ -5,6 +5,11 @@
   and match the estimation method.  For example `foceiControl()` would
   assume that the estimation method is related to `focei`.
 
+- When Rstudio 2025+ is completing, it now evaluates every possible
+  completion. For completions that take a longer time to produce (or
+  produce output), this is not ideal.  This release returns dummy
+  values when Rstudio completion is active. (See #568)
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
