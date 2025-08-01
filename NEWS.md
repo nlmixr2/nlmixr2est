@@ -5,10 +5,10 @@
   and match the estimation method.  For example `foceiControl()` would
   assume that the estimation method is related to `focei`.
 
-- When Rstudio 2025+ is completing, it now evaluates every possible
-  completion. For completions that take a longer time to produce (or
-  produce output), this is not ideal.  This release returns dummy
-  values when Rstudio completion is active. (See #568)
+- Changed Rstudio completion to not evaluate (in case it gets turned
+  on for data.frames) (See #568)
+
+- Turned on data completion for items like `$fitMergeInner`
 
 # nlmixr2est 4.0.2
 
