@@ -20,6 +20,26 @@ nmObjGet <- function(x, ...) {
     "BIC"))) {
     .nmObjEnsureObjective(x[[1]])
   }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGet"))
+    .cls <- .arg
+    .method <- paste0("nmObjGet.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
+      if (is.null(.rstudio)) {
+        return(list("calculated value"))
+      } else {
+        return(.rstudio)
+      }
+    }
+  }
   UseMethod("nmObjGet")
 }
 
@@ -90,6 +110,26 @@ nmObjGetData <- function(x, ...) {
   # need to assign environment correctly for UDF
   if (!inherits(x, "nmObjGetData")) {
     stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
+  }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGetData"))
+    .cls <- class(x)[1]
+    .method <- paste0("nmObjGetData.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
+      if (is.null(.rstudio)) {
+        return(list("calculated value"))
+      } else {
+        return(.rstudio)
+      }
+    }
   }
   UseMethod("nmObjGetData")
 }
@@ -400,6 +440,8 @@ nmObjGetData.dataMergeLeft <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeLeft, "rstudio") <- data.frame(data="prefer original",
+                                                          left="original", right="fit")
 
 #' @rdname nmObjGetData
 #' @export
@@ -411,6 +453,8 @@ nmObjGetData.dataMergeRight <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeRight, "rstudio") <- data.frame(data="prefer original",
+                                                          left="original", right="fit")
 
 #' @rdname nmObjGetData
 #' @export
@@ -421,7 +465,10 @@ nmObjGetData.dataMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.dataMergeRight, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeInner, "rstudio") <- data.frame(data="prefer original",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -433,6 +480,9 @@ nmObjGetData.dataMergeFull <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.dataMergeFull, "rstudio") <- data.frame(data="prefer data",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -444,6 +494,9 @@ nmObjGetData.fitMergeLeft <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeLeft, "rstudio") <- data.frame(data="prefer fit",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -455,6 +508,9 @@ nmObjGetData.fitMergeRight <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeRight, "rstudio") <- data.frame(data="prefer fit",
+                                                        left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -465,7 +521,10 @@ nmObjGetData.fitMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.fitMergeRight, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeInner, "rstudio") <- data.frame(data="prefer fit",
+                                                          left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -477,6 +536,9 @@ nmObjGetData.fitMergeFull <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(data="prefer fit",
+                                                          left="original", right="fit")
+
 
 #' @rdname nmObjGet
 #' @export
