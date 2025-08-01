@@ -158,6 +158,9 @@
 
 #' @export
 rxUiGet.getSplitMuModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   if (exists("getSplitModel", .ui)) {
     return(get("getSplitModel", .ui))

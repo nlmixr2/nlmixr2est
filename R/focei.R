@@ -371,6 +371,9 @@ rxGetDistributionFoceiLines.rxUi <- function(line) {
 
 #' @export
 rxUiGet.foceiModel0 <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionFoceiLines(.f),
                               prefixLines=.uiGetThetaEta(.f),
@@ -383,6 +386,9 @@ rxUiGet.foceiModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModel0ll <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   nlmixr2global$rxPredLlik <- TRUE
   on.exit(nlmixr2global$rxPredLlik <- FALSE)
   .f <- x[[1]]
@@ -449,12 +455,18 @@ rxUiGet.foceiModel0ll <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneSens <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.foceiPrune(x), promoteLinSens = TRUE)
 }
 #attr(rxUiGet.loadPruneSens, "desc") <- "load sensitivity with linCmt() promoted"
 
 #' @export
 rxUiGet.loadPrune <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.foceiPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
@@ -477,6 +489,9 @@ rxUiGet.loadPrune <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPruneSens(x, ...)
   .sensEtaOrTheta(.s)
 }
@@ -485,6 +500,9 @@ rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
 
 #' @export
 rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPruneSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
@@ -492,6 +510,9 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.foceiEtaS(x)
   .stateVars <- rxode2stateOde(.s)
   # FIXME: take out pred.minus.dv
@@ -612,6 +633,9 @@ attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO re
 
 #' @export
 rxUiGet.foceiEnv <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.foceiHdEta(x, ...)
   .stateVars <- rxode2stateOde(.s)
   .grd <- rxode2::rxExpandFEta_(.stateVars, .s$..maxEta, FALSE)
@@ -645,6 +669,9 @@ rxUiGet.foceiEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.foceEnv <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
   ## Take etas from rx_r
@@ -661,6 +688,9 @@ rxUiGet.foceEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.getEBEEnv <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPrune(x, ...)
   .s$..inner <- NULL
   .s$..innerOeta <- NULL
@@ -693,6 +723,9 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.predDfFocei <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   if (exists(".predDfFocei", envir=.ui)) {
     get(".predDfFocei", envir=.ui)
@@ -861,6 +894,9 @@ rxUiGet.predDfFocei <- function(x, ...) {
 
 #' @export
 rxUiGet.focei <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   # For t/cauchy/dnorm, predOnly model
   nlmixr2global$rxPredLlik <- FALSE
@@ -888,6 +924,9 @@ rxUiGet.focei <- function(x, ...) {
 
 #' @export
 rxUiGet.foce <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   on.exit(nlmixr2global$rxPredLlik <- FALSE)
@@ -915,6 +954,9 @@ rxUiGet.foce <- function(x, ...) {
 
 #' @export
 rxUiGet.ebe <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <-x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
   on.exit(  nlmixr2global$rxPredLlik <- FALSE)
@@ -941,6 +983,9 @@ rxUiGet.ebe <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModelDigest <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- get("iniDf", .ui)
   .sumProd <- rxode2::rxGetControl(.ui, "sumProd", FALSE)
@@ -963,6 +1008,9 @@ rxUiGet.foceiModelCache <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
     .ret <- qs::qread(.cacheFile)
@@ -991,6 +1039,9 @@ rxUiGet.foceiModel <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiFixed <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .x <- x[[1]]
   .df <- get("iniDf", .x)
   .dft <- .df[!is.na(.df$ntheta), ]
@@ -1002,6 +1053,9 @@ rxUiGet.foceiFixed <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiEtaNames <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .x <- x[[1]]
   .df <- get("iniDf", .x)
   .dft <- .df[is.na(.df$ntheta), ]
@@ -1283,6 +1337,9 @@ rxUiGet.scaleCnls <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiMuRefVector <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .muRefDataFrame <- .ui$muRefDataFrame
@@ -1310,6 +1367,9 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiSkipCov <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .maxTheta <- max(.ui$iniDf$ntheta, na.rm=TRUE)
   if (!is.finite(.maxTheta)) {
@@ -1377,6 +1437,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
 
 #' @export
 rxUiGet.foceiOptEnv <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .x <- x[[1]]
   if (exists("foceiEnv", envir=.x)) {
     .env <- get("foceiEnv", envir=.x)

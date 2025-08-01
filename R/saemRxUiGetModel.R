@@ -162,6 +162,9 @@ rxUiGet.saemParamsLine <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .f <- x[[1]]
   rxode2::rxCombineErrorLines(.f, errLines=nmGetDistributionSaemLines(.f),
                               paramsLine=NA,
@@ -240,12 +243,18 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneSaem <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.saemPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
 
 #' @export
 rxUiGet.loadPruneSaemPred <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.saemPrunePred(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
@@ -253,6 +262,9 @@ rxUiGet.loadPruneSaemPred <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParamsToEstimate <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
@@ -280,6 +292,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .pars <- rxUiGet.saemParamsToEstimate(x, ...)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .pars[!(.pars %in% .cov$covariateParameter)]
@@ -291,6 +306,9 @@ rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
 
 #' @export
 rxUiGet.saemParams <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .par <- c(rxUiGet.saemParamsToEstimateCov(x, ...), .ui$covariates)
   paste0("params(", paste(.par, collapse=","), ")")
@@ -299,6 +317,9 @@ attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
 
 #' @export
 rxUiGet.saemModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPruneSaem(x, ...)
 
   .prd <- get("rx_pred_", envir = .s)
@@ -338,6 +359,9 @@ rxUiGet.saemModel <- function(x, ...) {
 
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .thetaNames <- .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), ]
@@ -391,6 +415,9 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
 
 #' @export
 rxUiGet.interpLinesStr <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .interp <- x[[1]]$interpLines
   if (is.null(.interp)) {

@@ -360,6 +360,9 @@ getValidNlmixrCtl.nls <- function(control) {
 
 #'@export
 rxUiGet.nlsModel0 <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- rxode2::rxUiDecompress(x[[1]])
   .ui$foceiModel0ll
 }
@@ -480,6 +483,9 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
 
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .f <- x[[1]]
   .ret <- rxode2::rxCombineErrorLines(.f, errLines=rxGetDistributionNlsLines(.f),
                                       prefixLines=.uiGetNlsTheta(.f),
@@ -525,11 +531,17 @@ rxUiGet.nlsModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNls <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.nlsPrune(x), promoteLinSens = FALSE)
 }
 
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPruneNls(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -593,17 +605,26 @@ rxUiGet.nlsRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlsSens <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
 }
 
 #' @export
 rxUiGet.nlsThetaS <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.loadPruneNlsSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
 
 #' @export
 rxUiGet.nlsHdTheta <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.nlsThetaS(x)
   .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
@@ -717,6 +738,9 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsEnv <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.nlsHdTheta(x, ...)
   .s$params <- rxUiGet.nlsParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
@@ -745,6 +769,9 @@ rxUiGet.nlsEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.nlsEnv(x, ...)
   list(thetaGrad=rxode2::rxode2(.s$..nlsS),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
@@ -754,6 +781,9 @@ rxUiGet.nlsSensModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParStart <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(lapply(.w, function(i){
@@ -764,6 +794,9 @@ rxUiGet.nlsParStart <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParStartTheta <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
@@ -775,6 +808,9 @@ rxUiGet.nlsParStartTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParams <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse=", "), ")")
@@ -782,6 +818,9 @@ rxUiGet.nlsParams <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParLower <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
@@ -792,6 +831,9 @@ rxUiGet.nlsParLower <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParUpper <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
@@ -802,6 +844,9 @@ rxUiGet.nlsParUpper <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .args <- vapply(seq_along(.iniDf$ntheta),
@@ -846,6 +891,9 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
 
 #' @export
 rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .args <- .nlsFormulaArgs(x)
   str2lang(paste0("~nlmixr2est::.nlmixrNlsFunValGrad(",
                   paste(.args, collapse=", "),

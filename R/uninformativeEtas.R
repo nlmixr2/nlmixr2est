@@ -1,5 +1,8 @@
 #' @export
 rxUiGet.transUE <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .w <- which(.iniDf$neta1 == .iniDf$neta2)

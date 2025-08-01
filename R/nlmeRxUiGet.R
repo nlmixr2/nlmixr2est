@@ -102,12 +102,18 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeFD <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.nlmeFD, "desc") <- "Symengine environment pred-only nlme environment"
 
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   #.par <- c(.estPar, .ui$covariates)
@@ -122,6 +128,9 @@ rxUiGet.nlmeFunction <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeRxModelFD <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .s <- rxUiGet.nlmeFD(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -159,6 +168,9 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeRxModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   rxUiGet.nlmeRxModelFD(x, ...)
 }
 
@@ -167,6 +179,9 @@ rxUiGet.nlmeRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeModel <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   # This includes both fixed effects and non-mu-referenced random effects
   saem.par <- rxUiGet.saemParamsToEstimate(x, ...)
@@ -189,6 +204,9 @@ rxUiGet.nlmeModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeGradDimnames <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .estPar <- rxUiGet.saemParamsToEstimate(x, ...)
   eval(parse(text=paste0("list(NULL, list(", paste(paste0(.estPar, "=quote(", .estPar, ")"), collapse=","), "))")))
 }
@@ -196,6 +214,9 @@ rxUiGet.nlmeGradDimnames <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmePdOmega <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .omega <- .ui$omega
   .omega2 <- .omega
@@ -227,12 +248,18 @@ rxUiGet.nlmeStart <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmeFixedFormula <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .start <- rxUiGet.nlmeStart(x, ...)
   as.formula(paste(paste(names(.start), collapse="+"), "~1"))
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
 #' @export
 rxUiGet.nlmeWeights <- function(x, ...) {
+  if (rxode2::.rstudioComplete()) {
+    return(list("calculated"))
+  }
   .ui <- x[[1]]
   .predDf <- .ui$predDf
   if (length(.predDf$cond) != 1) stop("cannot apply to multiple endpoint models", call.=FALSE)
