@@ -1,8 +1,5 @@
 #' @export
 rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   if (!rxode2::rxGetControl(x[[1]], "muRefCov", getOption("nlmixr2.saemMuRefCov", TRUE))) {
     return(data.frame(theta=character(0), covariate=character(0), covariateParameter=character(0)))
@@ -31,9 +28,6 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   # mu ref final removes time varying covariates
   .muRefFinal <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
@@ -49,9 +43,6 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInPars <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ret <- rxUiGet.saemInParsAndMuRefCovariates(x, ...)
   .ret$inPars
 }
@@ -59,9 +50,6 @@ rxUiGet.saemInPars <- function(x, ...) {
 
 #' @export
 rxUiGet.saemCovars <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ret <- rxUiGet.saemInParsAndMuRefCovariates(x, ...)
   .ret$covars
 }
@@ -69,9 +57,6 @@ rxUiGet.saemCovars <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .mod <- rxode2::rxode2(rxUiGet.saemModel(x, ...))
   .fnPred <- bquote(function(a, b, c) {
     rxode2::rxLoad(.(.mod))
@@ -89,9 +74,6 @@ rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFunction <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   # This function depends on the number of time varying covariates in the data
   .ui <- x[[1]]
   .mod <- rxUiGet.saemFunctionModPredQuote(x, ...)
@@ -144,9 +126,6 @@ rxUiGet.saemFunction <- function(x, ...) {
 
 #' @export
 rxUiGet.saemFixed <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .df <- .ui$iniDf
   .dft <- .df[!is.na(.df$ntheta), ]
@@ -205,25 +184,16 @@ rxUiGet.saemFixed <- function(x, ...) {
 
 #' @export
 rxUiGet.saemEtaTrans <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .saemEtaTrans(x, ...)
 }
 
 #' @export
 rxUiGet.saemEtaTransPred <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .saemEtaTrans(x, ..., nonMu=TRUE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
 #' @export
 rxUiGet.saemOmegaTrans <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
   .o <- order(.etaTrans)
   .etaTrans2 <- .etaTrans
@@ -239,9 +209,6 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -259,9 +226,6 @@ rxUiGet.saemModelOmega <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -504,9 +468,6 @@ rxUiGet.saemEtaNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .etaNames <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
   .etaNames <- .etaNames[.etaNames$neta1 == .etaNames$neta2,]
@@ -524,9 +485,6 @@ rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistEtaNames <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .names <- rxUiGet.saemParHistOmegaKeep(x, ...)
   .names <- .names[.names == 1L]
@@ -537,9 +495,6 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
@@ -548,9 +503,6 @@ rxUiGet.saemParHistNames <- function(x, ...) {
 
 #' @export
 rxUiGet.saemAres <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
@@ -574,9 +526,6 @@ rxUiGet.saemAres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemBres <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
@@ -604,9 +553,6 @@ rxUiGet.saemBres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemCres <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .predDf <- .ui$predDf
   .ini <- .ui$iniDf
@@ -646,9 +592,6 @@ rxUiGet.saemLres <- function(x, ...) {
 
 #' @export
 rxUiGet.saemLogEta <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
   .ce <- .ui$muRefCurEval
@@ -664,9 +607,6 @@ rxUiGet.saemLogEta <- function(x, ...) {
 
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .mod <- list(saem_mod = .ui$saemFunction)
   .covars <- rxUiGet.saemCovars(x, ...)
@@ -684,9 +624,6 @@ rxUiGet.saemModelList <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInitTheta <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .logEta <- rxUiGet.saemLogEta(x, ...)
   .names <- names(.logEta)
   .ui <- x[[1]]
@@ -745,9 +682,6 @@ rxUiGet.saemInitTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInitOmega <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .eta <- .iniDf[is.na(.iniDf$ntheta), ]
@@ -770,9 +704,6 @@ rxUiGet.saemInitOmega <- function(x, ...) {
 
 #' @export
 rxUiGet.saemInit <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   list(theta=rxUiGet.saemInitTheta(x, ...),
        omega=rxUiGet.saemInitOmega(x, ...))
 }
@@ -780,9 +711,6 @@ rxUiGet.saemInit <- function(x, ...) {
 
 #' @export
 rxUiGet.saemThetaDataFrame <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .theta <- .ui$theta
   .fixed <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "fix"]
@@ -798,9 +726,6 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
 
 #' @export
 rxUiGet.saemAddProp <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .parDf <- .ui$predDf
   .addProp <- as.integer(.parDf$addProp)

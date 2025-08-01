@@ -20,6 +20,26 @@ nmObjGet <- function(x, ...) {
     "BIC"))) {
     .nmObjEnsureObjective(x[[1]])
   }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGet"))
+    .cls <- class(.obj)[1]
+    .method <- paste0("nmObjGet.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
+      if (is.null(.rstudio)) {
+        return(list("calculated value"))
+      } else {
+        return(.rstudio)
+      }
+    }
+  }
   UseMethod("nmObjGet")
 }
 
@@ -90,6 +110,26 @@ nmObjGetData <- function(x, ...) {
   # need to assign environment correctly for UDF
   if (!inherits(x, "nmObjGetData")) {
     stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
+  }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGetData"))
+    .cls <- class(.obj)[1]
+    .method <- paste0("nmObjGetData.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
+      if (is.null(.rstudio)) {
+        return(list("calculated value"))
+      } else {
+        return(.rstudio)
+      }
+    }
   }
   UseMethod("nmObjGetData")
 }
@@ -393,9 +433,6 @@ nmObjGet.covLvl <- function(x, ...) {
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeLeft <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=FALSE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE)
@@ -407,9 +444,6 @@ attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeRight <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=FALSE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
@@ -421,9 +455,6 @@ attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fi
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeInner <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=FALSE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"))
@@ -435,9 +466,6 @@ attr(nmObjGetData.dataMergeRight, "desc") <- "inner join between original and fi
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.dataMergeFull <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=FALSE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE, all.y=TRUE)
@@ -449,9 +477,6 @@ attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit 
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeLeft <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=FALSE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE)
@@ -463,9 +488,6 @@ attr(nmObjGetData.fitMergeLeft, "desc") <- "left join between original and fit d
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeRight <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=TRUE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.y=TRUE)
@@ -477,9 +499,6 @@ attr(nmObjGetData.fitMergeRight, "desc") <- "right join between original and fit
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeInner <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=TRUE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"))
@@ -491,9 +510,6 @@ attr(nmObjGetData.fitMergeRight, "desc") <- "inner join between original and fit
 #' @rdname nmObjGetData
 #' @export
 nmObjGetData.fitMergeFull <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .obj <- x[[1]]
   .lst <- .dataMergeStub(.obj, preferFit=TRUE)
   .ret <- merge(.lst[[1]], .lst[[2]], by=c("ID", "nlmixrRowNums"), all.x=TRUE, all.y=TRUE)

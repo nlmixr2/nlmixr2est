@@ -381,9 +381,6 @@ getValidNlmixrCtl.nlm <- function(control) {
 
 #'@export
 rxUiGet.nlmModel0 <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- rxode2::rxUiDecompress(x[[1]])
   nlmixr2global$rxPredLlik <- TRUE
   on.exit(nlmixr2global$rxPredLlik <- FALSE)
@@ -435,18 +432,12 @@ rxUiGet.nlmModel0 <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlm <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .p <- .nlmPrune(x)
   .loadSymengine(.p, promoteLinSens = FALSE)
 }
 
 #' @export
 rxUiGet.nlmParams <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .w <- which(!.iniDf$fix)
@@ -462,9 +453,6 @@ rxUiGet.nlmParams <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .s <- rxUiGet.loadPruneNlm(x, ...)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
@@ -521,26 +509,17 @@ rxUiGet.nlmRxModel <- function(x, ...) {
 
 #' @export
 rxUiGet.loadPruneNlmSens <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .loadSymengine(.nlmPrune(x), promoteLinSens = TRUE)
 }
 
 #' @export
 rxUiGet.nlmThetaS <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
 
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .s <- rxUiGet.nlmThetaS(x)
   .stateVars <- rxode2stateOde(.s)
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
@@ -654,9 +633,6 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmEnv <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .s <- rxUiGet.nlmHdTheta(x, ...)
   .s$params <- rxUiGet.nlmParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
@@ -703,9 +679,6 @@ rxUiGet.nlmEnv <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .s <- rxUiGet.nlmEnv(x, ...)
   list(thetaGrad=rxode2::rxode2(.s$..nlmS),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
@@ -714,9 +687,6 @@ rxUiGet.nlmSensModel <- function(x, ...) {
 
 #' @export
 rxUiGet.nlmParNameFun <- function(x, ...) {
-  if (.rstudioComplete()) {
-    return(list("calculated"))
-  }
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .env <- new.env(parent=emptyenv())
