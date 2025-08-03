@@ -53,6 +53,7 @@ nmObjGet.iniUi <- function(x, ...) {
   rxode2::rxUiCompress(.ui)
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
+attr(nmObjGet.iniUi, "rstudio") <- emptyenv()
 
 
 #' Set if the nlmixr2 object will return a compressed ui
@@ -85,12 +86,14 @@ nmObjGet.finalUi <- function(x, ...) {
   }
 }
 attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
+attr(nmObjGet.finalUi, "rstudio") <- emptyenv()
 
 #' @export
 nmObjGet.finalUiEnv <- function(x, ...) {
   .env <- x[[1]]
   .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
 }
+attr(nmObjGet.finalUiEnv, "rstudio") <- emptyenv()
 
 #' @export
 nmObjGet.ui <- nmObjGet.finalUi
@@ -179,6 +182,8 @@ nmObjGet.dataNormInfo <- function(x, ...) {
 nmObjGet.warnings <-function(x, ...) {
   get("runInfo", x[[1]])
 }
+attr(nmObjGet.warnings, "desc") <- "Warnings from the nlmixr2 run"
+attr(nmObjGet.warnings, "rstudio") <- c("warn1", "warn2")
 
 ##' @export
 nmObjGetData.default <- function(x, ...) {
@@ -220,6 +225,7 @@ nmObjGet.modelName <- function(x, ...) {
   .ui$modelName
 }
 attr(nmObjGet.modelName, "desc") <- "name of the model used for nlmixr2 model fit"
+attr(nmObjGet.modelName, "rstudio") <- "modelName"
 
 #' @rdname nmObjGet
 #' @export
@@ -233,6 +239,7 @@ nmObjGet.cor <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
+attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @rdname nmObjGet
 #' @export
@@ -251,6 +258,7 @@ nmObjGet.omegaR <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
+attr(nmObjGet.omegaR, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @rdname nmObjGet
 #' @export
@@ -569,25 +577,26 @@ nmObjGet.parHistStacked <- function(x, ...) {
 }
 attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
 
-
-
 #' @rdname nmObjGet
 #' @export
 nmObjGet.md5 <- function(x, ...) {
   .nlmixr2Md5(x[[1]])
 }
+attr(nmObjGet.md5, "rstudio") <- "md5"
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.notes <- function(x, ...) {
   .notesFit(x[[1]])
 }
+attr(nmObjGet.notes, "rstudio") <- c("a", "b")
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.sigma <- function(x, ...) {
   .sigma(x[[1]])
 }
+attr(nmObjGet.sigma, "rstudio") <- numeric(0)
 
 #' @rdname nmObjGet
 #' @export
@@ -601,6 +610,7 @@ nmObjGet.coefficients <- function(x, ...) {
 nmObjGet.env <- function(x, ...) {
   x[[1]]
 }
+attr(nmObjGet.env, "rstudio") <- emptyenv()
 
 #' @rdname nmObjGet
 #' @export
@@ -614,6 +624,7 @@ nmObjGet.condition <- function(x, ...) {
   }
   return(NULL)
 }
+attr(nmObjGet.condition, "rstudio") <- 1
 
 #' @rdname nmObjGet
 #' @export
@@ -630,6 +641,8 @@ nmObjGet.seed <- function(x, ...) {
   }
   NULL
 }
+attr(nmObjGet.seed, "rstudio") <- 123456
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.saemCfg <- function(x, ...) {
@@ -684,6 +697,7 @@ nmObjGet.saemEvtM <- function(x, ...) {
   as.matrix(nmObjGet.saemEvtMDf(x, ...))
 }
 #attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
+attr(nmObjGet.saemEvtM, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @export
 nmObjGet.saem <- function(x, ...) {

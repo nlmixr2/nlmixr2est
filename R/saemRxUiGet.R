@@ -24,7 +24,7 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   }
   .cov
 }
-attr(rxUiGet.saemMuRefCovariateDataFrame, "desc") <- NA
+attr(rxUiGet.saemMuRefCovariateDataFrame, "rstudio") <- NA
 
 
 #' @export
