@@ -1894,7 +1894,9 @@ nlmixr2Est.focei <- function(env, ...) {
       rm("control", envir=.ui)
     }
   })
-  .foceiFamilyReturn(env, .ui, ..., est="focei")
+  .ret <- .foceiFamilyReturn(env, .ui, ..., est="focei")
+  rxode2::rxAllowUnload(TRUE)
+  .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 

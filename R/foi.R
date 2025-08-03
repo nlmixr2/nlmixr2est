@@ -133,6 +133,7 @@ nlmixr2Est.foi <- function(env, ...) {
   assign("control", env$control, envir=.ret$env)
   rm("control", envir=.ret$env)
   .addObjDfToReturn(.ret, .objDf)
+  rxode2::rxAllowUnload(TRUE)
   .ret
 }
 attr(nlmixr2Est.foi, "covPresent") <- TRUE
