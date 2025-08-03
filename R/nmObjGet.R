@@ -86,14 +86,14 @@ nmObjGet.finalUi <- function(x, ...) {
   }
 }
 attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
-attr(nmObjGet.finalUi, "rstudio") <- emptyenv()
+attr(nmObjGet.finalUi, "rstudio") <- NA # passthrough for completion of $ui
 
 #' @export
 nmObjGet.finalUiEnv <- function(x, ...) {
   .env <- x[[1]]
   .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
 }
-attr(nmObjGet.finalUiEnv, "rstudio") <- emptyenv()
+attr(nmObjGet.finalUiEnv, "rstudio") <- NA
 
 #' @export
 nmObjGet.ui <- nmObjGet.finalUi
