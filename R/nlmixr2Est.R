@@ -255,6 +255,7 @@ nlmixr2Est0 <- function(env, ...) {
             }
             gc()
             .minfo("try resetting cache and unloading all rxode2 models")
+            rxode2::rxUnloadAll(TRUE) # make sure this is actually unloading models
             try(rxode2::rxUnloadAll())
             rxode2::rxClean()
             assign("unload", TRUE, envir=.envReset)

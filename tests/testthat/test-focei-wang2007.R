@@ -1,4 +1,5 @@
 nmTest({
+
   dat <- Wang2007
   dat$DV <- dat$Y
 
@@ -54,6 +55,7 @@ nmTest({
   fo <- .nlmixr(fo)
 
   testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2, log=FALSE) {
+    rxode2::rxUnloadAll()
     .f <- fun(f)
     .fo <- fun(fo)
     .dode <- dat2
