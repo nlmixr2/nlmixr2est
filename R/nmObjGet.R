@@ -20,6 +20,29 @@ nmObjGet <- function(x, ...) {
     "BIC"))) {
     .nmObjEnsureObjective(x[[1]])
   }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGet"))
+    .cls <- .arg
+    .method <- paste0("nmObjGet.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
+      if (length(.rstudio) == 0) {
+        return(list("calculated value"))
+      } else if (is.na(.rstudio)) {
+        # If the rstudio value is NA, then we assume that it is a passthrough
+        # and we return the value the next method
+      } else {
+        return(.rstudio)
+      }
+    }
+  }
   UseMethod("nmObjGet")
 }
 
@@ -33,6 +56,7 @@ nmObjGet.iniUi <- function(x, ...) {
   rxode2::rxUiCompress(.ui)
 }
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
+attr(nmObjGet.iniUi, "rstudio") <- emptyenv()
 
 
 #' Set if the nlmixr2 object will return a compressed ui
@@ -65,12 +89,14 @@ nmObjGet.finalUi <- function(x, ...) {
   }
 }
 attr(nmObjGet.finalUi, "desc") <- "The final ui used to run the model"
+attr(nmObjGet.finalUi, "rstudio") <- NA # passthrough for completion of $ui
 
 #' @export
 nmObjGet.finalUiEnv <- function(x, ...) {
   .env <- x[[1]]
   .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
 }
+attr(nmObjGet.finalUiEnv, "rstudio") <- NA
 
 #' @export
 nmObjGet.ui <- nmObjGet.finalUi
@@ -90,6 +116,29 @@ nmObjGetData <- function(x, ...) {
   # need to assign environment correctly for UDF
   if (!inherits(x, "nmObjGetData")) {
     stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
+  }
+  if (.rstudioComplete()) {
+    # If Rstudio is running completion, then we need to simply
+    # return a dummy object so it doesn't calculate the value.
+    #
+    # However, if the object actually exists, then use the rxUiGet.default method
+    # to get the value.
+    .v <- as.character(utils::methods("nmObjGetData"))
+    .cls <- class(x)[1]
+    .method <- paste0("nmObjGetData.", .cls)
+    if (.method %in% .v) {
+      # If there is a rstudio value in the method, assume that is what you
+      # wish to return for the rstudio auto-completion method
+      .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
+      if (length(.rstudio) == 0) {
+        return(list("calculated value"))
+      } else if (is.na(.rstudio)) {
+        # If the rstudio value is NA, then we assume that it is a passthrough
+        # and we return the value the next method
+      } else {
+        return(.rstudio)
+      }
+    }
   }
   UseMethod("nmObjGetData")
 }
@@ -139,6 +188,8 @@ nmObjGet.dataNormInfo <- function(x, ...) {
 nmObjGet.warnings <-function(x, ...) {
   get("runInfo", x[[1]])
 }
+attr(nmObjGet.warnings, "desc") <- "Warnings from the nlmixr2 run"
+attr(nmObjGet.warnings, "rstudio") <- c("warn1", "warn2")
 
 ##' @export
 nmObjGetData.default <- function(x, ...) {
@@ -180,6 +231,7 @@ nmObjGet.modelName <- function(x, ...) {
   .ui$modelName
 }
 attr(nmObjGet.modelName, "desc") <- "name of the model used for nlmixr2 model fit"
+attr(nmObjGet.modelName, "rstudio") <- "modelName"
 
 #' @rdname nmObjGet
 #' @export
@@ -193,6 +245,7 @@ nmObjGet.cor <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
+attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @rdname nmObjGet
 #' @export
@@ -211,6 +264,7 @@ nmObjGet.omegaR <- function(x, ...) {
   .cor
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
+attr(nmObjGet.omegaR, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @rdname nmObjGet
 #' @export
@@ -400,6 +454,8 @@ nmObjGetData.dataMergeLeft <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeLeft, "rstudio") <- data.frame(data="prefer original",
+                                                          left="original", right="fit")
 
 #' @rdname nmObjGetData
 #' @export
@@ -411,6 +467,8 @@ nmObjGetData.dataMergeRight <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeRight, "rstudio") <- data.frame(data="prefer original",
+                                                          left="original", right="fit")
 
 #' @rdname nmObjGetData
 #' @export
@@ -421,7 +479,10 @@ nmObjGetData.dataMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.dataMergeRight, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in original dataset)"
+attr(nmObjGetData.dataMergeInner, "rstudio") <- data.frame(data="prefer original",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -433,6 +494,9 @@ nmObjGetData.dataMergeFull <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.dataMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.dataMergeFull, "rstudio") <- data.frame(data="prefer data",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -444,6 +508,9 @@ nmObjGetData.fitMergeLeft <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeLeft, "desc") <- "left join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeLeft, "rstudio") <- data.frame(data="prefer fit",
+                                                           left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -455,6 +522,9 @@ nmObjGetData.fitMergeRight <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeRight, "desc") <- "right join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeRight, "rstudio") <- data.frame(data="prefer fit",
+                                                        left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -465,7 +535,10 @@ nmObjGetData.fitMergeInner <- function(x, ...) {
   .ret <- .ret[, names(.ret) != "nlmixrRowNums"]
   .ret
 }
-attr(nmObjGetData.fitMergeRight, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeInner, "desc") <- "inner join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeInner, "rstudio") <- data.frame(data="prefer fit",
+                                                          left="original", right="fit")
+
 
 #' @rdname nmObjGetData
 #' @export
@@ -477,6 +550,9 @@ nmObjGetData.fitMergeFull <- function(x, ...) {
   .ret
 }
 attr(nmObjGetData.fitMergeFull, "desc") <- "full join between original and fit dataset (prefer columns in fit dataset)"
+attr(nmObjGetData.fitMergeFull, "rstudio") <- data.frame(data="prefer fit",
+                                                          left="original", right="fit")
+
 
 #' @rdname nmObjGet
 #' @export
@@ -507,25 +583,26 @@ nmObjGet.parHistStacked <- function(x, ...) {
 }
 attr(nmObjGet.parHistStacked, "desc") <- "stacked parameter history"
 
-
-
 #' @rdname nmObjGet
 #' @export
 nmObjGet.md5 <- function(x, ...) {
   .nlmixr2Md5(x[[1]])
 }
+attr(nmObjGet.md5, "rstudio") <- "md5"
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.notes <- function(x, ...) {
   .notesFit(x[[1]])
 }
+attr(nmObjGet.notes, "rstudio") <- c("a", "b")
 
 #' @rdname nmObjGet
 #' @export
 nmObjGet.sigma <- function(x, ...) {
   .sigma(x[[1]])
 }
+attr(nmObjGet.sigma, "rstudio") <- numeric(0)
 
 #' @rdname nmObjGet
 #' @export
@@ -539,6 +616,7 @@ nmObjGet.coefficients <- function(x, ...) {
 nmObjGet.env <- function(x, ...) {
   x[[1]]
 }
+attr(nmObjGet.env, "rstudio") <- emptyenv()
 
 #' @rdname nmObjGet
 #' @export
@@ -552,6 +630,7 @@ nmObjGet.condition <- function(x, ...) {
   }
   return(NULL)
 }
+attr(nmObjGet.condition, "rstudio") <- 1
 
 #' @rdname nmObjGet
 #' @export
@@ -568,6 +647,8 @@ nmObjGet.seed <- function(x, ...) {
   }
   NULL
 }
+attr(nmObjGet.seed, "rstudio") <- 123456
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.saemCfg <- function(x, ...) {
@@ -622,6 +703,7 @@ nmObjGet.saemEvtM <- function(x, ...) {
   as.matrix(nmObjGet.saemEvtMDf(x, ...))
 }
 #attr(nmObjGet.saemEvtM, "desc") <- "saem event matrix evtM for mcmc; stored in saem.cfg"
+attr(nmObjGet.saemEvtM, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @export
 nmObjGet.saem <- function(x, ...) {

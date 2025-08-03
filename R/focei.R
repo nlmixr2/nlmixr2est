@@ -261,6 +261,7 @@ rxUiGet.foceiParams <- function(x, ...) {
   .ui <- x[[1]]
   .uiGetThetaEtaParams(.ui, str=TRUE)
 }
+attr(rxUiGet.foceiParams, "rstudio") <- "params(THETA[1], ETA[1])"
 
 #' @export
 rxUiGet.foceiCmtPreModel <- function(x, ...) {
@@ -269,6 +270,7 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
   if (length(.state) == 0) return("")
   paste(paste0("cmt(", .state, ")"), collapse="\n")
 }
+attr(rxUiGet.foceiCmtPreModel, "rstudio") <- ""
 
 # This handles the errors for focei
 .createFoceiLineObject <- function(x, line) {
@@ -380,6 +382,7 @@ rxUiGet.foceiModel0 <- function(x, ...) {
                               dvidLine=FALSE)
 }
 #attr(rxUiGet.foceiModel0, "desc") <- "FOCEi model base"
+attr(rxUiGet.foceiModel0, "rstudio") <- quote(rxModelVars({}))
 
 #' @export
 rxUiGet.foceiModel0ll <- function(x, ...) {
@@ -393,6 +396,8 @@ rxUiGet.foceiModel0ll <- function(x, ...) {
                               cmtLines=FALSE,
                               dvidLine=FALSE)
 }
+
+attr(rxUiGet.foceiModel0ll, "rstudio") <- quote(rxModelVars({}))
 
 
 .foceiPrune <- function(x, fullModel=TRUE) {
@@ -452,12 +457,14 @@ rxUiGet.loadPruneSens <- function(x, ...) {
   .loadSymengine(.foceiPrune(x), promoteLinSens = TRUE)
 }
 #attr(rxUiGet.loadPruneSens, "desc") <- "load sensitivity with linCmt() promoted"
+attr(rxUiGet.loadPruneSens, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.loadPrune <- function(x, ...) {
   .loadSymengine(.foceiPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPrune, "desc") <- "load sensitivity without linCmt() promoted"
+attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
 
 .sensEtaOrTheta <- function(s, theta=FALSE) {
   .etaVars <- NULL
@@ -481,6 +488,7 @@ rxUiGet.foceiEtaS <- function(x, ..., theta=FALSE) {
   .sensEtaOrTheta(.s)
 }
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
+attr(rxUiGet.foceiEtaS, "rstudio") <- emptyenv()
 
 
 #' @export
@@ -489,6 +497,7 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
   .sensEtaOrTheta(.s, theta=TRUE)
 }
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
+attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
@@ -536,6 +545,7 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   .s
 }
 attr(rxUiGet.foceiHdEta, "desc") <- "Generate the d(err)/d(eta) values for FO related methods"
+attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 
 
 #' Finalize inner rxode2 based on symengine saved info
@@ -642,6 +652,7 @@ rxUiGet.foceiEnv <- function(x, ...) {
   .s
 }
 #attr(rxUiGet.foceiEnv, "desc") <- "Get the focei environment"
+attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.foceEnv <- function(x, ...) {
@@ -657,6 +668,7 @@ rxUiGet.foceEnv <- function(x, ...) {
   .s
 }
 #attr(rxUiGet.foceEnv, "desc") <- "Get the foce environment"
+attr(rxUiGet.foceEnv, "rstudio") <- emptyenv()
 
 
 #' @export
@@ -671,6 +683,7 @@ rxUiGet.getEBEEnv <- function(x, ...) {
   .s
 }
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
+attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
 .toRx <- function(x, msg) {
   if (is.null(x)) {
@@ -711,6 +724,8 @@ rxUiGet.predDfFocei <- function(x, ...) {
     }
   }
 }
+attr(rxUiGet.predDfFocei, "rstudio") <- NA
+
 
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE,
@@ -954,12 +969,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
                    .ui$lstExpr))
 }
 #attr(rxUiGet.foceiModelDigest, "desc") <- "Get the md5 digest for the focei model"
+attr(rxUiGet.foceiModelDigest, "rstudio") <- "hash"
+
 #' @export
 rxUiGet.foceiModelCache <- function(x, ...) {
   file.path(rxode2::rxTempDir(),
             paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs"))
 }
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
+attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 
 #' @export
 rxUiGet.foceiModel <- function(x, ...) {
@@ -999,6 +1017,7 @@ rxUiGet.foceiFixed <- function(x, ...) {
   c(.fix, .dft$fix)
 }
 #attr(rxUiGet.foFixed, "desc") <- "focei theta fixed vector"
+attr(rxUiGet.foceiFixed, "rstudio") <- c(FALSE, TRUE)
 
 #' @export
 rxUiGet.foceiEtaNames <- function(x, ...) {
@@ -1008,7 +1027,7 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
   .dft[.dft$neta1 == .dft$neta2, "name"]
 }
 #attr(rxUiGet.foceiEtaNames, "desc") <- "focei eta names"
-
+attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 
 #' This assigns the tolerances based on a different tolerance for the sensitivity equations
 #'
@@ -1240,6 +1259,7 @@ rxUiGet.scaleCtheta <- function(x, ...) {
   .foceiOptEnvSetupScaleC(.ui, .env)
   .env$scaleC[!.ui$iniDf$fix]
 }
+attr(rxUiGet.scaleCtheta, "rstudio") <- c(1.0, NA_real_)
 
 #' @export
 rxUiGet.scaleCnls <- function(x, ...) {
@@ -1249,6 +1269,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .foceiOptEnvSetupScaleC(.ui, .env)
   .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
 }
+attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
 #' This sets up the transformation bounds and indexes and bounds for inner.cpp
 #'
@@ -1307,6 +1328,7 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
   }
 }
 #attr(rxUiGet.foceiMuRefVector, "desc") <- "focei mu ref vector"
+attr(rxUiGet.foceiMuRefVector, "rstudio") <- c(0L, -1L)
 
 #' @export
 rxUiGet.foceiSkipCov <- function(x, ...) {
@@ -1323,6 +1345,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
   }
 }
 #attr(rxUiGet.foceiSkipCov, "desc") <- "what covariance elements to skip"
+attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
 
 #'  Setup the skip covariate function
 #'
@@ -1396,6 +1419,8 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env
 }
 attr(rxUiGet.foceiOptEnv, "desc") <- "Get focei optimization environment"
+attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
+
 #' This function process the data for use in focei
 #'
 #' The $origData is the data that is fed into the focei before modification

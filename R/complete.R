@@ -39,11 +39,38 @@
 
 ##' @export
 .DollarNames.nlmixr2FitCore <- function(x, pattern) {
-  ##FIXME
   .env <- x$env
   .cmp <- c(
     names(x),
     names(.nmObjGetSupportedDollars()))
+  .cmp <- c(.cmp, "env")
+  grep(pattern, .cmp, value = TRUE)
+}
+
+.nmObjGetDataSupportedDollars <- function() {
+  .v <- as.character(utils::methods("nmObjGetData"))
+  .v <- .v[.v != "nmObjGetData.default"]
+  .cls <- vapply(.v, function(methodStr){
+    substr(methodStr, 14, nchar(methodStr))
+  }, character(1), USE.NAMES=FALSE)
+  .v <- vapply(.cls, function(cls){
+    .desc <- attr(utils::getS3method("nmObjGetData", cls), "desc")
+    if (is.null(.desc)) .desc <- ""
+    .desc
+  }, character(1), USE.NAMES=TRUE)
+  # Take out any "hidden methods"
+  .w <- which(.v != "")
+  .v <- c(.v[.w], .nmObjGetEnvInfo)
+  c(.nmObjGetSupportedDollars(), .v)
+}
+
+#' @export
+.DollarNames.nlmixr2FitData <- function(x, pattern) {
+  ##FIXME
+  .env <- x$env
+  .cmp <- c(
+    names(x),
+    names(.nmObjGetDataSupportedDollars()))
   .cmp <- c(.cmp, "env")
   grep(pattern, .cmp, value = TRUE)
 }

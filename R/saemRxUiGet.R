@@ -24,6 +24,7 @@ rxUiGet.saemMuRefCovariateDataFrame <- function(x, ...) {
   }
   .cov
 }
+attr(rxUiGet.saemMuRefCovariateDataFrame, "rstudio") <- NA
 
 
 #' @export
@@ -47,6 +48,7 @@ rxUiGet.saemInPars <- function(x, ...) {
   .ret$inPars
 }
 #attr(rxUiGet.saemInPars, "desc") <- "get inPars"
+attr(rxUiGet.saemInPars, "rstudio") <- "char"
 
 #' @export
 rxUiGet.saemCovars <- function(x, ...) {
@@ -54,6 +56,7 @@ rxUiGet.saemCovars <- function(x, ...) {
   .ret$covars
 }
 #attr(rxUiGet.saemInPars, "desc") <- "get saemn mu-referenced non-time varying covariates"
+attr(rxUiGet.saemCovars, "rstudio") <- "char"
 
 #' @export
 rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
@@ -71,6 +74,7 @@ rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
   })
   list(.mod, .fnPred)
 }
+
 
 #' @export
 rxUiGet.saemFunction <- function(x, ...) {
@@ -123,6 +127,7 @@ rxUiGet.saemFunction <- function(x, ...) {
   attr(.fn, "nendpnt") <- .nendpnt
   .fn
 }
+attr(rxUiGet.saemFunction, "rstudio") <- function(){}
 
 #' @export
 rxUiGet.saemFixed <- function(x, ...) {
@@ -155,6 +160,7 @@ rxUiGet.saemFixed <- function(x, ...) {
   c(.dft, .extra)
 }
 #attr(rxUiGet.saemFixed, "desc") <- "Get the saem fixed parameters"
+attr(rxUiGet.saemFixed, "rstudio") <- function(){}
 
 .saemEtaTrans <- function(x, ..., nonMu=FALSE) {
   .ui <- x[[1]]
@@ -186,12 +192,15 @@ rxUiGet.saemFixed <- function(x, ...) {
 rxUiGet.saemEtaTrans <- function(x, ...) {
   .saemEtaTrans(x, ...)
 }
+attr(rxUiGet.saemEtaTrans, "rstudio") <- c(1L, 3L)
 
 #' @export
 rxUiGet.saemEtaTransPred <- function(x, ...) {
   .saemEtaTrans(x, ..., nonMu=TRUE)
 }
 #attr(rxUiGet.saemEtaTrans, "desc") <- "Get the saem eta to theta translation"
+attr(rxUiGet.saemEtaTransPred, "rstudio") <- c(1L, 3L)
+
 #' @export
 rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans <- rxUiGet.saemEtaTrans(x, ...)
@@ -205,6 +214,7 @@ rxUiGet.saemOmegaTrans <- function(x, ...) {
   .etaTrans2
 }
 #attr(rxUiGet.saemOmegaTrans, "desc") <- "Get the saem omega to UI omega translation"
+attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
 
 
 #' @export
@@ -223,6 +233,7 @@ rxUiGet.saemModelOmega <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmega, "desc") <- "Get the saem model omega"
+attr(rxUiGet.saemModelOmega, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixed <- function(x, ...) {
@@ -240,6 +251,7 @@ rxUiGet.saemModelOmegaFixed <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixed, "desc") <- "Get the indicator for saem model omega fixed components"
+attr(rxUiGet.saemModelOmegaFixed, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
@@ -257,7 +269,7 @@ rxUiGet.saemModelOmegaFixedValues <- function(x, ...) {
   .mat
 }
 #attr(rxUiGet.saemModelOmegaFixedValues, "desc") <- "Get the omega values may be fixed"
-
+attr(rxUiGet.saemModelOmegaFixedValues, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
 #' @export
 rxUiGet.saemLow <- function(x, ...) {
@@ -265,6 +277,7 @@ rxUiGet.saemLow <- function(x, ...) {
   .ui$predDf$trLow
 }
 #attr(rxUiGet.saemLow, "desc") <- "Get the saem error transformation lower boundary"
+attr(rxUiGet.saemLow, "rstudio") <- -Inf
 
 #' @export
 rxUiGet.saemHi <- function(x, ...) {
@@ -272,6 +285,7 @@ rxUiGet.saemHi <- function(x, ...) {
   .ui$predDf$trHi
 }
 #attr(rxUiGet.saemHi, "desc") <- "Get the saem error transformation higher boundary"
+attr(rxUiGet.saemHi, "rstudio") <- Inf
 
 #' @export
 rxUiGet.saemPropT <- function(x, ...) {
@@ -279,6 +293,7 @@ rxUiGet.saemPropT <- function(x, ...) {
   as.integer((.ui$predDf$errTypeF=="transformed")*1L)
 }
 #attr(rxUiGet.saemPropT, "desc") <- "Get the saem transformation type for the function"
+attr(rxUiGet.saemPropT, "rstudio") <- 1L
 
 #' @export
 rxUiGet.saemYj <- function(x, ...) {
@@ -286,6 +301,7 @@ rxUiGet.saemYj <- function(x, ...) {
   as.integer(.ui$predDf$transform) - 1
 }
 #attr(rxUiGet.saemYj, "desc") <- "Get the saem transformation type"
+attr(rxUiGet.saemYj, "rstudio") <- 1L
 
 #' @export
 rxUiGet.saemResMod <- function(x, ...) {
@@ -307,6 +323,7 @@ rxUiGet.saemResMod <- function(x, ...) {
          }, integer(1), USE.NAMES=FALSE)
 }
 #attr(rxUiGet.saemResMod, "desc") <- "saem res.mod component"
+attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemModNumEst <- function(x, ...) {
@@ -327,18 +344,21 @@ rxUiGet.saemModNumEst <- function(x, ...) {
   }, integer(1), USE.NAMES=TRUE)
 }
 #attr(rxUiGet.saemModNumEst, "desc") <- "saem number of parameters that can be estimated for each component"
+attr(rxUiGet.saemModNumEst, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemModResOffset <- function(x, ...) { # res_offset
   cumsum(c(0, rxUiGet.saemModNumEst(x, ...)))
 }
 #attr(rxUiGet.saemModResOffset, "desc") <- "saem residual parameters offset"
+attr(rxUiGet.saemModResOffset, "rstudio") <- c(1, 2)
 
 #' @export
 rxUiGet.saemModResTotalResiduals <- function(x, ...) { # res_offset
   sum(rxUiGet.saemModNumEst(x, ...))
 }
 #attr(rxUiGet.saemModResTotalResiduals, "desc") <- "saem total number of residuals"
+attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
 
 #' Get the ares name based on the condition
 #'
@@ -428,6 +448,7 @@ rxUiGet.saemResNames <- function(x, ...) {
   .saemGetResItem(.ui, column="name")
 }
 #attr(rxUiGet.saemResNames, "desc") <- "Get error names for SAEM"
+attr(rxUiGet.saemResNames, "rstudio") <- "add.err"
 
 #' @export
 rxUiGet.saemResFixed <- function(x, ...) {
@@ -435,6 +456,7 @@ rxUiGet.saemResFixed <- function(x, ...) {
   as.integer(.saemGetResItem(.ui, column="fix"))
 }
 #attr(rxUiGet.saemResFixed, "desc") <- "Integer vector of residual fixed components"
+attr(rxUiGet.saemResFixed, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemParHistResNames <- function(x, ...) {
@@ -442,12 +464,14 @@ rxUiGet.saemParHistResNames <- function(x, ...) {
   rxUiGet.saemResNames(x, ...)[.fix]
 }
 #attr(rxUiGet.saemParHistResNames, "desc") <-"Get the SAEM parameter history residual names"
+attr(rxUiGet.saemParHistResNames, "rstudio") <- "add.sd"
 
 #' @export
 rxUiGet.saemResValue <- function(x, ...) {
   .ui <- x[[1]]
   .saemGetResItem(.ui, column="est")
 }
+attr(rxUiGet.saemResValue, "rstudio") <- 0.7
 
 #' @export
 rxUiGet.saemEtaNames <- function(x, ...) {
@@ -465,6 +489,7 @@ rxUiGet.saemEtaNames <- function(x, ...) {
   .names
 }
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get ETA names for SAEM based on theta order"
+attr(rxUiGet.saemEtaNames,"rstudio") <- "eta.names"
 
 #' @export
 rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
@@ -482,6 +507,7 @@ rxUiGet.saemParHistOmegaKeep <- function(x, ...) {
   }, integer(1))
 }
 #attr(rxUiGet.saemOmegaKeep, "desc") <- "Get the etas that are kept for SAEM based on theta order"
+attr(rxUiGet.saemParHistOmegaKeep, "rstudio") <- c("eta.ka"=1)
 
 #' @export
 rxUiGet.saemParHistEtaNames <- function(x, ...) {
@@ -492,6 +518,7 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
   paste0("V(", names(.names), ")")
 }
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
+attr(rxUiGet.saemParHistEtaNames, "rstudio") <- "V(ka)"
 
 #' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
@@ -500,6 +527,7 @@ rxUiGet.saemParHistNames <- function(x, ...) {
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
   c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...))
 }
+attr(rxUiGet.saemParHistNames, "rstudio") <- c("ka", "add.sd")
 
 #' @export
 rxUiGet.saemAres <- function(x, ...) {
@@ -523,6 +551,7 @@ rxUiGet.saemAres <- function(x, ...) {
   }, numeric(1), USE.NAMES=FALSE))
 }
 #attr(rxUiGet.saemAres, "desc") <- "ares initial estimates for saem"
+attr(rxUiGet.saemAres, "rstudio") <- 0.7
 
 #' @export
 rxUiGet.saemBres <- function(x, ...) {
@@ -550,6 +579,7 @@ rxUiGet.saemBres <- function(x, ...) {
   }, numeric(1), USE.NAMES=FALSE))
 }
 #attr(rxUiGet.saemBres, "desc") <- "bres initial estimates for saem"
+attr(rxUiGet.saemBres, "rstudio") <- 0.7
 
 #' @export
 rxUiGet.saemCres <- function(x, ...) {
@@ -569,6 +599,8 @@ rxUiGet.saemCres <- function(x, ...) {
   }, numeric(1), USE.NAMES=FALSE))
 }
 #attr(rxUiGet.saemCres, "desc") <- "cres initial estimates for saem"
+attr(rxUiGet.saemCres, "rstudio") <- 0.7
+
 #' @export
 rxUiGet.saemLres <- function(x, ...) {
   .ui <- x[[1]]
@@ -589,6 +621,7 @@ rxUiGet.saemLres <- function(x, ...) {
   }, numeric(1), USE.NAMES=FALSE))
 }
 #attr(rxUiGet.saemLres, "desc") <- "lres (lambda) initial estimates for saem"
+attr(rxUiGet.saemLres, "rstudio") <- 0.7
 
 #' @export
 rxUiGet.saemLogEta <- function(x, ...) {
@@ -604,6 +637,7 @@ rxUiGet.saemLogEta <- function(x, ...) {
   }, logical(1))
 }
 #attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
+attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
 
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
@@ -679,6 +713,7 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .ret
 }
 #attr(rxUiGet.saemInitTheta, "desc") <- "initialization for saem's theta"
+attr(rxUiGet.saemInitTheta, "rstudio") <- c(" "=1, tcl=1)
 
 #' @export
 rxUiGet.saemInitOmega <- function(x, ...) {
@@ -701,6 +736,7 @@ rxUiGet.saemInitOmega <- function(x, ...) {
   .ret
 }
 #attr(rxUiGet.saemInitOmega, "desc") <- "initialization for saem's omega"
+attr(rxUiGet.saemInitOmega, "rstudio") <- c(tka=0.6)
 
 #' @export
 rxUiGet.saemInit <- function(x, ...) {
@@ -717,12 +753,14 @@ rxUiGet.saemThetaDataFrame <- function(x, ...) {
   data.frame(lower= -Inf, theta=.theta, fixed=.fixed, upper=Inf, row.names=names(.theta))
 }
 #attr(rxUiGet.saemThetaDataFrame, "desc") <- "Get theta data frame"
+attr(rxUiGet.saemThetaDataFrame, "rstudio") <- NA
 
 #' @export
 rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   1L-as.integer(rxUiGet.saemFixed(x, ...))
 }
 #attr(rxUiGet.saemParHistThetaKeep, "desc") <- "The thetas that are kept in the parameter history"
+attr(rxUiGet.saemParHistThetaKeep, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemAddProp <- function(x, ...) {
@@ -737,3 +775,4 @@ rxUiGet.saemAddProp <- function(x, ...) {
   .addProp
 }
 #attr(rxUiGet.saemParHistThetaKeep, "desc") <- "Get the saem addProp integer vector"
+attr(rxUiGet.saemAddProp, "rstudio") <- 2

@@ -404,6 +404,7 @@ rxUiGet.nlmModel0 <- function(x, ...) {
                     list(str2lang("rx_pred_ <- -rx_pred_"))))
   as.call(c(list(quote(`rxModelVars`)), .ret))
 }
+attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 
 #' Load the nlm model into symengine
 #'
@@ -435,6 +436,7 @@ rxUiGet.loadPruneNlm <- function(x, ...) {
   .p <- .nlmPrune(x)
   .loadSymengine(.p, promoteLinSens = FALSE)
 }
+attr(rxUiGet.loadPruneNlm, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmParams <- function(x, ...) {
@@ -450,6 +452,7 @@ rxUiGet.nlmParams <- function(x, ...) {
          }, character(1), USE.NAMES = FALSE), "DV"),
          collapse=","), ")")
 }
+attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
@@ -511,12 +514,14 @@ rxUiGet.nlmRxModel <- function(x, ...) {
 rxUiGet.loadPruneNlmSens <- function(x, ...) {
   .loadSymengine(.nlmPrune(x), promoteLinSens = TRUE)
 }
+attr(rxUiGet.loadPruneNlmSens, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
+attr(rxUiGet.nlmThetaS, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
@@ -562,6 +567,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   rxode2::rxProgressStop()
   .s
 }
+attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 
 #' Finalize nlm rxode2 based on symengine saved info
 #'
@@ -675,7 +681,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
 
   .s
 }
-#attr(rxUiGet.foceEnv, "desc") <- "Get the foce environment"
+attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
@@ -700,6 +706,7 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
              .ret
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
 }
+attr(rxUiGet.nlmParNameFun, "rstudio") <- function(){c(`THETA[1]`=1, `THETA[2]`=2, `THETA[3]`=3)}
 
 #' @export
 rxUiGet.optimParNameFun <- rxUiGet.nlmParNameFun
@@ -709,6 +716,7 @@ rxUiGet.nlmParIni <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$est[!.ui$iniDf$fix]
 }
+attr(rxUiGet.nlmParIni, "rstudio") <- c(1, 2, 3)
 
 #' @export
 rxUiGet.optimParIni <- rxUiGet.nlmParIni
@@ -718,6 +726,7 @@ rxUiGet.nlmParName <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$name[!.ui$iniDf$fix]
 }
+attr(rxUiGet.nlmParName, "rstudio") <- c("THETA[1]", "THETA[2]", "THETA[3]")
 
 #' @export
 rxUiGet.optimParName <- rxUiGet.nlmParName
