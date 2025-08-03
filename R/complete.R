@@ -39,7 +39,6 @@
 
 ##' @export
 .DollarNames.nlmixr2FitCore <- function(x, pattern) {
-  ##FIXME
   .env <- x$env
   .cmp <- c(
     names(x),

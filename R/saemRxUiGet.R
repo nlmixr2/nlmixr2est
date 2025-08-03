@@ -456,7 +456,7 @@ rxUiGet.saemResFixed <- function(x, ...) {
   as.integer(.saemGetResItem(.ui, column="fix"))
 }
 #attr(rxUiGet.saemResFixed, "desc") <- "Integer vector of residual fixed components"
-attr(rxUiGet.saemResFixed, "rstudio") <- c(1L)
+attr(rxUiGet.saemResFixed, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemParHistResNames <- function(x, ...) {
@@ -760,7 +760,7 @@ rxUiGet.saemParHistThetaKeep <- function(x, ...) {
   1L-as.integer(rxUiGet.saemFixed(x, ...))
 }
 #attr(rxUiGet.saemParHistThetaKeep, "desc") <- "The thetas that are kept in the parameter history"
-attr(rxUiGet.saemParHistThetaKeep, "rstudio") <- c(1L)
+attr(rxUiGet.saemParHistThetaKeep, "rstudio") <- c(1L, 2L)
 
 #' @export
 rxUiGet.saemAddProp <- function(x, ...) {
