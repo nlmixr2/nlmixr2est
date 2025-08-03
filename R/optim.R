@@ -434,12 +434,14 @@ rxUiGet.optimParLower <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$lower[!.ui$iniDf$fix]
 }
+attr(rxUiGet.optimParLower, "rstudio") <- 0.1
 
 #' @export
 rxUiGet.optimParUpper <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$upper[!.ui$iniDf$fix]
 }
+attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
 
 .optimFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle

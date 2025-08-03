@@ -98,6 +98,7 @@ rxUiGet.nlmeModel0 <- function(x, ...) {
                               dvidLine=FALSE,
                               lstExpr=.saemDropMuRefFromModel(.f, noCovs=TRUE))
 }
+attr(rxUiGet.nlmeModel0, "rstudio") <- quote(rxModelVars({}))
 #attr(rxUiGet.nlmeModel, "desc") <- "nlmixr nlme model, equivalent to saem rxode2 model"
 
 #' @export
@@ -105,6 +106,7 @@ rxUiGet.nlmeFD <- function(x, ...) {
   .loadSymengine(.nlmePrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.nlmeFD, "desc") <- "Symengine environment pred-only nlme environment"
+attr(rxUiGet.nlmeFD, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmeFunction <- function(x, ...) {
@@ -115,10 +117,8 @@ rxUiGet.nlmeFunction <- function(x, ...) {
   eval(parse(text=paste0("function(", paste(.par, collapse=","), ", ID) {\n",
                          "nlmixr2est::.nlmixrNlmeFun(list(", paste(paste0(.estPar, "=", .estPar), collapse=","), "), ID)\n",
                          "}")))
-
-
-
 }
+attr(rxUiGet.nlmeFunction, "rstudio") <- function(){}
 
 #' @export
 rxUiGet.nlmeRxModelFD <- function(x, ...) {
@@ -156,11 +156,13 @@ rxUiGet.nlmeRxModelFD <- function(x, ...) {
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
+attr(rxUiGet.nlmeRxModelFD, "rstudio") <- "params()"
 
 #' @export
 rxUiGet.nlmeRxModel <- function(x, ...) {
   rxUiGet.nlmeRxModelFD(x, ...)
 }
+attr(rxUiGet.nlmeRxModel, "rstudio") <- "params()"
 
 
 #attr(rxUiGet.nlmeRxModel, "desc") <- "nlme rxode2 text"
@@ -186,6 +188,7 @@ rxUiGet.nlmeModel <- function(x, ...) {
   )
 }
 #attr(rxUiGet.nlmeModel, "desc") <- "nlme formula for nlmixr model"
+attr(rxUiGet.nlmeModel, "rstudio") <- DV ~ nlmixr2est::nlmixrNlmeFun(pars=list(), id=ID)
 
 #' @export
 rxUiGet.nlmeGradDimnames <- function(x, ...) {
@@ -214,7 +217,6 @@ rxUiGet.nlmePdOmega <- function(x, ...) {
 }
 #attr(rxUiGet.nlmePdOmega, "desc") <- "nlme omega matrix form"
 
-
 #' @export
 rxUiGet.nlmeStart <- function(x, ...) {
   .ui <- x[[1]]
@@ -223,6 +225,7 @@ rxUiGet.nlmeStart <- function(x, ...) {
   setNames(.iniDf$est[.w], .iniDf$name[.w])
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
+attr(rxUiGet.nlmeStart, "rstudio") <- c(tka=0.45)
 
 
 #' @export
@@ -231,6 +234,8 @@ rxUiGet.nlmeFixedFormula <- function(x, ...) {
   as.formula(paste(paste(names(.start), collapse="+"), "~1"))
 }
 #attr(rxUiGet.nlmeStart, "desc") <- "nlme starting estimates for fixed effects"
+attr(rxUiGet.nlmeFixedFormula, "rstudio") <- tka+tcl ~ 1
+
 #' @export
 rxUiGet.nlmeWeights <- function(x, ...) {
   .ui <- x[[1]]

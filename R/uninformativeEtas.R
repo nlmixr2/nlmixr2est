@@ -12,6 +12,8 @@ rxUiGet.transUE <- function(x, ...) {
     .muRef$theta[.w]
   }, character(1), USE.NAMES = TRUE)
 }
+attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
+
 #' Get the parameter values for uninformative eta calculation
 #'
 #' @param name name of the eta parameter
