@@ -12,6 +12,8 @@ rxUiGet.transUE <- function(x, ...) {
     .muRef$theta[.w]
   }, character(1), USE.NAMES = TRUE)
 }
+attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
+
 #' Get the parameter values for uninformative eta calculation
 #'
 #' @param name name of the eta parameter
@@ -177,7 +179,6 @@ rxUiGet.transUE <- function(x, ...) {
     .mat <- .Call(`_nlmixr2est_uninformativeEta`, .env)
     dimnames(.mat) <- list(NULL, names(.pars$trans))
     .minfo("done")
-    return(.mat)
-#    s <- rxSolve(model, pars$param, events=pars$dat, returnType="data.frame")
+    .mat
   }
 }

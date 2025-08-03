@@ -358,12 +358,6 @@ getValidNlmixrCtl.nls <- function(control) {
   nlmixr2global$nlsEnv$dataNls
 }
 
-#'@export
-rxUiGet.nlsModel0 <- function(x, ...) {
-  .ui <- rxode2::rxUiDecompress(x[[1]])
-  .ui$foceiModel0ll
-}
-
 
 #' This is a S3 method for getting the distribution lines for a base rxode2 nls problem
 #'
@@ -477,7 +471,6 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
   })
 }
 
-
 #' @export
 rxUiGet.nlsModel0 <- function(x, ...) {
   .f <- x[[1]]
@@ -497,6 +490,8 @@ rxUiGet.nlsModel0 <- function(x, ...) {
                       lapply(.w, function(i){.ret[[i]]}),
                       list(quote(rx_pred_ <- (rx_dv_ - rx_pred_) / sqrt(rx_r_)))))))
 }
+attr(rxUiGet.nlsModel0, "rstudio") <- quote(rxModelVars({}))
+
 
 #' Load the nls model into symengine
 #'
@@ -527,6 +522,7 @@ rxUiGet.nlsModel0 <- function(x, ...) {
 rxUiGet.loadPruneNls <- function(x, ...) {
   .loadSymengine(.nlsPrune(x), promoteLinSens = FALSE)
 }
+attr(rxUiGet.loadPruneNls, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
@@ -595,12 +591,14 @@ rxUiGet.nlsRxModel <- function(x, ...) {
 rxUiGet.loadPruneNlsSens <- function(x, ...) {
   .loadSymengine(.nlsPrune(x), promoteLinSens = TRUE)
 }
+attr(rxUiGet.loadPruneNlsSens, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlsSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
+attr(rxUiGet.nlsThetaS, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsHdTheta <- function(x, ...) {
@@ -646,6 +644,7 @@ rxUiGet.nlsHdTheta <- function(x, ...) {
   rxode2::rxProgressStop()
   .s
 }
+attr(rxUiGet.nlsHdTheta, "rstudio") <- emptyenv()
 
 #' Finalize nls rxode2 based on symengine saved info
 #'
@@ -742,6 +741,7 @@ rxUiGet.nlsEnv <- function(x, ...) {
   .s$.eventTheta <- .eventTheta
   .s
 }
+attr(rxUiGet.nlsEnv, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
@@ -772,6 +772,7 @@ rxUiGet.nlsParStartTheta <- function(x, ...) {
   paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]")
   )
 }
+attr(rxUiGet.nlsParStartTheta, "rstudio") <- c(`THETA[1]`=0.1)
 
 #' @export
 rxUiGet.nlsParams <- function(x, ...) {
@@ -779,6 +780,7 @@ rxUiGet.nlsParams <- function(x, ...) {
   .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse=", "), ")")
 }
+attr(rxUiGet.nlsParams, "rstudio") <- "params(THETA[1], DV)"
 
 #' @export
 rxUiGet.nlsParLower <- function(x, ...) {
@@ -789,6 +791,7 @@ rxUiGet.nlsParLower <- function(x, ...) {
   }, double(1), USE.NAMES=FALSE),
   .ui$iniDf$name[.w])
 }
+attr(rxUiGet.nlsParLower, "rstudio") <- c(`ka`=0.01)
 
 #' @export
 rxUiGet.nlsParUpper <- function(x, ...) {
@@ -799,6 +802,7 @@ rxUiGet.nlsParUpper <- function(x, ...) {
   }, double(1), USE.NAMES=FALSE),
   .ui$iniDf$name[.w])
 }
+attr(rxUiGet.nlsParUpper, "rstudio") <- c(`ka`=1000)
 
 #' @export
 rxUiGet.nlsParNameFun <- function(x, ...) {
@@ -828,6 +832,8 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
              }
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
 }
+attr(rxUiGet.nlsParNameFun, "rstudio") <- function() {}
+
 .nlsFormulaArgs <- function(x) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
@@ -851,6 +857,8 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
                   paste(.args, collapse=", "),
                   ")"))
 }
+attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(DV, ka, V, CL))
+
 #' Setup the data for nls estimation
 #'
 #' @param dataSav Formatted Data

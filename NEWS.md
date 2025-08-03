@@ -5,6 +5,11 @@
   and match the estimation method.  For example `foceiControl()` would
   assume that the estimation method is related to `focei`.
 
+- Changed Rstudio completion to not evaluate (in case it gets turned
+  on for data.frames) (See #568)
+
+- Turned on data completion for items like `$fitMergeInner`
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
