@@ -33,7 +33,7 @@ nmObjGet <- function(x, ...) {
       # If there is a rstudio value in the method, assume that is what you
       # wish to return for the rstudio auto-completion method
       .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
-      if (is.null(.rstudio)) {
+      if (length(.rstudio) == 0) {
         return(list("calculated value"))
       } else if (is.na(.rstudio)) {
         # If the rstudio value is NA, then we assume that it is a passthrough
@@ -130,7 +130,7 @@ nmObjGetData <- function(x, ...) {
       # If there is a rstudio value in the method, assume that is what you
       # wish to return for the rstudio auto-completion method
       .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
-      if (is.null(.rstudio)) {
+      if (length(.rstudio) == 0) {
         return(list("calculated value"))
       } else if (is.na(.rstudio)) {
         # If the rstudio value is NA, then we assume that it is a passthrough

@@ -48,7 +48,7 @@ rxUiGet.saemInPars <- function(x, ...) {
   .ret$inPars
 }
 #attr(rxUiGet.saemInPars, "desc") <- "get inPars"
-attr(rxUiGet.saemInPars, "rstudio") <- character(0)
+attr(rxUiGet.saemInPars, "rstudio") <- "char"
 
 #' @export
 rxUiGet.saemCovars <- function(x, ...) {
@@ -56,7 +56,7 @@ rxUiGet.saemCovars <- function(x, ...) {
   .ret$covars
 }
 #attr(rxUiGet.saemInPars, "desc") <- "get saemn mu-referenced non-time varying covariates"
-attr(rxUiGet.saemCovars, "rstudio") <- character(0)
+attr(rxUiGet.saemCovars, "rstudio") <- "char"
 
 #' @export
 rxUiGet.saemFunctionModPredQuote <- function(x, ...) {
