@@ -35,6 +35,9 @@ nmObjGet <- function(x, ...) {
       .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
       if (is.null(.rstudio)) {
         return(list("calculated value"))
+      } else if (is.na(.rstudio)) {
+        # If the rstudio value is NA, then we assume that it is a passthrough
+        # and we return the value the next method
       } else {
         return(.rstudio)
       }
@@ -129,6 +132,9 @@ nmObjGetData <- function(x, ...) {
       .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
       if (is.null(.rstudio)) {
         return(list("calculated value"))
+      } else if (is.na(.rstudio)) {
+        # If the rstudio value is NA, then we assume that it is a passthrough
+        # and we return the value the next method
       } else {
         return(.rstudio)
       }
