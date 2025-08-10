@@ -108,7 +108,6 @@ nlmixr2Est.posthoc <- function(env, ...) {
   })
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   .ret <- .foceiFamilyReturn(env, .ui, ..., est="posthoc")
-  rxode2::rxAllowUnload(TRUE)
   .ret
 }
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
