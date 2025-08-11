@@ -22,10 +22,10 @@ foceControl(sigdig = 3, ..., interaction = FALSE)
 
 }}
 
-\item{...}{Parameters used in the default `foceiConrol()`}
+\item{...}{Parameters used in the default `foceiControl()`}
 
 \item{interaction}{Interaction term for the model, in this case the
-default is `FALSE`, though you can set it to be `TRUE` as well.}
+default is `FALSE`; it cannot be changed, use `focei` instead}
 }
 \value{
 foceControl object

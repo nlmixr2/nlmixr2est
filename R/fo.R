@@ -23,15 +23,7 @@ foControl <- function(sigdig=3,
                       interaction=NULL,
                       fo=NULL) {
   checkmate::assertLogical(posthoc, len=1, any.missing=FALSE, null.ok=FALSE)
-  if (!missing(interaction)) {
-    .minfo("`interaction` is ignored in `foControl`")
-  }
-  if (!missing(fo)) {
-    .minfo("`fo` is ignored in `foControl`")
-  }
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           interaction=0L,
-                           fo=TRUE)
+  .control <- foceiControl(sigdig=sigdig, ..., interaction=0L, fo=TRUE)
   class(.control) <- NULL
   .control <- c(.control, list(posthoc=posthoc))
   class(.control) <- "foControl"
@@ -69,6 +61,24 @@ getValidNlmixrCtl.fo <- function(control) {
     .ctl <- do.call(foControl, .ctl)
   }
   .ctl
+}
+
+
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.fo <- function(x, ...) {
+  .env <- x[[1]]
+  for (.name in c("foControl", "control",
+                  "foiControl", "foceControl",
+                  "foceiControl", "foceiControl0")) {
+    if (exists(.name, .env)) {
+      .control <- get(.name, .env)
+      if (inherits(.control, "foControl")) return(.control)
+      .ret <- try(suppressMessages(getValidNlmixrCtl.fo(list(.control))), silent=TRUE)
+      if (inherits(.ret, "foControl")) return(.ret)
+    }
+  }
+  stop("cannot find fo related control object", call.=FALSE)
 }
 
 
@@ -131,8 +141,11 @@ nlmixr2Est.fo <- function(env, ...) {
   } else {
     rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   }
-  env$skipTable <- .control$skipTable
+  rm(list="skipTable", envir=env)
+
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
+  rxode2::rxAssignControlValue(.ui, "calcTables", .control$calcTables)
+  env$control <- .control
   .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="fo")
   .ret$est <- "fo"
   assign("foControl", .control, envir=.ret$env)

@@ -1,4 +1,4 @@
-#' Control options for the FOI estimation method
+#' Control options foir the FOI estimation method
 #'
 #' This is related to the focei methods and uses most of their control
 #' options.  Some are ignored, `posthoc` is an extra parameter
@@ -18,20 +18,12 @@
 #'
 #' foiControl()
 foiControl <- function(sigdig=3,
-                      ...,
-                      posthoc=TRUE,
-                      interaction=NULL,
-                      fo=NULL) {
+                       ...,
+                       posthoc=TRUE,
+                       interaction=NULL,
+                       fo=NULL) {
   checkmate::assertLogical(posthoc, len=1, any.missing=FALSE, null.ok=FALSE)
-  if (!missing(interaction)) {
-    .minfo("`interaction` is ignored in `foiControl`")
-  }
-  if (!missing(fo)) {
-    .minfo("`fo` is ignored in `foiControl`")
-  }
-  .control <- foceiControl(sigdig=sigdig, ...,
-                           interaction=1L,
-                           fo=TRUE)
+  .control <- foceiControl(sigdig=sigdig, ..., interaction=1L, fo=TRUE)
   class(.control) <- NULL
   .control <- c(.control, list(posthoc=posthoc))
   class(.control) <- "foiControl"
@@ -54,7 +46,12 @@ getValidNlmixrCtl.foi <- function(control) {
     .ctl <- do.call("foiControl", .ctl)
   if (inherits(.ctl, "foceiControl") ||
         inherits(.ctl, "foceControl") ||
-        inherits(.ctl, "foiControl")) {
+        inherits(.ctl, "foControl")) {
+    .minfo(paste0("converting ", class(.ctl)[1], " to foiControl"))
+    class(.ctl) <- NULL
+    .ctl <- do.call(foiControl, .ctl)
+  } else if (inherits(.ctl, "foceControl")) {
+    .minfo(paste0("converting foceControl to foiControl"))
     class(.ctl) <- NULL
     .ctl <- do.call(foiControl, .ctl)
   } else if (!inherits(.ctl, "foiControl")) {
@@ -66,6 +63,25 @@ getValidNlmixrCtl.foi <- function(control) {
   .ctl
 }
 
+
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.foi <- function(x, ...) {
+  .env <- x[[1]]
+  for (.name in c("foiControl", "control",
+                  "foControl", "foceControl",
+                  "foceiControl", "foceiControl0")) {
+    if (exists(.name, .env)) {
+      .control <- get(.name, .env)
+      if (inherits(.control, "foiControl")) return(.control)
+      .ret <- try(suppressMessages(getValidNlmixrCtl.foi(list(.control))), silent=TRUE)
+      if (inherits(.ret, "foiControl")) return(.ret)
+    }
+  }
+  stop("cannot find foi related control object", call.=FALSE)
+}
+
+
 .foiControlToFoceiControl <- function(env, assign=TRUE) {
   .foiControl <- env$foiControl
   .ui <- env$ui
@@ -74,7 +90,8 @@ getValidNlmixrCtl.foi <- function(control) {
   .n <- .n[-.w]
   .foceiControl <- setNames(lapply(.n,
                                    function(n) {
-                                     if (n == "maxInnerIterations" && !.foiControl$posthoc) {
+                                     if (n == "maxInnerIterations" &&
+                                           !.foiControl$posthoc) {
                                        return(0L)
                                      }
                                      .foiControl[[n]]
@@ -125,9 +142,12 @@ nlmixr2Est.foi <- function(env, ...) {
   } else {
     rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   }
-  env$skipTable <- .control$skipTable
+  rm(list="skipTable", envir=env)
+
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
-  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FO", est="foi")
+  rxode2::rxAssignControlValue(.ui, "calcTables", .control$calcTables)
+  env$control <- .control
+  .ret <- .foceiFamilyReturn(env, .ui, ..., method="FOI", est="foi")
   .ret$est <- "foi"
   assign("foiControl", .control, envir=.ret$env)
   assign("control", env$control, envir=.ret$env)

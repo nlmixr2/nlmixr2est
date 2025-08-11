@@ -59,8 +59,6 @@ getValidNlmixrCtl(control)
 
 \method{getValidNlmixrCtl}{focei}(control)
 
-\method{getValidNlmixrCtl}{foi}(control)
-
 \method{getValidNlmixrCtl}{nlme}(control)
 
 \method{getValidNlmixrCtl}{saem}(control)

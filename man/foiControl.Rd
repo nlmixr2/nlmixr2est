@@ -2,7 +2,7 @@
 % Please edit documentation in R/foi.R
 \name{foiControl}
 \alias{foiControl}
-\title{Control options for the FOI estimation method}
+\title{Control options foir the FOI estimation method}
 \usage{
 foiControl(sigdig = 3, ..., posthoc = TRUE, interaction = NULL, fo = NULL)
 }

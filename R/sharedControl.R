@@ -44,10 +44,6 @@ getValidNlmixrCtl.focei <- function(control) {
 
 #' @rdname getValidNlmixrControl
 #' @export
-getValidNlmixrCtl.foi <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
 getValidNlmixrCtl.nlme <- function(control) {
   .ctl <- control[[1]]
   if (is.null(.ctl)) .ctl <- nlmeControl()
