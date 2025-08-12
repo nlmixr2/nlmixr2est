@@ -1,4 +1,5 @@
 nmTest({
+
   dat <- Wang2007
   dat$DV <- dat$Y
 
