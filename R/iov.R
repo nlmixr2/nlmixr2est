@@ -63,7 +63,7 @@
              call. = FALSE)
       }
       if (!is.numeric(.v)) {
-        stop(paste0("IOV variable '", l, "' is must be numeric"),
+        stop(paste0("IOV variable '", l, "' must be numeric"),
              call. = FALSE)
       }
       .v
