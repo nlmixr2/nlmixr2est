@@ -1,3 +1,5 @@
+# This stores information about the IOV model that can be used
+# in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
 #' This applies the IOV method to the model based on the data used
 #'
@@ -35,6 +37,7 @@
       .theta1$neta1 <- NA_real_
       .theta1$neta2 <- NA_real_
     }
+    .theta1$label <- NA_character_
     .eta1 <- .etas[1, ]
     .eta1$fix <- TRUE
     .eta1$neta1 <- .eta1$neta2 <- 0
