@@ -57,7 +57,12 @@
 
     .data <- env$data
     .lvls <- setNames(lapply(.lvls, function(l) {
-      sort(unique(.data[[l]]))
+      .v <- sort(unique(.data[[l]]))
+      if (is.null(.v)) {
+        stop(paste0("IOV variable '", l, "' is not present in the data "),
+             call. = FALSE)
+      }
+      .v
     }), .lvls)
     .env <- new.env(parent = emptyenv())
     .env$thetas <- .thetas
