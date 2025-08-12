@@ -1,3 +1,13 @@
+.uiIovEnv <- new.env(parent = emptyenv())
+#' This applies the IOV method to the model based on the data used
+#'
+#' @param env environment to apply the IOV model transformation.  This should contain:
+#'
+#' - `ui`: the model to apply the IOV transformation to
+#' - `data`: the data to use for the IOV transformation
+#' @return nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
 .uiApplyIov <- function(env) {
   .ui <- env$ui
   .iniDf <- .ui$iniDf
@@ -6,9 +16,9 @@
                                      is.na(.iniDf$err))]
   if (length(.lvls) > 0) {
     .n <- .iniDf[which(.iniDf$condition %in% .lvls), "name"]
-    .ui <- eval(str2lang(paste0("rxode2::rxRename(.ui, ",
+    .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
                                 paste(paste0("rx.", .n, "=", .n),
-                                      collapse=", "), ")")))
+                                      collapse=", "), ")"))))
     .ui <- rxode2::rxUiDecompress(.ui)
     # For the new iniDf, we will take out all the level variables and
     # then renumber the etas
@@ -18,14 +28,12 @@
       .maxtheta <- max(.thetas$ntheta, na.rm = TRUE)
       .theta1 <- .thetas[1,]
       .theta1$ntheta <- .maxtheta
-      .theta1$lower <- 0
     } else {
       .maxtheta <- 0L
       .theta1 <- .etas[1,]
       .theta1$ntheta <- 0L
       .theta1$neta1 <- NA_real_
       .theta1$neta2 <- NA_real_
-      .theta1$lower <- 0
     }
     .eta1 <- .etas[1, ]
     .eta1$fix <- TRUE
@@ -53,27 +61,32 @@
     .env$etas <- .etas
     .env$maxtheta <- .maxtheta
     .env$maxeta <- .maxeta
+    .env$drop <- NULL
     # Now we have enough information to create the IOV variables
     # changed to etas on id
     .lines <- lapply(names(.lvls),
                      function(l1) {
-                       .var <- .iniDf$name[which(.iniDf$condition == l1)]
+                       .w <-which(.iniDf$condition == l1)
+                       .var <- .iniDf$name[.w]
+                       .fixed <- .iniDf$fix[.w]
                        .lst <- lapply(.var, function(v) {
                          # Add theta to dataset; represents variance of iov
                          .curTheta <- .theta1
                          .curTheta$est <- .iniDf[which(.iniDf$name == v &
                                                          is.na(.iniDf$ntheta)), "est"]
                          .curTheta$name <- v
+                         .curTheta$fix <- .fixed
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
                          for (n in .lvls[[l1]]) {
                            .curEta <- .eta1
                            .curEta$name <- paste0("rx.", v, ".", n)
+                           .env$drop <- c(.env$drop, .curEta$name)
                            .env$maxeta <- .curEta$neta1 <-
                              .curEta$neta2 <- .env$maxeta + 1L
                            .env$etas <- rbind(.env$etas, .curEta)
                          }
-                         str2lang(paste0("rx.", v, " <- sqrt(", v, ")*(",
+                         str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
                                          paste(paste0("rx.", v, ".", .lvls[[l1]],
                                                       "*(", l1,
                                                       " == ", .lvls[[l1]], ")"),
@@ -86,7 +99,35 @@
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
-    env$iov <- env$ui
-    env$ui <- .ui$fun()
+    .uiIovEnv$iov <- env$ui
+    .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
+    env$ui <- suppressWarnings(suppressMessages(.ui$fun()))
+  } else {
+    .uiIovEnv$iov <- NULL
+    .uiIovEnv$iovDrop <- NULL
   }
+}
+#' Finalizes IOV model
+#'
+#'
+#' @param ret data frame with some iov information dropped
+#' @return fit with iov information dropped
+#' @noRd
+#' @author Matthew L. Fidler
+.uiFinalizeIov <- function(ret) {
+  if (!is.null(.uiIovEnv$iov)) {
+    if (is.null(ret$ui)) return(ret)
+    # In this approach the model is simply kept,
+    # but the data drops the iovDrop
+    if (inherits(ret, "data.frame")) {
+      .w <- which(names(ret) %in% .uiIovEnv$iovDrop)
+      if (length(.w) > 0L) {
+        .cls <- class(ret)
+        class(ret) <- "data.frame"
+        ret <- ret[,-.w]
+        class(ret) <- .cls
+      }
+    }
+  }
+  ret
 }
