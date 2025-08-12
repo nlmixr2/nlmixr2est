@@ -19,7 +19,7 @@
     .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
                                 paste(paste0("rx.", .n, "=", .n),
                                       collapse=", "), ")"))))
-    .ui <- rxode2::rxUiDecompress(.ui)
+
     # For the new iniDf, we will take out all the level variables and
     # then renumber the etas
     .thetas <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
@@ -96,12 +96,13 @@
                        .lst
                      })
     .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
+    .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$iov <- env$ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
-    env$ui <- suppressWarnings(suppressMessages(.ui$fun()))
+    env$ui <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
   } else {
     .uiIovEnv$iov <- NULL
     .uiIovEnv$iovDrop <- NULL

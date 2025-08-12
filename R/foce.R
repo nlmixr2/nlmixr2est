@@ -94,10 +94,10 @@ nmObjGetFoceiControl.foce <- function(x, ...) {
 #'@export
 nlmixr2Est.foce <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiRandomOnIdOnly(.ui,
-                                   " for the estimation routine 'foce'",
-                                   .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'foce'",
+                             .var.name=.ui$modelName)
   .control <- env$control
+  .uiApplyIov(env)
   .foceiFamilyControl(env, ..., type="foceControl")
   .foceControlToFoceiControl(env)
   on.exit({
@@ -107,6 +107,7 @@ nlmixr2Est.foce <- function(env, ...) {
   })
   env$foceControl <- .control
   env$est <- "foce"
-  .foceiFamilyReturn(env, .ui, ..., est="foce")
+  .ui <- env$ui
+  .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="foce"))
 }
 attr(nlmixr2Est.foce, "covPresent") <- TRUE

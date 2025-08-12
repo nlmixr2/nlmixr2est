@@ -8,9 +8,10 @@
 .nlmixr0preProcessCovariatesPresent <- function(ui, est, data, control) {
   # Could possibly use to stack data or use an DV or IDV different
   # than what is present in the data
+
   if (!missing(data) &&
         length(data) > 0L &&
-        isTRUE(attr(utils::getS3method("nlmixr2Est", est), "covPresent"))) {
+         isTRUE(attr(utils::getS3method("nlmixr2Est", est), "covPresent"))) {
     .covNames <- ui$covariates
     colnames(data) <- vapply(names(data), function(x) {
       if (any(x == .covNames)) {
