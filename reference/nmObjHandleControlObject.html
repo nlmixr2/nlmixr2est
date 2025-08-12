@@ -28,7 +28,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Handle the control object</h1>
-      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/bobyqa.R" class="external-link"><code>R/bobyqa.R</code></a>, <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/lbfgsb3c.R" class="external-link"><code>R/lbfgsb3c.R</code></a>, <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/n1qn1.R" class="external-link"><code>R/n1qn1.R</code></a>, and 8 more</small>
+      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/bobyqa.R" class="external-link"><code>R/bobyqa.R</code></a>, <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/fo.R" class="external-link"><code>R/fo.R</code></a>, <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/foce.R" class="external-link"><code>R/foce.R</code></a>, and 12 more</small>
       <div class="d-none name"><code>nmObjHandleControlObject.Rd</code></div>
     </div>
 
@@ -39,6 +39,15 @@
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="co"># S3 method for class 'bobyqaControl'</span></span>
+<span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'foControl'</span></span>
+<span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'foceControl'</span></span>
+<span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'foiControl'</span></span>
 <span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'lbfgsb3cControl'</span></span>
@@ -74,6 +83,9 @@
 <span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'optimControl'</span></span>
+<span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># S3 method for class 'posthocControl'</span></span>
 <span><span class="fu">nmObjHandleControlObject</span><span class="op">(</span><span class="va">control</span>, <span class="va">env</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># S3 method for class 'uobyqaControl'</span></span>

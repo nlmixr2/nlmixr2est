@@ -36,6 +36,8 @@
 <ul><li><p>Updated inferring the estimation method from the control object. Requires the control object to have a class of length one and match the estimation method. For example <code><a href="../reference/foceiControl.html">foceiControl()</a></code> would assume that the estimation method is related to <code>focei</code>.</p></li>
 <li><p>Changed Rstudio completion to not evaluate (in case it gets turned on for data.frames) (See <a href="https://github.com/nlmixr2/nlmixr2est/issues/568" class="external-link">#568</a>)</p></li>
 <li><p>Turned on data completion for items like <code>$fitMergeInner</code></p></li>
+<li><p><strong>Breaking change:</strong> Changed the estimation method <code>posthoc</code> to add tables and calculate the covariance by default. It is now a method with it’s own control, <code><a href="../reference/posthocControl.html">posthocControl()</a></code>. As previously the default is not to include the interaction term (but you can turn it on with <code>posthocControl(interaction=TRUE)</code>).</p></li>
+<li><p>Added <code><a href="../reference/foceControl.html">foceControl()</a></code>, <code><a href="../reference/foControl.html">foControl()</a></code> and <code><a href="../reference/foiControl.html">foiControl()</a></code> for the <code>foce</code>, <code>fo</code> and <code>foi</code> methods, respectively. They try to convert the related control structures to the correct control structure for the estimation method.</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.0.2" id="nlmixr2est-402">nlmixr2est 4.0.2<a class="anchor" aria-label="anchor" href="#nlmixr2est-402"></a></h2><p class="text-muted">CRAN release: 2025-07-24</p>

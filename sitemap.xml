@@ -37,8 +37,11 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-saemDropMuRefFromModel.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiApplyMu2.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-uiFinalizeMu2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiFitCpp_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc></url>
@@ -86,6 +89,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/nmsimplex.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/ofv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/optimControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/posthocControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksAdd.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.html</loc></url>
