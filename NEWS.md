@@ -21,6 +21,8 @@
   the related control structures to the correct control structure for
   the estimation method.
 
+- Added iov support for `focei`,  `foce`, and `saem` (#614)
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version
