@@ -62,6 +62,10 @@
         stop(paste0("IOV variable '", l, "' is not present in the data "),
              call. = FALSE)
       }
+      if (!is.numeric(.v)) {
+        stop(paste0("IOV variable '", l, "' is must be numeric"),
+             call. = FALSE)
+      }
       .v
     }), .lvls)
     .env <- new.env(parent = emptyenv())
