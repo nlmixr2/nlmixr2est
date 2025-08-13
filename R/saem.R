@@ -818,17 +818,18 @@ nlmixr2Est.saem <- function(env, ...) {
   .doMu2 <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-  rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-  rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
+                             .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
+  .uiApplyIov(env)
   .saemFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2)
+  .uiFinalizeIov(.uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2))
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 
