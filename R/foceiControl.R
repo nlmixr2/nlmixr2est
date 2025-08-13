@@ -694,10 +694,6 @@
 #'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
 #'   etas from the omega matrix
 #'
-#' @param nagq Integer indicating the number of quadrature points to
-#'   use for the likelihood approximation.  The more "normal"-like the
-#'   less you can use. With nagq=1 this is the standard focei method.
-#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -874,8 +870,7 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
-                         mceta=-1L,
-                         nagq=0) { #
+                         mceta=-1L) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1264,9 +1259,6 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
-
-  nagq <- checkmate::assertIntegerish(.xtra$nagq, lower=0, any.missing=FALSE, len=1, finite=TRUE)
-
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1387,8 +1379,7 @@ foceiControl <- function(sigdig = 3, #
     zeroGradFirstReset=zeroGradFirstReset,
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
-    mceta=as.integer(mceta),
-    nagq=as.integer(nagq)
+    mceta=as.integer(mceta)
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA

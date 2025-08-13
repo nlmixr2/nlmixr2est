@@ -119,8 +119,7 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L,
-  nagq = 0
+  mceta = -1L
 )
 }
 \arguments{
@@ -813,10 +812,6 @@ when the first gradient is zero.  Default is `TRUE`}
 
   - `n` the last eta and eta=0 are used, as well as n-1 sampled
   etas from the omega matrix}
-
-\item{nagq}{Integer indicating the number of quadrature points to
-use for the likelihood approximation.  The more "normal"-like the
-less you can use. With nagq=1 this is the standard focei method.}
 }
 \value{
 The control object that changes the options for the FOCEi
