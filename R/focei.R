@@ -1779,6 +1779,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env$cov <- NULL
     }
   }
+  if (.control$nAQD > 0) {
+    .ag <- .agq(length(.ui$eta), .control$nAQD)
+    .env$aqn <- as.integer(.ag$n)
+    .env$qx <- .ag$x
+    .env$qw <- .ag$w
+  } else {
+    .env$aqn <- 0L
+  }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     .ret0 <- try(.foceiFitInternal(.env))
   } else {

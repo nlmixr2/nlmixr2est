@@ -138,6 +138,11 @@ struct focei_options {
   double *thetaGrad = NULL;
   double *initPar = NULL;
   double *scaleC = NULL;
+  // Adaptive Gaussian Quadrature
+  //
+  double *aqx;
+  double *aqw;
+  int aqn=0;
   double scaleC0;
   int *xPar = NULL;
   NumericVector lowerIn;
@@ -1289,6 +1294,141 @@ arma::vec getGradForOptimHess(arma::vec &t, int id) {
 
 bool _finalObfCalc = false;
 
+bool calcEtaHessian(double *eta, int likId, int id,
+                    focei_ind *fInd,
+                    rx_solving_options_ind *ind,
+                    mat &H, mat &H0) {
+  H.zeros();
+  int k, l;
+  mat tmp;
+  // This is actually -H
+  if (op_focei.needOptimHess) {
+    arma::vec gr0(op_focei.neta);
+    std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
+
+    arma::vec grPH(op_focei.neta);
+    arma::vec grMH(op_focei.neta);
+
+    double h = 0;
+
+    for (k = op_focei.neta; k--;) {
+      h = fInd->etahh[k];
+      if (op_focei.optimHessType == 3 && h <= 0) {
+        arma::vec t(eta, op_focei.neta);
+        fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
+                                      gr0, grPH, id, k,
+                                      op_focei.hessEpsInner, //double ef = 7e-7,
+                                      1.5,  //double rl = 1.5,
+                                      6.0,  //double ru = 6.0);;
+                                      op_focei.shi21maxInner);  //maxiter=15
+        H.col(k) = grPH;
+        continue;
+      }
+      if (op_focei.optimHessType == 1 && h <= 0) {
+        // Central
+        arma::vec t(eta, op_focei.neta);
+        fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
+                                      gr0, grPH, id, k,
+                                      op_focei.hessEpsInner, // ef,
+                                      1.5,//double rl = 1.5,
+                                      4.5,//double ru = 4.5,
+                                      3.0,//double nu = 8.0);
+                                      op_focei.shi21maxInner); // maxiter
+        H.col(k) = grPH;
+        continue;
+      }
+      // x + h
+      eta[k] += h;
+      lpInner(eta, &grPH[0], id);
+      bool forwardFinite =  grPH.is_finite();
+      if (op_focei.optimHessType == 3 && forwardFinite) { // forward
+        H.col(k) = (grPH-gr0)/h;
+        eta[k] -= h;
+        continue;
+      }
+
+      // x - h
+      eta[k] -= 2*h;
+      lpInner(eta, &grMH[0], id);
+      bool backwardFinite = grMH.is_finite();
+      if (op_focei.optimHessType == 1 &&
+          forwardFinite && backwardFinite) {
+        // central
+        eta[k] += h;
+        H.col(k) = (grPH-grMH)/(2.0*h);
+        continue;
+      }
+      if (forwardFinite && !backwardFinite) {
+        // forward difference
+        H.col(k) = (grPH-gr0)/h;
+        eta[k] += h;
+        continue;
+      }
+      if (!forwardFinite && backwardFinite) {
+        // backward difference
+        H.col(k) = (gr0-grMH)/h;
+        eta[k] += h;
+        continue;
+      }
+    }
+    // symmetrize
+    H = 0.5*(H + H.t());
+    // Note that since the gradient includes omegaInv*etam,
+    // op_focei.omegaInv(k, l) shouldn't be added.
+  } else if (op_focei.interaction) {
+    arma::mat a(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
+    arma::mat B(fInd->B, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), 1, false, true);
+    arma::mat c(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
+    for (k = op_focei.neta; k--;){
+      for (l = k+1; l--;){
+        // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
+        H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
+                          c.col(l) % c.col(k)) +
+          op_focei.omegaInv(k, l);
+        if (!R_finite(H(k, l))) {
+          return false;
+        }
+        H(l, k) = H(k, l);
+      }
+    }
+  } else {
+    arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
+    // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
+    arma::mat B(fInd->B, fInd->nObs, 1, false, true);
+    // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
+    for (k = op_focei.neta; k--;){
+      for (l = k+1; l--;) {
+        // tmp = a.col(l) %  B % a.col(k);
+        H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
+          op_focei.omegaInv(k, l);
+        if (!R_finite(H(k, l))) {
+            return false;
+        }
+        H(l, k) = H(k, l);
+      }
+    }
+  }
+  k=0;
+  if (!H.is_sympd()) {
+    arma::mat H2;
+    if (nmNearPD(H2, H)) {
+      H=H2;
+    }
+  }
+  if (fInd->doChol) {
+    arma::mat Hout, Hin = H;
+    bool success = chol_sym(Hout, Hin);
+    if (!success) {
+      return false;
+    }
+    H0 = Hout;
+  } else {
+    H0=cholSE__(H, op_focei.cholSEtol);
+  }
+  H = H0.t() * H0;
+  return true;
+}
+
 double LikInner2(double *eta, int likId, int id) {
   focei_ind *fInd = &(inds_focei[id]);
   double lik=0;
@@ -1299,7 +1439,7 @@ double LikInner2(double *eta, int likId, int id) {
     lik = fInd->llik;
   } else {
     // print(wrap(op_focei.logDetOmegaInv5));
-    lik = -likInner0(eta, id) + op_focei.logDetOmegaInv5;
+    lik = -likInner0(eta, id);
     // print(wrap(lik));
     rx = getRxSolve_();
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
@@ -1312,140 +1452,68 @@ double LikInner2(double *eta, int likId, int id) {
     // Calculate lik first to calculate components for Hessian
     // Hessian
     mat H(op_focei.neta, op_focei.neta);
-    H.zeros();
-    int k, l;
-    mat tmp;
-    // This is actually -H
-    if (op_focei.needOptimHess) {
-      arma::vec gr0(op_focei.neta);
-      std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
+    mat H0(op_focei.neta, op_focei.neta);
 
-      arma::vec grPH(op_focei.neta);
-      arma::vec grMH(op_focei.neta);
-
-      double h = 0;
-
-      for (k = op_focei.neta; k--;) {
-        h = fInd->etahh[k];
-        if (op_focei.optimHessType == 3 && h <= 0) {
-          arma::vec t(eta, op_focei.neta);
-          fInd->etahh[k] = shi21Forward(getGradForOptimHess, t, h,
-                                        gr0, grPH, id, k,
-                                        op_focei.hessEpsInner, //double ef = 7e-7,
-                                        1.5,  //double rl = 1.5,
-                                        6.0,  //double ru = 6.0);;
-                                        op_focei.shi21maxInner);  //maxiter=15
-          H.col(k) = grPH;
-          continue;
-        }
-        if (op_focei.optimHessType == 1 && h <= 0) {
-          // Central
-          arma::vec t(eta, op_focei.neta);
-          fInd->etahh[k] = shi21Central(getGradForOptimHess, t, h,
-                                        gr0, grPH, id, k,
-                                        op_focei.hessEpsInner, // ef,
-                                        1.5,//double rl = 1.5,
-                                        4.5,//double ru = 4.5,
-                                        3.0,//double nu = 8.0);
-                                        op_focei.shi21maxInner); // maxiter
-          H.col(k) = grPH;
-          continue;
-        }
-        // x + h
-        eta[k] += h;
-        lpInner(eta, &grPH[0], id);
-        bool forwardFinite =  grPH.is_finite();
-        if (op_focei.optimHessType == 3 && forwardFinite) { // forward
-          H.col(k) = (grPH-gr0)/h;
-          eta[k] -= h;
-          continue;
-        }
-
-        // x - h
-        eta[k] -= 2*h;
-        lpInner(eta, &grMH[0], id);
-        bool backwardFinite = grMH.is_finite();
-        if (op_focei.optimHessType == 1 &&
-            forwardFinite && backwardFinite) {
-          // central
-          eta[k] += h;
-          H.col(k) = (grPH-grMH)/(2.0*h);
-          continue;
-        }
-        if (forwardFinite && !backwardFinite) {
-          // forward difference
-          H.col(k) = (grPH-gr0)/h;
-          eta[k] += h;
-          continue;
-        }
-        if (!forwardFinite && backwardFinite) {
-          // backward difference
-          H.col(k) = (gr0-grMH)/h;
-          eta[k] += h;
-          continue;
-        }
-      }
-      // symmetrize
-      H = 0.5*(H + H.t());
-      // Note that since the gradient includes omegaInv*etam,
-      // op_focei.omegaInv(k, l) shouldn't be added.
-    } else if (op_focei.interaction) {
-      arma::mat a(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
-      arma::mat B(fInd->B, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), 1, false, true);
-      arma::mat c(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
-      for (k = op_focei.neta; k--;){
-        for (l = k+1; l--;){
-          // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
-          H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
-                            c.col(l) % c.col(k)) +
-            op_focei.omegaInv(k, l);
-          if (!R_finite(H(k, l))) return NA_REAL;
-          H(l, k) = H(k, l);
-        }
-      }
-    } else {
-      arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
-      // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
-      arma::mat B(fInd->B, fInd->nObs, 1, false, true);
-      // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
-      for (k = op_focei.neta; k--;){
-        for (l = k+1; l--;) {
-          // tmp = a.col(l) %  B % a.col(k);
-          H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
-            op_focei.omegaInv(k, l);
-          if (!R_finite(H(k, l))) return NA_REAL;
-          H(l, k) = H(k, l);
-        }
-      }
+    if (!calcEtaHessian(eta, likId, id, fInd, ind, H, H0)) {
+      return NA_REAL;
     }
-    arma::mat H0(op_focei.neta, op_focei.neta);
-    k=0;
-    if (!H.is_sympd()) {
-      arma::mat H2;
-      if (nmNearPD(H2, H)) {
-        H=H2;
-      }
-    }
-    if (fInd->doChol) {
-      arma::mat Hout, Hin = H;
-      bool success = chol_sym(Hout, Hin);
-      if (!success) {
-        return NA_REAL;
-      }
-      H0 = Hout;
-    } else {
-      H0=cholSE__(H, op_focei.cholSEtol);
-    }
-    H = H0.t() * H0;
+
     if (_finalObfCalc) {
       std::copy(H.begin(), H.end(),
                 op_focei.gH + id*op_focei.neta*op_focei.neta);
     }
 
     // - sum(log(H.diag()));
+    double logH0diag = 0.0;
     for (unsigned int j = H0.n_rows; j--;){
-      lik -= _safe_log(H0(j,j));
+      logH0diag -= _safe_log(H0(j,j));
     }
+    if (op_focei.aqn <= 1) {
+      lik += logH0diag + op_focei.logDetOmegaInv5;
+    } else {
+      Rcpp::stop("aqn: %d\n", op_focei.aqn);
+      // This is where the log likelihood can be adapted for the
+      // Gaussian Hermite Quadrature
+      // https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature
+
+      // At the mode of the distribution the eta is given by the EBE
+      // estimates (determined above).
+      //
+      // The standard error of the EBE estimates is given by the inverse
+      // of the cholesky decomposition of the hessian
+      //
+      // Hence this is used in the expansion of the likelihood for the
+      // adaptive Gaussian Hermite Quadrature.
+
+      // The standard error is not needed for the Laplace approximation
+      arma::mat Ginv_5(op_focei.neta, op_focei.neta);
+      bool success;
+      try {
+        success = inv(Ginv_5, trimatu(H0));
+        if (!success) {
+          success = inv(Ginv_5, H0);
+          if (!success) {
+            // If this fails, then try the pseudo-inverse
+            Ginv_5 = pinv(trimatu(H0));
+          }
+        }
+      } catch (...) {
+        success = inv(Ginv_5, H0);
+        if (!success) {
+          // If this fails, then try the pseudo-inverse
+          Ginv_5 = pinv(H0);
+        }
+      }
+
+      double det_Ginv_5  = 1.0;
+      for (unsigned int j = H0.n_rows; j--;){
+        det_Ginv_5 *= Ginv_5(j,j);
+      }
+      stop("Adaptive Gaussian Hermite Quadrature not implemented yet for FOCEI.");
+    }
+
+
+
   }
   lik += fInd->tbsLik;
   if (likId == 0){
@@ -2986,10 +3054,13 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   op_focei.etaFD       = op_focei.fixedTrans + op_focei.ntheta + op_focei.omegan; // [neta]
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
-  op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan), double); // [ntheta+omegan]
+  op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan) +
+                                  2*(op_focei.aqn*op_focei.neta), double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.scaleC      = op_focei.initPar+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
+  op_focei.aqx         = op_focei.scaleC + op_focei.ntheta+op_focei.omegan; // [aqn*neta]
+  op_focei.aqw         = op_focei.aqx + op_focei.aqn*op_focei.neta; // [aqn*neta]
 
   int neta = 0;
   unsigned int ntheta = 0;
@@ -6416,6 +6487,20 @@ void foceiFinalizeTables(Environment e){
   e.attr("class") = "nlmixr2FitCore";
 }
 
+void setupAq0_(Envirnoment e) {
+  if (e.exists("aqn")) {
+    op_focei.aqn = as<int>(e["aqn"]);
+  } else {
+    op_focei.aqn = 0;
+  }
+}
+
+void setupAq1_(Envirnoment e) {
+  if (op_focei.aqn > 1) {
+
+  }
+}
+
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
@@ -6433,7 +6518,7 @@ Environment foceiFitCpp_(Environment e){
   bool doPredOnly = false;
   op_focei.canDoFD = false;
   if (e.exists("nEstOmega")) {
-    op_focei.nEstOmega = e["nEstOmega"];
+    op_focei.nEstOmega = as<int>(e["nEstOmega"]);
   } else {
     op_focei.nEstOmega = 0;
   }
@@ -6454,6 +6539,11 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
+      if (e.exists("aqn")) {
+        op_focei.aqn = as<int>(e["aqn"]);
+      } else {
+        op_focei.aqn = 0;
+      }
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
       if (model.containsElementNamed("predNoLhs")) {
@@ -6494,8 +6584,10 @@ Environment foceiFitCpp_(Environment e){
         Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
         Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
         Nullable<List> _control = as<Nullable<List>>(e["control"]);
+        setupAq0_(e);
         foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                     _rxInv, _lower, _upper, _etaMat, _control);
+        setupAq1_(e);
         doPredOnly = true;
         if (op_focei.neta == 0) doPredOnly = false;
       } else {
@@ -6513,8 +6605,10 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
+      setupAq0_(e);
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
+      setupAq1_(e);
     }
   } else {
     doPredOnly=true;
@@ -6565,8 +6659,10 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
+      setupAq0_(e);
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
+      setupAq1_(e);
       doPredOnly = true;
       if (op_focei.neta == 0) doPredOnly = false;
     } else {
