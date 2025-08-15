@@ -4,7 +4,14 @@
 \alias{agqControl}
 \title{Control options for the agq estimation method}
 \usage{
-agqControl(sigdig = 3, nAGQ = 2, ..., interaction = TRUE)
+agqControl(
+  sigdig = 3,
+  nAGQ = 2,
+  ...,
+  interaction = TRUE,
+  agqLow = -Inf,
+  agqHi = Inf
+)
 }
 \arguments{
 \item{sigdig}{Optimization significant digits. This controls:
@@ -33,8 +40,18 @@ function evaluations for odd nAGQ numbers.}
 
 \item{...}{Parameters used in the default `foceiControl()`}
 
-\item{interaction}{Interaction term for the model, in this case the
-default is `TRUE`; it cannot be changed, use `focei` instead}
+\item{interaction}{boolean, Interaction term for the model, in this
+case the default is `TRUE`; For adaptive quadrature, with normal
+distribution the Hessian is calculated with the foce(i)
+approximation}
+
+\item{agqLow}{The lower bound for adaptive quadrature
+log-likelihood. By default this is -Inf; in the original nlmixr's
+gnlmm it was -700.}
+
+\item{agqHi}{The upper bound for adaptive quadrature
+log-likelihood.  By default this is Inf; in the original nlmixr's
+gnlmm was 400.}
 }
 \value{
 foceControl object

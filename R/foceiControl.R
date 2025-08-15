@@ -703,6 +703,14 @@
 #'   evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
 #'   function evaluations for odd nAGQ numbers.
 #'
+#' @param agqLow The lower bound for adaptive quadrature
+#'   log-likelihood. By default this is -Inf; in the original nlmixr's
+#'   gnlmm it was -700.
+#'
+#' @param agqHi The upper bound for adaptive quadrature
+#'   log-likelihood.  By default this is Inf; in the original nlmixr's
+#'   gnlmm was 400.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -880,7 +888,9 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
                          mceta=-1L,
-                         nAGQ=0) { #
+                         nAGQ=0,
+                         agqLow=-Inf,
+                         agqHi=Inf) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1270,6 +1280,8 @@ foceiControl <- function(sigdig = 3, #
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1391,7 +1403,9 @@ foceiControl <- function(sigdig = 3, #
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta),
-    nAGQ=as.integer(nAGQ)
+    nAGQ=as.integer(nAGQ),
+    agqHi=as.double(agqHi),
+    agqLow=as.double(agqLow)
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA

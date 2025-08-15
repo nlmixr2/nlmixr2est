@@ -48,8 +48,11 @@
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
-#' @param interaction Interaction term for the model, in this case the
-#'   default is `TRUE`; it cannot be changed, use `focei` instead
+#' @param interaction boolean, Interaction term for the model, in this
+#'   case the default is `TRUE`; For adaptive quadrature, with normal
+#'   distribution the Hessian is calculated with the foce(i)
+#'   approximation
+
 #' @return foceControl object
 #' @export
 #' @author Matthew L. Fidler
@@ -118,15 +121,15 @@
 #'
 #' }
 #'
-agqControl <- function(sigdig=3,
-                        nAGQ=2,
-                        ...,
-                        interaction=TRUE) {
+agqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
+                       agqLow=-Inf,
+                       agqHi=Inf) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
   .control <- foceiControl(sigdig=sigdig, ...,
-                           nAGQ=nAGQ,
-                           interaction=TRUE)
+                           nAGQ=nAGQ, interaction=interaction,
+                           agqLow=agqLow,
+                           agqHi=agqHi)
   class(.control) <- "agqControl"
   .control
 }

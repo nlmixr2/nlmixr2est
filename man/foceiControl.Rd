@@ -120,7 +120,9 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -1L,
-  nAGQ = 0
+  nAGQ = 0,
+  agqLow = -Inf,
+  agqHi = Inf
 )
 }
 \arguments{
@@ -822,6 +824,14 @@ expensive with a large amount of ETAs.  Once the EBE is obtained
 for a subject, you will have nAGQ^neta additional function
 evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
 function evaluations for odd nAGQ numbers.}
+
+\item{agqLow}{The lower bound for adaptive quadrature
+log-likelihood. By default this is -Inf; in the original nlmixr's
+gnlmm it was -700.}
+
+\item{agqHi}{The upper bound for adaptive quadrature
+log-likelihood.  By default this is Inf; in the original nlmixr's
+gnlmm was 400.}
 }
 \value{
 The control object that changes the options for the FOCEi

@@ -142,6 +142,8 @@ struct focei_options {
   //
   double *aqx;
   double *aqw;
+  double aqLow;
+  double aqHi;
   bool aqfirst = false;
   double scaleC0;
   int *xPar = NULL;
@@ -1524,6 +1526,8 @@ double LikInner2(double *eta, int likId, int id) {
         lik += op_focei.logDetOmegaInv5;
         // lik = max2(lik, -700);
         // lik = min2(lik, 400);
+        lik = max2(lik, op_focei.aqLow);
+        lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
       }
       arma::vec etahat(eta, op_focei.neta);
@@ -6548,6 +6552,8 @@ void setupAq1_(Environment e) {
     tmp = REAL(e["qw"]);
     std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqw);
     op_focei.aqfirst = as<bool>(e["qfirst"]);
+    op_focei.aqLow = as<double>(e["aqLow"]);
+    op_focei.aqHi = as<double>(e["aqHi"]);
   } else {
     op_focei.aqfirst = false;
   }
