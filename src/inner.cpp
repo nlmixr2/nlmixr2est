@@ -313,6 +313,7 @@ struct focei_options {
 focei_options op_focei;
 
 int _aqn = 0;
+int _nagq = 0;
 
 struct focei_ind {
   int nInnerF;
@@ -5374,8 +5375,10 @@ NumericMatrix sqrtm(NumericMatrix m){
 void setupAq0_(Environment e) {
   if (e.exists("aqn")) {
     _aqn = as<int>(e["aqn"]);
+    _nagq = as<int>(e["nAGQ"]);
   } else {
     _aqn = 0;
+    _nagq = 0;
   }
 }
 
@@ -6493,7 +6496,9 @@ void foceiFinalizeTables(Environment e){
   objDf.attr("class") = "data.frame";
   e["objDf"]=objDf;
   if (!e.exists("method")){
-    if (op_focei.neta == 0){
+    if (_aqn > 0) {
+      e["method"] ="AGQ";
+    } else if (op_focei.neta == 0){
       e["method"] = "Population Only";
     } else if (op_focei.fo == 1){
       e["method"] = "FO";
@@ -6518,7 +6523,19 @@ void foceiFinalizeTables(Environment e){
       e["extra"] = "";
     }
     List ctl = e["control"];
-    e["extra"] = as<std::string>(e["extra"]) + " (outer: " + as<std::string>(ctl["outerOptTxt"]) +")";
+    if (_aqn == 0) {
+      e["extra"] = as<std::string>(e["extra"]) +
+        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        ")";
+    } else if (_aqn == 1) {
+      e["extra"] = as<std::string>(e["extra"]) +
+        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        "; Laplace)";
+    } else {
+      e["extra"] = as<std::string>(e["extra"]) +
+        " (outer: " + as<std::string>(ctl["outerOptTxt"]) +
+        "; nAGQ=" + std::to_string(_nagq)  + ")";
+    }
   }
   // rxode2::rxSolveFree();
   e.attr("class") = "nlmixr2FitCore";

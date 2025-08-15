@@ -120,7 +120,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -1L,
-  nAQD = 0
+  nAGQ = 0
 )
 }
 \arguments{
@@ -814,14 +814,14 @@ when the first gradient is zero.  Default is `TRUE`}
   - `n` the last eta and eta=0 are used, as well as n-1 sampled
   etas from the omega matrix}
 
-\item{nAQD}{Number of Gauss-Hermite Adaptive Quadrature points to
-take.  When `nAQD=0`, the AQD is not used.  With `nAQD=1`, this
+\item{nAGQ}{Number of Gauss-Hermite Adaptive Quadrature points to
+take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
 is equivalent to the Laplace method. The adaptive quadrature
 expands every node for each of the ETAs, so it can be quite
 expensive with a large amount of ETAs.  Once the EBE is obtained
-for a subject, you will have nAQD^neta additional function
-evaluations for even nAQD numbers and (nAQD^neta)-1 additional
-function evaluations for odd nAQD numbers.}
+for a subject, you will have nAGQ^neta additional function
+evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+function evaluations for odd nAGQ numbers.}
 }
 \value{
 The control object that changes the options for the FOCEi

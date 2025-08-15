@@ -694,14 +694,14 @@
 #'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
 #'   etas from the omega matrix
 #'
-#' @param nAQD Number of Gauss-Hermite Adaptive Quadrature points to
-#'   take.  When `nAQD=0`, the AQD is not used.  With `nAQD=1`, this
+#' @param nAGQ Number of Gauss-Hermite Adaptive Quadrature points to
+#'   take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
 #'   is equivalent to the Laplace method. The adaptive quadrature
 #'   expands every node for each of the ETAs, so it can be quite
 #'   expensive with a large amount of ETAs.  Once the EBE is obtained
-#'   for a subject, you will have nAQD^neta additional function
-#'   evaluations for even nAQD numbers and (nAQD^neta)-1 additional
-#'   function evaluations for odd nAQD numbers.
+#'   for a subject, you will have nAGQ^neta additional function
+#'   evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+#'   function evaluations for odd nAGQ numbers.
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -880,7 +880,7 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
                          mceta=-1L,
-                         nAQD=0) { #
+                         nAGQ=0) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1269,7 +1269,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertIntegerish(nAQD, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1391,7 +1391,7 @@ foceiControl <- function(sigdig = 3, #
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta),
-    nAQD=as.integer(nAQD)
+    nAGQ=as.integer(nAGQ)
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA

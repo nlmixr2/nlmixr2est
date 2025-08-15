@@ -1029,7 +1029,8 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #attr(rxUiGet.foceiEtaNames, "desc") <- "focei eta names"
 attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 
-#' This assigns the tolerances based on a different tolerance for the sensitivity equations
+#' This assigns the tolerances based on a different tolerance for the
+#' sensitivity equations
 #'
 #' It will update and modify the control inside of the UI.
 #'
@@ -1779,12 +1780,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env$cov <- NULL
     }
   }
-  if (.control$nAQD > 0) {
-    .ag <- .agq(length(ui$eta), .control$nAQD)
+  if (.control$nAGQ > 0) {
+    .ag <- .agq(length(ui$eta), .control$nAGQ)
     .env$aqn <- as.integer(.ag$n)
     .env$qx <- .ag$x
     .env$qw <- .ag$w
     .env$qfirst <- .ag$first
+    .env$nAGQ <- .control$nAGQ
   } else {
     .env$aqn <- 0L
   }
