@@ -1787,8 +1787,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$qw <- .ag$w
     .env$qfirst <- .ag$first
     .env$nAGQ <- .control$nAGQ
-    .env$aqLow <- .contro$agqLow
-    .env$aqHi <- .contro$agqHi
+    .env$aqLow <- .control$agqLow
+    .env$aqHi <- .control$agqHi
   } else {
     .env$aqn <- 0L
   }

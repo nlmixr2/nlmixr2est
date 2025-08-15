@@ -711,6 +711,10 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
+#' @param numericHess Boolean indicating if the Hessian should be
+#'   calculated numerically when it could use the foce(i) type of
+#'   Hessian approximation.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'

@@ -53,7 +53,7 @@
 #'   distribution the Hessian is calculated with the foce(i)
 #'   approximation
 
-#' @return foceControl object
+#' @return agqControl object
 #' @export
 #' @author Matthew L. Fidler
 #' @examples
@@ -206,7 +206,7 @@ nmObjGetFoceiControl.agq <- function(x, ...) {
 #'@export
 nlmixr2Est.agq <- function(env, ...) {
   .ui <- env$ui
-  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'foce'",
+  rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'agq'",
                              .var.name=.ui$modelName)
   .control <- env$control
   .uiApplyIov(env)
