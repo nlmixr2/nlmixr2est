@@ -1,3 +1,19 @@
+#' Get the adaptive Gauss-Hermite quadrature points and weights
+#'
+#' @param neta number of eta parameters in the model
+#' @param nAQD number of adaptive quadrature points to use
+#' @return A list with the following elements:
+#' \item{x}{A matrix of quadrature points, one row per point.}
+#' \item{w}{A matrix of quadrature weights, one row per point.}
+#' \item{n}{The number of quadrature points.}
+#' \item{neta}{The number of eta parameters.}
+#' \item{nAQD}{The number of adaptive quadrature points.}
+#' \item{first}{A logical indicating if the first point is zero.}
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @examples
+#' .agq(neta=2, nAQD=3)
 .agq <- function(neta=2, nAQD=3) {
   rxode2::rxReq("fastGHQuad") # conditionally require
   .gh <- fastGHQuad::gaussHermiteData(nAQD)
