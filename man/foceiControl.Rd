@@ -122,7 +122,8 @@ foceiControl(
   mceta = -1L,
   nAGQ = 0,
   agqLow = -Inf,
-  agqHi = Inf
+  agqHi = Inf,
+  numericHess = FALSE
 )
 }
 \arguments{
