@@ -1780,10 +1780,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   if (.control$nAQD > 0) {
-    .ag <- .agq(length(.ui$eta), .control$nAQD)
+    .ag <- .agq(length(ui$eta), .control$nAQD)
     .env$aqn <- as.integer(.ag$n)
     .env$qx <- .ag$x
     .env$qw <- .ag$w
+    .env$qfirst <- .ag$first
   } else {
     .env$aqn <- 0L
   }

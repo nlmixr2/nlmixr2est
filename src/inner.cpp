@@ -142,7 +142,7 @@ struct focei_options {
   //
   double *aqx;
   double *aqw;
-  int aqn=0;
+  bool aqfirst = false;
   double scaleC0;
   int *xPar = NULL;
   NumericVector lowerIn;
@@ -311,6 +311,8 @@ struct focei_options {
 };
 
 focei_options op_focei;
+
+int _aqn = 0;
 
 struct focei_ind {
   int nInnerF;
@@ -1457,21 +1459,19 @@ double LikInner2(double *eta, int likId, int id) {
     if (!calcEtaHessian(eta, likId, id, fInd, ind, H, H0)) {
       return NA_REAL;
     }
-
     if (_finalObfCalc) {
       std::copy(H.begin(), H.end(),
                 op_focei.gH + id*op_focei.neta*op_focei.neta);
     }
-
     // - sum(log(H.diag()));
     double logH0diag = 0.0;
     for (unsigned int j = H0.n_rows; j--;){
       logH0diag -= _safe_log(H0(j,j));
     }
-    if (op_focei.aqn <= 1) {
+    if (_aqn <= 1) {
       lik += logH0diag + op_focei.logDetOmegaInv5;
     } else {
-      Rcpp::stop("aqn: %d\n", op_focei.aqn);
+
       // This is where the log likelihood can be adapted for the
       // Gaussian Hermite Quadrature
       // https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature
@@ -1493,27 +1493,53 @@ double LikInner2(double *eta, int likId, int id) {
         if (!success) {
           success = inv(Ginv_5, H0);
           if (!success) {
-            // If this fails, then try the pseudo-inverse
-            Ginv_5 = pinv(trimatu(H0));
+            return NA_REAL;
           }
         }
       } catch (...) {
         success = inv(Ginv_5, H0);
         if (!success) {
-          // If this fails, then try the pseudo-inverse
-          Ginv_5 = pinv(H0);
+          return NA_REAL;
         }
       }
 
-      double det_Ginv_5  = 1.0;
+      // The original nlmixr used
+      // detGinv_5 as part of the likelihood formula
+      // in gnlmm/gnlmm2
+      double det_Ginv_5  = 0.0;
       for (unsigned int j = H0.n_rows; j--;){
-        det_Ginv_5 *= Ginv_5(j,j);
+        det_Ginv_5 += _safe_log(Ginv_5(j,j));
       }
-      stop("Adaptive Gaussian Hermite Quadrature not implemented yet for FOCEI.");
+
+      // Get x and w from the AQ
+      arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
+      arma::mat aqw(op_focei.aqw, _aqn, op_focei.neta, false, true);
+
+      int curi = 0;
+      double slik = 0;
+      if (op_focei.aqfirst) {
+        // This is already calculated, so just use it
+        curi=1;
+        lik += op_focei.logDetOmegaInv5;
+        // lik = max2(lik, -700);
+        // lik = min2(lik, 400);
+        slik = exp(lik);
+      }
+      arma::vec etahat(eta, op_focei.neta);
+      Ginv_5 = M_SQRT2 * Ginv_5;
+      for (; curi < _aqn; curi++) {
+        // Get the x and w for the current iteration
+        arma::vec x = aqx.row(curi).t();
+        arma::vec w = aqw.row(curi).t();
+        arma::vec etaCur = etahat +  Ginv_5 * x;
+        lik  = -likInner0(etaCur.memptr(), id) + op_focei.logDetOmegaInv5;
+        lik += sum(log(w) +  x % x);
+        // lik = max2(lik, -700);
+        // lik = min2(lik, 400);
+        slik += exp(lik);
+      }
+      lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik) + logH0diag;
     }
-
-
-
   }
   lik += fInd->tbsLik;
   if (likId == 0){
@@ -3055,12 +3081,12 @@ static inline void foceiSetupTrans_(CharacterVector pars){
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
   op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan) +
-                                  2*(op_focei.aqn*op_focei.neta), double); // [ntheta+omegan]
+                                  2*(_aqn*op_focei.neta), double); // [ntheta+omegan]
   op_focei.theta       = op_focei.fullTheta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.initPar     = op_focei.theta+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.scaleC      = op_focei.initPar+op_focei.ntheta+op_focei.omegan; // [ntheta + omegan]
   op_focei.aqx         = op_focei.scaleC + op_focei.ntheta+op_focei.omegan; // [aqn*neta]
-  op_focei.aqw         = op_focei.aqx + op_focei.aqn*op_focei.neta; // [aqn*neta]
+  op_focei.aqw         = op_focei.aqx + _aqn*op_focei.neta; // [aqn*neta]
 
   int neta = 0;
   unsigned int ntheta = 0;
@@ -5344,6 +5370,16 @@ NumericMatrix sqrtm(NumericMatrix m){
   return wrap(re);
 }
 
+
+void setupAq0_(Environment e) {
+  if (e.exists("aqn")) {
+    _aqn = as<int>(e["aqn"]);
+  } else {
+    _aqn = 0;
+  }
+}
+
+
 //[[Rcpp::export]]
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
@@ -5428,6 +5464,7 @@ NumericMatrix foceiCalcCov(Environment e){
         op_focei.lastOfv = op_focei.lastOfv * op_focei.initObjective / op_focei.scaleObjectiveTo;
       }
       // foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, op_focei.scaleTo, false);
+      setupAq0_(e);
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
@@ -6487,17 +6524,15 @@ void foceiFinalizeTables(Environment e){
   e.attr("class") = "nlmixr2FitCore";
 }
 
-void setupAq0_(Envirnoment e) {
-  if (e.exists("aqn")) {
-    op_focei.aqn = as<int>(e["aqn"]);
+void setupAq1_(Environment e) {
+  if (_aqn > 1) {
+    double *tmp = REAL(e["qx"]);
+    std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqx);
+    tmp = REAL(e["qw"]);
+    std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqw);
+    op_focei.aqfirst = as<bool>(e["qfirst"]);
   } else {
-    op_focei.aqn = 0;
-  }
-}
-
-void setupAq1_(Envirnoment e) {
-  if (op_focei.aqn > 1) {
-
+    op_focei.aqfirst = false;
   }
 }
 
@@ -6522,6 +6557,7 @@ Environment foceiFitCpp_(Environment e){
   } else {
     op_focei.nEstOmega = 0;
   }
+  setupAq0_(e);
   if (model.containsElementNamed("inner")) {
     RObject inner;
     if (model.containsElementNamed("innerLlik")) {
@@ -6539,11 +6575,7 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericVector> _upper = as<Nullable<NumericVector>> (e["upper"]);
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
-      if (e.exists("aqn")) {
-        op_focei.aqn = as<int>(e["aqn"]);
-      } else {
-        op_focei.aqn = 0;
-      }
+      setupAq0_(e);
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
       if (model.containsElementNamed("predNoLhs")) {
@@ -6587,7 +6619,6 @@ Environment foceiFitCpp_(Environment e){
         setupAq0_(e);
         foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                     _rxInv, _lower, _upper, _etaMat, _control);
-        setupAq1_(e);
         doPredOnly = true;
         if (op_focei.neta == 0) doPredOnly = false;
       } else {
@@ -6595,6 +6626,7 @@ Environment foceiFitCpp_(Environment e){
       }
     } else {
       doPredOnly=true;
+      setupAq0_(e);
       foceiSetupTrans_(as<CharacterVector>(e[".params"]));
       RObject _dataSav = as<RObject>(e["dataSav"]);
       NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
@@ -6608,7 +6640,6 @@ Environment foceiFitCpp_(Environment e){
       setupAq0_(e);
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
-      setupAq1_(e);
     }
   } else {
     doPredOnly=true;
@@ -6662,13 +6693,13 @@ Environment foceiFitCpp_(Environment e){
       setupAq0_(e);
       foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
-      setupAq1_(e);
       doPredOnly = true;
       if (op_focei.neta == 0) doPredOnly = false;
     } else {
       stop(_("model$predOnly needs to be an rxode2 object"));
     }
   }
+  setupAq1_(e);
   if (e.exists("setupTime")){
     e["setupTime"] = as<double>(e["setupTime"])+(((double)(clock() - t0))/CLOCKS_PER_SEC);
   } else {
