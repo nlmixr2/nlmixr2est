@@ -23,6 +23,11 @@
 
 - Added iov support for `focei`,  `foce`, and `saem` (#614)
 
+- Added new estimation method `agq` which uses adaptive Gauss-Hermite
+  Quadrature to fit a nonlinear-mixed effect model. In this method,
+  you can choose the number of quadrature points to estimate the
+  likelihood, with higher numbers giving more accurate likelihoods.  The
+
 # nlmixr2est 4.0.2
 
 - The loading and unloading of DLLs has been minimized in this version

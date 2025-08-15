@@ -31,8 +31,8 @@ default is `FALSE`; it cannot be changed, use `focei` instead}
 foceControl object
 }
 \description{
-This option is for simply getting the maximum a-prior (MAP) also
-called the foce estimates
+This is the first order option without the interaction between
+residuals and etas.
 }
 \examples{
 

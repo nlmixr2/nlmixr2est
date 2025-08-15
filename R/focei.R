@@ -1828,10 +1828,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
   if (.control$calcTables) {
-    .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
+    .tmp <- try(addTable(.ret,
+                         updateObject="no",
+                         keep=.ret$table$keep,
+                         drop=.ret$table$drop,
                          table=.ret$table), silent=TRUE)
     if (inherits(.tmp, "try-error")) {
-
       warning("error calculating tables, returning without table step", call.=FALSE)
     } else {
       .ret <- .tmp
