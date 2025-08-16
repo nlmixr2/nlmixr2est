@@ -6503,6 +6503,14 @@ void foceiFinalizeTables(Environment e){
     std::string ofvType = as<std::string>(e["ofvType"]);
     objDf.attr("row.names") = ofvType;
     e["ofvType"]= ofvType;
+  } else if (_nagq > 0)  {
+    if (_nagq == 1) {
+      objDf.attr("row.names") = CharacterVector::create("Laplace");
+    } else {
+      objDf.attr("row.names") = CharacterVector::create("AGQ" + std::to_string(_nagq));
+    }
+    addLlikObs(e);
+    e["ofvType"] = "agq";
   } else {
     if (op_focei.needOptimHess) {
       objDf.attr("row.names") = CharacterVector::create("lFOCEi");
