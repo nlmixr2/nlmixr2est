@@ -82,8 +82,7 @@ Suggests:
     xgxr,
     sfsmisc,
     minpack.lm,
-    remotes,
-    fastGHQuad
+    remotes
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
