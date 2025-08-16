@@ -1527,7 +1527,8 @@ double LikInner2(double *eta, int likId, int id) {
         arma::vec w = aqw.row(curi).t();
         curi=1;
         lik += sum(log(w)); // x % x  = x^2; here x=0
-        lik += op_focei.logDetOmegaInv5;
+        // can be factored out
+        //lik += op_focei.logDetOmegaInv5;
         lik = max2(lik, op_focei.aqLow);
         lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
@@ -1540,13 +1541,14 @@ double LikInner2(double *eta, int likId, int id) {
         arma::vec etaCur = etahat +  Ginv_5 * x;
         lik  = -likInner0(etaCur.memptr(), id);
         lik += sum(log(w) +  0.5 * x % x); // x % x  = x^2
-        lik += op_focei.logDetOmegaInv5;
+        // Can be factored out
+        //lik += op_focei.logDetOmegaInv5;
         lik = max2(lik, op_focei.aqLow);
         lik = min2(lik, op_focei.aqHi);
         slik += exp(lik);
       }
       //lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik);
-      lik = log(slik) + logH0diag;
+      lik = log(slik) + logH0diag + op_focei.logDetOmegaInv5;
     }
   }
   lik += fInd->tbsLik;
