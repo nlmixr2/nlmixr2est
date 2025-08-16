@@ -1,7 +1,7 @@
 #' Control options for the foce estimation method
 #'
-#' This option is for simply getting the maximum a-prior (MAP) also
-#' called the foce estimates
+#' This is the first order option without the interaction between
+#' residuals and etas.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -14,8 +14,8 @@
 #'
 #' foceControl()
 foceControl <- function(sigdig=3,
-                           ...,
-                           interaction=FALSE) {
+                        ...,
+                        interaction=FALSE) {
   .control <- foceiControl(sigdig=sigdig, ...,
                            interaction=FALSE)
   class(.control) <- "foceControl"
