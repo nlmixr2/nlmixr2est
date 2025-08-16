@@ -1284,7 +1284,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
-  checkmate::assertIntegerish(nAGQ, lower=0, upper=62, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
   checkmate::assertLogical(numericHess, any.missing=FALSE, len=1)
