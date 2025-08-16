@@ -1791,6 +1791,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$aqHi <- .control$agqHi
   } else {
     .env$aqn <- 0L
+    .env$qx <- double(0)
+    .env$qw <- double(0)
+    .env$qfirst <- FALSE
+    .env$nAGQ <- 0L
+    .env$aqLow <- -Inf
+    .env$aqHi <- Inf
   }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     .ret0 <- try(.foceiFitInternal(.env))

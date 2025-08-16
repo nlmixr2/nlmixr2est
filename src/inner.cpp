@@ -1472,10 +1472,9 @@ double LikInner2(double *eta, int likId, int id) {
     for (unsigned int j = H0.n_rows; j--;){
       logH0diag -= _safe_log(H0(j,j));
     }
-    if (_aqn <= 1) {
+    if (_aqn == 0) {
       lik += logH0diag + op_focei.logDetOmegaInv5;
     } else {
-
       // This is where the log likelihood can be adapted for the
       // Gaussian Hermite Quadrature
       // https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature
@@ -1519,14 +1518,17 @@ double LikInner2(double *eta, int likId, int id) {
       arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
       arma::mat aqw(op_focei.aqw, _aqn, op_focei.neta, false, true);
 
+      // llik = -likInner0(eta, id);
       int curi = 0;
       double slik = 0;
       if (op_focei.aqfirst) {
-        // This is already calculated, so just use it
+        // Already calculated:
+        // lik = -likInner0(eta, id);
+        arma::vec w = aqw.row(curi).t();
         curi=1;
-        lik += op_focei.logDetOmegaInv5;
         // lik = max2(lik, -700);
         // lik = min2(lik, 400);
+        lik += sum(log(w)); // x % x  = x^2; here x=0
         lik = max2(lik, op_focei.aqLow);
         lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
@@ -1538,13 +1540,13 @@ double LikInner2(double *eta, int likId, int id) {
         arma::vec x = aqx.row(curi).t();
         arma::vec w = aqw.row(curi).t();
         arma::vec etaCur = etahat +  Ginv_5 * x;
-        lik  = -likInner0(etaCur.memptr(), id) + op_focei.logDetOmegaInv5;
-        lik += sum(log(w) +  x % x);
-        // lik = max2(lik, -700);
-        // lik = min2(lik, 400);
+        lik  = -likInner0(etaCur.memptr(), id);
+        lik += sum(log(w) +  x % x); // x % x  = x^2
+        lik = max2(lik, op_focei.aqLow);
+        lik = min2(lik, op_focei.aqHi);
         slik += exp(lik);
       }
-      lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik) + logH0diag;
+      lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik);
     }
   }
   lik += fInd->tbsLik;
@@ -6548,7 +6550,7 @@ void foceiFinalizeTables(Environment e){
 }
 
 void setupAq1_(Environment e) {
-  if (_aqn > 1) {
+  if (_aqn >= 1) {
     double *tmp = REAL(e["qx"]);
     std::copy(tmp, tmp + _aqn*op_focei.neta, op_focei.aqx);
     tmp = REAL(e["qw"]);
