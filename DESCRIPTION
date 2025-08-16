@@ -30,8 +30,7 @@ Authors@R: c(
     person("Marc", "Lavielle", role = "ctb"),
     person("David", "Ardia", role = "cph"),
     person("Katharine", "Mullen", role = "cph"),
-    person("Ben", "Goodrich", role = "ctb"),
-    person("Mike", "Kamermans", role = "ctb")
+    person("Ben", "Goodrich", role = "ctb")
   )
 Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
 Description: Fit and compare nonlinear mixed-effects models in
