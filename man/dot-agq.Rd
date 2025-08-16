@@ -4,7 +4,7 @@
 \alias{.agq}
 \title{Get the adaptive Gauss-Hermite quadrature points and weights}
 \usage{
-.agq(neta = 2, nAQD = 3)
+.agq(neta = 2, nAGQ = 3)
 }
 \arguments{
 \item{neta}{number of eta parameters in the model}

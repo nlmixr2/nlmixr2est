@@ -14,16 +14,23 @@
 #' @keywords internal
 #' @examples
 #' .agq(neta=2, nAQD=3)
-.agq <- function(neta=2, nAQD=3) {
-  rxode2::rxReq("fastGHQuad") # conditionally require
-  .gh <- fastGHQuad::gaussHermiteData(nAQD)
-  .x <- .gh$x
-  .w <- .gh$w/sqrt(pi)
+.agq <- function(neta=2, nAGQ=3) {
+  .n <- .nlmixr2estAgq(NA_integer_)
+  if (nAGQ > .n) {
+    rxode2::rxReq("fastGHQuad") # conditionally require
+    .gh <- fastGHQuad::gaussHermiteData(nAGQ)
+    .x <- .gh$x
+    .w <- .gh$w/sqrt(pi)
+  } else {
+    .gh <- .nlmixr2estAgq(as.integer(nAGQ))
+    .x <- .gh$x
+    .w <- .gh$w
+  }
   .first <- FALSE
-  if (nAQD %% 2 == 1) {
+  if (nAGQ %% 2 == 1) {
     # If nAQD is odd, have the zero weight at the beginning so that
     # the F value is cached and it doesn't need to evaluate it twice
-    .zero <- (nAQD+1L)/2L
+    .zero <- (nAGQ+1L)/2L
     .x <- c(0, .x[-.zero])
     .w <- c(.w[.zero], .w[-.zero])
     .first <- TRUE
@@ -35,7 +42,7 @@
     w = .w,
     n = nrow(.x),
     neta = neta,
-    nAQD = nAQD,
+    nAGQ = nAGQ,
     first = .first
   )
 }

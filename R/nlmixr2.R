@@ -13,6 +13,7 @@
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
+#' @eval .nlmixr2estbuild()
 #' @import nlmixr2data
 #' @useDynLib nlmixr2est, .registration=TRUE
 
