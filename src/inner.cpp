@@ -1521,6 +1521,17 @@ double LikInner2(double *eta, int likId, int id) {
       // llik = -likInner0(eta, id);
       int curi = 0;
       double slik = 0;
+      // Note that the change of variables takes care of the
+      // determinats (logH0diag + op_focei.logDetOmegaInv5) like
+      // in the univariate case
+      // https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature
+      //
+      // This is a deviation from the original gnlmm/gnlmm2 code.
+      // however, the likelihoods when using this approach are closer to
+      // what is seen in the foce/focei methods in nlmixr2.
+      //
+      // In theory the foce/focei should be equivalent to the laplace
+      // or nAGQ=1
       if (op_focei.aqfirst) {
         // Already calculated:
         // lik = -likInner0(eta, id);
