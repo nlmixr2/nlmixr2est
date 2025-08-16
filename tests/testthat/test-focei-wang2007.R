@@ -54,7 +54,7 @@ nmTest({
 
   fo <- .nlmixr(fo)
 
-  testErr <- function(type, fun, val = rep(NA_real_, 6), addProp = 2, log=FALSE) {
+  testErr <- function(type, fun, val = rep(NA_real_, 10), addProp = 2, log=FALSE) {
     .f <- fun(f)
     .fo <- fun(fo)
     .dode <- dat2
@@ -63,6 +63,7 @@ nmTest({
       .d <- datl
       .dode <- datl2
     }
+
     fit1 <- .nlmixr(.fo, .dode, "focei",
                     control = foceiControl(
                       maxOuterIterations = 0, covMethod = "",
@@ -94,11 +95,35 @@ nmTest({
       addProp = paste0("combined", addProp)))
     setOfv(fit6, "fo")
 
+    fit7 <- .nlmixr(.fo, .dode, "agq",
+                    control = agqControl(
+                      maxOuterIterations = 0, covMethod = "",
+                      addProp = paste0("combined", addProp)))
 
-    .n <- paste(type, c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo"), paste0("combined", addProp))
-    ret <- c(fit1$objective, fit2$objective, fit3$objective, fit4$objective, fit5$objective, fit6$objective)
+    fit8 <- .nlmixr(.f, .d, "agq",
+                    control = agqControl(
+                      maxOuterIterations = 0, covMethod = "",
+                      addProp = paste0("combined", addProp)))
+
+    fit9 <- .nlmixr(.fo, .dode, "laplace",
+                    control = laplaceControl(
+                      maxOuterIterations = 0, covMethod = "",
+                      addProp = paste0("combined", addProp)))
+
+    fit10 <- .nlmixr(.f, .d, "laplace",
+                    control = laplaceControl(
+                      maxOuterIterations = 0, covMethod = "",
+                      addProp = paste0("combined", addProp)))
+
+    .n <- paste(type, c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo",
+                        "agq ode", "agq", "laplace ode", "laplace"),
+                paste0("combined", addProp))
+    ret <- c(fit1$objective, fit2$objective, fit3$objective, fit4$objective,
+             fit5$objective, fit6$objective, fit7$objective, fit8$objective,
+             fit9$objective, fit10$objective)
     ret <- setNames(ret, .n)
     val <- setNames(val, .n)
+
     ## Now test
     if (!all(is.na(val))) {
       test_that(
@@ -119,6 +144,14 @@ nmTest({
           withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit5), NA))
           withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit6), NA))
           withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit6), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit7), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit7), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit8), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit8), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit9), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit9), NA))
+          withr::with_options(list(cli.unicode=TRUE),expect_error(print(fit10), NA))
+          withr::with_options(list(cli.unicode=FALSE),expect_error(print(fit10), NA))
         }))
       })
     }
@@ -179,30 +212,49 @@ nmTest({
   })
 
 
-  .propVals <- c(39.458, 39.458, 39.275, 39.207, 39.213, 39.207)
-  .propModVals <- c(63.353, 63.353, 63.001, 63.063, 63.063, 63.063)
-  .propFVals <- c(6.496, 6.496, 6.488, 6.275, 9.262, 9.262)
-  .propFModVals <- c(19.177, 19.177, 19.07, 18.202, 18.333, 18.333)
+  .propVals <- c(39.458, 39.458, 39.275, 39.207, 39.213, 39.213, 39.365, 39.365,
+                 39.227, 39.227)
+  .propModVals <- c(63.353, 63.353, 63.001, 63.063, 63.063, 63.063, 63.063, 63.063,
+                    62.733, 62.733)
+  .propFVals <- c(6.496, 6.496, 6.488, 6.275, 9.262, 9.262, 6.545, 6.545, 6.584,
+                  6.584)
+  .propFModVals <- c(19.177, 19.177, 19.07, 18.202, 18.333, 18.333, 19.158, 19.158,
+                     18.911, 18.911)
+  .addVals <- c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026, -1.997, -1.997,
+                -1.936, -1.936)
 
-  .addVals <- c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026)
-
-  .powVals <- c(9.966, 9.966, 9.948, 9.331, 9.651, 9.651)
-  .powFModVals <- c(0.776, 0.776, 0.772, 0.58, 3.2, 3.2)
-  .powF1Vals <- c(27.301, 27.301, 27.147, 26.854, 26.888, 26.888)
-  .powF2Vals <- c(17.831, 17.831, 17.785, 16.617, 16.852, 16.852)
-  .powF3Vals <- c(79.733, 79.733, 79.371, 79.448, 79.448, 79.448)
-  .powFMod1Vals <- c(24.877, 24.877, 24.773, 24.518, 24.554, 24.554)
-  .powFMod2Vals <- c(49.312, 49.312, 49.311, 49.296, 52.603, 52.603)
-  .powFMod3Vals <- c(10.848, 10.848, 10.784, 9.446, 9.96, 9.96)
-  .addProp2 <- c(39.735, 39.735, 39.562, 39.499, 39.505, 39.499)
-  .addModPropMod2 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079)
-  .addProp1 <- c(43.554, 43.554, 43.416, 43.394, 43.398, 43.394)
-  .addPow1 <- c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093)
-  .addPow2 <- c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662)
-  .addModVals <- c(3.238, 3.238, 3.207, 2.438, 3.311, 3.311)
-  .addModPropMod1 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079)
-  .addModPropFModVals2 <- c(54.317, 54.317, 54.14, 54.165, 54.166, 54.166)
-  .addPropFVals2 <- c(-2.321, -2.321, -2.322, -2.454, -0.65, -0.65)
+  .powVals <- c(9.966, 9.966, 9.948, 9.331, 9.651, 9.651, 10.007, 10.007, 9.956,
+                9.956)
+  .powFModVals <- c(0.776, 0.776, 0.772, 0.58, 3.2, 3.2, 0.828, 0.828, 0.871, 0.871)
+  .powF1Vals <- c(27.301, 27.301, 27.147, 26.854, 26.888, 26.888, 27.259, 27.259,
+                  27.119, 27.119)
+  .powF2Vals <- c(17.831, 17.831, 17.785, 16.617, 16.852, 16.852, 17.871, 17.871,
+                  17.656, 17.656)
+  .powF3Vals <- c(79.733, 79.733, 79.371, 79.448, 79.448, 79.448, 79.389, 79.389,
+                  79.01, 79.01)
+  .powFMod1Vals <- c(24.877, 24.877, 24.773, 24.518, 24.554, 24.554, 24.842, 24.842,
+                     24.732, 24.732)
+  .powFMod2Vals <- c(49.312, 49.312, 49.311, 49.296, 52.603, 52.603, 49.34, 49.34,
+                     49.367, 49.367)
+  .powFMod3Vals <- c(10.848, 10.848, 10.784, 9.446, 9.96, 9.96, 10.915, 10.915,
+                     10.75, 10.75)
+  .addProp2 <- c(39.735, 39.735, 39.562, 39.499, 39.505, 39.505, 39.647, 39.647,
+                 39.516, 39.516)
+  .addModPropMod2 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079, 105.948,
+                       105.948, 105.559, 105.559)
+  .addProp1 <- c(43.554, 43.554, 43.416, 43.394, 43.398, 43.398, 43.469, 43.469,
+                 43.359, 43.359)
+  .addPow1 <- c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093, 16.249, 16.249,
+                16.231, 16.231)
+  ## .addPow2 <- c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662)
+  .addModVals <- c(3.238, 3.238, 3.207, 2.438, 3.311, 3.311, 3.298, 3.298, 3.271,
+                   3.271)
+  .addModPropMod1 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079, 105.948,
+                       105.948, 105.559, 105.559)
+  .addModPropFModVals2 <- c(54.317, 54.317, 54.14, 54.165, 54.166, 54.166, 54.148, 54.148,
+                            53.957, 53.957)
+  .addPropFVals2 <- c(-2.321, -2.321, -2.322, -2.454, -0.65, -0.65, -2.247, -2.247,
+                      -2.181, -2.181)
 
   ################################################################################
   # Propotional tests

@@ -18,7 +18,7 @@
   rxode2::rxReq("fastGHQuad") # conditionally require
   .gh <- fastGHQuad::gaussHermiteData(nAQD)
   .x <- .gh$x
-  .w <- .gh$w
+  .w <- .gh$w/sqrt(pi)
   .first <- FALSE
   if (nAQD %% 2 == 1) {
     # If nAQD is odd, have the zero weight at the beginning so that
