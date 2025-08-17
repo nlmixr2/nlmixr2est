@@ -131,7 +131,7 @@ nmTest({
 
     if (!identical(round(val, 3), round(ret, 3))) {
       t <- try(print(str2lang(paste0(valName, " <- ", deparse1(round(setNames(ret, NULL), 3))))), silent=TRUE)
-      if (inheirts(t, "try-error")) {
+      if (inherits(t, "try-error")) {
         try(print(str2lang(eparse1(round(setNames(ret, NULL), 3)))))
       }
     }
