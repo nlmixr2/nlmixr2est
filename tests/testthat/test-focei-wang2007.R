@@ -129,12 +129,14 @@ nmTest({
     }
     val <- setNames(val, .n)
 
-    if (!identical(round(val, 3), round(ret, 3))) {
-      t <- try(print(str2lang(paste0(valName, " <- ", deparse1(round(setNames(ret, NULL), 3))))), silent=TRUE)
-      if (inherits(t, "try-error")) {
-        try(print(str2lang(eparse1(round(setNames(ret, NULL), 3)))))
-      }
-    }
+    ## if (!identical(round(val, 3), round(ret, 3))) {
+    ##   print("\n")
+    ##   t <- try(print(str2lang(paste0(valName, " <- ", deparse1(round(setNames(ret, NULL), 3))))), silent=TRUE)
+    ##   if (inherits(t, "try-error")) {
+    ##     print(type)
+    ##     try(print(str2lang(deparse1(round(setNames(ret, NULL), 3)))))
+    ##   }
+    ## }
 
     ## Now test
     if (!all(is.na(val))) {
@@ -224,49 +226,48 @@ nmTest({
   })
 
   .propVals <- c(39.458, 39.458, 39.275, 39.207, 39.213, 39.213,
-                 39.365, 39.365, 39.227, 39.227)
+                 39.365, 39.365, 39.458, 39.458)
   .propModVals <- c(63.353, 63.353, 63.001, 63.063, 63.063, 63.063,
-                    63.063, 63.063, 62.733, 62.733)
+                    63.063, 63.063, 63.353, 63.353)
   .propFVals <- c(6.496, 6.496, 6.488, 6.275, 9.262, 9.262, 6.545,
-                  6.545, 6.584, 6.584)
+                  6.545, 6.496, 6.496)
   .propFModVals <- c(19.177, 19.177, 19.07, 18.202, 18.333, 18.333,
-                     19.158, 19.158, 18.911, 18.911)
+                     19.158, 19.158, 19.177, 19.177)
   .addVals <- c(-2.059, -2.059, -2.059, -2.059, 0.026, 0.026, -1.997,
-                -1.997, -1.936, -1.936)
+                -1.997, -2.059, -2.059)
   .powVals <- c(9.966, 9.966, 9.948, 9.331, 9.651, 9.651, 10.007,
-                10.007, 9.956, 9.956)
+                10.007, 9.966, 9.966)
   .powFModVals <- c(0.776, 0.776, 0.772, 0.58, 3.2, 3.2, 0.828,
-                    0.828, 0.871, 0.871)
+                    0.828, 0.776, 0.776)
   .powF1Vals <- c(27.301, 27.301, 27.147, 26.854, 26.888, 26.888,
-                  27.259, 27.259, 27.119, 27.119)
+                  27.259, 27.259, 27.301, 27.301)
   .powF2Vals <- c(17.831, 17.831, 17.785, 16.617, 16.852, 16.852,
-                  17.871, 17.871, 17.656, 17.656)
+                  17.871, 17.871, 17.831, 17.831)
   .powF3Vals <- c(79.733, 79.733, 79.371, 79.448, 79.448, 79.448,
-                  79.389, 79.389, 79.01, 79.01)
+                  79.389, 79.389, 79.733, 79.733)
   .powFMod1Vals <- c(24.877, 24.877, 24.773, 24.518, 24.554, 24.554,
-                     24.842, 24.842, 24.732, 24.732)
+                     24.842, 24.842, 24.877, 24.877)
   .powFMod2Vals <- c(49.312, 49.312, 49.311, 49.296, 52.603, 52.603,
-                     49.34, 49.34, 49.367, 49.367)
+                     49.34, 49.34, 49.312, 49.312)
   .powFMod3Vals <- c(10.848, 10.848, 10.784, 9.446, 9.96, 9.96,
-                     10.915, 10.915, 10.75, 10.75)
+                     10.915, 10.915, 10.848, 10.848)
   .addProp2 <- c(39.735, 39.735, 39.562, 39.499, 39.505, 39.505,
-                 39.647, 39.647, 39.516, 39.516)
-  .addModPropMod2 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079, 105.948,
-                       105.948, 105.559, 105.559)
+                 39.647, 39.647, 39.735, 39.735)
+  .addModPropMod2 <- c(106.308, 106.308, 106.013, 106.079, 106.079,
+                       106.079, 105.948, 105.948, 106.308, 106.308)
   .addProp1 <- c(43.554, 43.554, 43.416, 43.394, 43.398, 43.398,
-                 43.469, 43.469, 43.359, 43.359)
+                 43.469, 43.469, 43.554, 43.554)
   .addPow1 <- c(16.231, 16.231, 16.219, 16.008, 16.093, 16.093, 16.249, 16.249,
                 16.231, 16.231)
   ## .addPow2 <- c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662)
   .addModVals <- c(3.238, 3.238, 3.207, 2.438, 3.311, 3.311, 3.298,
-                   3.298, 3.271, 3.271)
-
-  .addModPropMod1 <- c(106.308, 106.308, 106.013, 106.079, 106.079, 106.079, 105.948,
-                       105.948, 105.559, 105.559)
+                   3.298, 3.238, 3.238)
+  .addModPropMod1 <- c(106.308, 106.308, 106.013, 106.079, 106.079,
+                       106.079, 105.948, 105.948, 106.308, 106.308)
   .addModPropFModVals2 <- c(54.317, 54.317, 54.14, 54.165, 54.166,
-                            54.166, 54.148, 54.148, 53.957, 53.957)
+                            54.166, 54.148, 54.148, 54.317, 54.317)
   .addPropFVals2 <- c(-2.321, -2.321, -2.322, -2.454, -0.65, -0.65,
-                      -2.247, -2.247, -2.181, -2.181)
+                      -2.247, -2.247, -2.321, -2.321)
 
   ################################################################################
   # Propotional tests
@@ -588,7 +589,7 @@ nmTest({
   testErr("add+pow combined 2", function(f) {
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
   }, c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662, 10.924, 10.924,
-       10.894, 10.894), addProp = 2)
+       10.886, 10.886), addProp = 2)
 
   testErr("add+pow combined 1->add+prop combined1", function(f) {
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw)) %>% ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1)
@@ -610,47 +611,46 @@ nmTest({
   ################################################################################
 
   .lnorm <- c(40.039, 40.039, 40.039, 40.039, 40.055, 40.055, 40.042,
-              40.042, 40.03, 40.03)
+              40.042, 40.039, 40.039)
   .lnormProp <- c(118.419, 118.419, 118.279, 118.311, 118.311,
-                   118.311, 118.221, 118.221, 118.013, 118.013)
+                  118.311, 118.221, 118.221, 118.419, 118.419)
   .lnormPropT <- c(65.886, 65.886, 65.827, 65.832, 65.832, 65.832,
-                   65.803, 65.803, 65.707, 65.707)
+                   65.803, 65.803, 65.886, 65.886)
   .lnormPropF <- c(27.293, 27.293, 27.274, 26.643, 27.035, 27.035,
-                   27.253, 27.253, 27.025, 27.025)
+                   27.253, 27.253, 27.293, 27.293)
   .lnormPow <- c(77.87, 77.87, 77.826, 77.836, 77.836, 77.836,
-                 77.803, 77.803, 77.731, 77.731)
+                 77.803, 77.803, 77.87, 77.87)
   .lnormPowT <- c(52.616, 52.616, 52.601, 52.584, 52.587, 52.587,
-                  52.587, 52.587, 52.543, 52.543)
+                  52.587, 52.587, 52.616, 52.616)
 
   .lnormPowF <- c(32.834, 32.834, 32.834, 32.697, 32.784, 32.784,
-                  32.817, 32.817, 32.745, 32.745)
+                  32.817, 32.817, 32.834, 32.834)
   .lnormProp1 <- c(123.318, 123.318, 123.219, 123.24, 123.24, 123.24,
-                   123.166, 123.166, 123.008, 123.008)
+                   123.166, 123.166, 123.318, 123.318)
   .lnormPropT1 <- c(81.152, 81.152, 81.13, 81.135, 81.135, 81.135,
-                    81.102, 81.102, 81.049, 81.049)
+                    81.102, 81.102, 81.152, 81.152)
   .lnormPropF1 <- c(56.785, 56.785, 56.78, 56.774, 56.775, 56.775,
-                    56.771, 56.771, 56.749, 56.749)
+                    56.771, 56.771, 56.785, 56.785)
   .lnormPropT1 <- c(81.152, 81.152, 81.13, 81.135, 81.135, 81.135,
-                    81.102, 81.102, 81.049, 81.049)
+                    81.102, 81.102, 81.152, 81.152)
   .lnormPowF1 <- c(60.494, 60.494, 60.492, 60.489, 60.49, 60.49,
-                   60.485, 60.485, 60.472, 60.472)
+                   60.485, 60.485, 60.494, 60.494)
   .lnormPow1 <- c(89.824, 89.824, 89.803, 89.809, 89.809, 89.809,
-                  89.781, 89.781, 89.736, 89.736)
-
+                  89.781, 89.781, 89.824, 89.824)
   .lnormProp2 <- c(118.777, 118.777, 118.646, 118.676, 118.676,
-                   118.676, 118.59, 118.59, 118.394, 118.394)
+                   118.676, 118.59, 118.59, 118.777, 118.777)
   .lnormPropT2 <- c(69.981, 69.981, 69.947, 69.951, 69.951, 69.951,
-                    69.924, 69.924, 69.861, 69.861)
+                    69.924, 69.924, 69.981, 69.981)
   .lnormPropF2 <- c(45.498, 45.498, 45.495, 45.482, 45.49, 45.49,
-                    45.494, 45.494, 45.475, 45.475)
+                    45.494, 45.494, 45.498, 45.498)
   .lnormPow2 <- c(80.244, 80.244, 80.212, 80.219, 80.219, 80.219,
-                  80.191, 80.191, 80.135, 80.135)
+                  80.191, 80.191, 80.244, 80.244)
   .lnormPowF2 <- c(48.202, 48.202, 48.2, 48.193, 48.198, 48.198,
-                   48.198, 48.198, 48.183, 48.183)
+                   48.198, 48.198, 48.202, 48.202)
   .lnormPowT2 <- c(59.837, 59.837, 59.831, 59.826, 59.827, 59.827,
-                   59.819, 59.819, 59.795, 59.795)
-  .lnormPowT1 <- c(72.356, 72.356, 72.351, 72.351, 72.351, 72.351, 72.338, 72.338,
-                   72.316, 72.316)
+                   59.819, 59.819, 59.837, 59.837)
+  .lnormPowT1 <- c(72.356, 72.356, 72.351, 72.351, 72.351, 72.351,
+                   72.338, 72.338, 72.356, 72.356)
 
   testErr("lnorm", function(f) {
     f %>% model(ipre ~ lnorm(lnorm.sd)) %>% ini(lnorm.sd=sqrt(0.1))
@@ -660,7 +660,10 @@ nmTest({
     suppressWarnings({
       expect_equal(setNames(round(testErr("add lnorm", function(f) {
         f %>% model(lipre ~ add(add.sd)) %>% ini(add.sd=sqrt(0.1))
-      },  log=TRUE) + 2 * sum(datl$DV), 3), NULL),
+      },
+      c(-42.106, -42.106, -42.106, -42.106, -42.09, -42.09, -42.103,
+        -42.103, -42.106, -42.106),
+      log=TRUE) + 2 * sum(datl$DV), 3), NULL),
       .lnorm, tolerance=5e-3)
     })
   })
@@ -841,25 +844,25 @@ nmTest({
   #################################################################################
 
   .boxCoxPropTVals <- c(35.132, 35.132, 34.879, 34.694, 34.709,
-                        34.709, 35.036, 35.036, 34.85, 34.85)
+                        34.709, 35.036, 35.036, 35.132, 35.132)
   .boxCoxPropTModVals <- c(58.21, 58.21, 57.741, 57.802, 57.803,
-                           57.803, 57.884, 57.884, 57.492, 57.492)
+                           57.803, 57.884, 57.884, 58.21, 58.21)
   .boxCoxPropTVals <- c(35.132, 35.132, 34.879, 34.694, 34.709,
-                        34.709, 35.036, 35.036, 34.85, 34.85)
-  .boxCoxPowTVals <- c(9.11, 9.11, 9.095, 8.215, 8.644, 8.644, 9.152, 9.152, 9.061,
-                       9.061)
+                        34.709, 35.036, 35.036, 35.132, 35.132)
+  .boxCoxPowTVals <- c(9.11, 9.11, 9.095, 8.215, 8.644, 8.644,
+                       9.152, 9.152, 9.11, 9.11)
   .boxCoxPowTF1Vals <- c(25.57, 25.57, 25.388, 24.951, 25.002,
-                         25.002, 25.53, 25.53, 25.349, 25.349)
+                         25.002, 25.53, 25.53, 25.57, 25.57)
   .boxCoxPowTF2Vals <- c(16.507, 16.507, 16.423, 14.981, 15.314,
-                         15.314, 16.568, 16.568, 16.319, 16.319)
+                         15.314, 16.568, 16.568, 16.507, 16.507)
   .boxCoxPowTF3Vals <- c(76.496, 76.496, 76.097, 76.179, 76.179,
-                         76.179, 76.137, 76.137, 75.737, 75.737)
+                         76.179, 76.137, 76.137, 76.496, 76.496)
   .boxCoxAddModPropTMod2 <- c(100.737, 100.737, 100.351, 100.437,
-                              100.437, 100.437, 100.293, 100.293, 99.803, 99.803)
+                              100.437, 100.437, 100.293, 100.293, 100.737, 100.737)
   .boxCoxAddPropT2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07,
                             35.07, 35.367, 35.367, 35.195, 35.195)
   .boxCoxPropT2ModVals <- c(58.21, 58.21, 57.741, 57.802, 57.803,
-                            57.803, 57.884, 57.884, 57.492, 57.492)
+                            57.803, 57.884, 57.884, 58.21, 58.21)
   .boxCoxPropAddPropT2Vals <- c(100.737, 100.737, 100.351, 100.437, 100.437, 100.437)
 
   testErr("prop+boxCox->prop", function(f) {
@@ -1011,7 +1014,9 @@ nmTest({
   testErr("boxCox+add+propT, combined 2->propT", function(f) {
     f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
       ini(add.sd=0, prop.sd=sqrt(0.1), lambda=1)
-  }, addProp = 2)
+  }, c(35.132, 35.132, 34.879, 34.694, 34.709, 34.709, 35.036, 35.036,
+       35.132, 35.132),
+  addProp = 2)
 
   testErr("boxCox+add+propTMod, combined 2->propMod", function(f) {
     f %>% model(ipre ~ add(add.sd) + propT(f2) + boxCox(lambda)) %>%
@@ -1024,7 +1029,7 @@ nmTest({
   }, .boxCoxAddModPropTMod2, addProp = 2)
 
   .boxCoxAddPropTc2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07,
-                             35.07, 35.367, 35.367, 35.195, 35.195)
+                             35.07, 35.367, 35.367, 35.457, 35.457)
 
   testErr("boxCox+add+propT, combined 2", function(f) {
     f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
@@ -1114,7 +1119,7 @@ nmTest({
   }, .addModVals, addProp = 2)
 
   .boxCoxPropT <- c(35.132, 35.132, 34.879, 34.694, 34.709, 34.709,
-                    35.036, 35.036, 34.85, 34.85)
+                    35.036, 35.036, 35.132, 35.132)
 
   testErr("boxCox+add+propT, combined 2->prop", function(f) {
     f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda)) %>%
@@ -1125,9 +1130,8 @@ nmTest({
     f %>% model(ipre ~ add(add.sd) + propT(f2) + boxCox(lambda)) %>%
       ini(add.sd=0, lambda=1)
   }, .boxCoxPropT2ModVals, addProp = 2)
-
   .boxCoxAddPropT3Vals <- c(100.737, 100.737, 100.351, 100.437,
-                            100.437, 100.437, 100.293, 100.293, 99.803, 99.803)
+                            100.437, 100.437, 100.293, 100.293, 100.737, 100.737)
 
   testErr("boxCox+addMod+propTMod, combined 2->propMod", function(f) {
     f %>% model(ipre ~ add(f2) + propT(f3) + boxCox(lambda)) %>%
@@ -1135,7 +1139,7 @@ nmTest({
   },  .boxCoxAddPropT3Vals, addProp = 2)
 
   .boxCoxAddPropT2Vals <- c(35.457, 35.457, 35.224, 35.056, 35.07,
-                            35.07, 35.367, 35.367, 35.195, 35.195)
+                            35.07, 35.367, 35.367, 35.457, 35.457)
 
   testErr("boxCox+add+propT, combined 2 (specified)", function(f) {
     f %>% model(ipre ~ add(add.sd) + propT(prop.sd) + boxCox(lambda) + combined2()) %>%
@@ -1216,7 +1220,7 @@ nmTest({
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
       ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lambda=1)
   }, c(10.886, 10.886, 10.868, 10.417, 10.662, 10.662, 10.924, 10.924,
-       10.894, 10.894), addProp = 2)
+       10.886, 10.886), addProp = 2)
 
   testErr("boxCox+add+pow combined 1 -> add+prop combined1", function(f) {
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + boxCox(lambda)) %>%
@@ -1459,7 +1463,7 @@ nmTest({
   ################################################################################
 
   .boxCoxAdd <- c(10.402, 10.402, 10.402, 10.402, 11.078, 11.078,
-                  10.448, 10.448, 10.473, 10.473)
+                  10.448, 10.448, 10.402, 10.402)
 
   testErr("boxCox(0.5)+add", function(f) {
     f %>% model(ipre ~ add(add.sd) + boxCox(lambda)) %>%
@@ -1471,20 +1475,20 @@ nmTest({
   ################################################################################
 
   .boxCoxProp <- c(77.857, 77.857, 77.698, 77.732, 77.732, 77.732,
-                   77.679, 77.679, 77.487, 77.487)
+                   77.679, 77.679, 77.857, 77.857)
   testErr("boxCox(0.5)+prop", function(f) {
     f %>% model(ipre ~ boxCox(lambda) + prop(prop.sd)) %>% ini(prop.sd=sqrt(0.1), lambda=0.5)
   }, .boxCoxProp, addProp = 1)
 
   .boxCoxPropT <- c(48.455, 48.455, 48.321, 48.287, 48.291, 48.291,
-                    48.352, 48.352, 48.214, 48.214)
+                    48.352, 48.352, 48.455, 48.455)
   testErr("boxCox(0.5)+propT", function(f) {
     f %>% model(ipre ~ boxCox(lambda) + propT(prop.sd)) %>%
       ini(prop.sd=sqrt(0.1), lambda=0.5)
   }, .boxCoxPropT, addProp = 1)
 
   .boxCoxPropF <- c(4.243, 4.243, 4.216, 3.537, 6.584, 6.584, 4.371,
-                    4.371, 4.419, 4.419)
+                    4.371, 4.243, 4.243)
   testErr("boxCox(0.5)+propF", function(f) {
     f %>% model(ipre ~ boxCox(lm) + propF(prop.sd, f2)) %>%
       ini(prop.sd=sqrt(0.1), lm=0.5)
@@ -1506,21 +1510,22 @@ nmTest({
   }, .boxCoxPropF, addProp = 1)
 
   .boxCoxPow <- c(39.674, 39.674, 39.629, 39.563, 39.573, 39.573,
-                  39.64, 39.64, 39.579, 39.579)
+                  39.64, 39.64, 39.674, 39.674)
+
   testErr("boxCox(0.5)+pow", function(f) {
     f %>% model(ipre ~ boxCox(lm) + pow(prop.sd, pw)) %>%
       ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxPow, addProp = 1)
 
   .boxCoxPowT <- c(27.311, 27.311, 27.296, 27.082, 27.148, 27.148,
-                   27.297, 27.297, 27.225, 27.225)
+                   27.297, 27.297, 27.311, 27.311)
   testErr("boxCox(0.5)+powT", function(f) {
     f %>% model(ipre ~ boxCox(lm) + powT(prop.sd, pw)) %>%
       ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxPowT, addProp = 1)
 
   .boxCoxPowF <- c(7.046, 7.046, 7.032, 6.617, 8.287, 8.287, 7.118,
-                   7.118, 7.127, 7.127)
+                   7.118, 7.046, 7.046)
   testErr("boxCox(0.5)+powF", function(f) {
     f %>% model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) %>%
       ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
@@ -1562,21 +1567,24 @@ nmTest({
   }, .boxCoxAdd, addProp = 1)
 
   .boxCoxAddProp1 <- c(82.622, 82.622, 82.508, 82.534, 82.534,
-                       82.534, 82.481, 82.481, 82.332, 82.332)
+                       82.534, 82.481, 82.481, 82.622, 82.622)
+
   testErr("boxCox(0.5)+add+prop combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + prop(prop.sd) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .boxCoxAddProp1, addProp = 1)
 
   .boxCoxAddPropT1 <- c(57.327, 57.327, 57.252, 57.256, 57.257,
-                        57.257, 57.248, 57.248, 57.157, 57.157)
+                        57.257, 57.248, 57.248, 57.327, 57.327)
+
   testErr("boxCox(0.5)+add+propT combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .boxCoxAddPropT1, addProp = 1)
 
   .boxCoxAddPropF1 <- c(22.065, 22.065, 22.064, 21.96, 22.067,
-                        22.067, 22.073, 22.073, 22.05, 22.05)
+                        22.067, 22.073, 22.073, 22.065, 22.065)
+
   testErr("boxCox(0.5)+add+propF combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + propF(prop.sd, f2) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
@@ -1598,21 +1606,24 @@ nmTest({
   }, .boxCoxAddPropT1, addProp = 1)
 
   .boxCoxAddPowF1 <- c(24.676, 24.676, 24.676, 24.631, 24.692,
-                       24.692, 24.684, 24.684, 24.672, 24.672)
+                       24.692, 24.684, 24.684, 24.676, 24.676)
+
   testErr("boxCox(0.5)+add+powF combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + powF(prop.sd, pw, f2) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxAddPowF1, addProp = 1)
 
   .boxCoxAddPow1 <- c(50.265, 50.265, 50.241, 50.23, 50.232, 50.232,
-                      50.237, 50.237, 50.2, 50.2)
+                      50.237, 50.237, 50.265, 50.265)
+
   testErr("boxCox(0.5)+add+pow combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + pow(prop.sd, pw) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxAddPow1, addProp = 1)
 
   .boxCoxAddPowT1 <- c(40.45, 40.45, 40.436, 40.41, 40.416, 40.416,
-                       40.434, 40.434, 40.406, 40.406)
+                       40.434, 40.434, 40.45, 40.45)
+
   testErr("boxCox(0.5)+add+powT combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + powT(prop.sd, pw) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
@@ -1648,7 +1659,8 @@ nmTest({
   }, .boxCoxAdd, addProp = 2)
 
   .boxCoxAddProp2 <- c(78.202, 78.202, 78.052, 78.084, 78.084,
-                       78.084, 78.033, 78.033, 77.851, 77.851)
+                       78.084, 78.033, 78.033, 78.202, 78.202)
+
   testErr("boxCox(0.5)+add+pow->boxCox(0.5)+add+prop combined2", function(f) {
     f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
@@ -1660,14 +1672,17 @@ nmTest({
   }, .boxCoxAddProp2 ,addProp = 2)
 
   .boxCoxAddPropT2 <- c(49.798, 49.798, 49.689, 49.668, 49.671,
-                        49.671, 49.711, 49.711, 49.597, 49.597)
+                        49.671, 49.711, 49.711, 49.798, 49.798)
+
   testErr("boxCox(0.5)+add+propT combined2", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + propT(prop.sd) + boxCox(lm)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .boxCoxAddPropT2, addProp = 2)
 
+
   .boxCoxAddPropF2 <- c(14.213, 14.213, 14.21, 14.085, 14.498,
-                        14.498, 14.246, 14.246, 14.242, 14.242)
+                        14.498, 14.246, 14.246, 14.213, 14.213)
+
   testErr("boxCox(0.5)+add+propF combined1", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm)+ propF(prop.sd, f2)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
@@ -1679,7 +1694,8 @@ nmTest({
   }, .boxCoxAddPropF2, addProp = 2)
 
   .boxCoxAddPropF2 <- c(78.202, 78.202, 78.052, 78.084, 78.084,
-                        78.084, 78.033, 78.033, 77.851, 77.851)
+                        78.084, 78.033, 78.033, 78.202, 78.202)
+
   testErr("boxCox(0.5)+add+pow->lnorm+prop combined2", function(f) {
     f %>% model(ipre ~ add(lnorm.sd) + boxCox(lm)+ pow(prop.sd, pw)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=1, lm=0.5)
@@ -1691,21 +1707,24 @@ nmTest({
   }, .boxCoxAddPropT2, addProp = 2)
 
   .boxCoxAddPowF2 <- c(15.857, 15.857, 15.856, 15.771, 16.06, 16.06,
-                       15.882, 15.882, 15.876, 15.876)
+                       15.882, 15.882, 15.857, 15.857)
+
   testErr("boxCox(0.5)+add+powF combined2", function(f) {
     f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + powF(prop.sd, pw, f2)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxAddPowF2, addProp = 2)
 
   .boxCoxAddPow2 <- c(41.665, 41.665, 41.631, 41.589, 41.596, 41.596,
-                      41.638, 41.638, 41.591, 41.591)
+                      41.638, 41.638, 41.665, 41.665)
+
   testErr("boxCox(0.5)+add+pow combined2", function(f) {
     f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + pow(prop.sd, pw)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxAddPow2, addProp = 2)
 
   .boxCoxAddPowT2 <- c(30.736, 30.736, 30.722, 30.625, 30.657,
-                       30.657, 30.727, 30.727, 30.687, 30.687)
+                       30.657, 30.727, 30.727, 30.736, 30.736)
+
   testErr("boxCox(0.5)+add+powT combined2", function(f) {
     f %>% model(ipre ~ boxCox(lm) + add(lnorm.sd) + powT(prop.sd, pw)) %>%
       ini(lnorm.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
@@ -1714,47 +1733,50 @@ nmTest({
 
   # Now yeoJohnson
   .yeoJohnsonAdd <- c(11.279, 11.279, 11.279, 11.279, 11.738, 11.738,
-                      11.32, 11.32, 11.343, 11.343)
+                      11.32, 11.32, 11.279, 11.279)
+
   testErr("add+yeoJohnson", function(f) {
     f %>% model(ipre ~ add(add.sd) + yeoJohnson(lm)) %>% ini(add.sd=sqrt(0.1), lm=0.5)
   }, .yeoJohnsonAdd)
 
   .yeoJohnsonProp <- c(80.257, 80.257, 80.102, 80.136, 80.136,
-                       80.136, 80.076, 80.076, 79.882, 79.882)
+                       80.136, 80.076, 80.076, 80.257, 80.257)
   testErr("prop+yeoJohnson", function(f) {
     f %>% model(ipre ~ prop(prop.sd) + yeoJohnson(lm)) %>% ini(prop.sd=sqrt(0.1), lm=0.5)
   }, .yeoJohnsonProp)
 
-  .yeoJohnsonPow <- c(41.644, 41.644, 41.598, 41.552, 41.559, 41.559)
-
   testErr("pow+yeoJohnson", function(f) {
     f %>% model(ipre ~ pow(prop.sd, pw) + yeoJohnson(lm)) %>% ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
   }, c(41.644, 41.644, 41.598, 41.552, 41.559, 41.559, 41.607, 41.607,
-       41.549, 41.549))
+       41.644, 41.644))
 
   .yeoJohnsonAddProp1 <- c(85.048, 85.048, 84.937, 84.961, 84.962,
-                           84.962, 84.905, 84.905, 84.755, 84.755)
+                           84.962, 84.905, 84.905, 85.048, 85.048)
+
   testErr("add+prop+yeoJohnson", function(f) {
     f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .yeoJohnsonAddProp1, addProp = 1)
 
   .yeoJohnsonAddProp2 <- c(80.605, 80.605, 80.458, 80.49, 80.491,
-                           80.491, 80.433, 80.433, 80.249, 80.249)
+                           80.491, 80.433, 80.433, 80.605, 80.605)
+
   testErr("add+prop+yeoJohnson", function(f) {
     f %>% model(ipre ~ add(add.sd) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .yeoJohnsonAddProp2, addProp = 2)
 
   .yeoJohnsonAddPow1 <- c(52.481, 52.481, 52.456, 52.451, 52.452,
-                          52.452, 52.451, 52.451, 52.414, 52.414)
+                          52.452, 52.451, 52.451, 52.481, 52.481)
+
   testErr("add+pow+yeoJohnson", function(f) {
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .yeoJohnsonAddPow1, addProp = 1)
 
   .yeoJohnsonAddPow2 <- c(43.704, 43.704, 43.669, 43.641, 43.645,
-                          43.645, 43.674, 43.674, 43.63, 43.63)
+                          43.645, 43.674, 43.674, 43.704, 43.704)
+
   testErr("add+pow+yeoJohnson", function(f) {
     f %>% model(ipre ~ add(add.sd) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(add.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
@@ -1762,14 +1784,16 @@ nmTest({
 
   ## logitNorm
   .logitNormAdd <- c(0.612, 0.612, 0.612, 0.612, 0.786, 0.786,
-                     0.629, 0.629, 0.635, 0.635)
+                     0.629, 0.629, 0.612, 0.612)
+
   testErr("logitNorm", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12)) %>%
       ini(logit.sd=sqrt(0.1))
   }, .logitNormAdd)
 
   .logitNormProp <- c(67.882, 67.882, 67.731, 67.765, 67.765, 67.765,
-                      67.697, 67.697, 67.5, 67.5)
+                      67.697, 67.697, 67.882, 67.882)
+
   testErr("logitNorm(NA)+prop", function(f) {
     f %>% model(ipre ~ logitNorm(NA, 0, 12) + prop(prop.sd)) %>%
       ini(prop.sd=sqrt(0.1))
@@ -1781,13 +1805,16 @@ nmTest({
   }, .logitNormProp)
 
   .logitNormPow <- c(29.055, 29.055, 29.007, 28.987, 28.989, 28.989,
-                     29.012, 29.012, 28.957, 28.957)
+                     29.012, 29.012, 29.055, 29.055)
+
   testErr("logitNorm(NA)+pow->logitNorm(NA)+prop", function(f) {
     f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
       ini(prop.sd=sqrt(0.1), pw=0.5)
   }, .logitNormPow)
+
   .logitNormAddProp1 <- c(72.699, 72.699, 72.591, 72.615, 72.615,
-                          72.615, 72.554, 72.554, 72.403, 72.403)
+                          72.615, 72.554, 72.554, 72.699, 72.699)
+
   testErr("logitNorm+prop", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1))
@@ -1799,7 +1826,8 @@ nmTest({
   }, .logitNormAddProp1, addProp = 1)
 
   .logitNormAddPow1 <- c(40.053, 40.053, 40.028, 40.028, 40.029,
-                         40.029, 40.02, 40.02, 39.983, 39.983)
+                         40.029, 40.02, 40.02, 40.053, 40.053)
+
   testErr("logitNorm+prop", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
@@ -1814,7 +1842,8 @@ nmTest({
   }, .logitNormAddYeoJohnson)
 
   .logitNormPropAddYeoJohnson <- c(78.136, 78.136, 77.984, 78.017,
-                                   78.017, 78.017, 77.95, 77.95, 77.751, 77.751)
+                                   78.017, 78.017, 77.95, 77.95, 78.136, 78.136)
+
   testErr("logitNorm(NA)+prop+yeoJohnson", function(f) {
     f %>% model(ipre ~ logitNorm(NA, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(prop.sd=sqrt(0.1), lm=0.5)
@@ -1826,49 +1855,56 @@ nmTest({
   }, .logitNormPropAddYeoJohnson)
 
   .logitNormPowYeoJohnson <- c(39.334, 39.334, 39.287, 39.251,
-                               39.256, 39.256, 39.287, 39.287, 39.214, 39.214)
+                               39.256, 39.256, 39.287, 39.287, 39.334, 39.334)
+
   testErr("logitNorm(NA)+pow+yeoJohnson", function(f) {
     f %>% model(ipre ~ logitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
   }, .logitNormPowYeoJohnson)
 
   .logitNormAddPropAddYeoJohnson1 <- c(82.941, 82.941, 82.833,
-                                       82.857, 82.857, 82.857, 82.796, 82.796, 82.642, 82.642)
+                                       82.857, 82.857, 82.857, 82.796, 82.796, 82.941, 82.941)
+
   testErr("logitNorm+add+prop+yeoJohnson combined 1", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .logitNormAddPropAddYeoJohnson1, addProp=1)
 
   .logitNormAddPropAddYeoJohnson2 <- c(78.485, 78.485, 78.341,
-                                       78.373, 78.373, 78.373, 78.309, 78.309, 78.12, 78.12)
+                                       78.373, 78.373, 78.373, 78.309, 78.309, 78.485, 78.485)
+
   testErr("logitNorm+add+prop+yeoJohnson combined2", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .logitNormAddPropAddYeoJohnson2, addProp = 2)
 
   .logitNormAddPowAddYeoJohnson1 <- c(82.941, 82.941, 82.833, 82.857,
-                                      82.857, 82.857, 82.796, 82.796, 82.642, 82.642)
+                                      82.857, 82.857, 82.796, 82.796, 82.941, 82.941)
+
   testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .logitNormAddPowAddYeoJohnson1, addProp = 1)
 
   .logitNormAddPowAddYeoJohnson2 <- c(78.485, 78.485, 78.341, 78.373,
-                                      78.373, 78.373, 78.309, 78.309, 78.12, 78.12)
+                                      78.373, 78.373, 78.309, 78.309, 78.485, 78.485)
+
   testErr("logitNorm+pow+yeoJohnson combined2", function(f) {
     f %>% model(ipre ~ logitNorm(logit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(logit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .logitNormAddPowAddYeoJohnson2, addProp = 2)
 
   .probitNormAdd <- c(12.827, 12.827, 12.827, 12.827, 12.847, 12.847,
-                      12.836, 12.836, 12.842, 12.842)
+                      12.836, 12.836, 12.827, 12.827)
+
   testErr("probitNorm", function(f) {
     f %>% model(ipre ~ probitNorm(logit.sd, 0, 12)) %>%
       ini(logit.sd=sqrt(0.1))
   }, .probitNormAdd)
 
   .probitNormProp <- c(88.875, 88.875, 88.733, 88.766, 88.766,
-                       88.766, 88.679, 88.679, 88.475, 88.475)
+                       88.766, 88.679, 88.679, 88.875, 88.875)
+
   testErr("probitNorm(NA)+prop", function(f) {
     f %>% model(ipre ~ probitNorm(NA, 0, 12) + prop(prop.sd)) %>%
       ini(prop.sd=sqrt(0.1))
@@ -1880,14 +1916,15 @@ nmTest({
   }, .probitNormProp)
 
   .probitNormPow <- c(48.625, 48.625, 48.579, 48.587, 48.587, 48.587,
-                      48.565, 48.565, 48.5, 48.5)
+                      48.565, 48.565, 48.625, 48.625)
+
   testErr("probitNorm(NA)+pow->probitNorm(NA)+prop", function(f) {
     f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw)) %>%
       ini(prop.sd=sqrt(0.1), pw=0.5)
   }, .probitNormPow)
 
   .probitNormAddProp1 <- c(93.761, 93.761, 93.661, 93.682, 93.682,
-                           93.682, 93.611, 93.611, 93.454, 93.454)
+                           93.682, 93.611, 93.611, 93.761, 93.761)
 
   testErr("probitNorm+prop", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd)) %>%
@@ -1900,7 +1937,8 @@ nmTest({
   }, .probitNormAddProp1, addProp = 1)
 
   .probitNormAddPow1 <- c(60.418, 60.418, 60.396, 60.401, 60.401,
-                          60.401, 60.378, 60.378, 60.336, 60.336)
+                          60.401, 60.378, 60.378, 60.418, 60.418)
+
   testErr("probitNorm+pow, combined1", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw)) %>%
       ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), pw=0.5)
@@ -1908,14 +1946,16 @@ nmTest({
 
   ## probitNorm + yeoJohnson
   .probitNormAddYeoJohnson <- c(19.69, 19.69, 19.69, 19.69, 19.729,
-    19.729, 19.699, 19.699, 19.693, 19.693)
+                                19.729, 19.699, 19.699, 19.69, 19.69)
+
   testErr("probitNorm+yeoJohnson", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + yeoJohnson(lm)) %>%
       ini(probit.sd=sqrt(0.1), lm=0.5)
   }, .probitNormAddYeoJohnson)
 
   .probitNormPropAddYeoJohnson <- c(96.041, 96.041, 95.899, 95.931,
-                                    95.931, 95.931, 95.845, 95.845, 95.64, 95.64)
+                                    95.931, 95.931, 95.845, 95.845, 96.041, 96.041)
+
   testErr("probitNorm(NA)+prop+yeoJohnson", function(f) {
     f %>% model(ipre ~ probitNorm(NA, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(prop.sd=sqrt(0.1), lm=0.5)
@@ -1927,36 +1967,39 @@ nmTest({
   }, .probitNormPropAddYeoJohnson)
 
   .probitNormPowYeoJohnson <- c(55.798, 55.798, 55.751, 55.758,
-                                55.758, 55.758, 55.737, 55.737, 55.669, 55.669)
+                                55.758, 55.758, 55.737, 55.737, 55.798, 55.798)
+
   testErr("probitNorm(NA)+pow+yeoJohnson", function(f) {
     f %>% model(ipre ~ probitNorm(NA, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(prop.sd=sqrt(0.1), lm=0.5, pw=0.5)
   }, .probitNormPowYeoJohnson)
 
   .probitNormAddPropAddYeoJohnson1 <- c(100.925, 100.925, 100.824,
-                                        100.846, 100.846, 100.846, 100.774, 100.774, 100.617, 100.617)
+                                        100.846, 100.846, 100.846, 100.774, 100.774, 100.925, 100.925)
+
   testErr("probitNorm+add+prop+yeoJohnson combined 1", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .probitNormAddPropAddYeoJohnson1, addProp=1)
 
   .probitNormAddPropAddYeoJohnson2 <- c(96.398, 96.398, 96.264,
-                                        96.295, 96.295, 96.295, 96.213, 96.213, 96.019, 96.019)
+                                        96.295, 96.295, 96.295, 96.213, 96.213, 96.398, 96.398)
+
   testErr("probitNorm+add+prop+yeoJohnson combined2", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + prop(prop.sd) + yeoJohnson(lm)) %>%
       ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .probitNormAddPropAddYeoJohnson2, addProp = 2)
 
   .probitNormAddPowAddYeoJohnson1 <- c(100.925, 100.925, 100.824,
-                                       100.846, 100.846, 100.846, 100.774, 100.774, 100.617, 100.617)
+                                       100.846, 100.846, 100.846, 100.774, 100.774, 100.925, 100.925)
+
   testErr("probitNorm+pow+yeoJohnson combined1", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)
   }, .probitNormAddPowAddYeoJohnson1, addProp = 1)
 
   .probitNormAddPowAddYeoJohnson2 <- c(96.398, 96.398, 96.264,
-                                       96.295, 96.295, 96.295, 96.213, 96.213, 96.019, 96.019)
-
+                                       96.295, 96.295, 96.295, 96.213, 96.213, 96.398, 96.398)
   testErr("probitNorm+pow+yeoJohnson combined2", function(f) {
     f %>% model(ipre ~ probitNorm(probit.sd, 0, 12) + pow(prop.sd, pw) + yeoJohnson(lm)) %>%
       ini(probit.sd=sqrt(0.1), prop.sd=sqrt(0.1), lm=0.5)

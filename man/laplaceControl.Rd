@@ -42,7 +42,7 @@ quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 Laplace method.
 }
 \details{
-This method is made to more closely matches NONMEM-style Laplace
+This method can be made to more closely matches NONMEM-style Laplace
 estimation by requesting the log-likelihood from STAN as well as
 numerically calculated Hessian matrix. This is done with adding
 `+dnorm()` to the model for any normal end-points.

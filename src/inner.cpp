@@ -1511,7 +1511,7 @@ double LikInner2(double *eta, int likId, int id) {
       arma::mat Ginv_5(op_focei.neta, op_focei.neta);
       if (_aqn > 1) {
         // The Ginv_5 only needs to be calculated for the
-        // non-laplace case
+        // non-Laplace case
         bool success;
         try {
           success = inv(Ginv_5, trimatu(H0));
@@ -1527,21 +1527,20 @@ double LikInner2(double *eta, int likId, int id) {
             return NA_REAL;
           }
         }
-      }
-
-      arma::vec etahat(eta, op_focei.neta);
-      for (; curi < _aqn; curi++) {
-        // Get the x and w for the current iteration
-        arma::vec x = aqx.row(curi).t();
-        arma::vec w = aqw.row(curi).t();
-        arma::vec etaCur = etahat +  Ginv_5 * x;
-        lik  = -likInner0(etaCur.memptr(), id);
-        lik += sum(log(w) +  0.5 * x % x); // x % x  = x^2
-        // Can be factored out
-        //lik += op_focei.logDetOmegaInv5;
-        lik = max2(lik, op_focei.aqLow);
-        lik = min2(lik, op_focei.aqHi);
-        slik += exp(lik);
+        arma::vec etahat(eta, op_focei.neta);
+        for (; curi < _aqn; curi++) {
+          // Get the x and w for the current iteration
+          arma::vec x = aqx.row(curi).t();
+          arma::vec w = aqw.row(curi).t();
+          arma::vec etaCur = etahat +  Ginv_5 * x;
+          lik  = -likInner0(etaCur.memptr(), id);
+          lik += sum(log(w) +  0.5 * x % x); // x % x  = x^2
+          // Can be factored out
+          //lik += op_focei.logDetOmegaInv5;
+          lik = max2(lik, op_focei.aqLow);
+          lik = min2(lik, op_focei.aqHi);
+          slik += exp(lik);
+        }
       }
       //lik = 0.5*op_focei.neta * M_LN2 + det_Ginv_5 + log(slik);
       lik = log(slik) + logH0diag + op_focei.logDetOmegaInv5;
