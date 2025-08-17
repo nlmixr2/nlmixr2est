@@ -122,8 +122,7 @@ foceiControl(
   mceta = -1L,
   nAGQ = 0,
   agqLow = -Inf,
-  agqHi = Inf,
-  numericHess = FALSE
+  agqHi = Inf
 )
 }
 \arguments{
@@ -833,10 +832,6 @@ gnlmm it was -700.}
 \item{agqHi}{The upper bound for adaptive quadrature
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
-
-\item{numericHess}{Boolean indicating if the Hessian should be
-calculated numerically when it could use the foce(i) type of
-Hessian approximation.}
 }
 \value{
 The control object that changes the options for the FOCEi

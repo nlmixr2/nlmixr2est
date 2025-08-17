@@ -81,13 +81,12 @@
 #'
 #' }
 #'
-laplaceControl <- function(sigdig=3, ..., nAGQ=1, numericHess=TRUE) {
+laplaceControl <- function(sigdig=3, ..., nAGQ=1) {
   # interaction forces the calculation of the hessian, which is needed
   # for the adaptive Gaussian quadrature
   .control <- foceiControl(sigdig=sigdig,
                            ...,
-                           nAGQ=nAGQ,
-                           numericHess=numericHess)
+                           nAGQ=nAGQ)
   class(.control) <- "laplaceControl"
   .control
 }

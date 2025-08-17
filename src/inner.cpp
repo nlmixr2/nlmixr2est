@@ -302,7 +302,6 @@ struct focei_options {
   bool needOptimHess = false;
   int optimHessType = 1;
   int optimHessCovType = 1;
-  bool numericHess = false;
   double smatPer;
   bool didLikCalc=false;
   bool zeroGradFirstReset= false;
@@ -1308,7 +1307,7 @@ bool calcEtaHessian(double *eta, int likId, int id,
   int k, l;
   mat tmp;
   // This is actually -H
-  if (op_focei.needOptimHess || op_focei.numericHess) {
+  if (op_focei.needOptimHess) {
     arma::vec gr0(op_focei.neta);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
@@ -3378,7 +3377,6 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
-  op_focei.numericHess = as<bool>(foceiO["numericHess"]);
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
 

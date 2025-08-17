@@ -4,7 +4,7 @@
 \alias{laplaceControl}
 \title{Control options for the Laplace estimation method}
 \usage{
-laplaceControl(sigdig = 3, ..., nAGQ = 1, numericHess = TRUE)
+laplaceControl(sigdig = 3, ..., nAGQ = 1)
 }
 \arguments{
 \item{sigdig}{Optimization significant digits. This controls:
@@ -32,10 +32,6 @@ expensive with a large amount of ETAs.  Once the EBE is obtained
 for a subject, you will have nAGQ^neta additional function
 evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
 function evaluations for odd nAGQ numbers.}
-
-\item{numericHess}{Boolean indicating if the Hessian should be
-calculated numerically when it could use the foce(i) type of
-Hessian approximation.}
 }
 \value{
 laplaceControl object

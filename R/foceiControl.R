@@ -711,10 +711,6 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
-#' @param numericHess Boolean indicating if the Hessian should be
-#'   calculated numerically when it could use the foce(i) type of
-#'   Hessian approximation.
-#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -894,8 +890,7 @@ foceiControl <- function(sigdig = 3, #
                          mceta=-1L,
                          nAGQ=0,
                          agqLow=-Inf,
-                         agqHi=Inf,
-                         numericHess=FALSE) { #
+                         agqHi=Inf) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1287,7 +1282,6 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
-  checkmate::assertLogical(numericHess, any.missing=FALSE, len=1)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1411,8 +1405,7 @@ foceiControl <- function(sigdig = 3, #
     mceta=as.integer(mceta),
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
-    agqLow=as.double(agqLow),
-    numericHess = numericHess
+    agqLow=as.double(agqLow)
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
