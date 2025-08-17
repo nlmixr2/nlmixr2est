@@ -4,11 +4,10 @@
 #' quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 #' Laplace method.
 #'
-#' This also more closely matches NONMEM-style Laplace estimation by
-#' requesting the Hessian be calculated numerically.
-#'
-#' This is calculated using the ODE forward sensitivities and numeric
-#' differences of the gradient.
+#' This method is made to more closely matches NONMEM-style Laplace
+#' estimation by requesting the log-likelihood from STAN as well as
+#' numerically calculated Hessian matrix. This is done with adding
+#' `+dnorm()` to the model for any normal end-points.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -160,10 +159,32 @@ nmObjGetFoceiControl.laplace <- function(x, ...) {
   .laplaceControlToFoceiControl(.env, assign=FALSE)
 }
 
+#' Convert a UI object to a ui with a log-likelihood
+#'
+#' @param ui the user interface with "norm" changed to dnorm log-likelihood
+#' @return ui function changed to dnorm()
+#' @noRd
+#' @author Matthew L. Fidler
+.uiToLogLik <- function(ui) {
+  .ui <- rxode2::rxUiDecompress(ui)
+  .w <- which(.ui$predDf$distribution == "norm")
+  if (length(.w) == 0L) {
+    return(ui)
+  }
+  .lstExpr <- .ui$lstExpr
+  .lines <- .ui$predDf$line[.w]
+  for (l in .lines) {
+    .lstExpr[[l]] <- str2lang(paste0(deparse1(.lstExpr[[l]]), " + dnorm()"))
+  }
+  .ui$lstExpr <- .lstExpr
+  rxode2::rxUiDecompress(.ui$fun())
+}
+
 #'@rdname nlmixr2Est
 #'@export
 nlmixr2Est.laplace <- function(env, ...) {
-  .ui <- env$ui
+  .ui <- .uiToLogLik(env$ui)
+  env$ui <- .ui
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'laplace'",
                              .var.name=.ui$modelName)
   .control <- env$control

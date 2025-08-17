@@ -1488,30 +1488,6 @@ double LikInner2(double *eta, int likId, int id) {
       // adaptive Gaussian Hermite Quadrature.
 
       // The standard error is not needed for the Laplace approximation
-      arma::mat Ginv_5(op_focei.neta, op_focei.neta);
-      bool success;
-      try {
-        success = inv(Ginv_5, trimatu(H0));
-        if (!success) {
-          success = inv(Ginv_5, H0);
-          if (!success) {
-            return NA_REAL;
-          }
-        }
-      } catch (...) {
-        success = inv(Ginv_5, H0);
-        if (!success) {
-          return NA_REAL;
-        }
-      }
-
-      // The original nlmixr used
-      // detGinv_5 as part of the likelihood formula
-      // in gnlmm/gnlmm2
-      double det_Ginv_5  = 0.0;
-      for (unsigned int j = H0.n_rows; j--;){
-        det_Ginv_5 += _safe_log(Ginv_5(j,j));
-      }
 
       // Get x and w from the AQ
       arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
@@ -1532,6 +1508,27 @@ double LikInner2(double *eta, int likId, int id) {
         lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
       }
+      arma::mat Ginv_5(op_focei.neta, op_focei.neta);
+      if (_aqn > 1) {
+        // The Ginv_5 only needs to be calculated for the
+        // non-laplace case
+        bool success;
+        try {
+          success = inv(Ginv_5, trimatu(H0));
+          if (!success) {
+            success = inv(Ginv_5, H0);
+            if (!success) {
+              return NA_REAL;
+            }
+          }
+        } catch (...) {
+          success = inv(Ginv_5, H0);
+          if (!success) {
+            return NA_REAL;
+          }
+        }
+      }
+
       arma::vec etahat(eta, op_focei.neta);
       for (; curi < _aqn; curi++) {
         // Get the x and w for the current iteration

@@ -495,7 +495,6 @@
 #'     initial estimate by.  So each iteration during the covariance
 #'     step is equal to the new step size = (prior step size)*gillStepCov
 #'
-#'
 #' @param gillStepCovLlik Same as above but during generalized focei
 #'   log-likelihood
 #'

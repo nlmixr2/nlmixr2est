@@ -42,11 +42,10 @@ quadrature for the likelihood.  Note that nAGQ=1 is the same as the
 Laplace method.
 }
 \details{
-This also more closely matches NONMEM-style Laplace estimation by
-requesting the Hessian be calculated numerically.
-
-This is calculated using the ODE forward sensitivities and numeric
-differences of the gradient.
+This method is made to more closely matches NONMEM-style Laplace
+estimation by requesting the log-likelihood from STAN as well as
+numerically calculated Hessian matrix. This is done with adding
+`+dnorm()` to the model for any normal end-points.
 }
 \examples{
 
