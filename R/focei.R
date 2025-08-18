@@ -1862,7 +1862,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env$saem0 <- .saem
     }
     if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
+      for (.item in c("origData", "parHistData", "phiM")) {
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
