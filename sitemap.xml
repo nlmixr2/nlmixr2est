@@ -7,12 +7,14 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addCwres.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addNpde.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addTable.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/agqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/bobyqaControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/boxCox.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/cholSE.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-addPkgNlmixr2.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-agq.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-augPredIpredModel.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseDifferent.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseFinal.html</loc></url>
@@ -45,6 +47,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/index.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/laplaceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc></url>

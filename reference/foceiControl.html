@@ -153,7 +153,10 @@
 <span>  zeroGradFirstReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  zeroGradRunReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  zeroGradBobyqa <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span></span>
+<span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span>,</span>
+<span>  nAGQ <span class="op">=</span> <span class="fl">0</span>,</span>
+<span>  agqLow <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
+<span>  agqHi <span class="op">=</span> <span class="cn">Inf</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -983,6 +986,29 @@ when the first gradient is zero.  Default is `TRUE`</p></dd>
   from the omega matrix</p>
 <p>- `n` the last eta and eta=0 are used, as well as n-1 sampled
   etas from the omega matrix</p></dd>
+
+
+<dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>
+<dd><p>Number of Gauss-Hermite Adaptive Quadrature points to
+take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
+is equivalent to the Laplace method. The adaptive quadrature
+expands every node for each of the ETAs, so it can be quite
+expensive with a large amount of ETAs.  Once the EBE is obtained
+for a subject, you will have nAGQ^neta additional function
+evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+function evaluations for odd nAGQ numbers.</p></dd>
+
+
+<dt id="arg-agqlow">agqLow<a class="anchor" aria-label="anchor" href="#arg-agqlow"></a></dt>
+<dd><p>The lower bound for adaptive quadrature
+log-likelihood. By default this is -Inf; in the original nlmixr's
+gnlmm it was -700.</p></dd>
+
+
+<dt id="arg-agqhi">agqHi<a class="anchor" aria-label="anchor" href="#arg-agqhi"></a></dt>
+<dd><p>The upper bound for adaptive quadrature
+log-likelihood.  By default this is Inf; in the original nlmixr's
+gnlmm was 400.</p></dd>
 
 </dl></div>
     <div class="section level2">
