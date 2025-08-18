@@ -9,7 +9,7 @@
 \arguments{
 \item{neta}{number of eta parameters in the model}
 
-\item{nAQD}{number of adaptive quadrature points to use}
+\item{nAGQ}{number of adaptive quadrature points to use}
 }
 \value{
 A list with the following elements:
@@ -24,7 +24,7 @@ A list with the following elements:
 Get the adaptive Gauss-Hermite quadrature points and weights
 }
 \examples{
-.agq(neta=2, nAQD=3)
+.agq(neta=2, nAGQ=3)
 }
 \author{
 Matthew L. Fidler

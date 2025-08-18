@@ -1,7 +1,7 @@
 #' Get the adaptive Gauss-Hermite quadrature points and weights
 #'
 #' @param neta number of eta parameters in the model
-#' @param nAQD number of adaptive quadrature points to use
+#' @param nAGQ number of adaptive quadrature points to use
 #' @return A list with the following elements:
 #' \item{x}{A matrix of quadrature points, one row per point.}
 #' \item{w}{A matrix of quadrature weights, one row per point.}
@@ -13,7 +13,7 @@
 #' @author Matthew L. Fidler
 #' @keywords internal
 #' @examples
-#' .agq(neta=2, nAQD=3)
+#' .agq(neta=2, nAGQ=3)
 .agq <- function(neta=2, nAGQ=3) {
   .n <- .nlmixr2estAgq(NA_integer_)
   if (nAGQ > .n) {
