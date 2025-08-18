@@ -119,7 +119,10 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L
+  mceta = -1L,
+  nAGQ = 0,
+  agqLow = -Inf,
+  agqHi = Inf
 )
 }
 \arguments{
@@ -812,6 +815,23 @@ when the first gradient is zero.  Default is `TRUE`}
 
   - `n` the last eta and eta=0 are used, as well as n-1 sampled
   etas from the omega matrix}
+
+\item{nAGQ}{Number of Gauss-Hermite Adaptive Quadrature points to
+take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
+is equivalent to the Laplace method. The adaptive quadrature
+expands every node for each of the ETAs, so it can be quite
+expensive with a large amount of ETAs.  Once the EBE is obtained
+for a subject, you will have nAGQ^neta additional function
+evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+function evaluations for odd nAGQ numbers.}
+
+\item{agqLow}{The lower bound for adaptive quadrature
+log-likelihood. By default this is -Inf; in the original nlmixr's
+gnlmm it was -700.}
+
+\item{agqHi}{The upper bound for adaptive quadrature
+log-likelihood.  By default this is Inf; in the original nlmixr's
+gnlmm was 400.}
 }
 \value{
 The control object that changes the options for the FOCEi

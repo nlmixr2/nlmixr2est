@@ -1029,7 +1029,8 @@ rxUiGet.foceiEtaNames <- function(x, ...) {
 #attr(rxUiGet.foceiEtaNames, "desc") <- "focei eta names"
 attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
 
-#' This assigns the tolerances based on a different tolerance for the sensitivity equations
+#' This assigns the tolerances based on a different tolerance for the
+#' sensitivity equations
 #'
 #' It will update and modify the control inside of the UI.
 #'
@@ -1779,6 +1780,24 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env$cov <- NULL
     }
   }
+  if (.control$nAGQ > 0) {
+    .ag <- .agq(length(ui$eta), .control$nAGQ)
+    .env$aqn <- as.integer(.ag$n)
+    .env$qx <- .ag$x
+    .env$qw <- .ag$w
+    .env$qfirst <- .ag$first
+    .env$nAGQ <- .control$nAGQ
+    .env$aqLow <- .control$agqLow
+    .env$aqHi <- .control$agqHi
+  } else {
+    .env$aqn <- 0L
+    .env$qx <- double(0)
+    .env$qw <- double(0)
+    .env$qfirst <- FALSE
+    .env$nAGQ <- 0L
+    .env$aqLow <- -Inf
+    .env$aqHi <- Inf
+  }
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     .ret0 <- try(.foceiFitInternal(.env))
   } else {
@@ -1817,10 +1836,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
   if (.control$calcTables) {
-    .tmp <- try(addTable(.ret, updateObject="no", keep=.ret$table$keep, drop=.ret$table$drop,
+    .tmp <- try(addTable(.ret,
+                         updateObject="no",
+                         keep=.ret$table$keep,
+                         drop=.ret$table$drop,
                          table=.ret$table), silent=TRUE)
     if (inherits(.tmp, "try-error")) {
-
       warning("error calculating tables, returning without table step", call.=FALSE)
     } else {
       .ret <- .tmp
@@ -1841,7 +1862,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .env$saem0 <- .saem
     }
     if (.control$compress) {
-      for (.item in c("origData", "phiM", "parHistData", "saem0")) {
+      for (.item in c("origData", "parHistData", "phiM")) {
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
