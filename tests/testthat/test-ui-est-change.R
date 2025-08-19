@@ -30,5 +30,8 @@ nmTest({
     fit <- .nlmixr(ui, theo_sd, est="focei", control=list(print=0))
 
     expect_equal(est0, ui$iniDf$est)
+
+    # Also check that there are no sensitives from the linCmt()
+    expect_false(any(names(fit) == "rx__sens_central_BY_p1"))
   })
 })
