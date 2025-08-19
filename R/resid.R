@@ -752,7 +752,7 @@ tableControl <- function(npde = NULL,
     censMethod=.censMethod,
     cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores, keep=keep, drop=drop)
   class(.ret) <- "tableControl"
-  return(.ret)
+  .ret
 }
 
 #' @export
