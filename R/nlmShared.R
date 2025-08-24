@@ -269,5 +269,5 @@
 #' @keywords internal
 #' @author Matthew L. Fidler
 .nlmAdjustCov <- function(cov, parScaled) {
-  .Call(`_nlmixr2est_nlmAdjustCov`, .cov, parScaled)
+  .Call(`_nlmixr2est_nlmAdjustCov`, cov, parScaled)
 }
