@@ -260,3 +260,14 @@
   .nlmFreeEnv()
   .ret
 }
+#' Adjust covariance matrix based on scaling parameters
+#'
+#' @param cov Covariance of scaled parameters
+#' @param parScaled The final scaled parameter value
+#' @return The adjusted covariance matrix based on the scaling
+#' @export
+#' @keywords internal
+#' @author Matthew L. Fidler
+.nlmAdjustCov <- function(cov, parScaled) {
+  .Call(`_nlmixr2est_nlmAdjustCov`, .cov, parScaled)
+}
