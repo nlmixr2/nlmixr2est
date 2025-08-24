@@ -1176,7 +1176,7 @@ double likInner0(double *eta, int id) {
                  fInd->nNonNormal++;
                  fInd->nObs++;
                }
-            } else if (op_focei.interaction == 0){
+            } else if (op_focei.interaction == 0) {
               for (i = op_focei.neta; i--; ){
                 if (predSolve || op_focei.etaFD[i]==1) {
                   a(k, i) = fpm = etaGradF(k, i);
@@ -1258,8 +1258,6 @@ double likInner0(double *eta, int id) {
   }
   return fInd->llik;
 }
-
-
 
 double *lpInner(double *eta, double *g, int id){
   focei_ind *fInd = &(inds_focei[id]);
