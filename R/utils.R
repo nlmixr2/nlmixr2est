@@ -134,14 +134,20 @@ nsis <- function() { ## build installer...
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
+#'
 #' @param lst When \code{TRUE} return a list with
 #'     list(object,warnings) instead of issuing the warnings.
 #'     Otherwise, when \code{FALSE} issue the warnings and return the
 #'     object.
+#'
 #' @return The value of the expression or a list with the value of
 #'     the expression and a list of warning messages
+#'
 #' @author Matthew L. Fidler
-#' @noRd
+#'
+#' @export
+#'
+#' @keywords internal
 .collectWarn <- function(expr, lst = FALSE) {
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
     ws <- c()
