@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.0.2.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,7 +32,7 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="4.1.0" id="nlmixr2est-410">nlmixr2est 4.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-410"></a></h2>
 <ul><li><p>Updated inferring the estimation method from the control object. Requires the control object to have a class of length one and match the estimation method. For example <code><a href="../reference/foceiControl.html">foceiControl()</a></code> would assume that the estimation method is related to <code>focei</code>.</p></li>
 <li><p>Changed Rstudio completion to not evaluate (in case it gets turned on for data.frames) (See <a href="https://github.com/nlmixr2/nlmixr2est/issues/568" class="external-link">#568</a>)</p></li>
 <li><p>Turned on data completion for items like <code>$fitMergeInner</code></p></li>
@@ -40,6 +40,7 @@
 <li><p>Added <code><a href="../reference/foceControl.html">foceControl()</a></code>, <code><a href="../reference/foControl.html">foControl()</a></code> and <code><a href="../reference/foiControl.html">foiControl()</a></code> for the <code>foce</code>, <code>fo</code> and <code>foi</code> methods, respectively. They try to convert the related control structures to the correct control structure for the estimation method.</p></li>
 <li><p>Added iov support for <code>focei</code>, <code>foce</code>, and <code>saem</code> (<a href="https://github.com/nlmixr2/nlmixr2est/issues/614" class="external-link">#614</a>)</p></li>
 <li><p>Added new estimation method <code>agq</code> which uses adaptive Gauss-Hermite Quadrature to fit a nonlinear-mixed effect model. In this method, you can choose the number of quadrature points to estimate the likelihood, with higher numbers giving more accurate likelihoods. The AGQ implementation in nlmixr2est allows you to specify the number of quadrature points via the <code><a href="../reference/agqControl.html">agqControl()</a></code> function, and supports both single and multiple subject models. This method is particularly useful for models where accurate likelihood estimation is critical.</p></li>
+<li><p>Also added a <code>laplace</code> method which is the same as <code>agq</code> with 1 node (and is numerically the same as <code>focei</code>, <code>foce</code> or log-likelihood <code>focei</code>/<code>laplace</code>, etc), but uses the <code>agq</code> routine.</p></li>
 <li><p>Fixed saem mu-reference display by not compressing the internal item <code>saem0</code>.</p></li>
 </ul></div>
     <div class="section level2">
