@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 4.1.0
 
 - Updated inferring the estimation method from the control
   object. Requires the control object to have a class of length one
@@ -32,6 +32,10 @@
   supports both single and multiple subject models. This method is
   particularly useful for models where accurate likelihood estimation
   is critical.
+
+- Also added a `laplace` method which is the same as
+  `agq` with 1 node (and is numerically the same as `focei`, `foce` or
+  log-likelihood `focei`/`laplace`, etc), but uses the `agq` routine.
 
 - Fixed saem mu-reference display by not compressing the internal item
   `saem0`.
