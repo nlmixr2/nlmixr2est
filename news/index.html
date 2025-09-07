@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.0.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,9 +28,14 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v4.1.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<ul><li><p>Fix scale.h so that <code>scaleType="none"</code> does not also require <code>scaleTo=0</code></p></li>
+<li><p>Request Armadillo 15 with the special flag in the new <code>RcppArmadillo</code></p></li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.1.0" id="nlmixr2est-410">nlmixr2est 4.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-410"></a></h2><p class="text-muted">CRAN release: 2025-08-29</p>
 <ul><li><p>Updated inferring the estimation method from the control object. Requires the control object to have a class of length one and match the estimation method. For example <code><a href="../reference/foceiControl.html">foceiControl()</a></code> would assume that the estimation method is related to <code>focei</code>.</p></li>
