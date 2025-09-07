@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fix scale.h so that `scaleType="none"` does not also require
+  `scaleTo=0`
+
 # nlmixr2est 4.1.0
 
 - Updated inferring the estimation method from the control
