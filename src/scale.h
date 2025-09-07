@@ -396,7 +396,7 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
     } else {
       return x[i];
     }
-  case scaleTypeNone: // log non-log multiplicative scaling
+  case scaleTypeNone: // no scaling
     return x[i];
   default:
     if (scale->scaleTo > 0){
