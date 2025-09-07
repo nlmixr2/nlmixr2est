@@ -64,10 +64,17 @@
 #' This downgrades the UI for any of the zero etas in the model
 #'
 #' @param ui  rxode2 User interface function
+#'
 #' @param zeroEtas The names of the zero etas in the model
+#'
 #' @return New rxode2 ui with the zero etas removed
+#'
 #' @author Matthew L. Fidler
-#' @noRd
+#'
+#' @keywords internal
+#'
+#' @export
+#'
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
   .lst <- .saemDropMuRefFromModel(ui, noCovs=TRUE)
   .model <- str2lang(
