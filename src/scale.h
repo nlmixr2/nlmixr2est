@@ -312,6 +312,9 @@ static inline double scaleAdjustGradScale(scaling *scale, double grad, double *x
     } else {
       return grad;
     }
+  case scaleTypeNone:
+    // no scaling
+    return grad;
   default:
     return grad;
   }
@@ -350,6 +353,8 @@ static inline double scaleUnscalePar(scaling *scale, double *x, int i){
     } else {
       return x[i];
     }
+  case scaleTypeNone: // no scaling
+    return x[i];
   default:
     if (scale->scaleTo > 0){
       return (x[i]-scaleTo)*1 + scale->initPar[i];
@@ -391,6 +396,8 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
     } else {
       return x[i];
     }
+  case scaleTypeNone: // no scaling
+    return x[i];
   default:
     if (scale->scaleTo > 0){
       return (x[i]-scale->initPar[i]) + scale->scaleTo;
