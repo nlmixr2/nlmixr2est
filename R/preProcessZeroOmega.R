@@ -141,6 +141,8 @@
 #'
 rmEta <- function(ui, eta) {
   ui <- rxode2::assertRxUi(ui, " for the 'rmEta()' function")
+  eta <- as.character(substitute(eta))
+  checkmate::assertCharacter(eta, any.missing=FALSE, len=1)
   .downgradeEtas(ui, eta)
 }
 
