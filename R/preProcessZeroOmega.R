@@ -140,6 +140,7 @@
 #' mod %>% rmEta("etaKa")
 #'
 rmEta <- function(ui, eta) {
+  ui <- rxode2::assertRxUi(ui, " for the 'rmEta()' function")
   .downgradeEtas(ui, eta)
 }
 
