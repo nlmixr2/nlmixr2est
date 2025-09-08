@@ -2,7 +2,7 @@
 % Please edit documentation in R/preProcessZeroOmega.R
 \name{rmEta}
 \alias{rmEta}
-\title{Remote an eta from the model}
+\title{Remove an eta from the model}
 \usage{
 rmEta(ui, eta)
 }
@@ -15,7 +15,7 @@ rmEta(ui, eta)
 ui model with eta removed
 }
 \description{
-Remote an eta from the model
+Remove an eta from the model
 }
 \examples{
 
