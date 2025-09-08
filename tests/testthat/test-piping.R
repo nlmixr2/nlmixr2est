@@ -76,7 +76,7 @@ nmTest({
       })
     }
 
-    mod1 <- mod %>% rmEta(c("etaVc"))
+    mod1 <- mod %>% rmEta("etaVc")
 
     expect_true(!rxode2::testExists(mod1, "etaVc"))
     expect_true(rxode2::testExists(mod1, "etaKa"))
