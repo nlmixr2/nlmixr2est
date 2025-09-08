@@ -39,6 +39,30 @@ mod <- function ()  {
 
 mod \%>\% rmEta("etaKa")
 
+# This can also remove more than one eta
+
+mod <- function ()  {
+ description <- "One compartment PK model with linear clearance"
+ ini({
+   lka <- 0.45
+   lcl <- 1
+   lvc <- 3.45
+   propSd <- c(0, 0.5)
+   etaKa ~ 0.1
+   etaCl ~ 0.2
+   etaVc ~ 0.3
+  })
+ model({
+   ka <- exp(lka + etaKa)
+   cl <- exp(lcl + etaCl)
+   vc <- exp(lvc + etaVc)
+   Cc <- linCmt()
+   Cc ~ prop(propSd)
+ })
+}
+
+mod \%>\% rmEta(c("etaKa", "etaCl"))
+
 }
 \author{
 Matthew L. Fidler
