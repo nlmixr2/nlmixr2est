@@ -109,7 +109,7 @@
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .mod()
 }
-#' Remote an eta from the model
+#' Remove an eta from the model
 #'
 #'
 #' @param ui rxode2 user interface
