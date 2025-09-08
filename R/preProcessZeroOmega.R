@@ -109,6 +109,39 @@
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .mod()
 }
+#' Remote an eta from the model
+#'
+#'
+#' @param ui rxode2 user interface
+#' @param eta eta to remove
+#' @return ui model with eta removed
+#' @export
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' mod <- function ()  {
+#'  description <- "One compartment PK model with linear clearance"
+#'  ini({
+#'    lka <- 0.45
+#'    lcl <- 1
+#'    lvc <- 3.45
+#'     propSd <- c(0, 0.5)
+#'     etaKa ~ 0.1
+#'   })
+#'  model({
+#'    ka <- exp(lka + etaKa)
+#'    cl <- exp(lcl)
+#'    vc <- exp(lvc)
+#'    Cc <- linCmt()
+#'    Cc ~ prop(propSd)
+#'  })
+#' }
+#'
+#' mod %>% rmEta("etaKa")
+#'
+rmEta <- function(ui, eta) {
+  .downgradeEtas(ui, eta)
+}
 
 
 #' Preprocess the zero omegas
