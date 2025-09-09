@@ -19,6 +19,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-collectWarn.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseDifferent.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseFinal.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-downgradeEtas.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-foceiPreProcessData.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmAdjustCov.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.html</loc></url>
@@ -102,6 +103,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/reexports.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rmEta.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
