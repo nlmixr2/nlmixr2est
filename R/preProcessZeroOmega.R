@@ -64,10 +64,17 @@
 #' This downgrades the UI for any of the zero etas in the model
 #'
 #' @param ui  rxode2 User interface function
+#'
 #' @param zeroEtas The names of the zero etas in the model
+#'
 #' @return New rxode2 ui with the zero etas removed
+#'
 #' @author Matthew L. Fidler
-#' @noRd
+#'
+#' @keywords internal
+#'
+#' @export
+#'
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
   .lst <- .saemDropMuRefFromModel(ui, noCovs=TRUE)
   .model <- str2lang(
@@ -101,6 +108,74 @@
   .ini[[1]] <- quote(`ini`)
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .mod()
+}
+#' Remove an eta from the model
+#'
+#'
+#' @param ui rxode2 user interface
+#' @param eta eta to remove
+#' @return ui model with eta removed
+#' @export
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' mod <- function ()  {
+#'  description <- "One compartment PK model with linear clearance"
+#'  ini({
+#'    lka <- 0.45
+#'    lcl <- 1
+#'    lvc <- 3.45
+#'     propSd <- c(0, 0.5)
+#'     etaKa ~ 0.1
+#'   })
+#'  model({
+#'    ka <- exp(lka + etaKa)
+#'    cl <- exp(lcl)
+#'    vc <- exp(lvc)
+#'    Cc <- linCmt()
+#'    Cc ~ prop(propSd)
+#'  })
+#' }
+#'
+#' mod %>% rmEta("etaKa")
+#'
+#' # This can also remove more than one eta
+#'
+#' mod <- function ()  {
+#'  description <- "One compartment PK model with linear clearance"
+#'  ini({
+#'    lka <- 0.45
+#'    lcl <- 1
+#'    lvc <- 3.45
+#'    propSd <- c(0, 0.5)
+#'    etaKa ~ 0.1
+#'    etaCl ~ 0.2
+#'    etaVc ~ 0.3
+#'   })
+#'  model({
+#'    ka <- exp(lka + etaKa)
+#'    cl <- exp(lcl + etaCl)
+#'    vc <- exp(lvc + etaVc)
+#'    Cc <- linCmt()
+#'    Cc ~ prop(propSd)
+#'  })
+#' }
+#'
+#' mod %>% rmEta(c("etaKa", "etaCl"))
+#'
+rmEta <- function(ui, eta) {
+  ui <- rxode2::assertRxUi(ui, " for the 'rmEta()' function")
+  .eta0 <- as.character(substitute(eta))
+  .eta <- try(eta, silent=TRUE)
+  if (inherits(.eta, "try-error")) {
+    eta <- .eta0
+  } else if (is.character(.eta)) {
+    eta <- .eta
+  }
+  checkmate::assertCharacter(eta, any.missing=FALSE, min.len=1)
+  for (e in eta)
+    rxode2::assertExists(ui, e)
+  .downgradeEtas(ui, eta)
 }
 
 
