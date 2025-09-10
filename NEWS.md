@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- Request nlmixr2est's pre-processing hooks for `augPred()`, `vpcSim()` and
+  `$simInfo`, which fixes augPred in cases where `etas=0` are used in
+  `nlmixr2` (#587)
+
 - Fix scale.h so that `scaleType="none"` does not also require
   `scaleTo=0`
 

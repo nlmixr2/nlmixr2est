@@ -108,7 +108,11 @@
 nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                 minimum = NULL, maximum = NULL, length.out = 51L, ...) {
   .si <- fit$simInfo
-  .rx <- .getSimModel(fit, hideIpred=TRUE)
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- fit$ui
+  .env$data <- fit$origData
+  suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
+  .rx <- .getSimModel(.env$ui, hideIpred=TRUE)
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
