@@ -108,50 +108,71 @@ and pharmacokinetic-pharmacodynamic (PKPD) models.
 The nlmixr2 generalized function allows common access to the nlmixr2
 estimation routines.
 
-The nlmixr object has the following fields:\tabular{ll}{
-   Field \tab Description \cr
-   conditionNumber \tab Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix \cr
-   cor \tab Correlation matrix \cr
-   phiR \tab correlation matrix of each individual’s eta (if present) \cr
-   objDF \tab Data frame containing objective function information (AIC, BIC, etc.) \cr
-   time \tab Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) \cr
-   theta \tab Estimates for eta for each individual \cr
-   etaObf \tab Estimates for eta for each individual, This also includes the objective function for each individual \cr
-   fixef \tab Estimates of fixed effects \cr
-   foceiControl \tab Estimation options if focei was used \cr
-   ui \tab Final estimates for the model \cr
-   dataMergeFull \tab Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
-   censInfo \tab Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset) \cr
-   dataLloq \tab Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step \cr
-   dataUloq \tab Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step \cr
-   eta \tab IIV values for each indiviudal \cr
-   dataMergeInner \tab Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
-   rxControl \tab Integration options used to control rxode2 \cr
-   dataMergeLeft \tab Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
-   omega \tab Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega) \cr
-   covMethod \tab Method used to calculate covariance of the fixed effects \cr
-   modelName \tab Name of the R object containing the model \cr
-   origData \tab Original dataset \cr
-   phiRSE \tab Relative standard error of each individuals eta \cr
-   dataMergeRight \tab Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
-   ipredModel \tab rxode2 estimation model for fit (internal will likely be removed from visibility \cr
-   phiSE \tab Standard error of each individuals eta \cr
-   parFixed \tab Table of parameter estimates (rounded and pretty looking) \cr
-   parFixedDF \tab Table of parameter estimates as a data frame \cr
-   omegaR \tab The correlation matirx of omega with standard deviations for the diagonal pieces \cr
-   iniUi \tab The initial model used to start the estimation \cr
-   finalUi \tab The model with the estimates replaced as values \cr
-   scaleInfo \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
-   table \tab These are the table options that were used when generating the table output (were CWRES included, etc \cr
-   shrink \tab This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error \cr
-   env \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $env \cr
-   seed \tab This is the initial seed used for saem \cr
-   simInfo \tab This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish \cr
-   runInfo \tab This returns a list of all the warnings or fit information \cr
-   parHistStacked \tab Value of objective function and parameters at each iteration (tall format) \cr
-   parHist \tab Value of objective function and parameters at each iteration (wide format) \cr
-   cov \tab Variance-covariance matrix \cr
+The nlmixr object has the following fields:\tabular{lll}{
+   Field \tab Note \tab Description \cr
+   censInfo \tab  \tab Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset) \cr
+   conditionNumber \tab  \tab Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix \cr
+   cor \tab  \tab Correlation matrix \cr
+   cov \tab  \tab Variance-covariance matrix \cr
+   covMethod \tab  \tab Method used to calculate covariance of the fixed effects \cr
+   dataLloq \tab  \tab Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step \cr
+   dataMergeFull \tab  \tab Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeInner \tab  \tab Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeLeft \tab  \tab Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeRight \tab  \tab Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataUloq \tab  \tab Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step \cr
+   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $`env \cr
+   eta \tab  \tab IIV values for each indiviudal \cr
+   etaObf \tab  \tab Estimates for eta for each individual, This also includes the objective function for each individual \cr
+   finalUi \tab  \tab The model with the estimates replaced as values \cr
+   fixef \tab  \tab Estimates of fixed effects \cr
+   foceiControl \tab  \tab Estimation options if focei was used \cr
+   iniUi \tab  \tab The initial model used to start the estimation \cr
+   ipredModel \tab  \tab rxode2 estimation model for fit (internal will likely be removed from visibility \cr
+   modelName \tab  \tab Name of the R object containing the model \cr
+   objDF \tab  \tab Data frame containing objective function information (AIC, BIC, etc.) \cr
+   omega \tab  \tab Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega) \cr
+   omegaR \tab  \tab The correlation matirx of omega with standard deviations for the diagonal pieces \cr
+   origData \tab  \tab Original dataset \cr
+   parFixed \tab  \tab Table of parameter estimates (rounded and pretty looking) \cr
+   parFixedDF \tab  \tab Table of parameter estimates as a data frame \cr
+   parHist \tab  \tab Value of objective function and parameters at each iteration (wide format) \cr
+   parHistStacked \tab  \tab Value of objective function and parameters at each iteration (tall format) \cr
+   phiR \tab  \tab correlation matrix of each individual's eta (if present) \cr
+   phiRSE \tab  \tab Relative standard error of each individuals eta \cr
+   phiSE \tab  \tab Standard error of each individuals eta \cr
+   props \tab  \tab Model properties with the following fields: cmt - name of compartments (ODEs); cmtProp - This gives a data-frame of the compartment and properties used;  linCmt - boolean that is TRUE if linear solutions are used; output - model outputs, fitted parameters for subjects (output\verb{$primary), secondary or derived parameters (output$}secondary), model endpoints (output`$endpoint), states/compartment (output$state); pop - fitted typical values of parameters \cr
+   runInfo \tab  \tab This returns a list of all the warnings or fit information \cr
+   rxControl \tab  \tab Integration options used to control rxode2 \cr
+   scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
+   seed \tab  \tab This is the initial seed used for saem \cr
+   shrink \tab  \tab This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error \cr
+   simInfo \tab  \tab This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish \cr
+   table \tab  \tab These are the table options that were used when generating the table output (were CWRES included, etc \cr
+   theta \tab  \tab Estimates for eta for each individual \cr
+   time \tab  \tab Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) \cr
+   ui \tab  \tab Final estimates for the model \cr
+   atol \tab n2r \tab Absolute tolerance that NONMEM specified; will be used when solving \cr
+   dfObs \tab n2r \tab Degrees of freedom by observation \cr
+   dfSub \tab n2r \tab Degrees of freedom by subject \cr
+   etaData \tab n2r \tab Subject level IIV values \cr
+   ipredAtol \tab n2r \tab Absolute tolerance difference between NONMEM and rxode2 individual predictions \cr
+   ipredCompare \tab n2r \tab Data frame with ipred values \cr
+   ipredRtol \tab n2r \tab Relative tolerance difference between NONMEM and rxode2 individual predictions \cr
+   nonmemData \tab n2r \tab Original dataset used for NONMEM analysis \cr
+   predAtol \tab n2r \tab Absolute tolerance difference between NONMEM and rxode2 population predictions \cr
+   predCompare \tab n2r \tab Data frame with pred values \cr
+   predRtol \tab n2r \tab Relative tolerance difference between NONMEM and rxode2 population predictions \cr
+   rtol \tab n2r \tab Relative tolerance that NONMEM specified; will be used when solving \cr
+   sigma \tab n2r \tab Error model matrix \cr
+   ssAtol \tab n2r \tab Steady state absolute tolerance that NONMEM specified; will be used for solving. \cr
+   ssRtol \tab n2r \tab Steady state relative tolerance that NONMEM specified will be used for solving \cr
+   thetaMat \tab n2r \tab Covariance Matrix (matches rxSolve(thetaMat=) \cr
 }
+
+
+n2r - These fields are added when a NONMEM model is imported using
+\code{nonmem2rx()}
 }
 \section{nlmixr modeling mini-language}{
 
