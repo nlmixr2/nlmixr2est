@@ -57,7 +57,19 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   .iniN1qn1ptr()
   .iniLbfgsb3c()
 }
-
+#' Initialize S3 methods
+#'
+#' @return nothing, called for side effects
+#' @export
+#' @keywords internal
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' # For tools like nlmixr2shiny, this export allows nlmixr2shiny to
+#' # not depend on `nlmixr2est`, but can import it instead
+#'
+#' .iniS3() # run to register S3 methods
+#'
 .iniS3 <- function() {
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
