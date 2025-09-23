@@ -117,6 +117,7 @@ struct focei_options {
   int eventType;
 
   int neta;
+  int nmix;
   unsigned int ntheta;
   int npars;
   int thetan;
@@ -3371,6 +3372,7 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
+  op_focei.nmix = INTEGER(VECTOR_ELT(mvi, RxMv_flags))[RxMvFlag_mix];
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
 
@@ -3378,7 +3380,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
   op_focei.printTop = as<int>(foceiO["printTop"]);
   op_focei.nF2 = as<int>(foceiO["nF"]);
-  if (op_focei.nF2 == 0){
+  if (op_focei.nF2 == 0) {
     vGrad.clear();
     vPar.clear();
     iterType.clear();
