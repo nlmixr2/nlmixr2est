@@ -1095,9 +1095,9 @@ double likInner0(double *eta, int id) {
             if (dist == rxDistributionNorm) {
               double ll = err/r;
               //r = variance
-              ll =  -0.5 * ll * ll - 0.5*log(r);
+              ll =  -0.5 * ll * err - 0.5*log(r);
               ll = doCensNormal1((double)cens, dv, limit, ll, f, r,
-                                          (int)op_focei.adjLik);
+                                 (int)op_focei.adjLik);
               llikObs[kk] = ll;
               fInd->llik += ll;
               fInd->nObs++;
