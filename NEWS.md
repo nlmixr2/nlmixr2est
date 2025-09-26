@@ -9,6 +9,9 @@
 
 - Request Armadillo 15 with the special flag in the new `RcppArmadillo`
 
+- Fix `focei` without etas (and without log-likelihood normal) to run
+  `ELS` (See #590).
+
 # nlmixr2est 4.1.0
 
 - Updated inferring the estimation method from the control
