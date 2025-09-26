@@ -81,7 +81,7 @@ struct focei_options {
   List mvi;
   double *etaUpper = NULL;
   double *etaLower = NULL;
-  int *nbdInner = NULL;
+  int    *nbdInner = NULL;
   double *geta = NULL;
   double *getahf =NULL;
   double *getahr = NULL;
@@ -91,7 +91,7 @@ struct focei_options {
   double *gsaveEta = NULL;
   double *gthetaGrad = NULL;
   double *mixProb = NULL;
-  bool mGthetaGrad = false;
+  bool    mGthetaGrad = false;
   // n1qn1 specific vectors
   double *gZm = NULL;
   double *gG = NULL;
@@ -118,7 +118,7 @@ struct focei_options {
   int eventType;
 
   int neta;
-  int nmix;
+  int nmix = 1;
   unsigned int ntheta;
   int npars;
   int thetan;
@@ -3706,19 +3706,19 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.skipCovN) std::copy(skipCov1.begin(),skipCov1.end(),op_focei.skipCov); //
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
-  op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
+  op_focei.gillDf  = R_Calloc(7*totN + 2*op_focei.npars +
                              getRxNsubAndMix(rx) +
                              op_focei.nmix*(1+getRxNsub(rx)), double); // [totN]
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.nmix*(1+getRxNsub(rx))]
   op_focei.gillDf2 = op_focei.mixProb + (1+getRxNsub(rx)); // [totN]
   op_focei.gillErr = op_focei.gillDf2+totN;
-  op_focei.rEps=op_focei.gillErr + totN;
-  op_focei.aEps = op_focei.rEps + totN;
-  op_focei.rEpsC = op_focei.aEps + totN;
-  op_focei.aEpsC = op_focei.rEpsC + totN;
-  op_focei.lower = op_focei.aEpsC + totN;
-  op_focei.upper = op_focei.lower +op_focei.npars;
-  op_focei.likSav      = op_focei.upper + op_focei.npars;//[getRxNsubAndMix(rx)]
+  op_focei.rEps    = op_focei.gillErr + totN;
+  op_focei.aEps    = op_focei.rEps + totN;
+  op_focei.rEpsC   = op_focei.aEps + totN;
+  op_focei.aEpsC   = op_focei.rEpsC + totN;
+  op_focei.lower   = op_focei.aEpsC + totN;
+  op_focei.upper   = op_focei.lower +op_focei.npars;
+  op_focei.likSav  = op_focei.upper + op_focei.npars;//[getRxNsubAndMix(rx)]
 
   if (op_focei.derivMethod){
     std::fill_n(&op_focei.rEps[0], totN, std::fabs(cEps[0])/2.0);
