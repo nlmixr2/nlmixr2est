@@ -637,6 +637,15 @@ void updateTheta(double *theta){
     j=op_focei.fixedTrans[k];
     op_focei.fullTheta[j] = unscalePar(theta, k);
   }
+  // Update the mixture probabilities
+  if (op_focei.nmix != 1) {
+    // First fill in the log-space values
+    NumericVector mixProb(op_focei.nmix-1);
+    // Next transform them to the probabilities for each group, and fill in
+    // op_focei.mixProb
+
+    stop("Mixture models not supported in focei");
+  }
   // Update theta parameters in each individual (and mix individual)
   rx = getRxSolve_();
   // In mixtures, the parameters are only setup for each individual
