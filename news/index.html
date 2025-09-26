@@ -36,6 +36,7 @@
 <ul><li><p>Request nlmixr2est’s pre-processing hooks for <code><a href="https://rdrr.io/pkg/nlme/man/augPred.html" class="external-link">augPred()</a></code>, <code><a href="../reference/vpcSim.html">vpcSim()</a></code> and <code>$simInfo</code>, which fixes augPred in cases where <code>etas=0</code> are used in <code>nlmixr2</code> (<a href="https://github.com/nlmixr2/nlmixr2est/issues/587" class="external-link">#587</a>)</p></li>
 <li><p>Fix scale.h so that <code>scaleType="none"</code> does not also require <code>scaleTo=0</code></p></li>
 <li><p>Request Armadillo 15 with the special flag in the new <code>RcppArmadillo</code></p></li>
+<li><p>Fix <code>focei</code> without etas (and without log-likelihood normal) to run <code>ELS</code> (See <a href="https://github.com/nlmixr2/nlmixr2est/issues/590" class="external-link">#590</a>).</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.1.0" id="nlmixr2est-410">nlmixr2est 4.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-410"></a></h2><p class="text-muted">CRAN release: 2025-08-29</p>
