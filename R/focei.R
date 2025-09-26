@@ -1113,12 +1113,14 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                        .low
                      }, numeric(1), USE.NAMES=FALSE)
     .upper <- .iniDf$upper[.w]
-    env$thetaIni <- ui$theta
+    env$thetaIni <- ui$thetaIniMix
     env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
+    env$thetaMixIndex <- ui$thetaMixIndex
   } else {
     .lower <- numeric(0)
     .upper <- numeric(0)
     env$thetaIni <- setNames(numeric(0), character(0))
+    ent$thetaMixIndex <- setNames(numeric(0), character(0))
   }
   rxode2::rxAssignControlValue(ui, "nfixed", sum(ui$iniDf$fix))
   .mixed <- !is.null(env$etaNames)
