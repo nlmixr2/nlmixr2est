@@ -121,27 +121,7 @@ The nlmixr object has the following fields:\tabular{lll}{
    dataMergeLeft \tab  \tab Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
    dataMergeRight \tab  \tab Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
    dataUloq \tab  \tab Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step \cr
-   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $`env \cr
-   eta \tab  \tab IIV values for each indiviudal \cr
-   etaObf \tab  \tab Estimates for eta for each individual, This also includes the objective function for each individual \cr
-   finalUi \tab  \tab The model with the estimates replaced as values \cr
-   fixef \tab  \tab Estimates of fixed effects \cr
-   foceiControl \tab  \tab Estimation options if focei was used \cr
-   iniUi \tab  \tab The initial model used to start the estimation \cr
-   ipredModel \tab  \tab rxode2 estimation model for fit (internal will likely be removed from visibility \cr
-   modelName \tab  \tab Name of the R object containing the model \cr
-   objDF \tab  \tab Data frame containing objective function information (AIC, BIC, etc.) \cr
-   omega \tab  \tab Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega) \cr
-   omegaR \tab  \tab The correlation matirx of omega with standard deviations for the diagonal pieces \cr
-   origData \tab  \tab Original dataset \cr
-   parFixed \tab  \tab Table of parameter estimates (rounded and pretty looking) \cr
-   parFixedDF \tab  \tab Table of parameter estimates as a data frame \cr
-   parHist \tab  \tab Value of objective function and parameters at each iteration (wide format) \cr
-   parHistStacked \tab  \tab Value of objective function and parameters at each iteration (tall format) \cr
-   phiR \tab  \tab correlation matrix of each individual's eta (if present) \cr
-   phiRSE \tab  \tab Relative standard error of each individuals eta \cr
-   phiSE \tab  \tab Standard error of each individuals eta \cr
-   props \tab  \tab Model properties with the following fields: cmt - name of compartments (ODEs); cmtProp - This gives a data-frame of the compartment and properties used;  linCmt - boolean that is TRUE if linear solutions are used; output - model outputs, fitted parameters for subjects (output\verb{$primary), secondary or derived parameters (output$}secondary), model endpoints (output`$endpoint), states/compartment (output$state); pop - fitted typical values of parameters \cr
+   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence (env \cr
    runInfo \tab  \tab This returns a list of all the warnings or fit information \cr
    rxControl \tab  \tab Integration options used to control rxode2 \cr
    scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
