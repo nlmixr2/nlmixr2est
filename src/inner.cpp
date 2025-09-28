@@ -2286,7 +2286,7 @@ static inline void innerOptId(int id) {
 
 
 
-void innerOpt(){
+void innerOpt() {
   rx = getRxSolve_();
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
@@ -2335,19 +2335,51 @@ void innerOpt(){
   Rcpp::checkUserInterrupt();
 }
 
-static inline double foceiLik0(double *theta){
+static inline double foceiLik0(double *theta) {
   updateTheta(theta);
   innerOpt();
   double lik = 0.0;
   double cur;
 
-  for (int id=getRxNsub(rx); id--;){
-    focei_ind *fInd = &(inds_focei[id]);
-    cur = fInd->lik[0];
-    if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
-      cur = -op_focei.badSolveObjfAdj;
+  if (op_focei.mixIdxN == 0) {
+    for (int id=getRxNsub(rx); id--;){
+      focei_ind *fInd = &(inds_focei[id]);
+      cur = fInd->lik[0];
+      if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
+        cur = -op_focei.badSolveObjfAdj;
+      }
+      lik += cur;
     }
-    lik += cur;
+  } else {
+    focei_ind *fInd;
+    for (int id=getRxNsub(rx); id--;){
+      double tot = 0;
+      bool allZero = true;
+      for (int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
+        fInd = &(inds_focei[id + mn*getRxNsub(rx)]);
+        cur = fInd->lik[0];
+        if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
+          fInd->mixProb[mn] = 0.0;
+        } else {
+          allZero = false;
+          fInd->mixProb[mn] = exp(cur)*op_focei.mixProb[mn];
+          tot += fInd->mixProb[mn];
+        }
+      }
+      double mixprob = 0;
+      for (int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
+        fInd->mixProb[mn] = fInd->mixProb[mn]/tot;
+        if (mixprob < fInd->mixProb[mn]) {
+          fInd->mixest[0] = mn + 1;
+        }
+      }
+      if (allZero) {
+        cur = -op_focei.badSolveObjfAdj;
+      } else {
+        cur = log(tot);
+      }
+      lik += cur;
+    }
   }
   // Now reset the saved ETAs
   if (op_focei.neta !=0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
