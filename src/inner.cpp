@@ -385,6 +385,10 @@ struct focei_ind {
   double *curS;
   int nNonNormal = 0;
   int nObs=0;
+
+  // Mixture options
+  int    *mixest;
+  double *mixProb;
 };
 
 focei_ind *inds_focei = NULL;
@@ -3310,6 +3314,13 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   for (i = getRxNsubAndMix(rx); i--;){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
+
+    fInd->mixest = op_focei.mixIdx +
+      op_focei.mixIdxN + getRxId(i);
+
+    fInd->mixProb = op_focei.mixProb +
+      (getRxId(i) + 1)*(op_focei.mixIdxN + 1);
+
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD = 0;
     // ETA ini
@@ -3640,7 +3651,8 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.gillRet != NULL) R_Free(op_focei.gillRet);
   op_focei.gillRet = R_Calloc(2*totN+op_focei.npars+
                               op_focei.muRefN + op_focei.skipCovN +
-                              op_focei.mixIdxN,
+                              op_focei.mixIdxN +
+                              getRxNsub(rx),
                               int);
   op_focei.gillRetC= op_focei.gillRet + totN;
   op_focei.nbd     = op_focei.gillRetC + totN;//[op_focei.npars]
@@ -3650,12 +3662,12 @@ NumericVector foceiSetup_(const RObject &obj,
     std::copy(&op_focei.muRef[0], &op_focei.muRef[0]+op_focei.muRefN, muRef.begin());
   }
 
-  op_focei.mixIdx = op_focei.muRef + op_focei.muRefN; // [op_focei.mixIdxN]
+  op_focei.mixIdx = op_focei.muRef + op_focei.muRefN; // [op_focei.mixIdxN  + getRxNsub(rx)]
   if (op_focei.mixIdxN) {
     std::copy(mixIdx.begin(), mixIdx.end(), op_focei.mixIdx);
   }
 
-  op_focei.skipCov   = op_focei.mixIdx + op_focei.mixIdxN; //[op_focei.skipCovN]
+  op_focei.skipCov   = op_focei.mixIdx + op_focei.mixIdxN + getRxNsub(rx); //[op_focei.skipCovN]
   if (op_focei.skipCovN) {
     std::copy(skipCov1.begin(),skipCov1.end(),op_focei.skipCov); //
   }
@@ -3663,10 +3675,10 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
 
   op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
-                             op_focei.mixIdxN + 1 +
+                             (op_focei.mixIdxN + 1)*(getRxNsub(rx)+1) +
                              getRxNsub(rx), double);
-  op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1]
-  op_focei.gillDf2 = op_focei.mixProb + op_focei.mixIdxN + 1;
+  op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
+  op_focei.gillDf2 = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
   op_focei.gillErr = op_focei.gillDf2+totN;
   op_focei.rEps=op_focei.gillErr + totN;
   op_focei.aEps = op_focei.rEps + totN;
