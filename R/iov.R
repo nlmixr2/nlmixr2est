@@ -1,16 +1,61 @@
+#' Transform the estimated value to %CV for IOV
+#'
+#' @param val estimated value
+#' @return IOV value
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+nlmixr2iovLogvar <- function(val) {
+  # sqrt(exp(val)) = sd
+  # exp(val) = var
+  # val = log(var)
+  #
+  sqrt(val-1) * 100
+}
+
+#' @rdname nlmixr2iovLogvar
+#' @export
+nlmixr2iovLogsd <- function(val) {
+  # exp(val) = sd
+  # log(val) = log(sd)
+  sqrt(exp((log(val))^2)-1) * 100
+}
+
+#' @rdname nlmixr2iovLogvar
+#' @export
+nlmixr2iovSd <- function(val) {
+  sqrt(exp((val)^2) - 1) * 100
+}
+
+#' @rdname nlmixr2iovLogvar
+#' @export
+nlmixr2iovVar <- function(val) {
+  sqrt(exp(abs(val)) - 1) * 100
+}
+
 # This stores information about the IOV model that can be used
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
+.uiIovEnv$iovVars <- NULL
 #' This applies the IOV method to the model based on the data used
 #'
 #' @param env environment to apply the IOV model transformation.  This should contain:
 #'
 #' - `ui`: the model to apply the IOV transformation to
 #' - `data`: the data to use for the IOV transformation
+#' - `control`: the control object, which should contain `iovXform`
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(env) {
+  .uiIovEnv$iovVars <- NULL
+  .xform <- env$control$iovXform
+  if (length(.xform)  != 1) {
+    .xform <- "sd"
+  }
+  if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
+    .xform <- "sd"
+  }
   .ui <- env$ui
   .iniDf <- .ui$iniDf
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
@@ -87,23 +132,57 @@
                          .curTheta$est <- .iniDf[which(.iniDf$name == v &
                                                          is.na(.iniDf$ntheta)), "est"]
                          .curTheta$name <- v
+                         .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed
+                         .curTheta$backTransform <-
+                           switch(.xform,
+                                  "sd" = "nlmixr2iovSd",
+                                  "var" = "nlmixr2iovVar",
+                                  "logsd" = "nlmixr2iovLogsd",
+                                  "logvar" = "nlmixr2iovLogvar")
+                         if (.xform %in% c("sd", "var")) {
+                           .curTheta$lower <- 0 # doesn't work with saem
+                         }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
                          for (n in .lvls[[l1]]) {
                            .curEta <- .eta1
                            .curEta$name <- paste0("rx.", v, ".", n)
+                           .curEta$label <- paste0(v, "(", l1, "==", n, ")")
                            .env$drop <- c(.env$drop, .curEta$name)
                            .env$maxeta <- .curEta$neta1 <-
                              .curEta$neta2 <- .env$maxeta + 1L
                            .env$etas <- rbind(.env$etas, .curEta)
                          }
-                         str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
-                                         paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                      "*(", l1,
-                                                      " == ", .lvls[[l1]], ")"),
-                                               collapse="+"),
-                                         ")"))
+                         if (.xform == "logsd") {
+                           str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         } else if (.xform == "logvar") {
+                             str2lang(paste0("rx.", v, " <- sqrt(exp(", v, "))*(",
+                                             paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                          "*(", l1,
+                                                          " == ", .lvls[[l1]], ")"),
+                                                   collapse="+"),
+                                             ")"))
+                         } else if (.xform == "sd") {
+                           str2lang(paste0("rx.", v, " <- abs(", v, ")*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         } else if (.xform == "var") {
+                           str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         }
                        })
                        .lst
                      })
@@ -111,6 +190,7 @@
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
+    print(.ui$iniDf)
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$iov <- env$ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
@@ -122,7 +202,6 @@
 }
 #' Finalizes IOV model
 #'
-#'
 #' @param ret data frame with some iov information dropped
 #' @return fit with iov information dropped
 #' @noRd
@@ -130,6 +209,12 @@
 .uiFinalizeIov <- function(ret) {
   if (!is.null(.uiIovEnv$iov)) {
     if (is.null(ret$ui)) return(ret)
+    if (is.environment(ret$env)) {
+      if (length(names(ret$env$parFixedDf)) == 9L) {
+        # Successful Covariance
+      }
+      .uiIovEnv$iovVars
+    }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
     if (inherits(ret, "data.frame")) {

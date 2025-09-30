@@ -1342,6 +1342,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     .skipCov <- rep(FALSE, .maxTheta)
     .skipCov[which(!is.na(.theta$err))] <- TRUE
     .skipCov[.theta$fix] <- TRUE
+    if (length(.uiIovEnv$iovVars) > 0) {
+      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+    }
     .skipCov
   }
 }
