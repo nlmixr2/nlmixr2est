@@ -70,20 +70,50 @@ nmTest({
     })
   }
 
+  .foceiCtl <- foceiControlFast
   fit <- .nlmixr(one.cmt, theo_iov, est="focei",
                  control=foceiControlFast)
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
+
+  .foceiCtl$iovXform <- "var"
+
+  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                 control=.foceiCtl)
+  expect_true(inherits(fit, "nlmixr2FitCore"))
+  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
+
+
+  .foceiCtl$iovXform <- "logvar"
+  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                 control=.foceiCtl)
+  expect_true(inherits(fit, "nlmixr2FitCore"))
+  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
+
+
+  .foceiCtl$iovXform <- "logsd"
+  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                 control=.foceiCtl)
+  expect_true(inherits(fit, "nlmixr2FitCore"))
+  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
 
   fit <- .nlmixr(one.cmt, theo_iov, est="foce",
                  control=foceControlFast)
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
+
 
   fit <- .nlmixr(one.cmt, theo_iov, est="saem",
                  control=saemControlFast)
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  expect_true(any(names(fit) == "iov.cl"))
 
   one.cmt <- function() {
     ini({
