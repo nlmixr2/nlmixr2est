@@ -651,7 +651,7 @@ void updateTheta(double *theta){
   rx = getRxSolve_();
   // Update theta parameters
   for (int id = getRxNsub(rx); id--;){
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     for (j = op_focei.ntheta; j--;){
       setIndParPtr(ind, op_focei.thetaTrans[j], op_focei.fullTheta[j]);
     }
@@ -708,14 +708,14 @@ gill83fn_type gill83fnG = &gill83fnF;
 
 
 void updateEta(double *eta, int cid) {
-  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, cid);
   for (int i = op_focei.neta; i--;) {
     setIndParPtr(ind, op_focei.etaTrans[i], eta[i]);
   }
 }
 
 arma::vec getCurEta(int cid) {
-  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, cid);
   arma::vec eta(op_focei.neta);
   for (int i = op_focei.neta; i--;) {
     eta[i] = getIndParPtr(ind, op_focei.etaTrans[i]);
@@ -724,7 +724,7 @@ arma::vec getCurEta(int cid) {
 }
 
 arma::mat grabRFmatFromInner(int id, bool predSolve) {
-  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(id));
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec retF(getIndNallTimes(ind));
   arma::vec retR(getIndNallTimes(ind));
@@ -781,7 +781,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   updateEta(eta.memptr(), id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec ret(fInd->nObs);
-  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(id));
+  rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, id);
   rx_solving_options *op = getSolvingOptions(rx);
   int oldNeq = getOpNeq(op);
   setOpNeq(op, op_focei.predNeq);
@@ -1486,7 +1486,7 @@ double LikInner2(double *eta, int likId, int id) {
     lik = -likInner0(eta, id);
     // print(wrap(lik));
     rx = getRxSolve_();
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
     rx_solving_options *op = getSolvingOptions(rx);
     double *solve = getIndSolve(ind);
     if (getOpNeq(op) > 0 && ISNA(solve[0])){
