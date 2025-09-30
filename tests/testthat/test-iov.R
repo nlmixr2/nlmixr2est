@@ -36,11 +36,13 @@ nmTest({
 
   fit <- .nlmixr(one.cmt, theo_iov, est="foce",
                  control=foceControlFast)
+
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
 
   fit <- .nlmixr(one.cmt, theo_iov, est="saem",
                  control=saemControlFast)
+
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
 

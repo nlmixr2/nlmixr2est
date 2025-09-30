@@ -164,8 +164,19 @@ nlmixr2iovVarSd <- function(val) {
                        .lst <- c(lapply(.var, function(v) {
                          # Add theta to dataset; represents variance of iov
                          .curTheta <- .theta1
-                         .curTheta$est <- .iniDf[which(.iniDf$name == v &
-                                                         is.na(.iniDf$ntheta)), "est"]
+                         # This is in variance and needs to be converted
+                         # based on the xform
+                         .est <- .iniDf[which(.iniDf$name == v &
+                                                is.na(.iniDf$ntheta)), "est"]
+                         if (.xform == "var") {
+                           .curTheta$est <- .est
+                         } else if (.xform == "sd") {
+                           .curTheta$est <- sqrt(.est)
+                         } else if (.xform == "logvar") {
+                           .curTheta$est <- log(.est)
+                         } else if (.xform == "logsd") {
+                           .curTheta$est <- log(sqrt(.est))
+                         }
                          .curTheta$name <- v
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed

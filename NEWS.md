@@ -13,9 +13,10 @@
   `ELS` (See #590).
 
 - Change the IOV implementation (#596):
-   - Now shows estimates as `CV%` or `sd` without shrinkage calculation
+   - Now shows estimates as `CV%` or `sd` without shrinkage calculation.
    - Allow different forms of `iov` estimation, controlled by
-     `iovXform`
+     `iovXform`.
+   - Retains the `iov` parameter(s) in the output `data.frame`.
 
 # nlmixr2est 4.1.0
 
