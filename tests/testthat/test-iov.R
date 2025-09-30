@@ -1,5 +1,9 @@
 nmTest({
 
+  .nlmixr <- function(...) {
+    suppressWarnings(suppressMessages(nlmixr2est::nlmixr(...)))
+  }
+
   one.cmt <- function() {
     ini({
       ## You may label each parameter with a comment
