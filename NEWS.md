@@ -12,6 +12,11 @@
 - Fix `focei` without etas (and without log-likelihood normal) to run
   `ELS` (See #590).
 
+- Change the IOV implementation (#596):
+   - Now shows estimates as `CV%` or `sd` without shrinkage calculation
+   - Allow different forms of `iov` estimation, controlled by
+     `iovXform`
+
 # nlmixr2est 4.1.0
 
 - Updated inferring the estimation method from the control

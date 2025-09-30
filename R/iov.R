@@ -1,3 +1,23 @@
+.nlmixr2iov <- function(val, type, transform) {
+  # First get the standard deviation
+  if (transform == "logvar") {
+    sd <- sqrt(exp(val))
+  } else if (transform == "logsd") {
+    sd <- exp(val)
+  } else if (transform == "sd") {
+    sd <- abs(val)
+  } else if (transform == "var") {
+    sd <- sqrt(abs(val))
+  } else {
+    stop("Unknown transform")
+  }
+  if (type == "exp") {
+    100 * sqrt(exp(sd^2) - 1)
+  } else {
+    sd
+  }
+}
+
 #' Transform the estimated value to %CV for IOV
 #'
 #' @param val estimated value
@@ -5,34 +25,49 @@
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-nlmixr2iovLogvar <- function(val) {
-  # sqrt(exp(val)) = sd
-  # exp(val) = var
-  # val = log(var)
-  #
-  sqrt(val-1) * 100
+nlmixr2iovLogvarCv <- function(val) {
+  .nlmixr2iov(val, "exp", "logvar")
 }
-
-#' @rdname nlmixr2iovLogvar
+#' @rdname nlmixr2iovLogvarCv
 #' @export
-nlmixr2iovLogsd <- function(val) {
-  # exp(val) = sd
-  # log(val) = log(sd)
-  sqrt(exp((log(val))^2)-1) * 100
+nlmixr2iovLogvarSd <- function(val) {
+  .nlmixr2iov(val, "", "logvar")
 }
-
-#' @rdname nlmixr2iovLogvar
+#' @rdname nlmixr2iovLogvarCv
 #' @export
-nlmixr2iovSd <- function(val) {
-  sqrt(exp((val)^2) - 1) * 100
+nlmixr2iovLogsdCv <- function(val) {
+  .nlmixr2iov(val, "exp", "logsd")
 }
 
-#' @rdname nlmixr2iovLogvar
+#' @rdname nlmixr2iovLogvarCv
 #' @export
-nlmixr2iovVar <- function(val) {
-  sqrt(exp(abs(val)) - 1) * 100
+nlmixr2iovLogsdSd <- function(val) {
+  .nlmixr2iov(val, "", "logsd")
 }
 
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovSdCv <- function(val) {
+  .nlmixr2iov(val, "exp", "sd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovSdSd <- function(val) {
+  .nlmixr2iov(val, "", "sd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovVarCv <- function(val) {
+  .nlmixr2iov(val, "exp", "var")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovVarSd <- function(val) {
+  .nlmixr2iov(val, "", "var")
+}
 # This stores information about the IOV model that can be used
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
@@ -126,7 +161,7 @@ nlmixr2iovVar <- function(val) {
                        .w <-which(.iniDf$condition == l1)
                        .var <- .iniDf$name[.w]
                        .fixed <- .iniDf$fix[.w]
-                       .lst <- lapply(.var, function(v) {
+                       .lst <- c(lapply(.var, function(v) {
                          # Add theta to dataset; represents variance of iov
                          .curTheta <- .theta1
                          .curTheta$est <- .iniDf[which(.iniDf$name == v &
@@ -134,12 +169,20 @@ nlmixr2iovVar <- function(val) {
                          .curTheta$name <- v
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed
+
+                         .w <- which(env$ui$muRefCurEval$parameter == v)
+                         if (length(.w) == 1L) {
+                           .curEval <- env$ui$muRefCurEval$curEval[.w]
+                         } else {
+                           .curEval <- ""
+                         }
                          .curTheta$backTransform <-
-                           switch(.xform,
+                           paste0(switch(.xform,
                                   "sd" = "nlmixr2iovSd",
                                   "var" = "nlmixr2iovVar",
                                   "logsd" = "nlmixr2iovLogsd",
-                                  "logvar" = "nlmixr2iovLogvar")
+                                  "logvar" = "nlmixr2iovLogvar"),
+                                  ifelse(.curEval=="exp", "Cv", "Sd"))
                          if (.xform %in% c("sd", "var")) {
                            .curTheta$lower <- 0 # doesn't work with saem
                          }
@@ -183,14 +226,16 @@ nlmixr2iovVar <- function(val) {
                                                  collapse="+"),
                                            ")"))
                          }
-                       })
+                       }),
+                       lapply(.var, function(v) {
+                         str2lang(paste0(v, ".rx <- rx.", v))
+                       }))
                        .lst
                      })
     .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
-    print(.ui$iniDf)
     assign("lstExpr", .lines, envir = .ui)
     .uiIovEnv$iov <- env$ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
@@ -242,6 +287,14 @@ nlmixr2iovVar <- function(val) {
         ret <- ret[,-.w]
         class(ret) <- .cls
       }
+      .rename <- paste0(.uiIovEnv$iovVars, ".rx")
+      names(ret) <- vapply(names(ret), function(n) {
+        if (n %in% .rename) {
+          sub("[.]rx$", "", n)
+        } else {
+          n
+        }
+      }, character(1), USE.NAMES = FALSE)
     }
   }
   ret
