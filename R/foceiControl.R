@@ -167,6 +167,21 @@
 #'
 #'  \item \code{identity} Estimates the diagonal elements without any transformations
 #' }
+#'
+#' @param iovXform This is the transformation used on the IOV
+#'   values. The possibilities are:
+#'
+#' \itemize{
+#'
+#' \item \code{sd} Estimates the standard deviation for IOV.  This
+#'    is the default method.
+#'
+#' \item \code{log} Estimates the log(sd) instead of sd.
+#'
+#' \item \code{var} Estimates the variance for IOV.
+#'
+#' }
+#'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
 #'     high precision sums using the PreciseSums package.  By default
@@ -889,7 +904,8 @@ foceiControl <- function(sigdig = 3, #
                          mceta=-1L,
                          nAGQ=0,
                          agqLow=-Inf,
-                         agqHi=Inf) { #
+                         agqHi=Inf,
+                         iovXform = c("sd", "log", "var")) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1298,7 +1314,8 @@ foceiControl <- function(sigdig = 3, #
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),
-    sumProd = sumProd,
+    iovXform  = match.arg(iovXform),
+    sumProd   = sumProd,
     optExpression = optExpression,
     literalFix=literalFix,
     literalFixRes=literalFixRes,
