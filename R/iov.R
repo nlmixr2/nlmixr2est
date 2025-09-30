@@ -210,10 +210,27 @@ nlmixr2iovVar <- function(val) {
   if (!is.null(.uiIovEnv$iov)) {
     if (is.null(ret$ui)) return(ret)
     if (is.environment(ret$env)) {
-      if (length(names(ret$env$parFixedDf)) == 9L) {
-        # Successful Covariance
-      }
-      .uiIovEnv$iovVars
+      .parFixedDf <- ret$env$parFixedDf
+      .bck <- which(grepl("Back",names(.parFixedDf)))
+      .bsv <- which(grepl("BSV", names(.parFixedDf)))
+      .valCharPrep <-
+        .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
+        .parFixedDf[.uiIovEnv$iovVars, .bck]
+      .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
+      .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
+      assign("parFixedDf", .parFixedDf, envir = ret$env)
+
+      .parFixed <- ret$env$parFixed
+      .bck2 <- which(grepl("Back",names(.parFixed)))
+      .bsv2 <- which(grepl("BSV",names(.parFixed)))
+
+      .sigdig <- ret$control$sigdig
+      .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
+      .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
+        signif(.valCharPrep, digits = .sigdig),
+        digits = .sigdig, format = "fg", flag = "#")
+      .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
+      assign("parFixed", .parFixed, envir=ret$env)
     }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
