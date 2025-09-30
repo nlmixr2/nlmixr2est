@@ -310,9 +310,6 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
-
-  int mixIdxN = 0;
-  int *mixIdx = NULL;
 };
 
 focei_options op_focei;
@@ -3352,7 +3349,6 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
                           NumericVector theta,
-                          IntegerVector mixIdx,
                           Nullable<LogicalVector> thetaFixed = R_NilValue,
                           Nullable<LogicalVector> skipCov    = R_NilValue,
                           RObject rxInv                      = R_NilValue,
@@ -3375,7 +3371,6 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   rxOptionsFreeFocei();
   op_focei.mvi = mvi;
-  op_focei.mixIdxN = mixIdx.size();
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
 
@@ -3609,29 +3604,16 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.gillRet != NULL) R_Free(op_focei.gillRet);
   op_focei.gillRet = R_Calloc(2*totN+op_focei.npars+
-                              op_focei.muRefN + op_focei.skipCovN +
-                              op_focei.mixIdxN,
-                              int);
+                              op_focei.muRefN + op_focei.skipCovN, int);
   op_focei.gillRetC= op_focei.gillRet + totN;
   op_focei.nbd     = op_focei.gillRetC + totN;//[op_focei.npars]
-
   op_focei.muRef   = op_focei.nbd + op_focei.npars; //[op_focei.muRefN]
-  if (op_focei.muRefN) {
-    std::copy(&op_focei.muRef[0], &op_focei.muRef[0]+op_focei.muRefN, muRef.begin());
-  }
+  if (op_focei.muRefN) std::copy(&op_focei.muRef[0], &op_focei.muRef[0]+op_focei.muRefN, muRef.begin());
 
-  op_focei.mixIdx = op_focei.muRef + op_focei.muRefN; // [op_focei.mixIdxN]
-  if (op_focei.mixIdxN) {
-    std::copy(mixIdx.begin(), mixIdx.end(), op_focei.mixIdx);
-  }
-
-  op_focei.skipCov   = op_focei.mixIdx + op_focei.mixIdxN; //[op_focei.skipCovN]
-  if (op_focei.skipCovN) {
-    std::copy(skipCov1.begin(),skipCov1.end(),op_focei.skipCov); //
-  }
+  op_focei.skipCov   = op_focei.muRef + op_focei.muRefN; //[op_focei.skipCovN]
+  if (op_focei.skipCovN) std::copy(skipCov1.begin(),skipCov1.end(),op_focei.skipCov); //
 
   if (op_focei.gillDf != NULL) R_Free(op_focei.gillDf);
-
   op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
                              getRxNsub(rx), double);
   op_focei.gillDf2 = op_focei.gillDf+totN;
@@ -6615,7 +6597,6 @@ Environment foceiFitCpp_(Environment e){
     if (rxode2::rxIs(inner, "rxode2")) {
       RObject _dataSav = as<RObject>(e["dataSav"]);
       NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
-      IntegerVector _mixIdx = as<IntegerVector>(e["mixIdx"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6624,7 +6605,7 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
-      foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
+      foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
@@ -6657,7 +6638,6 @@ Environment foceiFitCpp_(Environment e){
       if (rxode2::rxIs(inner, "rxode2")){
         RObject _dataSav = as<RObject>(e["dataSav"]);
         NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
-        IntegerVector _mixIdx = as<IntegerVector>(e["mixIdx"]);
         Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
         Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
         RObject _rxInv = e["rxInv"];
@@ -6666,7 +6646,7 @@ Environment foceiFitCpp_(Environment e){
         Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
         Nullable<List> _control = as<Nullable<List>>(e["control"]);
         setupAq0_(e);
-        foceiSetup_(inner, _dataSav, _thetaIni,  _mixIdx, _thetaFixed, _skipCov,
+        foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                     _rxInv, _lower, _upper, _etaMat, _control);
         doPredOnly = true;
         if (op_focei.neta == 0) doPredOnly = false;
@@ -6679,7 +6659,6 @@ Environment foceiFitCpp_(Environment e){
       foceiSetupTrans_(as<CharacterVector>(e[".params"]));
       RObject _dataSav = as<RObject>(e["dataSav"]);
       NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
-      IntegerVector _mixIdx = as<IntegerVector>(e["mixIdx"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6688,7 +6667,7 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
-      foceiSetup_(inner, _dataSav, _thetaIni,  _mixIdx, _thetaFixed, _skipCov,
+      foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
     }
   } else {
@@ -6733,7 +6712,6 @@ Environment foceiFitCpp_(Environment e){
     if (rxode2::rxIs(inner, "rxode2")){
       RObject _dataSav = as<RObject>(e["dataSav"]);
       NumericVector _thetaIni = as<NumericVector>(e["thetaIni"]);
-      IntegerVector _mixIdx = as<IntegerVector>(e["mixIdx"]);
       Nullable<LogicalVector> _thetaFixed =  as<Nullable<LogicalVector>>(e["thetaFixed"]);
       Nullable<LogicalVector> _skipCov = as<Nullable<LogicalVector>>(e["skipCov"]);
       RObject _rxInv = e["rxInv"];
@@ -6742,7 +6720,7 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
-      foceiSetup_(inner, _dataSav, _thetaIni,  _mixIdx, _thetaFixed, _skipCov,
+      foceiSetup_(inner, _dataSav, _thetaIni, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
       doPredOnly = true;
       if (op_focei.neta == 0) doPredOnly = false;
