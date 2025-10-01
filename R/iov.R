@@ -265,23 +265,117 @@ nlmixr2iovVarSd <- function(val) {
 .uiFinalizeIov <- function(ret) {
   if (!is.null(.uiIovEnv$iov)) {
     if (is.null(ret$ui)) return(ret)
+
     if (is.environment(ret$env)) {
+      .iniDf <- .uiIovEnv$iov$iniDf
+      .finalDf <- ret$ui$iniDf
+      .iovName <- new.env(parent=emptyenv())
+      .iovName$var <- character(0)
+      .est <- vapply(seq_along(.iniDf$name), function(i) {
+        if (is.na(.iniDf$neta1[i])) {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .finalDf[.w, "est"]
+        } else if (.iniDf$condition[i] == "id") {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .finalDf[.w, "est"]
+        } else {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .iovName$var <- c(.iovName$var, .iniDf$name[i])
+          .fun <- sub("Cv$", "Sd", .finalDf[.w, "backTransform"])
+          .fun <- get(.fun)
+          .fun(.finalDf[.w, "est"])^2
+        }
+      }, double(1), USE.NAMES = FALSE)
+
+      # Now we can update the finalDf
+      assign("iniDf0", .iniDf, envir = ret$env)
+      .finalDf <- .iniDf
+      .finalDf$est <- .est
+      .ui <- .uiIovEnv$iov
+      suppressMessages(rxode2::ini(.ui) <- .finalDf)
+      assign("ui", .ui, envir = ret$env)
+
+      # Adjust Matrices to remove dummy IOV components
+      .omega <- ret$env$omega
+      .d1 <- dimnames(.omega)[[1]]
+      .d1 <- .d1[!(.d1 %in% .uiIovEnv$iovDrop)]
+
+      assign("omega", .ui$omega, envir = ret$env)
+
+      .phiC <- ret$env$phiC
+      .phiC <- lapply(seq_along(.phiC),
+                      function(i) {
+                        .m <- .phiC[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiC) <- names(ret$env$phiC)
+      assign("phiC", .phiC, envir = ret$env)
+
+
+      .phiH <- ret$env$phiH
+      .phiH <- lapply(seq_along(.phiH),
+                      function(i) {
+                        .m <- .phiH[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiH) <- names(ret$env$phiH)
+
+      assign("phiH", .phiH, envir = ret$env)
+
+      # Fix shrinkage
+
+      .shrink <- ret$env$shrink
+      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
+      .shrink <- .shrink[,-.w]
+
+      assign("shrink", .shrink, envir = ret$env)
+
+      # Fix eta objective function; Maybe save the full one for
+      # passing the etaMat information to the next estimation method
+
+      .etaObf <- ret$env$etaObf
+
+      .w <- which(names(.etaObf) %in% .uiIovEnv$iovDrop)
+      .etaObf <- .etaObf[,-.w]
+      assign("etaObf", .etaObf, envir = ret$env)
+
+      # Now fix the random effect matrix
+      .ranef <- ret$env$ranef
+
+      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
+      .ranef <- .ranef[,-.w]
+      assign("ranef", .ranef, envir = ret$env)
+
+      # Now fixed effects
+      .fixef <- ret$env$fixef
+      .w <- which(names(.fixef) %in% .iovName$var)
+      .fixef <- .fixef[-.w]
+      assign("fixef",.fixef, envir = ret$env)
+
       .parFixedDf <- ret$env$parFixedDf
       .bck <- which(grepl("Back",names(.parFixedDf)))
       .bsv <- which(grepl("BSV", names(.parFixedDf)))
+      .est <- which(grepl("Est", names(.parFixedDf)))
+
       .valCharPrep <-
         .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
         .parFixedDf[.uiIovEnv$iovVars, .bck]
       .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
+      .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
+
       .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
       assign("parFixedDf", .parFixedDf, envir = ret$env)
 
       .parFixed <- ret$env$parFixed
-      .bck2 <- which(grepl("Back",names(.parFixed)))
-      .bsv2 <- which(grepl("BSV",names(.parFixed)))
+      .bck2 <- which(grepl("Back", names(.parFixed)))
+      .bsv2 <- which(grepl("BSV",  names(.parFixed)))
+      .est2 <- which(grepl("Est", names(.parFixed)))
 
       .sigdig <- ret$control$sigdig
       .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
+      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
       .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
         signif(.valCharPrep, digits = .sigdig),
         digits = .sigdig, format = "fg", flag = "#")
