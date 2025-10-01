@@ -345,8 +345,46 @@ nlmixr2iovVarSd <- function(val) {
       .ranef <- ret$env$ranef
 
       .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
+      .iov <- .ranef
       .ranef <- .ranef[,-.w]
       assign("ranef", .ranef, envir = ret$env)
+
+
+      .omega <- .ui$omega
+      .n <- names(.omega)
+      .n <- .n[.n != "id"]
+      .omega <- lapply(.n, function(x) {
+        .omega[[.n]]
+      })
+      names(.omega) <- .n
+
+      .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
+      .iov <- .iov[,.w]
+
+      .dt <- NULL
+      .iov <- lapply(.n, function(var) {
+        .cur <- .omega[[var]]
+        .dn <- dimnames(.cur)[[1]]
+        for (d in .dn) {
+          .w <- c(1L,which(grepl(d, names(.iov), fixed=TRUE)))
+          .curd <- data.table::data.table(.iov[,.w])
+          .curd <- data.table::melt(.curd,
+                                    id.vars=names(.curd)[1],
+                                    measure.vars=names(.curd)[-1],
+                                    variable.name = var,
+                                    value.name = d)
+          if (is.null(.dt)) {
+            .dt <- .curd
+          } else {
+            .dt[[d]] <- .curd[[d]]
+          }
+        }
+        .dt[[var]] <- as.integer(sub(paste0("rx.", d, "."), "", as.character(.dt[[var]]), fixed=TRUE))
+        .dt <- as.data.frame(.dt)
+        .dt[order(.dt[[1]], .dt[[2]]), , drop=FALSE]
+      })
+      names(.iov) <- .n
+      assign("iov", .iov, envir = ret$env)
 
       # Now fixed effects
       .fixef <- ret$env$fixef
@@ -375,7 +413,7 @@ nlmixr2iovVarSd <- function(val) {
 
       .sigdig <- ret$control$sigdig
       .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
+      .parFixed[.uiIovEnv$iovVars, .est2] <- NA_real_
       .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
         signif(.valCharPrep, digits = .sigdig),
         digits = .sigdig, format = "fg", flag = "#")

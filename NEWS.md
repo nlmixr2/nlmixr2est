@@ -17,6 +17,10 @@
    - Allow different forms of `iov` estimation, controlled by
      `iovXform`.
    - Retains the `iov` parameter(s) in the output `data.frame`.
+   - With `iov`, the `$omega` shows a list of variability by the
+     conditioning variable(s).
+   - `fit$iov` will show the IOV deviations by the conditioning
+     variables(s) with the exception of `id`
 
 # nlmixr2est 4.1.0
 
