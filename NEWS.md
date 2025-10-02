@@ -21,6 +21,12 @@
      conditioning variable(s).
    - `fit$iov` will show the IOV deviations by the conditioning
      variables(s) with the exception of `id`
+   - IOV models can be used in other estimation methods and inherits
+     the ETA values.
+
+ - Added `$etaMat` method for `nlmixr2` fits to give the value that
+   needs to be passed between each estimation method.
+
 
 # nlmixr2est 4.1.0
 

@@ -1429,7 +1429,7 @@ foceiControl <- function(sigdig = 3, #
   } else if (!is.null(etaMat)) {
     .doWarn <- TRUE
     if (inherits(etaMat, "nlmixr2FitCore")) {
-      etaMat <- as.matrix(etaMat$eta[-1])
+      etaMat <- etaMat$etaMat
       .doWarn <- FALSE
     }
     if (.doWarn && missing(maxInnerIterations)) {
