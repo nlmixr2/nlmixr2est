@@ -1691,7 +1691,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         is.null(.control[["etaMat"]])) {
     warning("Passed the initial etas from the last fit",
             call.=FALSE)
-    .control[["etaMat"]] <- nlmixr2global$etaMat
+    .control[["etaMat"]] <- nlmixr2global$etaMat$etaMat
   }
   # Change control when there is only 1 item being optimized
   .iniDf <- get("iniDf", envir=.ui)

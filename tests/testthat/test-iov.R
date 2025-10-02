@@ -38,6 +38,17 @@ nmTest({
 
   expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
 
+  expect_null(fit$control$etaMat)
+
+  fit2 <- .nlmixr(fit, est="focei", control=foceiControlFast)
+
+  expect_true(inherits(fit2, "nlmixr2FitCore"))
+
+  expect_false(fit$iniDf[fit2$iniDf$name == "iov.cl", "fix"])
+
+  expect_equal(dimnames(fit2$control$etaMat)[[2]],
+               c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+
   fit <- .nlmixr(one.cmt, theo_iov, est="foce",
                  control=foceControlFast)
 
