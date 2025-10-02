@@ -2,7 +2,7 @@
   .type <- match.arg(type)
   nlmixrWithTiming(paste0(.type, "Lik"), {
     .foceiControl <- fit$foceiControl
-    .foceiControl$etaMat <- as.matrix(fit$eta[, -1]) ## with fo should be NULL
+    .foceiControl$etaMat <- fit$etaMat
     .foceiControl$fo <- FALSE
     .foceiControl$maxOuterIterations <- 0L
     .foceiControl$maxInnerIterations <- 0L

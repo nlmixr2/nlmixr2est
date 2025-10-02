@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "inner.h"
 #include <n1qn1c.h>
+#include <Rinternals.h>
 
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
@@ -3495,6 +3496,11 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.neta > 0) {
     etaMat0 = NumericMatrix(nsub, op_focei.neta);
     if (!etaMat.isNull()){
+      if (TYPEOF(wrap(etaMat)) != REALSXP) {
+        // Rcpp::print("etaMat is not a numeric matrix");
+        Rcpp::print(etaMat);
+        stop("etaMat must be a numeric matrix");
+      }
       NumericMatrix etaMat1 = NumericMatrix(etaMat);
       if (etaMat1.nrow() != (int)nsub){
         print(etaMat1);

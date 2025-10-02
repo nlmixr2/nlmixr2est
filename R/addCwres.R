@@ -82,7 +82,7 @@ addCwres <- function(fit, focei=TRUE, updateObject = TRUE, envir = parent.frame(
     .foceiControl <- fit$foceiControl
     .foceiControl$maxOuterIterations <- 0L
     .foceiControl$maxInnerIterations <- 0L
-    .foceiControl$etaMat <- as.matrix(fit$eta[, -1, drop = FALSE])
+    .foceiControl$etaMat <- fit$etaMat # as.matrix(fit$eta[, -1, drop = FALSE])
     .foceiControl$compress <- FALSE
     .foceiControl$covMethod <- 0L
     .foceiControl$interaction <- focei

@@ -37,6 +37,7 @@ foceiControl(
   lbfgsFactr = NULL,
   eigen = TRUE,
   diagXform = c("sqrt", "log", "identity"),
+  iovXform = c("sd", "var", "logsd", "logvar"),
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
@@ -431,6 +432,21 @@ to include a condition number calculation.}
  \item \code{log} Estimates the log of the diagonal elements of \code{chol(solve(omega))}
 
  \item \code{identity} Estimates the diagonal elements without any transformations
+}}
+
+\item{iovXform}{This is the transformation used on the diagonal
+    of the `iov`. The possibilities are:
+
+\itemize{
+
+ \item \code{sd} Estimate the IOV as the standard deviation for IOV
+
+ \item \code{var} Estimate the IOV as the variance for IOV.
+
+ \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+
+ \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+
 }}
 
 \item{sumProd}{Is a boolean indicating if the model should change

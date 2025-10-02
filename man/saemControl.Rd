@@ -41,6 +41,7 @@ saemControl(
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
+  iovXform = c("sd", "var", "logsd", "logvar"),
   ...
 )
 }
@@ -239,6 +240,21 @@ changes the system to a linear compartment model.  Therefore, by default this is
 \item{handleUninformativeEtas}{boolean that tells nlmixr2's saem to
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
+
+\item{iovXform}{This is the transformation used on the diagonal
+    of the `iov`. The possibilities are:
+
+\itemize{
+
+ \item \code{sd} Estimate the IOV as the standard deviation for IOV
+
+ \item \code{var} Estimate the IOV as the variance for IOV.
+
+ \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+
+ \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+
+}}
 
 \item{...}{Other arguments to control SAEM.}
 }

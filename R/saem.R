@@ -703,7 +703,7 @@
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
                                 rxControl=.rxControl)
-  if (exists(".etaMat", env)){
+  if (exists(".etaMat", env)) {
     rm(list=".etaMat", envir=env)
   }
   if (assign) env$control <- .foceiControl

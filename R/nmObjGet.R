@@ -247,21 +247,40 @@ nmObjGet.cor <- function(x, ...) {
 attr(nmObjGet.cor, "desc") <- "correlation matrix of theta, calculated from covariance of theta"
 attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
 
+.omegaR <- function(.cov) {
+  .sd2 <- sqrt(diag(.cov))
+  if (all(dim(.cov) == c(1, 1))) {
+    .cor <- .cov
+  } else {
+    .w <- which(diag(.cov) != 0)
+    .cor2 <- stats::cov2cor(.cov[.w, .w])
+    .d <- dim(.cov)[1]
+    .cor <- matrix(rep(NA, .d^2), .d, .d)
+    .cor[.w, .w] <- .cor2
+  }
+  dimnames(.cor) <- dimnames(.cov)
+  diag(.cor) <- .sd2
+  .cor
+}
+
 #' @rdname nmObjGet
 #' @export
 nmObjGet.omegaR <- function(x, ...) {
   .obj <- x[[1]]
   .cov <- .obj$omega
   if (is.null(.cov)) return(NULL)
-  .sd2 <- sqrt(diag(.cov))
-  .w <- which(diag(.cov) != 0)
-  .cor2 <- stats::cov2cor(.cov[.w, .w])
-  .d <- dim(.cov)[1]
-  .cor <- matrix(rep(NA, .d^2), .d, .d)
-  .cor[.w, .w] <- .cor2
-  dimnames(.cor) <- dimnames(.cov)
-  diag(.cor) <- .sd2
-  .cor
+  if (is.list(.cov)) {
+    .n <- names(.cov)
+    .ret <- lapply(seq_along(.cov), function(i) {
+      .covi <- .cov[[i]]
+      if (is.null(.covi)) return(NULL)
+      .omegaR(.covi)
+    })
+    names(.ret) <- .n
+    .ret
+  } else {
+    .omegaR(.cov)
+  }
 }
 attr(nmObjGet.omegaR, "desc") <- "correlation matrix of omega"
 attr(nmObjGet.omegaR, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))

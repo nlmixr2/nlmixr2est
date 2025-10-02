@@ -171,6 +171,7 @@ saemControl <- function(seed = 99,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
                         handleUninformativeEtas=TRUE,
+                        iovXform = c("sd", "var", "logsd", "logvar"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -182,6 +183,7 @@ saemControl <- function(seed = 99,
     call.=FALSE)
   }
 
+  iovXform <- match.arg(iovXform)
   checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
@@ -304,7 +306,8 @@ saemControl <- function(seed = 99,
     calcTables=calcTables,
     muRefCov=muRefCov,
     muRefCovAlg=muRefCovAlg,
-    handleUninformativeEtas=handleUninformativeEtas
+    handleUninformativeEtas=handleUninformativeEtas,
+    iovXform=iovXform
   )
   class(.ret) <- "saemControl"
   .ret
