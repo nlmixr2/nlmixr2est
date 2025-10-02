@@ -34,6 +34,12 @@ nmTest({
   fit <- .nlmixr(one.cmt, theo_iov, est="focei",
                  control=foceiControlFast)
 
+  .df1 <- as.data.frame(fit[,c("ID", "occ", "iov.cl")])
+  .df1 <- .df1[!duplicated(paste0(.df1$ID, ";", .df1$occ)), ]
+  row.names(.df1) <- NULL
+  expect_equal(.df1,
+               fit$iov$occ)
+
   expect_true(inherits(fit, "nlmixr2FitCore"))
 
   expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])

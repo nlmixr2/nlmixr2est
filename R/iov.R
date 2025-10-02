@@ -286,6 +286,7 @@ nlmixr2iovVarSd <- function(val) {
           .fun(.finalDf[.w, "est"])^2
         }
       }, double(1), USE.NAMES = FALSE)
+      names(.est) <- .iniDf$name
 
       # Now we can update the finalDf
       assign("iniDf0", .iniDf, envir = ret$env)
@@ -361,6 +362,8 @@ nlmixr2iovVarSd <- function(val) {
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
 
+      .sdIov <- sqrt(.est)
+
       .dt <- NULL
       .iov <- lapply(.n, function(var) {
         .cur <- .omega[[var]]
@@ -373,6 +376,10 @@ nlmixr2iovVarSd <- function(val) {
                                     measure.vars=names(.curd)[-1],
                                     variable.name = var,
                                     value.name = d)
+          # Since this is scaled by the standard deviation, we can
+          # calculate it from the derived eta fixed to 1 by mutiplying
+          # by the standard deviation of the IOV variable (calculated above)
+          .curd[[d]] <- .curd[[d]] *.sdIov[d]
           if (is.null(.dt)) {
             .dt <- .curd
           } else {
@@ -381,7 +388,9 @@ nlmixr2iovVarSd <- function(val) {
         }
         .dt[[var]] <- as.integer(sub(paste0("rx.", d, "."), "", as.character(.dt[[var]]), fixed=TRUE))
         .dt <- as.data.frame(.dt)
-        .dt[order(.dt[[1]], .dt[[2]]), , drop=FALSE]
+        .dt <- .dt[order(.dt[[1]], .dt[[2]]), , drop=FALSE]
+        rownames(.dt) <- NULL
+        .dt
       })
       names(.iov) <- .n
       assign("iov", .iov, envir = ret$env)
