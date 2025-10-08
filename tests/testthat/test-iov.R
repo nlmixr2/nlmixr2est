@@ -50,7 +50,7 @@ nmTest({
 
   expect_true(inherits(fit2, "nlmixr2FitCore"))
 
-  expect_false(fit$iniDf[fit2$iniDf$name == "iov.cl", "fix"])
+  expect_false(fit2$iniDf[fit2$iniDf$name == "iov.cl", "fix"])
 
   expect_equal(dimnames(fit2$control$etaMat)[[2]],
                c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
@@ -126,7 +126,6 @@ nmTest({
                  control=foceControlFast)
   expect_true(inherits(fit, "nlmixr2FitCore"))
   expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
   expect_true(any(names(fit) == "iov.cl"))
 
 
