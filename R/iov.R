@@ -422,7 +422,7 @@ nlmixr2iovVarSd <- function(val) {
 
       .sigdig <- ret$control$sigdig
       .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
-      .parFixed[.uiIovEnv$iovVars, .est2] <- NA_real_
+      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
       .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
         signif(.valCharPrep, digits = .sigdig),
         digits = .sigdig, format = "fg", flag = "#")
