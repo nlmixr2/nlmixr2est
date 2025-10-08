@@ -355,7 +355,7 @@ nlmixr2iovVarSd <- function(val) {
       .n <- names(.omega)
       .n <- .n[.n != "id"]
       .omega <- lapply(.n, function(x) {
-        .omega[[.n]]
+        .omega[[x]]
       })
       names(.omega) <- .n
 
