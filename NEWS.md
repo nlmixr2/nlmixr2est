@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 4.1.1
 
 - Request nlmixr2est's pre-processing hooks for `augPred()`, `vpcSim()` and
   `$simInfo`, which fixes augPred in cases where `etas=0` are used in
