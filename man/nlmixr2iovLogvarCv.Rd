@@ -9,7 +9,7 @@
 \alias{nlmixr2iovSdSd}
 \alias{nlmixr2iovVarCv}
 \alias{nlmixr2iovVarSd}
-\title{Transform the estimated value to %CV for IOV}
+\title{Transform the estimated value to \%CV for IOV}
 \usage{
 nlmixr2iovLogvarCv(val)
 
@@ -34,7 +34,7 @@ nlmixr2iovVarSd(val)
 IOV value
 }
 \description{
-Transform the estimated value to %CV for IOV
+Transform the estimated value to \%CV for IOV
 }
 \author{
 Matthew L. Fidler

@@ -18,7 +18,7 @@
   }
 }
 
-#' Transform the estimated value to %CV for IOV
+#' Transform the estimated value to \%CV for IOV
 #'
 #' @param val estimated value
 #' @return IOV value
