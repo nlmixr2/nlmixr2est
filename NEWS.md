@@ -25,7 +25,7 @@
      the ETA values.
 
  - Added `$etaMat` method for `nlmixr2` fits to give the value that
-   needs to be passed between each estimation method.
+   needs to be passed between each estimation method (related to iov #596)
 
 
 # nlmixr2est 4.1.0
