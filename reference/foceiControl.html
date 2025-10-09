@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -71,6 +71,7 @@
 <span>  lbfgsFactr <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  eigen <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  diagXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sqrt"</span>, <span class="st">"log"</span>, <span class="st">"identity"</span><span class="op">)</span>,</span>
+<span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  sumProd <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  optExpression <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  literalFix <span class="op">=</span> <span class="cn">TRUE</span>,</span>
@@ -457,6 +458,16 @@ to include a condition number calculation.</p></dd>
 <ul><li><p><code>sqrt</code> Estimates the sqrt of the diagonal elements of <code>chol(solve(omega))</code>.  This is the default method.</p></li>
 <li><p><code>log</code> Estimates the log of the diagonal elements of <code>chol(solve(omega))</code></p></li>
 <li><p><code>identity</code> Estimates the diagonal elements without any transformations</p></li>
+</ul></dd>
+
+
+<dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
+<dd><p>This is the transformation used on the diagonal
+    of the `iov`. The possibilities are:</p>
+<ul><li><p><code>sd</code> Estimate the IOV as the standard deviation for IOV</p></li>
+<li><p><code>var</code> Estimate the IOV as the variance for IOV.</p></li>
+<li><p><code>logsd</code> Estimate the IOV as the log(sd) instead of sd.</p></li>
+<li><p><code>logvar</code> Estimate the IOV as the log(var) instead of variance.</p></li>
 </ul></dd>
 
 

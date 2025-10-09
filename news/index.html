@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.0.9000</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">4.1.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -32,11 +32,23 @@
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<h2 class="pkg-version" data-toc-text="4.1.1" id="nlmixr2est-411">nlmixr2est 4.1.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-411"></a></h2><p class="text-muted">CRAN release: 2025-10-09</p>
 <ul><li><p>Request nlmixr2est’s pre-processing hooks for <code><a href="https://rdrr.io/pkg/nlme/man/augPred.html" class="external-link">augPred()</a></code>, <code><a href="../reference/vpcSim.html">vpcSim()</a></code> and <code>$simInfo</code>, which fixes augPred in cases where <code>etas=0</code> are used in <code>nlmixr2</code> (<a href="https://github.com/nlmixr2/nlmixr2est/issues/587" class="external-link">#587</a>)</p></li>
 <li><p>Fix scale.h so that <code>scaleType="none"</code> does not also require <code>scaleTo=0</code></p></li>
 <li><p>Request Armadillo 15 with the special flag in the new <code>RcppArmadillo</code></p></li>
 <li><p>Fix <code>focei</code> without etas (and without log-likelihood normal) to run <code>ELS</code> (See <a href="https://github.com/nlmixr2/nlmixr2est/issues/590" class="external-link">#590</a>).</p></li>
+<li>
+<p>Change the IOV implementation (<a href="https://github.com/nlmixr2/nlmixr2est/issues/596" class="external-link">#596</a>):</p>
+<ul><li>Now shows estimates as <code>CV%</code> or <code>sd</code> without shrinkage calculation.</li>
+<li>Allow different forms of <code>iov</code> estimation, controlled by <code>iovXform</code>.</li>
+<li>Retains the <code>iov</code> parameter(s) in the output <code>data.frame</code>.</li>
+<li>With <code>iov</code>, the <code>$omega</code> shows a list of variability by the conditioning variable(s).</li>
+<li>
+<code>fit$iov</code> will show the IOV deviations by the conditioning variables(s) with the exception of <code>id</code>
+</li>
+<li>IOV models can be used in other estimation methods and inherits the ETA values.</li>
+</ul></li>
+<li><p>Added <code>$etaMat</code> method for <code>nlmixr2</code> fits to give the value that needs to be passed between each estimation method (related to iov <a href="https://github.com/nlmixr2/nlmixr2est/issues/596" class="external-link">#596</a>)</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="4.1.0" id="nlmixr2est-410">nlmixr2est 4.1.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-410"></a></h2><p class="text-muted">CRAN release: 2025-08-29</p>
