@@ -1342,6 +1342,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     .skipCov <- rep(FALSE, .maxTheta)
     .skipCov[which(!is.na(.theta$err))] <- TRUE
     .skipCov[.theta$fix] <- TRUE
+    if (length(.uiIovEnv$iovVars) > 0) {
+      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+    }
     .skipCov
   }
 }
@@ -1688,7 +1691,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         is.null(.control[["etaMat"]])) {
     warning("Passed the initial etas from the last fit",
             call.=FALSE)
-    .control[["etaMat"]] <- as.matrix(nlmixr2global$etaMat$eta[-1])
+    .control[["etaMat"]] <- nlmixr2global$etaMat$etaMat
   }
   # Change control when there is only 1 item being optimized
   .iniDf <- get("iniDf", envir=.ui)

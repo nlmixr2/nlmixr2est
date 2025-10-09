@@ -167,6 +167,22 @@
 #'
 #'  \item \code{identity} Estimates the diagonal elements without any transformations
 #' }
+#'
+#' @param iovXform This is the transformation used on the diagonal
+#'     of the `iov`. The possibilities are:
+#'
+#' \itemize{
+#'
+#'  \item \code{sd} Estimate the IOV as the standard deviation for IOV
+#'
+#'  \item \code{var} Estimate the IOV as the variance for IOV.
+#'
+#'  \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+#'
+#'  \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+#'
+#' }
+#'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
 #'     high precision sums using the PreciseSums package.  By default
@@ -784,6 +800,7 @@ foceiControl <- function(sigdig = 3, #
                          lbfgsFactr = NULL, #
                          eigen = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
+                         iovXform = c("sd", "var", "logsd", "logvar"), #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
                          literalFix=TRUE,
@@ -1298,6 +1315,7 @@ foceiControl <- function(sigdig = 3, #
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),
+    iovXform = match.arg(iovXform),
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix=literalFix,
@@ -1411,7 +1429,7 @@ foceiControl <- function(sigdig = 3, #
   } else if (!is.null(etaMat)) {
     .doWarn <- TRUE
     if (inherits(etaMat, "nlmixr2FitCore")) {
-      etaMat <- as.matrix(etaMat$eta[-1])
+      etaMat <- etaMat$etaMat
       .doWarn <- FALSE
     }
     if (.doWarn && missing(maxInnerIterations)) {

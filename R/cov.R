@@ -80,7 +80,7 @@
   }
   .dat <- getData(obj)
   .ui <- obj$ui
-  .mat <- as.matrix(nlme::random.effects(obj)[, -1])
+  .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
   .control$etaMat <- .mat
   .fit2 <- nlmixr2CreateOutputFromUi(.ui, data=.dat, control=.control,
