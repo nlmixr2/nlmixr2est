@@ -1,16 +1,96 @@
+.nlmixr2iov <- function(val, type, transform) {
+  # First get the standard deviation
+  if (transform == "logvar") {
+    sd <- sqrt(exp(val))
+  } else if (transform == "logsd") {
+    sd <- exp(val)
+  } else if (transform == "sd") {
+    sd <- abs(val)
+  } else if (transform == "var") {
+    sd <- sqrt(abs(val))
+  } else {
+    stop("Unknown transform")
+  }
+  if (type == "exp") {
+    100 * sqrt(exp(sd^2) - 1)
+  } else {
+    sd
+  }
+}
+
+#' Transform the estimated value to \%CV for IOV
+#'
+#' @param val estimated value
+#' @return IOV value
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+nlmixr2iovLogvarCv <- function(val) {
+  .nlmixr2iov(val, "exp", "logvar")
+}
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovLogvarSd <- function(val) {
+  .nlmixr2iov(val, "", "logvar")
+}
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovLogsdCv <- function(val) {
+  .nlmixr2iov(val, "exp", "logsd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovLogsdSd <- function(val) {
+  .nlmixr2iov(val, "", "logsd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovSdCv <- function(val) {
+  .nlmixr2iov(val, "exp", "sd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovSdSd <- function(val) {
+  .nlmixr2iov(val, "", "sd")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovVarCv <- function(val) {
+  .nlmixr2iov(val, "exp", "var")
+}
+
+#' @rdname nlmixr2iovLogvarCv
+#' @export
+nlmixr2iovVarSd <- function(val) {
+  .nlmixr2iov(val, "", "var")
+}
 # This stores information about the IOV model that can be used
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
+.uiIovEnv$iovVars <- NULL
 #' This applies the IOV method to the model based on the data used
 #'
 #' @param env environment to apply the IOV model transformation.  This should contain:
 #'
 #' - `ui`: the model to apply the IOV transformation to
 #' - `data`: the data to use for the IOV transformation
+#' - `control`: the control object, which should contain `iovXform`
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(env) {
+  .uiIovEnv$iovVars <- NULL
+  .xform <- env$control$iovXform
+  if (length(.xform)  != 1) {
+    .xform <- "sd"
+  }
+  if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
+    .xform <- "sd"
+  }
   .ui <- env$ui
   .iniDf <- .ui$iniDf
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
@@ -81,30 +161,86 @@
                        .w <-which(.iniDf$condition == l1)
                        .var <- .iniDf$name[.w]
                        .fixed <- .iniDf$fix[.w]
-                       .lst <- lapply(.var, function(v) {
+                       .lst <- c(lapply(.var, function(v) {
                          # Add theta to dataset; represents variance of iov
                          .curTheta <- .theta1
-                         .curTheta$est <- .iniDf[which(.iniDf$name == v &
-                                                         is.na(.iniDf$ntheta)), "est"]
+                         # This is in variance and needs to be converted
+                         # based on the xform
+                         .est <- .iniDf[which(.iniDf$name == v &
+                                                is.na(.iniDf$ntheta)), "est"]
+                         if (.xform == "var") {
+                           .curTheta$est <- .est
+                         } else if (.xform == "sd") {
+                           .curTheta$est <- sqrt(.est)
+                         } else if (.xform == "logvar") {
+                           .curTheta$est <- log(.est)
+                         } else if (.xform == "logsd") {
+                           .curTheta$est <- log(sqrt(.est))
+                         }
                          .curTheta$name <- v
+                         .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed
+
+                         .w <- which(env$ui$muRefCurEval$parameter == v)
+                         if (length(.w) == 1L) {
+                           .curEval <- env$ui$muRefCurEval$curEval[.w]
+                         } else {
+                           .curEval <- ""
+                         }
+                         .curTheta$backTransform <-
+                           paste0(switch(.xform,
+                                  "sd" = "nlmixr2iovSd",
+                                  "var" = "nlmixr2iovVar",
+                                  "logsd" = "nlmixr2iovLogsd",
+                                  "logvar" = "nlmixr2iovLogvar"),
+                                  ifelse(.curEval=="exp", "Cv", "Sd"))
+                         if (.xform %in% c("sd", "var")) {
+                           .curTheta$lower <- 0 # doesn't work with saem
+                         }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
                          for (n in .lvls[[l1]]) {
                            .curEta <- .eta1
                            .curEta$name <- paste0("rx.", v, ".", n)
+                           .curEta$label <- paste0(v, "(", l1, "==", n, ")")
                            .env$drop <- c(.env$drop, .curEta$name)
                            .env$maxeta <- .curEta$neta1 <-
                              .curEta$neta2 <- .env$maxeta + 1L
                            .env$etas <- rbind(.env$etas, .curEta)
                          }
-                         str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
-                                         paste(paste0("rx.", v, ".", .lvls[[l1]],
-                                                      "*(", l1,
-                                                      " == ", .lvls[[l1]], ")"),
-                                               collapse="+"),
-                                         ")"))
-                       })
+                         if (.xform == "logsd") {
+                           str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         } else if (.xform == "logvar") {
+                             str2lang(paste0("rx.", v, " <- sqrt(exp(", v, "))*(",
+                                             paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                          "*(", l1,
+                                                          " == ", .lvls[[l1]], ")"),
+                                                   collapse="+"),
+                                             ")"))
+                         } else if (.xform == "sd") {
+                           str2lang(paste0("rx.", v, " <- abs(", v, ")*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         } else if (.xform == "var") {
+                           str2lang(paste0("rx.", v, " <- sqrt(abs(", v, "))*(",
+                                           paste(paste0("rx.", v, ".", .lvls[[l1]],
+                                                        "*(", l1,
+                                                        " == ", .lvls[[l1]], ")"),
+                                                 collapse="+"),
+                                           ")"))
+                         }
+                       }),
+                       lapply(.var, function(v) {
+                         str2lang(paste0(v, ".rx <- rx.", v))
+                       }))
                        .lst
                      })
     .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
@@ -122,7 +258,6 @@
 }
 #' Finalizes IOV model
 #'
-#'
 #' @param ret data frame with some iov information dropped
 #' @return fit with iov information dropped
 #' @noRd
@@ -130,6 +265,170 @@
 .uiFinalizeIov <- function(ret) {
   if (!is.null(.uiIovEnv$iov)) {
     if (is.null(ret$ui)) return(ret)
+
+    if (is.environment(ret$env)) {
+      .iniDf <- .uiIovEnv$iov$iniDf
+      .finalDf <- ret$ui$iniDf
+      .iovName <- new.env(parent=emptyenv())
+      .iovName$var <- character(0)
+      .est <- vapply(seq_along(.iniDf$name), function(i) {
+        if (is.na(.iniDf$neta1[i])) {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .finalDf[.w, "est"]
+        } else if (.iniDf$condition[i] == "id") {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .finalDf[.w, "est"]
+        } else {
+          .w <- which(.finalDf$name == .iniDf$name[i])
+          .iovName$var <- c(.iovName$var, .iniDf$name[i])
+          .fun <- sub("Cv$", "Sd", .finalDf[.w, "backTransform"])
+          .fun <- get(.fun)
+          .fun(.finalDf[.w, "est"])^2
+        }
+      }, double(1), USE.NAMES = FALSE)
+      names(.est) <- .iniDf$name
+
+      # Now we can update the finalDf
+      assign("iniDf0", .iniDf, envir = ret$env)
+      .finalDf <- .iniDf
+      .finalDf$est <- .est
+      .ui <- .uiIovEnv$iov
+      suppressMessages(rxode2::ini(.ui) <- .finalDf)
+      assign("ui", .ui, envir = ret$env)
+
+      # Adjust Matrices to remove dummy IOV components
+      .omega <- ret$env$omega
+      .d1 <- dimnames(.omega)[[1]]
+      .d1 <- .d1[!(.d1 %in% .uiIovEnv$iovDrop)]
+
+      assign("omega", .ui$omega, envir = ret$env)
+
+      .phiC <- ret$env$phiC
+      .phiC <- lapply(seq_along(.phiC),
+                      function(i) {
+                        .m <- .phiC[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiC) <- names(ret$env$phiC)
+      assign("phiC", .phiC, envir = ret$env)
+
+
+      .phiH <- ret$env$phiH
+      .phiH <- lapply(seq_along(.phiH),
+                      function(i) {
+                        .m <- .phiH[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiH) <- names(ret$env$phiH)
+
+      assign("phiH", .phiH, envir = ret$env)
+
+      # Fix shrinkage
+
+      .shrink <- ret$env$shrink
+      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
+      .shrink <- .shrink[,-.w]
+
+      assign("shrink", .shrink, envir = ret$env)
+
+      # Fix eta objective function; Maybe save the full one for
+      # passing the etaMat information to the next estimation method
+
+      .etaObf <- ret$env$etaObf
+
+      .w <- which(names(.etaObf) %in% .uiIovEnv$iovDrop)
+      .etaObf <- .etaObf[,-.w]
+      assign("etaObf", .etaObf, envir = ret$env)
+
+      # Now fix the random effect matrix
+      .ranef <- ret$env$ranef
+
+      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
+      .iov <- .ranef
+      .ranef <- .ranef[,-.w]
+      assign("ranef", .ranef, envir = ret$env)
+
+
+      .omega <- .ui$omega
+      .n <- names(.omega)
+      .n <- .n[.n != "id"]
+      .omega <- lapply(.n, function(x) {
+        .omega[[x]]
+      })
+      names(.omega) <- .n
+
+      .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
+      .iov <- .iov[,.w]
+
+      .sdIov <- sqrt(.est)
+
+      .dt <- NULL
+      .iov <- lapply(.n, function(var) {
+        .cur <- .omega[[var]]
+        .dn <- dimnames(.cur)[[1]]
+        for (d in .dn) {
+          .w <- c(1L,which(grepl(d, names(.iov), fixed=TRUE)))
+          .curd <- data.table::data.table(.iov[,.w])
+          .curd <- data.table::melt(.curd,
+                                    id.vars=names(.curd)[1],
+                                    measure.vars=names(.curd)[-1],
+                                    variable.name = var,
+                                    value.name = d)
+          # Since this is scaled by the standard deviation, we can
+          # calculate it from the derived eta fixed to 1 by mutiplying
+          # by the standard deviation of the IOV variable (calculated above)
+          .curd[[d]] <- .curd[[d]] *.sdIov[d]
+          if (is.null(.dt)) {
+            .dt <- .curd
+          } else {
+            .dt[[d]] <- .curd[[d]]
+          }
+        }
+        .dt[[var]] <- as.integer(sub(paste0("rx.", d, "."), "", as.character(.dt[[var]]), fixed=TRUE))
+        .dt <- as.data.frame(.dt)
+        .dt <- .dt[order(.dt[[1]], .dt[[2]]), , drop=FALSE]
+        rownames(.dt) <- NULL
+        .dt
+      })
+      names(.iov) <- .n
+      assign("iov", .iov, envir = ret$env)
+
+      # Now fixed effects
+      .fixef <- ret$env$fixef
+      .w <- which(names(.fixef) %in% .iovName$var)
+      .fixef <- .fixef[-.w]
+      assign("fixef",.fixef, envir = ret$env)
+
+      .parFixedDf <- ret$env$parFixedDf
+      .bck <- which(grepl("Back",names(.parFixedDf)))
+      .bsv <- which(grepl("BSV", names(.parFixedDf)))
+      .est <- which(grepl("Est", names(.parFixedDf)))
+
+      .valCharPrep <-
+        .parFixedDf[.uiIovEnv$iovVars,.bsv] <-
+        .parFixedDf[.uiIovEnv$iovVars, .bck]
+      .parFixedDf[.uiIovEnv$iovVars,.bsv] <- NA_real_
+      .parFixedDf[.uiIovEnv$iovVars,.est] <- NA_real_
+
+      .parFixedDf <- .parFixedDf[!grepl("^rx[.]", rownames(.parFixedDf)),]
+      assign("parFixedDf", .parFixedDf, envir = ret$env)
+
+      .parFixed <- ret$env$parFixed
+      .bck2 <- which(grepl("Back", names(.parFixed)))
+      .bsv2 <- which(grepl("BSV",  names(.parFixed)))
+      .est2 <- which(grepl("Est", names(.parFixed)))
+
+      .sigdig <- ret$control$sigdig
+      .parFixed[.uiIovEnv$iovVars, .bck2] <- ""
+      .parFixed[.uiIovEnv$iovVars, .est2] <- ""
+      .parFixed[.uiIovEnv$iovVars, .bsv2] <- formatC(
+        signif(.valCharPrep, digits = .sigdig),
+        digits = .sigdig, format = "fg", flag = "#")
+      .parFixed <- .parFixed[!grepl("^rx[.]", rownames(.parFixed)),]
+      assign("parFixed", .parFixed, envir=ret$env)
+    }
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
     if (inherits(ret, "data.frame")) {
@@ -140,6 +439,14 @@
         ret <- ret[,-.w]
         class(ret) <- .cls
       }
+      .rename <- paste0(.uiIovEnv$iovVars, ".rx")
+      names(ret) <- vapply(names(ret), function(n) {
+        if (n %in% .rename) {
+          sub("[.]rx$", "", n)
+        } else {
+          n
+        }
+      }, character(1), USE.NAMES = FALSE)
     }
   }
   ret

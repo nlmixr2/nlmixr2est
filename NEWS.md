@@ -1,4 +1,4 @@
-# nlmixr2est (development version)
+# nlmixr2est 4.1.1
 
 - Request nlmixr2est's pre-processing hooks for `augPred()`, `vpcSim()` and
   `$simInfo`, which fixes augPred in cases where `etas=0` are used in
@@ -11,6 +11,22 @@
 
 - Fix `focei` without etas (and without log-likelihood normal) to run
   `ELS` (See #590).
+
+- Change the IOV implementation (#596):
+   - Now shows estimates as `CV%` or `sd` without shrinkage calculation.
+   - Allow different forms of `iov` estimation, controlled by
+     `iovXform`.
+   - Retains the `iov` parameter(s) in the output `data.frame`.
+   - With `iov`, the `$omega` shows a list of variability by the
+     conditioning variable(s).
+   - `fit$iov` will show the IOV deviations by the conditioning
+     variables(s) with the exception of `id`
+   - IOV models can be used in other estimation methods and inherits
+     the ETA values.
+
+ - Added `$etaMat` method for `nlmixr2` fits to give the value that
+   needs to be passed between each estimation method (related to iov #596)
+
 
 # nlmixr2est 4.1.0
 
