@@ -5845,7 +5845,6 @@ NumericMatrix foceiCalcCov(Environment e){
                   if (covRSsmall) {
                     checkSandwich2 = true;
                   }
-
                 }
                 if (checkSandwich || checkSandwich2){
                   if (!checkSandwich2 && rstr == "r"){
