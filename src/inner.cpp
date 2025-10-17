@@ -2840,6 +2840,24 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   return 5;
 }
 
+//' Calculate the mixture parameter gradient
+//'
+//' This notes that the mixture gradient does not need to be numerically, but
+//' can be calculated directly from the mixture probabilities, the translation from
+//' the by the mexpit, and the scaling factors.
+//'
+//' @param theta The parameter vector
+//'
+//' @param g The gradient vector to fill in
+//'
+//' @param cpar The parameter index to test/calculate the gradient for.
+//'
+//' @return 0 if the gradient was not calculated, 1 if it was.
+//'
+int mixGrad(double *theta, double *g, int cpar) {
+  return 0;
+}
+
 
 void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
@@ -2866,7 +2884,8 @@ void numericGrad(double *theta, double *g){
     arma::vec armaTheta(op_focei.npars);
     std::copy(theta, theta+op_focei.npars, armaTheta.begin());
     double h = 0;
-    for (int cpar = op_focei.npars; cpar--;){
+    for (int cpar = op_focei.npars; cpar--;) {
+      if (!mixGrad(theta, g, cpar)) continue;
       op_focei.calcGrad=1;
       op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
                                          f0, grFinal, 0, cpar,
@@ -2885,7 +2904,7 @@ void numericGrad(double *theta, double *g){
     op_focei.calcGrad=0;
     op_focei.curGill=2;
     op_focei.slow = finalSlow;
-  } else if ((op_focei.repeatGill == 1 || op_focei.nF == 1) && op_focei.gillK > 0){
+  } else if ((op_focei.repeatGill == 1 || op_focei.nF == 1) && op_focei.gillK > 0) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.printOuter == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
@@ -2906,7 +2925,8 @@ void numericGrad(double *theta, double *g){
         RSprintf(_("calculate Gill Difference and optimize forward difference step size:\n"));
       }
     }
-    for (int cpar = op_focei.npars; cpar--;){
+    for (int cpar = op_focei.npars; cpar--;) {
+      if (!mixGrad(theta, g, cpar)) continue;
       op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                       theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                       -1, gill83fnG, 1, op_focei.lastOfv);
@@ -2970,7 +2990,7 @@ void numericGrad(double *theta, double *g){
     double f=0;
     // Do Forward difference if the OBJF for *theta has already been calculated.
     bool doForward=false;
-    if (op_focei.derivMethod == 0){
+    if (op_focei.derivMethod == 0) {
       doForward=true;
       // If the first derivative wasn't calculated, then calculate it.
       for (cpar = npars; cpar--;){
@@ -2991,6 +3011,7 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (cpar = npars; cpar--;) {
+      if (!mixGrad(theta, g, cpar)) continue;
       if (doForward){
         delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar]);
       } else {
