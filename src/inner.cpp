@@ -315,6 +315,7 @@ struct focei_options {
   int mixIdxN = 0;
   int *mixIdx = NULL;
   double *mixProb = NULL;
+  double *mixProbGrad = NULL;
 };
 
 focei_options op_focei;
@@ -390,6 +391,7 @@ struct focei_ind {
   // Mixture options
   int    *mixest;
   double *mixProb;
+  double *mixProbGrad;
 };
 
 focei_ind *inds_focei = NULL;
@@ -675,8 +677,11 @@ void updateTheta(double *theta){
     Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function f = as<Function>(nlmixr2[".getMixFromLog"]);
     // Get the mix probabilities
-    NumericMatrix mixProbs = f(curTheta, mixIdx);
+    NumericVector mixProbs = f(curTheta, mixIdx);
     std::copy(mixProbs.begin(), mixProbs.end(), &op_focei.mixProb[0]);
+    f = as<Function>(nlmixr2[".getMixJacFromLog"]);
+    NumericVector mixJac = f(curTheta, mixIdx);
+    std::copy(mixJac.begin(), mixJac.end(), &op_focei.mixProbGrad[0]);
   }
   // Update setOmegaTheta
   if (op_focei.neta > 0) {
@@ -2356,20 +2361,30 @@ static inline double foceiLik0(double *theta) {
     for (int id=getRxNsub(rx); id--;){
       double tot = 0;
       bool allZero = true;
+      double explast = 0.0;
       for (int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
         fInd = &(inds_focei[id + mn*getRxNsub(rx)]);
         cur = fInd->lik[0];
+        double ecur = exp(cur);
         if (ISNA(cur) || std::isinf(cur) || std::isnan(cur)) {
           fInd->mixProb[mn] = 0.0;
         } else {
           allZero = false;
-          fInd->mixProb[mn] = exp(cur)*op_focei.mixProb[mn];
+          fInd->mixProb[mn] = ecur*op_focei.mixProb[mn];
           tot += fInd->mixProb[mn];
         }
+        if (mn == op_focei.mixIdxN) {
+          explast = ecur;
+        } else {
+          fInd->mixProbGrad[mn] = ecur;
+        }
       }
-      double mixprob = 0;
       for (int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
         fInd->mixProb[mn] = fInd->mixProb[mn]/tot;
+        if (mn != op_focei.mixIdxN) {
+          // Finish Calculating the gradient based on the probability
+          fInd->mixProbGrad[mn] = (fInd->mixProbGrad[mn]-explast)/tot;
+        }
         if (mixprob < fInd->mixProb[mn]) {
           fInd->mixest[0] = mn + 1;
         }
@@ -2383,7 +2398,10 @@ static inline double foceiLik0(double *theta) {
     }
   }
   // Now reset the saved ETAs
-  if (op_focei.neta !=0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
+  if (op_focei.neta !=0) {
+    // All etas = -42;  Unlikely if normal
+    std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+  }
   return lik;
 }
 
@@ -3374,6 +3392,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     fInd->mixProb = op_focei.mixProb +
       (getRxId(i) + 1)*(op_focei.mixIdxN + 1);
+    fInd->mixProbGrad = op_focei.mixProbGrad +
+      (getRxId(i) + 1)*(op_focei.mixIdxN);
 
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD = 0;
@@ -3735,9 +3755,11 @@ NumericVector foceiSetup_(const RObject &obj,
 
   op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
                              (op_focei.mixIdxN + 1)*(getRxNsub(rx)+1) +
+                             (op_focei.mixIdxN)*(getRxNsub(rx)+1)
                              getRxNsub(rx), double);
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
-  op_focei.gillDf2 = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
+  op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
+  op_focei.gillDf2 = op_focei.mixProbGrad + (op_focei.mixIdxN)*(getRxNsub(rx)+1);
   op_focei.gillErr = op_focei.gillDf2+totN;
   op_focei.rEps=op_focei.gillErr + totN;
   op_focei.aEps = op_focei.rEps + totN;
