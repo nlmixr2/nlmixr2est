@@ -114,6 +114,7 @@ struct focei_options {
 
   int *etaTrans = NULL;
   int *etaFD = NULL;
+  int *mixTrans = NULL;
   int predNeq;
   int eventType;
 
@@ -2875,6 +2876,20 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
 // @return 0 if the gradient was not calculated, 1 if it was.
 //
 int mixGrad(double *theta, double *g, int cpar) {
+  if (op_focei.mixTrans[cpar] != -1) {
+    // This is a mixture grad
+    int mi = op_focei.mixTrans[cpar];
+    // First add the gradients from each individual contribution
+    g[cpar] = 0.0;
+    for (int i = 0; i < getRxNsub(rx); ++i) {
+      focei_ind *fInd = &(inds_focei[mi]);
+      g[cpar] += fInd->mixProbGrad[mi];
+    }
+    // Next multiple the gradient from the mexpit() transformation
+    // (from chain rule)
+    g[cpar] *= op_focei.mixProbGrad[mi];
+    // FIXME: Last apply the scaling gradient changes from chain rule
+  }
   return 0;
 }
 
@@ -3168,13 +3183,21 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   std::string thetaS;
   std::string etaS;
   std::string cur;
-  if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
-  op_focei.etaTrans    = R_Calloc(op_focei.neta*3 + 3*(op_focei.ntheta + op_focei.omegan), int); //[neta]
+  if (op_focei.etaTrans != NULL) {
+    R_Free(op_focei.etaTrans);
+  }
+  op_focei.etaTrans    = R_Calloc(op_focei.neta*3 +
+                                  (3+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan), int); //[neta]
   op_focei.nbdInner    = op_focei.etaTrans + op_focei.neta;
   op_focei.xPar        = op_focei.nbdInner + op_focei.neta; // [ntheta+nomega]
   op_focei.thetaTrans  = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
   op_focei.fixedTrans  = op_focei.thetaTrans + op_focei.ntheta + op_focei.omegan; // [ntheta + nomega]
   op_focei.etaFD       = op_focei.fixedTrans + op_focei.ntheta + op_focei.omegan; // [neta]
+  if (op_focei.mixIdxN) {
+    op_focei.mixTrans    = op_focei.etaFD + op_focei.neta + op_focei.omegan; // [ntheta+omegan]
+  } else {
+    op_focei.mixTrans    = NULL;
+  }
 
   if (op_focei.fullTheta != NULL) R_Free(op_focei.fullTheta);
   op_focei.fullTheta   = R_Calloc(4*(op_focei.ntheta+op_focei.omegan) +
@@ -3213,6 +3236,18 @@ static inline void foceiSetupTrans_(CharacterVector pars){
     stop("eta mismatch op_focei.neta %d, neta: %d\n", op_focei.neta, neta);
   }
   op_focei.nzm = (op_focei.neta + 1) * (op_focei.neta + 2) / 2 + (op_focei.neta + 1)*6+1;
+}
+
+static inline void foceiSetupMixTrans(int k, int j) {
+  if (op_focei.mixIdxN) {
+    op_focei.mixTrans[k] = -1;
+    for (int m = 0; m < op_focei.mixIdxN; ++m) {
+      if (op_focei.mixIdx[m] - 1 == j) {
+        op_focei.mixTrans[k] = m;
+        break;
+      }
+    }
+  }
 }
 
 static inline void foceiSetupTheta_(List mvi,
@@ -3269,12 +3304,15 @@ static inline void foceiSetupTheta_(List mvi,
       } else if (j < theta.size() + omegan){
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
       }
+      foceiSetupMixTrans(k, j);
       op_focei.fixedTrans[k++] = j;
     } else if (j >= thetaFixed2.size()){
       if (j < theta.size()){
+        foceiSetupMixTrans(k, j);
         op_focei.initPar[k] = theta[j];
         op_focei.fixedTrans[k++] = j;
       } else if (j < theta.size() + omegan){
+        foceiSetupMixTrans(k, j);
         op_focei.initPar[k] = omegaTheta[j-theta.size()];
         op_focei.fixedTrans[k++] = j;
       }
