@@ -2362,6 +2362,7 @@ static inline double foceiLik0(double *theta) {
       double tot = 0;
       bool allZero = true;
       double explast = 0.0;
+      double mixprob = 0.0;
       for (int mn = 0; mn < op_focei.mixIdxN + 1; mn++) {
         fInd = &(inds_focei[id + mn*getRxNsub(rx)]);
         cur = fInd->lik[0];
@@ -2386,6 +2387,7 @@ static inline double foceiLik0(double *theta) {
           fInd->mixProbGrad[mn] = (fInd->mixProbGrad[mn]-explast)/tot;
         }
         if (mixprob < fInd->mixProb[mn]) {
+          mixprob = fInd->mixProb[mn];
           fInd->mixest[0] = mn + 1;
         }
       }
@@ -2858,20 +2860,20 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
   return 5;
 }
 
-//' Calculate the mixture parameter gradient
-//'
-//' This notes that the mixture gradient does not need to be numerically, but
-//' can be calculated directly from the mixture probabilities, the translation from
-//' the by the mexpit, and the scaling factors.
-//'
-//' @param theta The parameter vector
-//'
-//' @param g The gradient vector to fill in
-//'
-//' @param cpar The parameter index to test/calculate the gradient for.
-//'
-//' @return 0 if the gradient was not calculated, 1 if it was.
-//'
+// Calculate the mixture parameter gradient
+//
+// This notes that the mixture gradient does not need to be numerically, but
+// can be calculated directly from the mixture probabilities, the translation from
+// the by the mexpit, and the scaling factors.
+//
+// @param theta The parameter vector
+//
+// @param g The gradient vector to fill in
+//
+// @param cpar The parameter index to test/calculate the gradient for.
+//
+// @return 0 if the gradient was not calculated, 1 if it was.
+//
 int mixGrad(double *theta, double *g, int cpar) {
   return 0;
 }
@@ -3755,7 +3757,7 @@ NumericVector foceiSetup_(const RObject &obj,
 
   op_focei.gillDf = R_Calloc(7*totN + 2*op_focei.npars +
                              (op_focei.mixIdxN + 1)*(getRxNsub(rx)+1) +
-                             (op_focei.mixIdxN)*(getRxNsub(rx)+1)
+                             (op_focei.mixIdxN)*(getRxNsub(rx)+1) +
                              getRxNsub(rx), double);
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
   op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
