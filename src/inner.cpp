@@ -2515,25 +2515,38 @@ void foceiPhi(Environment e) {
   e["phiC"] = retC;
 }
 
-SEXP foceiEtas(Environment e) {
+SEXP foceiEtas(Environment e, bool bestMixEst=false) {
   if (op_focei.neta==0) return R_NilValue;
-  List ret(op_focei.neta+2);
-  CharacterVector nm(op_focei.neta+2);
+  int mixest = 0;
+  if (op_focei.mixIdxN != 0) {
+    mixest = 1;
+  }
+  List ret(op_focei.neta+2+mixest);
+  CharacterVector nm(op_focei.neta+2+mixest);
   rx = getRxSolve_();
-  IntegerVector ids(getRxNsubAndMix(rx));
-  NumericVector ofv(getRxNsubAndMix(rx));
+  IntegerVector ids(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
+  NumericVector ofv(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
+  IntegerVector mixesti(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
   int j,eta;
   for (j = op_focei.neta; j--;) {
-    ret[j+1]=NumericVector(getRxNsubAndMix(rx));
-    nm[j+1] = "ETA[" + std::to_string(j+1) + "]";
+    ret[j+1+mixest]=NumericVector(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx));
+    nm[j+1+mixest] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-  for (j=getRxNsubAndMix(rx); j--;) {
-    ids[j] = j+1;
+  for (j=(bestMixEst ? bestMixEst : getRxNsubAndMix(rx)); j--;) {
+    ids[j] = getRxId(j)+1;
     focei_ind *fInd = &(inds_focei[j]);
+    // Update based on the best mix estimate when requested
+    if (bestMixEst && op_focei.mixIdxN != 0) {
+      int mixId = fInd->mixest[0]-1;
+      fInd = &(inds_focei[getRxNsub(rx)*mixId + getRxId(j)]);
+    }
     ofv[j] = -2*fInd->lik[0];
+    if (mixest == 1) {
+      mixesti[j] = getRxMixFromId(j);
+    }
     for (eta = op_focei.neta; eta--;) {
-      tmp = ret[eta+1];
+      tmp = ret[eta+1+mixest];
       // Save eta is what the ETAs are saved
       tmp[j] = fInd->saveEta[eta];
     }
@@ -2547,8 +2560,12 @@ SEXP foceiEtas(Environment e) {
   }
   ret[0] = ids;
   nm[0] = "ID";
-  ret[op_focei.neta+1]=ofv;
-  nm[op_focei.neta+1] = "OBJI";
+  if (mixest == 1) {
+    ret[1] = mixesti;
+    nm[1] = "MIXEST";
+  }
+  ret[op_focei.neta+1+mixest]=ofv;
+  nm[op_focei.neta+1+mixest] = "OBJI";
   ret.attr("names") = nm;
   ret.attr("class") = "data.frame";
   ret.attr("row.names") = IntegerVector::create(NA_INTEGER,-getRxNsubAndMix(rx));
@@ -4232,7 +4249,12 @@ void foceiOuterFinal(double *x, Environment e){
     e["etaObf"] = R_NilValue;
   } else {
     e["omega"] = getOmega();
-    e["etaObf"] = foceiEtas(e);
+    if (op_focei.mixIdxN != 0) {
+      e["etaObfFull"] = foceiEtas(e);
+      e["etaObf"] = foceiEtas(e, true);
+    } else {
+      e["etaObf"] = foceiEtas(e);
+    }
     // create phi object for standard errors
     foceiPhi(e);
   }
