@@ -2876,6 +2876,7 @@ int gill83(double *hf, double *hphif, double *df, double *df2, double *ef,
 // @return 0 if the gradient was not calculated, 1 if it was.
 //
 int mixGrad(double *theta, double *g, int cpar) {
+  if (op_focei.mixTrans == NULL) return 0;
   if (op_focei.mixTrans[cpar] != -1) {
     // This is a mixture grad
     int mi = op_focei.mixTrans[cpar];
