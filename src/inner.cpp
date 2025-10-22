@@ -539,7 +539,7 @@ void updateZm(focei_ind *indF){
 }
 
 static inline double getScaleC(int i){
-  if (ISNA(op_focei.scaleC[i])){
+  if (ISNA(op_focei.scaleC[i])) {
     switch (op_focei.xPar[i]){
     case 1: // log
       op_focei.scaleC[i]=1.0;
@@ -564,7 +564,7 @@ static inline double getScaleC(int i){
 
 ////////////////////////////////////////////////////////////////////////////////
 // Likelihood for inner functions
-static inline double unscalePar(double *x, int i){
+static inline double unscalePar(double *x, int i) {
   double scaleTo = op_focei.scaleTo, C=getScaleC(i);
   switch(op_focei.scaleType){
   case 1: // normalized
@@ -2889,6 +2889,41 @@ int mixGrad(double *theta, double *g, int cpar) {
     // (from chain rule)
     g[cpar] *= op_focei.mixProbGrad[mi];
     // FIXME: Last apply the scaling gradient changes from chain rule
+    double scaleTo = op_focei.scaleTo, C=getScaleC(cpar);
+    switch (op_focei.scaleType){
+    case 1: // normalized
+      g[cpar] *= op_focei.c2;
+      return 1;
+      break;
+    case 2: // log vs linear scales and/or ranges
+      g[cpar] *= C;
+      return 1;
+      break;
+    case 3: // simple multiplicative scaling
+      if (op_focei.scaleTo != 0){
+        g[cpar] *= op_focei.initPar[cpar]/scaleTo;
+        return 1;
+      } else {
+        return 1;
+      }
+      break;
+    case 4: // log non-log multiplicative scaling
+      if (op_focei.scaleTo > 0){
+        switch (op_focei.xPar[cpar]){
+        case 1:
+          return 1;
+        default:
+          g[cpar] *= op_focei.initPar[cpar]/scaleTo;
+          return 1;
+        }
+      } else {
+        return 1;
+      }
+    default:
+      return 1;
+    }
+    return 0;
+
   }
   return 0;
 }
