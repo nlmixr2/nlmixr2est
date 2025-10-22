@@ -2956,16 +2956,19 @@ void numericGrad(double *theta, double *g){
     std::copy(theta, theta+op_focei.npars, armaTheta.begin());
     double h = 0;
     for (int cpar = op_focei.npars; cpar--;) {
-      if (!mixGrad(theta, g, cpar)) continue;
-      op_focei.calcGrad=1;
-      op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
-                                         f0, grFinal, 0, cpar,
-                                         op_focei.hessEpsInner, //double ef = 7e-7,
-                                         1.5,  //double rl = 1.5,
-                                         6.0,  //double ru = 6.0);;
-                                         maxiter);  //maxiter=15
-      op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
-      g[cpar] = grFinal(0);
+      if (mixGrad(theta, g, cpar) == 1) {
+        continue;
+      } else {
+        op_focei.calcGrad=1;
+        op_focei.aEps[cpar] = shi21Forward(shi21fnF, armaTheta, h,
+                                           f0, grFinal, 0, cpar,
+                                           op_focei.hessEpsInner, //double ef = 7e-7,
+                                           1.5,  //double rl = 1.5,
+                                           6.0,  //double ru = 6.0);;
+                                           maxiter);  //maxiter=15
+        op_focei.aEpsC[cpar] = op_focei.aEps[cpar];
+        g[cpar] = grFinal(0);
+      }
     }
     if (op_focei.slow) {
       op_focei.cur=op_focei.totTick;
@@ -2997,41 +3000,44 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (int cpar = op_focei.npars; cpar--;) {
-      if (!mixGrad(theta, g, cpar)) continue;
-      op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
-                                      theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
-                                      -1, gill83fnG, 1, op_focei.lastOfv);
-      err = 1/(std::fabs(theta[cpar])+1);
-      if (op_focei.gillDf[cpar] == 0){
-        op_focei.scaleC[cpar]=op_focei.scaleC0;
+      if (mixGrad(theta, g, cpar) == 1) {
+        continue;
+      } else {
         op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                         theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                         -1, gill83fnG, 1, op_focei.lastOfv);
+        err = 1/(std::fabs(theta[cpar])+1);
         if (op_focei.gillDf[cpar] == 0){
-          op_focei.scaleC[cpar]=1/op_focei.scaleC0;
+          op_focei.scaleC[cpar]=op_focei.scaleC0;
           op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
                                           theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
                                           -1, gill83fnG, 1, op_focei.lastOfv);
+          if (op_focei.gillDf[cpar] == 0){
+            op_focei.scaleC[cpar]=1/op_focei.scaleC0;
+            op_focei.gillRet[cpar] = gill83(&hf, &hphif, &op_focei.gillDf[cpar], &op_focei.gillDf2[cpar], &op_focei.gillErr[cpar],
+                                            theta, cpar, op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+                                            -1, gill83fnG, 1, op_focei.lastOfv);
+          }
         }
+        // h=aEps*(|x|+1)/sqrt(1+fabs(f));
+        // h*sqrt(1+fabs(f))/(|x|+1) = aEps
+        // let err=2*sqrt(epsA/(1+f))
+        // err*(aEps+|x|rEps) = h
+        // Let aEps = rEps (could be a different ratio)
+        // h/err = aEps(1+|x|)
+        // aEps=h/err/(1+|x|)
+        //
+        op_focei.aEps[cpar]  = hf*err;
+        op_focei.rEps[cpar]  = hf*err;
+        if(op_focei.optGillF){
+          op_focei.aEpsC[cpar] = hf*err;
+          op_focei.rEpsC[cpar] = hf*err;
+        } else {
+          op_focei.aEpsC[cpar] = hphif*err;
+          op_focei.rEpsC[cpar] = hphif*err;
+        }
+        g[cpar] = op_focei.gillDf[cpar];
       }
-      // h=aEps*(|x|+1)/sqrt(1+fabs(f));
-      // h*sqrt(1+fabs(f))/(|x|+1) = aEps
-      // let err=2*sqrt(epsA/(1+f))
-      // err*(aEps+|x|rEps) = h
-      // Let aEps = rEps (could be a different ratio)
-      // h/err = aEps(1+|x|)
-      // aEps=h/err/(1+|x|)
-      //
-      op_focei.aEps[cpar]  = hf*err;
-      op_focei.rEps[cpar]  = hf*err;
-      if(op_focei.optGillF){
-        op_focei.aEpsC[cpar] = hf*err;
-        op_focei.rEpsC[cpar] = hf*err;
-      } else {
-        op_focei.aEpsC[cpar] = hphif*err;
-        op_focei.rEpsC[cpar] = hphif*err;
-      }
-      g[cpar] = op_focei.gillDf[cpar];
     }
     if(op_focei.slow){
       op_focei.cur=op_focei.totTick;
@@ -3082,114 +3088,117 @@ void numericGrad(double *theta, double *g){
       }
     }
     for (cpar = npars; cpar--;) {
-      if (!mixGrad(theta, g, cpar)) continue;
-      if (doForward){
-        delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar]);
+      if (mixGrad(theta, g, cpar) == 1) {
+        continue;
       } else {
-        delta = (std::fabs(theta[cpar])*op_focei.rEpsC[cpar] + op_focei.aEpsC[cpar]);
-      }
-      cur = theta[cpar];
-      theta[cpar] = cur + delta;
-      if (doForward){
-        tmp = foceiOfv0(theta);
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        g[cpar] = (tmp-f)/delta;
-      } else {
-        tmp0 = foceiOfv0(theta);
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        theta[cpar] = cur - delta;
-        tmp = foceiOfv0(theta);
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        g[cpar] = (tmp0-tmp)/(2*delta);
-      }
-      if (doForward && fabs(g[cpar]) > op_focei.gradCalcCentralLarge){
-        doForward = false;
-        theta[cpar] = cur - delta;
-        g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        op_focei.mixDeriv=1;
-      }
-      if (std::isnan(g[cpar]) ||  ISNA(g[cpar]) || !R_FINITE(g[cpar])){
         if (doForward){
-          // Switch to Backward difference method
-          op_focei.mixDeriv=1;
-          theta[cpar] = cur - delta;
-          g[cpar] = (f-foceiOfv0(theta))/(delta);
-          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-          if (R_FINITE(op_focei.gradTrim)){
-            if (g[cpar] > op_focei.gradTrim){
-              g[cpar]=op_focei.gradTrim;
-            } else if (g[cpar] < op_focei.gradTrim){
-              g[cpar]=-op_focei.gradTrim;
-            }
-          }
+          delta = (std::fabs(theta[cpar])*op_focei.rEps[cpar] + op_focei.aEps[cpar]);
         } else {
-          // We are using the central difference AND there is an NA in one of the terms
-          // g[cpar] = (tmp0-tmp)/(2*delta);
+          delta = (std::fabs(theta[cpar])*op_focei.rEpsC[cpar] + op_focei.aEpsC[cpar]);
+        }
+        cur = theta[cpar];
+        theta[cpar] = cur + delta;
+        if (doForward) {
+          tmp = foceiOfv0(theta);
+          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+          g[cpar] = (tmp-f)/delta;
+        } else {
+          tmp0 = foceiOfv0(theta);
+          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+          theta[cpar] = cur - delta;
+          tmp = foceiOfv0(theta);
+          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+          g[cpar] = (tmp0-tmp)/(2*delta);
+        }
+        if (doForward && fabs(g[cpar]) > op_focei.gradCalcCentralLarge){
+          doForward = false;
+          theta[cpar] = cur - delta;
+          g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
+          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
           op_focei.mixDeriv=1;
-          if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
-            // Backward
-            g[cpar] = (f-tmp)/delta;
+        }
+        if (std::isnan(g[cpar]) ||  ISNA(g[cpar]) || !R_FINITE(g[cpar])){
+          if (doForward){
+            // Switch to Backward difference method
+            op_focei.mixDeriv=1;
+            theta[cpar] = cur - delta;
+            g[cpar] = (f-foceiOfv0(theta))/(delta);
+            if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            if (R_FINITE(op_focei.gradTrim)){
+              if (g[cpar] > op_focei.gradTrim){
+                g[cpar]=op_focei.gradTrim;
+              } else if (g[cpar] < op_focei.gradTrim){
+                g[cpar]=-op_focei.gradTrim;
+              }
+            }
           } else {
-            // Forward
-            g[cpar] = (tmp0-f)/delta;
+            // We are using the central difference AND there is an NA in one of the terms
+            // g[cpar] = (tmp0-tmp)/(2*delta);
+            op_focei.mixDeriv=1;
+            if (std::isnan(tmp0) || ISNA(tmp0) || !R_FINITE(tmp0)){
+              // Backward
+              g[cpar] = (f-tmp)/delta;
+            } else {
+              // Forward
+              g[cpar] = (tmp0-f)/delta;
+            }
+            if (R_FINITE(op_focei.gradTrim)){
+              if (g[cpar] > op_focei.gradTrim){
+                g[cpar]=op_focei.gradTrim;
+              } else if (g[cpar] < op_focei.gradTrim){
+                g[cpar]=-op_focei.gradTrim;
+              }
+            }
           }
-          if (R_FINITE(op_focei.gradTrim)){
+        }
+        if (R_FINITE(op_focei.gradTrim) && g[cpar] > op_focei.gradTrim){
+          if (doForward){
+            op_focei.mixDeriv=1;
+            theta[cpar] = cur - delta;
+            g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
+            if(op_focei.slow)  op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
             if (g[cpar] > op_focei.gradTrim){
               g[cpar]=op_focei.gradTrim;
             } else if (g[cpar] < op_focei.gradTrim){
               g[cpar]=-op_focei.gradTrim;
             }
-          }
-        }
-      }
-      if (R_FINITE(op_focei.gradTrim) && g[cpar] > op_focei.gradTrim){
-        if (doForward){
-          op_focei.mixDeriv=1;
-          theta[cpar] = cur - delta;
-          g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
-          if(op_focei.slow)  op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-          if (g[cpar] > op_focei.gradTrim){
+          } else {
             g[cpar]=op_focei.gradTrim;
-          } else if (g[cpar] < op_focei.gradTrim){
+          }
+        } else if (R_FINITE(op_focei.gradTrim) && g[cpar] < -op_focei.gradTrim){
+          if (doForward){
+            op_focei.mixDeriv=1;
+            theta[cpar] = cur - delta;
+            g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
+            if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+            if (g[cpar] > op_focei.gradTrim){
+              g[cpar]=op_focei.gradTrim;
+            } else if (g[cpar] < op_focei.gradTrim){
+              g[cpar]=-op_focei.gradTrim;
+            }
+          } else {
             g[cpar]=-op_focei.gradTrim;
           }
-        } else {
-          g[cpar]=op_focei.gradTrim;
-        }
-      } else if (R_FINITE(op_focei.gradTrim) && g[cpar] < -op_focei.gradTrim){
-        if (doForward){
-          op_focei.mixDeriv=1;
-          theta[cpar] = cur - delta;
-          g[cpar] = (tmp-foceiOfv0(theta))/(2*delta);
+        } else if (doForward && fabs(g[cpar]) < op_focei.gradCalcCentralSmall){
+          op_focei.mixDeriv = 1;
+          theta[cpar]       = cur - delta;
+          tmp = g[cpar];
+          g[cpar]           = (tmp-foceiOfv0(theta))/(2*delta);
           if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-          if (g[cpar] > op_focei.gradTrim){
-            g[cpar]=op_focei.gradTrim;
-          } else if (g[cpar] < op_focei.gradTrim){
-            g[cpar]=-op_focei.gradTrim;
-          }
-        } else {
-          g[cpar]=-op_focei.gradTrim;
+          if (fabs(tmp) > fabs(g[cpar])) g[cpar] = tmp;
+        } else if (doForward) {
+          if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
         }
-      } else if (doForward && fabs(g[cpar]) < op_focei.gradCalcCentralSmall){
-        op_focei.mixDeriv = 1;
-        theta[cpar]       = cur - delta;
-        tmp = g[cpar];
-        g[cpar]           = (tmp-foceiOfv0(theta))/(2*delta);
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-        if (fabs(tmp) > fabs(g[cpar])) g[cpar] = tmp;
-      } else if (doForward) {
-        if(op_focei.slow) op_focei.curTick = par_progress(op_focei.cur++, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-      }
-      theta[cpar] = cur;
-      // zero gradients mean reset
-      if (g[cpar] == 0.0)  {
-        op_focei.zeroGrad = 1;
-        break;
-      }
-      if (std::isnan(g[cpar]) ||  ISNA(g[cpar]) || !R_FINITE(g[cpar])){
-        op_focei.zeroGrad = 1;
-        break;
+        theta[cpar] = cur;
+        // zero gradients mean reset
+        if (g[cpar] == 0.0)  {
+          op_focei.zeroGrad = 1;
+          break;
+        }
+        if (std::isnan(g[cpar]) ||  ISNA(g[cpar]) || !R_FINITE(g[cpar])){
+          op_focei.zeroGrad = 1;
+          break;
+        }
       }
     }
     if(op_focei.slow) {
