@@ -14,6 +14,22 @@
   v <- do.call("rxode2::mexpit", list(val[idx]))
   c(v, 1-sum(v))
 }
+#' Get the mixture gradients of the estimated log-scale parameters
+#'
+#'
+#' @param val numeric vector of the full parameter set in focei
+#'
+#' @param idx vector of the indices of the mixture log-scale
+#'  parameters
+#'
+#' @return A numeric vector of the mixture probabilities
+#'
+#' @noRd
+#'
+#' @author Matthew L. Fidler
+.getMixJacFromLog <- function(val, idx) {
+  do.call("rxode2::dmexpit", list(val[idx]))
+}
 
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {
