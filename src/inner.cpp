@@ -2473,10 +2473,7 @@ double foceiOfv(NumericVector theta){
   return foceiOfv0(&theta[0]);
 }
 
-void foceiPhi(Environment e) {
-  if (op_focei.neta==0) return;
-  List retH(getRxNsubAndMix(rx));
-  List retC(getRxNsubAndMix(rx));
+void foceiPhiOne(Environment e, List &retC, List &retH, int mixest) {
   if (e.exists("idLvl")) {
     RObject idl = e["idLvl"];
     retH.attr("names") = idl;
@@ -2489,14 +2486,16 @@ void foceiPhi(Environment e) {
     dimn[0] = e["etaNames"];
     dimn[1] = e["etaNames"];
   }
-  for (int j=getRxNsubAndMix(rx); j--;) {
-    arma::mat H(op_focei.gH + j*op_focei.neta*op_focei.neta, op_focei.neta, op_focei.neta, false, true);
+  for (int j=getRxNsub(rx); j--;) {
+    arma::mat H(op_focei.gH +
+                (j+mixest*getRxNsub(rx))*op_focei.neta*op_focei.neta,
+                op_focei.neta, op_focei.neta, false, true);
     RObject cur = wrap(H);
     if (doDimNames) cur.attr("dimnames") = dimn;
     retH[j] = cur;
     arma::mat cov;
     bool success  = inv(cov, H);
-    if (!success){
+    if (!success) {
       success = pinv(cov, H);
       if (!success) {
         retC[j] = NA_REAL;
@@ -2511,6 +2510,13 @@ void foceiPhi(Environment e) {
       retC[j] = cur;
     }
   }
+}
+
+void foceiPhi(Environment e) {
+  if (op_focei.neta==0) return;
+  List retH(getRxNsub(rx));
+  List retC(getRxNsub(rx));
+  foceiPhiOne(e, retC, retH, 0);
   e["phiH"] = retH;
   e["phiC"] = retC;
 }
