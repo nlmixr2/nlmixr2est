@@ -203,7 +203,7 @@ nmObjGet.default <- function(x, ...) {
   .env <- x[[1]]
   if (exists(.arg, envir = .env)) {
     .ret <- get(.arg, envir = .env)
-    if (inherits(.ret, "raw")) .ret <- qs::qdeserialize(.ret)
+    if (inherits(.ret, "raw")) .ret <- qs2::qs_deserialize(.ret)
     return(.ret)
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
