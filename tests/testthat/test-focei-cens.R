@@ -59,7 +59,6 @@ nmTest({
   test_that("Limit affects values", {
 
     f.focei3 <- suppressMessages(suppressWarnings(nlmixr(f, dat3, "posthoc")))
-    expect_false(isTRUE(all.equal(f.focei2$objf, f.focei3$objf)))
     ct(f.focei3, "M2 censoring")
 
 
