@@ -1,0 +1,79 @@
+# Objects exported from other packages
+
+These objects are imported from other packages. Follow the links below
+to see their documentation.
+
+- magrittr:
+
+  `%>%`
+
+- nlme:
+
+  [`ACF`](https://rdrr.io/pkg/nlme/man/ACF.html),
+  [`augPred`](https://rdrr.io/pkg/nlme/man/augPred.html),
+  [`fixed.effects`](https://rdrr.io/pkg/nlme/man/fixed.effects.html),
+  [`fixef`](https://rdrr.io/pkg/nlme/man/fixed.effects.html),
+  [`getData`](https://rdrr.io/pkg/nlme/man/getData.html),
+  [`getVarCov`](https://rdrr.io/pkg/nlme/man/getVarCov.html),
+  [`groupedData`](https://rdrr.io/pkg/nlme/man/groupedData.html),
+  [`nlme`](https://rdrr.io/pkg/nlme/man/nlme.html),
+  [`pdBlocked`](https://rdrr.io/pkg/nlme/man/pdBlocked.html),
+  [`pdCompSymm`](https://rdrr.io/pkg/nlme/man/pdCompSymm.html),
+  [`pdConstruct`](https://rdrr.io/pkg/nlme/man/pdConstruct.html),
+  [`pdDiag`](https://rdrr.io/pkg/nlme/man/pdDiag.html),
+  [`pdFactor`](https://rdrr.io/pkg/nlme/man/pdFactor.html),
+  [`pdIdent`](https://rdrr.io/pkg/nlme/man/pdIdent.html),
+  [`pdLogChol`](https://rdrr.io/pkg/nlme/man/pdLogChol.html),
+  [`pdMat`](https://rdrr.io/pkg/nlme/man/pdMat.html),
+  [`pdMatrix`](https://rdrr.io/pkg/nlme/man/pdMatrix.html),
+  [`pdNatural`](https://rdrr.io/pkg/nlme/man/pdNatural.html),
+  [`pdSymm`](https://rdrr.io/pkg/nlme/man/pdSymm.html),
+  [`random.effects`](https://rdrr.io/pkg/nlme/man/random.effects.html),
+  [`ranef`](https://rdrr.io/pkg/nlme/man/random.effects.html),
+  [`reStruct`](https://rdrr.io/pkg/nlme/man/reStruct.html),
+  [`varComb`](https://rdrr.io/pkg/nlme/man/varComb.html),
+  [`varConstPower`](https://rdrr.io/pkg/nlme/man/varConstPower.html),
+  [`VarCorr`](https://rdrr.io/pkg/nlme/man/VarCorr.html),
+  [`varExp`](https://rdrr.io/pkg/nlme/man/varExp.html),
+  [`varFixed`](https://rdrr.io/pkg/nlme/man/varFixed.html),
+  [`varFunc`](https://rdrr.io/pkg/nlme/man/varFunc.html),
+  [`varIdent`](https://rdrr.io/pkg/nlme/man/varIdent.html),
+  [`varPower`](https://rdrr.io/pkg/nlme/man/varPower.html),
+  [`varWeights`](https://rdrr.io/pkg/nlme/man/varWeights.html)
+
+- rxode2:
+
+  [`add.dosing`](https://nlmixr2.github.io/rxode2/reference/add.dosing.html),
+  [`add.sampling`](https://nlmixr2.github.io/rxode2/reference/add.sampling.html),
+  [`as.rxUi`](https://nlmixr2.github.io/rxode2/reference/as.rxUi.html),
+  [`et`](https://nlmixr2.github.io/rxode2/reference/et.html),
+  [`et`](https://nlmixr2.github.io/rxode2/reference/et.html),
+  [`eventTable`](https://nlmixr2.github.io/rxode2/reference/eventTable.html),
+  [`expit`](https://nlmixr2.github.io/rxode2/reference/logit.html),
+  [`geom_amt`](https://nlmixr2.github.io/rxode2/reference/stat_amt.html),
+  [`geom_cens`](https://nlmixr2.github.io/rxode2/reference/stat_cens.html),
+  [`ini`](https://nlmixr2.github.io/rxode2/reference/ini.html),
+  [`logit`](https://nlmixr2.github.io/rxode2/reference/logit.html),
+  [`lotri`](https://nlmixr2.github.io/rxode2/reference/reexports.html),
+  [`model`](https://nlmixr2.github.io/rxode2/reference/model.html),
+  [`probit`](https://nlmixr2.github.io/rxode2/reference/probit.html),
+  [`probitInv`](https://nlmixr2.github.io/rxode2/reference/probit.html),
+  [`rxCat`](https://nlmixr2.github.io/rxode2/reference/rxCat.html),
+  [`rxClean`](https://nlmixr2.github.io/rxode2/reference/rxClean.html),
+  [`rxControl`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html),
+  [`rxInit`](https://nlmixr2.github.io/rxode2/reference/rxInits.html),
+  [`rxLhs`](https://nlmixr2.github.io/rxode2/reference/rxLhs.html),
+  [`rxModelVars`](https://nlmixr2.github.io/rxode2/reference/rxModelVars.html),
+  [`rxModelVarsS3`](https://nlmixr2.github.io/rxode2/reference/rxModelVars.html),
+  [`rxode`](https://nlmixr2.github.io/rxode2/reference/rxode2.html),
+  [`RxODE`](https://nlmixr2.github.io/rxode2/reference/rxode2.html),
+  [`rxode2`](https://nlmixr2.github.io/rxode2/reference/rxode2.html),
+  [`rxParam`](https://nlmixr2.github.io/rxode2/reference/rxParams.html),
+  [`rxParams`](https://nlmixr2.github.io/rxode2/reference/rxParams.html),
+  [`rxParams`](https://nlmixr2.github.io/rxode2/reference/rxParams.html),
+  [`rxSolve`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html),
+  [`rxSolve`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html),
+  [`rxState`](https://nlmixr2.github.io/rxode2/reference/rxState.html),
+  [`rxUiDeparse`](https://nlmixr2.github.io/rxode2/reference/rxUiDeparse.html),
+  [`stat_amt`](https://nlmixr2.github.io/rxode2/reference/stat_amt.html),
+  [`stat_cens`](https://nlmixr2.github.io/rxode2/reference/stat_cens.html)
