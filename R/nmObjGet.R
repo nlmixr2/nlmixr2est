@@ -203,7 +203,19 @@ nmObjGet.default <- function(x, ...) {
   .env <- x[[1]]
   if (exists(.arg, envir = .env)) {
     .ret <- get(.arg, envir = .env)
-    if (inherits(.ret, "raw")) .ret <- qs2::qs_deserialize(.ret)
+    if (inherits(.ret, "raw")) {
+      .ret <- try(qs2::qs_deserialize(.ret))
+      if (inherits(.ret, "try-error")) {
+        .ret <- try({
+          rxode2::rxReq("qs")
+          qs::qdeserialize(get(.arg, envir = .env))
+        })
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "'; please ensure the 'qs2' or 'qs' package is installed", call.=FALSE)
+          .ret <- NULL
+        }
+      }
+    }
     return(.ret)
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`
