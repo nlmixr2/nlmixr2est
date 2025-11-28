@@ -89,7 +89,7 @@ nlsControl <- function(maxiter=10000,
                        literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
-                       calcTables=TRUE, compress=TRUE,
+                       calcTables=TRUE, compress=FALSE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   algorithm <- match.arg(algorithm)
   if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {

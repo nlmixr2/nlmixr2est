@@ -112,7 +112,7 @@ nlminbControl <- function(eval.max=200,
                           gradTo=1.0,
 
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=TRUE,
+                          calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)

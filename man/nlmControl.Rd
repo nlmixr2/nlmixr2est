@@ -42,7 +42,7 @@ nlmControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,

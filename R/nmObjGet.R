@@ -204,7 +204,7 @@ nmObjGet.default <- function(x, ...) {
   if (exists(.arg, envir = .env)) {
     .ret <- get(.arg, envir = .env)
     if (inherits(.ret, "raw")) {
-      .ret <- try(qs2::qs_deserialize(.ret))
+      .ret <- try(qs2::qs_deserialize(.ret), silent=TRUE)
       if (inherits(.ret, "try-error")) {
         .ret <- try({
           rxode2::rxReq("qs")
@@ -213,6 +213,9 @@ nmObjGet.default <- function(x, ...) {
         if (inherits(.ret, "try-error")) {
           warning("cannot deserialize object '", .arg, "'; please ensure the 'qs2' or 'qs' package is installed", call.=FALSE)
           .ret <- NULL
+        } else {
+          # reassign the qs2 object for future use
+          assign(.arg, qs2::qs_serialize(.ret), envir = .env)
         }
       }
     }
