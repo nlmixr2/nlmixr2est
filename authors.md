@@ -53,7 +53,7 @@
 ## Citation
 
 Source:
-[`inst/CITATION`](https://github.com/nlmixr2/nlmixr2est/blob/main/inst/CITATION)
+[`inst/CITATION`](https://github.com/nlmixr2/nlmixr2est/blob/v5.0.0/inst/CITATION)
 
 Fidler M, Xiong Y, Schoemaker R, Wilkins J, Trame M, Hooijmaijers R,
 Post T, Wang W (2025). *nlmixr: Nonlinear Mixed Effects Models in
