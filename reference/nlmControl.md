@@ -43,7 +43,7 @@ nlmControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -517,8 +517,6 @@ fit2 <- nlmixr(mod, dsn, est="nlm")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 9120
-#> → compress parHistData in nlmixr2 object, save 3360
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
@@ -529,7 +527,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.002883 0.044     0.01 2.708117
+#> elapsed 0.002874 0.041    0.001 2.631126
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

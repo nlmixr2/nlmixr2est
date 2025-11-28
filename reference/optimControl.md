@@ -50,7 +50,7 @@ optimControl(
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "optim", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -553,8 +553,6 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 9000
-#> → compress parHistData in nlmixr2 object, save 13576
 fit2
 #> ── nlmixr² log-likelihood optim with BFGS method ──
 #> 
@@ -564,7 +562,7 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.002799 0.044    0.009 2.575201
+#> elapsed 0.002816  0.04    0.001 2.571184
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

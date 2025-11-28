@@ -34,7 +34,7 @@ lbfgsb3cControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -449,8 +449,6 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 9056
-#> → compress parHistData in nlmixr2 object, save 3184
 
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
@@ -461,7 +459,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.002843 0.042    0.018 3.526157
+#> elapsed 0.002813 0.042    0.001 3.468187
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

@@ -1,5 +1,11 @@
 # Changelog
 
+## nlmixr2est 5.0.0
+
+- Remove `qs` and change to `qs2`. This breaks backward compatibility.
+
+- Default to non-compressed nlmixr2 objects
+
 ## nlmixr2est 4.1.1
 
 CRAN release: 2025-10-09

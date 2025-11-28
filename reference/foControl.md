@@ -209,7 +209,7 @@ foControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x558e01af1988>
+#> <bytecode: 0x55a79b100038>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -378,7 +378,7 @@ foControl()
 #> [1] 100
 #> 
 #> $compress
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $rxControl
 #> $scale

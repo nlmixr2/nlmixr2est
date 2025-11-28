@@ -31,7 +31,7 @@ uobyqaControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -437,8 +437,6 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 9048
-#> → compress parHistData in nlmixr2 object, save 4696
 
 print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
@@ -449,7 +447,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.002885 0.053    0.009 2.188115
+#> elapsed 0.002698 0.042    0.001 2.153302
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
