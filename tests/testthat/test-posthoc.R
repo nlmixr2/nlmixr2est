@@ -2,7 +2,7 @@ nmTest({
   test_that("test that posthoc does the correct thing with one subject", {
     skip_on_cran()
 
-    d <- qs::qread(test_path("datos_pac.qs"))
+    d <- qs2::qs_read(test_path("datos_pac.qs2"))
 
     mod.dos.cmpt <- function() {
       ini({
@@ -59,4 +59,3 @@ nmTest({
 
   })
 })
-

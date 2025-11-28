@@ -175,7 +175,7 @@ nmTest({
 
   fit.prop2 <- .nlmixr(fo, dat2, "focei", foceiControl(maxOuterIterations = 0, covMethod = ""))
 
-  out.focei.prop <- qs::qread("out.focei.prop.qs")
+  out.focei.prop <- qs2::qs_read("out.focei.prop.qs2")
 
   test_that("Matches NONMEM objective proportional function; (Based on Wang2007)", {
     expect_equal(fit.prop$objective, 39.458, tolerance=1e-3) # Matches Table 2 Prop FOCEI for NONMEM
