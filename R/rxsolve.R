@@ -256,21 +256,24 @@ predict.nlmixr2FitCore <- function(object, ...,
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
-  .both$ctl$omega <- NA
-  .both$ctl$sigma <- NA
-  .env <- nlmixr2global$nlmixrEvalEnv$envir
-  if (!is.environment(.env)) {
-    .env <- parent.frame(1)
-  }
-  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
-  .rxControl$envir <- .env
   .est <- ifelse(level=="population", "predict", "ipred")
   if (.est == "ipred") {
     .minfo("individual predictions requested (`level=\"individual\"`)")
   } else {
     .minfo("population predictions requested (`level=\"population\"`)")
   }
+
+  .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
+  if (.est != "ipred") {
+    .both$ctl$omega <- NA
+    .both$ctl$sigma <- NA
+  }
+  .env <- nlmixr2global$nlmixrEvalEnv$envir
+  if (!is.environment(.env)) {
+    .env <- parent.frame(1)
+  }
+  .rxControl <- do.call(rxode2::rxControl, .both$ctl)
+  .rxControl$envir <- .env
   .data <- getData(object)
 
   if (inherits(.both$rest$newdata, "data.frame")) {
@@ -278,10 +281,9 @@ predict.nlmixr2FitCore <- function(object, ...,
     .data <- .both$rest$newdata
   }
   if (.est == "ipred") {
-    .params <- .nlmixrGetIpredParams(fit)
+    .params <- .nlmixrGetIpredParams(object)
     do.call(rxode2::rxSolve,
-            c(list(object=object, data=.data,
-                   params = .params), .rxControl))
+            c(list(object, .params, .data), .rxControl))
   } else {
     nlmixr2(object=object, data=.data,
             est=.est, control=.rxControl)

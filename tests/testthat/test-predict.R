@@ -23,19 +23,24 @@ nmTest({
       })
     }
 
-    ## The fit is performed by the function nlmixr/nlmix2 specifying the model, data and estimate
-    fit <-.nlmixr(one.compartment, theo_sd, est = "focei",
+    ## The fit is performed by the function nlmixr/nlmix2 specifying
+    ## the model, data and estimate
+
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
                    foceiControl(maxOuterIterations = 0L))
 
     md <- do.call("predict", c(list(fit, theo_md), fit$control))
 
-    md2 <-.nlmixr(fit, theo_md, "predict")
+    md2 <- .nlmixr(fit, theo_md, "predict")
 
     expect_equal(as.data.frame(md), as.data.frame(md2), tolerance = 1e-4)
 
     md <- predict(fit, theo_md)
 
     expect_equal(as.data.frame(md), as.data.frame(md2), tolerance = 1e-4)
+
+    ipred <- predict(fit, theo_sd, level="individual")
+    expect_equal(ipred$ipredSim, fit$IPRED, tolerance = 1e-6)
 
   })
 })
