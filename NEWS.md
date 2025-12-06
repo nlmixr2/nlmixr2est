@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- Add `predict(fit, level="ipred")`, `predict(fit,
+  level="individual")` or `predict(fit, level=1)` to predict
+  individual fits (with possibly a new dataset).
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward
