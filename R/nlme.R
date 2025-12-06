@@ -26,7 +26,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     rxControl=NULL,
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
-    addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
+    addProp = c("combined2", "combined1"), calcTables=TRUE, compress=FALSE,
     adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE, ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)

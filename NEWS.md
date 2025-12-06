@@ -1,3 +1,10 @@
+# nlmixr2est 5.0.0
+
+- Remove `qs` and change to `qs2`.  This breaks backward
+  compatibility.
+
+- Default to non-compressed nlmixr2 objects
+
 # nlmixr2est 4.1.1
 
 - Request nlmixr2est's pre-processing hooks for `augPred()`, `vpcSim()` and
