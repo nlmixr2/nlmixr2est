@@ -227,7 +227,25 @@ attr(nlmixr2Est.predict, "covPresent") <- TRUE
 }
 
 #' @export
-predict.nlmixr2FitCore <- function(object, ...) {
+predict.nlmixr2FitCore <- function(object, ...,
+                                   level = c("population", "individual")) {
+  if (checkmate::testNumeric(level, len=1)) {
+    level <- switch(as.character(level),
+                    "0" = "population",
+                    "1" = "individual",
+                    "bad")
+    if (identical(level, "bad")) {
+      stop("level numeric must be 0 (population) or 1 (individual)",
+           call.=FALSE)
+    }
+  }
+  if (identical(level, "ipred")) {
+    level <- "individual"
+  } else if (identical(level, "pred") || identical(level, "ppred")) {
+    level <- "population"
+  } else {
+    level <- match.arg(level)
+  }
   .nlmixr2clearPipe()
   nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
@@ -247,11 +265,26 @@ predict.nlmixr2FitCore <- function(object, ...) {
   }
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
   .rxControl$envir <- .env
-  if (inherits(.both$rest$newdata, "data.frame")) {
-    nlmixr2(object=object, data=.both$rest$newdata,
-            est="predict", control=.rxControl)
+  .est <- ifelse(level=="population", "predict", "ipred")
+  if (.est == "ipred") {
+    .minfo("individual predictions requested (`level=\"individual\"`)")
   } else {
-    nlmixr2(object=object, est="predict", control=.rxControl)
+    .minfo("population predictions requested (`level=\"population\"`)")
+  }
+  .data <- getData(object)
+
+  if (inherits(.both$rest$newdata, "data.frame")) {
+    .minfo("using new data for predictions")
+    .data <- .both$rest$newdata
+  }
+  if (.est == "ipred") {
+    .params <- .nlmixrGetIpredParams(fit)
+    do.call(rxode2::rxSolve,
+            c(list(object=object, data=.data,
+                   params = .params), .rxControl))
+  } else {
+    nlmixr2(object=object, data=.data,
+            est=.est, control=.rxControl)
   }
 }
 
