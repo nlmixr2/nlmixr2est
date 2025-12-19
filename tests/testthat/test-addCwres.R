@@ -31,7 +31,7 @@ nmTest({
   test_that("cwres issue in 3.0.3", {
     skip_if_not(file.exists(test_path("test-cwres-3.0.3.qs2")))
 
-    data <- qs2::qs_read(test_path("test-cwres-3.0.3.qs2"))
+    data <- qs_read(test_path("test-cwres-3.0.3.qs2"))
 
     test_model <- function() {
       ini({

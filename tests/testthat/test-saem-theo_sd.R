@@ -186,7 +186,7 @@ if (FALSE) {
 
     ##qs2::qs_save(val, file=test_path("test-saem-theo_sd.qs2"))
 
-    .test <- qs2::qs_read(test_path("test-saem-theo_sd.qs2"))
+    .test <- readRDS(test_path("test-saem-theo_sd.rds"))
 
     for (i in seq_along(.test$add)) {
       test_that(

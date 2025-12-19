@@ -26,7 +26,7 @@ nmTest({
       })
     }
 
-    prepfit <- qs2::qs_read(test_path("test-restart.qs2"))
+    prepfit <- readRDS(test_path("test-restart.rds"))
 
     sim <-.nlmixr(lobo, data=prepfit, "focei", control=foceiControl(print=0))
 
