@@ -29,7 +29,7 @@ nmTest({
     })
   }
   ## fit the model
-  d <- theo_md %>%
+  d <- theo_md |>
     dplyr::mutate(EVID=ifelse(EVID == 0, 0L, 7L))
 
   tmp <- expect_error(nlmixr(my.model.pk, d, est="focei", control=foceiControl(print=0L)), NA)

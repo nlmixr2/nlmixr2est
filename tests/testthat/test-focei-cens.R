@@ -50,7 +50,7 @@ nmTest({
   })
 
   test_that("censoring changes results - saem", {
-    skip_on_os("linux") # SAEM on linux CI seems unstable for this test
+    # skip_on_os("linux") # SAEM on linux CI seems unstable for this test
     f.saem2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "saem")))
     ct(f.saem2, "M2 censoring")
   })

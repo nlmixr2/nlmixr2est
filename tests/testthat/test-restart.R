@@ -28,7 +28,7 @@ nmTest({
 
     prepfit <- readRDS(test_path("test-restart.rds"))
 
-    sim <-.nlmixr(lobo, data=prepfit, "focei", control=foceiControl(print=0))
+    expect_error(.nlmixr(lobo, data=prepfit, "focei", control=foceiControl(print=0)), NA)
 
   })
 })

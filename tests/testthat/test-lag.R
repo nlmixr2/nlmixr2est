@@ -30,7 +30,7 @@ nmTest({
       })
     }
 
-    d <- nlmixr2data::warfarin %>%
+    d <- nlmixr2data::warfarin |>
       dplyr::filter(dvid=="cp")
 
     f <- .nlmixr(KA1Lode, d, "focei")

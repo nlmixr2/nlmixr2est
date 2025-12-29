@@ -73,8 +73,8 @@ if (rxode2hasLlik()) {
         })
       }
 
-      one.cmt.ll %>%
-        ini(theta1) %>%
+      one.cmt.ll |>
+        ini(theta1) |>
         ini(omega1) ->
         one.cmt.ll
 
@@ -88,8 +88,8 @@ if (rxode2hasLlik()) {
 
       expect_equal(f$objf, of1)
 
-      one.cmt.ll %>%
-        ini(theta2) %>%
+      one.cmt.ll |>
+        ini(theta2) |>
         ini(omega2) ->
         one.cmt.ll
 
@@ -147,7 +147,7 @@ if (rxode2hasLlik()) {
         })
       }
 
-      one.cmt.ll.noeta %>%
+      one.cmt.ll.noeta |>
         ini(theta1) ->
         one.cmt.ll.noeta
 
@@ -335,8 +335,8 @@ if (rxode2hasLlik()) {
       })
     }
 
-    pk.turnover.emax3.ll %>%
-      ini(theta1) %>%
+    pk.turnover.emax3.ll |>
+      ini(theta1) |>
       ini(omega1) ->
       pk.turnover.emax3.ll
 
@@ -370,9 +370,9 @@ if (rxode2hasLlik()) {
     fll <- addNpde(f2)
     fnorm <- addNpde(f)
 
-    f1 <- fll %>% dplyr::filter(CMT != "pca")
-    f1norm <- fnorm %>% dplyr::filter(CMT != "pca")
-    f2 <- fll %>% dplyr::filter(CMT == "pca")
+    f1 <- fll |> dplyr::filter(CMT != "pca")
+    f1norm <- fnorm |> dplyr::filter(CMT != "pca")
+    f2 <- fll |> dplyr::filter(CMT == "pca")
 
     for (i in c("RES", "WRES", "IRES", "IWRES", "WRES",
                 "IWRES", "CPRED", "CRES", "CWRES", "PRED", "IPRED",

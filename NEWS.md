@@ -6,6 +6,8 @@
 
 - Change test files to `.rds` files
 
+- Drop magrittr `%>%` in favor of `|>`.
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward

@@ -136,7 +136,7 @@ if (FALSE) {
       if (.doIt) {
         ctl1 <- saemControl(print=0, nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
         mod2 <- eval(parse(text = paste0(
-          "mod %>% model(ipre~", paste(.mod, collapse = "+"), ") %>% ",
+          "mod |> model(ipre~", paste(.mod, collapse = "+"), ") |> ",
           gsub("c[(]", "ini(", deparse1(.est))
         )))
         v <- .nlmixr(mod2, dat, est = "saem", control = ctl1)

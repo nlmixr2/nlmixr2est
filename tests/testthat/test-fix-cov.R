@@ -27,13 +27,13 @@ nmTest({
 
   dat <- rxode2::rxWithSeed(102478, {
     cov <- data.frame(id=seq(nid), logWt70=log(rnorm(nid, 70, 10) / 70), sexf=round(runif(nid)))
-    ev <- et() %>%
-      et(amt=320) %>%
-      et(c(0.25, 0.5, 1, 2, 4, 6, 8, 10, 12, 24)) %>%
-      et(id=1:nid) %>%
+    ev <- et() |>
+      et(amt=320) |>
+      et(c(0.25, 0.5, 1, 2, 4, 6, 8, 10, 12, 24)) |>
+      et(id=1:nid) |>
       merge(cov)
-    rxSolve(mod, ev, addDosing=TRUE, returnType="data.frame") %>%
-      dplyr::select(id, evid, cmt, amt, time, sim, logWt70, sexf) %>%
+    rxSolve(mod, ev, addDosing=TRUE, returnType="data.frame") |>
+      dplyr::select(id, evid, cmt, amt, time, sim, logWt70, sexf) |>
       dplyr::rename(dv=sim)
   })
 

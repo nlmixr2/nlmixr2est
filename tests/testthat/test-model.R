@@ -27,7 +27,7 @@ nmTest({
       })
     }
 
-    d <- nlmixr2data::warfarin %>%
+    d <- nlmixr2data::warfarin |>
       dplyr::filter(dvid=="cp")
 
     f <- .nlmixr(KA1Lode, data = d, est = "saem", control = saemControlFast)
@@ -35,7 +35,7 @@ nmTest({
     # General piping model updates work
     suppressMessages(expect_error(
       fUpV <-
-        f %>%
+        f |>
         model(v <- exp(lv)),
       NA
     ))
@@ -47,7 +47,7 @@ nmTest({
     # piping model updates work with append
     suppressMessages(expect_error(
       fUpFoo <-
-        f %>%
+        f |>
         model(foo <- exp(lv), append = TRUE),
       NA
     ))
