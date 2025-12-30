@@ -30,7 +30,7 @@ newuoaControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,

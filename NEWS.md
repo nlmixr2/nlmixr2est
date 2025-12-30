@@ -8,6 +8,9 @@
 
 - Drop magrittr `%>%` in favor of `|>`.
 
+- Turn back on object compress and use roxde2's default for
+  compression.
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward
