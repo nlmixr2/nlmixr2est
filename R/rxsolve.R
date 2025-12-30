@@ -225,8 +225,57 @@ attr(nlmixr2Est.predict, "covPresent") <- TRUE
   }
   .both
 }
-
+#' Predict method for nlmixr2 fit core objects
+#'
+#' This function generates predictions from an `nlmixr2FitCore` object.
+#' It allows for both population-level and individual-level predictions
+#' based on the specified `level` parameter.
+#'
+#' @param object nlmixr2 fit core object to predict
+#'
+#' @param ... additional arguments passed to rxode2::rxSolve or
+#'   nlmixr2; matching other `predict` methods, these can include
+#'   `newdata` and `rxControl` settings
+#'
+#' @param level the prediction level; one of `"population"` (default) or
+#'  `"individual"`; numeric values `0` and `1` are also accepted
+#'
+#' @return A data frame with predictions
+#'
 #' @export
+#'
+#' @examples
+#'
+#' \donttest{
+#'
+#' library(nlmixr2)
+#' one.compartment <- function() {
+#'  ini({
+#'   tka <- log(1)
+#'   tcl <- log(10)
+#'   tv <- log(35)
+#'   add.sd <- 0.1
+#'  })
+#'  model({
+#'   ka <- exp(tka + eta.ka)
+#'   cl <- exp(tcl + eta.cl)
+#'   v <- exp(tv + eta.v)
+#'   d/dt(depot) = -ka * depot
+#'   d/dt(center) = ka * depot - cl / v * center
+#'   cp = center / v
+#'   cp ~ add(add.sd)
+#'  })
+#' }
+#' #' # The fit is performed by the function nlmixr/nlmix2 specifying
+#' #' # the model, data and estimate
+#' fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
+#'                foceiControl(maxOuterIterations = 0L))
+#' #' # Population predictions
+#' ppred <- predict(fit, theo_sd, level="population")
+#' #' # Individual predictions
+#' ipred <- predict(fit, theo_sd, level="individual")
+#' }
+#'
 predict.nlmixr2FitCore <- function(object, ...,
                                    level = c("population", "individual")) {
   if (checkmate::testNumeric(level, len=1)) {
