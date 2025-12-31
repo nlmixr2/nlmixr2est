@@ -1869,7 +1869,25 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
-          .objC <- qs2::qs_serialize(.obj)
+          .type <- rxode2::rxGetDefaultSerialize()
+          .objC <- switch(.type,
+                 qs2 = {
+                   qs2::qs_serialize(.obj)
+                 },
+                 qdata = {
+                   qs2::qd_serialize(.obj)
+                 },
+                 bzip2 = {
+                   memCompress(serialize(.obj, NULL), type="bzip2")
+                 },
+                 xz = {
+                   memCompress(serialize(.obj, NULL), type="xz")
+                 },
+                 base = {
+                   serialize(.obj, NULL)
+                 },
+                 stop("unknown serialization type") # nocov
+                 )
           .size2 <- utils::object.size(.objC)
           if (.size2 < .size) {
             .size0 <- (.size - .size2)

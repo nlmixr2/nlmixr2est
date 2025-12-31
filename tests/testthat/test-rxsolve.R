@@ -59,7 +59,7 @@ nmTest({
 
   test_that("rxSolve will warn when necessary", {
     library(rxode2)
-    eventTable <- et(amt=320, evid=1, cmt=20, time = 0) %>% # nolint: object_name_linter.
+    eventTable <- et(amt=320, evid=1, cmt=20, time = 0) |> # nolint: object_name_linter.
       et(2, 4)
 
     # Now define the nlmixr2/rxode2 model used for both estimation and simulation
