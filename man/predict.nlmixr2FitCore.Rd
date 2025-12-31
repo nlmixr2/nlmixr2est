@@ -33,6 +33,9 @@ one.compartment <- function() {
   tka <- log(1)
   tcl <- log(10)
   tv <- log(35)
+  eta.ka ~ 0.1
+  eta.cl ~ 0.1
+  eta.v ~ 0.1
   add.sd <- 0.1
  })
  model({
@@ -45,14 +48,18 @@ one.compartment <- function() {
   cp ~ add(add.sd)
  })
 }
-#' # The fit is performed by the function nlmixr/nlmix2 specifying
-#' # the model, data and estimate
+
+# The fit is performed by the function nlmixr/nlmix2 specifying
+# the model, data and estimate
 fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
                foceiControl(maxOuterIterations = 0L))
-#' # Population predictions
+
+# Population predictions
 ppred <- predict(fit, theo_sd, level="population")
-#' # Individual predictions
+
+# Individual predictions
 ipred <- predict(fit, theo_sd, level="individual")
+
 }
 
 }
