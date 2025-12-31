@@ -248,7 +248,6 @@ attr(nlmixr2Est.predict, "covPresent") <- TRUE
 #'
 #' \donttest{
 #'
-#' library(nlmixr2)
 #' one.compartment <- function() {
 #'  ini({
 #'   tka <- log(1)

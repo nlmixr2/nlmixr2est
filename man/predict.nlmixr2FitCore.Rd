@@ -28,7 +28,6 @@ based on the specified `level` parameter.
 
 \donttest{
 
-library(nlmixr2)
 one.compartment <- function() {
  ini({
   tka <- log(1)
