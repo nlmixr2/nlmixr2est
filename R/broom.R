@@ -250,9 +250,9 @@ tidy.nlmixr2FitCore <- function(x, ...) {
   if (all(unlist(lapply(seq_along(.ret), is.null)))) {
     return(NULL)
   }
-  return(dplyr::bind_rows(.ret, .id = "effect") |>
+  dplyr::bind_rows(.ret, .id = "effect") |>
     tibble::as_tibble() |>
-    .reorderCols())
+    .reorderCols()
 }
 
 tidy.nlmixr2FitCoreSilent <- tidy.nlmixr2FitCore
