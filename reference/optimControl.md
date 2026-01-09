@@ -561,8 +561,8 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>            setup table    other
-#> elapsed 0.002897 0.044 2.749103
+#>            setup table compress    other
+#> elapsed 0.003256 0.045    0.001 2.686744
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
