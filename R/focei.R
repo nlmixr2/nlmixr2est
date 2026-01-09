@@ -1814,7 +1814,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (!is.null(method))
     .ret$method <- method
   ui <- rxode2::rxUiDecompress(ui)
-  if (exists(ui, "control")) {
+  if (exists("control", envir=ui)) {
     rm("control", envir=ui)
   }
   ui <- rxode2::rxUiCompress(ui)
