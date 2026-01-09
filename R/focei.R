@@ -712,7 +712,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   } else {
     .predDf <- .ui$predDf
     if (all(.predDf$distribution == "norm")) {
-      assign(".predDfFocei,", .predDf, envir=.ui)
+      assign(".predDfFocei", .predDf, envir=.ui)
       .predDf
     } else {
       .w <- which(.predDf$distribution == "norm")
