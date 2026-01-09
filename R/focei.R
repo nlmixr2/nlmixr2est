@@ -1813,6 +1813,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .ret <- .ret0
   if (!is.null(method))
     .ret$method <- method
+  ui <- rxode2::rxUiDecompress(ui)
+  if (exists(ui, "control")) {
+    rm("control", envir=ui)
+  }
+  ui <- rxode2::rxUiCompress(ui)
   .ret$ui <- ui
   .foceiSetupParHistData(.ret)
   if (!all(is.na(ui$iniDf$neta1))) {
