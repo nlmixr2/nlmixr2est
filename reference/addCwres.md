@@ -81,7 +81,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> params:  tka tcl tv  V(eta.ka)   V(eta.cl)   V(eta.v)    add.sd
-#> rxode2 5.0.0 using 2 threads (see ?getRxThreads)
+#> rxode2 5.0.1.9000 using 2 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
 #> 
 #> Attaching package: ‘rxode2’
@@ -109,8 +109,8 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other
-#> elapsed 0.001883   0.028014 3.001 0.105    0.001 3.128103
+#>            setup covariance  saem table compress   other
+#> elapsed 0.001978   0.035012 3.143 0.315    0.001 3.09401
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -179,8 +179,8 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other
-#> elapsed 0.001883   0.028014 3.001 0.105    0.001 3.128103
+#>            setup covariance  saem table compress   other
+#> elapsed 0.001978   0.035012 3.143 0.315    0.001 3.09401
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
