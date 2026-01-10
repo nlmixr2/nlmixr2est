@@ -2,8 +2,7 @@
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
-                           "neta", "ntheta", "nF", "printTop",
-                           "needOptimHess")
+                           "neta", "ntheta", "nF", "printTop", "needOptimHess")
 
 #' Control Options for FOCEi
 #'

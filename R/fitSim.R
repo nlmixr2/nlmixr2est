@@ -100,8 +100,6 @@ getBaseSimModelFit.default <- function(x) {
   rxode2::getBaseSimModel(.ui)
 }
 
-#' @rdname getBaseSimModelFit
-#' @export
 getBaseSimModel.nlmixr2FitCoreSilent <- function(obj) {
   .est <- obj$est
   .ret <- list(obj)
@@ -109,8 +107,5 @@ getBaseSimModel.nlmixr2FitCoreSilent <- function(obj) {
   return(getBaseSimModelFit(.ret))
 }
 
-#' @export
 getBaseSimModel.nlmixr2FitData <- getBaseSimModel.nlmixr2FitCoreSilent
-
-#' @export
 getBaseSimModel.nlmixr2FitCore <- getBaseSimModel.nlmixr2FitCoreSilent

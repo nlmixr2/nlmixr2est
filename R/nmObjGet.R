@@ -58,6 +58,13 @@ nmObjGet.iniUi <- function(x, ...) {
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 attr(nmObjGet.iniUi, "rstudio") <- emptyenv()
 
+#' @export
+nmObjGet.model <- function(x, ...) {
+  .env <- x[[1]]
+  .ui <- .cloneEnv(rxode2::rxUiDecompress(get("ui", .env)))
+  rxode2::model(.ui)
+}
+
 #' Set if the nlmixr2 object will return a compressed ui
 #'
 #'
