@@ -1889,7 +1889,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                     "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
                     "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
-                    "xType", "IDlabel", "ODEmodel",
+                    "xType", "IDlabel", "ODEmodel", "model",
                     # times
                     "optimTime", "setupTime", "covTime",
                     "parHist", "dataSav", "idLvl", "theta",
