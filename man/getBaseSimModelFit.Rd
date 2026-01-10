@@ -8,6 +8,7 @@
 \alias{getBaseSimModelFit.foi}
 \alias{getBaseSimModelFit.posthoc}
 \alias{getBaseSimModelFit.default}
+\alias{getBaseSimModel.nlmixr2FitCoreSilent}
 \title{Method for getting simulation rxode2 classic models based on fits}
 \usage{
 getBaseSimModelFit(x)
@@ -23,6 +24,8 @@ getBaseSimModelFit(x)
 \method{getBaseSimModelFit}{posthoc}(x)
 
 \method{getBaseSimModelFit}{default}(x)
+
+\method{getBaseSimModel}{nlmixr2FitCoreSilent}(obj)
 }
 \arguments{
 \item{x}{list where first element is the fit.  The class represents the estimation method.}
