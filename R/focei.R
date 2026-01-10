@@ -1817,6 +1817,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (exists("control", envir=ui)) {
     rm("control", envir=ui)
   }
+  if (exists(".predDfFocei", envir=ui)) {
+    rm(".predDfFocei", envir=ui)
+  }
   ui <- rxode2::rxUiCompress(ui)
   .ret$ui <- ui
   .foceiSetupParHistData(.ret)
