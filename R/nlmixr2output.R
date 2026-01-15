@@ -383,10 +383,6 @@
   .updateParFixedAddShrinkage(.ret, .ui)
   .ret$parFixed <- .ret$popDfSig
   .ret$parFixedDf <- .ret$popDf
-  # remove names from individual columns
-  for (n in names(.ret$parFixedDf)) {
-    .ret$parFixedDf[[n]] <- setNames(.ret$parFixedDf[[n]], NULL)
-  }
   rm(list=c("popDfSig", "popDf"), envir=.ret)
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
