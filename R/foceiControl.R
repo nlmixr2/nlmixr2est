@@ -1456,7 +1456,9 @@ rxUiDeparse.foceiControl <- function(object, var) {
   if (length(.w) == 0 && length(.outerOpt) == 0) {
     return(str2lang(paste0(var, " <- foceiControl()")))
   }
-  .retD <- c(vapply(names(.ret)[.w], function(x) {
+  .n <- names(.ret)[.w]
+  .n <- .n[.n != "outerOpt"]
+  .retD <- c(vapply(.n, function(x) {
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
