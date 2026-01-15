@@ -1814,9 +1814,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (!is.null(method))
     .ret$method <- method
   ui <- rxode2::rxUiDecompress(ui)
-  if (exists("control", envir=ui)) {
-    rm("control", envir=ui)
-  }
+
   if (exists(".predDfFocei", envir=ui)) {
     rm(".predDfFocei", envir=ui)
   }
