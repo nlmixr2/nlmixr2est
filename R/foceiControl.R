@@ -1449,7 +1449,7 @@ rxUiDeparse.foceiControl <- function(object, var) {
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (object$outerOptTxt != "nlminb") {
+  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
