@@ -1,3 +1,7 @@
+# nlmixr2est development version
+
+- Bug fixes for deparsing nlmixr2 control objects
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward
