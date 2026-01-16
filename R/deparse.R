@@ -22,7 +22,7 @@
       .solveTypeIdx <- c("hessian" = 3L, "grad" = 2L, "fun" = 1L)
       paste0("solveType =", deparse1(names(.solveTypeIdx[which(value == .solveTypeIdx)])))
     } else {
-      paste0("normType =", deparse1(value))
+      paste0("solveType =", deparse1(value))
     }
   } else if (x == "eventType") {
     if (is.integer(value)) {

@@ -11,6 +11,8 @@
 - Turn back on object compress and use roxde2's default for
   compression.
 
+- Bug fixes for deparsing nlmixr2 control objects
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward

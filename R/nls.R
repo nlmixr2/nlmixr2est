@@ -275,6 +275,7 @@ rxUiDeparse.nlsControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlsControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlsControl", control, envir=env)
 }
 
