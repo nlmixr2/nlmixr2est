@@ -124,9 +124,9 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
     .p1 <- data.frame(
       effect = "ran_pars", group = "ID", term = names(.pars), estimate = .pars, std.error = NA_real_,
       statistic = NA_real_, p.value = NA_real_, stringsAsFactors = FALSE
-    ) %>%
+    ) |>
       .reorderCols()
-    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) %>%
+    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) |>
       .reorderCols()
     .df <- rbind(.p1, .p2)
     for (.v in c("statistic", "p.value", "std.error")) {
@@ -250,9 +250,9 @@ tidy.nlmixr2FitCore <- function(x, ...) {
   if (all(unlist(lapply(seq_along(.ret), is.null)))) {
     return(NULL)
   }
-  return(dplyr::bind_rows(.ret, .id = "effect") %>%
-    tibble::as_tibble() %>%
-    .reorderCols())
+  dplyr::bind_rows(.ret, .id = "effect") |>
+    tibble::as_tibble() |>
+    .reorderCols()
 }
 
 tidy.nlmixr2FitCoreSilent <- tidy.nlmixr2FitCore

@@ -137,7 +137,7 @@
 #'  })
 #' }
 #'
-#' mod %>% rmEta("etaKa")
+#' mod |> rmEta("etaKa")
 #'
 #' # This can also remove more than one eta
 #'
@@ -161,7 +161,7 @@
 #'  })
 #' }
 #'
-#' mod %>% rmEta(c("etaKa", "etaCl"))
+#' mod |> rmEta(c("etaKa", "etaCl"))
 #'
 rmEta <- function(ui, eta) {
   ui <- rxode2::assertRxUi(ui, " for the 'rmEta()' function")

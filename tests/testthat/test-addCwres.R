@@ -23,7 +23,7 @@ nmTest({
     )
     expect_true(inherits(fitNoEta$parHistData, "data.frame"))
     expect_error(
-      addCwres(fitNoEta),
+      suppressMessages(addCwres(fitNoEta)),
       regexp = "cannot add CWRES to a model without etas"
     )
   })
@@ -54,6 +54,6 @@ nmTest({
 
     test_run001 <- .nlmixr(test_model(), data, "saem", control = saemControlFast)
 
-    expect_error(addCwres(test_run001), NA)
+    expect_error(suppressMessages(addCwres(test_run001)), NA)
   })
 })

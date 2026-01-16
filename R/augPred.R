@@ -33,9 +33,12 @@
 #' - Orders the resulting data frame by ID and TIME.
 #'
 #' @noRd
-.augPredExpandData <- function(fit, covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
+.augPredExpandData <- function(fit,
+                               covsInterpolation = c("locf", "nocb", "linear", "midpoint"),
                                minimum = NULL, maximum = NULL, length.out = 51L) {
-  .origData <- rxode2::etTrans(fit$dataSav, .augPredIpredModel(fit), addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE,
+  .origData <- rxode2::etTrans(fit$dataSav,
+                               .augPredIpredModel(fit),
+                               addCmt=TRUE, keepDosingOnly=TRUE, allTimeVar=TRUE,
                                addlKeepsCov = fit$control$rxControl$addlKeepsCov,
                                addlDropSs = fit$control$rxControl$addlDropSs,
                                ssAtDoseTime = fit$control$rxControl$ssAtDoseTime)
@@ -96,6 +99,26 @@
   .ret <- .ret[order(.ret$ID, .ret$TIME), ]
   .ret
 }
+#' Get the ipred parameters for the fit
+#'
+#' @param fit the fit to extract the ipred parameters from
+#' @return data.frame of parameters for ipred
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixrGetIpredParams <- function(fit) {
+  .si <- fit$simInfo
+  .sigma <- .si$sigma
+  .omega <- .si$omega
+  if (is.null(.omega)) {
+    .params <- data.frame(t(fit$theta),
+                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+    .params <- setNames(as.numeric(.params), names(.params))
+  } else {
+    .params <- data.frame(t(fit$theta),fit$eta[, -1, drop = FALSE],
+                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
+  }
+  .params
+}
 
 #' Augmented Prediction for nlmixr2 fit
 #'
@@ -116,19 +139,10 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .rx <- eval(.rx)
   .sigma <- .si$sigma
   .omega <- .si$omega
-  if (is.null(.omega)) {
-    .params <- data.frame(t(fit$theta),
-                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
-    .params <- setNames(as.numeric(.params), names(.params))
-  } else {
-    .params <- data.frame(t(fit$theta),fit$eta[, -1, drop = FALSE],
-                          t(setNames(rep(0, dim(.sigma)[1]), dimnames(.sigma)[[2]])))
-  }
-
+  .params <- .nlmixrGetIpredParams(fit)
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
-
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keepInterpolation="na",
