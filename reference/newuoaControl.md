@@ -31,7 +31,7 @@ newuoaControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -437,6 +437,8 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 8952
+#> → compress parHistData in nlmixr2 object, save 26680
 
 print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
@@ -446,8 +448,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table compress    other
-#> elapsed 0.003388 0.042    0.001 2.290612
+#>           setup table compress   other
+#> elapsed 0.00311 0.039     0.05 2.03989
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

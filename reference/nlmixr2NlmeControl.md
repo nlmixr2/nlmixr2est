@@ -38,7 +38,7 @@ nlmixr2NlmeControl(
   returnNlme = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -78,7 +78,7 @@ nlmeControl(
   returnNlme = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -826,7 +826,7 @@ nlmeControl()
 #> [1] TRUE
 #> 
 #> $compress
-#> [1] FALSE
+#> [1] TRUE
 #> 
 #> $random
 #> NULL
@@ -1285,7 +1285,7 @@ nlmixr2NlmeControl()
 #> [1] TRUE
 #> 
 #> $compress
-#> [1] FALSE
+#> [1] TRUE
 #> 
 #> $random
 #> NULL

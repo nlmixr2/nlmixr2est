@@ -47,7 +47,7 @@ nlsControl(
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
@@ -559,6 +559,8 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 6752
+#> → compress parHistData in nlmixr2 object, save 2368
 
 # Uses port and respect parameter boundaries
 fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
@@ -591,6 +593,8 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 6752
+#> → compress parHistData in nlmixr2 object, save 2352
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

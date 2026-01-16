@@ -230,7 +230,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x555f50220188>
+#> <bytecode: 0x5573cde60598>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -399,7 +399,7 @@ agqControl()
 #> [1] 100
 #> 
 #> $compress
-#> [1] FALSE
+#> [1] TRUE
 #> 
 #> $rxControl
 #> $scale
@@ -865,6 +865,8 @@ fit <- nlmixr(f, r, est="agq")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 3088
+#> → compress parHistData in nlmixr2 object, save 4248
 
 
 p <- pump
@@ -924,6 +926,8 @@ fit <- nlmixr(f, p, est="agq", control=agqControl(nAGQ=5))
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 1624
+#> → compress parHistData in nlmixr2 object, save 6280
 
 one.cmt <- function() {
   ini({
@@ -956,6 +960,8 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 6752
+#> → compress parHistData in nlmixr2 object, save 5408
 
 # }
 ```

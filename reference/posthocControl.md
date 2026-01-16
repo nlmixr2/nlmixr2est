@@ -204,7 +204,7 @@ posthocControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x555f50220188>
+#> <bytecode: 0x5573cde60598>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -373,7 +373,7 @@ posthocControl()
 #> [1] 100
 #> 
 #> $compress
-#> [1] FALSE
+#> [1] TRUE
 #> 
 #> $rxControl
 #> $scale

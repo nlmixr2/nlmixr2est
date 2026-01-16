@@ -31,7 +31,7 @@ bobyqaControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -437,6 +437,8 @@ fit2 <- nlmixr(mod, dsn, est="bobyqa")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 8936
+#> → compress parHistData in nlmixr2 object, save 87008
 
 print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
@@ -447,7 +449,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.003148 0.042    0.001 3.102852
+#> elapsed 0.003671 0.054    0.068 2.788329
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

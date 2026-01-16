@@ -47,7 +47,7 @@ nlminbControl(
   gradTo = 1,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", "nlminb", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -530,17 +530,19 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 8992
+#> → compress parHistData in nlmixr2 object, save 3256
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -666.1358 1177.741 1192.465      -585.8706        1303.943        97.41604
+#> lPop -666.1358 1177.741 1192.465      -585.8706        1303.943        97.41607
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.003045 0.042    0.001 2.738955
+#> elapsed 0.003005  0.04    0.028 2.471995
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -652,7 +654,7 @@ fit2$nlminb
 #> 58   13 Forward Sensitivity       NA -1.138820e-04 -6.531890e-04  7.308369e-04
 #> 59   14 Forward Sensitivity       NA -3.409368e-06 -1.849928e-05  1.409273e-05
 #> 60   15 Forward Sensitivity       NA  2.857787e-09  1.857756e-08 -4.369005e-07
-#> 61   16 Forward Sensitivity       NA  1.351871e-10  8.014625e-10 -8.162520e-09
+#> 61   16 Forward Sensitivity       NA  1.351870e-10  8.014622e-10 -8.162520e-09
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
@@ -669,21 +671,21 @@ fit2$nlminb
 #> 
 #> $cov.scaled
 #>           E0        Em      E50
-#> E0  5733.154  3764.455 2728.493
-#> Em  3764.455 16926.772 8019.581
-#> E50 2728.493  8019.581 4161.079
+#> E0  5733.155  3764.457 2728.494
+#> Em  3764.457 16926.775 8019.583
+#> E50 2728.494  8019.583 4161.080
 #> 
 #> $cov
 #>             E0         Em       E50
-#> E0  0.04618383  0.3672891 0.2466718
-#> Em  0.36728908 20.0027536 8.7812844
-#> E50 0.24667177  8.7812844 4.2218517
+#> E0  0.04618383  0.3672893 0.2466719
+#> Em  0.36728928 20.0027576 8.7812865
+#> E50 0.24667186  8.7812865 4.2218528
 #> 
 #> $r
 #>                E0            Em          E50
 #> E0   0.0008243449  0.0008374419 -0.002154526
 #> Em   0.0008374419  0.0022105890 -0.004809559
-#> E50 -0.0021545261 -0.0048095589  0.011162792
+#> E50 -0.0021545261 -0.0048095588  0.011162792
 #> 
 # }
 ```

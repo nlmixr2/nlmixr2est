@@ -34,7 +34,7 @@ lbfgsb3cControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -449,17 +449,19 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 8952
+#> → compress parHistData in nlmixr2 object, save 3728
 
 print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -731.0818 1112.795 1127.519      -553.3976        562.2677        68.87678
+#> lPop -731.0818 1112.795 1127.519      -553.3976        562.2676        68.87675
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.003158 0.057    0.001 3.770842
+#> elapsed 0.003108 0.043    0.029 3.382892
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -523,21 +525,21 @@ fit2$lbfgsb3c
 #> 
 #> $cov.scaled
 #>           E0       Em      E50
-#> E0  6004.913 1945.980 1650.719
-#> Em  1945.980 5257.601 2435.482
-#> E50 1650.719 2435.482 1312.004
+#> E0  6004.913 1945.979 1650.719
+#> Em  1945.979 5257.599 2435.481
+#> E50 1650.719 2435.481 1312.004
 #> 
 #> $cov
 #>             E0        Em       E50
-#> E0  0.05627804 0.2429388 0.1836659
-#> Em  0.24293876 8.7432384 3.6096602
-#> E50 0.18366588 3.6096602 1.7330588
+#> E0  0.05627805 0.2429387 0.1836658
+#> Em  0.24293867 8.7432355 3.6096590
+#> E50 0.18366585 3.6096590 1.7330583
 #> 
 #> $r
 #>                E0           Em          E50
 #> E0   0.0008967188  0.001361346 -0.003655297
 #> Em   0.0013613458  0.004781895 -0.010589463
-#> E50 -0.0036552967 -0.010589463  0.025780647
+#> E50 -0.0036552967 -0.010589463  0.025780648
 #> 
 
 # The nlm control has been modified slightly to include

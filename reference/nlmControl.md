@@ -43,7 +43,7 @@ nlmControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -517,17 +517,19 @@ fit2 <- nlmixr(mod, dsn, est="nlm")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> → compress origData in nlmixr2 object, save 8976
+#> → compress parHistData in nlmixr2 object, save 3848
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -675.4359 1168.441 1183.164      -581.2206         1449336        191267.2
+#> lPop -675.4359 1168.441 1183.164      -581.2206         1449335        191267.2
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table    other
-#> elapsed 0.002942 0.043 2.690058
+#>            setup table compress    other
+#> elapsed 0.003001 0.039    0.028 2.392999
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
@@ -566,7 +568,7 @@ fit2$nlm
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001706373  0.002162468 -0.005636677
+#> E0   0.001706372  0.002162468 -0.005636677
 #> Em   0.002162468  0.006298196 -0.014437092
 #> E50 -0.005636677 -0.014437092  0.032025981
 #> 
@@ -588,19 +590,19 @@ fit2$nlm
 #> 
 #> $cov.scaled
 #>          E0       Em     E50
-#> E0  3838502  7851610 4173516
-#> Em  7851610 16083522 8547210
-#> E50 4173516  8547210 4542506
+#> E0  3838504  7851612 4173518
+#> Em  7851612 16083521 8547211
+#> E50 4173518  8547211 4542506
 #> 
 #> $cov
 #>            E0         Em        E50
-#> E0   32.37633   824.3203   400.6781
-#> Em  824.32031 21017.9251 10213.8435
-#> E50 400.67805 10213.8435  4963.8246
+#> E0   32.37635   824.3205   400.6782
+#> Em  824.32053 21017.9247 10213.8437
+#> E50 400.67818 10213.8437  4963.8249
 #> 
 #> $r
 #>                E0           Em          E50
-#> E0   0.0008531863  0.001081234 -0.002818339
+#> E0   0.0008531862  0.001081234 -0.002818339
 #> Em   0.0010812338  0.003149098 -0.007218546
 #> E50 -0.0028183387 -0.007218546  0.016012990
 #> 
