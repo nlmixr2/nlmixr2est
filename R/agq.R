@@ -168,6 +168,7 @@ agqControl <- function(sigdig=3, nAGQ=2, ..., interaction=TRUE,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.agqControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("agqControl", control, envir=env)
 }
 

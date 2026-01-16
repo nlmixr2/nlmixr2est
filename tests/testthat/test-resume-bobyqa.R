@@ -41,7 +41,7 @@ nmTest({
         CP ~ add(ADD.ERR.PK)
       })
     }
-    dat <- qs::qread(test_path("test-resume-bobyqa.qs"))
+    dat <- readRDS(test_path("test-resume-bobyqa.rds"))
 
     d <- .nlmixr(model, dat, "focei")
 

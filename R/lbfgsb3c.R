@@ -258,6 +258,7 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("lbfgsb3cControl", control, envir=env)
 }
 

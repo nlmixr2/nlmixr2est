@@ -58,7 +58,6 @@ nmObjGet.iniUi <- function(x, ...) {
 attr(nmObjGet.iniUi, "desc") <- "The initial ui used to run the model"
 attr(nmObjGet.iniUi, "rstudio") <- emptyenv()
 
-
 #' Set if the nlmixr2 object will return a compressed ui
 #'
 #'
@@ -203,7 +202,54 @@ nmObjGet.default <- function(x, ...) {
   .env <- x[[1]]
   if (exists(.arg, envir = .env)) {
     .ret <- get(.arg, envir = .env)
-    if (inherits(.ret, "raw")) .ret <- qs::qdeserialize(.ret)
+    if (inherits(.ret, "raw")) {
+      .type <- rxode2::rxGetSerialType_(.ret)
+      if (.type == "qs2") {
+        .ret <- try(qs2::qs_deserialize(.ret), silent=TRUE)
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "' (qs2)", call.=FALSE)
+          .ret <- NULL
+        }
+      } else if (.type == "qdata") {
+        .ret <- try({
+          rxode2::rxReq("qs2")
+          qs2::qd_deserialize(.ret)
+        })
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "' (qdata)", call.=FALSE)
+          .ret <- NULL
+        }
+      } else if (.type == "qs") {
+        .ret <- try(qs::qdeserialize(.ret), silent=TRUE)
+        if (inherits(.ret, "try-error")) {
+          .ret <- try({
+            qs::qdeserialize(get(.arg, envir = .env))
+          })
+          if (inherits(.ret, "try-error")) {
+            warning("cannot deserialize object '", .arg, "' (qs)", call.=FALSE)
+            .ret <- NULL
+          }
+        }
+      } else if (.type == "xz") {
+        .ret <- try(unserialize(memDecompress(.ret, type="xz")), silent=TRUE)
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "' (xz)", call.=FALSE)
+          .ret <- NULL
+        }
+      } else if (.type == "bzip2") {
+        .ret <- try(unserialize(memDecompress(.ret, type="bzip2")), silent=TRUE)
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "' (bzip2)", call.=FALSE)
+          .ret <- NULL
+        }
+      } else if (.type == "base") {
+        .ret <- try(unserialize(.ret), silent=TRUE)
+        if (inherits(.ret, "try-error")) {
+          warning("cannot deserialize object '", .arg, "' (base)", call.=FALSE)
+          .ret <- NULL
+        }
+      }
+    }
     return(.ret)
   }
   # Now get the ui, install the control object temporarily and use `rxUiGet`

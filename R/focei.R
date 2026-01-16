@@ -712,7 +712,7 @@ rxUiGet.predDfFocei <- function(x, ...) {
   } else {
     .predDf <- .ui$predDf
     if (all(.predDf$distribution == "norm")) {
-      assign(".predDfFocei,", .predDf, envir=.ui)
+      assign(".predDfFocei", .predDf, envir=.ui)
       .predDf
     } else {
       .w <- which(.predDf$distribution == "norm")
@@ -974,7 +974,7 @@ attr(rxUiGet.foceiModelDigest, "rstudio") <- "hash"
 #' @export
 rxUiGet.foceiModelCache <- function(x, ...) {
   file.path(rxode2::rxTempDir(),
-            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs"))
+            paste0("focei-", rxUiGet.foceiModelDigest(x, ...), ".qs2"))
 }
 #attr(rxUiGet.foceiModelCache, "desc") <- "Get the focei cache file for a model"
 attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
@@ -983,7 +983,7 @@ attr(rxUiGet.foceiModelCache, "rstudio") <- "file"
 rxUiGet.foceiModel <- function(x, ...) {
   .cacheFile <- rxUiGet.foceiModelCache(x, ...)
   if (file.exists(.cacheFile)) {
-    .ret <- qs::qread(.cacheFile)
+    .ret <- qs2::qs_read(.cacheFile)
     lapply(seq_along(.ret), function(i) {
       if (inherits(.ret[[i]], "rxode2")) {
         rxode2::rxLoad(.ret[[i]])
@@ -1002,7 +1002,7 @@ rxUiGet.foceiModel <- function(x, ...) {
       .ret <- rxUiGet.foce(x, ...)
     }
   }
-  qs::qsave(.ret, .cacheFile)
+  qs2::qs_save(.ret, .cacheFile)
   .ret
 }
 # attr(rxUiGet.foceiModel, "desc") <- "Get focei model object"
@@ -1815,6 +1815,12 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .ret <- .ret0
   if (!is.null(method))
     .ret$method <- method
+  ui <- rxode2::rxUiDecompress(ui)
+
+  if (exists(".predDfFocei", envir=ui)) {
+    rm(".predDfFocei", envir=ui)
+  }
+  ui <- rxode2::rxUiCompress(ui)
   .ret$ui <- ui
   .foceiSetupParHistData(.ret)
   if (!all(is.na(ui$iniDf$neta1))) {
@@ -1871,7 +1877,25 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
         if (exists(.item, .env)) {
           .obj <- get(.item, envir=.env)
           .size <- utils::object.size(.obj)
-          .objC <- qs::qserialize(.obj)
+          .type <- rxode2::rxGetDefaultSerialize()
+          .objC <- switch(.type,
+                 qs2 = {
+                   qs2::qs_serialize(.obj)
+                 },
+                 qdata = {
+                   qs2::qd_serialize(.obj)
+                 },
+                 bzip2 = {
+                   memCompress(serialize(.obj, NULL), type="bzip2")
+                 },
+                 xz = {
+                   memCompress(serialize(.obj, NULL), type="xz")
+                 },
+                 base = {
+                   serialize(.obj, NULL)
+                 },
+                 stop("unknown serialization type") # nocov
+                 )
           .size2 <- utils::object.size(.objC)
           if (.size2 < .size) {
             .size0 <- (.size - .size2)
@@ -1886,7 +1910,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                     "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
                     "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
-                    "xType", "IDlabel", "ODEmodel",
+                    "xType", "IDlabel", "ODEmodel", "model",
                     # times
                     "optimTime", "setupTime", "covTime",
                     "parHist", "dataSav", "idLvl", "theta",

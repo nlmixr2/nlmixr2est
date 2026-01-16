@@ -121,7 +121,7 @@ The nlmixr object has the following fields:\tabular{lll}{
    dataMergeLeft \tab  \tab Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
    dataMergeRight \tab  \tab Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
    dataUloq \tab  \tab Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step \cr
-   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence (env \cr
+   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $env \cr
    runInfo \tab  \tab This returns a list of all the warnings or fit information \cr
    rxControl \tab  \tab Integration options used to control rxode2 \cr
    scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr

@@ -44,5 +44,16 @@ nlmixr2fix <- function(fit) {
   .ui <- fit$env$ui$fun
   .ui <- suppressMessages(.ui())
   assign("ui", .ui, envir = fit$env)
+  for (.v in ls(fit$env, all.names=TRUE)) {
+    if (inherits(.v, "raw")) {
+      ## Try reading in with qs2 if it doesn't work try with qs
+      .c <- try(qs2::qs_deserialize(get(.v, envir=fit$env)))
+      if (inherits(.c, "try-error")) {
+        rxode2::rxReq("qs")
+        .c <- qs::qdeserialize(get(.v, envir=fit$env))
+        assign(.v, .c, envir=fit$env)
+      }
+    }
+  }
   fit
 }

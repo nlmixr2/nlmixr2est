@@ -23,15 +23,15 @@ nmTest({
     )
     expect_true(inherits(fitNoEta$parHistData, "data.frame"))
     expect_error(
-      addCwres(fitNoEta),
+      suppressMessages(addCwres(fitNoEta)),
       regexp = "cannot add CWRES to a model without etas"
     )
   })
 
   test_that("cwres issue in 3.0.3", {
-    skip_if_not(file.exists(test_path("test-cwres-3.0.3.qs")))
+    skip_if_not(file.exists(test_path("test-cwres-3.0.3.rds")))
 
-    data <- qs::qread(test_path("test-cwres-3.0.3.qs"))
+    data <- readRDS(test_path("test-cwres-3.0.3.rds"))
 
     test_model <- function() {
       ini({
@@ -54,6 +54,6 @@ nmTest({
 
     test_run001 <- .nlmixr(test_model(), data, "saem", control = saemControlFast)
 
-    expect_error(addCwres(test_run001), NA)
+    expect_error(suppressMessages(addCwres(test_run001)), NA)
   })
 })

@@ -2295,15 +2295,17 @@ static inline void innerOptId(int id) {
 
 void innerOpt() {
   rx = getRxSolve_();
+  // rx_solving_options *op = getSolvingOptions(rx);
+  // int cores = getOpCores(op);
+  // if (op_focei.mceta >= 1) {
+  //   cores = 1;
+  // }
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
   }
   if (op_focei.maxInnerIterations <= 0){
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
-    // #ifdef _OPENMP
-    // #pragma omp parallel for num_threads(cores)
-    // #endif
     for (int id = 0; id < getRxNsubAndMix(rx); id++){
       focei_ind *indF = &(inds_focei[id]);
       indF->doChol = 1;
@@ -2316,9 +2318,9 @@ void innerOpt() {
       }
     }
   } else {
-    // #ifdef _OPENMP
-    // #pragma omp parallel for num_threads(cores)
-    // #endif
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(cores)
+// #endif
     for (int id = 0; id < getRxNsubAndMix(rx); id++){
       innerOptId(id);
     }
@@ -4136,9 +4138,7 @@ NumericVector foceiSetup_(const RObject &obj,
     default:
       stop("unrecognized normalization (normType=%d)",op_focei.normType);
     }
-
   }
-  // }
   return ret;
 }
 

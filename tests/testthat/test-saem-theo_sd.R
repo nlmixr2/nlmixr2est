@@ -2,7 +2,7 @@ if (FALSE) {
 
   nmTest({
 
-    skip_if_not(file.exists(test_path("test-saem-theo_sd.qs")))
+    skip_if_not(file.exists(test_path("test-saem-theo_sd.qs2")))
 
     mod <- function() {
       ini({
@@ -136,7 +136,7 @@ if (FALSE) {
       if (.doIt) {
         ctl1 <- saemControl(print=0, nEm = n, nBurn = n, logLik = TRUE, addProp = .cur["addProp"])
         mod2 <- eval(parse(text = paste0(
-          "mod %>% model(ipre~", paste(.mod, collapse = "+"), ") %>% ",
+          "mod |> model(ipre~", paste(.mod, collapse = "+"), ") |> ",
           gsub("c[(]", "ini(", deparse1(.est))
         )))
         v <- .nlmixr(mod2, dat, est = "saem", control = ctl1)
@@ -184,9 +184,9 @@ if (FALSE) {
       val[, .n] <- round(val[[.n]], 2)
     }
 
-    ##qs::qsave(val, file=test_path("test-saem-theo_sd.qs"))
+    ##qs2::qs_save(val, file=test_path("test-saem-theo_sd.qs2"))
 
-    .test <- qs::qread(test_path("test-saem-theo_sd.qs"))
+    .test <- readRDS(test_path("test-saem-theo_sd.rds"))
 
     for (i in seq_along(.test$add)) {
       test_that(

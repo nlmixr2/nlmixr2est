@@ -225,9 +225,82 @@ attr(nlmixr2Est.predict, "covPresent") <- TRUE
   }
   .both
 }
-
+#' Predict method for nlmixr2 fit core objects
+#'
+#' This function generates predictions from an `nlmixr2FitCore` object.
+#' It allows for both population-level and individual-level predictions
+#' based on the specified `level` parameter.
+#'
+#' @param object nlmixr2 fit core object to predict
+#'
+#' @param ... additional arguments passed to rxode2::rxSolve or
+#'   nlmixr2; matching other `predict` methods, these can include
+#'   `newdata` and `rxControl` settings
+#'
+#' @param level the prediction level; one of `"population"` (default) or
+#'  `"individual"`; numeric values `0` and `1` are also accepted
+#'
+#' @return A data frame with predictions
+#'
 #' @export
-predict.nlmixr2FitCore <- function(object, ...) {
+#'
+#' @examples
+#'
+#' \donttest{
+#'
+#' one.compartment <- function() {
+#'  ini({
+#'   tka <- log(1)
+#'   tcl <- log(10)
+#'   tv <- log(35)
+#'   eta.ka ~ 0.1
+#'   eta.cl ~ 0.1
+#'   eta.v ~ 0.1
+#'   add.sd <- 0.1
+#'  })
+#'  model({
+#'   ka <- exp(tka + eta.ka)
+#'   cl <- exp(tcl + eta.cl)
+#'   v <- exp(tv + eta.v)
+#'   d/dt(depot) = -ka * depot
+#'   d/dt(center) = ka * depot - cl / v * center
+#'   cp = center / v
+#'   cp ~ add(add.sd)
+#'  })
+#' }
+#'
+#' # The fit is performed by the function nlmixr/nlmix2 specifying
+#' # the model, data and estimate
+#' fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
+#'                foceiControl(maxOuterIterations = 0L))
+#'
+#' # Population predictions
+#' ppred <- predict(fit, theo_sd, level="population")
+#'
+#' # Individual predictions
+#' ipred <- predict(fit, theo_sd, level="individual")
+#'
+#' }
+#'
+predict.nlmixr2FitCore <- function(object, ...,
+                                   level = c("population", "individual")) {
+  if (checkmate::testNumeric(level, len=1)) {
+    level <- switch(as.character(level),
+                    "0" = "population",
+                    "1" = "individual",
+                    "bad")
+    if (identical(level, "bad")) {
+      stop("level numeric must be 0 (population) or 1 (individual)",
+           call.=FALSE)
+    }
+  }
+  if (identical(level, "ipred")) {
+    level <- "individual"
+  } else if (identical(level, "pred") || identical(level, "ppred")) {
+    level <- "population"
+  } else {
+    level <- match.arg(level)
+  }
   .nlmixr2clearPipe()
   nlmixr2global$nlmixr2SimInfo <- NULL
   on.exit({
@@ -238,20 +311,37 @@ predict.nlmixr2FitCore <- function(object, ...) {
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
+  .est <- if (identical(level, "population")) "predict" else "ipred"
+  if (.est == "ipred") {
+    .minfo("individual predictions requested (`level=\"individual\"`)")
+  } else {
+    .minfo("population predictions requested (`level=\"population\"`)")
+  }
+
   .both <- .getNewData(.getControlFromDots(rxode2::rxControl(envir=.env), ...))
-  .both$ctl$omega <- NA
-  .both$ctl$sigma <- NA
+  if (.est != "ipred") {
+    .both$ctl$omega <- NA
+    .both$ctl$sigma <- NA
+  }
   .env <- nlmixr2global$nlmixrEvalEnv$envir
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
   .rxControl <- do.call(rxode2::rxControl, .both$ctl)
   .rxControl$envir <- .env
+  .data <- getData(object)
+
   if (inherits(.both$rest$newdata, "data.frame")) {
-    nlmixr2(object=object, data=.both$rest$newdata,
-            est="predict", control=.rxControl)
+    .minfo("using new data for predictions")
+    .data <- .both$rest$newdata
+  }
+  if (.est == "ipred") {
+    .params <- .nlmixrGetIpredParams(object)
+    do.call(rxode2::rxSolve,
+            c(list(object, .params, .data), .rxControl))
   } else {
-    nlmixr2(object=object, est="predict", control=.rxControl)
+    nlmixr2(object=object, data=.data,
+            est=.est, control=.rxControl)
   }
 }
 

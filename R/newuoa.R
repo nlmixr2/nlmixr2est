@@ -217,6 +217,7 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.newuoaControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("newuoaControl", control, envir=env)
 }
 

@@ -1449,14 +1449,16 @@ rxUiDeparse.foceiControl <- function(object, var) {
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (object$outerOptTxt != "nlminb") {
+  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
     return(str2lang(paste0(var, " <- foceiControl()")))
   }
-  .retD <- c(vapply(names(.ret)[.w], function(x) {
+  .n <- names(.ret)[.w]
+  .n <- .n[.n != "outerOpt"]
+  .retD <- c(vapply(.n, function(x) {
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
@@ -1464,6 +1466,9 @@ rxUiDeparse.foceiControl <- function(object, var) {
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x %in% c("optimHessType")) {
+      .methodIdx <- c("central" = 1L, "forward" = 3L)
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod", "optimHessType", "optimHessCovType",
                         "eventType")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)

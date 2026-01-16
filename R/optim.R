@@ -396,6 +396,7 @@ rxUiDeparse.optimControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.optimControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("optimControl", control, envir=env)
 }
 
