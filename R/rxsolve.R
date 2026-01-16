@@ -311,7 +311,7 @@ predict.nlmixr2FitCore <- function(object, ...,
   if (!is.environment(.env)) {
     .env <- parent.frame(1)
   }
-  .est <- ifelse(level=="population", "predict", "ipred")
+  .est <- if (identical(level, "population")) "predict" else "ipred"
   if (.est == "ipred") {
     .minfo("individual predictions requested (`level=\"individual\"`)")
   } else {
