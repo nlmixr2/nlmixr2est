@@ -230,7 +230,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5573cde60598>
+#> <bytecode: 0x559c6ee96ab0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -927,7 +927,7 @@ fit <- nlmixr(f, p, est="agq", control=agqControl(nAGQ=5))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 1624
-#> → compress parHistData in nlmixr2 object, save 6280
+#> → compress parHistData in nlmixr2 object, save 6256
 
 one.cmt <- function() {
   ini({
@@ -961,7 +961,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6752
-#> → compress parHistData in nlmixr2 object, save 5408
+#> → compress parHistData in nlmixr2 object, save 5808
 
 # }
 ```

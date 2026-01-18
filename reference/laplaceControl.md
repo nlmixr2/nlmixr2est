@@ -214,7 +214,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5573cde60598>
+#> <bytecode: 0x559c6ee96ab0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -828,7 +828,7 @@ fit <- nlmixr(f, r, est="laplace")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 3088
-#> → compress parHistData in nlmixr2 object, save 4672
+#> → compress parHistData in nlmixr2 object, save 4680
 
 
 p <- pump
@@ -866,7 +866,7 @@ fit <- nlmixr(f, p, est="laplace")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 1624
-#> → compress parHistData in nlmixr2 object, save 4496
+#> → compress parHistData in nlmixr2 object, save 4504
 
 # }
 ```

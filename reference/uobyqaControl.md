@@ -449,7 +449,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.003081  0.04    0.033 2.096919
+#> elapsed 0.002948 0.044    0.037 2.388052
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
