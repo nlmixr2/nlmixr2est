@@ -1,3 +1,24 @@
+# nlmixr2est (development version)
+
+- Add `predict(fit, level="ipred")`, `predict(fit,
+  level="individual")` or `predict(fit, level=1)` to predict
+  individual fits (with possibly a new dataset).
+
+- Change test files to `.rds` files
+
+- Drop magrittr `%>%` in favor of `|>`.
+
+- **Breaking change:** Minimum R version increased from 4.0 to 4.1.0.
+  This change is required to support the native pipe operator `|>`.
+  Users on R < 4.1.0 will need to upgrade R to install this version
+  of nlmixr2est.
+
+
+- Turn back on object compress and use roxde2's default for
+  compression.
+
+- Bug fixes for deparsing nlmixr2 control objects
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward

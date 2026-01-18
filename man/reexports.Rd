@@ -3,7 +3,6 @@
 \docType{import}
 \name{reexports}
 \alias{reexports}
-\alias{\%>\%}
 \alias{rxode2}
 \alias{rxUiDeparse}
 \alias{as.rxUi}
@@ -73,8 +72,6 @@ These objects are imported from other packages. Follow the links
 below to see their documentation.
 
 \describe{
-  \item{magrittr}{\code{\link[magrittr:pipe]{\%>\%}}}
-
   \item{nlme}{\code{\link[nlme]{ACF}}, \code{\link[nlme]{augPred}}, \code{\link[nlme]{fixed.effects}}, \code{\link[nlme:fixed.effects]{fixef}}, \code{\link[nlme]{getData}}, \code{\link[nlme]{getVarCov}}, \code{\link[nlme]{groupedData}}, \code{\link[nlme]{nlme}}, \code{\link[nlme]{pdBlocked}}, \code{\link[nlme]{pdCompSymm}}, \code{\link[nlme]{pdConstruct}}, \code{\link[nlme]{pdDiag}}, \code{\link[nlme]{pdFactor}}, \code{\link[nlme]{pdIdent}}, \code{\link[nlme]{pdLogChol}}, \code{\link[nlme]{pdMat}}, \code{\link[nlme]{pdMatrix}}, \code{\link[nlme]{pdNatural}}, \code{\link[nlme]{pdSymm}}, \code{\link[nlme]{random.effects}}, \code{\link[nlme:random.effects]{ranef}}, \code{\link[nlme]{reStruct}}, \code{\link[nlme]{varComb}}, \code{\link[nlme]{varConstPower}}, \code{\link[nlme]{VarCorr}}, \code{\link[nlme]{varExp}}, \code{\link[nlme]{varFixed}}, \code{\link[nlme]{varFunc}}, \code{\link[nlme]{varIdent}}, \code{\link[nlme]{varPower}}, \code{\link[nlme]{varWeights}}}
 
   \item{rxode2}{\code{\link[rxode2]{add.dosing}}, \code{\link[rxode2]{add.sampling}}, \code{\link[rxode2]{as.rxUi}}, \code{\link[rxode2]{et}}, \code{\link[rxode2]{et}}, \code{\link[rxode2]{eventTable}}, \code{\link[rxode2:logit]{expit}}, \code{\link[rxode2:stat_amt]{geom_amt}}, \code{\link[rxode2:stat_cens]{geom_cens}}, \code{\link[rxode2]{ini}}, \code{\link[rxode2]{logit}}, \code{\link[rxode2:reexports]{lotri}}, \code{\link[rxode2]{model}}, \code{\link[rxode2]{probit}}, \code{\link[rxode2:probit]{probitInv}}, \code{\link[rxode2]{rxCat}}, \code{\link[rxode2]{rxClean}}, \code{\link[rxode2:rxSolve]{rxControl}}, \code{\link[rxode2:rxInits]{rxInit}}, \code{\link[rxode2]{rxLhs}}, \code{\link[rxode2]{rxModelVars}}, \code{\link[rxode2:rxModelVars]{rxModelVarsS3}}, \code{\link[rxode2:rxode2]{rxode}}, \code{\link[rxode2:rxode2]{RxODE}}, \code{\link[rxode2]{rxode2}}, \code{\link[rxode2:rxParams]{rxParam}}, \code{\link[rxode2]{rxParams}}, \code{\link[rxode2]{rxParams}}, \code{\link[rxode2]{rxSolve}}, \code{\link[rxode2]{rxSolve}}, \code{\link[rxode2]{rxState}}, \code{\link[rxode2]{rxUiDeparse}}, \code{\link[rxode2]{stat_amt}}, \code{\link[rxode2]{stat_cens}}}

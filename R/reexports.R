@@ -1,7 +1,3 @@
-#' @importFrom magrittr %>%
-#' @export
-magrittr::`%>%`
-
 #' @importFrom rxode2 rxode2
 #' @export
 rxode2::rxode2

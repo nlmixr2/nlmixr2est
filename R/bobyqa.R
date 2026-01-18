@@ -97,7 +97,7 @@ bobyqaControl <- function(npt=NULL,
                           literalFix=TRUE,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=FALSE,
+                          calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -246,6 +246,7 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.bobyqaControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("bobyqaControl", control, envir=env)
 }
 

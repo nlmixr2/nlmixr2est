@@ -37,7 +37,7 @@ mod <- function ()  {
  })
 }
 
-mod \%>\% rmEta("etaKa")
+mod |> rmEta("etaKa")
 
 # This can also remove more than one eta
 
@@ -61,7 +61,7 @@ mod <- function ()  {
  })
 }
 
-mod \%>\% rmEta(c("etaKa", "etaCl"))
+mod |> rmEta(c("etaKa", "etaCl"))
 
 }
 \author{

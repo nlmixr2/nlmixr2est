@@ -68,7 +68,7 @@ newuoaControl <- function(npt=NULL,
                           literalFix=TRUE,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=FALSE,
+                          calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -217,6 +217,7 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.newuoaControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("newuoaControl", control, envir=env)
 }
 

@@ -114,11 +114,15 @@ nmTest({
 
     expect_s3_class(fit2, "nlmixr2.lbfgsb3c")
 
-   fit3 <- fit2 %>% ini(g=unfix) %>%.nlmixr(dsn, "nlm", nlmControl(solveType="grad"))
+    fit3 <- fit2 |>
+      ini(g=unfix) |>
+      .nlmixr(dsn, "nlm", nlmControl(solveType="grad"))
 
     expect_s3_class(fit3, "nlmixr2.nlm")
 
-    fit4 <- fit2 %>% ini(g=unfix) %>%.nlmixr(dsn, "nlm", nlmControl(solveType="fun"))
+    fit4 <- fit2 |>
+      ini(g=unfix) |>
+      .nlmixr(dsn, "nlm", nlmControl(solveType="fun"))
 
     expect_s3_class(fit4, "nlmixr2.nlm")
 

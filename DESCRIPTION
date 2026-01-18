@@ -1,8 +1,7 @@
 Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
-        Routines
-Version: 5.0.2
+Version: 5.0.2.9000
 Authors@R: c(
     person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0001-8538-6691")),
@@ -44,7 +43,7 @@ URL: https://github.com/nlmixr2/nlmixr2est,
     https://nlmixr2.github.io/nlmixr2est/
 Depends:
     nlmixr2data,
-    R (>= 4.0)
+    R (>= 4.1.0)
 Imports:
     backports,
     checkmate,
@@ -53,7 +52,6 @@ Imports:
     knitr,
     lbfgsb3c,
     lotri,
-    magrittr,
     Matrix,
     methods,
     minqa,
@@ -61,7 +59,7 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (>= 5.0.0),
+    rxode2 (> 5.0.0),
     stats,
     symengine,
     utils
@@ -93,7 +91,7 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
-    rxode2 (> 4.0.3)
+    rxode2 (> 5.0.0)
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8

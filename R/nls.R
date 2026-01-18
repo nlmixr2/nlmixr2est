@@ -89,7 +89,7 @@ nlsControl <- function(maxiter=10000,
                        literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
-                       calcTables=TRUE, compress=FALSE,
+                       calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   algorithm <- match.arg(algorithm)
   if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {
@@ -275,6 +275,7 @@ rxUiDeparse.nlsControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlsControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlsControl", control, envir=env)
 }
 

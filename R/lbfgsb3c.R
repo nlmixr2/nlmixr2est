@@ -102,7 +102,7 @@ lbfgsb3cControl <- function(trace=0,
                             literalFix=TRUE,
                             literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
-                            calcTables=TRUE, compress=FALSE,
+                            calcTables=TRUE, compress=TRUE,
                             covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -258,6 +258,7 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("lbfgsb3cControl", control, envir=env)
 }
 

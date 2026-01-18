@@ -46,7 +46,7 @@ nlsControl(
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,

@@ -44,21 +44,21 @@ nmTest({
   })
 
   test_that("another merge issue", {
-    dat <- xgxr::case1_pkpd %>%
-      dplyr::rename(DV=LIDV) %>%
-      dplyr::filter(CMT %in% 1:2) %>%
+    dat <- xgxr::case1_pkpd |>
+      dplyr::rename(DV=LIDV) |>
+      dplyr::filter(CMT %in% 1:2) |>
       dplyr::filter(TRTACT != "Placebo")
 
     doses <- unique(dat$DOSE)
     nid <- 3 # 7 ids per dose group
     dat2 <- do.call("rbind",
                     lapply(doses, function(x) {
-                      ids <- dat %>%
-                        dplyr::filter(DOSE == x) %>%
-                        dplyr::reframe(ids=unique(ID)) %>%
+                      ids <- dat |>
+                        dplyr::filter(DOSE == x) |>
+                        dplyr::reframe(ids=unique(ID)) |>
                         dplyr::pull()
                       ids <- ids[seq(1, nid)]
-                      dat %>%
+                      dat |>
                         dplyr::filter(ID %in% ids)
                     }))
 

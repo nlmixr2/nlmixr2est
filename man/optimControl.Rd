@@ -49,7 +49,7 @@ optimControl(
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = FALSE,
+  compress = TRUE,
   covMethod = c("r", "optim", ""),
   adjObf = TRUE,
   ci = 0.95,

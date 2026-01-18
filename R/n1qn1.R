@@ -71,7 +71,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
-                         calcTables=TRUE, compress=FALSE,
+                         calcTables=TRUE, compress=TRUE,
                          covMethod=c("r", "n1qn1", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -224,6 +224,7 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.n1qn1Control <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("n1qn1Control", control, envir=env)
 }
 

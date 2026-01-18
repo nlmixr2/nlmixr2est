@@ -115,7 +115,7 @@ nlmControl <- function(typsize = NULL,
                        literalFix=TRUE,
                        literalFixRes=TRUE,
                        addProp = c("combined2", "combined1"),
-                       calcTables=TRUE, compress=FALSE,
+                       calcTables=TRUE, compress=TRUE,
                        covMethod=c("r", "nlm", ""),
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
@@ -312,6 +312,7 @@ rxUiDeparse.nlmControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlmControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlmControl", control, envir=env)
 }
 

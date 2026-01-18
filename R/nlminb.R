@@ -112,7 +112,7 @@ nlminbControl <- function(eval.max=200,
                           gradTo=1.0,
 
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=FALSE,
+                          calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
   checkmate::assertIntegerish(eval.max, len=1, any.missing=FALSE, lower=1)
@@ -343,6 +343,7 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlminbControl <- function(control, env) {
+  eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlminbControl", control, envir=env)
 }
 

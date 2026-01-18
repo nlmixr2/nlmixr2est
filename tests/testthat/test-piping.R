@@ -19,11 +19,13 @@ nmTest({
       })
     }
 
-    mod1 <- mod %>% rmEta("etaKa")
+    mod1 <- mod |>
+      rmEta("etaKa")
 
     expect_true(all(is.na(mod1$iniDf$neta1)))
 
-    mod1 <- mod %>% rmEta(etaKa)
+    mod1 <- mod |>
+      rmEta(etaKa)
 
     expect_true(all(is.na(mod1$iniDf$neta1)))
 
@@ -47,13 +49,15 @@ nmTest({
       })
     }
 
-    mod1 <- mod %>% rmEta(c("etaKa", "etaCl"))
+    mod1 <- mod |>
+      rmEta(c("etaKa", "etaCl"))
 
     expect_true(rxode2::testExists(mod1, "etaVc"))
     expect_true(!rxode2::testExists(mod1, "etaKa"))
     expect_true(!rxode2::testExists(mod1, "etaCl"))
 
-    expect_error(mod %>% rmEta("etaX"), regexp = "'etaX' not in the model")
+    expect_error(mod |>
+                   rmEta("etaX"), regexp = "'etaX' not in the model")
 
 
     mod <- function ()  {
@@ -76,7 +80,8 @@ nmTest({
       })
     }
 
-    mod1 <- mod %>% rmEta("etaVc")
+    mod1 <- mod |>
+      rmEta("etaVc")
 
     expect_true(!rxode2::testExists(mod1, "etaVc"))
     expect_true(rxode2::testExists(mod1, "etaKa"))
