@@ -214,7 +214,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x559c6ee96ab0>
+#> <bytecode: 0x563060257ad0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -383,7 +383,7 @@ laplaceControl()
 #> [1] 100
 #> 
 #> $compress
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $rxControl
 #> $scale
@@ -827,8 +827,6 @@ fit <- nlmixr(f, r, est="laplace")
 #> as a work-around try putting the mu-referenced expression on a simple line
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 3088
-#> → compress parHistData in nlmixr2 object, save 4680
 
 
 p <- pump
@@ -865,8 +863,6 @@ fit <- nlmixr(f, p, est="laplace")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 1624
-#> → compress parHistData in nlmixr2 object, save 4504
 
 # }
 ```

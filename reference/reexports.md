@@ -3,6 +3,10 @@
 These objects are imported from other packages. Follow the links below
 to see their documentation.
 
+- magrittr:
+
+  `%>%`
+
 - nlme:
 
   [`ACF`](https://rdrr.io/pkg/nlme/man/ACF.html),

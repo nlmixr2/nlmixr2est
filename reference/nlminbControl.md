@@ -47,7 +47,7 @@ nlminbControl(
   gradTo = 1,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "nlminb", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -530,8 +530,6 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 8992
-#> → compress parHistData in nlmixr2 object, save 3248
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
@@ -541,8 +539,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table compress    other
-#> elapsed 0.002905 0.043    0.032 2.756095
+#>           setup table compress   other
+#> elapsed 0.00341 0.042    0.001 2.68859
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

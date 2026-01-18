@@ -102,8 +102,6 @@ fit <- nlmixr(one.cmt, theo_sd, est="focei")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6752
-#> → compress parHistData in nlmixr2 object, save 7184
 
 head(vpcSim(fit, pred=TRUE))
 #>  

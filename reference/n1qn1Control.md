@@ -32,7 +32,7 @@ n1qn1Control(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -427,8 +427,6 @@ fit2 <- nlmixr(mod, dsn, est="n1qn1")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 8976
-#> → compress parHistData in nlmixr2 object, save 4784
 
 print(fit2)
 #> ── nlmixr² log-likelihood n1qn1 ──
@@ -439,7 +437,7 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.004036 0.063    0.035 3.100964
+#> elapsed 0.002881 0.042    0.001 2.934119
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

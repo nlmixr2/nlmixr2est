@@ -200,7 +200,7 @@ foceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x559c6ee96ab0>
+#> <bytecode: 0x563060257ad0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -369,7 +369,7 @@ foceControl()
 #> [1] 100
 #> 
 #> $compress
-#> [1] TRUE
+#> [1] FALSE
 #> 
 #> $rxControl
 #> $scale

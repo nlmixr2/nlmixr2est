@@ -47,7 +47,7 @@ mod <- function ()  {
  })
 }
 
-mod |> rmEta("etaKa")
+mod %>% rmEta("etaKa")
 #>  
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
@@ -102,7 +102,7 @@ mod <- function ()  {
  })
 }
 
-mod |> rmEta(c("etaKa", "etaCl"))
+mod %>% rmEta(c("etaKa", "etaCl"))
 #>  
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode

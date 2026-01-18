@@ -112,7 +112,7 @@ foceiControl(
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
   badSolveObjfAdj = 100,
-  compress = TRUE,
+  compress = FALSE,
   rxControl = NULL,
   sigdigTable = NULL,
   fallbackFD = FALSE,

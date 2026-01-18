@@ -140,7 +140,7 @@ The nlmixr object has the following fields:
 | dataMergeLeft   |      | Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                        |
 | dataMergeRight  |      | Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                       |
 | dataUloq        |      | Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step                                                                                                                                               |
-| env             |      | This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence \$env                                                                                                                     |
+| env             |      | This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence (env                                                                                                                      |
 | runInfo         |      | This returns a list of all the warnings or fit information                                                                                                                                                                                                |
 | rxControl       |      | Integration options used to control rxode2                                                                                                                                                                                                                |
 | scaleInfo       |      | The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) |
@@ -761,9 +761,6 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6752
-#> → compress parHistData in nlmixr2 object, save 13984
-#> → compress phiM in nlmixr2 object, save 321288
 
 # }
 ```
