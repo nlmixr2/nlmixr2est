@@ -2447,7 +2447,7 @@ static inline double foceiOfv0(double *theta){
     ret = ret / op_focei.initObjective * op_focei.scaleObjectiveTo;
   }
   if (!op_focei.calcGrad){
-    if (op_focei.derivMethodSwitch){
+    if (op_focei.derivMethodSwitch) {
       double diff = std::fabs(op_focei.lastOfv-ret);
       if (op_focei.derivMethod==0 && diff <= op_focei.derivSwitchTol){
         op_focei.derivMethod=1;
