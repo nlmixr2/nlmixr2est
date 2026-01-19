@@ -1473,7 +1473,7 @@ rxUiDeparse.foceiControl <- function(object, var) {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
-      .methodIdx <- c("forward" = 0L, "central" = 2L, "switch" = 3L)
+      .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {
       if (object[[x]] == 0L) {
