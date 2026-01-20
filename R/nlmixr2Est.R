@@ -148,7 +148,7 @@ nlmixr2Est.default <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
-  ## rxode2::rxUnloadAll() # don't unload everything anymore
+  rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir=env)
   if (!exists("missingTable", envir=env)) {
