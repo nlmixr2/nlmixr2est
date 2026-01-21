@@ -29,14 +29,31 @@ Matthew L. Fidler
 ``` r
 # \donttest{
 
-# This is a nlmixr2 v3 fit
-fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
-fit <- readRDS(fit)
+if (requireNamespace("qs", quietly = TRUE)) {
 
-# While it prints well, it can't be used in all functions because
-# Language features (like +var()) are not supported in the v3 version
+  # This is a nlmixr2 v3 fit
+  fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
+  fit <- readRDS(fit)
 
-print(fit)
+  # While it prints well, it can't be used in all functions because
+  # Language features (like +var()) are not supported in the v3 version
+
+  print(fit)
+
+  try(rxSolve(fit)) # should error, but with try it will just display the error
+
+  # This function attempts to fix it by regenerating the rxode2 model with the
+  # new features
+
+  # This function also prints out the information on how this fit was created
+
+  fit <- nlmixr2fix(fit)
+
+  # Now solving and other functions work
+
+  rxSolve(fit)
+
+}
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -73,19 +90,10 @@ print(fit)
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, center <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>
-
-try(rxSolve(fit)) # should error, but with try it will just display the error
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Error in if (pred1$variance) { : argument is of length zero
-
-# This function attempts to fix it by regenerating the rxode2 model with the
-# new features
-
-# This function also prints out the information on how this fit was created
-
-fit <- nlmixr2fix(fit)
 #> # This function is meant to load nlmixr2 fits from other versions
 #> # To reproduce the fit, you need to use the same version of nlmixr2
 #> ## ==============================
@@ -142,10 +150,6 @@ fit <- nlmixr2fix(fit)
 #> 
 #> # If all else fails you can try to install the version of nlmixr2 used to create the fit
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
-
-# Now solving and other functions work
-
-rxSolve(fit)
 #>  
 #>  
 #> ℹ using original fit data for simulation

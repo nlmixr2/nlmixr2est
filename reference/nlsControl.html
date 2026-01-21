@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,7 +28,7 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>nlmixr2 defaults controls for nls</h1>
-      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v5.0.2/R/nls.R" class="external-link"><code>R/nls.R</code></a></small>
+      <small class="dont-index">Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/R/nls.R" class="external-link"><code>R/nls.R</code></a></small>
       <div class="d-none name"><code>nlsControl.Rd</code></div>
     </div>
 
@@ -80,7 +80,7 @@
 <span>  returnNls <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  addProp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"combined2"</span>, <span class="st">"combined1"</span><span class="op">)</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  compress <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  adjObf <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">4</span>,</span>
@@ -556,6 +556,8 @@ If not specified, then it matches the significant digits in the
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6752</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2368</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Uses port and respect parameter boundaries</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span> <span class="op">&lt;-</span> <span class="fu"><a href="nlmixr2.html">nlmixr</a></span><span class="op">(</span><span class="va">one.cmt</span>, <span class="fu">nlmixr2data</span><span class="fu">::</span><span class="va"><a href="https://nlmixr2.github.io/nlmixr2data/reference/theo_sd.html" class="external-link">theo_sd</a></span>, est<span class="op">=</span><span class="st">"nls"</span>, <span class="fu">nlsControl</span><span class="op">(</span>algorithm<span class="op">=</span><span class="st">"port"</span><span class="op">)</span><span class="op">)</span></span></span>
@@ -588,6 +590,8 @@ If not specified, then it matches the significant digits in the
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6752</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2352</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># You can access the underlying nls object with `$nls`</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nls</span></span></span>

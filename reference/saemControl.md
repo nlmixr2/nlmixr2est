@@ -34,7 +34,7 @@ saemControl(
   perNoCor = 0.75,
   perFixOmega = 0.1,
   perFixResid = 0.1,
-  compress = FALSE,
+  compress = TRUE,
   rxControl = NULL,
   sigdig = NULL,
   sigdigTable = NULL,

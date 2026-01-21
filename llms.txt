@@ -264,6 +264,8 @@ plot(fit)
   : nlmixr2 optim defaults
 - [`posthocControl()`](https://nlmixr2.github.io/nlmixr2est/reference/posthocControl.md)
   : Control options for the posthoc estimation method
+- [`predict(`*`<nlmixr2FitCore>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/predict.nlmixr2FitCore.md)
+  : Predict method for nlmixr2 fit core objects
 - [`print(`*`<saemFit>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/print.saemFit.md)
   : Print an SAEM model fit summary
 - [`residuals(`*`<nlmixr2FitData>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/residuals.nlmixr2FitData.md)

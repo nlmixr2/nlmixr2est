@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">5.0.2.9000</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -28,9 +28,18 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v5.0.2/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
+<ul><li><p>Add <code>predict(fit, level="ipred")</code>, <code>predict(fit,   level="individual")</code> or <code>predict(fit, level=1)</code> to predict individual fits (with possibly a new dataset).</p></li>
+<li><p>Change test files to <code>.rds</code> files</p></li>
+<li><p>Drop magrittr <code>%&gt;%</code> in favor of <code>|&gt;</code>.</p></li>
+<li><p><strong>Breaking change:</strong> Minimum R version increased from 4.0 to 4.1.0. This change is required to support the native pipe operator <code>|&gt;</code>. Users on R &lt; 4.1.0 will need to upgrade R to install this version of nlmixr2est.</p></li>
+<li><p>Turn back on object compress and use roxde2’s default for compression.</p></li>
+<li><p>Bug fixes for deparsing nlmixr2 control objects</p></li>
+</ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="5.0.0" id="nlmixr2est-500">nlmixr2est 5.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-500"></a></h2>
 <ul><li><p>Remove <code>qs</code> and change to <code>qs2</code>. This breaks backward compatibility.</p></li>

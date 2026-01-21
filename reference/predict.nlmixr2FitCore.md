@@ -95,7 +95,6 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6752
 
 # Population predictions
 ppred <- predict(fit, theo_sd, level="population")
