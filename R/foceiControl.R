@@ -894,7 +894,7 @@ foceiControl <- function(sigdig = 3, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
-                         compress=TRUE, #
+                         compress=FALSE, #
                          rxControl=NULL,
                          sigdigTable=NULL,
                          fallbackFD=FALSE,
@@ -1466,11 +1466,13 @@ rxUiDeparse.foceiControl <- function(object, var) {
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-    } else if (x %in% c("optimHessType")) {
+    } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
-    } else if (x %in% c("derivMethod", "covDerivMethod", "optimHessType", "optimHessCovType",
-                        "eventType")) {
+    } else if (x == "eventType") {
+      .methodIdx <- c("central" = 2L, "forward" = 3L)
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {

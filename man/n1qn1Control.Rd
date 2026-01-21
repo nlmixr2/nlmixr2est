@@ -31,7 +31,7 @@ n1qn1Control(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
   adjObf = TRUE,
   ci = 0.95,

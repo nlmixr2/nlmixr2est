@@ -68,7 +68,7 @@ uobyqaControl <- function(npt=NULL,
                           literalFix=TRUE,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=TRUE,
+                          calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
