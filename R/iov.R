@@ -387,8 +387,6 @@ nlmixr2iovVarSd <- function(val) {
       # Fix eta objective function; Maybe save the full one for
       # passing the etaMat information to the next estimation method
 
-      browser()
-
       # Now fix the random effect matrix
       .ranef <- ret$env$ranef
 
