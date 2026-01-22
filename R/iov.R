@@ -300,56 +300,7 @@ nlmixr2iovVarSd <- function(val) {
       .omega <- ret$env$omega
       .d1 <- dimnames(.omega)[[1]]
       .d1 <- .d1[!(.d1 %in% .uiIovEnv$iovDrop)]
-
       assign("omega", .ui$omega, envir = ret$env)
-
-      .phiC <- ret$env$phiC
-      .phiC <- lapply(seq_along(.phiC),
-                      function(i) {
-                        .m <- .phiC[[i]]
-                        .m <- .m[.d1, .d1, drop=FALSE]
-                        .m
-                      })
-      names(.phiC) <- names(ret$env$phiC)
-      assign("phiC", .phiC, envir = ret$env)
-
-
-      .phiH <- ret$env$phiH
-      .phiH <- lapply(seq_along(.phiH),
-                      function(i) {
-                        .m <- .phiH[[i]]
-                        .m <- .m[.d1, .d1, drop=FALSE]
-                        .m
-                      })
-      names(.phiH) <- names(ret$env$phiH)
-
-      assign("phiH", .phiH, envir = ret$env)
-
-      # Fix shrinkage
-
-      .shrink <- ret$env$shrink
-      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
-      .shrink <- .shrink[,-.w]
-
-      assign("shrink", .shrink, envir = ret$env)
-
-      # Fix eta objective function; Maybe save the full one for
-      # passing the etaMat information to the next estimation method
-
-      .etaObf <- ret$env$etaObf
-
-      .w <- which(names(.etaObf) %in% .uiIovEnv$iovDrop)
-      .etaObf <- .etaObf[,-.w]
-      assign("etaObf", .etaObf, envir = ret$env)
-
-      # Now fix the random effect matrix
-      .ranef <- ret$env$ranef
-
-      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
-      .iov <- .ranef
-      .ranef <- .ranef[,-.w]
-      assign("ranef", .ranef, envir = ret$env)
-
 
       .omega <- .ui$omega
       .n <- names(.omega)
@@ -358,6 +309,93 @@ nlmixr2iovVarSd <- function(val) {
         .omega[[x]]
       })
       names(.omega) <- .n
+
+      .nid <- length(ret$env$eta$ID)
+
+      # Fix shrinkage, now split out by iov variable
+      .shrink <- ret$env$shrink
+      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
+      .shrink0 <- .shrink[,-.w]
+      .shrinkN <- cbind(data.frame(type=row.names(.shrink0)),
+                        .shrink)
+      .shrink1 <- lapply(.n, function(var) {
+        .cur <- .omega[[var]]
+        .dn <- dimnames(.cur)[[1]]
+        do.call(`cbind`,
+                lapply(.dn, function(d) {
+                  .w <- c(which(grepl(d, names(.shrinkN), fixed=TRUE)))
+                  .curd <- .shrinkN[,.w]
+
+                  # n = the same for each eta (#id)
+                  # mean = sum(mean)/n_means
+                  # var = sum(var)/n_vars
+                  # sd = sqrt(var)
+                  # skewness = sum(skewness)/n_skewness
+                  # kurtosis = sum(kurtosis+3)/n_kurtosis - 3
+                  .nv <- length(.curd["var",])
+                  .var <- sum(.curd["var", ])/.nv
+
+                  .mean <- sum(.curd["mean",])/.nv
+                  .sd <- sqrt(.var)
+
+                  .tv <- .mean*sqrt(.nid*.nv)/.sd
+
+                  .curi <- data.frame(v=c(.mean,
+                                          .var,
+                                          .sd,
+                                          sum(.curd["skewness",])/.nv,
+                                          sum(.curd["kurtosis",] + 3)/.nv - 3,
+                                          (1-.var/.est[d])*100, # var shrinkage
+                                          (1 - sqrt(.var)/sqrt(.est[d]))*100, # sd shrinkage
+                                          .tv,
+                                          2*pt(-abs(.tv), df = (.nid*.nv) -1)
+                                          ),
+                                      row.names=row.names(.curd))
+                  names(.curi) <- d
+                  .curd <- cbind(.curd, .curi)
+                }))
+      })
+      names(.shrink1) <- .n
+      .shrink <- c(list(id=.shrink0),
+                   .shrink1)
+      assign("shrink", .shrink, envir = ret$env)
+
+
+      ## .phiC <- ret$env$phiC
+      ## .phiC <- lapply(seq_along(.phiC),
+      ##                 function(i) {
+      ##                   .m <- .phiC[[i]]
+      ##                   .m <- .m[.d1, .d1, drop=FALSE]
+      ##                   .m
+      ##                 })
+      ## names(.phiC) <- names(ret$env$phiC)
+      ## assign("phiC", .phiC, envir = ret$env)
+
+
+      ## .phiH <- ret$env$phiH
+      ## .phiH <- lapply(seq_along(.phiH),
+      ##                 function(i) {
+      ##                   .m <- .phiH[[i]]
+      ##                   .m <- .m[.d1, .d1, drop=FALSE]
+      ##                   .m
+      ##                 })
+      ## names(.phiH) <- names(ret$env$phiH)
+
+      ## assign("phiH", .phiH, envir = ret$env)
+
+
+      # Fix eta objective function; Maybe save the full one for
+      # passing the etaMat information to the next estimation method
+
+      browser()
+
+      # Now fix the random effect matrix
+      .ranef <- ret$env$ranef
+
+      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
+      .iov <- .ranef
+      .ranef <- .ranef[,-.w]
+      assign("ranef", .ranef, envir = ret$env)
 
       .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
