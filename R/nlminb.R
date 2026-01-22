@@ -343,7 +343,7 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlminbControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
+  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlminbControl", control, envir=env)
 }
 

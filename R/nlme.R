@@ -387,7 +387,7 @@ nlmeControl <- nlmixr2NlmeControl
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlmeControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
+  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlmeControl", control, envir=env)
 }
 

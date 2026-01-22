@@ -224,7 +224,7 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.n1qn1Control <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
+  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("n1qn1Control", control, envir=env)
 }
 
