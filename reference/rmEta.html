@@ -88,33 +88,7 @@
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> parameter labels from comments are typically ignored in non-interactive mode</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Need to run with the source intact to parse comments</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">rxode2-based solved PK 1-compartment model</span> <span style="color: #00BBBB;">──────────────────────────────────</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  ── <span style="font-weight: bold;">Initalization:</span> ──  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Fixed Effects</span> (<span style="color: #0000BB; font-weight: bold;">$theta</span>): </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>    lka    lcl    lvc propSd </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   0.45   1.00   3.45   0.50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">States</span> (<span style="color: #0000BB; font-weight: bold;">$state</span> or <span style="color: #0000BB; font-weight: bold;">$stateDf</span>): </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   Compartment Number Compartment Name Rate   Off Internal #</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1                  1            depot TRUE FALSE          1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2                  2          central TRUE FALSE          2</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  ── <span style="font-weight: bold;">Model (Normalized Syntax):</span> ── </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> function() {</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     description &lt;- "One compartment PK model with linear clearance"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     ini({</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lka &lt;- 0.45</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lcl &lt;- 1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lvc &lt;- 3.45</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         propSd &lt;- c(0, 0.5)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     })</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     model({</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         ka &lt;- exp(lka)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         cl &lt;- exp(lcl)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         vc &lt;- exp(lvc)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         Cc &lt;- linCmt()</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         Cc ~ prop(propSd)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     })</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
+<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in zeroEtasLookup[[.n]]:</span> subscript out of bounds</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># This can also remove more than one eta</span></span></span>
 <span class="r-in"><span></span></span>
@@ -143,42 +117,7 @@
 <span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> parameter labels from comments are typically ignored in non-interactive mode</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> Need to run with the source intact to parse comments</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  <span style="color: #00BBBB;">──</span> <span style="font-weight: bold;">rxode2-based solved PK 1-compartment model</span> <span style="color: #00BBBB;">──────────────────────────────────</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  ── <span style="font-weight: bold;">Initalization:</span> ──  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Fixed Effects</span> (<span style="color: #0000BB; font-weight: bold;">$theta</span>): </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>    lka    lcl    lvc propSd </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   0.45   1.00   3.45   0.50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Omega</span> (<span style="color: #0000BB; font-weight: bold;">$omega</span>): </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>       etaVc</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> etaVc   0.3</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">States</span> (<span style="color: #0000BB; font-weight: bold;">$state</span> or <span style="color: #0000BB; font-weight: bold;">$stateDf</span>): </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   Compartment Number Compartment Name Rate   Off Internal #</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1                  1            depot TRUE FALSE          1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2                  2          central TRUE FALSE          2</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  ── <span style="font-weight: bold;">μ-referencing (</span><span style="color: #0000BB; font-weight: bold;">$muRefTable</span><span style="font-weight: bold;">):</span> ──  </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   theta   eta level</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1   lvc etaVc    id</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>  ── <span style="font-weight: bold;">Model (Normalized Syntax):</span> ── </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> function() {</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     description &lt;- "One compartment PK model with linear clearance"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     ini({</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lka &lt;- 0.45</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lcl &lt;- 1</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         lvc &lt;- 3.45</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         propSd &lt;- c(0, 0.5)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         etaVc ~ 0.3</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     })</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     model({</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         ka &lt;- exp(lka)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         cl &lt;- exp(lcl)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         vc &lt;- exp(lvc + etaVc)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         Cc &lt;- linCmt()</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         Cc ~ prop(propSd)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     })</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
+<span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error in zeroEtasLookup[[.n]]:</span> subscript out of bounds</span>
 <span class="r-in"><span></span></span>
 </code></pre></div>
     </div>

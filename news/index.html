@@ -33,7 +33,8 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>Add <code>predict(fit, level="ipred")</code>, <code>predict(fit,   level="individual")</code> or <code>predict(fit, level=1)</code> to predict individual fits (with possibly a new dataset).</p></li>
+<ul><li><p>Optimize <code>%in%</code> operations throughout the codebase for better performance by replacing with <code><a href="https://rdrr.io/r/base/match.html" class="external-link">match()</a></code> for O(n) instead of O(n*m) complexity. This significantly improves performance in iterative algorithms like SAEM and FOCEI.</p></li>
+<li><p>Add <code>predict(fit, level="ipred")</code>, <code>predict(fit,   level="individual")</code> or <code>predict(fit, level=1)</code> to predict individual fits (with possibly a new dataset).</p></li>
 <li><p>Change test files to <code>.rds</code> files</p></li>
 <li><p>Drop magrittr <code>%&gt;%</code> in favor of <code>|&gt;</code>.</p></li>
 <li><p><strong>Breaking change:</strong> Minimum R version increased from 4.0 to 4.1.0. This change is required to support the native pipe operator <code>|&gt;</code>. Users on R &lt; 4.1.0 will need to upgrade R to install this version of nlmixr2est.</p></li>

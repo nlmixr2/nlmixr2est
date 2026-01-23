@@ -441,21 +441,21 @@ fit2 <- nlmixr(mod, dsn, est="bobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -674.3924 1169.485 1184.208      -581.7423        26340.31         474.015
+#>          OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -712.802 1131.075 1145.798      -562.5375        1472.346        113.2287
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>          setup table compress  other
-#> elapsed 0.0036 0.063    0.001 3.0264
+#>            setup table compress    other
+#> elapsed 0.003494 0.046    0.001 2.961506
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.4907 0.1995 40.65 -0.4907 (-0.8817, -0.09976)                    
-#> Em    12.81  21.53   168          12.81 (-29.38, 55)                    
-#> E50    6.22  6.537 105.1        6.22 (-6.592, 19.03)                    
-#> g         2  FIXED FIXED                           2                    
+#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.7967 0.2254 28.29 -0.7967 (-1.238, -0.3549)                    
+#> Em    7.725  4.925 63.76     7.725 (-1.928, 17.38)                    
+#> E50   3.756    1.9 50.58     3.756 (0.03271, 7.48)                    
+#> g         2  FIXED FIXED                         2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -464,17 +464,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0419     1 -0.968 -0.490
-#> 2 1     0.0550     0 -0.478 -0.490
-#> 3 1     0.0608     0 -0.478 -0.490
+#> 1 1     0.0467     0 -0.372 -0.796
+#> 2 1     0.0485     0 -0.373 -0.795
+#> 3 1     0.0496     0 -0.373 -0.795
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with
 
 fit2$bobyqa
-#> parameter estimates: -0.490746190164307, 12.810211220319, 6.22025602981134 
-#> objective: 581.742330955357 
-#> number of function evaluations: 987 
+#> parameter estimates: -0.796692520028891, 7.72456255254473, 3.75639798523849 
+#> objective: 562.53753995178 
+#> number of function evaluations: 440 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

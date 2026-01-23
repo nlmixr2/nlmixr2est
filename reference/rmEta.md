@@ -52,33 +52,7 @@ mod |> rmEta("etaKa")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  ── rxode2-based solved PK 1-compartment model ────────────────────────────────── 
-#>  ── Initalization: ──  
-#> Fixed Effects ($theta): 
-#>    lka    lcl    lvc propSd 
-#>   0.45   1.00   3.45   0.50 
-#> 
-#> States ($state or $stateDf): 
-#>   Compartment Number Compartment Name Rate   Off Internal #
-#> 1                  1            depot TRUE FALSE          1
-#> 2                  2          central TRUE FALSE          2
-#>  ── Model (Normalized Syntax): ── 
-#> function() {
-#>     description <- "One compartment PK model with linear clearance"
-#>     ini({
-#>         lka <- 0.45
-#>         lcl <- 1
-#>         lvc <- 3.45
-#>         propSd <- c(0, 0.5)
-#>     })
-#>     model({
-#>         ka <- exp(lka)
-#>         cl <- exp(lcl)
-#>         vc <- exp(lvc)
-#>         Cc <- linCmt()
-#>         Cc ~ prop(propSd)
-#>     })
-#> }
+#> Error in zeroEtasLookup[[.n]]: subscript out of bounds
 
 # This can also remove more than one eta
 
@@ -107,40 +81,5 @@ mod |> rmEta(c("etaKa", "etaCl"))
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
-#>  ── rxode2-based solved PK 1-compartment model ────────────────────────────────── 
-#>  ── Initalization: ──  
-#> Fixed Effects ($theta): 
-#>    lka    lcl    lvc propSd 
-#>   0.45   1.00   3.45   0.50 
-#> 
-#> Omega ($omega): 
-#>       etaVc
-#> etaVc   0.3
-#> 
-#> States ($state or $stateDf): 
-#>   Compartment Number Compartment Name Rate   Off Internal #
-#> 1                  1            depot TRUE FALSE          1
-#> 2                  2          central TRUE FALSE          2
-#>  ── μ-referencing ($muRefTable): ──  
-#>   theta   eta level
-#> 1   lvc etaVc    id
-#> 
-#>  ── Model (Normalized Syntax): ── 
-#> function() {
-#>     description <- "One compartment PK model with linear clearance"
-#>     ini({
-#>         lka <- 0.45
-#>         lcl <- 1
-#>         lvc <- 3.45
-#>         propSd <- c(0, 0.5)
-#>         etaVc ~ 0.3
-#>     })
-#>     model({
-#>         ka <- exp(lka)
-#>         cl <- exp(lcl)
-#>         vc <- exp(lvc + etaVc)
-#>         Cc <- linCmt()
-#>         Cc ~ prop(propSd)
-#>     })
-#> }
+#> Error in zeroEtasLookup[[.n]]: subscript out of bounds
 ```

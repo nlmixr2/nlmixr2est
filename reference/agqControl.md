@@ -230,7 +230,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5596909be070>
+#> <bytecode: 0x563619587f78>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -863,6 +863,13 @@ fit <- nlmixr(f, r, est="agq")
 #>  
 #>  
 #> ✔ done
+#> rxode2 5.0.1.9000 using 2 threads (see ?getRxThreads)
+#>   no cache: create with `rxCreateCache()`
+#> 
+#> Attaching package: ‘rxode2’
+#> The following objects are masked from ‘package:nlmixr2est’:
+#> 
+#>     boxCox, yeoJohnson
 #> → Calculating residuals/tables
 #> ✔ done
 
@@ -954,6 +961,29 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of full model...
+#> ✔ done
+#> → calculate jacobian
+#> → calculate ∂(f)/∂(η)
+#> → calculate ∂(R²)/∂(η)
+#> → finding duplicate expressions in inner model...
+#> → optimizing duplicate expressions in inner model...
+#> → finding duplicate expressions in EBE model...
+#> → optimizing duplicate expressions in EBE model...
+#> → compiling inner model...
+#>  
+#>  
+#> ✔ done
+#> → finding duplicate expressions in FD model...
+#> → compiling EBE model...
+#>  
+#>  
+#> ✔ done
+#> → compiling events FD model...
+#>  
+#>  
+#> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
 
