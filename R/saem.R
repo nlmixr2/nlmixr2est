@@ -184,7 +184,8 @@
     if (length(timeVaryingCovariates) > 0) {
       # Drop time-varying covariates
       # First get the time varying covariates
-      .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
+      # Optimized: Use match() instead of which() + %in%
+      .w <- which(!is.na(match(.muRefCovariateDataFrame$covariate, timeVaryingCovariates)))
       # next find out the theta for the phi expression
       .covPar <- .muRefCovariateDataFrame[.w, "theta"]
       .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)

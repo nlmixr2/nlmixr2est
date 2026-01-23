@@ -47,7 +47,9 @@ rxUiGet.thetaMixIndex <- function(x, ...) {
   .ui <- x[[1]]
   .theta <- .ui$theta
   if (length(.ui$mixProbs) > 0) {
-    which(names(.ui$theta) %in% .ui$mixProbs)
+    # Optimized: Use match() instead of which() + %in%
+    .m <- match(.ui$mixProbs, names(.ui$theta))
+    .m[!is.na(.m)]
   } else {
     integer(0)
   }

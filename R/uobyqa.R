@@ -89,7 +89,8 @@ uobyqaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  # Optimized: Use direct comparison instead of %in% for single element
+  .bad <- .bad[.bad != "genRxControl"]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
