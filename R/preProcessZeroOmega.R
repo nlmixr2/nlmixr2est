@@ -20,36 +20,26 @@
 #' @param x expression
 #' @param muRefDataFrame rxode2 muRefDataFRame
 #' @param zeroEtas rxode2 zero etas that will be dropped
-#' @param zeroEtasLookup optional pre-computed lookup table for O(1) access
+#' @param zeroEtasLookup pre-computed lookup table for O(1) access (required)
 #' @return expression with interesting mus re-inserted
 #' @author Matthew L. Fidler
 #' @noRd
-.addBackInterestingMuEtas <- function(x, muRefDataFrame, zeroEtas, zeroEtasLookup = NULL) {
+.addBackInterestingMuEtas <- function(x, muRefDataFrame, zeroEtas, zeroEtasLookup) {
   if (is.call(x)) {
     return(as.call(lapply(x, .addBackInterestingMuEtas, muRefDataFrame=muRefDataFrame,
                           zeroEtas=zeroEtas, zeroEtasLookup=zeroEtasLookup)))
   } else if (is.name(x)) {
     .n <- as.character(x)
-    # Optimized: Use pre-computed lookup table for O(1) access if available
-    if (!is.null(zeroEtasLookup)) {
-      if (isTRUE(zeroEtasLookup[[.n]])) {
-        return(0)
-      }
-    } else if (.n %in% zeroEtas) {
+    # Optimized: Use pre-computed lookup table for O(1) access
+    if (isTRUE(zeroEtasLookup[[.n]])) {
       return(0)
     }
     .w <- which(muRefDataFrame$theta == .n)
     if (length(.w) == 1L) {
       .mu <- muRefDataFrame[.w, ]
       .eta <- .mu$eta
-      # Optimized: Use pre-computed lookup table for O(1) access if available
-      if (!is.null(zeroEtasLookup)) {
-        if (isTRUE(zeroEtasLookup[[.eta]])) {
-          return(x)
-        } else {
-          return(str2lang(paste0(.mu$theta, "+", .mu$eta)))
-        }
-      } else if (.eta %in% zeroEtas) {
+      # Optimized: Use pre-computed lookup table for O(1) access
+      if (isTRUE(zeroEtasLookup[[.eta]])) {
         return(x)
       } else {
         return(str2lang(paste0(.mu$theta, "+", .mu$eta)))
