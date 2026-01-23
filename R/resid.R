@@ -103,9 +103,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     )
   # Fallback methods based on discussion in
   # https://github.com/nlmixr2/nlmixr2est/issues/254
-  if (currentOdeMethod %in% "dop853") {
+  # Optimized: Use == for single element comparison instead of %in%
+  if (currentOdeMethod == "dop853") {
     allOdeMethods <- "liblsoda"
-  } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
+  } else if (currentOdeMethod == "liblsoda" || currentOdeMethod == "lsoda") {
     allOdeMethods <- "dop853"
   } # otherwise, use all the methods
   odeMethods <-

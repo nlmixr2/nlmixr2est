@@ -47,7 +47,12 @@ rxUiGet.thetaMixIndex <- function(x, ...) {
   .ui <- x[[1]]
   .theta <- .ui$theta
   if (length(.ui$mixProbs) > 0) {
-    which(names(.ui$theta) %in% .ui$mixProbs)
+    # Optimized: Use match() instead of which() + %in%
+    # match(x, y) returns indices in y where x elements are found
+    # This is equivalent to which(y %in% x) but faster
+    .m <- match(.ui$mixProbs, names(.ui$theta))
+    # Return only non-NA indices (where matches were found)
+    .m[!is.na(.m)]
   } else {
     integer(0)
   }

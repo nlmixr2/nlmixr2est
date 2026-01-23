@@ -629,7 +629,8 @@ rxUiGet.saemLogEta <- function(x, ...) {
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
   .ce <- .ui$muRefCurEval
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
+  # Optimized: Use match() instead of %in% for filtering
+  .thetas <- .thetas[is.na(match(.thetas, .cov$covariateParameter))]
   vapply(.thetas, function(x) {
     .w <- which(.ce$parameter == x)
     if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
@@ -665,13 +666,15 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
                    .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
+  # Optimized: Pre-compute lookup table for .cov$covariateParameter to reuse
+  .covParams <- .cov$covariateParameter
+  .est <- .est[is.na(match(names(.est), .covParams))]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
   .theta <- .fixed
-  .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
-  .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
+  .theta <- .theta[is.na(match(names(.theta), .covParams))]
+  .logEta <- .logEta[is.na(match(names(.logEta), .covParams))]
   .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
   .ret <- vapply(seq_along(.logEta),

@@ -322,13 +322,17 @@
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params
   .pars <- setNames(rep(1.1, length(.pars)), .pars)
-  .pars <- .pars[!(names(.pars) %in% inPars)]
+  .pars <- .pars[is.na(match(names(.pars), inPars))]
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
   dat <- .as.data.frame(dat[, -6])
+  # Optimized: Create lookup table before vapply call
+  # For datasets with many columns, this provides O(1) lookups instead of O(m) per column
+  # Trade-off: overhead of creating lookup is negligible compared to vapply iterations
+  .inParsLookup <- setNames(rep(TRUE, length(inPars)), inPars)
   names(dat) <- vapply(names(dat), function(n) {
-    if (n %in% inPars) return(n)
+    if (isTRUE(.inParsLookup[[n]])) return(n)
     return(toupper(n))
   }, character(1), USE.NAMES = FALSE)
 
