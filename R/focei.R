@@ -30,12 +30,9 @@ is.latex <- function() {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn,
-                        control = list(npt=.ctl$npt,
-                                       rhobeg=.ctl$rhobeg,
-                                       rhoend=.ctl$rhoend,
-                                       iprint=.ctl$iprint,
-                                       maxfun=.ctl$maxfun),
+                        control = .ctl,
                         lower = lower,
                         upper = upper
                         )
@@ -47,28 +44,15 @@ is.latex <- function() {
 }
 
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .control <- list(trace=control$trace,
-                   factr=control$factr,
-                   pgtol=control$pgtol,
-                   abstol=control$abstol,
-                   reltol=control$reltol,
-                   lmm=control$lmm,
-                   maxit=control$maxit,
-                   iprint=control$iprint)
+  .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
+  .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
   .ret$x <- .ret$par
   .ret
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .control <- list(trace=control$trace,
-                   factr=control$factr,
-                   pgtol=control$pgtol,
-                   abstol=control$abstol,
-                   reltol=control$reltol,
-                   lmm=control$lmm,
-                   maxit=control$maxit,
-                   iprint=control$iprint)
+  .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
   .ret <- optim(
@@ -107,18 +91,12 @@ is.latex <- function() {
 }
 
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- list(eval.max=control$eval.max,
-               iter.max=control$iter.max,
-               trace=0,
-               abs.tol=control$abstol,
-               rel.tol=control$reltol,
-               x.tol=control$abstol,
-               xf.tol=control$abstol,
-               step.min=control$step.min,
-               step.max=control$step.max,
-               sing.tol=control$sing.tol,
-               scale.inti=control$scale.inti,
-               diff.g=control$diff.g)
+  .ctl <- control
+  .ctl <- .ctl[names(.ctl) %in% c(
+    "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
+    "scale.inti", "diff.g"
+  )]
+  .ctl$trace <- 0
   .ret <- stats::nlminb(
     start = par, objective = fn, gradient = gr, hessian = NULL, control = .ctl,
     lower = lower, upper = upper
