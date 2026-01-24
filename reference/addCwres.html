@@ -116,15 +116,67 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> calculate uninformed etas</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> done</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Error in .inParsLookup[[n]] : subscript out of bounds</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Error : subscript out of bounds</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> params:	tka	tcl	tv	V(eta.ka)	V(eta.cl)	V(eta.v)	add.sd</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> rxode2 5.0.1.9000 using 2 threads (see ?getRxThreads)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>   no cache: create with `rxCreateCache()`</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Attaching package: ‘rxode2’</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> The following objects are masked from ‘package:nlmixr2est’:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>     boxCox, yeoJohnson</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Calculating covariance matrix</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of saem model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in saem predOnly model 0...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in saem predOnly model 1...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in saem predOnly model 2...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6584</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 9408</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress phiM in nlmixr2 object, save 312896</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "Error : subscript out of bounds\n"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"class")</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "try-error"</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> attr(,"condition")</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;simpleError: subscript out of bounds&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">SAEM </span><span style="color: #555555; font-weight: bold; font-style: italic;">OBJF by FOCEi approximation</span><span style="font-weight: bold;"> ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  Gaussian/Laplacian Likelihoods: AIC() or <span style="color: #0000BB; font-weight: bold;">$objf</span> etc. </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  FOCEi CWRES &amp; Likelihoods: addCwres() </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup covariance  saem table compress    other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002025   0.020034 3.068 0.092    0.048 3.109941</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>               0.46  0.195 42.3       1.58 (1.08, 2.32)     71.0    <span style="color: #BB0000; font-weight: bold;">-0.606%</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.01 0.0838 8.31       2.74 (2.33, 3.23)     27.0      4.04% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.4      9.53% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.695                               0.695                     </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">linFim</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   No correlations in between subject variability (BSV) matrix</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Full BSV covariance (<span style="color: #0000BB; font-weight: bold;">$omega</span>) or correlation (<span style="color: #0000BB; font-weight: bold;">$omegaR</span>; diagonals=SDs) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Distribution stats (mean/skewness/kurtosis/p-value) available in <span style="color: #0000BB; font-weight: bold;">$shrink</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Information about run found (<span style="color: #0000BB; font-weight: bold;">$runInfo</span>):</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    • 'one.cmt' has the following user-defined boundaries: tcl which are ignored in 'saem' </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Fit Data (object is a modified </span><span style="color: #0000BB; font-weight: bold;">tibble</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 132 × 18</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1      0     0.74  0     0.74   0     0.74   1.06  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  320.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1      0.25  2.84  3.27 -<span style="color: #BB0000;">0.431</span>  3.84 -<span style="color: #BB0000;">0.996</span> -<span style="color: #BB0000;">1.43</span>  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  208.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1      0.57  6.57  5.85  0.722  6.77 -<span style="color: #BB0000;">0.201</span> -<span style="color: #BB0000;">0.290</span> 0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  119.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 129 more rows</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 6 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   dosenum &lt;dbl&gt;</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># even though you may have forgotten to add the cwres, you can add it to the data.frame:</span></span></span>
 <span class="r-in"><span></span></span>
@@ -132,6 +184,69 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-in"><span>  <span class="va">f</span> <span class="op">&lt;-</span> <span class="kw"><a href="https://rdrr.io/r/base/try.html" class="external-link">try</a></span><span class="op">(</span><span class="fu">addCwres</span><span class="op">(</span><span class="va">f</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">f</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → loading into <span style="color: #0000BB;">symengine</span> environment...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → pruning branches (`if`/`else`) of full model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate jacobian</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(f)/∂(η)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → calculate ∂(R²)/∂(η)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in inner model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in inner model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → optimizing duplicate expressions in EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling inner model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → finding duplicate expressions in FD model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling EBE model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compiling events FD model...</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">SAEM </span><span style="color: #555555; font-weight: bold; font-style: italic;">OBJF by FOCEi approximation</span><span style="font-weight: bold;"> ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> FOCEi 116.8908 373.4905 393.6702      -179.7453        19.16562        1.415804</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            setup covariance  saem table compress    other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002025   0.020034 3.068 0.092    0.048 3.109941</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>               0.46  0.195 42.3       1.58 (1.08, 2.32)     71.0    <span style="color: #BB0000; font-weight: bold;">-0.606%</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.01 0.0838 8.31       2.74 (2.33, 3.23)     27.0      4.04% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0453 1.31       31.6 (28.9, 34.6)     13.4      9.53% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.695                               0.695                     </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">linFim</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   No correlations in between subject variability (BSV) matrix</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Full BSV covariance (<span style="color: #0000BB; font-weight: bold;">$omega</span>) or correlation (<span style="color: #0000BB; font-weight: bold;">$omegaR</span>; diagonals=SDs) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Distribution stats (mean/skewness/kurtosis/p-value) available in <span style="color: #0000BB; font-weight: bold;">$shrink</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Information about run found (<span style="color: #0000BB; font-weight: bold;">$runInfo</span>):</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    • 'one.cmt' has the following user-defined boundaries: tcl which are ignored in 'saem' </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Fit Data (object is a modified </span><span style="color: #0000BB; font-weight: bold;">tibble</span><span style="font-weight: bold;">): ──</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 132 × 22</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1      0     0.74  0     0.74   0     0.74   1.06  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  320.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1      0.25  2.84  3.27 -<span style="color: #BB0000;">0.431</span>  3.84 -<span style="color: #BB0000;">0.996</span> -<span style="color: #BB0000;">1.43</span>  0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  208.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1      0.57  6.57  5.85  0.722  6.77 -<span style="color: #BB0000;">0.201</span> -<span style="color: #BB0000;">0.290</span> 0.088<span style="text-decoration: underline;">3</span> -<span style="color: #BB0000;">0.477</span> -<span style="color: #BB0000;">0.084</span><span style="color: #BB0000; text-decoration: underline;">6</span>  119.</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 129 more rows</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 10 more variables: central &lt;dbl&gt;, ka &lt;dbl&gt;, cl &lt;dbl&gt;, v &lt;dbl&gt;, tad &lt;dbl&gt;,</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;">#   dosenum &lt;dbl&gt;, WRES &lt;dbl&gt;, CPRED &lt;dbl&gt;, CRES &lt;dbl&gt;, CWRES &lt;dbl&gt;</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Note this also adds the FOCEi objective function</span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>

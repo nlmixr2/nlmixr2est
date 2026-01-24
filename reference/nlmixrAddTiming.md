@@ -73,16 +73,28 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> Error in .inParsLookup[[n]] : subscript out of bounds
-#> Error: subscript out of bounds
+#> params:  tka tcl tv  V(eta.ka)   V(eta.cl)   V(eta.v)    add.sd
+#> Calculating covariance matrix
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of saem model...
+#> ✔ done
+#> → finding duplicate expressions in saem predOnly model 0...
+#> → finding duplicate expressions in saem predOnly model 1...
+#> → finding duplicate expressions in saem predOnly model 2...
+#> ✔ done
+#>  
+#>  
+#> → Calculating residuals/tables
+#> ✔ done
+#> → compress origData in nlmixr2 object, save 6584
+#> → compress parHistData in nlmixr2 object, save 9408
+#> → compress phiM in nlmixr2 object, save 312896
 
 # will add to the current setup
 nlmixrAddTiming(fit, "setup", 3)
-#> Error: object 'fit' not found
 
 # Add a new item to the timing dataframe
 nlmixrAddTiming(fit, "new", 3)
-#> Error: object 'fit' not found
 
 # }
 ```

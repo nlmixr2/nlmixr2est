@@ -442,20 +442,20 @@ print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -712.4364 1131.441 1146.164      -562.7203        4468.831        215.8905
+#> lPop -709.5786 1134.298 1149.022      -564.1492        398.5992        65.36576
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table compress    other
-#> elapsed 0.003049 0.043    0.001 2.343951
+#>            setup table    other
+#> elapsed 0.003043 0.052 2.375957
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.6341 0.2219    35 -0.6341 (-1.069, -0.1992)                    
-#> Em    9.254  8.805 95.15     9.254 (-8.004, 26.51)                    
-#> E50   4.214   2.87 68.11      4.214 (-1.412, 9.84)                    
-#> g         2  FIXED FIXED                         2                    
+#>       Est.     SE  %RSE  Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.742 0.2508  33.8 -0.742 (-1.233, -0.2505)                    
+#> Em   5.607  2.389 42.62    5.607 (0.9237, 10.29)                    
+#> E50  2.752  1.194  43.4     2.752 (0.411, 5.093)                    
+#> g        2  FIXED FIXED                        2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -464,17 +464,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0430     1 -1.06  -0.633
-#> 2 1     0.0472     0 -0.426 -0.633
-#> 3 1     0.0608     0 -0.426 -0.632
+#> 1 1     0.0165     0 -0.390 -0.742
+#> 2 1     0.0363     0 -0.390 -0.741
+#> 3 1     0.0655     0 -0.390 -0.739
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with
 
 fit2$newuoa
-#> parameter estimates: -0.634144818088236, 9.25355169444445, 4.2142250514742 
-#> objective: 562.720340392356 
-#> number of function evaluations: 336 
+#> parameter estimates: -0.741973324254634, 5.60650198214242, 2.75187274339047 
+#> objective: 564.149223087627 
+#> number of function evaluations: 328 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters
