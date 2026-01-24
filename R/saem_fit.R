@@ -327,9 +327,7 @@
   opt$.pars <- .pars
   ## opt$.dat <- dat;
   dat <- .as.data.frame(dat[, -6])
-  # Optimized: Create lookup table before vapply call
-  # For datasets with many columns, this provides O(1) lookups instead of O(m) per column
-  # Trade-off: overhead of creating lookup is negligible compared to vapply iterations
+  # Optimized: Create lookup table before vapply call for O(1) access
   .inParsLookup <- setNames(rep(TRUE, length(inPars)), inPars)
   names(dat) <- vapply(names(dat), function(n) {
     if (isTRUE(.inParsLookup[[n]])) return(n)
