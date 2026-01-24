@@ -1846,6 +1846,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
+  if (exists("omega", .ret)) {
+    if (is.matrix(.ret$omega)) {
+      .dn <- dimnames(.ret$omega)
+      attr(.dn[[1]], ".match.hash") <- NULL
+      attr(.dn[[2]], ".match.hash") <- NULL
+      dimnames(.ret$omega) <- .dn
+    }
+  }
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",

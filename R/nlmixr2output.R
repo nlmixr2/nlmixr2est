@@ -686,10 +686,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   # Allow the omega to expand the initial estimates if needed.
   .omega <- x$omega
   if (is.null(.omega)) {
-    .ui <- rxode2::rxUiDecompress(.ui)
-    assign("iniDf", .iniDf, envir=.ui)
-    .ui <- rxode2::rxUiCompress(.ui)
-    assign("ui", .ui, envir=x)
+    .cls <- class(.ui)
+    .ui$iniDf <- .iniDf
+    class(.ui) <- .cls
   } else {
     .fixComps <- .iniDf[is.na(.iniDf$ntheta),]
     .fixComps <- setNames(.fixComps$fix, .fixComps$name)
@@ -707,9 +706,9 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
       .w  <- which(.iniDf$name == .n)
       if (length(.w) == 1L) .iniDf[.w, "fix"] <- .fixComps[.n]
     }
-    .ui <- rxode2::rxUiDecompress(.ui)
-    assign("iniDf", .iniDf, envir=.ui)
-    .ui <- rxode2::rxUiCompress(.ui)
+    .cls <- class(.ui)
+    .ui$iniDf <- .iniDf
+    class(.ui) <- .cls
     assign("ui", .ui, envir=x)
   }
 }
