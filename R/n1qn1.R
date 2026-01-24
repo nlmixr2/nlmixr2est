@@ -92,7 +92,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% c("genRxControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),

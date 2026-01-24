@@ -53,7 +53,7 @@ nmTest({
                                          muRefDataFrame, muRefCovariateDataFrame),
                  quote(cl <- exp(tcl + log(wt/70) * cl.wt + 3)))
 
-    muRefCov <- muRefCovariateDataFrame[!(muRefCovariateDataFrame$covariate %in% c("wt", "age")), ]
+    muRefCov <- muRefCovariateDataFrame[!(muRefCovariateDataFrame$covariate %fin% c("wt", "age")), ]
 
     expect_equal(.nm$.saemDropParameters(quote(cl <- exp(tcl + eta.cl + log(wt / 70) * cl.wt + cl.sex * sex + age * cl.age + 3)),
                                          muRefDataFrame, muRefCov),

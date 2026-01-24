@@ -35,7 +35,7 @@ nmTest({
     tmp <- fit$dataMergeInner
 
     # Should have llikObs
-    expect_true("nlmixrLlikObs" %in% names(tmp))
+    expect_true("nlmixrLlikObs" %fin% names(tmp))
 
     expect_true(all(names(fit$etaSE) == c("ID", "eta.Vc")))
 
@@ -46,7 +46,7 @@ nmTest({
   test_that("another merge issue", {
     dat <- xgxr::case1_pkpd |>
       dplyr::rename(DV=LIDV) |>
-      dplyr::filter(CMT %in% 1:2) |>
+      dplyr::filter(CMT %fin% 1:2) |>
       dplyr::filter(TRTACT != "Placebo")
 
     doses <- unique(dat$DOSE)
@@ -59,7 +59,7 @@ nmTest({
                         dplyr::pull()
                       ids <- ids[seq(1, nid)]
                       dat |>
-                        dplyr::filter(ID %in% ids)
+                        dplyr::filter(ID %fin% ids)
                     }))
 
     cmt2 <- function() {
