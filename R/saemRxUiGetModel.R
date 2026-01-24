@@ -55,15 +55,13 @@
         }
         if (length(x[[2]]) == 1) {
           .char <- as.character(x[[2]])
-          # Optimized: Use match() instead of %in% for single element check
-          if (!is.na(match(.char, muRefDataFrame$eta))) {
+          if (.char %in% muRefDataFrame$eta) {
             return(f(x[[3]]))
           }
         }
         if (length(x[[3]]) == 1) {
           .char <- as.character(x[[3]])
-          # Optimized: Use match() instead of %in% for single element check
-          if (!is.na(match(.char, muRefDataFrame$eta))) {
+          if (.char %in% muRefDataFrame$eta) {
             return(f(x[[2]]))
           }
         }
@@ -159,8 +157,7 @@ rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
   .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  # Optimized: Use match() instead of %in% for filtering
-  .names <- .names[is.na(match(.names, .cov$covariateParameter))]
+  .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
 }
 attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
@@ -267,8 +264,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret
-    # Optimized: Use match() instead of %in% for filtering
-    .theta <- .theta[is.na(match(.theta, .cov$covariateParameter))]
+    .theta <- .theta[!(.theta %in% .cov$covariateParameter)]
     .allCovs <- rxUiGet.saemCovars(x, ...)
     .lc <- length(.allCovs)
     .m <- matrix(rep(NA_character_, .lc * length(.theta)), ncol = .lc)
@@ -292,8 +288,7 @@ attr(rxUiGet.saemParamsToEstimate, "rstudio") <- "tcl"
 rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
   .pars <- rxUiGet.saemParamsToEstimate(x, ...)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  # Optimized: Use match() instead of %in% for filtering
-  .pars[is.na(match(.pars, .cov$covariateParameter))]
+  .pars[!(.pars %in% .cov$covariateParameter)]
 }
 attr(rxUiGet.saemParamsToEstimateCov, "rstudio") <- "tcl"
 

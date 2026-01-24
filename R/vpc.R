@@ -75,9 +75,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   if (normRelated) {
     .ui <- .env$ui
     .predDf <-.ui$predDf
-    # Optimized: Use match() instead of %in% for better performance
-    .validDists <- c("norm", "dnorm","t", "cauchy")
-    if (all(!is.na(match(.predDf$dist, .validDists)))) {
+    if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
       if (is.null(.data$CMT)) {
         .ds <- object$dataSav
@@ -110,8 +108,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   while (length(.w) > 0 && .nretry < nretry) {
     .w <- which(is.na(.sim$ipred))
     .simIds <- unique(.sim$sim.id[.w])
-    # Optimized: Use match() instead of %in% for filtering
-    .sim <- .sim[is.na(match(.sim$sim.id, .simIds)),, drop = FALSE]
+    .sim <- .sim[!(.sim$sim.id %in% .simIds),, drop = FALSE]
     if (length(.sim$sim.id) == 0) {
       warning("when filtering for simulations, could not find any though some were flagged, be cautious with results",
               call.=FALSE)
@@ -134,10 +131,9 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
       .w <- which(is.na(.sim2$ipred))
       .simIds <- unique(.sim2$sim.id[.w])
       .allSimIds <- unique(.sim2$sim.id)
-      # Optimized: Use match() instead of %in% for filtering
-      .simIds <- .allSimIds[is.na(match(.allSimIds, .simIds))]
+      .simIds <- .allSimIds[!(.allSimIds %in% .simIds)]
       .simIds <- .simIds[seq_len(min(n - .mx, length(.simIds)))]
-      .sim2 <- .sim2[!is.na(match(.sim2$sim.id, .simIds)), ]
+      .sim2 <- .sim2[.sim2$sim.id %in% .simIds, ]
     }
     .sim2$sim.id <- .sim2$sim.id + .mx
     .sim <- rbind(.sim, .sim2)

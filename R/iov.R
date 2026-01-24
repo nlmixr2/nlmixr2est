@@ -328,8 +328,7 @@ nlmixr2iovVarSd <- function(val) {
       # Fix shrinkage
 
       .shrink <- ret$env$shrink
-      # Optimized: Use match() instead of which() + %in%
-      .w <- which(!is.na(match(names(.shrink), .uiIovEnv$iovDrop)))
+      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
       .shrink <- .shrink[,-.w]
 
       assign("shrink", .shrink, envir = ret$env)
@@ -339,16 +338,14 @@ nlmixr2iovVarSd <- function(val) {
 
       .etaObf <- ret$env$etaObf
 
-      # Optimized: Use match() instead of which() + %in%
-      .w <- which(!is.na(match(names(.etaObf), .uiIovEnv$iovDrop)))
+      .w <- which(names(.etaObf) %in% .uiIovEnv$iovDrop)
       .etaObf <- .etaObf[,-.w]
       assign("etaObf", .etaObf, envir = ret$env)
 
       # Now fix the random effect matrix
       .ranef <- ret$env$ranef
 
-      # Optimized: Use match() instead of which() + %in%
-      .w <- which(!is.na(match(names(.ranef), .uiIovEnv$iovDrop)))
+      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
       .iov <- .ranef
       .ranef <- .ranef[,-.w]
       assign("ranef", .ranef, envir = ret$env)
@@ -362,8 +359,7 @@ nlmixr2iovVarSd <- function(val) {
       })
       names(.omega) <- .n
 
-      # Optimized: Use match() instead of which() + %in%
-      .w <- which(!is.na(match(names(.iov), c(.uiIovEnv$iovDrop, "ID"))))
+      .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
 
       .sdIov <- sqrt(.est)
@@ -401,8 +397,7 @@ nlmixr2iovVarSd <- function(val) {
 
       # Now fixed effects
       .fixef <- ret$env$fixef
-      # Optimized: Use match() instead of which() + %in%
-      .w <- which(!is.na(match(names(.fixef), .iovName$var)))
+      .w <- which(names(.fixef) %in% .iovName$var)
       .fixef <- .fixef[-.w]
       assign("fixef",.fixef, envir = ret$env)
 

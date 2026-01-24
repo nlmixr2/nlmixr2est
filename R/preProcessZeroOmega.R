@@ -20,34 +20,23 @@
 #' @param x expression
 #' @param muRefDataFrame rxode2 muRefDataFRame
 #' @param zeroEtas rxode2 zero etas that will be dropped
-#' @param zeroEtasLookup optional pre-computed lookup table for O(1) access
 #' @return expression with interesting mus re-inserted
 #' @author Matthew L. Fidler
 #' @noRd
-.addBackInterestingMuEtas <- function(x, muRefDataFrame, zeroEtas, zeroEtasLookup = NULL) {
+.addBackInterestingMuEtas <- function(x, muRefDataFrame, zeroEtas) {
   if (is.call(x)) {
     return(as.call(lapply(x, .addBackInterestingMuEtas, muRefDataFrame=muRefDataFrame,
-                          zeroEtas=zeroEtas, zeroEtasLookup=zeroEtasLookup)))
+                          zeroEtas=zeroEtas)))
   } else if (is.name(x)) {
     .n <- as.character(x)
-    # Optimized: Use pre-computed lookup table for O(1) access if available
-    if (!is.null(zeroEtasLookup)) {
-      if (isTRUE(zeroEtasLookup[[.n]])) {
-        return(0)
-      }
-    } else if (.n %in% zeroEtas) {
+    if (.n %in% zeroEtas) {
       return(0)
     }
     .w <- which(muRefDataFrame$theta == .n)
     if (length(.w) == 1L) {
       .mu <- muRefDataFrame[.w, ]
       .eta <- .mu$eta
-      # Optimized: Use pre-computed lookup table for O(1) access if available
-      if (!is.null(zeroEtasLookup)) {
-        if (isTRUE(zeroEtasLookup[[.eta]])) {
-          return(x)
-        }
-      } else if (.eta %in% zeroEtas) {
+      if (.eta %in% zeroEtas) {
         return(x)
       } else {
         return(str2lang(paste0(.mu$theta, "+", .mu$eta)))
@@ -88,14 +77,11 @@
 #'
 .downgradeEtas <- function(ui, zeroEtas=character(0)) {
   .lst <- .saemDropMuRefFromModel(ui, noCovs=TRUE)
-  # Optimized: Pre-compute lookup table for O(1) access in recursive function
-  .zeroEtasLookup <- if (length(zeroEtas) > 0) setNames(rep(TRUE, length(zeroEtas)), zeroEtas) else NULL
   .model <- str2lang(
     paste0("model({",
            paste(vapply(lapply(.lst, .addBackInterestingMuEtas,
                                muRefDataFrame=ui$muRefDataFrame,
-                               zeroEtas=zeroEtas,
-                               zeroEtasLookup=.zeroEtasLookup),
+                               zeroEtas=zeroEtas),
                         function(x) {
                           deparse1(x)
                         }, character(1), USE.NAMES=FALSE),
