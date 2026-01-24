@@ -1,10 +1,5 @@
 # nlmixr2est (development version)
 
-- Optimize `%in%` operations throughout the codebase for better
-  performance by replacing with `match()` for O(n) instead of O(n*m)
-  complexity. This significantly improves performance in iterative
-  algorithms like SAEM and FOCEI.
-
 - Add `predict(fit, level="ipred")`, `predict(fit,
   level="individual")` or `predict(fit, level=1)` to predict
   individual fits (with possibly a new dataset).

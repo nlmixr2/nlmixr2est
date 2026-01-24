@@ -46,8 +46,6 @@
       if (!is.null(zeroEtasLookup)) {
         if (isTRUE(zeroEtasLookup[[.eta]])) {
           return(x)
-        } else {
-          return(str2lang(paste0(.mu$theta, "+", .mu$eta)))
         }
       } else if (.eta %in% zeroEtas) {
         return(x)
