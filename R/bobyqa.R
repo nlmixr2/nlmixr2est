@@ -246,7 +246,6 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("bobyqaControl", control, envir=env)
 }
 

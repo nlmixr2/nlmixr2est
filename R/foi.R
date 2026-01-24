@@ -33,7 +33,6 @@ foiControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foiControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("foiControl", control, envir=env)
 }
 

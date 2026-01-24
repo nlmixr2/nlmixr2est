@@ -29,7 +29,6 @@ posthocControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.posthocControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("posthocControl", control, envir=env)
 }
 
