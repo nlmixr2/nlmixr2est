@@ -88,7 +88,7 @@ nlmixr2iovVarSd <- function(val) {
   if (length(.xform)  != 1) {
     .xform <- "sd"
   }
-  if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
+  if (!(.xform %fin% c("sd", "var", "logsd", "logvar"))) {
     .xform <- "sd"
   }
   .ui <- env$ui
@@ -97,7 +97,7 @@ nlmixr2iovVarSd <- function(val) {
                                     .iniDf$condition != "id" &
                                      is.na(.iniDf$err))]
   if (length(.lvls) > 0) {
-    .n <- .iniDf[which(.iniDf$condition %in% .lvls), "name"]
+    .n <- .iniDf[which(.iniDf$condition %fin% .lvls), "name"]
     .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
                                 paste(paste0("rx.", .n, "=", .n),
                                       collapse=", "), ")"))))
@@ -123,7 +123,7 @@ nlmixr2iovVarSd <- function(val) {
     .eta1$neta1 <- .eta1$neta2 <- 0
     .eta1$est <- 1
 
-    .etas <- .etas[which(!(.etas$condition %in% .lvls)), , drop=FALSE]
+    .etas <- .etas[which(!(.etas$condition %fin% .lvls)), , drop=FALSE]
     if (length(.etas$name) > 0) {
       .etas$neta1 <- factor(.etas$neta1, levels = sort(unique(.etas$neta1)))
       .etas$neta2 <- factor(.etas$neta2, levels = sort(unique(.etas$neta2)))
@@ -194,7 +194,7 @@ nlmixr2iovVarSd <- function(val) {
                                   "logsd" = "nlmixr2iovLogsd",
                                   "logvar" = "nlmixr2iovLogvar"),
                                   ifelse(.curEval=="exp", "Cv", "Sd"))
-                         if (.xform %in% c("sd", "var")) {
+                         if (.xform %fin% c("sd", "var")) {
                            .curTheta$lower <- 0 # doesn't work with saem
                          }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
@@ -299,16 +299,60 @@ nlmixr2iovVarSd <- function(val) {
       # Adjust Matrices to remove dummy IOV components
       .omega <- ret$env$omega
       .d1 <- dimnames(.omega)[[1]]
-      .d1 <- .d1[!(.d1 %in% .uiIovEnv$iovDrop)]
+      .d1 <- .d1[!(.d1 %fin% .uiIovEnv$iovDrop)]
       assign("omega", .ui$omega, envir = ret$env)
 
-      .omega <- .ui$omega
-      .n <- names(.omega)
-      .n <- .n[.n != "id"]
-      .omega <- lapply(.n, function(x) {
-        .omega[[x]]
-      })
-      names(.omega) <- .n
+      .d1 <- .d1[!(.d1 %fin% .uiIovEnv$iovDrop)]
+
+      assign("omega", .ui$omega, envir = ret$env)
+
+      .phiC <- ret$env$phiC
+      .phiC <- lapply(seq_along(.phiC),
+                      function(i) {
+                        .m <- .phiC[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiC) <- names(ret$env$phiC)
+      assign("phiC", .phiC, envir = ret$env)
+
+
+      .phiH <- ret$env$phiH
+      .phiH <- lapply(seq_along(.phiH),
+                      function(i) {
+                        .m <- .phiH[[i]]
+                        .m <- .m[.d1, .d1, drop=FALSE]
+                        .m
+                      })
+      names(.phiH) <- names(ret$env$phiH)
+
+      assign("phiH", .phiH, envir = ret$env)
+
+      # Fix shrinkage
+
+      .shrink <- ret$env$shrink
+      .w <- which(names(.shrink) %fin% .uiIovEnv$iovDrop)
+      .shrink <- .shrink[,-.w]
+
+      assign("shrink", .shrink, envir = ret$env)
+
+      # Fix eta objective function; Maybe save the full one for
+      # passing the etaMat information to the next estimation method
+
+      .etaObf <- ret$env$etaObf
+
+      .w <- which(names(.etaObf) %fin% .uiIovEnv$iovDrop)
+      .etaObf <- .etaObf[,-.w]
+      assign("etaObf", .etaObf, envir = ret$env)
+
+      # Now fix the random effect matrix
+      .ranef <- ret$env$ranef
+
+      .w <- which(names(.ranef) %fin% .uiIovEnv$iovDrop)
+      .iov <- .ranef
+      .ranef <- .ranef[,-.w]
+      assign("ranef", .ranef, envir = ret$env)
+
 
       .nid <- length(ret$env$eta$ID)
 
@@ -395,7 +439,7 @@ nlmixr2iovVarSd <- function(val) {
       .ranef <- .ranef[,-.w]
       assign("ranef", .ranef, envir = ret$env)
 
-      .w <- which(names(.iov) %in% c(.uiIovEnv$iovDrop, "ID"))
+      .w <- which(names(.iov) %fin% c(.uiIovEnv$iovDrop, "ID"))
       .iov <- .iov[,.w]
 
       .sdIov <- sqrt(.est)
@@ -433,7 +477,7 @@ nlmixr2iovVarSd <- function(val) {
 
       # Now fixed effects
       .fixef <- ret$env$fixef
-      .w <- which(names(.fixef) %in% .iovName$var)
+      .w <- which(names(.fixef) %fin% .iovName$var)
       .fixef <- .fixef[-.w]
       assign("fixef",.fixef, envir = ret$env)
 
@@ -468,7 +512,7 @@ nlmixr2iovVarSd <- function(val) {
     # In this approach the model is simply kept,
     # but the data drops the iovDrop
     if (inherits(ret, "data.frame")) {
-      .w <- which(names(ret) %in% .uiIovEnv$iovDrop)
+      .w <- which(names(ret) %fin% .uiIovEnv$iovDrop)
       if (length(.w) > 0L) {
         .cls <- class(ret)
         class(ret) <- "data.frame"
@@ -477,7 +521,7 @@ nlmixr2iovVarSd <- function(val) {
       }
       .rename <- paste0(.uiIovEnv$iovVars, ".rx")
       names(ret) <- vapply(names(ret), function(n) {
-        if (n %in% .rename) {
+        if (n %fin% .rename) {
           sub("[.]rx$", "", n)
         } else {
           n

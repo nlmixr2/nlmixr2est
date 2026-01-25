@@ -177,7 +177,7 @@ rxUiGet.getSplitMuModel <- function(x, ...) {
   .covDataFrame <- .ui$saemMuRefCovariateDataFrame
   if (length(.covDataFrame$theta) > 0 && length(.covInfo$covars) > 0) {
     # drop mu-referenced covariate estimates here..
-    .covPar <- .covDataFrame[.covDataFrame$covariate %in% .covInfo$covars, "covariateParameter"]
+    .covPar <- .covDataFrame[.covDataFrame$covariate %fin% .covInfo$covars, "covariateParameter"]
     .allPars <- setdiff(.allPars, .covPar)
   }
   .taintMuRef <- setdiff(.allPars, names(.pureMuRef))

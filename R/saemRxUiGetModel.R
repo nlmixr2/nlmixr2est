@@ -55,13 +55,13 @@
         }
         if (length(x[[2]]) == 1) {
           .char <- as.character(x[[2]])
-          if (.char %in% muRefDataFrame$eta) {
+          if (.char %fin% muRefDataFrame$eta) {
             return(f(x[[3]]))
           }
         }
         if (length(x[[3]]) == 1) {
           .char <- as.character(x[[3]])
-          if (.char %in% muRefDataFrame$eta) {
+          if (.char %fin% muRefDataFrame$eta) {
             return(f(x[[2]]))
           }
         }
@@ -157,7 +157,7 @@ rxUiGet.saemParamsLine <- function(x, ...) {
   .x <- x[[1]]
   .names <- .x$iniDf[!is.na(.x$iniDf$ntheta) & is.na(.x$iniDf$err), "name"]
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .names <- .names[!(.names %in% .cov$covariateParameter)]
+  .names <- .names[!(.names %fin% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
 }
 attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
@@ -264,7 +264,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret
-    .theta <- .theta[!(.theta %in% .cov$covariateParameter)]
+    .theta <- .theta[!(.theta %fin% .cov$covariateParameter)]
     .allCovs <- rxUiGet.saemCovars(x, ...)
     .lc <- length(.allCovs)
     .m <- matrix(rep(NA_character_, .lc * length(.theta)), ncol = .lc)
@@ -288,7 +288,7 @@ attr(rxUiGet.saemParamsToEstimate, "rstudio") <- "tcl"
 rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
   .pars <- rxUiGet.saemParamsToEstimate(x, ...)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .pars[!(.pars %in% .cov$covariateParameter)]
+  .pars[!(.pars %fin% .cov$covariateParameter)]
 }
 attr(rxUiGet.saemParamsToEstimateCov, "rstudio") <- "tcl"
 

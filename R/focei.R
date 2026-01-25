@@ -20,7 +20,7 @@ use.utf <- function() {
  }
 
 is.latex <- function() {
-  if (!("knitr" %in% loadedNamespaces())) {
+  if (!("knitr" %fin% loadedNamespaces())) {
     return(FALSE)
   }
   get("is_latex_output", asNamespace("knitr"))()
@@ -30,7 +30,7 @@ is.latex <- function() {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
-  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ctl <- .ctl[names(.ctl) %fin% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn,
                         control = .ctl,
                         lower = lower,
@@ -44,7 +44,7 @@ is.latex <- function() {
 }
 
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
+  .w <- which(names(control) %fin% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
   .ret$x <- .ret$par
@@ -52,7 +52,7 @@ is.latex <- function() {
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
+  .control <- control[names(control) %fin% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
   .ret <- optim(
@@ -92,7 +92,7 @@ is.latex <- function() {
 
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
-  .ctl <- .ctl[names(.ctl) %in% c(
+  .ctl <- .ctl[names(.ctl) %fin% c(
     "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
     "scale.inti", "diff.g"
   )]
@@ -883,7 +883,7 @@ rxUiGet.focei <- function(x, ...) {
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -909,7 +909,7 @@ rxUiGet.foce <- function(x, ...) {
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -936,7 +936,7 @@ rxUiGet.ebe <- function(x, ...) {
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -1104,7 +1104,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                        .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
                        if (.zeroRep <= 0) return(.low)
                        if (.low <= 0 &&
-                             .iniDf$err[i] %in% c("add",
+                             .iniDf$err[i] %fin% c("add",
                                                   "lnorm", "logitNorm", "probitNorm",
                                                   "prop", "propT", "propF",
                                                   "pow", "powF", "powT")) {
@@ -1270,7 +1270,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .env <- new.env(parent=emptyenv())
   .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
   .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow"))]
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
@@ -1345,7 +1345,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     .skipCov[which(!is.na(.theta$err))] <- TRUE
     .skipCov[.theta$fix] <- TRUE
     if (length(.uiIovEnv$iovVars) > 0) {
-      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+      .skipCov[which(.theta$name %fin% .uiIovEnv$iovVars)] <- TRUE
     }
     .skipCov
   }
@@ -1765,10 +1765,66 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #' @noRd
 .foceiSetupParHistData <- function(.ret) {
   if (exists("parHistData", envir=.ret)) {
+    .ret$parHistData$type <- factor(.ret$parHistData$type,
+                                    levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
+                                             "Central Difference", "Scaled", "Unscaled",
+                                             "Back-Transformed", "Forward Sensitivity"))
+    .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }
 }
+#' Strip fastmatch properties out of matrix dimensions
+#'
+#' @param mat matrix, data.frame list or other object to process
+#' @return matrix with fastmatch attributes removed from dimnames, if
+#'   the object is a list of matrices, it also strips the fastmatch
+#'   attributes from each matrix
+#' @noRd
+#' @author Matthew L. Fidler
+.stripFastmatchItem <- function(mat) {
+  if (inherits(mat, "data.frame")) {
+    for (.n in names(mat)) {
+      attr(mat[[.n]], ".match.hash") <- NULL
+    }
+    return(mat)
+  }
+  if (is.list(mat)) {
+    .n <- names(mat)
+    return(stats::setNames(lapply(seq_along(.n), function(i) {
+      .stripFastmatchItem(mat[[i]])
+    }), .n))
+  }
+  if (!is.matrix(mat)) {
+    return(mat)
+  }
+  .dn <- dimnames(mat)
+  attr(.dn[[1]], ".match.hash") <- NULL
+  attr(.dn[[2]], ".match.hash") <- NULL
+  dimnames(mat) <- .dn
+  mat
+}
 
+#' Strips fastmatch hash from dimnames
+#'
+#'
+#' @param ret fit environment to modify
+#' @return modified fit environment (though since it is in an environment, it is modified in place)
+#' @noRd
+#' @author Matthew L. Fidler
+.stripFastmatchHash <- function(ret) {
+  for (v in c("omega", "phiC", "phiH")) {
+    if (exists(v, ret)) {
+      ret[[v]] <- .stripFastmatchItem(ret[[v]])
+    }
+  }
+  .ui <- ret$ui
+  for (v in c("predDf", "muRefDataFrame")) {
+    .ui[[v]] <- .stripFastmatchItem(.ui[[v]])
+  }
+  .ui$control <- NULL
+  ret$ui <- .ui
+  ret
+}
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .control <- ui$control
@@ -1846,6 +1902,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
+  .ret <- .stripFastmatchHash(.ret)
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",

@@ -177,7 +177,7 @@ nlminbControl <- function(eval.max=200,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -343,7 +343,6 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlminbControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlminbControl", control, envir=env)
 }
 

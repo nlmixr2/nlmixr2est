@@ -76,7 +76,7 @@
 .deparseDifferent <- function(standard, new, internal=character(0)) {
   which(vapply(names(standard),
                function(x) {
-                 if (x %in% internal){
+                 if (x %fin% internal){
                    FALSE
                  } else if (is.function(standard[[x]])) {
                    warning(paste0("'", x, "' as a function not supported in ",

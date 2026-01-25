@@ -130,7 +130,7 @@
   if (is.null(.ome)) {
     # This can happen if there are no BSV parameters in a model
     return("")
-  } else if (!(.eta %in% rownames(.ome))) {
+  } else if (!(.eta %fin% rownames(.ome))) {
     # This can happen if .eta is a fixed BSV parameter
     return("")
   }
@@ -145,7 +145,7 @@
     .valNumber <- .v
     .valCharPrep <- sqrt(.v)
   }
-  if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
+  if (.eta %fin% names(.omegaFix) && .omegaFix[.eta]) {
     .charPrefix <- "fix("
     .charSuffix <- ")"
   } else {

@@ -26,7 +26,6 @@ foceControl <- function(sigdig=3,
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foceControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("foceControl", control, envir=env)
 }
 

@@ -45,7 +45,7 @@
   .predDf <- fit$ui$predDf
   .range <- range(.origData$TIME)
   .covs <- fit$ui$allCovs
-  .obsData <- .origData[.origData$EVID %in% c(0, 2), ]
+  .obsData <- .origData[.origData$EVID %fin% c(0, 2), ]
   .allCmt <- unique(.obsData$CMT)
   .idLvl <- attr(class(.origData), ".rxode2.lst")$idLvl
   if (is.null(minimum)) {

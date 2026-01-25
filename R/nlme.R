@@ -61,7 +61,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl", "covMethod"))]
+  .bad <- .bad[!(.bad %fin% c("genRxControl", "covMethod"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -387,7 +387,6 @@ nlmeControl <- nlmixr2NlmeControl
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.nlmeControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("nlmeControl", control, envir=env)
 }
 

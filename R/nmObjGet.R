@@ -29,7 +29,7 @@ nmObjGet <- function(x, ...) {
     .v <- as.character(utils::methods("nmObjGet"))
     .cls <- .arg
     .method <- paste0("nmObjGet.", .cls)
-    if (.method %in% .v) {
+    if (.method %fin% .v) {
       # If there is a rstudio value in the method, assume that is what you
       # wish to return for the rstudio auto-completion method
       .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
@@ -125,7 +125,7 @@ nmObjGetData <- function(x, ...) {
     .v <- as.character(utils::methods("nmObjGetData"))
     .cls <- class(x)[1]
     .method <- paste0("nmObjGetData.", .cls)
-    if (.method %in% .v) {
+    if (.method %fin% .v) {
       # If there is a rstudio value in the method, assume that is what you
       # wish to return for the rstudio auto-completion method
       .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
@@ -170,7 +170,7 @@ nmObjGet.dataNormInfo <- function(x, ...) {
   .ui <- .fit$ui
   .datSav <- .fit$dataSav
   .predDf <-.ui$predDf
-  if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
+  if (all(.predDf$dist %fin% c("norm", "dnorm","t", "cauchy"))) {
     return(list(filter=rep(TRUE, length(.datSav[,1])),
                  nnorm=length(.datSav[,1]),
                  nlik=0,
@@ -499,9 +499,9 @@ nmObjGet.covLvl <- function(x, ...) {
   .fitData$nlmixrRowNums <- .env$.rownum
   .share <- setdiff(intersect(names(.origData), names(.fitData)), c("ID", "nlmixrRowNums"))
   if (preferFit) {
-    .origData <- .origData[, !(names(.origData) %in% .share)]
+    .origData <- .origData[, !(names(.origData) %fin% .share)]
   } else {
-    .fitData <- .fitData[, !(names(.fitData) %in% .share)]
+    .fitData <- .fitData[, !(names(.fitData) %fin% .share)]
   }
   if (inherits(.fitData$ID, "factor")) {
     .origData$ID <- factor(paste(.origData$ID), levels = levels(.fitData$ID))

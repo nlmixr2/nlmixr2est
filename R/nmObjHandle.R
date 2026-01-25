@@ -64,7 +64,6 @@ nmObjHandleControlObject <- function(control, env) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.foceiControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("foceiControl0", control, envir=env)
 }
 
@@ -72,7 +71,6 @@ nmObjHandleControlObject.foceiControl <- function(control, env) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.saemControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("saemControl", control, envir=env)
 }
 

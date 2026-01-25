@@ -89,7 +89,7 @@ newuoaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -217,7 +217,6 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.newuoaControl <- function(control, env) {
-  ## eval(rxode2::rxUiDeparse(control, "control"))
   assign("newuoaControl", control, envir=env)
 }
 
