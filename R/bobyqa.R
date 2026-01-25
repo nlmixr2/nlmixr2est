@@ -118,7 +118,7 @@ bobyqaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
