@@ -1856,7 +1856,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   if (exists("phiC", .ret)) {
     .n <- names(.ret$phiC)
-    .ret$phiC <- stats::setNames(lapply(.seq_along(.n), function(i) {
+    .ret$phiC <- stats::setNames(lapply(seq_along(.n), function(i) {
       if (is.matrix(.ret$phiC[[i]])) {
         .dn <- dimnames(.ret$phiC[[i]])
         attr(.dn[[1]], ".match.hash") <- NULL
