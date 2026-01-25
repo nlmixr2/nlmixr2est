@@ -221,8 +221,8 @@ agqControl()
 #>     ...) 
 #> {
 #>     .ctl <- control
-#>     .ctl <- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", 
-#>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
+#>     .ctl <- .ctl[names(.ctl) %fin% c("eval.max", "iter.max", 
+#>         "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
 #>         "step.max", "sing.tol", "scale.inti", "diff.g")]
 #>     .ctl$trace <- 0
 #>     .ret <- stats::nlminb(start = par, objective = fn, gradient = gr, 
@@ -230,7 +230,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5615dd2508e8>
+#> <bytecode: 0x55e0846a50e8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
