@@ -1752,7 +1752,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 .parHistCalc <- function(.ret) {
   .tmp <- .ret$parHistData
   .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
-  .iter <- as.integer(.tmp$iter)
+  .iter <- .tmp$iter
   .tmp <- .tmp[, names(.tmp) != "iter"]
   data.frame(iter = .iter, .tmp, check.names=FALSE)
 }
@@ -1765,6 +1765,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #' @noRd
 .foceiSetupParHistData <- function(.ret) {
   if (exists("parHistData", envir=.ret)) {
+    .ret$parHistData$type <- factor(.ret$parHistData$type,
+                                    levels=c("Gill83 Gradient", "Mixed Gradient", "Forward Difference",
+                                             "Central Difference", "Scaled", "Unscaled",
+                                             "Back-Transformed", "Forward Sensitivity"))
+    .ret$parHistData$iter <- as.integer(.ret$parHistData$iter)
     .ret$parHist <- .parHistCalc(.ret)
   }
 }
