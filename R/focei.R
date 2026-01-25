@@ -1752,7 +1752,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 .parHistCalc <- function(.ret) {
   .tmp <- .ret$parHistData
   .tmp <- .tmp[.tmp$type == "Unscaled", names(.tmp) != "type"]
-  .iter <- .tmp$iter
+  .iter <- as.integer(.tmp$iter)
   .tmp <- .tmp[, names(.tmp) != "iter"]
   data.frame(iter = .iter, .tmp, check.names=FALSE)
 }
@@ -1813,7 +1813,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .ui <- ret$ui
-  for (v in c("predDf")) {
+  for (v in c("predDf", "muRefDataFrame")) {
     .ui[[v]] <- .stripFastmatchItem(.ui[[v]])
   }
   .ui$control <- NULL
