@@ -118,7 +118,7 @@ bobyqaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -246,7 +246,6 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.bobyqaControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("bobyqaControl", control, envir=env)
 }
 

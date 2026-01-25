@@ -322,13 +322,13 @@
   .rx <- attr(model$saem_mod, "rx")
   .pars <- .rx$params
   .pars <- setNames(rep(1.1, length(.pars)), .pars)
-  .pars <- .pars[!(names(.pars) %in% inPars)]
+  .pars <- .pars[!(names(.pars) %fin% inPars)]
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
   dat <- .as.data.frame(dat[, -6])
   names(dat) <- vapply(names(dat), function(n) {
-    if (n %in% inPars) return(n)
+    if (n %fin% inPars) return(n)
     return(toupper(n))
   }, character(1), USE.NAMES = FALSE)
 
@@ -445,7 +445,7 @@
   .ue <- do.call("cbind",
                  lapply(names(model$log.eta),
                         function(n) {
-                          if (n %in% .dim) return(ue[, n])
+                          if (n %fin% .dim) return(ue[, n])
                           rep(1L, length(ue[, 1]))
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))

@@ -133,7 +133,7 @@
       .dropNames <- c(.dropNames, .n)
     }
   }
-  .df <- .df[, !(names(.df) %in% .dropNames), drop = FALSE]
+  .df <- .df[, !(names(.df) %fin% .dropNames), drop = FALSE]
   cbind(.time, .df)
 }
 #' Finalized the timer and integrate into the appropriate place

@@ -103,9 +103,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     )
   # Fallback methods based on discussion in
   # https://github.com/nlmixr2/nlmixr2est/issues/254
-  if (currentOdeMethod %in% "dop853") {
+  if (currentOdeMethod %fin% "dop853") {
     allOdeMethods <- "liblsoda"
-  } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
+  } else if (currentOdeMethod %fin% c("liblsoda", "lsoda")) {
     allOdeMethods <- "dop853"
   } # otherwise, use all the methods
   odeMethods <-
@@ -254,7 +254,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     .n0 <- c(names(.sim)[seq(1, .w)], "rxLambda", "rxYj", "rxLow", "rxHi")
     .sim <- .sim[, .n0]
     .ipred <- .prdLst$ipred
-    .ipred <- .ipred[.ipred$nlmixrRowNums %in% .ni$nlmixrRowNums, ]
+    .ipred <- .ipred[.ipred$nlmixrRowNums %fin% .ni$nlmixrRowNums, ]
     .ipred <- .ipred[order(.ipred$nlmixrRowNums), ]
     .ret <- .Call(`_nlmixr2est_npdeCalc`, .sim, .ipred$dv, .ipred$evid,
                   .prdLst$ipred$cens, .prdLst$ipred$limit, table)
@@ -446,7 +446,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .thetaEtaParameters <- fit$foceiThetaEtaParameters
   .prdLst <- .foceiPredIpredList(fit, data=fit$dataSav, keep=keep, thetaEtaParameters=.thetaEtaParameters, predOnly=.predOnly,
                                  addDosing=table$addDosing, subsetNonmem=table$subsetNonmem)
-  if (.censMethod %in% c(2L, 6L)) {
+  if (.censMethod %fin% c(2L, 6L)) {
     if (!table$npde) {
       warning("censoring method requires npde, adding npde", call.=FALSE)
       table$npde <- TRUE
@@ -581,7 +581,7 @@ addTable <- function(object, updateObject = FALSE,
                 "rx__sens_peripheral2_BY_p4",
                 "rx__sens_peripheral2_BY_ka",
                 "rx__sens_depot_BY_ka")
-    .w <- -which(names(.df) %in% drop)
+    .w <- -which(names(.df) %fin% drop)
     if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
     class(.df) <- "data.frame"
     .id <- .df$ID
@@ -720,7 +720,7 @@ tableControl <- function(npde = NULL,
   .invalidKeep <- c("id", "sim.id", "resetno", "time", "nlmixrRowNums")
   .invalidKeep <- intersect(tolower(keep), tolower(.invalidKeep))
   if (length(.invalidKeep) > 0) {
-    .w <- which(tolower(keep) %in% .invalidKeep)
+    .w <- which(tolower(keep) %fin% .invalidKeep)
     keep <- keep[-.w]
     warning("'keep' contains ", paste(.invalidKeep, collapse=", "), "\nwhich are output when needed, ignoring these items", call.=FALSE)
   }

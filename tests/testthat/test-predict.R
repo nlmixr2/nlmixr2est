@@ -44,11 +44,11 @@ nmTest({
 
     # Test explicit population level (default)
     ppred <- predict(fit, theo_sd, level="population")
-    expect_true("pred" %in% names(ppred))
+    expect_true("pred" %fin% names(ppred))
 
     # Test numeric level=0 (population)
     ppred0 <- predict(fit, theo_sd, level=0)
-    expect_true("pred" %in% names(ppred0))
+    expect_true("pred" %fin% names(ppred0))
 
     # Test numeric level=1 (individual)
     ipred1 <- predict(fit, theo_sd, level=1)
@@ -56,11 +56,11 @@ nmTest({
 
     # Test alias level="pred" (population)
     ppredAlias <- predict(fit, theo_sd, level="pred")
-    expect_true("pred" %in% names(ppredAlias))
+    expect_true("pred" %fin% names(ppredAlias))
 
     # Test alias level="ppred" (population)
     ppredAlias2 <- predict(fit, theo_sd, level="ppred")
-    expect_true("pred" %in% names(ppredAlias2))
+    expect_true("pred" %fin% names(ppredAlias2))
 
     # Test alias level="ipred" (individual)
     ipredAlias <- predict(fit, theo_sd, level="ipred")
@@ -72,7 +72,7 @@ nmTest({
 
     # Test individual predictions with new data (theo_md)
     ipredNewData <- predict(fit, theo_md, level="individual")
-    expect_true("ipredSim" %in% names(ipredNewData))
+    expect_true("ipredSim" %fin% names(ipredNewData))
 
   })
 })

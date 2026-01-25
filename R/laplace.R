@@ -93,7 +93,6 @@ laplaceControl <- function(sigdig=3, ..., nAGQ=1) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.laplaceControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("laplaceControl", control, envir=env)
 }
 

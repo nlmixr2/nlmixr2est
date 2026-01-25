@@ -92,7 +92,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -224,7 +224,6 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.n1qn1Control <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("n1qn1Control", control, envir=env)
 }
 

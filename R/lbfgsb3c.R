@@ -124,7 +124,7 @@ lbfgsb3cControl <- function(trace=0,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %fin% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -258,7 +258,6 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.lbfgsb3cControl <- function(control, env) {
-  eval(rxode2::rxUiDeparse(control, "control"))
   assign("lbfgsb3cControl", control, envir=env)
 }
 

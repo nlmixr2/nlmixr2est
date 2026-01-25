@@ -357,7 +357,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     }
   }
   if (is.character(data) && length(data) == 1 &&
-        data %in% nlmixr2AllEst() &&
+        data %fin% nlmixr2AllEst() &&
         is.null(est)) {
     est <- data
     data <- NULL
