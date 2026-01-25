@@ -1770,17 +1770,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 #' Strip fastmatch properties out of matrix dimensions
 #'
-#' @param mat matrix, list or other object to process
+#' @param mat matrix, data.frame list or other object to process
 #' @return matrix with fastmatch attributes removed from dimnames, if
 #'   the object is a list of matrices, it also strips the fastmatch
 #'   attributes from each matrix
 #' @noRd
 #' @author Matthew L. Fidler
-.stripFastmatchMatrix <- function(mat) {
+.stripFastmatchItem <- function(mat) {
+  if (inherits(mat, "data.frame")) {
+    for (.n in names(mat)) {
+      attr(mat[[.n]], ".match.hash") <- NULL
+    }
+    return(mat)
+  }
   if (is.list(mat)) {
     .n <- names(mat)
     return(stats::setNames(lapply(seq_along(.n), function(i) {
-      .stripFastmatchMatrix(mat[[i]])
+      .stripFastmatchItem(mat[[i]])
     }), .n))
   }
   if (!is.matrix(mat)) {
@@ -1803,9 +1809,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 .stripFastmatchHash <- function(ret) {
   for (v in c("omega", "phiC", "phiH")) {
     if (exists(v, ret)) {
-      ret[[v]] <- .stripFastmatchMatrix(ret[[v]])
+      ret[[v]] <- .stripFastmatchItem(ret[[v]])
     }
   }
+  .ui <- ret$ui
+  for (v in c("predDf")) {
+    .ui[[v]] <- .stripFastmatchItem(.ui[[v]])
+  }
+  .ui$control <- NULL
+  ret$ui <- .ui
   ret
 }
 
