@@ -1801,15 +1801,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #' @noRd
 #' @author Matthew L. Fidler
 .stripFastmatchHash <- function(ret) {
-  if (exists("omega", ret)) {
-    .ret$omega <- .stripFastmatchMatrix(ret$omega)
-  }
-  if (exists("phiC", ret)) {
-    .ret$phiC <- .stripFastmatchMatrix(ret$phiC)
+  for (v in c("omega", "phiC", "phiH")) {
+    if (exists(v, ret)) {
+      ret[[v]] <- .stripFastmatchMatrix(ret[[v]])
+    }
   }
   ret
 }
-
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .control <- ui$control
@@ -1887,6 +1885,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
+  .ret <- .stripFastmatchHash(.ret)
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",
