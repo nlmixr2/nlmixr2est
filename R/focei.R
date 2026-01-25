@@ -1854,6 +1854,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       dimnames(.ret$omega) <- .dn
     }
   }
+  if (exists("phiC", .ret)) {
+    .n <- names(.ret$phiC)
+    .ret$phiC <- stats::setNames(lapply(.seq_along(.n), function(i) {
+      if (is.matrix(.ret$phiC[[i]])) {
+        .dn <- dimnames(.ret$phiC[[i]])
+        attr(.dn[[1]], ".match.hash") <- NULL
+        attr(.dn[[2]], ".match.hash") <- NULL
+        dimnames(.ret$phiC[[i]]) <- .dn
+      }
+      .ret$phiC[[i]]
+    }), .n)
+  }
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",
