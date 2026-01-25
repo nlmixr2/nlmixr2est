@@ -1768,6 +1768,47 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .ret$parHist <- .parHistCalc(.ret)
   }
 }
+#' Strip fastmatch properties out of matrix dimensions
+#'
+#' @param mat matrix, list or other object to process
+#' @return matrix with fastmatch attributes removed from dimnames, if
+#'   the object is a list of matrices, it also strips the fastmatch
+#'   attributes from each matrix
+#' @noRd
+#' @author Matthew L. Fidler
+.stripFastmatchMatrix <- function(mat) {
+  if (is.list(mat)) {
+    .n <- names(ret$phiC)
+    return(stats::setNames(lapply(seq_along(.n), function(i) {
+      .stripFastmatchMatrix(ret$phiC[[i]])
+    }), .n))
+  }
+  if (!is.matrix(mat)) {
+    return(mat)
+  }
+  .dn <- dimnames(mat)
+  attr(.dn[[1]], ".match.hash") <- NULL
+  attr(.dn[[2]], ".match.hash") <- NULL
+  dimnames(mat) <- .dn
+  mat
+}
+
+#' Strips fastmatch hash from dimnames
+#'
+#'
+#' @param ret fit environment to modify
+#' @return modified fit environment (though since it is in an environment, it is modified in place)
+#' @noRd
+#' @author Matthew L. Fidler
+.stripFastmatchHash <- function(ret) {
+  if (exists("omega", ret)) {
+    .ret$omega <- .stripFastmatchMatrix(ret$omega)
+  }
+  if (exists("phiC", ret)) {
+    .ret$phiC <- .stripFastmatchMatrix(ret$phiC)
+  }
+  ret
+}
 
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
@@ -1846,26 +1887,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
-  if (exists("omega", .ret)) {
-    if (is.matrix(.ret$omega)) {
-      .dn <- dimnames(.ret$omega)
-      attr(.dn[[1]], ".match.hash") <- NULL
-      attr(.dn[[2]], ".match.hash") <- NULL
-      dimnames(.ret$omega) <- .dn
-    }
-  }
-  if (exists("phiC", .ret)) {
-    .n <- names(.ret$phiC)
-    .ret$phiC <- stats::setNames(lapply(seq_along(.n), function(i) {
-      if (is.matrix(.ret$phiC[[i]])) {
-        .dn <- dimnames(.ret$phiC[[i]])
-        attr(.dn[[1]], ".match.hash") <- NULL
-        attr(.dn[[2]], ".match.hash") <- NULL
-        dimnames(.ret$phiC[[i]]) <- .dn
-      }
-      .ret$phiC[[i]]
-    }), .n)
-  }
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",
