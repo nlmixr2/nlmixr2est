@@ -1778,9 +1778,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 #' @author Matthew L. Fidler
 .stripFastmatchMatrix <- function(mat) {
   if (is.list(mat)) {
-    .n <- names(ret$phiC)
+    .n <- names(mat)
     return(stats::setNames(lapply(seq_along(.n), function(i) {
-      .stripFastmatchMatrix(ret$phiC[[i]])
+      .stripFastmatchMatrix(mat[[i]])
     }), .n))
   }
   if (!is.matrix(mat)) {
