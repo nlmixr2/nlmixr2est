@@ -95,7 +95,6 @@ LinkingTo:
     rxode2 (> 5.0.0)
 Biarch: true
 Config/testthat/edition: 3
-Config/testthat/parallel: true
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
