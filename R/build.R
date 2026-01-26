@@ -22,6 +22,12 @@
                .tmp),
              devtools::package_file("R/agqGen.R"))
   message("done")
+  message("Clear testing model cache")
+  .fitCacheDir <- file.path(testthat::test_path(), "fixtures")
+  if (dir.exists(.fitCacheDir)) {
+    unlink(list.files(.fitCacheDir, pattern=".rds$", full.names = TRUE))
+  }
+  message("done")
   invisible("")
 }
 
