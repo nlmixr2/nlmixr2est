@@ -94,28 +94,8 @@ nmTest({
                           dplyr::filter(ID %fin% ids)
                       }))
 
-      cmt2 <- function(){
-        ini({
-          lka <- log(0.1) # log Ka
-          lv <- log(10) # Log Vc
-          lcl <- log(4) # Log Cl
-          lq <- log(10) # log Q
-          lvp <- log(20) # Log Vp
-
-          eta.ka ~ 0.01
-          eta.v ~ 0.1
-          eta.cl ~ 0.1
-          logn.sd = 10
-        })
-        model({
-          ka <- exp(lka + eta.ka)
-          cl <- exp(lcl + eta.cl)
-          v <- exp(lv + eta.v)
-          q <- exp(lq)
-          vp <- exp(lvp)
-          linCmt() ~ lnorm(logn.sd)
-        })
-      }
+      # Use centralized model from helper-models.R
+      cmt2 <- two.compartment
 
       cmt2fit.logn <-
         .nlmixr(
