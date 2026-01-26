@@ -1,12 +1,10 @@
 nmTest({
   test_that("predict", {
 
-    # Use centralized model from helper-models.R
-    ## The fit is performed by the function nlmixr/nlmix2 specifying
-    ## the model, data and estimate
+    # Use centralized fit from helper-fits.R
+    ## The fit was performed with focei and maxOuterIterations = 0L
 
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
-                   foceiControl(maxOuterIterations = 0L))
+    fit <- one.compartment.fit.focei
 
     md <- do.call("predict", c(list(fit, theo_md), fit$control))
 

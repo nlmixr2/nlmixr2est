@@ -1,13 +1,8 @@
 nmTest({
   test_that("model piping", {
 
-    # Use centralized model from helper-models.R (one.compartment.with.lag is aliased as KA1Lode)
-    KA1Lode <- one.compartment.with.lag
-
-    d <- nlmixr2data::warfarin |>
-      dplyr::filter(dvid=="cp")
-
-    f <- .nlmixr(KA1Lode, data = d, est = "saem", control = saemControlFast)
+    # Use centralized fit from helper-fits.R
+    f <- one.compartment.with.lag.fit.saem
 
     # General piping model updates work
     suppressMessages(expect_error(

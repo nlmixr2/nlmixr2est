@@ -29,8 +29,8 @@ nmTest({
     nlmixr.save.dir = tmpDir
   )
 
-  # Use centralized model from helper-models.R
-  fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
+  # Use centralized fit from helper-fits.R
+  fitS <- one.compartment.fit.saem
 
   test_that("tidy works on nlmixr fit SAEM fits", {
 
