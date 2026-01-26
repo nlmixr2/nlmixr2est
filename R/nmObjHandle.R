@@ -71,7 +71,6 @@ nmObjHandleControlObject.foceiControl <- function(control, env) {
 #' @rdname nmObjHandleControlObject
 #' @export
 nmObjHandleControlObject.saemControl <- function(control, env) {
-
   assign("saemControl", control, envir=env)
 }
 
