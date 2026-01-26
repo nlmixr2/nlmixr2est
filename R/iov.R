@@ -362,7 +362,7 @@ nlmixr2iovVarSd <- function(val) {
                                           (1-.var/.est[d])*100, # var shrinkage
                                           (1 - sqrt(.var)/sqrt(.est[d]))*100, # sd shrinkage
                                           .tv,
-                                          2*pt(-abs(.tv), df = (.nid*.nv) -1)
+                                          2*stats::pt(-abs(.tv), df = (.nid*.nv) -1)
                                           ),
                                       row.names=row.names(.curd))
                   names(.curi) <- d
