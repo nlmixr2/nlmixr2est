@@ -9,7 +9,7 @@
 getWang2007BaseData <- function() {
   dat <- Wang2007
   dat$DV <- dat$Y
-  return(dat)
+  dat
 }
 
 # Function to setup Wang2007 dataset with dosing (dat2)
@@ -21,7 +21,7 @@ getWang2007DoseData <- function() {
   dat2$AMT <- 10
   dat2 <- rbind(dat2, data.frame(dat, EVID = 0, AMT = 0))
   dat2 <- dat2[(order(dat2$ID, -dat2$EVID, dat2$Time)), ]
-  return(dat2)
+  dat2
 }
 
 # Function to setup log-transformed data
@@ -30,7 +30,7 @@ getWang2007LogData <- function() {
   dat$DV <- dat$Y
   datl <- dat
   datl$DV <- log(datl$DV)
-  return(datl)
+  datl
 }
 
 # Function to setup log-transformed data with dosing
@@ -38,7 +38,7 @@ getWang2007LogDoseData <- function() {
   dat2 <- getWang2007DoseData()
   datl2 <- dat2
   datl2$DV <- log(datl2$DV)
-  return(datl2)
+  datl2
 }
 
 ################################################################################
@@ -92,11 +92,11 @@ getWang2007OdeModel <- function() {
 testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp = 2, log=FALSE) {
   ## message(type)
   valName <- as.character(substitute(val))
-  
+
   # Get base models
   f <- getWang2007BaseModel()
   fo <- getWang2007OdeModel()
-  
+
   .f <- fun(f)
   .fo <- fun(fo)
   .dode <- getWang2007DoseData()
