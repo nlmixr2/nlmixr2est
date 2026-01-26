@@ -22,7 +22,7 @@
 
 # Version identifier for cache invalidation
 # Increment this when models, data, or nlmixr2est version changes significantly
-.fitCacheVersion <- paste0("v1.0.1-nlmixr2est-", utils::packageVersion("nlmixr2est"))
+.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"))
 
 # Cache directory for fit objects
 .fitCacheDir <- file.path(testthat::test_path(), "fixtures")
@@ -60,6 +60,7 @@ if (!dir.exists(.fitCacheDir)) {
   # Compute fit if cache miss or invalid
   message(sprintf("⚙ Computing fit: %s (this may take a while...)", name))
   fit <- fitFn()
+  AIC(fit)  # Force evaluation of AIC
 
   # Save to cache
   tryCatch({
