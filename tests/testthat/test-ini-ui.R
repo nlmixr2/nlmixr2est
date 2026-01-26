@@ -1,7 +1,7 @@
 nmTest({
   test_that("ini ui works", {
     # Use centralized model from helper-models.R
-    f <-  one.compartment()
+    f <-  one.compartment
 
     # fit the model
     fit <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)

@@ -16,64 +16,6 @@
 #' @return A model function suitable for nlmixr2
 one.compartment <- function() {
   ini({
-    tka <- 0.45 # Log Ka
-    tcl <- 1 # Log Cl
-    tv <- 3.45    # Log V
-    eta.ka ~ 0.6
-    eta.cl ~ 0.3
-    eta.v ~ 0.1
-    add.sd <- 0.7
-  })
-  model({
-    ka <- exp(tka + eta.ka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    d/dt(depot) = -ka * depot
-    d/dt(center) = ka * depot - cl / v * center
-    cp = center / v
-    cp ~ add(add.sd)
-  })
-}
-
-one.compartment <- one.compartment() # Pre-parse for faster tests
-
-#' One Compartment Model (add.err variant)
-#'
-#' Same as one.compartment() but uses add.err instead of add.sd for the error parameter.
-#' Used in broom tests where the parameter name is checked explicitly.
-#'
-#' @return A model function suitable for nlmixr2
-one.compartment.add.err <- function() {
-  ini({
-    tka <- 0.45
-    tcl <- 1
-    tv <- 3.45
-    eta.ka ~ 0.6
-    eta.cl ~ 0.3
-    eta.v ~ 0.1
-    add.err <- 0.7
-  })
-  model({
-    ka <- exp(tka + eta.ka)
-    cl <- exp(tcl + eta.cl)
-    v <- exp(tv + eta.v)
-    d / dt(depot) <- -ka * depot
-    d / dt(center) <- ka * depot - cl / v * center
-    cp <- center / v
-    cp ~ add(add.err)
-  })
-}
-
-one.compartment.add.err <- one.compartment.add.err()
-
-#' One Compartment Model with Parameter Labels
-#'
-#' Same as one.compartment() but with human-readable labels on parameters.
-#' Used in tests that check label handling or require labeled output.
-#'
-#' @return A model function suitable for nlmixr2
-one.compartment.with.labels <- function() {
-  ini({
     tka <- 0.45; label("Ka")
     tcl <- 1; label("Cl")
     tv <- 3.45; label("V")
@@ -93,7 +35,7 @@ one.compartment.with.labels <- function() {
   })
 }
 
-one.compartment.with.labels <- one.compartment.with.labels()
+one.compartment <- one.compartment() # Pre-parse for faster tests
 
 #' One Compartment Model with Lag Time (KA1Lode)
 #'

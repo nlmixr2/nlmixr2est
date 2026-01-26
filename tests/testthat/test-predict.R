@@ -5,7 +5,7 @@ nmTest({
     ## The fit is performed by the function nlmixr/nlmix2 specifying
     ## the model, data and estimate
 
-    fit <- .nlmixr(one.compartment.with.labels, theo_sd, est = "focei",
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
                    foceiControl(maxOuterIterations = 0L))
 
     md <- do.call("predict", c(list(fit, theo_md), fit$control))

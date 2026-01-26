@@ -30,7 +30,7 @@ nmTest({
   )
 
   # Use centralized model from helper-models.R
-  fitS <- .nlmixr(one.compartment.add.err, theo_sd, est = "saem", control = saemControlFast)
+  fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
 
   test_that("tidy works on nlmixr fit SAEM fits", {
 
@@ -40,7 +40,7 @@ nmTest({
       td$term,
       c(
         "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-        "add.err"
+        "add.sd"
       )
     )
     td <- broom.mixed::tidy(fitS, conf.level = 0.9, exponentiate = NA)
@@ -55,7 +55,7 @@ nmTest({
       td$term,
       c(
         "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-        "add.err"
+        "add.sd"
       )
     )
     .est <- td$estimate
@@ -146,7 +146,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = NA)
@@ -158,7 +158,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       .est <- td$estimate
@@ -240,7 +240,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = NA)
@@ -252,7 +252,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       .est <- td$estimate
@@ -334,7 +334,7 @@ nmTest({
     check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
     expect_equal(td$term, c(
       "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-      "add.err"
+      "add.sd"
     ))
     td <- broom.mixed::tidy(fitP, conf.level = 0.9, exponentiate = NA)
     check_tidy(td, 7, 9, c(
@@ -343,7 +343,7 @@ nmTest({
     ))
     expect_equal(td$term, c(
       "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-      "add.err"
+      "add.sd"
     ))
     expect_equal(td$estimate, c(
       1.56831218549017, 2.71828182845905, 31.5003923087479, 0.774596669241483,
