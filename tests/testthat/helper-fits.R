@@ -22,7 +22,7 @@
 
 # Version identifier for cache invalidation
 # Increment this when models, data, or nlmixr2est version changes significantly
-.fit_cache_version <- paste0("v1.0.0-nlmixr2est-", packageVersion("nlmixr2est"))
+.fit_cache_version <- paste0("v1.0.0-nlmixr2est-", utils::packageVersion("nlmixr2est"))
 
 # Cache directory for fit objects
 .fit_cache_dir <- file.path(testthat::test_path(), "fixtures")
