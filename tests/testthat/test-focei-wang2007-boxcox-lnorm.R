@@ -45,6 +45,10 @@ nmTest({
   .lnormPowT2 <- c(59.837, 59.837, 59.831, 59.826, 59.827, 59.827,
                    59.819, 59.819, 59.837, 59.837)
 
+  .lnormPowT1 <- c(72.356, 72.356, 72.351, 72.351, 72.351, 72.351,
+                   72.338, 72.338, 72.356, 72.356)
+
+
   testWang2007ErrorModel("boxCox(0)+add-> lnorm", function(f) {
     f |> model(ipre ~ add(add.sd) + boxCox(lambda)) |>
       ini(add.sd=sqrt(0.1), lambda=0)
