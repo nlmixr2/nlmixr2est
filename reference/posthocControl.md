@@ -204,7 +204,7 @@ posthocControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55e0846a50e8>
+#> <bytecode: 0x5581fdbe5850>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
