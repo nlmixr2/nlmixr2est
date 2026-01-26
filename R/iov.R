@@ -324,7 +324,21 @@ nlmixr2iovVarSd <- function(val) {
         do.call(`cbind`,
                 lapply(.dn, function(d) {
                   .w <- c(which(grepl(d, names(.shrinkN), fixed=TRUE)))
-                  .curd <- .shrinkN[,.w]
+                  ## nocov start
+                  # simply testing edge cases with warnings
+                  if(length(.w)==0L) {
+                    warning("IOV variable '", d,
+                            "' is not present in the shrinkage results, check your model and dataset",
+                            call. = FALSE)
+                    return(NULL)
+                  }
+                  if (length(.w)==1L) {
+                    warning("IOV variable '", d,
+                            "' has the same number of levels as the random effect, check your dataset",
+                            call. = FALSE)
+                  }
+                  ## nocov end
+                  .curd <- .shrinkN[,.w,  drop=FALSE]
 
                   # n = the same for each eta (#id)
                   # mean = sum(mean)/n_means
@@ -359,33 +373,6 @@ nlmixr2iovVarSd <- function(val) {
       .shrink <- c(list(id=.shrink0),
                    .shrink1)
       assign("shrink", .shrink, envir = ret$env)
-
-
-      ## .phiC <- ret$env$phiC
-      ## .phiC <- lapply(seq_along(.phiC),
-      ##                 function(i) {
-      ##                   .m <- .phiC[[i]]
-      ##                   .m <- .m[.d1, .d1, drop=FALSE]
-      ##                   .m
-      ##                 })
-      ## names(.phiC) <- names(ret$env$phiC)
-      ## assign("phiC", .phiC, envir = ret$env)
-
-
-      ## .phiH <- ret$env$phiH
-      ## .phiH <- lapply(seq_along(.phiH),
-      ##                 function(i) {
-      ##                   .m <- .phiH[[i]]
-      ##                   .m <- .m[.d1, .d1, drop=FALSE]
-      ##                   .m
-      ##                 })
-      ## names(.phiH) <- names(ret$env$phiH)
-
-      ## assign("phiH", .phiH, envir = ret$env)
-
-
-      # Fix eta objective function; Maybe save the full one for
-      # passing the etaMat information to the next estimation method
 
       # Now fix the random effect matrix
       .ranef <- ret$env$ranef
