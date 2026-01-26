@@ -1,5 +1,4 @@
 .nlmixr <- function(...) {
-  rxode2::rxUnloadAll()
   suppressWarnings(suppressMessages(nlmixr(...)))
 }
 # Use these for faster estimation (when numeric results don't matter but having

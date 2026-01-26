@@ -302,63 +302,19 @@ nlmixr2iovVarSd <- function(val) {
       .d1 <- .d1[!(.d1 %fin% .uiIovEnv$iovDrop)]
       assign("omega", .ui$omega, envir = ret$env)
 
-      .d1 <- .d1[!(.d1 %fin% .uiIovEnv$iovDrop)]
-
-      assign("omega", .ui$omega, envir = ret$env)
-
-      .phiC <- ret$env$phiC
-      .phiC <- lapply(seq_along(.phiC),
-                      function(i) {
-                        .m <- .phiC[[i]]
-                        .m <- .m[.d1, .d1, drop=FALSE]
-                        .m
-                      })
-      names(.phiC) <- names(ret$env$phiC)
-      assign("phiC", .phiC, envir = ret$env)
-
-
-      .phiH <- ret$env$phiH
-      .phiH <- lapply(seq_along(.phiH),
-                      function(i) {
-                        .m <- .phiH[[i]]
-                        .m <- .m[.d1, .d1, drop=FALSE]
-                        .m
-                      })
-      names(.phiH) <- names(ret$env$phiH)
-
-      assign("phiH", .phiH, envir = ret$env)
-
-      # Fix shrinkage
-
-      .shrink <- ret$env$shrink
-      .w <- which(names(.shrink) %fin% .uiIovEnv$iovDrop)
-      .shrink <- .shrink[,-.w]
-
-      assign("shrink", .shrink, envir = ret$env)
-
-      # Fix eta objective function; Maybe save the full one for
-      # passing the etaMat information to the next estimation method
-
-      .etaObf <- ret$env$etaObf
-
-      .w <- which(names(.etaObf) %fin% .uiIovEnv$iovDrop)
-      .etaObf <- .etaObf[,-.w]
-      assign("etaObf", .etaObf, envir = ret$env)
-
-      # Now fix the random effect matrix
-      .ranef <- ret$env$ranef
-
-      .w <- which(names(.ranef) %fin% .uiIovEnv$iovDrop)
-      .iov <- .ranef
-      .ranef <- .ranef[,-.w]
-      assign("ranef", .ranef, envir = ret$env)
-
+      .omega <- .ui$omega
+      .n <- names(.omega)
+      .n <- .n[.n != "id"]
+      .omega <- lapply(.n, function(x) {
+        .omega[[x]]
+      })
+      names(.omega) <- .n
 
       .nid <- length(ret$env$eta$ID)
 
       # Fix shrinkage, now split out by iov variable
       .shrink <- ret$env$shrink
-      .w <- which(names(.shrink) %in% .uiIovEnv$iovDrop)
+      .w <- which(names(.shrink) %fin% .uiIovEnv$iovDrop)
       .shrink0 <- .shrink[,-.w]
       .shrinkN <- cbind(data.frame(type=row.names(.shrink0)),
                         .shrink)
@@ -434,7 +390,7 @@ nlmixr2iovVarSd <- function(val) {
       # Now fix the random effect matrix
       .ranef <- ret$env$ranef
 
-      .w <- which(names(.ranef) %in% .uiIovEnv$iovDrop)
+      .w <- which(names(.ranef) %fin% .uiIovEnv$iovDrop)
       .iov <- .ranef
       .ranef <- .ranef[,-.w]
       assign("ranef", .ranef, envir = ret$env)
