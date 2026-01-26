@@ -2,7 +2,7 @@ nmTest({
   test_that("predict", {
 
     # Use centralized fit from helper-fits.R
-    ## The fit was performed with focei and maxOuterIterations = 0L
+    ## The fit was performed with focei, maxOuterIterations = 0L, and print = 0
 
     fit <- one.compartment.fit.focei
 

@@ -95,7 +95,7 @@ one.compartment.fit.focei <- .get_cached_fit(
   name = "one.compartment.fit.focei",
   fit_fn = function() {
     .nlmixr(one.compartment, theo_sd, est = "focei", 
-           control = foceiControl(print = 0, maxOuterIterations = 0L))
+            control = foceiControl(print = 0, maxOuterIterations = 0L))
   },
   cache_file = "fit-one-compartment-focei.rds"
 )
@@ -114,7 +114,7 @@ one.compartment.with.lag.fit.focei <- .get_cached_fit(
     d <- nlmixr2data::warfarin |>
       dplyr::filter(dvid == "cp")
     .nlmixr(one.compartment.with.lag, d, est = "focei", 
-           control = foceiControl(print = 0))
+            control = foceiControl(print = 0))
   },
   cache_file = "fit-one-compartment-lag-focei.rds"
 )
