@@ -35,6 +35,8 @@ one.compartment <- function() {
   })
 }
 
+one.compartment <- one.compartment() # Pre-parse for faster tests
+
 #' One Compartment Model (add.err variant)
 #'
 #' Same as one.compartment() but uses add.err instead of add.sd for the error parameter.
@@ -62,6 +64,8 @@ one.compartment.add.err <- function() {
   })
 }
 
+one.compartment.add.err <- one.compartment.add.err()
+
 #' One Compartment Model with Parameter Labels
 #'
 #' Same as one.compartment() but with human-readable labels on parameters.
@@ -88,6 +92,8 @@ one.compartment.with.labels <- function() {
     cp ~ add(add.sd)
   })
 }
+
+one.compartment.with.labels <- one.compartment.with.labels()
 
 #' One Compartment Model with Lag Time (KA1Lode)
 #'
@@ -124,6 +130,8 @@ one.compartment.with.lag <- function() {
   })
 }
 
+one.compartment.with.lag <- one.compartment.with.lag()
+
 #' Two Compartment PK Model (cmt2)
 #'
 #' A two-compartment model with first-order absorption and inter-compartmental clearance.
@@ -154,3 +162,5 @@ two.compartment <- function() {
     linCmt() ~ lnorm(logn.sd)
   })
 }
+
+two.compartment <- two.compartment()
