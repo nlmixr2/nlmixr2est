@@ -62,7 +62,7 @@ getWang2007BaseModel <- function() {
       ipre ~ prop(prop.sd)
     })
   }
-  return(.nlmixr(f))
+  .nlmixr(f)
 }
 
 # Base PK model with ODE
@@ -82,7 +82,7 @@ getWang2007OdeModel <- function() {
       ipre ~ prop(prop.sd)
     })
   }
-  return(.nlmixr(fo))
+  .nlmixr(fo)
 }
 
 ################################################################################
