@@ -70,7 +70,7 @@ if (!dir.exists(.fitCacheDir)) {
     warning(sprintf("Failed to save cache for %s: %s", name, e$message))
   })
 
-  return(fit)
+  fit
 }
 
 # =============================================================================
