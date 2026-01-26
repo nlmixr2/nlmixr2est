@@ -18,11 +18,16 @@ Fits are cached with a version identifier that includes:
 Caches are automatically invalidated when:
 - The package version changes
 - The cache format changes
+- The package is documented with `devtools::document()`
 - Cache files are manually deleted
+
+Since these models are used multiple times in the tests, overall even
+creating the model cache once and reusing the model will reduce the
+run-time.
 
 ## What's Cached
 
-See `helper-fits.R` for the complete list of cached fits. Common ones include:
+See `helper-zzz-fits.R` for the complete list of cached fits. Common ones include:
 - `one.compartment.fit.saem` - One compartment model with SAEM estimation
 - `one.compartment.fit.focei` - One compartment model with FOCEI estimation
 - `one.compartment.with.lag.fit.focei` - Lag model with FOCEI
