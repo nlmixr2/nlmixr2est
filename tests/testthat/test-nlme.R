@@ -25,7 +25,8 @@ nmTest({
 
     f <- one.compartment()
 
-    expect_false(grepl("linear\\(wt\\)", rxode2::rxNorm(f$nlmRxModel$predOnly)))
+    expect_false(grepl("linear\\(wt\\)",
+                       suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
 
     one.compartment <- function() {
       ini({
@@ -52,7 +53,8 @@ nmTest({
 
     f <- one.compartment()
 
-    expect_true(grepl("linear\\(wt\\)", rxode2::rxNorm(f$nlmRxModel$predOnly)))
+    expect_true(grepl("linear\\(wt\\)",
+                      suppressMessages(rxode2::rxNorm(f$nlmRxModel$predOnly))))
 
   })
 
@@ -104,7 +106,8 @@ nmTest({
       })
     }
 
-    nlme  <- .nlmixr(one.compartment, theo_sd, "nlme", control=nlmeControl(maxIter=5, verbose=FALSE, returnObject=TRUE))
+    nlme  <- .nlmixr(one.compartment, theo_sd, "nlme",
+                     control=nlmeControl(maxIter=5, verbose=FALSE, returnObject=TRUE))
 
     expect_true(inherits(nlme, "nlmixr2FitData"))
 
