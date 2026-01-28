@@ -22,7 +22,7 @@ nmTest({
 
     m <- mod()
 
-    expect_error(rxode2::rxNorm(m$nlmRxModel$predOnly), NA)
+    expect_error(suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly)), NA)
 
   })
 
@@ -42,9 +42,10 @@ nmTest({
       })
     }
 
-    m <- mod()
+    m <- suppressMessages(mod())
 
-    expect_false(grepl("linear\\(wt\\)", rxode2::rxNorm(m$nlmRxModel$predOnly)))
+    expect_false(grepl("linear\\(wt\\)",
+                       suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
 
     mod <- function() {
       ini({
@@ -61,11 +62,10 @@ nmTest({
       })
     }
 
-    m <- mod()
+    m <- suppressMessages(mod())
 
-    expect_true(grepl("linear\\(wt\\)", rxode2::rxNorm(m$nlmRxModel$predOnly)))
-
-
+    expect_true(grepl("linear\\(wt\\)",
+                      suppressMessages(rxode2::rxNorm(m$nlmRxModel$predOnly))))
   })
 
   test_that("nlm makes sense", {
@@ -88,41 +88,43 @@ nmTest({
       })
     }
 
-
-
-    fit2 <- .nlmixr(mod, dsn, est="nlm")
+    fit2 <- .nlmixr(mod, dsn, est="nlm", nlmControl(print=0))
 
     expect_s3_class(fit2, "nlmixr2.nlm")
 
-    fit2 <- .nlmixr(mod, dsn, est="bobyqa")
+    fit2 <- .nlmixr(mod, dsn, est="bobyqa", bobyqaControl(print=0))
 
     expect_s3_class(fit2, "nlmixr2.bobyqa")
 
-    fit2 <- .nlmixr(mod, dsn, est="uobyqa")
+    fit2 <- .nlmixr(mod, dsn, est="uobyqa", uobyqaControl(print=0))
 
     expect_s3_class(fit2, "nlmixr2.uobyqa")
 
-    fit2 <- .nlmixr(mod, dsn, est="newuoa")
+    fit2 <- .nlmixr(mod, dsn, est="newuoa", newuoaControl(print=0))
 
     expect_s3_class(fit2, "nlmixr2.newuoa")
 
-    fit2 <- .nlmixr(mod, dsn, est="n1qn1")
+    fit2 <- .nlmixr(mod, dsn, est="n1qn1", n1qn1Control(print=0))
 
     expect_s3_class(fit2, "nlmixr2.n1qn1")
 
-    fit2 <- .nlmixr(mod, dsn, est="lbfgsb3c")
+    fit2 <- .nlmixr(mod, dsn, est="lbfgsb3c", lbfgsb3cControl(print=0))
 
     expect_s3_class(fit2, "nlmixr2.lbfgsb3c")
 
-    fit3 <- fit2 |>
-      ini(g=unfix) |>
-      .nlmixr(dsn, "nlm", nlmControl(solveType="grad"))
+    fit3 <- suppressMessages({
+      fit2 |>
+        ini(g=unfix) |>
+        .nlmixr(dsn, "nlm", nlmControl(solveType="grad", print=0))
+    })
 
     expect_s3_class(fit3, "nlmixr2.nlm")
 
-    fit4 <- fit2 |>
-      ini(g=unfix) |>
-      .nlmixr(dsn, "nlm", nlmControl(solveType="fun"))
+    fit4 <- suppressMessages({
+      fit2 |>
+        ini(g=unfix) |>
+        .nlmixr(dsn, "nlm", nlmControl(solveType="fun", print=0))
+    })
 
     expect_s3_class(fit4, "nlmixr2.nlm")
 
@@ -141,10 +143,10 @@ nmTest({
       })
     }
 
-    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm")
+    fit2 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm", list(print=0))
 
     fit1 <- .nlmixr(one.cmt, nlmixr2data::theo_sd, est="nlm",
-                   nlmControl(scaleTo=0.0, scaleType="multAdd"))
+                   nlmControl(scaleTo=0.0, scaleType="multAdd", print=0))
 
     expect_s3_class(fit1, "nlmixr2.nlm")
   })

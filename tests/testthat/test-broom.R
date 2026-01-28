@@ -29,28 +29,8 @@ nmTest({
     nlmixr.save.dir = tmpDir
   )
 
-  one.compartment <- function() {
-    ini({
-      tka <- 0.45
-      tcl <- 1
-      tv <- 3.45
-      eta.ka ~ 0.6
-      eta.cl ~ 0.3
-      eta.v ~ 0.1
-      add.err <- 0.7
-    })
-    model({
-      ka <- exp(tka + eta.ka)
-      cl <- exp(tcl + eta.cl)
-      v <- exp(tv + eta.v)
-      d / dt(depot) <- -ka * depot
-      d / dt(center) <- ka * depot - cl / v * center
-      cp <- center / v
-      cp ~ add(add.err)
-    })
-  }
-
-  fitS <- .nlmixr(one.compartment, theo_sd, est = "saem", control = saemControlFast)
+  # Use centralized fit from helper-fits.R
+  fitS <- one.compartment.fit.saem
 
   test_that("tidy works on nlmixr fit SAEM fits", {
 
@@ -60,7 +40,7 @@ nmTest({
       td$term,
       c(
         "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-        "add.err"
+        "add.sd"
       )
     )
     td <- broom.mixed::tidy(fitS, conf.level = 0.9, exponentiate = NA)
@@ -75,7 +55,7 @@ nmTest({
       td$term,
       c(
         "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-        "add.err"
+        "add.sd"
       )
     )
     .est <- td$estimate
@@ -166,7 +146,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = NA)
@@ -178,7 +158,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       .est <- td$estimate
@@ -260,7 +240,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       td <- broom.mixed::tidy(fitF, conf.level = 0.9, exponentiate = NA)
@@ -272,7 +252,7 @@ nmTest({
         td$term,
         c(
           "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-          "add.err"
+          "add.sd"
         )
       )
       .est <- td$estimate
@@ -354,7 +334,7 @@ nmTest({
     check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
     expect_equal(td$term, c(
       "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-      "add.err"
+      "add.sd"
     ))
     td <- broom.mixed::tidy(fitP, conf.level = 0.9, exponentiate = NA)
     check_tidy(td, 7, 9, c(
@@ -363,7 +343,7 @@ nmTest({
     ))
     expect_equal(td$term, c(
       "tka", "tcl", "tv", "sd__eta.ka", "sd__eta.cl", "sd__eta.v",
-      "add.err"
+      "add.sd"
     ))
     expect_equal(td$estimate, c(
       1.56831218549017, 2.71828182845905, 31.5003923087479, 0.774596669241483,
