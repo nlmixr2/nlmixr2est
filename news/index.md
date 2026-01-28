@@ -15,9 +15,9 @@
   Users on R \< 4.1.0 will need to upgrade R to install this version of
   nlmixr2est.
 
-- Turn back on object compress and use roxde2’s default for compression.
-
 - Bug fixes for deparsing nlmixr2 control objects
+
+- Tests are optimized to reduce redundant fits and run in parallel.
 
 ## nlmixr2est 5.0.0
 
