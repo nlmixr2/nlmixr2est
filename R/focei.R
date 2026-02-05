@@ -1794,6 +1794,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .stripFastmatchItem(mat[[i]])
     }), .n))
   }
+  if (is.character(mat)) {
+    .ret <- mat
+    attr(.ret, ".match.hash") <- NULL
+    return(.ret)
+  }
   if (!is.matrix(mat)) {
     return(mat)
   }
@@ -1818,7 +1823,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   .ui <- ret$ui
-  for (v in c("predDf", "muRefDataFrame")) {
+  for (v in c("predDf", "muRefDataFrame", "level")) {
     .ui[[v]] <- .stripFastmatchItem(.ui[[v]])
   }
   .ui$control <- NULL
@@ -1902,7 +1907,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   nmObjHandleModelObject(.ret$model, .ret)
   nmObjHandleControlObject(get("control", envir=.ret), .ret)
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
-  .ret <- .stripFastmatchHash(.ret)
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
                          updateObject="no",

@@ -81,7 +81,6 @@ preProcessHooks <- function(name=NULL) {
   }
 }
 
-
 .preProcessHooksRun <- function(env, est) {
   .ui <- env$ui
   .est <- est

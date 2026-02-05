@@ -471,6 +471,7 @@ nlmixr2iovVarSd <- function(val) {
         }
       }, character(1), USE.NAMES = FALSE)
     }
+    .stripFastmatchHash(ret$env)
   }
   ret
 }
