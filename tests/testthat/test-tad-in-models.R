@@ -32,8 +32,8 @@ nmTest({
   d <- theo_md |>
     dplyr::mutate(EVID=ifelse(EVID == 0, 0L, 7L))
 
-  tmp <- expect_error(nlmixr(my.model.pk, d, est="focei", control=foceiControl(print=0L)), NA)
+  tmp <- expect_error(.nlmixr(my.model.pk, d, est="focei", control=foceiControl(print=0L)), NA)
 
   ## Now try with saem
-  tmp <- expect_error(nlmixr(my.model.pk, d, est="saem", control=saemControl(print=0L)), NA)
+  tmp <- expect_error(.nlmixr(my.model.pk, d, est="saem", control=saemControl(print=0L)), NA)
 })
