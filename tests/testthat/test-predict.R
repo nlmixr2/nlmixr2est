@@ -21,11 +21,11 @@ nmTest({
 
     # Test explicit population level (default)
     ppred <- suppressMessages(predict(fit, theo_sd, level="population"))
-    expect_true("pred" %fin% names(ppred))
+    expect_true("pred" %in% names(ppred))
 
     # Test numeric level=0 (population)
     ppred0 <- suppressMessages(predict(fit, theo_sd, level=0))
-    expect_true("pred" %fin% names(ppred0))
+    expect_true("pred" %in% names(ppred0))
 
     # Test numeric level=1 (individual)
     ipred1 <- suppressMessages(predict(fit, theo_sd, level=1))
@@ -33,11 +33,11 @@ nmTest({
 
     # Test alias level="pred" (population)
     ppredAlias <- suppressMessages(predict(fit, theo_sd, level="pred"))
-    expect_true("pred" %fin% names(ppredAlias))
+    expect_true("pred" %in% names(ppredAlias))
 
     # Test alias level="ppred" (population)
     ppredAlias2 <- suppressMessages(predict(fit, theo_sd, level="ppred"))
-    expect_true("pred" %fin% names(ppredAlias2))
+    expect_true("pred" %in% names(ppredAlias2))
 
     # Test alias level="ipred" (individual)
     ipredAlias <- suppressMessages(predict(fit, theo_sd, level="ipred"))
@@ -49,7 +49,7 @@ nmTest({
 
     # Test individual predictions with new data (theo_md)
     ipredNewData <- suppressMessages(predict(fit, theo_md, level="individual"))
-    expect_true("ipredSim" %fin% names(ipredNewData))
+    expect_true("ipredSim" %in% names(ipredNewData))
 
   })
 })

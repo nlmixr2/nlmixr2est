@@ -177,7 +177,7 @@ nlminbControl <- function(eval.max=200,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% "genRxControl")]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),

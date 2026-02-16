@@ -48,7 +48,6 @@ Imports:
     backports,
     checkmate,
     cli,
-    fastmatch,
     graphics,
     knitr,
     lbfgsb3c,

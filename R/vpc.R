@@ -75,7 +75,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   if (normRelated) {
     .ui <- .env$ui
     .predDf <-.ui$predDf
-    if (all(.predDf$dist %fin% c("norm", "dnorm","t", "cauchy"))) {
+    if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
       if (is.null(.data$CMT)) {
         .ds <- object$dataSav
@@ -99,7 +99,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .si$dfObs <- NULL
   .si$returnType <- "data.frame.TBS"
   .sim <- do.call(rxode2::rxSolve, .si)
-  if (!("sim.id" %fin% names(.sim))) {
+  if (!("sim.id" %in% names(.sim))) {
     .sim2$sim.id <- 1
   }
   # now look for how many have missing values
@@ -108,7 +108,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   while (length(.w) > 0 && .nretry < nretry) {
     .w <- which(is.na(.sim$ipred))
     .simIds <- unique(.sim$sim.id[.w])
-    .sim <- .sim[!(.sim$sim.id %fin% .simIds),, drop = FALSE]
+    .sim <- .sim[!(.sim$sim.id %in% .simIds),, drop = FALSE]
     if (length(.sim$sim.id) == 0) {
       warning("when filtering for simulations, could not find any though some were flagged, be cautious with results",
               call.=FALSE)
@@ -123,7 +123,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
       .adjust <- TRUE
     }
     .sim2 <- do.call(rxode2::rxSolve, .si)
-    if (!("sim.id" %fin% names(.sim2))) {
+    if (!("sim.id" %in% names(.sim2))) {
       .sim2$sim.id <- .simIds[1]
     }
     if (.adjust) {
@@ -131,9 +131,9 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
       .w <- which(is.na(.sim2$ipred))
       .simIds <- unique(.sim2$sim.id[.w])
       .allSimIds <- unique(.sim2$sim.id)
-      .simIds <- .allSimIds[!(.allSimIds %fin% .simIds)]
+      .simIds <- .allSimIds[!(.allSimIds %in% .simIds)]
       .simIds <- .simIds[seq_len(min(n - .mx, length(.simIds)))]
-      .sim2 <- .sim2[.sim2$sim.id %fin% .simIds, ]
+      .sim2 <- .sim2[.sim2$sim.id %in% .simIds, ]
     }
     .sim2$sim.id <- .sim2$sim.id + .mx
     .sim <- rbind(.sim, .sim2)
@@ -261,8 +261,8 @@ vpcSimExpand <- function(object, sim, extra, fullData=NULL) {
     .fullData <- fullData
   }
   .fullData$nlmixrRowNums <- seq_along(.fullData[, 1])
-  .extra <- extra[extra %fin% names(.fullData)]
-  .extra <- extra[!(extra %fin% names(sim))]
+  .extra <- extra[extra %in% names(.fullData)]
+  .extra <- extra[!(extra %in% names(sim))]
   if (length(.extra) == 0) return(sim)
   .wid <- which(tolower(names(.fullData)) == "id")
   names(.fullData)[.wid] <- "ID"

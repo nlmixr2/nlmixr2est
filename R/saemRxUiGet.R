@@ -34,7 +34,7 @@ rxUiGet.saemInParsAndMuRefCovariates <- function(x, ...) {
   .muRefFinal <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .cov <- .ui$covariates
   .muCov <- unique(.muRefFinal$covariate)
-  .cov <- .cov[!(.cov %fin% .muCov)]
+  .cov <- .cov[!(.cov %in% .muCov)]
   if (length(.ui$predDf$cond) > 1) {
     .cov <- unique(c("CMT", .cov))
   }
@@ -105,11 +105,11 @@ rxUiGet.saemFunction <- function(x, ...) {
   .estParam <- rxUiGet.saemParamsToEstimate(x, ...)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$covariateParameter) > 0) {
-    .param <- .param[!(.param %fin% .cov$covariateParameter)]
-    .estParam <- .estParam[!(.estParam %fin% .cov$covariateParameter)]
+    .param <- .param[!(.param %in% .cov$covariateParameter)]
+    .estParam <- .estParam[!(.estParam %in% .cov$covariateParameter)]
   }
   .parmUpdate <- vapply(.param, function(x) {
-    if (x %fin% .estParam) {
+    if (x %in% .estParam) {
       return(1L)
     } else {
       return(0L)
@@ -140,7 +140,7 @@ rxUiGet.saemFixed <- function(x, ...) {
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .dft
-    .theta <- .theta[!(names(.theta) %fin% .cov$covariateParameter)]
+    .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
     .allCovs <- rxUiGet.saemCovars(x, ...)
     .lc <- length(.allCovs)
     .m <- matrix(rep(NA_character_, .lc * length(.theta)), ncol = .lc)
@@ -168,7 +168,7 @@ attr(rxUiGet.saemFixed, "rstudio") <- function(){}
   .etas <- .etas$name[.etas$neta1 == .etas$neta2]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)
   if (nonMu) {
-    .thetas <- .thetas[!(.thetas %fin% .ui$nonMuEtas)]
+    .thetas <- .thetas[!(.thetas %in% .ui$nonMuEtas)]
   }
   .muRefDataFrame <- .ui$muRefDataFrame
   vapply(.etas, function(eta) {
@@ -178,7 +178,7 @@ attr(rxUiGet.saemFixed, "rstudio") <- function(){}
       .w <- which(.muTheta == .thetas)
       if (length(.w) == 1L) return(.w)
     }
-    if (nonMu && eta %fin% .ui$nonMuEtas) {
+    if (nonMu && eta %in% .ui$nonMuEtas) {
       .w <- which(eta == .etas)
       if (length(.w) == 1L) return(-.w)
     }
@@ -310,7 +310,7 @@ rxUiGet.saemResMod <- function(x, ...) {
   vapply(seq_along(.predDf$errType),
          function(i) {
            .errType <- as.integer(.predDf$errType[i])
-           .hasLambda <- .predDf$transform[i] %fin% c("boxCox", "yeoJohnson",
+           .hasLambda <- .predDf$transform[i] %in% c("boxCox", "yeoJohnson",
                                                      "logit + yeoJohnson",
                                                      "probit + yeoJohnson",
                                                      "logit + boxCox",
@@ -370,7 +370,7 @@ attr(rxUiGet.saemModResTotalResiduals, "rstudio") <- c(1, 2)
 #' @noRd
 .saemGetIniDfResNameFromType <- function(iniDf, cond, types, column="name") {
   .ini <- iniDf[iniDf$condition == cond, ]
-  .ini[.ini$err %fin% types, column]
+  .ini[.ini$err %in% types, column]
 }
 
 .saemGetIniDfAResName <- function(iniDf, cond, column="name") {
@@ -538,7 +538,7 @@ rxUiGet.saemAres <- function(x, ...) {
   return(vapply(.predDf$cond, function(x) {
     .tmp <- .ini[which(.ini$condition == x), ]
     .w <- which(vapply(.tmp$err, function(x) {
-      x %fin% c(
+      x %in% c(
         "add", "norm", "dnorm", "dpois",
         "pois", "dbinom", "binom", "dbern", "bern",
         "lnorm", "dlnorm", "logn", "dlogn")
@@ -629,7 +629,7 @@ rxUiGet.saemLogEta <- function(x, ...) {
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
   .ce <- .ui$muRefCurEval
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .thetas <- .thetas[!(.thetas %fin% .cov$covariateParameter)]
+  .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
   vapply(.thetas, function(x) {
     .w <- which(.ce$parameter == x)
     if (length(.w) == 1L) return(.ce$curEval[.w] == "exp")
@@ -665,18 +665,18 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .est <- setNames(.iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "est"],
                    .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .est <- .est[!(names(.est) %fin% .cov$covariateParameter)]
+  .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
   .theta <- .fixed
-  .theta <- .theta[!(names(.theta) %fin% .cov$covariateParameter)]
-  .logEta <- .logEta[!(names(.logEta) %fin% .cov$covariateParameter)]
+  .theta <- .theta[!(names(.theta) %in% .cov$covariateParameter)]
+  .logEta <- .logEta[!(names(.logEta) %in% .cov$covariateParameter)]
   .n <- vapply(.theta, function(x) ifelse(x, "FIXED", ""),
                character(1), USE.NAMES=FALSE)
   .ret <- vapply(seq_along(.logEta),
                    function(i) {
-                    .isEta <- any(.names[i] %fin% .etaNames)
+                    .isEta <- any(.names[i] %in% .etaNames)
                     if (.logEta[i]) {
                       if (.isEta) {
                         return(1)
@@ -731,7 +731,7 @@ rxUiGet.saemInitOmega <- function(x, ...) {
   .ret <- setNames(.ret, .pars)
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$covariateParameter) > 0) {
-    .ret <- .ret[!(names(.ret) %fin% .cov$covariateParameter)]
+    .ret <- .ret[!(names(.ret) %in% .cov$covariateParameter)]
   }
   .ret
 }

@@ -212,7 +212,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   }
   method <- match.arg(method)
   if (missing(covMethod) && any(solveType == 2:3) &&
-        method %fin% c("BFGS", "CG", "L-BFGS-B")) {
+        method %in% c("BFGS", "CG", "L-BFGS-B")) {
     covMethod <- "optim"
   } else {
     covMethod <- match.arg(covMethod)
@@ -231,7 +231,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% "genRxControl")]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -385,7 +385,7 @@ rxUiDeparse.optimControl <- function(object, var) {
     .control <- do.call(nlmixr2est::optimControl, .control)
   }
   assign("control", .control, envir=.ui)
-  if (.control$method %fin% c("L-BFGS-B", "Brent")) {
+  if (.control$method %in% c("L-BFGS-B", "Brent")) {
   } else {
     .methodWarn <- paste0(" which are ignored in 'optim' with method='",
                           .control$method, "'")
@@ -474,7 +474,7 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
          call.=FALSE)
   }
 
-  if(.ctl$method %fin% c("BFGS", "CG", "L-BFGS-B") &&
+  if(.ctl$method %in% c("BFGS", "CG", "L-BFGS-B") &&
        .ctl$solveType == 2L) {
     .mi <- ui$nlmSensModel
   } else {
@@ -485,7 +485,7 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
                        lower=ui$optimParLower, upper=ui$optimParUpper)
   on.exit({.nlmFreeEnv()})
-  if (.ctl$method %fin% c("BFGS", "CG", "L-BFGS-B") &&
+  if (.ctl$method %in% c("BFGS", "CG", "L-BFGS-B") &&
         .ctl$solveType == 2L) {
     # support gradient
     .ret <- bquote(stats::optim(

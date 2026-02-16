@@ -1,7 +1,3 @@
-#' @importFrom fastmatch `%fin%`
-
-#' @importFrom fastmatch `%!fin%`
-
 #' @importFrom rxode2 rxode2
 #' @export
 rxode2::rxode2

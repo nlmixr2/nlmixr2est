@@ -19,7 +19,7 @@ nmTest({
       expect_equal(ncol(o), exp.col)
     }
     if (!is.null(exp.names)) {
-      expect_true(all(exp.names %fin% colnames(o)))
+      expect_true(all(exp.names %in% colnames(o)))
     }
   }
   tmpDir <- tempdir()

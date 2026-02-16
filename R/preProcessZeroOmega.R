@@ -29,14 +29,14 @@
                           zeroEtas=zeroEtas)))
   } else if (is.name(x)) {
     .n <- as.character(x)
-    if (.n %fin% zeroEtas) {
+    if (.n %in% zeroEtas) {
       return(0)
     }
     .w <- which(muRefDataFrame$theta == .n)
     if (length(.w) == 1L) {
       .mu <- muRefDataFrame[.w, ]
       .eta <- .mu$eta
-      if (.eta %fin% zeroEtas) {
+      if (.eta %in% zeroEtas) {
         return(x)
       } else {
         return(str2lang(paste0(.mu$theta, "+", .mu$eta)))
@@ -88,8 +88,8 @@
                  collapse="\n"),
            "})"))
   .iniDf <- ui$iniDf
-  .etas <- .iniDf[.iniDf$name %fin% zeroEtas, "neta1"]
-  .w <- which(.iniDf$neta1 %fin% .etas | .iniDf$neta2 %fin% .etas)
+  .etas <- .iniDf[.iniDf$name %in% zeroEtas, "neta1"]
+  .w <- which(.iniDf$neta1 %in% .etas | .iniDf$neta2 %in% .etas)
   if (length(.w) > 0) {
     .iniDf <- .iniDf[-.w, ]
     .thetas <- .iniDf[!is.na(.iniDf$ntheta), ]

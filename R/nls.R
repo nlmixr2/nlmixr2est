@@ -136,7 +136,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% "genRxControl")]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -411,7 +411,7 @@ rxGetDistributionNlsLines.norm <- function(line) {
       if (!is.na(pred1$c)) {
         .p2 <- str2lang(pred1$c)
       } else {
-        .w <- which(env$iniDf$err %fin% c("pow2", "powF2", "powT2") & env$iniDf$condition == .cnd)
+        .w <- which(env$iniDf$err %in% c("pow2", "powF2", "powT2") & env$iniDf$condition == .cnd)
         if (length(.w) == 1L) {
           .p2 <- str2lang(env$iniDf$name[.w])
         } else {
@@ -455,15 +455,15 @@ rxGetDistributionNlsLines.rxUi <- function(line) {
 #' @noRd
 .uiGetNlsTheta <- function(rxui) {
   .iniDf <- rxui$iniDf
-  #.w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  #.w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   .env <- new.env(parent=emptyenv())
   .env$i <- 0
-  .w <- which(!(rxui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!(rxui$iniDf$err %in% c("add", "prop", "pow")))
   lapply(.w, function(i) {
     if (rxui$iniDf$fix[i]) {
       return(eval(parse(text=paste0("quote(", .iniDf$name[i], " <- ", rxui$iniDf$est[i],")"))))
     }
-    if (rxui$iniDf$err[i] %fin% c("add", "prop", "pow")) {
+    if (rxui$iniDf$err[i] %in% c("add", "prop", "pow")) {
       return(NULL)
     }
     .env$i <- .env$i + 1
@@ -755,7 +755,7 @@ rxUiGet.nlsSensModel <- function(x, ...) {
 #' @export
 rxUiGet.nlsParStart <- function(x, ...) {
   .ui <- x[[1]]
-  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(lapply(.w, function(i){
     .ui$iniDf$est[i]
   }),
@@ -765,7 +765,7 @@ rxUiGet.nlsParStart <- function(x, ...) {
 #' @export
 rxUiGet.nlsParStartTheta <- function(x, ...) {
   .ui <- x[[1]]
-  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
     .ui$iniDf$est[i]
   }, double(1), USE.NAMES = FALSE),
@@ -777,7 +777,7 @@ attr(rxUiGet.nlsParStartTheta, "rstudio") <- c(`THETA[1]`=0.1)
 #' @export
 rxUiGet.nlsParams <- function(x, ...) {
   .ui <- x[[1]]
-  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   paste0("params(", paste(c(paste0("THETA[", seq_along(.ui$iniDf$name[.w]), "]"), "DV"), collapse=", "), ")")
 }
 attr(rxUiGet.nlsParams, "rstudio") <- "params(THETA[1], DV)"
@@ -785,7 +785,7 @@ attr(rxUiGet.nlsParams, "rstudio") <- "params(THETA[1], DV)"
 #' @export
 rxUiGet.nlsParLower <- function(x, ...) {
   .ui <- x[[1]]
-  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
     .ui$iniDf$lower[i]
   }, double(1), USE.NAMES=FALSE),
@@ -796,7 +796,7 @@ attr(rxUiGet.nlsParLower, "rstudio") <- c(`ka`=0.01)
 #' @export
 rxUiGet.nlsParUpper <- function(x, ...) {
   .ui <- x[[1]]
-  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow")))
+  .w <- which(!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow")))
   setNames(vapply(.w, function(i){
     .ui$iniDf$upper[i]
   }, double(1), USE.NAMES=FALSE),
@@ -810,7 +810,7 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
   .iniDf <- .ui$iniDf
   .args <- vapply(seq_along(.iniDf$ntheta),
                   function(t) {
-                    if (.iniDf$err[t] %fin% c("add", "prop", "pow")) {
+                    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
                       ""
                     } else if (.iniDf$fix[t]) {
                       ""
@@ -823,7 +823,7 @@ rxUiGet.nlsParNameFun <- function(x, ...) {
     paste0("function(",paste(.args, collapse=", "),
            ") {c(",
            paste(vapply(seq_along(.iniDf$ntheta), function(t) {
-             if (.iniDf$err[t] %fin% c("add", "prop", "pow")) {
+             if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
                paste0("'THETA[", t, "]'=", .iniDf$est[t])
              } else if (.iniDf$fix[t]) {
                paste0("'THETA[", t, "]'=", .iniDf$est[t])
@@ -839,7 +839,7 @@ attr(rxUiGet.nlsParNameFun, "rstudio") <- function() {}
   .iniDf <- .ui$iniDf
   .args <- vapply(seq_along(.iniDf$ntheta),
                   function(t) {
-                    if (.iniDf$err[t] %fin% c("add", "prop", "pow")) {
+                    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
                       ""
                     } else if (.iniDf$fix[t]) {
                       ""
@@ -960,7 +960,7 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
     .sd <- sd(resid(nls))
   }
   setNames(vapply(seq_along(.iniDf$ntheta), function(t) {
-    if (.iniDf$err[t] %fin% c("add", "prop", "pow")) {
+    if (.iniDf$err[t] %in% c("add", "prop", "pow")) {
       .sd
     } else if (.iniDf$fix[t]) {
       .iniDf$est[t]

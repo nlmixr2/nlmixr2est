@@ -20,7 +20,7 @@ use.utf <- function() {
  }
 
 is.latex <- function() {
-  if (!("knitr" %fin% loadedNamespaces())) {
+  if (!("knitr" %in% loadedNamespaces())) {
     return(FALSE)
   }
   get("is_latex_output", asNamespace("knitr"))()
@@ -30,7 +30,7 @@ is.latex <- function() {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
-  .ctl <- .ctl[names(.ctl) %fin% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- minqa::bobyqa(par, fn,
                         control = .ctl,
                         lower = lower,
@@ -44,7 +44,7 @@ is.latex <- function() {
 }
 
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .w <- which(names(control) %fin% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
+  .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
   .ret$x <- .ret$par
@@ -52,7 +52,7 @@ is.latex <- function() {
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .control <- control[names(control) %fin% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
+  .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
   .ret <- optim(
@@ -92,7 +92,7 @@ is.latex <- function() {
 
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
-  .ctl <- .ctl[names(.ctl) %fin% c(
+  .ctl <- .ctl[names(.ctl) %in% c(
     "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
     "scale.inti", "diff.g"
   )]
@@ -883,7 +883,7 @@ rxUiGet.focei <- function(x, ...) {
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -909,7 +909,7 @@ rxUiGet.foce <- function(x, ...) {
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -936,7 +936,7 @@ rxUiGet.ebe <- function(x, ...) {
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %fin% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -1104,7 +1104,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                        .zeroRep <- rxode2::rxGetControl(ui, "sdLowerFact", 0.001)
                        if (.zeroRep <= 0) return(.low)
                        if (.low <= 0 &&
-                             .iniDf$err[i] %fin% c("add",
+                             .iniDf$err[i] %in% c("add",
                                                   "lnorm", "logitNorm", "probitNorm",
                                                   "prop", "propT", "propF",
                                                   "pow", "powF", "powT")) {
@@ -1270,7 +1270,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .env <- new.env(parent=emptyenv())
   .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
   .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %fin% c("add", "prop", "pow"))]
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
@@ -1345,7 +1345,7 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     .skipCov[which(!is.na(.theta$err))] <- TRUE
     .skipCov[.theta$fix] <- TRUE
     if (length(.uiIovEnv$iovVars) > 0) {
-      .skipCov[which(.theta$name %fin% .uiIovEnv$iovVars)] <- TRUE
+      .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
     }
     .skipCov
   }

@@ -279,7 +279,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
   con <- list(maxeval = 999, reltol = 1e-6, rcoeff = 1., ecoeff = 2., ccoeff = .5, trace = FALSE) # nolint
   nmsC <- names(con)
   con[(namc <- names(control))] <- control
-  if (length(noNms <- namc[!namc %fin% nmsC])) {
+  if (length(noNms <- namc[!namc %in% nmsC])) {
     warning("unknown names in control: ", paste(noNms, collapse = ", "))
   }
 

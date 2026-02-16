@@ -15,7 +15,7 @@
   if (is.null(.ctl$rhobeg)) .ctl$rhobeg <- 0.2
   if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
   .ctl$iprint <- 0L
-  .ctl <- .ctl[names(.ctl) %fin% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
   .ret <- try(minqa::newuoa(par, fn,
     control = .ctl
     ))
@@ -184,10 +184,10 @@
     if (length(timeVaryingCovariates) > 0) {
       # Drop time-varying covariates
       # First get the time varying covariates
-      .w <- which(.muRefCovariateDataFrame$covariate %fin% timeVaryingCovariates)
+      .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
       # next find out the theta for the phi expression
       .covPar <- .muRefCovariateDataFrame[.w, "theta"]
-      .w2 <- which(ui$muRefCurEval$parameter %fin% .covPar)
+      .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
       if (length(.w2) > 0) {
         # see if the expression is on a log scale
         .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
@@ -195,7 +195,7 @@
           .w2 <- .w2[.w3]
           .texp <- ui$muRefCurEval$parameter[.w2]
           # now get parameters
-          .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %fin% .texp]
+          .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
           ## warning(paste0("log-scale mu referenced time varying covariates (",
           ##                paste(.pars, collapse=", "),
           ##                ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
@@ -203,7 +203,7 @@
         }
 
       }
-      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %fin% timeVaryingCovariates), ]
+      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
     assign("muRefFinal", .muRefCovariateDataFrame, ui)
     assign("timeVaryingCovariates", timeVaryingCovariates, ui)
@@ -306,7 +306,7 @@
   .resMat <- .saem$resMat
   .varSpec <- FALSE
   for (n in .thetaNames) {
-    if (n %fin% .saemThetaNames) {
+    if (n %in% .saemThetaNames) {
       .theta[n] <- .thetaSaem[n]
     }
   }

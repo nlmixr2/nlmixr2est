@@ -26,7 +26,7 @@ if (rxode2hasLlik()) {
       }
 
       f <- .nlmixr(one.cmt, theo_sd, "focei")
-      expect_true("CWRES" %fin% names(f))
+      expect_true("CWRES" %in% names(f))
 
       of1     <- f$objf
       etaMat1 <- as.matrix(f$eta[,-1])
@@ -35,7 +35,7 @@ if (rxode2hasLlik()) {
       etaO1   <- f$etaObf
 
       f <- .nlmixr(one.cmt, theo_sd, "foce")
-      expect_true("CWRES" %fin% names(f))
+      expect_true("CWRES" %in% names(f))
 
       of2 <- f$objf
       etaMat2 <- as.matrix(f$eta[,-1])
@@ -84,7 +84,7 @@ if (rxode2hasLlik()) {
 
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
-      expect_false("CWRES" %fin% names(f))
+      expect_false("CWRES" %in% names(f))
 
       expect_equal(f$objf, of1)
 
@@ -99,7 +99,7 @@ if (rxode2hasLlik()) {
 
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
-      expect_false("CWRES" %fin% names(f))
+      expect_false("CWRES" %in% names(f))
       expect_equal(f$objf, of2)
 
       # no etas test
@@ -380,12 +380,12 @@ if (rxode2hasLlik()) {
                 "PDE", "PD")) {
       test_that(paste0("res: ", i), {
         expect_false(any(is.na(f1[[i]])))
-        if (i %fin% c("PRED", "IPRED")) {
+        if (i %in% c("PRED", "IPRED")) {
           expect_false(any(is.na(f2[[i]])))
         } else {
           expect_true(all(is.na(f2[[i]])))
         }
-        if (!(i %fin% c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD"))) {
+        if (!(i %in% c("EPRED", "ERES", "NPDE", "NPD", "PDE", "PD"))) {
           expect_equal(f1[[i]], f1norm[[i]])
         }
       })

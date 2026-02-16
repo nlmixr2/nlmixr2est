@@ -26,13 +26,13 @@ nmTest({
     fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)
 
 
-    expect_false(all(c("NPDE","EPRED","NPD","NPDE") %fin% names(fit)))
+    expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
     expect_warning(fit$etaSE)
     expect_warning(fit$etaRSE)
     expect_warning(fit$etaR)
     expect_false(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
     suppressMessages(expect_error(addCwres(fit), NA))
-    expect_true(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
+    expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_equal(row.names(fit$objDf), "FOCEi")
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
@@ -41,17 +41,17 @@ nmTest({
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
 
-    expect_false(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
+    expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     suppressMessages(expect_error(addCwres(fit, focei=FALSE), NA))
-    expect_true(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
+    expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_equal(row.names(fit$objDf), "FOCE")
 
     fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
 
-    expect_false(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
+    expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     fit2 <- suppressMessages(addCwres(fit, updateObject=FALSE))
-    expect_false(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
-    expect_true(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit2)))
+    expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
+    expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit2)))
     expect_equal(row.names(fit2$objDf), "FOCEi")
     expect_false(is.null(fit2$etaSE))
 
@@ -62,7 +62,7 @@ nmTest({
         table = tableControl(cwres = TRUE)
       )
 
-    expect_true(all(c("WRES","CPRED","CRES","CWRES") %fin% names(fit)))
+    expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
     expect_false(is.null(fit$etaR))

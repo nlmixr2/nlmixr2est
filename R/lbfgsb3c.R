@@ -124,7 +124,7 @@ lbfgsb3cControl <- function(trace=0,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% "genRxControl")]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),

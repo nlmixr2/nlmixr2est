@@ -35,7 +35,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 #'
 #' @author Matthew L. Fidler
 .getMuValForUE <- function(name, trans, ui, pm, plus=TRUE, saem=TRUE, retName=FALSE) {
-  if (!saem || name %fin% ui$nonMuEtas) {
+  if (!saem || name %in% ui$nonMuEtas) {
     if (retName) return(name)
     if (is.na(plus)) {
       return(setNames(0, name))
@@ -132,7 +132,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
   .fullN <- unique(c(names(.etas), names(ui$theta)))
   .full <- .etas
   for (n in .fullN) {
-    if (n %fin% names(.full)) next
+    if (n %in% names(.full)) next
     .full[[n]] <- ui$theta[n]
   }
 

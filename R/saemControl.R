@@ -175,7 +175,7 @@ saemControl <- function(seed = 99,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %fin% c("genRxControl", "mcmc",
+  .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc",
                              "DEBUG"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
