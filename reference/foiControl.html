@@ -237,8 +237,8 @@ is ignored.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     ...) </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> {</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- control</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .ctl[names(.ctl) %fin% c("eval.max", "iter.max", </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         "step.max", "sing.tol", "scale.inti", "diff.g")]</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl$trace &lt;- 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret &lt;- stats::nlminb(start = par, objective = fn, gradient = gr, </span>
@@ -246,7 +246,7 @@ is ignored.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$x &lt;- .ret$par</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x55ac3ff2e078&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x56296a8e0dd8&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>

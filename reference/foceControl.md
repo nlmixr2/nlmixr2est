@@ -191,8 +191,8 @@ foceControl()
 #>     ...) 
 #> {
 #>     .ctl <- control
-#>     .ctl <- .ctl[names(.ctl) %fin% c("eval.max", "iter.max", 
-#>         "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
+#>     .ctl <- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", 
+#>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
 #>         "step.max", "sing.tol", "scale.inti", "diff.g")]
 #>     .ctl$trace <- 0
 #>     .ret <- stats::nlminb(start = par, objective = fn, gradient = gr, 
@@ -200,7 +200,7 @@ foceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55ac3ff2e078>
+#> <bytecode: 0x56296a8e0dd8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
