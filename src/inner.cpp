@@ -2295,11 +2295,11 @@ static inline void innerOptId(int id) {
 
 void innerOpt() {
   rx = getRxSolve_();
-  // rx_solving_options *op = getSolvingOptions(rx);
-  // int cores = getOpCores(op);
-  // if (op_focei.mceta >= 1) {
-  //   cores = 1;
-  // }
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  if (op_focei.mceta >= 1) {
+    cores = 1;
+  }
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
@@ -2318,9 +2318,9 @@ void innerOpt() {
       }
     }
   } else {
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(cores)
-// #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores)
+#endif
     for (int id = 0; id < getRxNsubAndMix(rx); id++){
       innerOptId(id);
     }
@@ -3780,7 +3780,7 @@ NumericVector foceiSetup_(const RObject &obj,
   params.attr("row.names") = IntegerVector::create(NA_INTEGER,-nsub);
   // Now pre-fill parameters.
   if (!Rf_isNull(obj)) {
-    rxControl[Rxc_cores] = IntegerVector::create(1); // #Force one core; parallelization needs to be taken care of here in inner.cpp
+    // cores are now handled by OpenMP in innerOpt(); no longer forced to 1
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
