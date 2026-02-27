@@ -11,6 +11,31 @@
 #include "inner.h"
 #include <n1qn1c.h>
 #include <Rinternals.h>
+#ifdef _OPENMP
+  #include <omp.h>
+#endif
+#include <atomic>
+
+// Flag indicating we're inside the parallel inner optimization region.
+// When set, thread-unsafe operations (R warnings/errors, running mean
+// accumulation) are skipped or deferred.  ODE retry now handled via
+// per-thread tolerances under omp critical.
+static int _innerParallel = 0;
+
+// ── Per-thread ODE tolerance retry storage ──
+// Allocated in innerOpt() before the parallel region so that each
+// thread can independently relax atol/rtol when an ODE solve fails,
+// without mutating the shared global arrays.
+static std::vector<std::vector<double>> _threadAtol2;
+static std::vector<std::vector<double>> _threadRtol2;
+static std::vector<double> _threadATOL;
+static std::vector<double> _threadRTOL;
+// Saved base tolerances (from op->atol2/rtol2/ATOL/RTOL before any retry)
+static std::vector<double> _baseAtol2;
+static std::vector<double> _baseRtol2;
+static double _baseATOL = 0;
+static double _baseRTOL = 0;
+static int _odeRetryNeq = 0;  // neq at time of allocation
 
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
@@ -174,9 +199,9 @@ struct focei_options {
   int maxOdeRecalc;
   int objfRecalN;
   int stickyRecalcN1;
-  int stickyRecalcN2;
+  std::atomic<int> stickyRecalcN2{0};
   int stickyRecalcN;
-  int stickyTol=0;
+  std::atomic<int> stickyTol{0};
 
   int nsim;
   int nzm;
@@ -243,14 +268,14 @@ struct focei_options {
   int shi21maxFD;
   double cholAccept;
   double resetEtaSize;
-  int didEtaReset;
+  std::atomic<int> didEtaReset{0};
   double resetThetaSize = std::numeric_limits<double>::infinity();
   double resetThetaFinalSize = std::numeric_limits<double>::infinity();
   int checkTheta;
   int *muRef = NULL;
   int muRefN;
   int resetHessianAndEta;
-  int didHessianReset;
+  std::atomic<int> didHessianReset{0};
   int cholSEOpt=0;
   int cholSECov;
   int fo;
@@ -280,9 +305,9 @@ struct focei_options {
   double gradCalcCentralLarge;
   double etaNudge;
   double etaNudge2;
-  int didEtaNudge;
-  int reducedTol;
-  int reducedTol2;
+  std::atomic<int> didEtaNudge{0};
+  std::atomic<int> reducedTol{0};
+  std::atomic<int> reducedTol2{0};
   int repeatGill;
   int repeatGillN;
   int repeatGillMax;
@@ -297,7 +322,7 @@ struct focei_options {
   NumericVector logitThetaHi;
   NumericVector logitThetaLow;
   double badSolveObjfAdj = 100;
-  bool didPredSolve = false;
+  std::atomic<bool> didPredSolve{false};
   bool canDoFD  = false;
   bool adjLik = false;
   bool fallbackFD = false;
@@ -305,7 +330,7 @@ struct focei_options {
   int optimHessType = 1;
   int optimHessCovType = 1;
   double smatPer;
-  bool didLikCalc=false;
+  std::atomic<bool> didLikCalc{false};
   bool zeroGradFirstReset= false;
   bool zeroGradRunReset=false;
   bool zeroGradBobyqa=false;
@@ -383,6 +408,8 @@ struct focei_ind {
   int doFD=0;
   int doEtaNudge;
   int badSolve=0;
+  int parWarnBadHess=0;  // deferred "non-positive definite Hessian" warning
+  int parErrorNoEta=0;   // deferred "could not find best eta" error
   double curF;
   double curT;
   double *curS;
@@ -864,7 +891,7 @@ double likInner0(double *eta, int id) {
   int i, j;
   bool recalc = false;
   focei_ind *fInd= &(inds_focei[id]);
-  op_focei.didLikCalc = true;
+  op_focei.didLikCalc.store(true, std::memory_order_relaxed);
   double *solve = getIndSolve(ind);
   if (op_focei.neta > 0){
     if (!fInd->setup){
@@ -889,37 +916,115 @@ double likInner0(double *eta, int id) {
     for (j = op_focei.neta; j--;){
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
-    if (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN){
-      op_focei.stickyRecalcN2=0;
+    if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN){
+      op_focei.stickyRecalcN2.store(0, std::memory_order_relaxed);
     }
     setIndSolve(ind, -1);
     // Solve ODE
     bool predSolve = false;
     if (fInd->doFD == 0) {
       innerOde(id);
-      j=0;
-      while (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
-        op_focei.stickyRecalcN2++;
-        op_focei.reducedTol  = 1;
-        op_focei.reducedTol2 = 1;
-        // Not thread safe
-        rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
-        setIndSolve(ind,-1);
-        innerOde(id);
-        j++;
-      }
-      if (j != 0) {
-        if (op_focei.stickyRecalcN2 <= op_focei.stickyRecalcN){
-          // Not thread safe
-          rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -j));
-        } else {
-          op_focei.stickyTol=1;
+      // ── ODE retry with progressively relaxed tolerances ──
+      // Check per-individual solve status (not the global op->badSolve
+      // which races across threads).
+      {
+        int nsolveChk = getOpNeq(op) * getIndNallTimes(ind);
+        bool indBadSolve = false;
+        if (getOpNeq(op) > 0) {
+          double *solveChk = getIndSolve(ind);
+          for (int ns = 0; ns < nsolveChk; ++ns) {
+            if (ISNA(solveChk[ns]) || std::isnan(solveChk[ns]) ||
+                std::isinf(solveChk[ns])) {
+              indBadSolve = true;
+              break;
+            }
+          }
+        }
+        if (indBadSolve && op_focei.maxOdeRecalc > 0) {
+          // Retry loop — serialised via omp critical so that we can
+          // temporarily swap global atol/rtol pointers to per-thread
+          // arrays without affecting concurrent solvers.
+#ifdef _OPENMP
+          int tid = (_innerParallel != 0) ? omp_get_thread_num() : 0;
+#else
+          int tid = 0;
+#endif
+          int neq = getOpNeq(op);
+          // Initialise this thread's tolerance vectors from the base
+          std::copy(_baseAtol2.begin(), _baseAtol2.begin() + neq,
+                    _threadAtol2[tid].begin());
+          std::copy(_baseRtol2.begin(), _baseRtol2.begin() + neq,
+                    _threadRtol2[tid].begin());
+          _threadATOL[tid] = _baseATOL;
+          _threadRTOL[tid] = _baseRTOL;
+
+          j = 0;
+          while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
+                 && indBadSolve
+                 && j < op_focei.maxOdeRecalc) {
+            op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
+            op_focei.reducedTol.store(1, std::memory_order_relaxed);
+            op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+            // Relax this thread's tolerances by the recalc factor
+            double factor = op_focei.odeRecalcFactor;
+            for (int k = 0; k < neq; ++k) {
+              _threadAtol2[tid][k] = std::min(_threadAtol2[tid][k] * factor, 0.1);
+              _threadRtol2[tid][k] = std::min(_threadRtol2[tid][k] * factor, 0.1);
+            }
+            _threadATOL[tid] = std::min(_threadATOL[tid] * factor, 0.1);
+            _threadRTOL[tid] = std::min(_threadRTOL[tid] * factor, 0.1);
+            // Critical section: swap global pointers → solve → restore.
+            // Only the rare retry path is serialised; the common (first-
+            // solve-succeeds) path runs fully in parallel.
+#ifdef _OPENMP
+#pragma omp critical(odeRetry)
+#endif
+            {
+              double *savedAtol2 = op->atol2;
+              double *savedRtol2 = op->rtol2;
+              double savedATOL   = op->ATOL;
+              double savedRTOL   = op->RTOL;
+              op->atol2 = _threadAtol2[tid].data();
+              op->rtol2 = _threadRtol2[tid].data();
+              op->ATOL  = _threadATOL[tid];
+              op->RTOL  = _threadRTOL[tid];
+              rxode2::resetOpBadSolve(op);
+              setIndSolve(ind, -1);
+              innerOde(id);
+              op->atol2 = savedAtol2;
+              op->rtol2 = savedRtol2;
+              op->ATOL  = savedATOL;
+              op->RTOL  = savedRTOL;
+            }
+            // Re-check this individual's solve
+            indBadSolve = false;
+            {
+              double *solveChk2 = getIndSolve(ind);
+              for (int ns = 0; ns < nsolveChk; ++ns) {
+                if (ISNA(solveChk2[ns]) || std::isnan(solveChk2[ns]) ||
+                    std::isinf(solveChk2[ns])) {
+                  indBadSolve = true;
+                  break;
+                }
+              }
+            }
+            j++;
+          }
+          if (j != 0 &&
+              op_focei.stickyRecalcN2.load(std::memory_order_relaxed) > op_focei.stickyRecalcN) {
+            op_focei.stickyTol.store(1, std::memory_order_relaxed);
+          }
+          // Note: the global atol/rtol are unchanged.  If stickyTol was
+          // NOT set, the tolerances were only modified in thread-local
+          // vectors and the global arrays remain at their base values.
+          // If stickyTol IS set, the outer-level code in foceiOfv0 is
+          // responsible for the permanent relaxation via atolRtolFactor_.
         }
       }
     } else {
       predOde(id);
       predSolve=true;
-      op_focei.didPredSolve = true;
+      op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
     bool isBadSolve = false;
     int nsolve = (getOpNeq(op) + getOpNlin(op))*getIndNallTimes(ind);
@@ -1721,10 +1826,10 @@ static inline int innerOpt1(int id, int likId) {
       if (op_focei.resetHessianAndEta){
         fInd->mode = 1;
         fInd->uzm = 1;
-        if (n1qn1Inner) op_focei.didHessianReset=1;
+        if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
       }
       std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-      op_focei.didEtaReset=1;
+      op_focei.didEtaReset.store(1, std::memory_order_relaxed);
     } else if (R_FINITE(op_focei.resetEtaSize)) {
       std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
       // Standardized ETAs
@@ -1736,10 +1841,10 @@ static inline int innerOpt1(int id, int likId) {
           if (op_focei.resetHessianAndEta){
             fInd->mode = 1;
             fInd->uzm = 1;
-            if (n1qn1Inner) op_focei.didHessianReset=1;
+            if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
           }
           std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-          op_focei.didEtaReset=1;
+          op_focei.didEtaReset.store(1, std::memory_order_relaxed);
           doBreak=true;
           break;
         }
@@ -1751,10 +1856,10 @@ static inline int innerOpt1(int id, int likId) {
             if (op_focei.resetHessianAndEta){
               fInd->mode = 1;
               fInd->uzm = 1;
-              if (n1qn1Inner) op_focei.didHessianReset=1;
+              if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
             }
             std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
-            op_focei.didEtaReset=1;
+            op_focei.didEtaReset.store(1, std::memory_order_relaxed);
             break;
           }
         }
@@ -1788,7 +1893,7 @@ static inline int innerOpt1(int id, int likId) {
     if (fInd->doEtaNudge == 1 && op_focei.etaNudge != 0.0){
       bool tryAgain=false;
       // if (nF <= 3) tryAgain = true;
-      op_focei.didEtaNudge =1;
+      op_focei.didEtaNudge.store(1, std::memory_order_relaxed);
       if (!tryAgain){
         tryAgain = true;
         for (int i = fop->neta; i--;){
@@ -1801,7 +1906,7 @@ static inline int innerOpt1(int id, int likId) {
       if (tryAgain) {
         fInd->mode = 1;
         fInd->uzm = 1;
-        op_focei.didHessianReset=1;
+        op_focei.didHessianReset.store(1, std::memory_order_relaxed);
         std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
         //nF = fInd->nInnerF;
         fInd->badSolve = 0;
@@ -1825,7 +1930,7 @@ static inline int innerOpt1(int id, int likId) {
         if (tryAgain) {
           fInd->mode = 1;
           fInd->uzm = 1;
-          op_focei.didHessianReset=1;
+          op_focei.didHessianReset.store(1, std::memory_order_relaxed);
           std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
           nF = fInd->nInnerF;
           fInd->badSolve = 0;
@@ -1848,7 +1953,7 @@ static inline int innerOpt1(int id, int likId) {
           if (tryAgain){
             fInd->mode = 1;
             fInd->uzm = 1;
-            op_focei.didHessianReset=1;
+            op_focei.didHessianReset.store(1, std::memory_order_relaxed);
             std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge2);
             nF = fInd->nInnerF;
             fInd->badSolve = 0;
@@ -1871,7 +1976,7 @@ static inline int innerOpt1(int id, int likId) {
             if (tryAgain) {
               fInd->mode = 1;
               fInd->uzm = 1;
-              op_focei.didHessianReset=1;
+              op_focei.didHessianReset.store(1, std::memory_order_relaxed);
               std::fill_n(fInd->x, fop->neta, +op_focei.etaNudge2);
               nF = fInd->nInnerF;
               fInd->badSolve = 0;
@@ -1964,12 +2069,16 @@ static inline int innerOpt1(int id, int likId) {
   fInd->doEtaNudge=0;
 
   std::copy(&fInd->x[0],&fInd->x[0]+fop->neta,&fInd->eta[0]);
-  // Update variances
-  std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
-  op_focei.n = op_focei.n + 1.0;
-  mat oldM = op_focei.etaM;
-  op_focei.etaM = op_focei.etaM + (etaMat - op_focei.etaM)/op_focei.n;
-  op_focei.etaS = op_focei.etaS + (etaMat - op_focei.etaM) %  (etaMat - oldM);
+  if (_innerParallel == 0) {
+    // Serial path: update running mean/variance of ETAs (Welford's algorithm)
+    // Update variances
+    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
+    op_focei.n = op_focei.n + 1.0;
+    mat oldM = op_focei.etaM;
+    op_focei.etaM = op_focei.etaM + (etaMat - op_focei.etaM)/op_focei.n;
+    op_focei.etaS = op_focei.etaS + (etaMat - op_focei.etaM) %  (etaMat - oldM);
+  }
+  // In parallel mode: etaM/etaS accumulated after the parallel region
   fInd->llik = f;
   // Use saved Hessian on next opimization.
   fInd->mode=2;
@@ -2267,17 +2376,25 @@ static inline void resetToZeroWithoutOpt(focei_ind *indF, int& id) {
   std::fill(&indF->eta[0], &indF->eta[0] + op_focei.neta, 0.0);
   if (!innerEval(id)) {
     indF->lik[0] = NA_REAL;
-    warning(_("bad solve during optimization"));
+    if (_innerParallel == 0) {
+      warning(_("bad solve during optimization"));
+    }
   }
 }
 
 static inline void innerOptId(int id) {
   focei_ind *indF = &(inds_focei[id]);
+  indF->parWarnBadHess = 0;
+  indF->parErrorNoEta = 0;
   if (!innerOpt1(id, 0)) {
     // First try resetting ETA
     if (didInnerResetFail(indF, id)) {
       if(!op_focei.noabort){
-        stop("Could not find the best eta even hessian reset and eta reset for ID %d.", id+1);
+        if (_innerParallel == 0) {
+          stop("Could not find the best eta even hessian reset and eta reset for ID %d.", id+1);
+        } else {
+          indF->parErrorNoEta = 1; // deferred to post-parallel
+        }
       } else if (indF->doChol == 1){
         indF->doChol = 0; // Use generalized cholesky decomposition
         if (didInnerResetFail(indF, id)) {
@@ -2295,11 +2412,12 @@ static inline void innerOptId(int id) {
 
 void innerOpt() {
   rx = getRxSolve_();
-  // rx_solving_options *op = getSolvingOptions(rx);
-  // int cores = getOpCores(op);
-  // if (op_focei.mceta >= 1) {
-  //   cores = 1;
-  // }
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+  // Disable parallel for MC eta sampling (uses R API) and mixture models
+  if (op_focei.mceta >= 1 || op_focei.mixIdxN != 0) {
+    cores = 1;
+  }
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
@@ -2318,12 +2436,65 @@ void innerOpt() {
       }
     }
   } else {
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(cores)
-// #endif
-    for (int id = 0; id < getRxNsubAndMix(rx); id++){
+    int nsub = getRxNsubAndMix(rx);
+    if (cores > 1) {
+      _innerParallel = 1;
+    }
+    // ── Allocate per-thread ODE tolerance arrays for retry mechanism ──
+    {
+      int neq = getOpNeq(op);
+      if (neq != _odeRetryNeq || (int)_threadAtol2.size() < cores) {
+        _threadAtol2.resize(cores);
+        _threadRtol2.resize(cores);
+        _threadATOL.resize(cores);
+        _threadRTOL.resize(cores);
+        for (int t = 0; t < cores; ++t) {
+          _threadAtol2[t].resize(neq);
+          _threadRtol2[t].resize(neq);
+        }
+        _baseAtol2.resize(neq);
+        _baseRtol2.resize(neq);
+        _odeRetryNeq = neq;
+      }
+      // Snapshot base tolerances (before any retry modifications)
+      std::copy(op->atol2, op->atol2 + neq, _baseAtol2.begin());
+      std::copy(op->rtol2, op->rtol2 + neq, _baseRtol2.begin());
+      _baseATOL = op->ATOL;
+      _baseRTOL = op->RTOL;
+    }
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
+#endif
+    for (int id = 0; id < nsub; id++){
       innerOptId(id);
     }
+    _innerParallel = 0;
+
+    if (cores > 1) {
+      // --- Post-parallel: deferred error handling ---
+      for (int id = 0; id < nsub; id++) {
+        focei_ind *indF = &(inds_focei[id]);
+        if (indF->parErrorNoEta) {
+          stop("Could not find the best eta even hessian reset and eta reset for ID %d.", id+1);
+        }
+      }
+      // --- Post-parallel: recompute etaM/etaS from per-subject etas ---
+      if (op_focei.neta > 0) {
+        std::fill(op_focei.etaM.begin(), op_focei.etaM.end(), 0.0);
+        std::fill(op_focei.etaS.begin(), op_focei.etaS.end(), 0.0);
+        op_focei.n = 0.0;
+        mat etaMat(op_focei.neta, 1);
+        for (int id = 0; id < nsub; id++) {
+          focei_ind *fInd = &(inds_focei[id]);
+          std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
+          op_focei.n = op_focei.n + 1.0;
+          mat oldM = op_focei.etaM;
+          op_focei.etaM = op_focei.etaM + (etaMat - op_focei.etaM)/op_focei.n;
+          op_focei.etaS = op_focei.etaS + (etaMat - op_focei.etaM) % (etaMat - oldM);
+        }
+      }
+    }
+
     // Reset ETA variances for next step
     if (op_focei.neta > 0){
       if (op_focei.zeroGrad) {
@@ -3780,7 +3951,10 @@ NumericVector foceiSetup_(const RObject &obj,
   params.attr("row.names") = IntegerVector::create(NA_INTEGER,-nsub);
   // Now pre-fill parameters.
   if (!Rf_isNull(obj)) {
-    rxControl[Rxc_cores] = IntegerVector::create(1); // #Force one core; parallelization needs to be taken care of here in inner.cpp
+    // Don't force cores=1. The user-requested core count must propagate
+    // to rxSolve_ so that per-thread buffers (llikSave, lhs, on,
+    // solveSave, etc.) are allocated for the correct number of threads.
+    // Parallelization of the inner loop is managed in innerOpt().
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
