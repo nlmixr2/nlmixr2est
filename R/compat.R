@@ -54,7 +54,7 @@ nlmixr2fix <- function(fit) {
       .c <- try(qs2::qs_deserialize(get(.v, envir=fit$env)))
       if (inherits(.c, "try-error")) {
         rxode2::rxReq("qs")
-        .c <- qs::qdeserialize(get(.v, envir=fit$env))
+        .c <- rxode2::rxOldQsDes(get(.v, envir=fit$env))
         assign(.v, .c, envir=fit$env)
       }
     }

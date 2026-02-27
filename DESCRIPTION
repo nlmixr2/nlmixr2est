@@ -73,7 +73,6 @@ Suggests:
     generics,
     nloptr,
     qs2,
-    qs,
     sys,
     testthat,
     tibble,

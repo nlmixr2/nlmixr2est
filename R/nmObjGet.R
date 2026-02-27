@@ -220,10 +220,10 @@ nmObjGet.default <- function(x, ...) {
           .ret <- NULL
         }
       } else if (.type == "qs") {
-        .ret <- try(qs::qdeserialize(.ret), silent=TRUE)
+        .ret <- try(rxode2::rxOldQsDes(.ret), silent=TRUE)
         if (inherits(.ret, "try-error")) {
           .ret <- try({
-            qs::qdeserialize(get(.arg, envir = .env))
+            rxode2::rxOldQsDes(get(.arg, envir = .env))
           })
           if (inherits(.ret, "try-error")) {
             warning("cannot deserialize object '", .arg, "' (qs)", call.=FALSE)
