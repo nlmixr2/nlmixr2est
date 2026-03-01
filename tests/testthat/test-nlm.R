@@ -150,4 +150,30 @@ nmTest({
 
     expect_s3_class(fit1, "nlmixr2.nlm")
   })
+
+  test_that("nlm multi-subject parallel solving works", {
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        cl <- exp(tcl)
+        v <- exp(tv)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    .dat <- nlmixr2data::theo_md
+    .nSubjects <- length(unique(.dat$ID))
+    fit <- .nlmixr(one.cmt, .dat, est="nlm", list(print=0))
+
+    expect_s3_class(fit, "nlmixr2.nlm")
+    expect_true(.nSubjects > 1)
+    expect_equal(length(unique(fit$ID)), .nSubjects)
+  })
 })
