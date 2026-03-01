@@ -20,9 +20,8 @@ Currently this re-evaluates the function in the current version of rxode2.
 
 \donttest{
 
-if (requireNamespace("qs", quietly = TRUE)) {
 
-  # This is a nlmixr2 v3 fit
+  # This is a nlmixr2 v3 fit and requires the qs package to read in
   fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
   fit <- readRDS(fit)
 
@@ -38,13 +37,12 @@ if (requireNamespace("qs", quietly = TRUE)) {
 
   # This function also prints out the information on how this fit was created
 
-  fit <- nlmixr2fix(fit)
+  fit <- try(nlmixr2fix(fit))
 
   # Now solving and other functions work
-
-  rxSolve(fit)
-
-}
+  if (!inherits(fit, "try-error")) {
+    rxSolve(fit)
+  }
 
 }
 }

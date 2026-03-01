@@ -15,6 +15,8 @@
 
 - Bug fixes for deparsing nlmixr2 control objects
 
+- `nlm` and related pooled methods now run in parallel (based on ID)
+
 - Tests are optimized to reduce redundant fits and run in parallel.
 
 # nlmixr2est 5.0.0
