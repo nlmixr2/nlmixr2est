@@ -196,6 +196,10 @@ nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }
 
+nlmCensInfo <- function() {
+    .Call(`_nlmixr2est_nlmCensInfo`)
+}
+
 nlmGetParHist <- function(p = TRUE) {
     .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
