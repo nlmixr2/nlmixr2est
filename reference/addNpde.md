@@ -103,7 +103,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8296
+#> → compress parHistData in nlmixr2 object, save 8280
 #> → compress phiM in nlmixr2 object, save 312896
 
 # even though you may have forgotten to add the NPDE, you can add it to the data.frame:

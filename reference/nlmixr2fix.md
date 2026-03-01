@@ -29,9 +29,8 @@ Matthew L. Fidler
 ``` r
 # \donttest{
 
-if (requireNamespace("qs", quietly = TRUE)) {
 
-  # This is a nlmixr2 v3 fit
+  # This is a nlmixr2 v3 fit and requires the qs package to read in
   fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
   fit <- readRDS(fit)
 
@@ -39,21 +38,6 @@ if (requireNamespace("qs", quietly = TRUE)) {
   # Language features (like +var()) are not supported in the v3 version
 
   print(fit)
-
-  try(rxSolve(fit)) # should error, but with try it will just display the error
-
-  # This function attempts to fix it by regenerating the rxode2 model with the
-  # new features
-
-  # This function also prints out the information on how this fit was created
-
-  fit <- nlmixr2fix(fit)
-
-  # Now solving and other functions work
-
-  rxSolve(fit)
-
-}
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -90,10 +74,19 @@ if (requireNamespace("qs", quietly = TRUE)) {
 #> # ℹ 129 more rows
 #> # ℹ 7 more variables: depot <dbl>, center <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
 #> #   tad <dbl>, dosenum <dbl>
+
+  try(rxSolve(fit)) # should error, but with try it will just display the error
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
 #> Error in if (pred1$variance) { : argument is of length zero
+
+  # This function attempts to fix it by regenerating the rxode2 model with the
+  # new features
+
+  # This function also prints out the information on how this fit was created
+
+  fit <- try(nlmixr2fix(fit))
 #> # This function is meant to load nlmixr2 fits from other versions
 #> # To reproduce the fit, you need to use the same version of nlmixr2
 #> ## ==============================
@@ -150,6 +143,11 @@ if (requireNamespace("qs", quietly = TRUE)) {
 #> 
 #> # If all else fails you can try to install the version of nlmixr2 used to create the fit
 #> Warning: decompression of an rxUi object from rxode2 < 4.0 requires qs which is not on CRAN
+
+  # Now solving and other functions work
+  if (!inherits(fit, "try-error")) {
+    rxSolve(fit)
+  }
 #>  
 #>  
 #> ℹ using original fit data for simulation
