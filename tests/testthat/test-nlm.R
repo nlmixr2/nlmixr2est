@@ -168,9 +168,12 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt, nlmixr2data::theo_md, est="nlm", list(print=0))
+    .dat <- nlmixr2data::theo_md
+    .nSubjects <- length(unique(.dat$ID))
+    fit <- .nlmixr(one.cmt, .dat, est="nlm", list(print=0))
 
     expect_s3_class(fit, "nlmixr2.nlm")
-    expect_true(length(unique(nlmixr2data::theo_md$ID)) > 1)
+    expect_true(.nSubjects > 1)
+    expect_equal(length(unique(fit$ID)), .nSubjects)
   })
 })
