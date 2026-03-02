@@ -384,18 +384,22 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       }
       double val = lhs[0];
       if (nlmOp.hasFR && hasRxCens(rx)) {
-        int censi = getIndCens(ind, kk);
-        double dvi = getIndDv(ind, kk);
-        double limiti = R_NegInf;
-        if (hasRxLimit(rx)) {
-          limiti = getIndLimit(ind, kk);
-          if (ISNA(limiti)) limiti = R_NegInf;
-        }
-        if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
-          double f = lhs[1]; // rx_pred_f_
-          double r = lhs[2]; // rx_r_
-          double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
-          val = -ll;
+        int yj = getIndYj(ind), dist = 0, yj0 = 0;
+        _splitYj(&yj, &dist, &yj0);
+        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+          int censi = getIndCens(ind, kk);
+          double dvi = getIndDv(ind, kk);
+          double limiti = R_NegInf;
+          if (hasRxLimit(rx)) {
+            limiti = getIndLimit(ind, kk);
+            if (ISNA(limiti)) limiti = R_NegInf;
+          }
+          if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
+            double f = lhs[1]; // rx_pred_f_
+            double r = lhs[2]; // rx_r_
+            double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+            val = -ll;
+          }
         }
       }
       ret(k) = val;
@@ -456,18 +460,22 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       // Save outer kk (time index) for censoring data access before inner kk loop shadows it
       int kkOuter = kk;
-      // Determine censoring status for this observation
+      // Determine censoring status for this observation (only for normal distributions)
       bool hasCensObs = false;
       int censi = 0;
       double dvi = 0.0, limiti = R_NegInf;
       if (nlmOp.hasFR && hasRxCens(rx)) {
-        censi = getIndCens(ind, kkOuter);
-        dvi = getIndDv(ind, kkOuter);
-        if (hasRxLimit(rx)) {
-          limiti = getIndLimit(ind, kkOuter);
-          if (ISNA(limiti)) limiti = R_NegInf;
+        int yj = getIndYj(ind), dist = 0, yj0 = 0;
+        _splitYj(&yj, &dist, &yj0);
+        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+          censi = getIndCens(ind, kkOuter);
+          dvi = getIndDv(ind, kkOuter);
+          if (hasRxLimit(rx)) {
+            limiti = getIndLimit(ind, kkOuter);
+            if (ISNA(limiti)) limiti = R_NegInf;
+          }
+          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
         }
-        hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
       }
       for (int kk = 0; kk < getOpNlhs(op); ++kk) {
         if (kk > nlmOp.ntheta) break; // skip rx_pred_f_ and rx_r_ lhs values
