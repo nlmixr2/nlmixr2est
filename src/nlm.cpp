@@ -386,7 +386,9 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       if (nlmOp.hasFR && hasRxCens(rx)) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+        //if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+        // Can only generate rxDistributionDnorm, so don't check both
+        if (dist == rxDistributionDnorm) {
           int censi = getIndCens(ind, kk);
           double dvi = getIndDv(ind, kk);
           double limiti = R_NegInf;
@@ -467,7 +469,8 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       if (nlmOp.hasFR && hasRxCens(rx)) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+        // Can only generate rxDistributionDnorm, so don't check both
+        if (dist == rxDistributionDnorm) {
           censi = getIndCens(ind, kkOuter);
           dvi = getIndDv(ind, kkOuter);
           if (hasRxLimit(rx)) {
