@@ -530,6 +530,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmCensInfo
+RObject nlmCensInfo();
+RcppExport SEXP _nlmixr2est_nlmCensInfo() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmCensInfo());
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmGetParHist
 RObject nlmGetParHist(bool p);
 RcppExport SEXP _nlmixr2est_nlmGetParHist(SEXP pSEXP) {

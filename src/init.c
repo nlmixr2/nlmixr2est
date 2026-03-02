@@ -104,6 +104,7 @@ SEXP _nlmixr2est_nlmSolveSwitch(SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlmWarnings(void);
+SEXP _nlmixr2est_nlmCensInfo(void);
 
 SEXP _nlmixr2est_nlmScalePar(SEXP);
 SEXP _nlmixr2est_nlmUnscalePar(SEXP);
@@ -149,6 +150,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_solveGradNls", (DL_FUNC) &_nlmixr2est_solveGradNls, 2},
   {"_nlmixr2est_nlminbFunC", (DL_FUNC) &_nlmixr2est_nlminbFunC, 2},
   {"_nlmixr2est_nlmWarnings", (DL_FUNC) &_nlmixr2est_nlmWarnings, 0},
+  {"_nlmixr2est_nlmCensInfo", (DL_FUNC) &_nlmixr2est_nlmCensInfo, 0},
   {"_nlmixr2est_optimFunC", (DL_FUNC) &_nlmixr2est_optimFunC, 2},
   {"_nlmixr2est_nlmSolveSwitch", (DL_FUNC) &_nlmixr2est_nlmSolveSwitch, 1},
   {"_nlmixr2est_nlmSolveR", (DL_FUNC) &_nlmixr2est_nlmSolveR, 1},

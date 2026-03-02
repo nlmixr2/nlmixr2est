@@ -256,6 +256,7 @@
     }
     .msuccess("done")
   }
+  .ret$censInformation <- .Call(`_nlmixr2est_nlmCensInfo`)
   .Call(`_nlmixr2est_nlmWarnings`)
   .nlmFreeEnv()
   .ret
