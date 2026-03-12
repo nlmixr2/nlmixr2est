@@ -556,20 +556,20 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 fit2
 #> ── nlmixr² log-likelihood optim with BFGS method ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -701.3632 1142.514 1157.237      -568.2569        253.4253        43.23195
+#>          OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -694.437 1149.44 1164.163        -571.72        620.9496        76.79813
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>            setup table compress    other
-#> elapsed 0.002794 0.037    0.001 0.983206
+#>           setup table compress   other
+#> elapsed 0.00279 0.031    0.001 0.86521
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.7564 0.2336 30.88 -0.7564 (-1.214, -0.2987)                    
-#> Em    5.329  1.895 35.56      5.329 (1.615, 9.044)                    
-#> E50   2.745 0.9886 36.01     2.745 (0.8076, 4.683)                    
+#> E0  -0.6182 0.2345 37.93 -0.6182 (-1.078, -0.1586)                    
+#> Em    5.914  3.031 51.24   5.914 (-0.02573, 11.85)                    
+#> E50   3.145  1.501 47.74     3.145 (0.2021, 6.088)                    
 #> g         2  FIXED FIXED                         2                    
 #>  
 #>   Covariance Type (value$covMethod): r (optim)
@@ -579,9 +579,9 @@ fit2
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0429     0 -0.385 -0.755
-#> 2 1     0.0693     0 -0.386 -0.753
-#> 3 1     0.0743     0 -0.386 -0.753
+#> 1 1     0.0429     0 -0.431 -0.617
+#> 2 1     0.0693     1 -1.05  -0.615
+#> 3 1     0.0743     0 -0.432 -0.615
 #> # ℹ 997 more rows
 # }
 ```

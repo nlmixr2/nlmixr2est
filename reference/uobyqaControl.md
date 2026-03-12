@@ -442,19 +442,19 @@ print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -669.6211 1174.256 1188.979       -584.128        201.7272        50.02147
+#> lPop -708.8943 1134.983 1149.706      -564.4914        180.4682        55.19697
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table compress    other
-#> elapsed 0.002783 0.042    0.001 0.792217
+#>            setup table    other
+#> elapsed 0.002926 0.032 0.676074
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.7709 0.2602 33.75 -0.7709 (-1.281, -0.2609)                    
-#> Em    4.571   1.57 34.35      4.571 (1.494, 7.649)                    
-#> E50   2.438 0.9708 39.81     2.438 (0.5356, 4.341)                    
+#> E0  -0.7484  0.289 38.62 -0.7484 (-1.315, -0.1819)                    
+#> Em    4.537  1.463 32.25       4.537 (1.67, 7.405)                    
+#> E50   2.079 0.8504 40.91     2.079 (0.4121, 3.746)                    
 #> g         2  FIXED FIXED                         2                    
 #>  
 #>   Covariance Type ($covMethod): r
@@ -464,17 +464,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0358     0 -0.381 -0.770
-#> 2 1     0.0383     0 -0.381 -0.770
-#> 3 1     0.0509     0 -0.381 -0.769
+#> 1 1     0.0383     0 -0.388 -0.747
+#> 2 1     0.0509     1 -1.13  -0.746
+#> 3 1     0.0543     0 -0.388 -0.745
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.770940125259916, 4.57143203942859, 2.43840150341927 
-#> objective: 584.12797926496 
-#> number of function evaluations: 70 
+#> parameter estimates: -0.748381749286645, 4.53705636474939, 2.07892639881751 
+#> objective: 564.491360130744 
+#> number of function evaluations: 60 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

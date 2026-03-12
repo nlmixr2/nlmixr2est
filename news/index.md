@@ -21,6 +21,14 @@
 
 - Tests are optimized to reduce redundant fits and run in parallel.
 
+- [`agqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/agqControl.md)
+  and
+  [`laplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/laplaceControl.md)
+  now have
+  [`rxUiDeparse()`](https://nlmixr2.github.io/rxode2/reference/rxUiDeparse.html)
+  methods so they can be saved better in packages like `nlmixr2save` and
+  `shinyMixR`.
+
 ## nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`. This breaks backward compatibility.
