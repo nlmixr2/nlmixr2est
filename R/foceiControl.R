@@ -1442,9 +1442,8 @@ foceiControl <- function(sigdig = 3, #
   .ret
 }
 
-#' @export
-rxUiDeparse.foceiControl <- function(object, var) {
-  .ret <- foceiControl()
+.rxUiDeparseFoceiControl <- function(object, var, type="foceiControl") {
+  .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
@@ -1454,7 +1453,7 @@ rxUiDeparse.foceiControl <- function(object, var) {
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
-    return(str2lang(paste0(var, " <- foceiControl()")))
+    return(str2lang(paste0(var, " <- ", type, "()")))
   }
   .n <- names(.ret)[.w]
   .n <- .n[.n != "outerOpt"]
@@ -1486,5 +1485,10 @@ rxUiDeparse.foceiControl <- function(object, var) {
       paste0(x, "=", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- foceiControl(", paste(.retD, collapse=","),")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=","),")"))
+}
+
+#' @export
+rxUiDeparse.foceiControl <- function(object, var) {
+  .rxUiDeparseFoceiControl(object, var, type="foceiControl")
 }
