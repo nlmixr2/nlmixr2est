@@ -487,3 +487,26 @@ nlmixr2iovVarSd <- function(val) {
   }
   ret
 }
+#' Pre-process hook that re-expands IOV structure for rxSolve simulation
+#'
+#' When `est == "rxSolve"`, re-applies the IOV expansion on the collapsed
+#' final UI so that the simulation model and omega matrix include per-occasion
+#' etas matching what was used during estimation.
+#'
+#' @param ui rxUi object
+#' @param est estimation method string
+#' @param data dataset
+#' @param control control list (should contain `iovXform` if non-default)
+#' @return list(ui = expandedUi) or NULL
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr2iovExpandHook <- function(ui, est, data, control) {
+  if (!identical(est, "rxSolve")) return(NULL)
+  if (!.uiHasIov(ui)) return(NULL)
+  .env <- new.env(parent = emptyenv())
+  .env$ui <- ui
+  .env$data <- data
+  .env$control <- control
+  .uiApplyIov(.env)
+  list(ui = .env$ui)
+}

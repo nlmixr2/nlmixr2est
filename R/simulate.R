@@ -94,11 +94,8 @@
   .env <- new.env(parent=emptyenv())
   .env$ui <- object$ui
   .env$data <- object$origData
+  .env$control <- list(iovXform = if (exists("iovXform", object$env)) object$env$iovXform else "sd")
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
-  if (.uiHasIov(.env$ui)) {
-    .env$control <- list(iovXform = if (exists("iovXform", object$env)) object$env$iovXform else "sd")
-    .uiApplyIov(.env)
-  }
   .mod <- .getSimModel(.env$ui, hideIpred=FALSE)
   .omega <- .env$ui$omega
   .etaN <- dimnames(.omega)[[1]]
