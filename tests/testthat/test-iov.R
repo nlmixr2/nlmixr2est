@@ -1,3 +1,48 @@
+test_that(".uiHasIov detects IOV condition variables", {
+  # Model with IOV
+  iov.mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(2.7)
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      iov.cl ~ 0.1 | occ
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + iov.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .ui.iov <- rxode2::rxode2(iov.mod)
+  expect_true(nlmixr2est:::.uiHasIov(.ui.iov))
+
+  # Model without IOV
+  bsv.mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- log(2.7)
+      tv <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .ui.bsv <- rxode2::rxode2(bsv.mod)
+  expect_false(nlmixr2est:::.uiHasIov(.ui.bsv))
+})
+
 nmTest({
 
   one.cmt <- function() {

@@ -1,4 +1,133 @@
 nmTest({
+
+  test_that("vpcSim works for IOV models (simInfo omega includes per-occasion etas)", {
+    one.cmt.iov <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        iov.cl ~ 0.1 | occ
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + iov.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    theo_iov <- nlmixr2data::theo_md
+    theo_iov$occ <- 1L
+    theo_iov$occ[theo_iov$TIME >= 144] <- 2L
+
+    fit <- .nlmixr(one.cmt.iov, theo_iov, est = "focei",
+                   control = foceiControlFast)
+
+    # simInfo omega must include per-occasion IOV etas
+    .si <- fit$simInfo
+    .omegaNames <- dimnames(.si$omega)[[1]]
+    expect_true(any(grepl("^rx\\.iov\\.cl\\.", .omegaNames)),
+                info = "simInfo omega should contain per-occasion IOV etas (rx.iov.cl.*)")
+
+    # Two occasions → two per-occasion etas
+    .iovCols <- grep("^rx\\.iov\\.cl\\.", .omegaNames, value = TRUE)
+    expect_equal(length(.iovCols), 2L,
+                 info = "Two occasions should produce two per-occasion IOV etas in omega")
+
+    # params must include the IOV theta (iov.cl)
+    expect_true("iov.cl" %in% names(.si$params),
+                info = "simInfo params should include the IOV theta parameter")
+
+    # vpcSim should run without error and return a data frame
+    vpc <- vpcSim(fit, n = 50, seed = 42)
+    expect_s3_class(vpc, "data.frame")
+    expect_true(nrow(vpc) > 0)
+
+    # pred=TRUE also works
+    vpc2 <- vpcSim(fit, n = 50, seed = 42, pred = TRUE)
+    expect_s3_class(vpc2, "data.frame")
+    expect_true("pred" %in% names(vpc2))
+  })
+
+  test_that("vpcSim IOV: iovXform is persisted on fit and used in simulation", {
+    one.cmt.iov <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        iov.cl ~ 0.1 | occ
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + iov.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    theo_iov <- nlmixr2data::theo_md
+    theo_iov$occ <- 1L
+    theo_iov$occ[theo_iov$TIME >= 144] <- 2L
+
+    .ctl <- foceiControlFast
+    .ctl$iovXform <- "logvar"
+    fit <- .nlmixr(one.cmt.iov, theo_iov, est = "focei", control = .ctl)
+
+    # iovXform should be stored on the fit environment
+    expect_true(exists("iovXform", fit$env),
+                info = "iovXform should be stored in fit$env after estimation")
+    expect_equal(fit$env$iovXform, "logvar")
+
+    # Simulation should still work with non-default xform
+    vpc <- vpcSim(fit, n = 50, seed = 42)
+    expect_s3_class(vpc, "data.frame")
+    expect_true(nrow(vpc) > 0)
+  })
+
+  test_that("vpcSim non-IOV models unaffected by IOV changes", {
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit <- .nlmixr(one.cmt, theo_sd, est = "focei",
+                   control = foceiControl(print = 0, eval.max = 1))
+
+    # No iovXform on non-IOV fit
+    expect_false(exists("iovXform", fit$env),
+                 info = "Non-IOV fit should not have iovXform in env")
+
+    # omega should only have BSV etas (3)
+    .si <- fit$simInfo
+    expect_equal(nrow(.si$omega), 3L,
+                 info = "Non-IOV model should have exactly 3 etas in omega")
+
+    vpc <- vpcSim(fit, n = 50, seed = 42)
+    expect_s3_class(vpc, "data.frame")
+    expect_true(nrow(vpc) > 0)
+  })
+
   test_that("vpcSim retains column information", {
 
     PKPDdata <- nlmixr2data::warfarin
