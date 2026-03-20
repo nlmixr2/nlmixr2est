@@ -62,6 +62,8 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .env <- new.env(parent=emptyenv())
   .env$ui <- object$ui
   .env$data <- object$origData
+  .env$control <- object$control
+  .uiApplyIov(.env)
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
   .si$object <- eval(.getSimModel(.env$ui, hideIpred=FALSE))
   .w <- which(names(.si) == "rx")
