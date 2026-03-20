@@ -72,6 +72,16 @@ nlmixr2iovVarSd <- function(val) {
 # in nlmixr2 fits
 .uiIovEnv <- new.env(parent = emptyenv())
 .uiIovEnv$iovVars <- NULL
+#' Check if a UI has IOV structure
+#'
+#' @param ui rxUi object to check
+#' @return logical TRUE if the model has IOV condition variables
+#' @noRd
+#' @author Matthew L. Fidler
+.uiHasIov <- function(ui) {
+  .iniDf <- ui$iniDf
+  any(!is.na(.iniDf$condition) & .iniDf$condition != "id" & is.na(.iniDf$err))
+}
 #' This applies the IOV method to the model based on the data used
 #'
 #' @param env environment to apply the IOV model transformation.  This should contain:
@@ -91,6 +101,7 @@ nlmixr2iovVarSd <- function(val) {
   if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
     .xform <- "sd"
   }
+  .uiIovEnv$iovXform <- .xform
   .ui <- env$ui
   .iniDf <- .ui$iniDf
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
@@ -290,6 +301,7 @@ nlmixr2iovVarSd <- function(val) {
 
       # Now we can update the finalDf
       assign("iniDf0", .iniDf, envir = ret$env)
+      assign("iovXform", .uiIovEnv$iovXform, envir = ret$env)
       .finalDf <- .iniDf
       .finalDf$est <- .est
       .ui <- .uiIovEnv$iov

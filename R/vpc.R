@@ -63,6 +63,12 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .env$ui <- object$ui
   .env$data <- object$origData
   suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
+  if (.uiHasIov(.env$ui)) {
+    .env$control <- list(iovXform = if (exists("iovXform", object$env)) object$env$iovXform else "sd")
+    .uiApplyIov(.env)
+    .si$omega <- .env$ui$omega
+    .si$params <- nlme::fixed.effects(.env$ui)
+  }
   .si$object <- eval(.getSimModel(.env$ui, hideIpred=FALSE))
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
