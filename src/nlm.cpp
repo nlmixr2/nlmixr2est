@@ -18,13 +18,13 @@
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
 struct nlmOptions {
-  int ntheta=0;
+  unsigned int ntheta=0;
   int *thetaFD=NULL; // theta needs finite difference?
   int *nobs = NULL;
   int *idS  = NULL;
   int *idF  = NULL;
   int *xPar = NULL;
-  int nobsTot = 0;
+  unsigned int nobsTot = 0;
   double *thetahf=NULL; // Shi step size
   double *thetahh=NULL;
   double *initPar= NULL; // initial parameters
@@ -119,7 +119,7 @@ RObject nlmSetup(Environment e) {
   List rxControl = as<List>(e["rxControl"]);
 
   NumericVector p = as<NumericVector>(e["param"]);
-  nlmOp.ntheta = p.size();
+  nlmOp.ntheta = (unsigned int)p.size();
 
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
@@ -151,18 +151,18 @@ RObject nlmSetup(Environment e) {
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + getRxNsub(rx)*3, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + (size_t)getRxNsub(rx)*3, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
   nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
   nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
   nlmOp.xPar = nlmOp.idF + getRxNsub(rx); // [ntheta]
 
   // now calculate nobs per id
-  nlmOp.nobsTot = 0;
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
+  nlmOp.nobsTot = 0U;
+  for (unsigned int id = 0; id < (unsigned int)getRxNsub(rx); ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, (int)id);
     int no = 0;
-    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    for (unsigned int j = 0; j < (unsigned int)getIndNallTimes(ind); ++j) {
       if (getIndEvid(ind, j) == 0) {
         nlmOp.nobsTot++;
         no++;
@@ -184,7 +184,7 @@ RObject nlmSetup(Environment e) {
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+(size_t)getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
     nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
@@ -194,7 +194,7 @@ RObject nlmSetup(Environment e) {
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+getRxNsub(rx)), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+(size_t)getRxNsub(rx)), double);// [ntheta*nsub]
     nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
@@ -206,7 +206,7 @@ RObject nlmSetup(Environment e) {
 #define ntheta nlmOp.ntheta
 #define nsub getRxNsub(rx)
     //nsub*ntheta
-    nlmOp.thetahf = R_Calloc(ntheta*(nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
+    nlmOp.thetahf = R_Calloc(ntheta*((size_t)nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
     nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
     nlmOp.thetaSave = nlmOp.thetahh + ntheta; // [ntheta]
     nlmOp.valSave = nlmOp.thetaSave + ntheta; // [1]
