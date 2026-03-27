@@ -18,7 +18,7 @@ Currently this re-evaluates the function in the current version of rxode2.
 }
 \examples{
 
-\donttest{
+\dontrun{
 
 
   # This is a nlmixr2 v3 fit and requires the qs package to read in
