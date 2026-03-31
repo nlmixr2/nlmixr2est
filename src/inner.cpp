@@ -3650,7 +3650,11 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.repeatGillN=0;
   op_focei.repeatGillMax=as<int>(foceiO["repeatGillMax"]);
   op_focei.stickyRecalcN=as<int>(foceiO["stickyRecalcN"]);
-  op_focei.neta = (unsigned int)as<int>(foceiO["neta"]);
+  int netaTmp = as<int>(foceiO["neta"]);
+  if (netaTmp == NA_INTEGER || netaTmp < 0) {
+    Rcpp::stop("Invalid value for 'neta': must be a non-negative, non-NA integer");
+  }
+  op_focei.neta = static_cast<unsigned int>(netaTmp);
   // this sets up the zero gradient reset
   //
   // When 'NA' the zeroGradReset is FALSE and the zeroGradBobyqa is
