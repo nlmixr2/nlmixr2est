@@ -3628,7 +3628,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.repeatGillN=0;
   op_focei.repeatGillMax=as<int>(foceiO["repeatGillMax"]);
   op_focei.stickyRecalcN=as<int>(foceiO["stickyRecalcN"]);
-  op_focei.neta = as<int>(foceiO["neta"]);
+  op_focei.neta = (unsigned int)as<int>(foceiO["neta"]);
   // this sets up the zero gradient reset
   //
   // When 'NA' the zeroGradReset is FALSE and the zeroGradBobyqa is
