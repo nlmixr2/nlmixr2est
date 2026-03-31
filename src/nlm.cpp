@@ -151,7 +151,7 @@ RObject nlmSetup(Environment e) {
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + (size_t)getRxNsub(rx)*3, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta * 2u + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
   nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
   nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
