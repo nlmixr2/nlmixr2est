@@ -184,7 +184,10 @@ RObject nlmSetup(Environment e) {
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+(size_t)getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(
+      nlmOp.ntheta * (5 + (size_t)getRxNsub(rx)) +
+      (size_t)nlmOp.nobsTot * ((size_t)1 + (size_t)nlmOp.ntheta),
+      double); // [ntheta*nsub]
     nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
