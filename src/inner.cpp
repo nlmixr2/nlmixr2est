@@ -3701,16 +3701,8 @@ NumericVector foceiSetup_(const RObject &obj,
       _rxInv = as<List>(rxInv);
     }
   }
-  int nomega = as<int>(foceiO["nomega"]);
-  if (nomega == NA_INTEGER || nomega < 0) {
-    stop(_("Invalid 'nomega' value; must be a non-negative integer"));
-  }
-  op_focei.omegan = static_cast<unsigned int>(nomega);
-  int ntheta = as<int>(foceiO["ntheta"]);
-  if (ntheta == NA_INTEGER || ntheta < 0) {
-    stop(_("Invalid 'ntheta' value; must be a non-negative integer"));
-  }
-  op_focei.ntheta = static_cast<unsigned int>(ntheta);
+  op_focei.omegan = (unsigned int)as<int>(foceiO["nomega"]);
+  op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
   if (op_focei.maxOuterIterations <= 0){
