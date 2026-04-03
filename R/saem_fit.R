@@ -676,30 +676,38 @@
   thBT
 }
 
-# Build Jacobian diagonal for back-transformation
-# For log params: d/dx exp(x) = exp(x)
+# Build Jacobian diagonal for logit back-transformation ONLY.
+# Non-logit params get 1.0 (identity) to preserve original SE behavior.
 # For logit params: d/dx expit(x) = (hi-lo)*exp(-x)/(1+exp(-x))^2
-# Returns a diagonal vector for constructing the Jacobian matrix
-.saemJacobianDiag <- function(th, fit) {
-  jdiag <- exp(th)  # default: derivative of exp() for log-transformed params
+# Numerically stable: uses two-branch to avoid exp overflow.
+.saemLogitJacobianDiag <- function(th, fit) {
+  nth <- length(th)
+  jdiag <- rep(1.0, nth)  # identity for non-logit params (preserves original SEs)
   .cfg <- attr(fit, "saem.cfg")
   if (!is.null(.cfg) && !is.null(.cfg$jlogit1) && length(.cfg$jlogit1) > 0) {
     for (k in seq_along(.cfg$jlogit1)) {
       idx <- .cfg$jlogit1[k]
       .lo <- .cfg$logitLow[k]
       .hi <- .cfg$logitHi[k]
-      .ex <- exp(-th[idx])
-      jdiag[idx] <- (.hi - .lo) * .ex / (1 + .ex)^2
+      .x <- th[idx]
+      # Numerically stable Jacobian: avoid exp overflow at extreme values
+      if (.x >= 0) {
+        .t <- exp(-.x)
+        jdiag[idx] <- (.hi - .lo) * .t / (1 + .t)^2
+      } else {
+        .t <- exp(.x)
+        jdiag[idx] <- (.hi - .lo) * .t / (1 + .t)^2
+      }
     }
   }
   jdiag
 }
 
-# Transform covariance matrix from internal (log/logit) to natural scale
-# using the Jacobian: Cov_natural = J * Cov_internal * J'
-# where J is diagonal with derivatives of the back-transforms
+# Transform covariance matrix: apply Jacobian ONLY to logit params.
+# Non-logit params retain their original (transformed-space) covariance.
+# Cov_out = J * Cov_in * J'  where J is identity except for logit entries.
 .saemBackTransformCov <- function(th, H, fit) {
-  jdiag <- .saemJacobianDiag(th, fit)
+  jdiag <- .saemLogitJacobianDiag(th, fit)
   J <- diag(jdiag)
   J %*% H %*% t(J)
 }
@@ -776,7 +784,7 @@ print.saemFit <- function(x, ...) {
     print(fit$sig2)
   }
 
-  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  invisible(list(theta = thBT, se = se, H = HBT, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
 }
 
 ##' @export
