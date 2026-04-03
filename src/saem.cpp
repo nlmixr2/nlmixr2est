@@ -55,6 +55,12 @@ mat _saemUE;
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
 
+// Logit reparameterization globals for user_function
+int _saemNLogitParams = 0;
+sword *_saemLogitIdx = NULL;
+double *_saemLogitLow = NULL;
+double *_saemLogitHi = NULL;
+
 // res_mod defines
 #define rmAdd 1
 #define rmProp 2
@@ -660,6 +666,19 @@ public:
     }
     fixedIx0 = as<uvec>(x["fixed.i0"]);
     fixedIx1 = as<uvec>(x["fixed.i1"]);
+
+    // Read logit reparameterization info and set globals for user_function
+    if (x.containsElementNamed("jlogit1_c") && Rf_length(x["jlogit1_c"]) > 0) {
+      _saemLogitIdxVec = as<ivec>(x["jlogit1_c"]);
+      _saemLogitLowVec = as<vec>(x["logitLow"]);
+      _saemLogitHiVec = as<vec>(x["logitHi"]);
+      _saemNLogitParams = _saemLogitIdxVec.n_elem;
+      _saemLogitIdx = _saemLogitIdxVec.memptr();
+      _saemLogitLow = _saemLogitLowVec.memptr();
+      _saemLogitHi = _saemLogitHiVec.memptr();
+    } else {
+      _saemNLogitParams = 0;
+    }
 
     nlambda1 = as<int>(x["nlambda1"]);
     nlambda0 = as<int>(x["nlambda0"]);
@@ -1830,6 +1849,11 @@ private:
   int DEBUG;
   std::vector< std::string > phiMFile;
 
+  // Logit reparameterization for bounded parameters (class holds storage)
+  ivec _saemLogitIdxVec;
+  vec _saemLogitLowVec;
+  vec _saemLogitHiVec;
+
   void set_mcmcphi(mcmcphi &mphi1,
 		   const uvec i1,
 		   const int nphi1,
@@ -1983,7 +2007,25 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
-        setIndParPtr(ind, _j, _phi(_i, k++));
+        double parVal = _phi(_i, k);
+        // Apply expit back-transform for logit-bounded parameters
+        for (int _l = 0; _l < _saemNLogitParams; _l++) {
+          if (_saemLogitIdx[_l] == k) {
+            double lo = _saemLogitLow[_l];
+            double hi = _saemLogitHi[_l];
+            // Numerically stable expit: avoid exp overflow
+            if (parVal >= 0) {
+              double t = exp(-parVal);
+              parVal = lo + (hi - lo) / (1.0 + t);
+            } else {
+              double t = exp(parVal);
+              parVal = lo + (hi - lo) * t / (1.0 + t);
+            }
+            break;
+          }
+        }
+        setIndParPtr(ind, _j, parVal);
+        k++;
       }
     }
   }

@@ -639,6 +639,55 @@ rxUiGet.saemLogEta <- function(x, ...) {
 #attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
 attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
 
+#' Get logit-transformed parameter info for SAEM
+#'
+#' Identifies parameters that need logit reparameterization based on
+#' having finite bounds in the ini() block AND not already being
+#' log-transformed. This enables SAEM to handle general parameter
+#' bounds via logit reparameterization.
+#'
+#' @param x rxode2 UI
+#' @param ... additional arguments
+#' @return a list with components: \code{isLogit} (logical vector),
+#'   \code{low} (numeric vector of lower bounds),
+#'   \code{hi} (numeric vector of upper bounds)
+#' @export
+rxUiGet.saemLogitEta <- function(x, ...) {
+  .ui <- x[[1]]
+  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
+  .logEta <- rxUiGet.saemLogEta(x, ...)
+  .ini <- .ui$iniDf
+  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
+  .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
+  # A parameter needs logit if it has finite bounds AND is not log-transformed
+  .isLogit <- vapply(seq_along(.thetas), function(i) {
+    .nm <- .thetas[i]
+    .w <- which(.ini$name == .nm)
+    if (length(.w) != 1L) return(FALSE)
+    # Already log-transformed - skip
+    if (.logEta[i]) return(FALSE)
+    # Has finite lower AND upper bounds
+    .lo <- .ini$lower[.w]
+    .hi <- .ini$upper[.w]
+    is.finite(.lo) && is.finite(.hi)
+  }, logical(1))
+  names(.isLogit) <- .thetas
+  .low <- vapply(seq_along(.thetas), function(i) {
+    .nm <- .thetas[i]
+    .w <- which(.ini$name == .nm)
+    if (length(.w) == 1L && .isLogit[i]) return(.ini$lower[.w])
+    -Inf
+  }, numeric(1))
+  .hi <- vapply(seq_along(.thetas), function(i) {
+    .nm <- .thetas[i]
+    .w <- which(.ini$name == .nm)
+    if (length(.w) == 1L && .isLogit[i]) return(.ini$upper[.w])
+    Inf
+  }, numeric(1))
+  list(isLogit = .isLogit, low = .low, hi = .hi)
+}
+attr(rxUiGet.saemLogitEta, "rstudio") <- NA
+
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
   .ui <- x[[1]]
@@ -649,6 +698,7 @@ rxUiGet.saemModelList <- function(x, ...) {
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
+  .mod$logit.eta <- rxUiGet.saemLogitEta(x, ...)
   .mod$ares    <- rxUiGet.saemAres(x, ...)
   .mod$bres    <- rxUiGet.saemBres(x, ...)
   .mod$omega   <- rxUiGet.saemModelOmega(x, ...)
