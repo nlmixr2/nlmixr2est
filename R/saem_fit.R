@@ -676,24 +676,32 @@
   thBT
 }
 
-# Compute standard errors on natural scale using delta method
-# For log params: se_natural = exp(th) * se_transformed
-# For logit params: se_natural = (hi-lo) * exp(-th) / (1+exp(-th))^2 * se_transformed
-.saemBackTransformSE <- function(th, se, fit) {
-  seBT <- exp(th) * se  # default: delta method for log transform
+# Build Jacobian diagonal for back-transformation
+# For log params: d/dx exp(x) = exp(x)
+# For logit params: d/dx expit(x) = (hi-lo)*exp(-x)/(1+exp(-x))^2
+# Returns a diagonal vector for constructing the Jacobian matrix
+.saemJacobianDiag <- function(th, fit) {
+  jdiag <- exp(th)  # default: derivative of exp() for log-transformed params
   .cfg <- attr(fit, "saem.cfg")
   if (!is.null(.cfg) && !is.null(.cfg$jlogit1) && length(.cfg$jlogit1) > 0) {
     for (k in seq_along(.cfg$jlogit1)) {
       idx <- .cfg$jlogit1[k]
       .lo <- .cfg$logitLow[k]
       .hi <- .cfg$logitHi[k]
-      # Jacobian of expit: d/dx [lo + (hi-lo)/(1+exp(-x))] = (hi-lo)*exp(-x)/(1+exp(-x))^2
       .ex <- exp(-th[idx])
-      .jac <- (.hi - .lo) * .ex / (1 + .ex)^2
-      seBT[idx] <- abs(.jac) * se[idx]
+      jdiag[idx] <- (.hi - .lo) * .ex / (1 + .ex)^2
     }
   }
-  seBT
+  jdiag
+}
+
+# Transform covariance matrix from internal (log/logit) to natural scale
+# using the Jacobian: Cov_natural = J * Cov_internal * J'
+# where J is diagonal with derivatives of the back-transforms
+.saemBackTransformCov <- function(th, H, fit) {
+  jdiag <- .saemJacobianDiag(th, fit)
+  J <- diag(jdiag)
+  J %*% H %*% t(J)
 }
 
 #' Print an SAEM model fit summary

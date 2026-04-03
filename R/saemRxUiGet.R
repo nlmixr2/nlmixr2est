@@ -641,10 +641,10 @@ attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
 
 #' Get logit-transformed parameter info for SAEM
 #'
-#' Identifies parameters that need logit reparameterization based on
-#' having finite bounds in the ini() block AND not already being
-#' log-transformed. This enables SAEM to handle general parameter
-#' bounds via logit reparameterization.
+#' Identifies parameters that use expit mu-referencing and returns
+#' their indices and bounds. This enables SAEM to handle bounded
+#' parameters via logit reparameterization, consistent with how
+#' log-transformed parameters use exp mu-referencing.
 #'
 #' @param x rxode2 UI
 #' @param ... additional arguments
@@ -655,33 +655,24 @@ attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
 rxUiGet.saemLogitEta <- function(x, ...) {
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
-  .logEta <- rxUiGet.saemLogEta(x, ...)
-  .ini <- .ui$iniDf
+  .ce <- .ui$muRefCurEval
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
-  # A parameter needs logit if it has finite bounds AND is not log-transformed
-  .isLogit <- vapply(seq_along(.thetas), function(i) {
-    .nm <- .thetas[i]
-    .w <- which(.ini$name == .nm)
-    if (length(.w) != 1L) return(FALSE)
-    # Already log-transformed - skip
-    if (.logEta[i]) return(FALSE)
-    # Has finite lower AND upper bounds
-    .lo <- .ini$lower[.w]
-    .hi <- .ini$upper[.w]
-    is.finite(.lo) && is.finite(.hi)
+  # A parameter needs logit if it uses expit mu-referencing
+  .isLogit <- vapply(.thetas, function(x) {
+    .w <- which(.ce$parameter == x)
+    if (length(.w) == 1L) return(.ce$curEval[.w] == "expit")
+    FALSE
   }, logical(1))
   names(.isLogit) <- .thetas
-  .low <- vapply(seq_along(.thetas), function(i) {
-    .nm <- .thetas[i]
-    .w <- which(.ini$name == .nm)
-    if (length(.w) == 1L && .isLogit[i]) return(.ini$lower[.w])
+  .low <- vapply(.thetas, function(x) {
+    .w <- which(.ce$parameter == x)
+    if (length(.w) == 1L && .ce$curEval[.w] == "expit") return(.ce$low[.w])
     -Inf
   }, numeric(1))
-  .hi <- vapply(seq_along(.thetas), function(i) {
-    .nm <- .thetas[i]
-    .w <- which(.ini$name == .nm)
-    if (length(.w) == 1L && .isLogit[i]) return(.ini$upper[.w])
+  .hi <- vapply(.thetas, function(x) {
+    .w <- which(.ce$parameter == x)
+    if (length(.w) == 1L && .ce$curEval[.w] == "expit") return(.ce$hi[.w])
     Inf
   }, numeric(1))
   list(isLogit = .isLogit, low = .low, hi = .hi)

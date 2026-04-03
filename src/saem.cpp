@@ -2009,18 +2009,10 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       if (doParam[_j] == 1) {
         double parVal = _phi(_i, k);
         // Apply expit back-transform for logit-bounded parameters
+        // Uses _powerDi from rxode2 headers (same as FOCEI's expit macro)
         for (int _l = 0; _l < _saemNLogitParams; _l++) {
           if (_saemLogitIdx[_l] == k) {
-            double lo = _saemLogitLow[_l];
-            double hi = _saemLogitHi[_l];
-            // Numerically stable expit: avoid exp overflow
-            if (parVal >= 0) {
-              double t = exp(-parVal);
-              parVal = lo + (hi - lo) / (1.0 + t);
-            } else {
-              double t = exp(parVal);
-              parVal = lo + (hi - lo) * t / (1.0 + t);
-            }
+            parVal = _powerDi(parVal, 1.0, 4, _saemLogitLow[_l], _saemLogitHi[_l]);
             break;
           }
         }
