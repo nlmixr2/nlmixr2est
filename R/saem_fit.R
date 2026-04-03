@@ -366,7 +366,7 @@
 
   jlog1 <- grep(TRUE, model$log.eta)
 
-  # Logit-transformed parameters (bounded params from ini() block)
+  # Logit-transformed parameters (mu-referenced expit() params)
   .logitInfo <- model$logit.eta
   if (is.null(.logitInfo)) {
     jlogit1 <- integer(0)
@@ -670,7 +670,7 @@
       idx <- .cfg$jlogit1[k]
       .lo <- .cfg$logitLow[k]
       .hi <- .cfg$logitHi[k]
-      thBT[idx] <- .lo + (.hi - .lo) / (1 + exp(-th[idx]))
+      thBT[idx] <- rxode2::expit(th[idx], .lo, .hi)
     }
   }
   thBT
@@ -718,14 +718,15 @@ summary.saemFit <- function(object, ...) {
   th <- fit$Plambda
   nth <- length(th)
   H <- solve(fit$Ha[1:nth, 1:nth])
-  se <- sqrt(diag(H))
+  # Apply Jacobian transformation to covariance matrix
+  HBT <- .saemBackTransformCov(th, H, fit)
+  se <- sqrt(diag(HBT))
 
-  # Back-transform: apply exp for log params, expit for logit params
   thBT <- .saemBackTransform(th, fit)
   m <- cbind(thBT, th, se)
   ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
   ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
-  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(transformed)")
+  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(th)")
   cat("THETA:\n")
   print(m)
   cat("\nOMEGA:\n")
@@ -738,7 +739,7 @@ summary.saemFit <- function(object, ...) {
     print(fit$sig2)
   }
 
-  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  invisible(list(theta = thBT, se = se, H = HBT, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
 }
 
 #' Print an SAEM model fit summary
@@ -755,13 +756,14 @@ print.saemFit <- function(x, ...) {
   th <- fit$Plambda
   nth <- length(th)
   H <- solve(fit$Ha[1:nth, 1:nth])
-  se <- sqrt(diag(H))
+  HBT <- .saemBackTransformCov(th, H, fit)
+  se <- sqrt(diag(HBT))
 
   thBT <- .saemBackTransform(th, fit)
   m <- cbind(thBT, th, se)
   ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
   ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
-  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(transformed)")
+  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(th)")
   cat("THETA:\n")
   print(m)
   cat("\nOMEGA:\n")
