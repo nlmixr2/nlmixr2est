@@ -365,19 +365,6 @@
   fixed.i0 <- (1:len)[wh] - 1
 
   jlog1 <- grep(TRUE, model$log.eta)
-
-  # Logit-transformed parameters (mu-referenced expit() params)
-  .logitInfo <- model$logit.eta
-  if (is.null(.logitInfo)) {
-    jlogit1 <- integer(0)
-    logitLow <- numeric(0)
-    logitHi <- numeric(0)
-  } else {
-    jlogit1 <- grep(TRUE, .logitInfo$isLogit)
-    logitLow <- .logitInfo$low[jlogit1]
-    logitHi <- .logitInfo$hi[jlogit1]
-  }
-
   jcov <- grep(TRUE, apply(mcov, 1, sum) > 0)
   covstruct1 <- covstruct[i1, i1]
   dim(covstruct1) <- c(nphi1, nphi1)
@@ -392,17 +379,6 @@
   ipc <- cumsum(c(0, pc[1:(nphi - 1)])) + 1
   ipcl1 <- ipc[jlog1]
   for (x in jlog1) inits$theta[1, x] <- log(inits$theta[1, x])
-  # Apply logit transform for bounded parameters
-  for (k in seq_along(jlogit1)) {
-    x <- jlogit1[k]
-    .val <- inits$theta[1, x]
-    .lo <- logitLow[k]
-    .hi <- logitHi[k]
-    # Guard: clamp value slightly inside bounds to avoid Inf
-    .eps <- (.hi - .lo) * 1e-6
-    .val <- max(.lo + .eps, min(.hi - .eps, .val))
-    inits$theta[1, x] <- log((.val - .lo) / (.hi - .val))
-  }
 
   idx <- as.vector(mcov1 > 0)
   COV1 <- Mcovariables[, row(mcov1)[idx]]
@@ -606,12 +582,7 @@
     ilambda1 = as.integer(ilambda1),
     ilambda0 = as.integer(ilambda0),
     nobs = .nobs,
-    resFixed=resFixed,
-    jlog1 = jlog1,
-    jlogit1 = jlogit1,
-    jlogit1_c = as.integer(jlogit1 - 1L),  # 0-based for C++
-    logitLow = logitLow,
-    logitHi = logitHi)
+    resFixed=resFixed)
 
   ## CHECKME
   s <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]
@@ -657,61 +628,6 @@
   cfg
 }
 
-# Back-transform SAEM parameters from internal (log/logit) to natural scale
-#
-# For log-transformed parameters: exp(th)
-# For logit-transformed parameters: low + (hi - low) / (1 + exp(-th))
-# For untransformed parameters: identity (no transform)
-.saemBackTransform <- function(th, fit) {
-  thBT <- exp(th) # default: exp (matches original behavior)
-  .cfg <- attr(fit, "saem.cfg")
-  if (!is.null(.cfg) && !is.null(.cfg$jlogit1) && length(.cfg$jlogit1) > 0) {
-    for (k in seq_along(.cfg$jlogit1)) {
-      idx <- .cfg$jlogit1[k]
-      .lo <- .cfg$logitLow[k]
-      .hi <- .cfg$logitHi[k]
-      thBT[idx] <- rxode2::expit(th[idx], .lo, .hi)
-    }
-  }
-  thBT
-}
-
-# Build Jacobian diagonal for logit back-transformation ONLY.
-# Non-logit params get 1.0 (identity) to preserve original SE behavior.
-# For logit params: d/dx expit(x) = (hi-lo)*exp(-x)/(1+exp(-x))^2
-# Numerically stable: uses two-branch to avoid exp overflow.
-.saemLogitJacobianDiag <- function(th, fit) {
-  nth <- length(th)
-  jdiag <- rep(1.0, nth)  # identity for non-logit params (preserves original SEs)
-  .cfg <- attr(fit, "saem.cfg")
-  if (!is.null(.cfg) && !is.null(.cfg$jlogit1) && length(.cfg$jlogit1) > 0) {
-    for (k in seq_along(.cfg$jlogit1)) {
-      idx <- .cfg$jlogit1[k]
-      .lo <- .cfg$logitLow[k]
-      .hi <- .cfg$logitHi[k]
-      .x <- th[idx]
-      # Numerically stable Jacobian: avoid exp overflow at extreme values
-      if (.x >= 0) {
-        .t <- exp(-.x)
-        jdiag[idx] <- (.hi - .lo) * .t / (1 + .t)^2
-      } else {
-        .t <- exp(.x)
-        jdiag[idx] <- (.hi - .lo) * .t / (1 + .t)^2
-      }
-    }
-  }
-  jdiag
-}
-
-# Transform covariance matrix: apply Jacobian ONLY to logit params.
-# Non-logit params retain their original (transformed-space) covariance.
-# Cov_out = J * Cov_in * J'  where J is identity except for logit entries.
-.saemBackTransformCov <- function(th, H, fit) {
-  jdiag <- .saemLogitJacobianDiag(th, fit)
-  J <- diag(jdiag)
-  J %*% H %*% t(J)
-}
-
 #' Print an SAEM model fit summary
 #'
 #' Print an SAEM model fit summary
@@ -726,15 +642,12 @@ summary.saemFit <- function(object, ...) {
   th <- fit$Plambda
   nth <- length(th)
   H <- solve(fit$Ha[1:nth, 1:nth])
-  # Apply Jacobian transformation to covariance matrix
-  HBT <- .saemBackTransformCov(th, H, fit)
-  se <- sqrt(diag(HBT))
+  se <- sqrt(diag(H))
 
-  thBT <- .saemBackTransform(th, fit)
-  m <- cbind(thBT, th, se)
+  m <- cbind(exp(th), th, se) # FIXME
   ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
   ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
-  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(th)")
+  dimnames(m)[[2]] <- c("th", "log(th)", "se(log_th)")
   cat("THETA:\n")
   print(m)
   cat("\nOMEGA:\n")
@@ -747,7 +660,7 @@ summary.saemFit <- function(object, ...) {
     print(fit$sig2)
   }
 
-  invisible(list(theta = thBT, se = se, H = HBT, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
 }
 
 #' Print an SAEM model fit summary
@@ -764,14 +677,12 @@ print.saemFit <- function(x, ...) {
   th <- fit$Plambda
   nth <- length(th)
   H <- solve(fit$Ha[1:nth, 1:nth])
-  HBT <- .saemBackTransformCov(th, H, fit)
-  se <- sqrt(diag(HBT))
+  se <- sqrt(diag(H))
 
-  thBT <- .saemBackTransform(th, fit)
-  m <- cbind(thBT, th, se)
+  m <- cbind(exp(th), th, se) # FIXME
   ## lhsVars = scan("LHS_VARS.txt", what="", quiet=TRUE)
   ## if (length(lhsVars)==nth) dimnames(m)[[1]] = lhsVars
-  dimnames(m)[[2]] <- c("th", "transformed(th)", "se(th)")
+  dimnames(m)[[2]] <- c("th", "log(th)", "se(log_th)")
   cat("THETA:\n")
   print(m)
   cat("\nOMEGA:\n")
@@ -784,7 +695,7 @@ print.saemFit <- function(x, ...) {
     print(fit$sig2)
   }
 
-  invisible(list(theta = thBT, se = se, H = HBT, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
+  invisible(list(theta = th, se = se, H = H, omega = fit$Gamma2_phi1, eta = fit$mpost_phi))
 }
 
 ##' @export

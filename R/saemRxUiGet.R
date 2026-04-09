@@ -639,46 +639,6 @@ rxUiGet.saemLogEta <- function(x, ...) {
 #attr(rxUiGet.saemLogEta, "desc") <- "saem's log.eta for saem"
 attr(rxUiGet.saemLogEta, "rstudio") <- c(tka=TRUE)
 
-#' Get logit-transformed parameter info for SAEM
-#'
-#' Identifies parameters that use expit mu-referencing and returns
-#' their indices and bounds. This enables SAEM to handle bounded
-#' parameters via logit reparameterization, consistent with how
-#' log-transformed parameters use exp mu-referencing.
-#'
-#' @param x rxode2 UI
-#' @param ... additional arguments
-#' @return a list with components: \code{isLogit} (logical vector),
-#'   \code{low} (numeric vector of lower bounds),
-#'   \code{hi} (numeric vector of upper bounds)
-#' @export
-rxUiGet.saemLogitEta <- function(x, ...) {
-  .ui <- x[[1]]
-  .thetas <- rxUiGet.saemParamsToEstimate(x, ...)
-  .ce <- .ui$muRefCurEval
-  .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
-  .thetas <- .thetas[!(.thetas %in% .cov$covariateParameter)]
-  # A parameter needs logit if it uses expit mu-referencing
-  .isLogit <- vapply(.thetas, function(x) {
-    .w <- which(.ce$parameter == x)
-    if (length(.w) == 1L) return(.ce$curEval[.w] == "expit")
-    FALSE
-  }, logical(1))
-  names(.isLogit) <- .thetas
-  .low <- vapply(.thetas, function(x) {
-    .w <- which(.ce$parameter == x)
-    if (length(.w) == 1L && .ce$curEval[.w] == "expit") return(.ce$low[.w])
-    -Inf
-  }, numeric(1))
-  .hi <- vapply(.thetas, function(x) {
-    .w <- which(.ce$parameter == x)
-    if (length(.w) == 1L && .ce$curEval[.w] == "expit") return(.ce$hi[.w])
-    Inf
-  }, numeric(1))
-  list(isLogit = .isLogit, low = .low, hi = .hi)
-}
-attr(rxUiGet.saemLogitEta, "rstudio") <- NA
-
 #' @export
 rxUiGet.saemModelList <- function(x, ...) {
   .ui <- x[[1]]
@@ -689,7 +649,6 @@ rxUiGet.saemModelList <- function(x, ...) {
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
-  .mod$logit.eta <- rxUiGet.saemLogitEta(x, ...)
   .mod$ares    <- rxUiGet.saemAres(x, ...)
   .mod$bres    <- rxUiGet.saemBres(x, ...)
   .mod$omega   <- rxUiGet.saemModelOmega(x, ...)
