@@ -1021,9 +1021,10 @@ estimation methods
 
 Note this uses the R's L-BFGS-B in
 [`optim`](https://rdrr.io/r/stats/optim.html) for the outer problem and
-the BFGS [`n1qn1`](https://rdrr.io/pkg/n1qn1/man/n1qn1.html) with that
-allows restoring the prior individual Hessian (for faster optimization
-speed).
+the BFGS
+[`n1qn1`](https://nlmixr2.github.io/n1qn1c/reference/n1qn1.html) with
+that allows restoring the prior individual Hessian (for faster
+optimization speed).
 
 However the inner problem is not scaled. Since most eta estimates start
 near zero, scaling for these parameters do not make sense.
@@ -1047,7 +1048,7 @@ Optimization.
 
 [`optim`](https://rdrr.io/r/stats/optim.html)
 
-[`n1qn1`](https://rdrr.io/pkg/n1qn1/man/n1qn1.html)
+[`n1qn1`](https://nlmixr2.github.io/n1qn1c/reference/n1qn1.html)
 
 [`rxSolve`](https://nlmixr2.github.io/rxode2/reference/rxSolve.html)
 

@@ -214,7 +214,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55d7b8458038>
+#> <bytecode: 0x5569b6af7eb8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -729,6 +729,9 @@ laplaceControl()
 #> 
 #> $linCmtForwardMax
 #> [1] 2
+#> 
+#> $indOwnAlloc
+#> [1] 1
 #> 
 #> $.zeros
 #> NULL

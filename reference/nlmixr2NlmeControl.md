@@ -804,6 +804,9 @@ nlmeControl()
 #> $linCmtForwardMax
 #> [1] 2
 #> 
+#> $indOwnAlloc
+#> [1] 1
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -1262,6 +1265,9 @@ nlmixr2NlmeControl()
 #> 
 #> $linCmtForwardMax
 #> [1] 2
+#> 
+#> $indOwnAlloc
+#> [1] 1
 #> 
 #> $.zeros
 #> NULL
