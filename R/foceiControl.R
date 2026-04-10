@@ -837,7 +837,10 @@ foceiControl <- function(sigdig = 3, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin"), #
+                                      "Rvmmin",
+                                      "uobyqa",
+                                      "newuoa",
+                                      "nlm"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #
@@ -1161,6 +1164,12 @@ foceiControl <- function(sigdig = 3, #
       outerOpt <- -1L
     } else if (outerOpt == "lbfgsbLG") {
       outerOptFun <- .lbfgsbLG
+      outerOpt <- -1L
+    } else if (outerOpt == "uobyqa") {
+      outerOptFun <- .uobyqa
+      outerOpt <- -1L
+    } else if (outerOpt == "newuoa") {
+      outerOptFun <- .newuoa
       outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {

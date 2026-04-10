@@ -26,6 +26,38 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
+.uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  .ctl <- control
+  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
+  .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ret <- minqa::uobyqa(par, fn,
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper)
+  .ret$x <- .ret$par
+  .ret$message <- .ret$msg
+  .ret$convergence <- .ret$ierr
+  .ret$value <- .ret$fval
+  .ret
+}
+
+.newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  .ctl <- control
+  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
+  .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ret <- minqa::newuoa(par, fn,
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper)
+  .ret$x <- .ret$par
+  .ret$message <- .ret$msg
+  .ret$convergence <- .ret$ierr
+  .ret$value <- .ret$fval
+  .ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
@@ -2012,10 +2044,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
-attr(nlmixr2Est.focei, "unbounded") <- function(control) {
-  if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
-  control$outerOpt %in% c("uobyqa", "newuoa", "nlm")
-}
+attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 
 #' Add objective function line to the return object
 #'

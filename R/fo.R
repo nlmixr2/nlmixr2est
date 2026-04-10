@@ -155,7 +155,4 @@ nlmixr2Est.fo <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.fo, "covPresent") <- TRUE
-attr(nlmixr2Est.fo, "unbounded") <- function(control) {
-  if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
-  control$outerOpt %in% c("uobyqa", "newuoa", "nlm")
-}
+attr(nlmixr2Est.fo, "unbounded") <- .foUnbounded
