@@ -839,8 +839,7 @@ foceiControl <- function(sigdig = 3, #
                                       "slsqp",
                                       "Rvmmin",
                                       "uobyqa",
-                                      "newuoa",
-                                      "nlm"), #
+                                      "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #

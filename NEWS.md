@@ -23,6 +23,8 @@
   methods so they can be saved better in packages like `nlmixr2save`
   and `shinyMixR`.
 
+- Added new `outerOpt`; methods to `focei`: "uobyqa" and "newuoa".
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward
