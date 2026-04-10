@@ -2012,6 +2012,10 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
+attr(nlmixr2Est.focei, "unbounded") <- function(control) {
+  if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
+  control$outerOpt %in% c("uobyqa", "newuoa", "nlm")
+}
 
 #' Add objective function line to the return object
 #'

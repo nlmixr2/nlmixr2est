@@ -632,3 +632,7 @@ nlmixr2Est.optim <- function(env, ...) {
   .optimFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.optim, "covPresent") <- TRUE
+attr(nlmixr2Est.optim, "unbounded") <- function(control) {
+  if (is.null(control) || is.null(control$method)) return(TRUE)
+  !(control$method %in% c("L-BFGS-B", "Brent"))
+}

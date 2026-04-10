@@ -102,6 +102,15 @@
 # Rewrite the model UI with transforms injected
 # -----------------------------------------------------------------------
 .rewriteModelWithTransforms <- function(ui, transforms) {
+  # Save original UI for post-estimation hook
+  # Store in a new environment attached to the new UI so the post-estimation
+  # hook can restore original parameter names and apply Jacobian corrections.
+  .origEnv <- new.env(parent = emptyenv())
+  .origEnv$iniDf <- ui$iniDf
+  .origEnv$lstExpr <- ui$lstExpr
+  .origEnv$muRefCurEval <- ui$muRefCurEval
+  .origEnv$transforms <- transforms
+
   # Build new ini block: rename params, change bounds, set backTransform
   .iniDf <- ui$iniDf
   .env <- nlmixr2global$nlmixrEvalEnv$envir
@@ -158,24 +167,42 @@
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
   .newUi <- .mod()
 
-  # Store transform info for back-transformation
+  # Store transform info and original model for post-estimation hook
   .newUi$boundedTransforms <- transforms
+  .newUi$boundedOriginal <- .origEnv
   .newUi
 }
 
 # -----------------------------------------------------------------------
 # Check if estimation method is unbounded
+#
+# Uses the "unbounded" attribute on the nlmixr2Est.<method> S3 method.
+# This allows external packages (babelmixr2, etc.) to register their
+# own methods as bounded/unbounded without modifying this file.
+#
+# The attribute can be:
+#   TRUE  - always unbounded
+#   FALSE - handles bounds natively
+#   function(control) returning logical - conditional (e.g., optim
+#     method-dependent, FOCEI outer optimizer-dependent)
 # -----------------------------------------------------------------------
-.isUnboundedMethod <- function(est) {
-  .unbounded <- c("saem", "nlm", "optim", "nls", "n1qn1", "uobyqa", "newuoa")
-  tolower(est) %in% .unbounded
+.isUnboundedMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .unbounded <- attr(utils::getS3method("nlmixr2Est", est), "unbounded")
+    if (is.null(.unbounded)) return(FALSE)
+    if (is.function(.unbounded)) return(isTRUE(.unbounded(control)))
+    return(isTRUE(.unbounded))
+  }
+  FALSE
 }
 
 # -----------------------------------------------------------------------
 # The pre-processing hook function
 # -----------------------------------------------------------------------
 .preProcessBoundedTransform <- function(ui, est, data, control) {
-  if (!.isUnboundedMethod(est)) return(NULL)
+  if (!.isUnboundedMethod(est, control)) return(NULL)
 
   .transforms <- .getBoundedParams(ui)
   if (length(.transforms) == 0) return(NULL)
@@ -252,6 +279,31 @@
   .jdiag <- .boundedJacobianDiag(theta, transforms)
   .J <- diag(.jdiag)
   .J %*% covMat %*% t(.J)
+}
+
+#' Back-transform parameter history (parHist) from internal to natural scale
+#'
+#' @param parHist data.frame with one row per iteration, columns for parameters.
+#'   Transformed columns use the internal name (e.g., \code{td1_untransformed}).
+#' @param transforms list of transform specifications
+#' @return modified data.frame with back-transformed values and original names
+#' @noRd
+.backTransformParHist <- function(parHist, transforms) {
+  if (is.null(parHist) || length(transforms) == 0) return(parHist)
+  for (.tr in transforms) {
+    .col <- .tr$internalName
+    if (!.col %in% names(parHist)) next
+    .vals <- parHist[[.col]]
+    parHist[[.col]] <- switch(.tr$type,
+      "logit" = rxode2::expit(.vals, .tr$lower, .tr$upper),
+      "lower_exp" = .tr$lower + exp(.vals),
+      "upper_exp" = .tr$upper - exp(.vals),
+      .vals
+    )
+    # Rename the column to the original parameter name
+    names(parHist)[names(parHist) == .col] <- .tr$name
+  }
+  parHist
 }
 
 # -----------------------------------------------------------------------

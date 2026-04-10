@@ -254,6 +254,10 @@ nlmixr2Est.agq <- function(env, ...) {
   .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="agq"))
 }
 attr(nlmixr2Est.agq, "covPresent") <- TRUE
+attr(nlmixr2Est.agq, "unbounded") <- function(control) {
+  if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
+  control$outerOpt %in% c("uobyqa", "newuoa", "nlm")
+}
 
 
 #' @export

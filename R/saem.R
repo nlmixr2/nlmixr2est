@@ -832,6 +832,7 @@ nlmixr2Est.saem <- function(env, ...) {
   .uiFinalizeIov(.uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2))
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
+attr(nlmixr2Est.saem, "unbounded") <- TRUE
 
 
 #' @rdname nmObjGet
