@@ -1,3 +1,104 @@
+.preTableHooks <- new.env(parent=emptyenv())
+
+#' This adds a pre-table processing hook to nlmixr2est
+#'
+#' This pre-processing hook is run before the estimation process begins.  It is
+#' useful for modifying the user interface, the estimation object, the data, or
+#' the control object before the estimation process begins.  The function must
+#' take four arguments: ui, est, data, and control.  The function must return a
+#' list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
+#' not returned, the original object is used.  If the element is returned, the
+#' original object is replaced with the new object.
+#'
+#' @param name Character vector representing the name of the hook
+#' @param fun The function to run
+#' @return The function that was added (invisibly)
+#' @export
+#' @author Matthew L. Fidler
+#' @family preProcessHooks
+#' @keywords internal
+preTableHooksAdd <- function(name, fun) {
+  checkmate::assertCharacter(name, len=1,
+                             pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                             min.chars=1)
+  checkmate::assertFunction(fun, args=c("env"))
+  if (exists(name, envir=.preProcessHooks)) {
+    stop("nlmixr2est pre-table hook '", name, "' already exists",
+         call.=FALSE)
+  }
+  assign(name, fun, envir=.preTableHooks)
+  invisible(fun)
+}
+
+#' Remove the hook from nlmixr2est
+#'
+#' This removes the hook from nlmixr2est.  If the hook does not exist, a warning
+#' is issued.
+#'
+#' @param name Character vector representing the name of the hook
+#' @return logical indicating if the hook was removed (invisibly)
+#' @export
+#' @author Matthew L. Fidler
+#' @family preProcessHooks
+#' @keywords internal
+preTableHooksRm <- function(name) {
+  checkmate::assertCharacter(name, len=1,
+                             pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                             min.chars=1)
+  if (exists(name, envir=.preTableHooks)) {
+    rm(list=name, envir=.preTableHooks)
+    invisible(TRUE)
+  } else {
+    warning("nlmixr2est pre-table hook '", name, "' does not exist",
+            call.=FALSE)
+    invisible(FALSE)
+  }
+}
+
+#' Return a list of all pre-processing hooks
+#'
+#'
+#' @param name when specified, the name of the hook, otherwise `NULL`
+#'   to list all hooks
+#'
+#' @return a charcter vector listing all pre-processing hooks or the
+#'   function for the hook
+#' @export
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @family preProcessHooks
+preTableHooks <- function(name=NULL) {
+  if (is.null(name)) {
+    ls(envir=.preTableHooks, all.names=TRUE)
+  } else {
+    checkmate::assertCharacter(name, len=1,
+                               pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
+                               min.chars=1)
+    if (exists(name, envir=.preTableHooks)) {
+      get(name, envir=.preTableHooks)
+    } else {
+      stop("nlmixr2est pre-table hook '", name, "' does not exist",
+           call.=FALSE)
+    }
+  }
+}
+
+.preTableHooksRun <- function(env) {
+  # This is for updating:
+  # - `cov` before running
+  # - `theta` before running
+  # - `thetaNames` before running
+  # - `thetaDf` before running
+  # - Possibly `etaObf`  before running
+  for (name in preProcessHooks()) {
+    .fun <- get(name, envir=.preProcessHooks)
+    .ret <- .fun(env)
+  }
+  .est
+}
+
+
+
 .preProcessHooks <- new.env(parent=emptyenv())
 
 #' This adds a pre-processing hook to nlmixr2est
