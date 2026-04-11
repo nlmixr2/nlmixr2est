@@ -6292,8 +6292,8 @@ void parHistData(Environment e, bool focei){
 void foceiFinalizeTables(Environment e){
   Function loadNamespace("loadNamespace", R_BaseNamespace);
   Environment nlmixr2 = loadNamespace("nlmixr2est");
-  Function preTableHooksRun = nlmixr2[".preTableHooksRun"];
-  preTableHooksRun(e);
+  Function preFinalParTableHooksRun = nlmixr2[".preFinalParTableHooksRun"];
+  preFinalParTableHooksRun(e);
 
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   e["censInformation"] = censEstGetFactor();
