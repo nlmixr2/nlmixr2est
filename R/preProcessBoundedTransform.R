@@ -212,74 +212,8 @@
 }
 
 # -----------------------------------------------------------------------
-# Back-transform results after estimation
+# Back-transform helpers
 # -----------------------------------------------------------------------
-
-#' Back-transform a theta vector from internal to natural scale
-#'
-#' @param theta named numeric vector in transformed space
-#' @param transforms list of transform specifications
-#' @return named numeric vector on natural scale
-#' @noRd
-.backTransformTheta <- function(theta, transforms) {
-  for (.tr in transforms) {
-    # The theta names use the internal name
-    .w <- which(names(theta) == .tr$internalName)
-    if (length(.w) != 1L) next
-    .val <- theta[.w]
-    theta[.w] <- switch(.tr$type,
-      "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-      "lower_exp" = .tr$lower + exp(.val),
-      "upper_exp" = .tr$upper - exp(.val),
-      .val
-    )
-    names(theta)[.w] <- .tr$name  # restore original name
-  }
-  theta
-}
-
-#' Compute Jacobian diagonal for bounded back-transforms
-#'
-#' @param theta named numeric vector in transformed space
-#' @param transforms list of transform specifications
-#' @return numeric vector of Jacobian diagonal entries
-#' @noRd
-.boundedJacobianDiag <- function(theta, transforms) {
-  .jdiag <- rep(1.0, length(theta))
-  for (.tr in transforms) {
-    .w <- which(names(theta) == .tr$internalName)
-    if (length(.w) != 1L) next
-    .val <- theta[.w]
-    .jdiag[.w] <- switch(.tr$type,
-      "logit" = {
-        if (.val >= 0) {
-          .t <- exp(-.val)
-          (.tr$upper - .tr$lower) * .t / (1 + .t)^2
-        } else {
-          .t <- exp(.val)
-          (.tr$upper - .tr$lower) * .t / (1 + .t)^2
-        }
-      },
-      "lower_exp" = exp(.val),      # d/dx (lower + exp(x)) = exp(x)
-      "upper_exp" = -exp(.val),     # d/dx (upper - exp(x)) = -exp(x)
-      1.0
-    )
-  }
-  .jdiag
-}
-
-#' Transform covariance matrix using Jacobian
-#'
-#' @param theta parameter vector in transformed space
-#' @param covMat covariance matrix in transformed space
-#' @param transforms list of transform specifications
-#' @return covariance matrix on natural scale
-#' @noRd
-.backTransformCov <- function(theta, covMat, transforms) {
-  .jdiag <- .boundedJacobianDiag(theta, transforms)
-  .J <- diag(.jdiag)
-  .J %*% covMat %*% t(.J)
-}
 
 #' Back-transform parameter history (parHist) from internal to natural scale
 #'
@@ -307,6 +241,96 @@
 }
 
 # -----------------------------------------------------------------------
-# Register the hook
+# Post-estimation hook: back-transform bounded parameters
+#
+# Registered via preFinalParTableHooksAdd(). Runs after estimation
+# but before the final parameter table is built (called from C++
+# foceiFinalizeTables via .preFinalParTableHooksRun).
+#
+# Modifies env$theta, env$thetaNames, env$cov to restore natural-scale
+# parameter values, original parameter names, and Jacobian-corrected
+# covariance matrix.
+# -----------------------------------------------------------------------
+.postEstimationBoundedTransform <- function(env) {
+  .ui <- env$ui
+  if (is.null(.ui)) return(invisible(NULL))
+
+  .transforms <- .ui$boundedTransforms
+  if (is.null(.transforms) || length(.transforms) == 0) return(invisible(NULL))
+
+  # --- Back-transform theta ---
+  # env$theta is a data.frame with columns: lower, theta, upper, fixed
+  .thetaDf <- env$theta
+  if (!is.null(.thetaDf) && is.data.frame(.thetaDf)) {
+    .thetaNames <- if (exists("thetaNames", envir = env)) env$thetaNames else rownames(.thetaDf)
+    for (.tr in .transforms) {
+      .w <- which(.thetaNames == .tr$internalName)
+      if (length(.w) != 1L) next
+      .val <- .thetaDf$theta[.w]
+      # Back-transform the estimate
+      .thetaDf$theta[.w] <- switch(.tr$type,
+        "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+        "lower_exp" = .tr$lower + exp(.val),
+        "upper_exp" = .tr$upper - exp(.val),
+        .val
+      )
+      # Restore original bounds
+      .thetaDf$lower[.w] <- .tr$lower
+      .thetaDf$upper[.w] <- .tr$upper
+      # Restore original parameter name
+      .thetaNames[.w] <- .tr$name
+    }
+    env$theta <- .thetaDf
+    env$thetaNames <- .thetaNames
+  }
+
+  # --- Jacobian correction on covariance matrix ---
+  if (exists("cov", envir = env) && !is.null(env$cov) && is.matrix(env$cov)) {
+    # Compute Jacobian diagonal from natural-scale values
+    # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
+    # For lower_exp: d(lo + exp(x))/dx = natVal - lo
+    # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
+    .jdiag <- rep(1.0, nrow(.thetaDf))
+    for (.tr in .transforms) {
+      .w <- which(env$thetaNames == .tr$name)
+      if (length(.w) != 1L) next
+      .natVal <- .thetaDf$theta[.w]
+      .jdiag[.w] <- switch(.tr$type,
+        "logit" = (.natVal - .tr$lower) * (.tr$upper - .natVal) / (.tr$upper - .tr$lower),
+        "lower_exp" = .natVal - .tr$lower,
+        "upper_exp" = -(.tr$upper - .natVal),
+        1.0
+      )
+    }
+    # Apply Jacobian: Cov_natural = J * Cov_internal * J'
+    # cov may be smaller than theta (fixed params are excluded via skipCov)
+    .nCov <- nrow(env$cov)
+    .nTheta <- length(.jdiag)
+    if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
+      .skipCov <- env$skipCov
+      .jCov <- numeric(0)
+      for (k in seq_along(.jdiag)) {
+        if (k <= length(.skipCov) && !.skipCov[k]) {
+          .jCov <- c(.jCov, .jdiag[k])
+        }
+      }
+      if (length(.jCov) == .nCov) {
+        .J <- diag(.jCov)
+        env$cov <- .J %*% env$cov %*% t(.J)
+      }
+    }
+  }
+
+  # --- Back-transform parameter history ---
+  if (exists("parHistData", envir = env) && !is.null(env$parHistData)) {
+    env$parHistData <- .backTransformParHist(env$parHistData, .transforms)
+  }
+
+  invisible(NULL)
+}
+
+# -----------------------------------------------------------------------
+# Register hooks
 # -----------------------------------------------------------------------
 preProcessHooksAdd(".preProcessBoundedTransform", .preProcessBoundedTransform)
+preFinalParTableHooksAdd(".postEstimationBoundedTransform", .postEstimationBoundedTransform)
