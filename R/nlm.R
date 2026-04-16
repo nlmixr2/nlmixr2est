@@ -889,6 +889,11 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 
   .ret$nlm <- .nlm[[1]]
   .ret$parHistData <- .ret$nlm$parHistData
+  .censInformation <- .ret$censInformation
+  if (is.null(.censInformation) && !is.null(.ret$nlm$censInformation)) {
+    .censInformation <- .ret$nlm$censInformation
+  }
+  .ret$censInformation <- .censInformation
   .ret$nlm$parHistData <- NULL
   .ret$message <- NULL
   lapply(.nlm[[2]], function(x){

@@ -383,13 +383,12 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
         lhs[0] = 0.0;
       }
       double val = lhs[0];
-      if (nlmOp.hasFR && hasRxCens(rx)) {
+      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        //if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
-        // Can only generate rxDistributionDnorm, so don't check both
-        if (dist == rxDistributionDnorm) {
-          int censi = getIndCens(ind, kk);
+        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+          int censi = 0;
+          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
           double dvi = getIndDv(ind, kk);
           double limiti = R_NegInf;
           if (hasRxLimit(rx)) {
@@ -466,12 +465,11 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       bool hasCensObs = false;
       int censi = 0;
       double dvi = 0.0, limiti = R_NegInf;
-      if (nlmOp.hasFR && hasRxCens(rx)) {
+      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        // Can only generate rxDistributionDnorm, so don't check both
-        if (dist == rxDistributionDnorm) {
-          censi = getIndCens(ind, kkOuter);
+        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
           dvi = getIndDv(ind, kkOuter);
           if (hasRxLimit(rx)) {
             limiti = getIndLimit(ind, kkOuter);
@@ -954,8 +952,17 @@ RObject nlmWarnings() {
 }
 
 //[[Rcpp::export]]
-RObject nlmCensInfo() {
-  RObject ret = censEstGetFactor();
+SEXP nlmCensInfo() {
+  Rcpp::IntegerVector ret = Rcpp::IntegerVector::create(globalCensFlag + 1);
+  ret.attr("class") = "factor";
+  ret.attr("levels") = Rcpp::CharacterVector::create("No censoring",
+                                                     "M2 censoring",
+                                                     "M3 censoring",
+                                                     "M2 and M3 censoring",
+                                                     "M4 censoring",
+                                                     "M2 and M4 censoring",
+                                                     "M3 and M4 censoring",
+                                                     "M2, M3 and M4 censoring");
   resetCensFlag();
   return ret;
 }
