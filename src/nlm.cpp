@@ -963,7 +963,6 @@ SEXP nlmCensInfo() {
                                                      "M2 and M4 censoring",
                                                      "M3 and M4 censoring",
                                                      "M2, M3 and M4 censoring");
-  resetCensFlag();
   return ret;
 }
 

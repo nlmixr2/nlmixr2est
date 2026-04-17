@@ -21,22 +21,40 @@ nmTest({
   # Base dataset (no censoring)
   .dat <- nlmixr2data::theo_sd
 
-  test_that("nlm works without censoring (no CENS column)", {
-    fit <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .dat, est = "nlm", list(print = 0))
-    ))
-    expect_s3_class(fit, "nlmixr2.nlm")
-    expect_equal(as.character(fit$censInformation), "No censoring")
+  test_that("nlm & related methods works without censoring (no CENS column)", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0))
+        ))
+      }
+      expect_s3_class(fit, paste0("nlmixr2.", meth))
+      expect_equal(as.character(fit$censInformation), "No censoring")
+    }
   })
 
-  test_that("nlm works with CENS column all zeros", {
+  test_that("nlm & related methods works with CENS column all zeros", {
     .dat0 <- .dat
     .dat0$CENS <- 0L
-    fit0 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .dat0, est = "nlm", list(print = 0))
-    ))
-    expect_s3_class(fit0, "nlmixr2.nlm")
-    expect_equal(as.character(fit0$censInformation), "No censoring")
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit0 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat0, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit0 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat0, est = meth, list(print = 0))
+        ))
+      }
+      expect_s3_class(fit0, paste0("nlmixr2.", meth))
+      expect_equal(as.character(fit0$censInformation), "No censoring")
+    }
   })
 
   # Create censored datasets
@@ -47,22 +65,44 @@ nmTest({
   # For censored obs, set DV to LLOQ
   .datM3$DV[.datM3$CENS == 1] <- .LLOQ
 
-  test_that("nlm accepts and processes M3 (left) censored data", {
-    fit_m3 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM3, est = "nlm", list(print = 0))
-    ))
-    expect_s3_class(fit_m3, "nlmixr2.nlm")
-    expect_equal(as.character(fit_m3$censInformation), "M3 censoring")
+  test_that("nlm & related methods accepts and processes M3 (left) censored data", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0))
+        ))
+      }
+      expect_s3_class(fit_m3, paste0("nlmixr2.", meth))
+      expect_equal(as.character(fit_m3$censInformation), "M3 censoring")
+    }
   })
 
-  test_that("nlm M3 censoring changes the objective function vs no censoring", {
-    fit_base <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .dat, est = "nlm", list(print = 0))
-    ))
-    fit_m3 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM3, est = "nlm", list(print = 0))
-    ))
-    expect_false(isTRUE(all.equal(fit_base$objf, fit_m3$objf)))
+  test_that("nlm & related methods M3 censoring changes the objective function vs no censoring", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_base <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        ))
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        ))
+        expect_false(isTRUE(all.equal(fit_base$objf, fit_m3$objf)))
+      } else {
+        fit_base <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0))
+        ))
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0))
+        ))
+        expect_false(isTRUE(all.equal(fit_base$objf, fit_m3$objf)))
+      }
+    }
   })
 
   # M2 censoring: CENS=0 with a finite LIMIT
@@ -71,43 +111,85 @@ nmTest({
   .datM2$LIMIT <- 0  # interval censoring: all obs have a lower bound of 0
 
   test_that("nlm accepts and processes M2 (interval) censored data", {
-    fit_m2 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM2, est = "nlm", list(print = 0))
-    ))
-    expect_s3_class(fit_m2, "nlmixr2.nlm")
-    expect_equal(as.character(fit_m2$censInformation), "M2 censoring")
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_m2 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit_m2 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM2, est = meth, list(print = 0))
+        ))
+      }
+      expect_s3_class(fit_m2, paste0("nlmixr2.", meth))
+      expect_equal(as.character(fit_m2$censInformation), "M2 censoring")
+    }
   })
 
-  test_that("nlm M2 censoring changes the objective function vs no censoring", {
-    fit_base <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .dat, est = "nlm", list(print = 0))
-    ))
-    fit_m2 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM2, est = "nlm", list(print = 0))
-    ))
-    expect_false(isTRUE(all.equal(fit_base$objf, fit_m2$objf)))
+  test_that("nlm & related methods: M2 censoring changes the objective function vs no censoring", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_base <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
+        ))
+        fit_m2 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit_base <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .dat, est = meth, list(print = 0))
+        ))
+        fit_m2 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM2, est = meth, list(print = 0))
+        ))
+      }
+      expect_false(isTRUE(all.equal(fit_base$objf, fit_m2$objf)))
+    }
   })
 
   # M4 censoring: CENS!=0 with a finite LIMIT
   .datM4 <- .datM3
   .datM4$LIMIT <- 0  # add LIMIT for M4
 
-  test_that("nlm accepts and processes M4 (interval-censored) data", {
-    fit_m4 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM4, est = "nlm", list(print = 0))
-    ))
-    expect_s3_class(fit_m4, "nlmixr2.nlm")
-    expect_equal(as.character(fit_m4$censInformation), "M2 and M4 censoring")
+  test_that("nlm & related methods accepts and processes M4 (interval-censored) data", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_m4 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit_m4 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM4, est = meth, list(print = 0))
+        ))
+      }
+      expect_s3_class(fit_m4, paste0("nlmixr2.", meth))
+      expect_equal(as.character(fit_m4$censInformation), "M2 and M4 censoring")
+    }
   })
 
-  test_that("nlm M3 and M4 give different results", {
-    fit_m3 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM3, est = "nlm", list(print = 0))
-    ))
-    fit_m4 <- suppressMessages(suppressWarnings(
-      .nlmixr(one.cmt, .datM4, est = "nlm", list(print = 0))
-    ))
-    expect_false(isTRUE(all.equal(fit_m3$objf, fit_m4$objf)))
+  test_that("nlm & related methods: M3 and M4 give different results", {
+    for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
+                   "optim")) {
+      if (meth == "optim") {
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
+        ))
+        fit_m4 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method="BFGS"))
+        ))
+      } else {
+        fit_m3 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM3, est = meth, list(print = 0))
+        ))
+        fit_m4 <- suppressMessages(suppressWarnings(
+          .nlmixr(one.cmt, .datM4, est = meth, list(print = 0))
+        ))
+      }
+      expect_false(isTRUE(all.equal(fit_m3$objf, fit_m4$objf)))
+    }
   })
 
 })

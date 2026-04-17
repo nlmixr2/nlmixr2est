@@ -264,39 +264,39 @@
 
 .nlmFamilyAdjustOutput <- function(ret, str) {
   .nlm <- ret[[str]]
-  .censInformation <- .ret$censInformation
+  .censInformation <- ret$censInformation
   if (is.null(.censInformation) &&
         !is.null(.nlm$censInformation)) {
     .censInformation <- .nlm$censInformation
-    .ret[[str]][["censInformation"]] <- NULL
+    ret[[str]][["censInformation"]] <- NULL
   }
-  .ret$censInformation <- .censInformation
+  ret$censInformation <- .censInformation
 
-  .parHistData <- .ret$parHistData
+  .parHistData <- ret$parHistData
   if (is.null(.parHistData) &&
         !is.null(.nlm$parHistData)) {
     .parHistData <- .nlm$parHistData
-    .ret[[str]][["parHistData"]] <- NULL
+    ret[[str]][["parHistData"]] <- NULL
   }
-  .ret$parHistData <- .parHistData
+  ret$parHistData <- .parHistData
 
-  .cov <- .ret$cov
+  .cov <- ret$cov
   if (is.null(.cov) &&
         !is.null(.nlm$cov)) {
     .cov <- .nlm$cov
-    .ret[[str]][["cov"]] <- NULL
+    ret[[str]][["cov"]] <- NULL
   }
-  .ret$cov <- .cov
+  ret$cov <- .cov
 
-  .covMethod <- .ret$covMethod
+  .covMethod <- ret$covMethod
   if (is.null(.covMethod) &&
         !is.null(.nlm$covMethod)) {
     .covMethod <- .nlm$covMethod
-    .ret[[str]][["covMethod"]] <- NULL
+    ret[[str]][["covMethod"]] <- NULL
   }
-  .ret$covMethod <- .covMethod
+  ret$covMethod <- .covMethod
 
-  .ret
+  ret
 }
 
 #' Adjust covariance matrix based on scaling parameters
