@@ -39,6 +39,7 @@ nmTest({
 
   .dat0 <- .dat
   .dat0$CENS <- 0L
+
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit0 <- suppressMessages(suppressWarnings(

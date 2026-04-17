@@ -899,12 +899,12 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
     .wObs <- seq_len(nrow(dataSav))
   }
   if (length(.cens) == 1L) {
-    if (!all(dataSav[.wObs, .evid] == 0)) {
+    if (!all(dataSav[.wObs, .cens] == 0)) {
       stop("'nls' does not work with censored data", call. =FALSE)
     }
   }
   if (length(.lim) == 1L) {
-    if (any(is.finite(dataSav[.wObs, .evid]))) {
+    if (any(is.finite(dataSav[.wObs, .lim]))) {
       stop("'nls' does not work with limit data", call. =FALSE)
     }
   }
