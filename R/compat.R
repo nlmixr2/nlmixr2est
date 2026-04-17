@@ -10,7 +10,7 @@
 #' @author Matthew L. Fidler
 #' @examples
 #'
-#' \donttest{
+#' \dontrun{
 #'
 #'
 #'   # This is a nlmixr2 v3 fit and requires the qs package to read in

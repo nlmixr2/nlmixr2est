@@ -194,10 +194,10 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   if (Rf_length(lhs) == 0) return R_NilValue;
   int pro = 0;
   SEXP ipredNames = PROTECT(Rf_getAttrib(ipred, R_NamesSymbol)); pro++;
-  int *keepVals = R_Calloc(Rf_length(ipredNames), int);
-  int k = 0;
-  for (int i = 0; i < Rf_length(ipredNames); ++i) {
-    for (int j = 0; j < Rf_length(lhs); ++j) {
+  int *keepVals = R_Calloc((size_t)Rf_length(ipredNames), int);
+  R_xlen_t k = 0;
+  for (R_xlen_t i = 0; i < Rf_length(ipredNames); ++i) {
+    for (R_xlen_t j = 0; j < Rf_length(lhs); ++j) {
       if (!strcmp(CHAR(STRING_ELT(ipredNames, i)), CHAR(STRING_ELT(lhs, j)))) {
         keepVals[k++] = i;
         break;
@@ -211,7 +211,7 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   }
   SEXP ret = PROTECT(Rf_allocVector(VECSXP, k)); pro++;
   SEXP nm = PROTECT(Rf_allocVector(STRSXP, k)); pro++;
-  for (int i = 0; i < k; ++i) {
+  for (R_xlen_t i = 0; i < k; ++i) {
     SET_VECTOR_ELT(ret,i,VECTOR_ELT(ipred, keepVals[i]));
     SET_STRING_ELT(nm,i,STRING_ELT(ipredNames, keepVals[i]));
   }

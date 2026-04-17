@@ -25,6 +25,10 @@
   `$censInformation` field is populated for these fits in the same way
   as FOCEI/SAEM.
 
+- `agqControl()` and `laplaceControl()` now have `rxUiDeparse()`
+  methods so they can be saved better in packages like `nlmixr2save`
+  and `shinyMixR`.
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward

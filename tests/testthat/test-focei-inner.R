@@ -113,4 +113,52 @@ nmTest({
     # Also make sure that it correctly identifies mu-ref
     expect_equal(c("tka", "tcl", "tv", "add.sd"), row.names(fit$parFixedDf))
   })
+
+  test_that("foceiSetupEta_ overflow guard fires for large mixture datasets", {
+    # The C-level guard added in foceiSetupEta_ (src/inner.cpp) protects against
+    # integer overflow in the etaUpper allocation when getRxNallAndMix(rx) > 65535.
+    # Triggering requires >65535 total observations in a mixture model,
+    # which is too slow for CI (e.g. 700 subjects x 94 obs x 2-mixture model).
+    skip("Requires >65535 total obs in a mixture model to trigger overflow guard")
+
+    # Test body (remove the skip() above for manual local validation):
+    # Build a synthetic dataset large enough that getRxNallAndMix > 65535
+    n_sub <- 700L
+    n_obs <- 94L
+    set.seed(42)
+    dat <- do.call(rbind, lapply(seq_len(n_sub), function(id) {
+      data.frame(
+        ID   = id,
+        TIME = c(0, seq_len(n_obs)),
+        AMT  = c(100, rep(0, n_obs)),
+        DV   = c(NA_real_, rnorm(n_obs, 5, 1)),
+        EVID = c(1L, rep(0L, n_obs))
+      )
+    }))
+
+    # Two-population mixture model (mixIdxN = 1 doubles getRxNallAndMix)
+    mix_mod <- function() {
+      ini({
+        tcl     <- log(0.1)
+        tv      <- log(10)
+        eta.cl  ~ 0.1
+        add.err <- 0.5
+        prob1   <- 0.5
+      })
+      model({
+        cl <- exp(tcl + eta.cl)
+        v  <- exp(tv)
+        ke <- cl / v
+        d/dt(A1) <- -ke * A1
+        cp <- A1 / v
+        cp ~ add(add.err) | mix(prob1)
+      })
+    }
+
+    # Should error with the guard message before attempting the allocation
+    expect_error(
+      suppressMessages(nlmixr(mix_mod, dat, est = "focei")),
+      regexp = "dataset too large for this mixture model"
+    )
+  })
 })

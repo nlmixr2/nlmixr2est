@@ -254,3 +254,9 @@ nlmixr2Est.agq <- function(env, ...) {
   .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="agq"))
 }
 attr(nlmixr2Est.agq, "covPresent") <- TRUE
+
+
+#' @export
+rxUiDeparse.agqControl <- function(object, var) {
+  .rxUiDeparseFoceiControl(object, var, type="agqControl")
+}
