@@ -261,7 +261,18 @@
   .nlmFreeEnv()
   .ret
 }
-
+#' Adjust nlm and family output environment
+#'
+#' Will take information like `$censInformation`, `$parHistData`,
+#' `$cov` and `$covMethod` from the ret[[str]] and put it directly in
+#' the environment `ret`
+#'
+#' @param ret environment for fit output that needs to be adjusted
+#' @param str string for the fit output
+#' @return updated environment
+#' @keywords internal
+#' @export
+#' @author Matthew L. Fidler
 .nlmFamilyAdjustOutput <- function(ret, str) {
   .nlm <- ret[[str]]
   .censInformation <- ret$censInformation
