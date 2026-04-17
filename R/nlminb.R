@@ -527,8 +527,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlminb <- .nlminb[[1]]
-  .ret$parHistData <- .ret$nlminb$parHistData
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlminb")
   .ret$message <- .ret$nlminb$message
   if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
     return(.ret$nlminb)
@@ -536,8 +535,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlminbGetTheta(.ret$nlminb, .ui)
-  .ret$cov <- .ret$nlminb$cov
-  .ret$covMethod <- .ret$nlminb$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL

@@ -1024,8 +1024,6 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nls <- .nls[[1]]
-  .ret$parHistData <- .ret$nls$parHistData
-  .ret$nls$parHistData <- NULL
 
   .ret$message <- NULL
   if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
@@ -1042,6 +1040,7 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
     .ret$covMethod <- "nls"
     .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
   }
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nls")
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlsGetTheta(.ret$nls, .ui)

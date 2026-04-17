@@ -888,13 +888,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
 
   .ret$nlm <- .nlm[[1]]
-  .ret$parHistData <- .ret$nlm$parHistData
-  .censInformation <- .ret$censInformation
-  if (is.null(.censInformation) && !is.null(.ret$nlm$censInformation)) {
-    .censInformation <- .ret$nlm$censInformation
-  }
-  .ret$censInformation <- .censInformation
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlm")
+
   .ret$message <- NULL
   lapply(.nlm[[2]], function(x){
     warning(x, call.=FALSE)
@@ -921,8 +916,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlmGetTheta(.ret$nlm, .ui)
-  .ret$cov <- .ret$nlm$cov
-  .ret$covMethod <- .ret$nlm$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
