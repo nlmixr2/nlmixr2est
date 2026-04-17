@@ -890,6 +890,24 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
     .ctl$scaleC <- ui$scaleCnls
   }
   .p <- unlist(ui$nlsParStart)
+  .cens <- which(tolower(names(dataSav)) == "cens")
+  .lim <- which(tolower(names(dataSav)) == "limit")
+  .evid <- which(tolower(names(dataSav)) == "evid")
+  if (length(.evid) == 1) {
+    .wObs <- which(dataSav[[.evid]] == 0 | dataSav[[.evid]] == 2)
+  } else {
+    .wObs <- seq_len(nrow(dataSav))
+  }
+  if (length(.cens) == 1L) {
+    if (!all(dataSav[.wObs, .evid] == 0)) {
+      stop("'nls' does not work with censored data", call. =FALSE)
+    }
+  }
+  if (length(.lim) == 1L) {
+    if (any(is.finite(dataSav[.wObs, .evid]))) {
+      stop("'nls' does not work with limit data", call. =FALSE)
+    }
+  }
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl,
                        lower=ui$nlsParLower, upper=ui$nlsParUpper)
   .env$par.ini.list <- setNames(as.list(.env$par.ini), names(ui$nlsParStart))

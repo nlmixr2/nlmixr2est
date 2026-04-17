@@ -384,11 +384,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
 #' @noRd
 .nlminbFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nlminb' does not work with censored data", call. =FALSE)
-    }
-  }
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
