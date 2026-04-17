@@ -63,6 +63,12 @@ nmTest({
   # For censored obs, set DV to LLOQ
   .datM3$DV[.datM3$CENS == 1] <- .LLOQ
 
+  test_that("nls does not support censoring", {
+    expect_error(
+      suppressMessages(suppressWarnings(
+        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0)))))
+  })
+
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m3 <- suppressMessages(suppressWarnings(
@@ -79,6 +85,13 @@ nmTest({
     })
   }
 
+
+  test_that("nls does not support censoring", {
+    expect_error(
+      suppressMessages(suppressWarnings(
+        .nlmixr(one.cmt, .datM3, est = "nls", list(print = 0))))
+    )
+  })
 
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
