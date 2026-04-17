@@ -386,7 +386,8 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
-        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+        // (dist == rxDistributionNorm cannot be generated
+        if (dist == rxDistributionDnorm) {
           int censi = 0;
           if (hasRxCens(rx)) censi = getIndCens(ind, kk);
           double dvi = getIndDv(ind, kk);

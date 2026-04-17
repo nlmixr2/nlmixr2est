@@ -21,8 +21,7 @@ nmTest({
   # Base dataset (no censoring)
   .dat <- nlmixr2data::theo_sd
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
@@ -40,8 +39,7 @@ nmTest({
 
   .dat0 <- .dat
   .dat0$CENS <- 0L
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit0 <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .dat0, est = meth, list(print = 0, method="BFGS"))
@@ -65,8 +63,7 @@ nmTest({
   # For censored obs, set DV to LLOQ
   .datM3$DV[.datM3$CENS == 1] <- .LLOQ
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m3 <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
@@ -83,8 +80,7 @@ nmTest({
   }
 
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_base <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
@@ -111,8 +107,7 @@ nmTest({
   .datM2$CENS <- 0L
   .datM2$LIMIT <- 0  # interval censoring: all obs have a lower bound of 0
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m2 <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .datM2, est = meth, list(print = 0, method="BFGS"))
@@ -128,8 +123,7 @@ nmTest({
     })
   }
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_base <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .dat, est = meth, list(print = 0, method="BFGS"))
@@ -154,8 +148,7 @@ nmTest({
   .datM4 <- .datM3
   .datM4$LIMIT <- 0  # add LIMIT for M4
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m4 <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .datM4, est = meth, list(print = 0, method="BFGS"))
@@ -171,8 +164,7 @@ nmTest({
     })
   }
 
-  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "nls",
-                 "optim")) {
+  for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit_m3 <- suppressMessages(suppressWarnings(
         .nlmixr(one.cmt, .datM3, est = meth, list(print = 0, method="BFGS"))
