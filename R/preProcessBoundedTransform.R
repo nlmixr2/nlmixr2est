@@ -12,7 +12,7 @@
 # unconstrained model. Results are back-transformed afterward, including
 # Jacobian correction for the covariance matrix.
 #
-# Author: Hajar Besbassi
+# Author: Hajar Besbassi & Matt Fidler
 
 #' Identify which parameters need a bounded transform
 #'
@@ -448,7 +448,7 @@
   .newUi <- .newUi()
   assign("ui", .newUi, envir = env)
   if (nlmixr2global$transformMu) {
-    warning("to keep mu-referencing remove bounds or use control=control(boundedTransform=FALSE)",
+    warning("to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)",
             call. = FALSE)
   }
 }
