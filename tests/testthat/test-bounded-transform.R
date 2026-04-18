@@ -185,5 +185,36 @@ nmTest({
     expect_true(n1qn1Control()$boundedTransform)
   })
 
+  # Model where tka is bounded AND mu-referenced via exp(tka + eta.ka).
+  # Applying the bounded transform renames tka to tka_untransformed and
+  # breaks mu-referencing; .getBoundedParams should emit a warning that
+  # is captured into fit$runInfo via the stash-and-reemit mechanism.
+  .muRefBoundedModel <- function() {
+    ini({
+      tka    <- c(-5, 0.45, 5)
+      tcl    <- 1.0
+      tv     <- 3.45
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v  ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v  <- exp(tv  + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+
+  test_that("mu-ref breaking warning is captured in fit$runInfo", {
+    fit <- suppressMessages(suppressWarnings(
+      nlmixr(.muRefBoundedModel, theo_sd, est = "saem", control = saemControlFast)
+    ))
+    expect_true(length(fit$runInfo) > 0)
+    expect_true(any(grepl("mu-reference transform", fit$runInfo)))
+    expect_true(any(grepl("tka", fit$runInfo)))
+  })
+
   rxode2::rxUnloadAll()
 })
