@@ -224,4 +224,33 @@ nmTest({
     expect_true(any(grepl("tka", fit$runInfo)))
   })
 
+  test_that("iov + bounded transformation doesn't break", {
+
+    theo_iov <- nlmixr2data::theo_md
+    theo_iov$occ <- 1
+    theo_iov$occ[theo_iov$TIME >= 144] <- 2
+
+    one.cmt.iov <- function() {
+      ini({
+        tka <- 0.45 # Log Ka
+        tcl <- log(c(0, 2.7, 100)) # Log Cl
+        tv <- 3.45; label("log V")
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        iov.cl ~ 0.1 | occ
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + iov.cl)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    expect_error(.nlmixr(one.cmt.iov, theo_iov, est="saem", control = saemControlFast), NA)
+
+  })
+
 })
