@@ -308,6 +308,150 @@
   }
   parHist
 }
+#' Post estimation back transform the thetaDf
+#'
+#' @param env environment to back-transform
+#' @return nothing, called for side-effects
+#' @noRd
+#' @author Hajar Besbassi & Matthew L. Fidler
+.postEstimationBoundedTransformThetaDf <- function(env, transforms) {
+  # --- Back-transform theta ---
+  # env$theta is a data.frame with columns: lower, theta, upper, fixed
+  .thetaDf <- env$theta
+  if (!is.null(.thetaDf) && is.data.frame(.thetaDf)) {
+    .thetaNames <- if (exists("thetaNames", envir = env)) env$thetaNames else rownames(.thetaDf)
+    for (.tr in transforms) {
+      .w <- which(.thetaNames == .tr$internalName)
+      if (length(.w) != 1L) next
+      .val <- .thetaDf$theta[.w]
+      # Back-transform the estimate
+      .thetaDf$theta[.w] <- switch(.tr$type,
+                                   "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+                                   "lower_exp" = .tr$lower + exp(.val),
+                                   "upper_exp" = .tr$upper - exp(.val),
+                                   .val
+                                   )
+      # Restore original bounds
+      .thetaDf$lower[.w] <- .tr$lower
+      .thetaDf$upper[.w] <- .tr$upper
+      # Restore original parameter name
+      .thetaNames[.w] <- .tr$name
+    }
+    rownames(.thetaDf) <- .thetaNames
+    env$theta <- .thetaDf
+    env$thetaNames <- .thetaNames
+  }
+}
+#' Back transform cov matrix with Jacobian
+#'
+#' @param env environment for back-transform
+#' @return nothing, called for side-effects
+#' @noRd
+#' @author Matthew L. Fidler
+.postEstimationBoundedTransformJacobian <- function(env, transforms) {
+  # --- Jacobian correction on covariance matrix ---
+  .thetaDf <- env$theta
+  if (exists("cov", envir = env) && !is.null(env$cov) && is.matrix(env$cov)) {
+    # Compute Jacobian diagonal from natural-scale values
+    # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
+    # For lower_exp: d(lo + exp(x))/dx = natVal - lo
+    # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
+    .jdiag <- rep(1.0, nrow(.thetaDf))
+    for (.tr in transforms) {
+      .w <- which(env$thetaNames == .tr$name)
+      if (length(.w) != 1L) next
+      .natVal <- .thetaDf$theta[.w]
+      .jdiag[.w] <- switch(.tr$type,
+                           "logit" = (.natVal - .tr$lower) * (.tr$upper - .natVal) / (.tr$upper - .tr$lower),
+                           "lower_exp" = .natVal - .tr$lower,
+                           "upper_exp" = -(.tr$upper - .natVal),
+                           1.0
+                           )
+    }
+    # Apply Jacobian: Cov_natural = J * Cov_internal * J'
+    # cov may be smaller than theta (fixed params are excluded via skipCov)
+    .nCov <- nrow(env$cov)
+    .nTheta <- length(.jdiag)
+    if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
+      .skipCov <- env$skipCov
+      .jCov <- numeric(0)
+      for (k in seq_along(.jdiag)) {
+        if (k <= length(.skipCov) && !.skipCov[k]) {
+          .jCov <- c(.jCov, .jdiag[k])
+        }
+      }
+      if (length(.jCov) == .nCov) {
+        .J <- diag(.jCov)
+        env$cov <- .J %*% env$cov %*% t(.J)
+      }
+    }
+  }
+}
+#' Post-Estimation transform the UI back to the original
+#'
+#' @param env environment to back-transform
+#' @return nothing, called for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.postEstimationBoundedTransformUi <- function(env, transforms, ui) {
+  # Remove transformation lines in the ui (and also the transformed injection)
+  .trLhs <- lapply(seq_along(transforms), function(i) {
+    str2lang(transforms[[i]]$name)
+  })
+
+  .keep <- which(vapply(ui$lstExpr,
+                        function(expr) {
+                          if (is.call(expr) && length(expr) >= 3 &&
+                                identical(expr[[1]], quote(`<-`))) {
+                            .lhs <- expr[[2]]
+                            if (any(vapply(seq_along(.trLhs),
+                                           function(i) {
+                                             identical(.lhs, .trLhs[[i]])
+                                           }, logical(1), USE.NAMES = FALSE))) {
+                              return(FALSE) # Remove this expression
+                            }
+                          }
+                          TRUE
+                        }, logical(1), USE.NAMES = FALSE))
+  .lstExpr <- lapply(.keep,
+                     function(i) {
+                       ui$lstExpr[[i]]
+                     })
+
+  .model <- rxode2::as.model(.lstExpr)
+
+
+  # now restore the iniDf
+  .iniDf <- ui$iniDf
+  for (.tr in transforms) {
+    .w <- which(.iniDf$name == .tr$internalName)
+    if (length(.w) != 1L) next
+    .val <- .iniDf$est[.w]
+    # Back-transform the estimate
+    .iniDf$est[.w] <- switch(.tr$type,
+                             "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+                             "lower_exp" = .tr$lower + exp(.val),
+                             "upper_exp" = .tr$upper - exp(.val),
+                             .val
+                             )
+    # Restore original bounds
+    .iniDf$lower[.w] <- .tr$lower
+    .iniDf$upper[.w] <- .tr$upper
+    # Restore original parameter name
+    .iniDf$name[.w] <- .tr$name
+  }
+
+  .ini <- as.expression(lotri::as.lotri(.iniDf))
+  .ini[[1]] <- quote(`ini`)
+  rm("boundedTransforms", envir=ui$meta)
+  .newUi <- .getUiFunFromIniAndModel(ui, .ini, .model)
+  .newUi <- .newUi()
+  assign("ui", .newUi, envir = env)
+  if (nlmixr2global$transformMu) {
+    warning("to keep mu-referencing remove bounds or use control=control(boundedTransform=FALSE)",
+            call. = FALSE)
+  }
+}
 
 #' Post-estimation hook: back-transform bounded parameters
 #'
@@ -334,132 +478,16 @@
 
   nlmixr2global$postEstimationBoundedTransform <- TRUE
 
-  # --- Back-transform theta ---
-  # env$theta is a data.frame with columns: lower, theta, upper, fixed
-  .thetaDf <- env$theta
-  if (!is.null(.thetaDf) && is.data.frame(.thetaDf)) {
-    .thetaNames <- if (exists("thetaNames", envir = env)) env$thetaNames else rownames(.thetaDf)
-    for (.tr in .transforms) {
-      .w <- which(.thetaNames == .tr$internalName)
-      if (length(.w) != 1L) next
-      .val <- .thetaDf$theta[.w]
-      # Back-transform the estimate
-      .thetaDf$theta[.w] <- switch(.tr$type,
-        "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-        "lower_exp" = .tr$lower + exp(.val),
-        "upper_exp" = .tr$upper - exp(.val),
-        .val
-      )
-      # Restore original bounds
-      .thetaDf$lower[.w] <- .tr$lower
-      .thetaDf$upper[.w] <- .tr$upper
-      # Restore original parameter name
-      .thetaNames[.w] <- .tr$name
-    }
-    rownames(.thetaDf) <- .thetaNames
-    env$theta <- .thetaDf
-    env$thetaNames <- .thetaNames
-  }
+  .postEstimationBoundedTransformThetaDf(env, .transforms)
 
-  # --- Jacobian correction on covariance matrix ---
-  if (exists("cov", envir = env) && !is.null(env$cov) && is.matrix(env$cov)) {
-    # Compute Jacobian diagonal from natural-scale values
-    # For logit: d(expit)/d(logit) = (natVal - lo) * (hi - natVal) / (hi - lo)
-    # For lower_exp: d(lo + exp(x))/dx = natVal - lo
-    # For upper_exp: d(hi - exp(x))/dx = -(hi - natVal) [negative sign preserved]
-    .jdiag <- rep(1.0, nrow(.thetaDf))
-    for (.tr in .transforms) {
-      .w <- which(env$thetaNames == .tr$name)
-      if (length(.w) != 1L) next
-      .natVal <- .thetaDf$theta[.w]
-      .jdiag[.w] <- switch(.tr$type,
-        "logit" = (.natVal - .tr$lower) * (.tr$upper - .natVal) / (.tr$upper - .tr$lower),
-        "lower_exp" = .natVal - .tr$lower,
-        "upper_exp" = -(.tr$upper - .natVal),
-        1.0
-      )
-    }
-    # Apply Jacobian: Cov_natural = J * Cov_internal * J'
-    # cov may be smaller than theta (fixed params are excluded via skipCov)
-    .nCov <- nrow(env$cov)
-    .nTheta <- length(.jdiag)
-    if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
-      .skipCov <- env$skipCov
-      .jCov <- numeric(0)
-      for (k in seq_along(.jdiag)) {
-        if (k <= length(.skipCov) && !.skipCov[k]) {
-          .jCov <- c(.jCov, .jdiag[k])
-        }
-      }
-      if (length(.jCov) == .nCov) {
-        .J <- diag(.jCov)
-        env$cov <- .J %*% env$cov %*% t(.J)
-      }
-    }
-  }
+  .postEstimationBoundedTransformJacobian(env, .transforms)
 
-  # --- Back-transform parameter history ---
   if (exists("parHistData", envir = env) && !is.null(env$parHistData)) {
     env$parHistData <- .backTransformParHist(env$parHistData, .transforms)
   }
 
-  # Remove transformation lines in the ui (and also the transformed injection)
-  .trLhs <- lapply(seq_along(.transforms), function(i) {
-    str2lang(.transforms[[i]]$name)
-  })
+  .postEstimationBoundedTransformUi(env, .transforms, .ui)
 
-  .keep <- which(vapply(.ui$lstExpr,
-         function(expr) {
-           if (is.call(expr) && length(expr) >= 3 &&
-                 identical(expr[[1]], quote(`<-`))) {
-             .lhs <- expr[[2]]
-             if (any(vapply(seq_along(.trLhs),
-                            function(i) {
-                              identical(.lhs, .trLhs[[i]])
-                            }, logical(1), USE.NAMES = FALSE))) {
-               return(FALSE) # Remove this expression
-             }
-           }
-           TRUE
-         }, logical(1), USE.NAMES = FALSE))
-  .lstExpr <- lapply(.keep,
-                     function(i) {
-                       .ui$lstExpr[[i]]
-                     })
-
-  .model <- rxode2::as.model(.lstExpr)
-
-
-  # now restore the iniDf
-  .iniDf <- .ui$iniDf
-  for (.tr in .transforms) {
-    .w <- which(.iniDf$name == .tr$internalName)
-    if (length(.w) != 1L) next
-    .val <- .iniDf$est[.w]
-    # Back-transform the estimate
-    .iniDf$est[.w] <- switch(.tr$type,
-                             "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
-                             "lower_exp" = .tr$lower + exp(.val),
-                             "upper_exp" = .tr$upper - exp(.val),
-                             .val
-                             )
-    # Restore original bounds
-    .iniDf$lower[.w] <- .tr$lower
-    .iniDf$upper[.w] <- .tr$upper
-    # Restore original parameter name
-    .iniDf$name[.w] <- .tr$name
-  }
-
-  .ini <- as.expression(lotri::as.lotri(.iniDf))
-  .ini[[1]] <- quote(`ini`)
-  rm("boundedTransforms", envir=.ui$meta)
-  .newUi <- .getUiFunFromIniAndModel(.ui, .ini, .model)
-  .newUi <- .newUi()
-  assign("ui", .newUi, envir = env)
-  if (nlmixr2global$transformMu) {
-    warning("to keep mu-referencing remove bounds or use control=control(boundedTransform=FALSE)",
-            call. = FALSE)
-  }
   invisible(NULL)
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
