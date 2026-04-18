@@ -384,8 +384,8 @@
   .ini[[1]] <- quote(`ini`)
   rm("boundedTransforms", envir=.ui$meta)
   .newUi <- .getUiFunFromIniAndModel(.ui, .ini, .model)
-  env$ui <- .newUi()
-
+  .newUi <- .newUi()
+  assign("ui", .newUi, envir = env)
   invisible(NULL)
 }
 

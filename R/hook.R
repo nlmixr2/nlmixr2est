@@ -96,8 +96,6 @@ preFinalParTableHooks <- function(name=NULL) {
   invisible(NULL)
 }
 
-
-
 .preProcessHooks <- new.env(parent=emptyenv())
 
 #' This adds a pre-processing hook to nlmixr2est
