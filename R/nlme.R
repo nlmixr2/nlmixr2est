@@ -539,4 +539,7 @@ nlmixr2Est.nlme <- function(env, ...) {
   .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
 }
 attr(nlmixr2Est.nlme, "covPresent") <- TRUE
-attr(nlmixr2Est.nlme, "unbounded") <- FALSE
+attr(nlmixr2Est.nlme, "unbounded") <- TRUE
+attr(nlmixr2Est.nlme, "mu") <- function(control) {
+  isTRUE(control$muRefCovAlg)
+}
