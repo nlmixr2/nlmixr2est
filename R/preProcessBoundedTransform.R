@@ -1,23 +1,31 @@
-#' Pre-processing hook: automatic bounded parameter transformation
-#'
-#' For estimation methods that operate in unconstrained space,
-#' this hook automatically transforms bounded parameters by rewriting
-#' the model to include the appropriate back-transform:
-#'
-#' - Two finite bounds (a, b): param <- expit(param_internal, a, b)
-#' - Lower bound only (a, Inf): param <- a + exp(param_internal)
-#' - Upper bound only (-Inf, b): param <- b - exp(param_internal)
-#'
-#' The model is rewritten before estimation. The estimator sees an
-#' unconstrained model. Results are back-transformed afterward,
-#' including Jacobian correction for the covariance matrix.
-#'
-#' @author Hajar Besbassi
-#' @noRd
+# Pre-processing hook: automatic bounded parameter transformation
+#
+# For estimation methods that operate in unconstrained space, this hook
+# automatically transforms bounded parameters by rewriting the model to
+# include the appropriate back-transform:
+#
+#   - Two finite bounds (a, b): param <- expit(param_internal, a, b)
+#   - Lower bound only (a, Inf): param <- a + exp(param_internal)
+#   - Upper bound only (-Inf, b): param <- b - exp(param_internal)
+#
+# The model is rewritten before estimation. The estimator sees an
+# unconstrained model. Results are back-transformed afterward, including
+# Jacobian correction for the covariance matrix.
+#
+# Author: Hajar Besbassi
 
-# -----------------------------------------------------------------------
-# Identify which parameters need transformation
-# -----------------------------------------------------------------------
+#' Identify which parameters need a bounded transform
+#'
+#' Scans the ui's iniDf for theta parameters with finite lower and/or upper
+#' bounds that are not fixed and not residual error terms. Skips parameters
+#' with mu-referenced transforms (warns that mu-referencing will be lost).
+#'
+#' @param ui rxode2 ui object
+#' @param est estimation routine name
+#' @param control control object
+#' @return list of transform specifications (one element per bounded parameter)
+#' @noRd
+#' @author Hajar Besbassi
 .getBoundedParams <- function(ui, est, control) {
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
@@ -89,9 +97,15 @@
   .transforms
 }
 
-# -----------------------------------------------------------------------
-# Build the transform expression for a parameter
-# -----------------------------------------------------------------------
+#' Build the transform expression for a parameter
+#'
+#' Returns a language object for the back-transform line to prepend to the
+#' model block, e.g. \code{td1 <- expit(td1_untransformed, 0, 1)}.
+#'
+#' @param tr transform specification (named list from .getBoundedParams)
+#' @return language object
+#' @noRd
+#' @author Hajar Besbassi
 .buildTransformExpr <- function(tr) {
   switch(tr$type,
     "logit" = str2lang(paste0(tr$name, " <- expit(", tr$internalName,
@@ -103,9 +117,20 @@
   )
 }
 
-# -----------------------------------------------------------------------
-# Rewrite the model UI with transforms injected
-# -----------------------------------------------------------------------
+#' Rewrite the model UI with bounded-parameter transforms injected
+#'
+#' For each bounded parameter, renames it to \code{<name>_untransformed}
+#' in iniDf, drops its bounds, and prepends a back-transform line to the
+#' model block. Attaches the transform list and original UI state to the
+#' returned ui so the post-estimation hook can restore natural-scale
+#' values and parameter names.
+#'
+#' @param ui rxode2 ui object
+#' @param transforms list of transform specifications
+#' @return rewritten rxode2 ui with \code{boundedTransforms} and
+#'   \code{boundedOriginal} slots attached
+#' @noRd
+#' @author Hajar Besbassi
 .rewriteModelWithTransforms <- function(ui, transforms) {
   # Save original UI for post-estimation hook
   # Store in a new environment attached to the new UI so the post-estimation
@@ -160,19 +185,28 @@
   .newUi
 }
 
-# -----------------------------------------------------------------------
-# Check if estimation method is unbounded
-#
-# Uses the "unbounded" attribute on the nlmixr2Est.<method> S3 method.
-# This allows external packages (babelmixr2, etc.) to register their
-# own methods as bounded/unbounded without modifying this file.
-#
-# The attribute can be:
-#   TRUE  - always unbounded
-#   FALSE - handles bounds natively
-#   function(control) returning logical - conditional (e.g., optim
-#     method-dependent, FOCEI outer optimizer-dependent)
-# -----------------------------------------------------------------------
+#' Check if an estimation method is unbounded
+#'
+#' Uses the \code{"unbounded"} attribute on the \code{nlmixr2Est.<method>}
+#' S3 method. This allows external packages (babelmixr2, etc.) to register
+#' their own methods as bounded/unbounded without modifying this file.
+#'
+#' The attribute can be:
+#' \itemize{
+#'   \item \code{TRUE} - always unbounded
+#'   \item \code{FALSE} - handles bounds natively
+#'   \item \code{function(control)} returning logical - conditional
+#'     (e.g., optim method-dependent, FOCEI outer optimizer-dependent)
+#' }
+#'
+#' If \code{control$boundedTransform} is \code{FALSE}, returns \code{FALSE}
+#' so the preprocessing hook is skipped entirely.
+#'
+#' @param est estimation routine name
+#' @param control control object (may contain \code{boundedTransform} flag)
+#' @return boolean
+#' @noRd
+#' @author Hajar Besbassi
 .isUnboundedMethod <- function(est, control = NULL) {
   # Allow user to disable bounded-parameter transforms via control option
   if (!is.null(control) && isFALSE(control$boundedTransform)) return(FALSE)
@@ -206,16 +240,45 @@
   FALSE
 }
 
-# -----------------------------------------------------------------------
-# The pre-processing hook function
-# -----------------------------------------------------------------------
+#' Pre-processing hook: inject bounded-parameter back-transforms
+#'
+#' Registered via \code{preProcessHooksAdd()}. Runs before estimation and,
+#' for unbounded methods with bounded parameters, returns a rewritten ui
+#' with internal unbounded parameters and prepended back-transform lines.
+#' Returns \code{NULL} (no-op) for bounded-native methods or models with
+#' no bounded parameters.
+#'
+#' @param ui rxode2 ui object
+#' @param est estimation routine name
+#' @param data dataset (unused, required by hook signature)
+#' @param control control object
+#' @return named list with \code{ui} element, or \code{NULL}
+#' @noRd
+#' @author Hajar Besbassi
 .preProcessBoundedTransform <- function(ui, est, data, control) {
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
-  .transforms <- .getBoundedParams(ui, est, control)
-  if (length(.transforms) == 0) return(NULL)
+  # Capture warnings emitted by .getBoundedParams so they can be re-emitted
+  # inside .collectWarn scope during finalization (nlmixr2's warning-capture
+  # mechanism wraps estimation, not preprocessing).
+  .warnings <- character(0)
+  .transforms <- withCallingHandlers(
+    .getBoundedParams(ui, est, control),
+    warning = function(w) {
+      .warnings <<- c(.warnings, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+
+  if (length(.transforms) == 0) {
+    # No rewrite -> post-est hook won't fire. Emit warnings here so they
+    # are not silently dropped.
+    for (.w in .warnings) warning(.w, call. = FALSE)
+    return(NULL)
+  }
 
   .newUi <- .rewriteModelWithTransforms(ui, .transforms)
+  .newUi$boundedTransformWarnings <- .warnings
   list(ui = .newUi)
 }
 
@@ -248,20 +311,32 @@
   parHist
 }
 
-# -----------------------------------------------------------------------
-# Post-estimation hook: back-transform bounded parameters
-#
-# Registered via preFinalParTableHooksAdd(). Runs after estimation
-# but before the final parameter table is built (called from C++
-# foceiFinalizeTables via .preFinalParTableHooksRun).
-#
-# Modifies env$theta, env$thetaNames, env$cov to restore natural-scale
-# parameter values, original parameter names, and Jacobian-corrected
-# covariance matrix.
-# -----------------------------------------------------------------------
+#' Post-estimation hook: back-transform bounded parameters
+#'
+#' Registered via \code{preFinalParTableHooksAdd()}. Runs after estimation
+#' but before the final parameter table is built (called from C++
+#' \code{foceiFinalizeTables} via \code{.preFinalParTableHooksRun}).
+#'
+#' Modifies \code{env$theta}, \code{env$thetaNames}, and \code{env$cov} to
+#' restore natural-scale parameter values, original parameter names, and
+#' Jacobian-corrected covariance matrix. Also restores the original ui on
+#' the fit object so downstream consumers see the user's model.
+#'
+#' @param env fit environment containing \code{ui}, \code{theta},
+#'   \code{thetaNames}, \code{cov}
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Hajar Besbassi
 .postEstimationBoundedTransform <- function(env) {
   .ui <- env$ui
   if (is.null(.ui)) return(invisible(NULL))
+
+  # Re-emit preprocessing warnings inside .collectWarn scope so they are
+  # captured into the fit object ($warnings) like other nlmixr2 warnings.
+  .ws <- .ui$boundedTransformWarnings
+  if (!is.null(.ws) && length(.ws) > 0) {
+    for (.w in .ws) warning(.w, call. = FALSE)
+  }
 
   .transforms <- .ui$boundedTransforms
   if (is.null(.transforms) || length(.transforms) == 0) return(invisible(NULL))

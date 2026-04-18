@@ -25,6 +25,9 @@ original object is replaced with the new object.
 }
 \seealso{
 Other preProcessHooks: 
+\code{\link{preFinalParTableHooks}()},
+\code{\link{preFinalParTableHooksAdd}()},
+\code{\link{preFinalParTableHooksRm}()},
 \code{\link{preProcessHooks}()},
 \code{\link{preProcessHooksRm}()}
 }

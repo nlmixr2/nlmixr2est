@@ -19,6 +19,9 @@ Return a list of all pre-processing hooks
 }
 \seealso{
 Other preProcessHooks: 
+\code{\link{preFinalParTableHooks}()},
+\code{\link{preFinalParTableHooksAdd}()},
+\code{\link{preFinalParTableHooksRm}()},
 \code{\link{preProcessHooksAdd}()},
 \code{\link{preProcessHooksRm}()}
 }
