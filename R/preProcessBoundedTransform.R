@@ -35,6 +35,7 @@
 
   .transforms <- list()
   .muRef <-  .isMuMethod(est, control)
+  nlmixr2global$transformMu  <- .muRef
   for (i in seq_len(nrow(.thetaDf))) {
     .name <- .thetaDf$name[i]
     .lo <- .thetaDf$lower[i]
@@ -94,9 +95,8 @@
     if (.muRef && .warn) {
       .w <- which(.ce$parameter == .name)
       if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
-        warning(.name, " had a mu-reference transform (", .ce$curEval[.w],
-                ") and by applying the bounded transformation, mu-referencing will be lost (and performance degraded).\n",
-                "To disable bounded transformation use `control=list(boundedTransform = FALSE)` though parameters will no longer be bounded.",
+        warning(" mu-reference transform (", .ce$curEval[.w],
+                ") for `", .name, "` lost since bounded (and performance degraded)",
                 call. = FALSE)
       }
     }
@@ -456,6 +456,10 @@
   .newUi <- .getUiFunFromIniAndModel(.ui, .ini, .model)
   .newUi <- .newUi()
   assign("ui", .newUi, envir = env)
+  if (nlmixr2global$transformMu) {
+    warning("to keep mu-referencing remove bounds or use control=control(boundedTransform=FALSE)",
+            call. = FALSE)
+  }
   invisible(NULL)
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
