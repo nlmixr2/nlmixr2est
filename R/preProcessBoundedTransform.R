@@ -261,9 +261,13 @@
 
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
+
+  .transforms <- .getBoundedParams(ui, est, control)
+  if (length(.transforms) == 0L) return(NULL)
+
   nlmixr2global$preProcessBoundedTransform <- TRUE
 
-  .newUi <- .rewriteModelWithTransforms(ui, .getBoundedParams(ui, est, control))
+  .newUi <- .rewriteModelWithTransforms(ui, .transforms)
 
   list(ui = .newUi)
 }
@@ -318,10 +322,10 @@
   .ui <- env$ui
   if (is.null(.ui)) return(invisible(NULL))
 
-  nlmixr2global$postEstimationBoundedTransform <- TRUE
-
   .transforms <- .ui$boundedTransforms
   if (is.null(.transforms) || length(.transforms) == 0) return(invisible(NULL))
+
+  nlmixr2global$postEstimationBoundedTransform <- TRUE
 
   # --- Back-transform theta ---
   # env$theta is a data.frame with columns: lower, theta, upper, fixed
