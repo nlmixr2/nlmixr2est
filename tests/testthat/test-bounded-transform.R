@@ -224,5 +224,4 @@ nmTest({
     expect_true(any(grepl("tka", fit$runInfo)))
   })
 
-  rxode2::rxUnloadAll()
 })
