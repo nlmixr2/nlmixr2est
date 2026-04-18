@@ -1,6 +1,6 @@
 .foUnbounded <- function(control) {
   if (is.null(control) || is.null(control$outerOpt)) return(FALSE)
-  control$outerOpt %in% c("uobyqa", "newuoa")
+  control$outerOptTxt %in% c("uobyqa", "newuoa")
 }
 
 #' Get the adaptive Gauss-Hermite quadrature points and weights

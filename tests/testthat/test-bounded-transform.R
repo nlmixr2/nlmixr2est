@@ -172,7 +172,7 @@ nmTest({
       nlmixr(.logitModel, theo_sd, est = "focei",
              control = foceiControl(print = 0, maxOuterIterations = 0L,
                                     outerOpt="uobyqa",
-                                     boundedTransform = FALSE))
+                                    boundedTransform = FALSE))
     ))
     expect_true("td1" %in% names(fit$theta))
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
