@@ -256,29 +256,15 @@
 #' @noRd
 #' @author Hajar Besbassi
 .preProcessBoundedTransform <- function(ui, est, data, control) {
+  nlmixr2global$preProcessBoundedTransform <- FALSE
+  nlmixr2global$postEstimationBoundedTransform  <- FALSE
+
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
-  # Capture warnings emitted by .getBoundedParams so they can be re-emitted
-  # inside .collectWarn scope during finalization (nlmixr2's warning-capture
-  # mechanism wraps estimation, not preprocessing).
-  .warnings <- character(0)
-  .transforms <- withCallingHandlers(
-    .getBoundedParams(ui, est, control),
-    warning = function(w) {
-      .warnings <<- c(.warnings, conditionMessage(w))
-      invokeRestart("muffleWarning")
-    }
-  )
+  nlmixr2global$preProcessBoundedTransform <- TRUE
 
-  if (length(.transforms) == 0) {
-    # No rewrite -> post-est hook won't fire. Emit warnings here so they
-    # are not silently dropped.
-    for (.w in .warnings) warning(.w, call. = FALSE)
-    return(NULL)
-  }
+  .newUi <- .rewriteModelWithTransforms(ui, .getBoundedParams(ui, est, control))
 
-  .newUi <- .rewriteModelWithTransforms(ui, .transforms)
-  .newUi$boundedTransformWarnings <- .warnings
   list(ui = .newUi)
 }
 
@@ -292,6 +278,7 @@
 #'   Transformed columns use the internal name (e.g., \code{td1_untransformed}).
 #' @param transforms list of transform specifications
 #' @return modified data.frame with back-transformed values and original names
+#' @author Hajar Besbassi
 #' @noRd
 .backTransformParHist <- function(parHist, transforms) {
   if (is.null(parHist) || length(transforms) == 0) return(parHist)
@@ -326,17 +313,12 @@
 #'   \code{thetaNames}, \code{cov}
 #' @return invisible \code{NULL}; called for its side effects on \code{env}
 #' @noRd
-#' @author Hajar Besbassi
+#' @author Hajar Besbassi & Matt Fidler
 .postEstimationBoundedTransform <- function(env) {
   .ui <- env$ui
   if (is.null(.ui)) return(invisible(NULL))
 
-  # Re-emit preprocessing warnings inside .collectWarn scope so they are
-  # captured into the fit object ($warnings) like other nlmixr2 warnings.
-  .ws <- .ui$boundedTransformWarnings
-  if (!is.null(.ws) && length(.ws) > 0) {
-    for (.w in .ws) warning(.w, call. = FALSE)
-  }
+  nlmixr2global$postEstimationBoundedTransform <- TRUE
 
   .transforms <- .ui$boundedTransforms
   if (is.null(.transforms) || length(.transforms) == 0) return(invisible(NULL))
@@ -464,6 +446,16 @@
   .newUi <- .newUi()
   assign("ui", .newUi, envir = env)
   invisible(NULL)
+}
+#' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
+#'
+#' @return
+#' @keywords internal
+#' @noRd
+#' @author Matthew L. Fidler
+.testBoundedTransform <- function() {
+  c(pre=nlmixr2global$preProcessBoundedTransform,
+    post=nlmixr2global$postEstimationBoundedTransform)
 }
 
 # -----------------------------------------------------------------------

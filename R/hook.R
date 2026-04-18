@@ -180,46 +180,51 @@ preProcessHooks <- function(name=NULL) {
 }
 
 .preProcessHooksRun <- function(env, est) {
-  .ui <- env$ui
-  .est <- est
-  if (is.null(.est) && is.character(nlmixr2global$nlmixr2pipeEst)) {
-    .est <- est <- nlmixr2global$nlmixr2pipeEst
-  }
-  .data <- env$data
-  if (is.null(.data) &&
-        inherits(nlmixr2global$nlmixr2pipeData, "data.frame")) {
-    .data <- env$data <- nlmixr2global$nlmixr2pipeData
-  }
-  .control <- env$control
-  if (is.null(.control) && inherits(nlmixr2global$nlmixr2pipeControl, "list")) {
-    .control <- env$control <- nlmixr2global$nlmixr2pipeControl
-  }
-  for (name in preProcessHooks()) {
-    .fun <- get(name, envir=.preProcessHooks)
-    .ret <- .fun(.ui, .est, .data, .control)
-    if (is.null(.ret) || length(.ret) == 0) {
-    } else if (checkmate::testList(.ret, max.len=4, min.len=1) &&
-          !is.null(names(.ret)) &&
-          checkmate::checkSubset(names(.ret), c("ui", "est", "data", "control"))) {
-      if (!is.null(.ret$ui)) {
-        .ui <- .ret$ui
-      }
-      if (!is.null(.ret$est)) {
-        .est <- .ret$est
-      }
-      if (!is.null(.ret$data)) {
-        .data <- .ret$data
-      }
-      if (!is.null(.ret$control)) {
-        .control <- .ret$control
-      }
-    } else {
-      stop("nlmixr2est preprocessing hook '", name, "' must return a list with elements 'ui', 'est', 'data', and/or 'control'",
-             call.=FALSE)
+  nlmixr2global$preProcessHookWarnings <- character(0)
+  .ret <- .collectWarn({
+    .ui <- env$ui
+    .est <- est
+    if (is.null(.est) && is.character(nlmixr2global$nlmixr2pipeEst)) {
+      .est <- est <- nlmixr2global$nlmixr2pipeEst
     }
-  }
-  env$ui <- .ui
-  env$data <- .data
-  env$control <- .control
-  .est
+    .data <- env$data
+    if (is.null(.data) &&
+          inherits(nlmixr2global$nlmixr2pipeData, "data.frame")) {
+      .data <- env$data <- nlmixr2global$nlmixr2pipeData
+    }
+    .control <- env$control
+    if (is.null(.control) && inherits(nlmixr2global$nlmixr2pipeControl, "list")) {
+      .control <- env$control <- nlmixr2global$nlmixr2pipeControl
+    }
+    for (name in preProcessHooks()) {
+      .fun <- get(name, envir=.preProcessHooks)
+      .ret <- .fun(.ui, .est, .data, .control)
+      if (is.null(.ret) || length(.ret) == 0) {
+      } else if (checkmate::testList(.ret, max.len=4, min.len=1) &&
+                   !is.null(names(.ret)) &&
+                   checkmate::checkSubset(names(.ret), c("ui", "est", "data", "control"))) {
+        if (!is.null(.ret$ui)) {
+          .ui <- .ret$ui
+        }
+        if (!is.null(.ret$est)) {
+          .est <- .ret$est
+        }
+        if (!is.null(.ret$data)) {
+          .data <- .ret$data
+        }
+        if (!is.null(.ret$control)) {
+          .control <- .ret$control
+        }
+      } else {
+        stop("nlmixr2est preprocessing hook '", name, "' must return a list with elements 'ui', 'est', 'data', and/or 'control'",
+             call.=FALSE)
+      }
+    }
+    env$ui <- .ui
+    env$data <- .data
+    env$control <- .control
+    .est
+  }, lst=TRUE)
+  nlmixr2global$preProcessHookWarnings <- .ret[[2]]
+  .ret[[1]]
 }

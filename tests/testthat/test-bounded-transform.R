@@ -1,5 +1,4 @@
 nmTest({
-  skip_on_cran()
 
   # Shared model with one bounded parameter (td1 in [0, 1]).
   .logitModel <- function() {
@@ -56,6 +55,7 @@ nmTest({
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
+    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
   })
 
   test_that("SAEM with lower-bound-only param (tlag >= 0) works", {
@@ -66,6 +66,7 @@ nmTest({
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
     tlagVal <- fit$theta["tlag"]
     expect_true(tlagVal >= 0)
+    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
   })
 
   test_that("unbounded params are not transformed (regression)", {
@@ -91,6 +92,7 @@ nmTest({
     ))
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
     expect_true(all(c("tka", "tcl", "tv") %in% names(fit$theta)))
+    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
   test_that("fit$ui is restored to original model after SAEM", {
@@ -106,6 +108,7 @@ nmTest({
     .td1 <- .thetaRows[.thetaRows$name == "td1", ]
     expect_equal(.td1$lower, 0)
     expect_equal(.td1$upper, 1)
+    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
   })
 
   test_that("control$boundedTransform = FALSE disables the transform", {
@@ -119,6 +122,7 @@ nmTest({
     # (no rewriting happened) but may go out of bounds
     expect_true("td1" %in% names(fit$theta))
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
   test_that("fixed params are not transformed", {
@@ -127,7 +131,7 @@ nmTest({
         tka   <- 0.45
         tcl   <- 1.0
         tv    <- 3.45
-        td1   <- fix(0.5)
+        td1   <- fix(0, 0.5, 1)
         eta.ka ~ 0.6
         eta.cl ~ 0.3
         eta.v  ~ 0.1
@@ -147,9 +151,10 @@ nmTest({
     ))
     expect_true("td1" %in% names(fit$theta))
     expect_equal(setNames(fit$theta["td1"], NULL), 0.5)
+    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
-  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L)
+  foceiControlFast <- foceiControl(print = 0, maxOuterIterations = 0L, outerOpt="uobyqa")
 
   test_that("FOCEI with logit-bounded param keeps estimate within bounds", {
     fit <- suppressMessages(suppressWarnings(
@@ -159,16 +164,19 @@ nmTest({
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
+    expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
   })
 
   test_that("FOCEI with boundedTransform = FALSE disables the transform", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr(.logitModel, theo_sd, est = "focei",
              control = foceiControl(print = 0, maxOuterIterations = 0L,
+                                    outerOpt="uobyqa",
                                      boundedTransform = FALSE))
     ))
     expect_true("td1" %in% names(fit$theta))
     expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
   test_that("boundedTransform arg wired into all 8 control functions", {
