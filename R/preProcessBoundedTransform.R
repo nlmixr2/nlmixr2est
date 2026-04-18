@@ -18,7 +18,7 @@
 # -----------------------------------------------------------------------
 # Identify which parameters need transformation
 # -----------------------------------------------------------------------
-.getBoundedParams <- function(ui) {
+.getBoundedParams <- function(ui, est, control) {
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
 
@@ -36,10 +36,15 @@
     if (.thetaDf$fix[i]) next
     # Skip residual error params (have non-NA err column)
     if (!is.na(.thetaDf$err[i])) next
-    # Skip if already mu-referenced with any transform
-    .w <- which(.ce$parameter == .name)
-    if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) next
-
+    # Warn if already mu-referenced has a transform because it breaks mu-referencing
+    if (.isMuMethod(est, control)) {
+      .w <- which(.ce$parameter == .name)
+      if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
+        warning(.name, " had a mu-reference transform (", .ce$curEval[.w],
+                ") and by applying the bounded transformation, mu-referencing will be lost.",
+                call. = FALSE)
+      }
+    }
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)
 
@@ -122,24 +127,6 @@
       .iniDf$lower[.w] <- -Inf
       .iniDf$upper[.w] <- Inf
       .iniDf$est[.w] <- .tr$initTrans
-      # Register back-transform function for results display
-      .btFunName <- paste0(".nlmixr2BT_", .tr$internalName)
-      .btFun <- switch(.tr$type,
-        "logit" = local({
-          lo <- .tr$lower; hi <- .tr$upper
-          function(x) lo + (hi - lo) / (1 + exp(-x))
-        }),
-        "lower_exp" = local({
-          lo <- .tr$lower
-          function(x) lo + exp(x)
-        }),
-        "upper_exp" = local({
-          hi <- .tr$upper
-          function(x) hi - exp(x)
-        })
-      )
-      assign(.btFunName, .btFun, envir = .env)
-      .iniDf$backTransform[.w] <- .btFunName
     }
   }
 
@@ -197,6 +184,25 @@
   }
   FALSE
 }
+#' Is the estimation method a "mu method"?
+#'
+#'
+#' @param est estimation routine
+#' @param control control object.
+#' @return boolean
+#' @noRd
+#' @author Matthew L. Fidler
+.isMuMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .mu <- attr(utils::getS3method("nlmixr2Est", est), "mu")
+    if (is.null(.mu)) return(FALSE)
+    if (is.function(.mu)) return(isTRUE(.mu(control)))
+    return(isTRUE(.mu))
+  }
+  FALSE
+}
 
 # -----------------------------------------------------------------------
 # The pre-processing hook function
@@ -204,7 +210,7 @@
 .preProcessBoundedTransform <- function(ui, est, data, control) {
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
-  .transforms <- .getBoundedParams(ui)
+  .transforms <- .getBoundedParams(ui, est, control)
   if (length(.transforms) == 0) return(NULL)
 
   .newUi <- .rewriteModelWithTransforms(ui, .transforms)
@@ -280,6 +286,7 @@
       # Restore original parameter name
       .thetaNames[.w] <- .tr$name
     }
+    rownames(.thetaDf) <- .thetaNames
     env$theta <- .thetaDf
     env$thetaNames <- .thetaNames
   }
@@ -325,6 +332,59 @@
   if (exists("parHistData", envir = env) && !is.null(env$parHistData)) {
     env$parHistData <- .backTransformParHist(env$parHistData, .transforms)
   }
+
+  # Remove transformation lines in the ui (and also the transformed injection)
+  .trLhs <- lapply(seq_along(.transforms), function(i) {
+    str2lang(.transforms[[i]]$name)
+  })
+
+  .keep <- which(vapply(.ui$lstExpr,
+         function(expr) {
+           if (is.call(expr) && length(expr) >= 3 &&
+                 identical(expr[[1]], quote(`<-`))) {
+             .lhs <- expr[[2]]
+             if (any(vapply(seq_along(.trLhs),
+                            function(i) {
+                              identical(.lhs, .trLhs[[i]])
+                            }, logical(1), USE.NAMES = FALSE))) {
+               return(FALSE) # Remove this expression
+             }
+           }
+           TRUE
+         }, logical(1), USE.NAMES = FALSE))
+  .lstExpr <- lapply(.keep,
+                     function(i) {
+                       .ui$lstExpr[[i]]
+                     })
+
+  .model <- rxode2::as.model(.lstExpr)
+
+
+  # now restore the iniDf
+  .iniDf <- .ui$iniDf
+  for (.tr in .transforms) {
+    .w <- which(.iniDf$name == .tr$internalName)
+    if (length(.w) != 1L) next
+    .val <- .iniDf$est[.w]
+    # Back-transform the estimate
+    .iniDf$est[.w] <- switch(.tr$type,
+                             "logit" = rxode2::expit(.val, .tr$lower, .tr$upper),
+                             "lower_exp" = .tr$lower + exp(.val),
+                             "upper_exp" = .tr$upper - exp(.val),
+                             .val
+                             )
+    # Restore original bounds
+    .iniDf$lower[.w] <- .tr$lower
+    .iniDf$upper[.w] <- .tr$upper
+    # Restore original parameter name
+    .iniDf$name[.w] <- .tr$name
+  }
+
+  .ini <- as.expression(lotri::as.lotri(.iniDf))
+  .ini[[1]] <- quote(`ini`)
+  rm("boundedTransforms", envir=.ui$meta)
+  .newUi <- .getUiFunFromIniAndModel(.ui, .ini, .model)
+  env$ui <- .newUi()
 
   invisible(NULL)
 }
