@@ -117,7 +117,8 @@ nlmControl <- function(typsize = NULL,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=FALSE,
                        covMethod=c("r", "nlm", ""),
-                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                       boundedTransform=TRUE, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
 
@@ -139,6 +140,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -276,7 +278,8 @@ nlmControl <- function(typsize = NULL,
                compress=compress,
                solveType=solveType,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "nlmControl"
   .ret
 }

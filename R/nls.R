@@ -90,7 +90,8 @@ nlsControl <- function(maxiter=10000,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
                        calcTables=TRUE, compress=TRUE,
-                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                       boundedTransform=TRUE, ...) {
   algorithm <- match.arg(algorithm)
   if (algorithm == "LM" && !requireNamespace("minpack.lm", quietly = TRUE)) {
     .malert("to use the LM algorithm you must have minpack.lm installed")
@@ -134,6 +135,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% "genRxControl")]
@@ -240,7 +242,8 @@ nlsControl <- function(maxiter=10000,
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "nlsControl"
   .ret
 }

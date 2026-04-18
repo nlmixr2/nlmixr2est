@@ -174,6 +174,8 @@
 #     method-dependent, FOCEI outer optimizer-dependent)
 # -----------------------------------------------------------------------
 .isUnboundedMethod <- function(est, control = NULL) {
+  # Allow user to disable bounded-parameter transforms via control option
+  if (!is.null(control) && isFALSE(control$boundedTransform)) return(FALSE)
   .v <- as.character(utils::methods("nlmixr2Est"))
   .method <- paste0("nlmixr2Est.", est)
   if (.method %in% .v) {
