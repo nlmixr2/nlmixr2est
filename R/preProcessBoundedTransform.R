@@ -25,7 +25,7 @@
 #' @param control control object
 #' @return list of transform specifications (one element per bounded parameter)
 #' @noRd
-#' @author Hajar Besbassi
+#' @author Hajar Besbassi & Matt Fidler
 .getBoundedParams <- function(ui, est, control) {
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
@@ -34,6 +34,7 @@
   .ce <- ui$muRefCurEval
 
   .transforms <- list()
+  .muRef <-  .isMuMethod(est, control)
   for (i in seq_len(nrow(.thetaDf))) {
     .name <- .thetaDf$name[i]
     .lo <- .thetaDf$lower[i]
@@ -44,19 +45,13 @@
     if (.thetaDf$fix[i]) next
     # Skip residual error params (have non-NA err column)
     if (!is.na(.thetaDf$err[i])) next
-    # Warn if already mu-referenced has a transform because it breaks mu-referencing
-    if (.isMuMethod(est, control)) {
-      .w <- which(.ce$parameter == .name)
-      if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
-        warning(.name, " had a mu-reference transform (", .ce$curEval[.w],
-                ") and by applying the bounded transformation, mu-referencing will be lost.",
-                call. = FALSE)
-      }
-    }
+
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)
+    .warn <- FALSE
 
     if (.hasLo && .hasHi) {
+      .warn <- TRUE
       .eps <- (.hi - .lo) * 1e-6
       .estClamped <- max(.lo + .eps, min(.hi - .eps, .est))
       .transforms[[length(.transforms) + 1]] <- list(
@@ -69,6 +64,7 @@
         initOrig = .est
       )
     } else if (.hasLo && !.hasHi) {
+      .warn <- TRUE
       .val <- .est - .lo
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -81,6 +77,7 @@
         initOrig = .est
       )
     } else if (!.hasLo && .hasHi) {
+      .warn <- TRUE
       .val <- .hi - .est
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -92,6 +89,16 @@
         initTrans = log(.val),
         initOrig = .est
       )
+    }
+    # Warn if already mu-referenced has a transform because it breaks mu-referencing
+    if (.muRef && .warn) {
+      .w <- which(.ce$parameter == .name)
+      if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
+        warning(.name, " had a mu-reference transform (", .ce$curEval[.w],
+                ") and by applying the bounded transformation, mu-referencing will be lost (and performance degraded).\n",
+                "To disable bounded transformation use `control=list(boundedTransform = FALSE)` though parameters will no longer be bounded.",
+                call. = FALSE)
+      }
     }
   }
   .transforms
