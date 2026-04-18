@@ -1868,6 +1868,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
+  .env$ui <- ui
   .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
     if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
