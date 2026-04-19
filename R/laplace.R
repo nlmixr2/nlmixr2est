@@ -180,3 +180,9 @@ nlmixr2Est.laplace <- function(env, ...) {
   .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="laplace"))
 }
 attr(nlmixr2Est.laplace, "covPresent") <- TRUE
+
+
+#' @export
+rxUiDeparse.laplaceControl <- function(object, var) {
+  .rxUiDeparseFoceiControl(object, var, type="laplaceControl")
+}
