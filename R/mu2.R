@@ -266,6 +266,7 @@ mu2env$expit <- rxode2::expit
 .uiFinalizeMu2 <- function(ret, model) {
   if (!is.null(model)) {
     if (is.null(ret$ui)) return(ret)
+    .uiIovEnv$muModel <- model
     .ui2 <- rxode2::rxUiDecompress(ret$ui)
     if (is.null(.ui2)) return(ret)
     rm("control", envir=.ui2)

@@ -84,6 +84,7 @@ nlmixr2iovVarSd <- function(val) {
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(env) {
   .uiIovEnv$iovVars <- NULL
+  .uiIovEnv$muModel <- NULL
   .xform <- env$control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
