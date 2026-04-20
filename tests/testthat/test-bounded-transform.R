@@ -50,9 +50,9 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(
       nlmixr(.logitModel, theo_sd, est = "saem", control = saemControlFast)
     ))
-    # td1 should be in [0, 1] and named "td1" (not "td1_untransformed")
+    # td1 should be in [0, 1] and named "td1" (not "rxBoundedTr.td1")
     expect_true("td1" %in% names(fit$theta))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
     expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
@@ -63,7 +63,7 @@ nmTest({
       nlmixr(.lowerModel, theo_sd, est = "saem", control = saemControlFast)
     ))
     expect_true("tlag" %in% names(fit$theta))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     tlagVal <- fit$theta["tlag"]
     expect_true(tlagVal >= 0)
     expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
@@ -90,7 +90,7 @@ nmTest({
     fit <- suppressMessages(suppressWarnings(
       nlmixr(.unboundedModel, theo_sd, est = "saem", control = saemControlFast)
     ))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     expect_true(all(c("tka", "tcl", "tv") %in% names(fit$theta)))
     expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
@@ -103,7 +103,7 @@ nmTest({
     .thetaRows <- .iniDf[is.na(.iniDf$neta1), ]
     # Original param name restored
     expect_true("td1" %in% .thetaRows$name)
-    expect_false(any(grepl("_untransformed$", .thetaRows$name)))
+    expect_false(any(grepl("^rxBoundedTr\\.", .thetaRows$name)))
     # Original bounds restored
     .td1 <- .thetaRows[.thetaRows$name == "td1", ]
     expect_equal(.td1$lower, 0)
@@ -121,7 +121,7 @@ nmTest({
     # Without the transform, td1 should still be named td1
     # (no rewriting happened) but may go out of bounds
     expect_true("td1" %in% names(fit$theta))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 
@@ -161,7 +161,7 @@ nmTest({
       nlmixr(.logitModel, theo_sd, est = "focei", control = foceiControlFast)
     ))
     expect_true("td1" %in% names(fit$theta))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     td1Val <- fit$theta["td1"]
     expect_true(td1Val >= 0 && td1Val <= 1)
     expect_equal(.testBoundedTransform(), c(pre=TRUE, post=TRUE))
@@ -175,7 +175,7 @@ nmTest({
                                     boundedTransform = FALSE))
     ))
     expect_true("td1" %in% names(fit$theta))
-    expect_false(any(grepl("_untransformed$", names(fit$theta))))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
     expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
   })
 

@@ -57,7 +57,7 @@
       .estClamped <- max(.lo + .eps, min(.hi - .eps, .est))
       .transforms[[length(.transforms) + 1]] <- list(
         name = .name,
-        internalName = paste0(.name, "_untransformed"),
+        internalName = paste0("rxBoundedTr.", .name),
         type = "logit",
         lower = .lo,
         upper = .hi,
@@ -70,7 +70,7 @@
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
         name = .name,
-        internalName = paste0(.name, "_untransformed"),
+        internalName = paste0("rxBoundedTr.", .name),
         type = "lower_exp",
         lower = .lo,
         upper = .hi,
@@ -83,7 +83,7 @@
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
         name = .name,
-        internalName = paste0(.name, "_untransformed"),
+        internalName = paste0("rxBoundedTr.", .name),
         type = "upper_exp",
         lower = .lo,
         upper = .hi,
@@ -107,7 +107,7 @@
 #' Build the transform expression for a parameter
 #'
 #' Returns a language object for the back-transform line to prepend to the
-#' model block, e.g. \code{td1 <- expit(td1_untransformed, 0, 1)}.
+#' model block, e.g. \code{td1 <- expit(rxBoundedTr.td1, 0, 1)}.
 #'
 #' @param tr transform specification (named list from .getBoundedParams)
 #' @return language object
@@ -126,7 +126,7 @@
 
 #' Rewrite the model UI with bounded-parameter transforms injected
 #'
-#' For each bounded parameter, renames it to \code{<name>_untransformed}
+#' For each bounded parameter, renames it to \code{rxBoundedTr.<name>}
 #' in iniDf, drops its bounds, and prepends a back-transform line to the
 #' model block. Attaches the transform list and original UI state to the
 #' returned ui so the post-estimation hook can restore natural-scale
@@ -164,7 +164,7 @@
 
   # Build new model block: inject transform lines at the top
   # The transform line creates the original param name as a derived variable:
-  #   td1 <- expit(td1_untransformed, 0, 1)
+  #   td1 <- expit(rxBoundedTr.td1, 0, 1)
   # So existing model lines (e.g., f(depot) = td1) still reference td1 correctly.
   # We do NOT rename td1 in existing expressions - only in iniDf.
   .transformExprs <- lapply(transforms, .buildTransformExpr)
@@ -286,7 +286,7 @@
 #' Back-transform parameter history (parHist) from internal to natural scale
 #'
 #' @param parHist data.frame with one row per iteration, columns for parameters.
-#'   Transformed columns use the internal name (e.g., \code{td1_untransformed}).
+#'   Transformed columns use the internal name (e.g., \code{rxBoundedTr.td1}).
 #' @param transforms list of transform specifications
 #' @return modified data.frame with back-transformed values and original names
 #' @author Hajar Besbassi
