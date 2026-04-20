@@ -89,6 +89,9 @@ preFinalParTableHooks <- function(name=NULL) {
   # - `thetaNames` before running
   # - `thetaDf` before running
   # - Possibly `etaObf`  before running
+  # - Possibly updating `ui` before running
+  # These should check to make sure that the objects exist before
+  # modifying them.
   for (name in preFinalParTableHooks()) {
     .fun <- get(name, envir=.preFinalParTableHooks)
     .ret <- .fun(env)
