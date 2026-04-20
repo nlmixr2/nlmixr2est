@@ -17,25 +17,17 @@
 #include <atomic>
 
 // Flag indicating we're inside the parallel inner optimization region.
-// When set, thread-unsafe operations (R warnings/errors, running mean
-// accumulation) are skipped or deferred.  ODE retry now handled via
-// per-thread tolerances under omp critical.
-static int _innerParallel = 0;
+// When set, thread-unsafe operations (atolRtolFactor_, R warnings/errors,
+// running mean accumulation) are skipped or deferred.  Atomic so that
+// worker threads see a consistent value without a data race on the plain
+// int read that TSan would flag.
+static std::atomic<int> _innerParallel{0};
 
-// ── Per-thread ODE tolerance retry storage ──
-// Allocated in innerOpt() before the parallel region so that each
-// thread can independently relax atol/rtol when an ODE solve fails,
-// without mutating the shared global arrays.
-static std::vector<std::vector<double>> _threadAtol2;
-static std::vector<std::vector<double>> _threadRtol2;
-static std::vector<double> _threadATOL;
-static std::vector<double> _threadRTOL;
-// Saved base tolerances (from op->atol2/rtol2/ATOL/RTOL before any retry)
-static std::vector<double> _baseAtol2;
-static std::vector<double> _baseRtol2;
-static double _baseATOL = 0;
-static double _baseRTOL = 0;
-static int _odeRetryNeq = 0;  // neq at time of allocation
+// Generation counter: incremented by any thread whose ODE solve genuinely
+// fails (ind->solve[] contains NAs).  Other threads snapshot this before
+// their solve; if it changes during their solve, cross-thread badSolve
+// contamination may have occurred and a re-solve is needed.
+static std::atomic<int> _badSolveGeneration{0};
 
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
@@ -459,8 +451,12 @@ extern "C" void rxOptionsFreeFocei() {
   op_focei.alloc = false;
   op_focei.didPredSolve = false;
 
-  focei_options newf;
-  op_focei= newf;
+  // Reset op_focei to defaults.  Cannot use copy-assignment because
+  // std::atomic members delete the copy/move operators.  Placement-new
+  // destructs all members (NumericVector, arma::mat, etc.) and then
+  // reconstructs with default-initialised values.
+  op_focei.~focei_options();
+  new (&op_focei) focei_options();
 
   vGrad.clear();
   vPar.clear();
@@ -920,105 +916,97 @@ double likInner0(double *eta, int id) {
       op_focei.stickyRecalcN2.store(0, std::memory_order_relaxed);
     }
     setIndSolve(ind, -1);
+    // Reset shared badSolve flag before each individual's ODE solve.
+    // In parallel mode, another thread's failed solve sets the shared
+    // op->badSolve = 1 (in rxode2's badSolveExit macro), which causes
+    // ALL threads to skip dose/event handling in ind_liblsoda0 →
+    // cascading state corruption → crash.  Resetting here confines
+    // the flag's effect to the current solve only.
+    resetOpBadSolve(op);
+    // Force the reset to be globally visible before any thread enters
+    // innerOde — resetOpBadSolve writes op->badSolve = 0 non-atomically;
+    // without this fence, thread A could enter ind_liblsoda0 with its
+    // cached view of op->badSolve == 1 left by a prior failure.  This
+    // complements the _badSolveGeneration contamination guard below.
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+    // Snapshot generation counter so we can detect if another thread's
+    // solve fails during ours (which would contaminate us via the
+    // shared op->badSolve flag).
+    int preGen = _badSolveGeneration.load(std::memory_order_acquire);
     // Solve ODE
     bool predSolve = false;
     if (fInd->doFD == 0) {
       innerOde(id);
-      // ── ODE retry with progressively relaxed tolerances ──
-      // Check per-individual solve status (not the global op->badSolve
-      // which races across threads).
-      {
-        int nsolveChk = getOpNeq(op) * getIndNallTimes(ind);
-        bool indBadSolve = false;
+      if (_innerParallel.load(std::memory_order_acquire) != 0) {
+        // ── Parallel contamination guard ──
+        // Check if our individual's solve genuinely failed (NAs in solve[]).
+        bool ourFailed = false;
         if (getOpNeq(op) > 0) {
           double *solveChk = getIndSolve(ind);
+          int nsolveChk = getOpNeq(op) * getIndNallTimes(ind);
           for (int ns = 0; ns < nsolveChk; ++ns) {
             if (ISNA(solveChk[ns]) || std::isnan(solveChk[ns]) ||
                 std::isinf(solveChk[ns])) {
-              indBadSolve = true;
+              ourFailed = true;
               break;
             }
           }
         }
-        if (indBadSolve && op_focei.maxOdeRecalc > 0) {
-          // Retry loop — serialised via omp critical so that we can
-          // temporarily swap global atol/rtol pointers to per-thread
-          // arrays without affecting concurrent solvers.
-#ifdef _OPENMP
-          int tid = (_innerParallel != 0) ? omp_get_thread_num() : 0;
-#else
-          int tid = 0;
-#endif
-          int neq = getOpNeq(op);
-          // Initialise this thread's tolerance vectors from the base
-          std::copy(_baseAtol2.begin(), _baseAtol2.begin() + neq,
-                    _threadAtol2[tid].begin());
-          std::copy(_baseRtol2.begin(), _baseRtol2.begin() + neq,
-                    _threadRtol2[tid].begin());
-          _threadATOL[tid] = _baseATOL;
-          _threadRTOL[tid] = _baseRTOL;
-
-          j = 0;
-          while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
-                 && indBadSolve
-                 && j < op_focei.maxOdeRecalc) {
-            op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
-            op_focei.reducedTol.store(1, std::memory_order_relaxed);
-            op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-            // Relax this thread's tolerances by the recalc factor
-            double factor = op_focei.odeRecalcFactor;
-            for (int k = 0; k < neq; ++k) {
-              _threadAtol2[tid][k] = std::min(_threadAtol2[tid][k] * factor, 0.1);
-              _threadRtol2[tid][k] = std::min(_threadRtol2[tid][k] * factor, 0.1);
-            }
-            _threadATOL[tid] = std::min(_threadATOL[tid] * factor, 0.1);
-            _threadRTOL[tid] = std::min(_threadRTOL[tid] * factor, 0.1);
-            // Critical section: swap global pointers → solve → restore.
-            // Only the rare retry path is serialised; the common (first-
-            // solve-succeeds) path runs fully in parallel.
-#ifdef _OPENMP
-#pragma omp critical(odeRetry)
-#endif
-            {
-              double *savedAtol2 = op->atol2;
-              double *savedRtol2 = op->rtol2;
-              double savedATOL   = op->ATOL;
-              double savedRTOL   = op->RTOL;
-              op->atol2 = _threadAtol2[tid].data();
-              op->rtol2 = _threadRtol2[tid].data();
-              op->ATOL  = _threadATOL[tid];
-              op->RTOL  = _threadRTOL[tid];
-              rxode2::resetOpBadSolve(op);
-              setIndSolve(ind, -1);
-              innerOde(id);
-              op->atol2 = savedAtol2;
-              op->rtol2 = savedRtol2;
-              op->ATOL  = savedATOL;
-              op->RTOL  = savedRTOL;
-            }
-            // Re-check this individual's solve
-            indBadSolve = false;
-            {
-              double *solveChk2 = getIndSolve(ind);
-              for (int ns = 0; ns < nsolveChk; ++ns) {
-                if (ISNA(solveChk2[ns]) || std::isnan(solveChk2[ns]) ||
-                    std::isinf(solveChk2[ns])) {
-                  indBadSolve = true;
-                  break;
-                }
+        if (ourFailed) {
+          // Our solve genuinely failed.  Announce to other threads so
+          // they can detect potential contamination of their solves.
+          _badSolveGeneration.fetch_add(1, std::memory_order_release);
+        } else if (_badSolveGeneration.load(std::memory_order_acquire) != preGen
+                   || hasOpBadSolve(op)) {
+          // Another thread's solve failed during ours.  The shared
+          // op->badSolve may have been 1 while ind_liblsoda0 was
+          // running our time-stepping loop, causing it to skip dose/
+          // event handling → silently wrong results.  Re-solve.
+          setIndSolve(ind, -1);
+          resetOpBadSolve(op);
+          innerOde(id);
+          // If the re-solve itself failed, announce it.
+          bool retryFailed = false;
+          if (getOpNeq(op) > 0) {
+            double *solveChk2 = getIndSolve(ind);
+            int nsolveChk2 = getOpNeq(op) * getIndNallTimes(ind);
+            for (int ns = 0; ns < nsolveChk2; ++ns) {
+              if (ISNA(solveChk2[ns]) || std::isnan(solveChk2[ns]) ||
+                  std::isinf(solveChk2[ns])) {
+                retryFailed = true;
+                break;
               }
             }
-            j++;
           }
-          if (j != 0 &&
-              op_focei.stickyRecalcN2.load(std::memory_order_relaxed) > op_focei.stickyRecalcN) {
+          if (retryFailed) {
+            _badSolveGeneration.fetch_add(1, std::memory_order_release);
+          }
+        }
+      } else {
+        // Serial path: retry with relaxed tolerances on ODE failure.
+        // Cannot run in parallel because ind_liblsoda reads op->atol2/
+        // rtol2 without synchronisation — swapping those pointers from
+        // one thread while another thread enters ind_liblsoda causes
+        // the non-retrying thread to pick up the wrong tolerance array.
+        j=0;
+        while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
+               && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
+          op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
+          op_focei.reducedTol.store(1, std::memory_order_relaxed);
+          op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+          // Safe in serial: only one thread touches op->atol2/rtol2.
+          rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
+          setIndSolve(ind,-1);
+          resetOpBadSolve(op);
+          innerOde(id);
+          j++;
+        }
+        if (j != 0) {
+          if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN){
+            rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -j));
+          } else {
             op_focei.stickyTol.store(1, std::memory_order_relaxed);
           }
-          // Note: the global atol/rtol are unchanged.  If stickyTol was
-          // NOT set, the tolerances were only modified in thread-local
-          // vectors and the global arrays remain at their base values.
-          // If stickyTol IS set, the outer-level code in foceiOfv0 is
-          // responsible for the permanent relaxation via atolRtolFactor_.
         }
       }
     } else {
@@ -1792,6 +1780,14 @@ static inline int innerOpt1(int id, int likId) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
   } else if (op_focei.mceta >= 1) {
+    // Hard guard: this branch calls the R API (loadNamespace, Rcpp::Function)
+    // which is not safe inside an OpenMP worker thread.  innerOpt() disables
+    // parallelism when mceta >= 1 at the outer entry; this stop() makes that
+    // invariant an abort-on-violation rather than a silent segfault risk.
+    if (_innerParallel.load(std::memory_order_acquire) != 0) {
+      Rcpp::stop("mceta sampling entered the parallel inner loop; "
+                 "this is a bug in nlmixr2est");
+    }
     int nmc = op_focei.mceta-1;
     double fcur = likInner0(fInd->eta, id); // last eta
     std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
@@ -2069,7 +2065,7 @@ static inline int innerOpt1(int id, int likId) {
   fInd->doEtaNudge=0;
 
   std::copy(&fInd->x[0],&fInd->x[0]+fop->neta,&fInd->eta[0]);
-  if (_innerParallel == 0) {
+  if (_innerParallel.load(std::memory_order_acquire) == 0) {
     // Serial path: update running mean/variance of ETAs (Welford's algorithm)
     // Update variances
     std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
@@ -2376,7 +2372,7 @@ static inline void resetToZeroWithoutOpt(focei_ind *indF, int& id) {
   std::fill(&indF->eta[0], &indF->eta[0] + op_focei.neta, 0.0);
   if (!innerEval(id)) {
     indF->lik[0] = NA_REAL;
-    if (_innerParallel == 0) {
+    if (_innerParallel.load(std::memory_order_acquire) == 0) {
       warning(_("bad solve during optimization"));
     }
   }
@@ -2390,7 +2386,7 @@ static inline void innerOptId(int id) {
     // First try resetting ETA
     if (didInnerResetFail(indF, id)) {
       if(!op_focei.noabort){
-        if (_innerParallel == 0) {
+        if (_innerParallel.load(std::memory_order_acquire) == 0) {
           stop("Could not find the best eta even hessian reset and eta reset for ID %d.", id+1);
         } else {
           indF->parErrorNoEta = 1; // deferred to post-parallel
@@ -2438,29 +2434,8 @@ void innerOpt() {
   } else {
     int nsub = getRxNsubAndMix(rx);
     if (cores > 1) {
-      _innerParallel = 1;
-    }
-    // ── Allocate per-thread ODE tolerance arrays for retry mechanism ──
-    {
-      int neq = getOpNeq(op);
-      if (neq != _odeRetryNeq || (int)_threadAtol2.size() < cores) {
-        _threadAtol2.resize(cores);
-        _threadRtol2.resize(cores);
-        _threadATOL.resize(cores);
-        _threadRTOL.resize(cores);
-        for (int t = 0; t < cores; ++t) {
-          _threadAtol2[t].resize(neq);
-          _threadRtol2[t].resize(neq);
-        }
-        _baseAtol2.resize(neq);
-        _baseRtol2.resize(neq);
-        _odeRetryNeq = neq;
-      }
-      // Snapshot base tolerances (before any retry modifications)
-      std::copy(op->atol2, op->atol2 + neq, _baseAtol2.begin());
-      std::copy(op->rtol2, op->rtol2 + neq, _baseRtol2.begin());
-      _baseATOL = op->ATOL;
-      _baseRTOL = op->RTOL;
+      _innerParallel.store(1, std::memory_order_release);
+      _badSolveGeneration.store(0, std::memory_order_relaxed);
     }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
@@ -2468,7 +2443,8 @@ void innerOpt() {
     for (int id = 0; id < nsub; id++){
       innerOptId(id);
     }
-    _innerParallel = 0;
+    _innerParallel.store(0, std::memory_order_release);
+    _badSolveGeneration.store(0, std::memory_order_relaxed);
 
     if (cores > 1) {
       // --- Post-parallel: deferred error handling ---
