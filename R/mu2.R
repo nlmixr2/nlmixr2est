@@ -272,8 +272,7 @@ mu2env$expit <- rxode2::expit
   if (!.isMuMethod(est, control)) {
     return(NULL)
   }
-  if (isTRUE(control$muRefCovAlg) &&
-        length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+  if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
     .lst     <- .uiModifyForCovs(ui, data)
     .model <- rxode2::as.model(ui)
     .lst
