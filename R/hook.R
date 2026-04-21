@@ -21,7 +21,7 @@ postFinalObjectHooksAdd <- function(name, fun) {
   checkmate::assertCharacter(name, len=1,
                              pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
                              min.chars=1)
-  checkmate::assertFunction(fun, args=c("ret"))
+  checkmate::assertFunction(fun, args="ret")
   if (exists(name, envir=.preProcessHooks)) {
     stop("nlmixr2est pre-table hook '", name, "' already exists",
          call.=FALSE)
@@ -119,7 +119,7 @@ preFinalParTableHooksAdd <- function(name, fun) {
   checkmate::assertCharacter(name, len=1,
                              pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
                              min.chars=1)
-  checkmate::assertFunction(fun, args=c("env"))
+  checkmate::assertFunction(fun, args="env")
   if (exists(name, envir=.preProcessHooks)) {
     stop("nlmixr2est pre-table hook '", name, "' already exists",
          call.=FALSE)
