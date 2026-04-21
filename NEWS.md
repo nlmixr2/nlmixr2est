@@ -39,6 +39,10 @@
   use `control=list(boundedTransform=FALSE)` or for saem
   `control=saemControl(boundedTransform=FALSE)`
 
+- The mu referencing covariate procedure was made less fragile to
+  support mu referencing in conjunction with iov and bounded parameter
+  transformations.
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward
