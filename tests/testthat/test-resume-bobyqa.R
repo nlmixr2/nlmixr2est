@@ -45,6 +45,8 @@ nmTest({
 
     d <- .nlmixr(model, dat, "focei")
 
+    expect_equal(.testBoundedTransform(), c(pre=FALSE, post=FALSE))
+
     expect_true(grepl("bobyqa", d$extra))
   })
 })
