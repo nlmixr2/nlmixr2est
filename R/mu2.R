@@ -1,3 +1,23 @@
+#' Is the estimation method a "mu method"?
+#'
+#'
+#' @param est estimation routine
+#' @param control control object.
+#' @return boolean
+#' @noRd
+#' @author Matthew L. Fidler
+.isMuMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .mu <- attr(utils::getS3method("nlmixr2Est", est), "mu")
+    if (is.null(.mu)) return(FALSE)
+    if (is.function(.mu)) return(isTRUE(.mu(control)))
+    return(isTRUE(.mu))
+  }
+  FALSE
+}
+
 mu2env <- new.env(parent=baseenv())
 mu2env$pow <- function(x, y) {
   (x)^(y)
@@ -246,15 +266,17 @@ mu2env$expit <- rxode2::expit
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiApplyMu2 <- function(env) {
+
+.uiApplyMu2 <- function(ui, est, data, control) {
   .muRefTrans$cur <- vector("list", 0L)
-  if (isTRUE(env$control$muRefCovAlg) &&
-        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
-    .lst     <- .uiModifyForCovs(env$ui, env$data)
-    .model <- rxode2::as.model(env$ui)
-    env$ui   <- .lst$ui
-    env$data <- .lst$data
-    return(.model)
+  if (!.isMuMethod(est, control)) {
+    return(NULL)
+  }
+  if (isTRUE(control$muRefCovAlg) &&
+        length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(ui, data)
+    .model <- rxode2::as.model(ui)
+    .lst
   }
   NULL
 }
@@ -297,3 +319,10 @@ mu2env$expit <- rxode2::expit
   .saemModelEnv$predSymengine <- NULL
   ret
 }
+
+
+# -----------------------------------------------------------------------
+# Register hooks
+# -----------------------------------------------------------------------
+preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2)
+postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2)

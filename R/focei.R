@@ -2022,7 +2022,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # focei is available; add objective function
     .setOfvFo(.ret, "focei")
   }
-  .ret
+  .postFinalObjectHooksRun(.ret)
 }
 
 #'@rdname nlmixr2Est

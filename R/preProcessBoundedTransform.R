@@ -227,25 +227,6 @@
   }
   FALSE
 }
-#' Is the estimation method a "mu method"?
-#'
-#'
-#' @param est estimation routine
-#' @param control control object.
-#' @return boolean
-#' @noRd
-#' @author Matthew L. Fidler
-.isMuMethod <- function(est, control = NULL) {
-  .v <- as.character(utils::methods("nlmixr2Est"))
-  .method <- paste0("nlmixr2Est.", est)
-  if (.method %in% .v) {
-    .mu <- attr(utils::getS3method("nlmixr2Est", est), "mu")
-    if (is.null(.mu)) return(FALSE)
-    if (is.function(.mu)) return(isTRUE(.mu(control)))
-    return(isTRUE(.mu))
-  }
-  FALSE
-}
 
 #' Pre-processing hook: inject bounded-parameter back-transforms
 #'
