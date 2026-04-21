@@ -829,7 +829,7 @@ nlmixr2Est.saem <- function(env, ...) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .uiFinalizeIov(.uiFinalizeMu2(.saemFamilyFit(env,  ...), .doMu2))
+  .uiFinalizeIov(.uiFinalizeMu2(.saemFamilyFit(env,  ...)))
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE

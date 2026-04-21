@@ -28,6 +28,9 @@ mu2env$expit <- rxode2::expit
   }
 }
 
+.muRefTrans <- new.env(parent=emptyenv())
+.muRefTrans$cur <- vector("list", 0L)
+
 #' Get mu3 covariate
 #'
 #' This function evaluates a given expression within a specific
@@ -217,6 +220,8 @@ mu2env$expit <- rxode2::expit
                                      ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))
              .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
              .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
+
+             .muRefTrans$cur[[length(.muRefTrans$cur)+1L]] <- list(old=.old, new=.new)
            } else {
              .txt <- paste0("not ",.mu2,", ", .mu3, " or ", .mu4," item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
              .minfo(.txt)
@@ -242,6 +247,7 @@ mu2env$expit <- rxode2::expit
 #' @author Matthew L. Fidler
 #' @keywords internal
 .uiApplyMu2 <- function(env) {
+  .muRefTrans$cur <- vector("list", 0L)
   if (isTRUE(env$control$muRefCovAlg) &&
         length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
     .lst     <- .uiModifyForCovs(env$ui, env$data)
@@ -263,14 +269,18 @@ mu2env$expit <- rxode2::expit
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiFinalizeMu2 <- function(ret, model) {
-  if (!is.null(model)) {
-    if (is.null(ret$ui)) return(ret)
-    .uiIovEnv$muModel <- model
+.uiFinalizeMu2 <- function(ret) {
+  if (length(.muRefTrans$cur) > 0L) {
+    if (is.null(model)) return(ret)
+    .model <- rxode2::as.model(ret$ui)
+    for (.cur in .muRefTrans$cur) {
+      .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
+    }
     .ui2 <- rxode2::rxUiDecompress(ret$ui)
-    if (is.null(.ui2)) return(ret)
-    rm("control", envir=.ui2)
-    rxode2::model(.ui2) <- model
+    if (exists("control", envir=.ui2)) {
+      rm("control", envir=.ui2)
+    }
+    rxode2::model(.ui2) <- .model
     assign("ui", .ui2, envir=ret$env)
     if (inherits(ret, "data.frame")) {
       .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(ret)))
