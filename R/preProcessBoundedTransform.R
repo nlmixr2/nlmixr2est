@@ -134,8 +134,7 @@
 #'
 #' @param ui rxode2 ui object
 #' @param transforms list of transform specifications
-#' @return rewritten rxode2 ui with \code{boundedTransforms} and
-#'   \code{boundedOriginal} slots attached
+#' @return rewritten rxode2 ui with \code{boundedTransforms}
 #' @noRd
 #' @author Hajar Besbassi
 .rewriteModelWithTransforms <- function(ui, transforms) {
@@ -188,7 +187,6 @@
 
   # Store transform info and original model for post-estimation hook
   .newUi$boundedTransforms <- transforms
-  .newUi$boundedOriginal <- .origEnv
   .newUi
 }
 
