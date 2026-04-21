@@ -253,4 +253,66 @@ nmTest({
 
   })
 
+  test_that("bounded + iov + mu2", {
+
+    # mu2-referencing
+    theo_iov <- nlmixr2data::theo_md
+    theo_iov$occ <- 1
+    theo_iov$occ[theo_iov$TIME >= 144] <- 2
+
+    # This becomes non mu-refereneced
+    one.cmt.iov.mu2 <- function() {
+      ini({
+        tka <- log(1.57); label("Ka")
+        tcl <- log(c(0, 2.7, 100)) ; label("Cl")
+        tv <- log(31.5); label("V")
+        covwt <- 0.01
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        iov.cl ~ 0.1 | occ
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + log(WT/70)*covwt + iov.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+
+    tmp <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+
+
+    one.cmt.iov.mu2 <- function() {
+      ini({
+        tka <- log(c(0.01, 1.57, 4)); label("Ka")
+        tcl <- log(2.7) ; label("Cl")
+        tv <- log(31.5); label("V")
+        covwt <- 0.01
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        iov.cl ~ 0.1 | occ
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + log(WT/70)*covwt + iov.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+
+    tmp <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+
+
+  })
+
 })
