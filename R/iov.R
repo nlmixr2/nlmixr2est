@@ -253,6 +253,7 @@ nlmixr2iovVarSd <- function(val) {
                        }))
                        .lst
                      })
+    .uiIovEnv$lines <- .lines[[1]]
     .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
@@ -277,35 +278,92 @@ nlmixr2iovVarSd <- function(val) {
     if (is.null(ret$ui)) return(ret)
 
     if (is.environment(ret$env)) {
-      .preFinalParTableHooksRun(.uiIovEnv)
-      .iniDf <- .uiIovEnv$ui$iniDf
-      .finalDf <- ret$ui$iniDf
+      #.preFinalParTableHooksRun(.uiIovEnv)
+      .ui <- ret$env$ui
+      .lstExpr <- .ui$lstExpr
+      .w <- which(vapply(seq_along(.lstExpr),
+             function(i) {
+               any(vapply(seq_along(.uiIovEnv$lines),
+                      function(j) {
+                        if (identical(.lstExpr[[i]], .uiIovEnv$lines[[j]])) {
+                          return(TRUE)
+                        }
+                        FALSE
+                      }, logical(1), USE.NAMES = FALSE))
+             }, logical(1), USE.NAMES = FALSE))
+      if (length(.w) > 0L) {
+        .lstExpr <- lapply(seq_along(.lstExpr)[-.w],
+                           function(i) {
+                             .lstExpr[[i]]
+                           })
+      }
+      # Get the IOV variables that are present as thetas in the model
       .iovName <- new.env(parent=emptyenv())
-      .iovName$var <- character(0)
-      .est <- vapply(seq_along(.iniDf$name), function(i) {
-        if (is.na(.iniDf$neta1[i])) {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .finalDf[.w, "est"]
-        } else if (.iniDf$condition[i] == "id") {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .finalDf[.w, "est"]
-        } else {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .iovName$var <- c(.iovName$var, .iniDf$name[i])
-          .fun <- sub("Cv$", "Sd", .finalDf[.w, "backTransform"])
-          .fun <- get(.fun)
-          .fun(.finalDf[.w, "est"])^2
-        }
-      }, double(1), USE.NAMES = FALSE)
-      names(.est) <- .iniDf$name
+      .iovDf <- .uiIovEnv$ui$iniDf
+      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id",, drop=FALSE]
+      .iovName$var <- .iovDf$name
 
-      # Now we can update the finalDf
-      assign("iniDf0", .iniDf, envir = ret$env)
-      .finalDf <- .iniDf
-      .finalDf$est <- .est
-      .ui <- .uiIovEnv$ui
-      suppressMessages(rxode2::ini(.ui) <- .finalDf)
+      getEstimateDf <- function(iniDf) {
+        .iniDf <- .ui$iniDf
+        # Final thetaDf & etaDf
+        .thetaDf <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
+        .etaDf <- .iniDf[!is.na(.iniDf$neta1),, drop=FALSE]
+
+        # Drop the dummy etas
+        .etaDf <- .etaDf[!(.etaDf$name %in% .uiIovEnv$iovDrop),, drop=FALSE]
+
+        # Renumber etas, just in case
+        .etaDf$neta1 <- factor(.etaDf$neta1)
+        .etaDf$neta2 <- factor(.etaDf$neta2, levels=levels(.etaDf$neta1))
+        .etaDf$neta1 <- as.integer(.etaDf$neta1)
+        .etaDf$neta2 <- as.integer(.etaDf$neta2)
+
+        .maxEta <- max(.etaDf$neta1)
+
+
+        # Go through each IOV variable and calculate the variance from the back-transform
+        # Add it to the .etaDf afterward, and remove from .thetaDf
+        for (i in seq_along(.iovDf$name)) {
+          .w <- which(.thetaDf$name == .iovDf$name[i])
+          .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
+          .fun <- get(.fun)
+          .est <- .fun(.thetaDf[.w, "est"])^2
+          .maxEta <- .maxEta + 1L
+          .cur <- .etaDf[1,]
+          .cur$neta1 <- .cur$neta2 <- .maxEta
+          .cur$est <- .est
+          .cur$fix <- .iovDf$fix[i]
+          .cur$upper <- .iovDf$upper[i]
+          .cur$lower <- .iovDf$lower[i]
+          .cur$label <- .iovDf$label[i]
+          .cur$backTransform <- .iovDf$backTransform[i]
+          .cur$err <- .iovDf$err[i]
+          .cur$name <- paste0("rx.", .iovDf$name[i]) # Matches replacement
+          .cur$condition <- .iovDf$condition[i]
+          .etaDf <- rbind(.etaDf, .cur)
+          .thetaDf <- .thetaDf[-.w, , drop=FALSE]
+        }
+
+        # Renumber
+        .thetaDf$ntheta <- as.integer(factor(.thetaDf$ntheta))
+        rbind(.thetaDf, .etaDf)
+      }
+
+      .finalDf <- getEstimateDf(.ui$iniDf)
+      .iniDf0 <- getEstimateDf(ret$env$iniDf0)
+      assign("iniDf0", .iniDf0, envir = ret$env)
+
+      # Save with final estimates
+      .ini <- as.expression(lotri::as.lotri(.finalDf))
+      .ini[[1]] <- quote(`ini`)
+      .model <- rxode2::as.model(.lstExpr)
+      .ui <- .getUiFunFromIniAndModel(.ui, .ini, .model)
+      # apply renames and evaluate new model
+      .ui <- eval(.uiIovEnv$iovRename)
       assign("ui", .ui, envir = ret$env)
+
+      .finalDf <- .ui$iniDf
+      .est <- setNames(.finalDf$est, .finalDf$name)
 
       # Adjust Matrices to remove dummy IOV components
       .omega <- ret$env$omega
