@@ -40,6 +40,7 @@
 <li><p>Bug fixes for deparsing nlmixr2 control objects</p></li>
 <li><p><code>nlm</code> and related pooled methods now run in parallel (based on ID)</p></li>
 <li><p>Tests are optimized to reduce redundant fits and run in parallel.</p></li>
+<li><p><code>nlm</code> (and related pooled optimizers: <code>bobyqa</code>, <code>newuoa</code>, <code>uobyqa</code>, <code>n1qn1</code>, <code>lbfgsb3c</code>, <code>optim</code>, <code>nlminb</code>) now support the same censoring behavior (M2/M3/M4) as FOCEI and SAEM. The <code>$censInformation</code> field is populated for these fits in the same way as FOCEI/SAEM.</p></li>
 <li><p><code><a href="../reference/agqControl.html">agqControl()</a></code> and <code><a href="../reference/laplaceControl.html">laplaceControl()</a></code> now have <code><a href="https://nlmixr2.github.io/rxode2/reference/rxUiDeparse.html" class="external-link">rxUiDeparse()</a></code> methods so they can be saved better in packages like <code>nlmixr2save</code> and <code>shinyMixR</code>.</p></li>
 <li><p>Added new <code>outerOpt</code>; methods to <code>focei</code> and related methods (<code>agq</code>, <code>laplace</code>, <code>foce</code>, <code>fo</code>, <code>foi</code>): “uobyqa” and “newuoa”.</p></li>
 <li>
