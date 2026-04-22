@@ -97,12 +97,16 @@ nlmixr2iovVarSd <- function(val) {
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
                                     .iniDf$condition != "id" &
                                      is.na(.iniDf$err))]
+
+  .uiIovEnv$iovRename <- NULL
   if (length(.lvls) > 0) {
     .n <- .iniDf[which(.iniDf$condition %in% .lvls), "name"]
     .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
                                 paste(paste0("rx.", .n, "=", .n),
                                       collapse=", "), ")"))))
-
+    .uiIovEnv$iovRename <- str2lang(paste0("rxode2::rxRename(.ui, ",
+                                          paste(paste0(.n, "=", "rx.", .n),
+                                      collapse=", "), ")"))
     # For the new iniDf, we will take out all the level variables and
     # then renumber the etas
     .thetas <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
@@ -157,6 +161,8 @@ nlmixr2iovVarSd <- function(val) {
     .env$drop <- NULL
     # Now we have enough information to create the IOV variables
     # changed to etas on id
+    .env$extraThetas <- NULL
+    .env$extraEtas <- NULL
     .lines <- lapply(names(.lvls),
                      function(l1) {
                        .w <-which(.iniDf$condition == l1)
@@ -200,6 +206,8 @@ nlmixr2iovVarSd <- function(val) {
                          }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
+
+                         .env$extraThetas <- c(.env$extraThetas, .curTheta)
                          for (n in .lvls[[l1]]) {
                            .curEta <- .eta1
                            .curEta$name <- paste0("rx.", v, ".", n)
@@ -208,6 +216,7 @@ nlmixr2iovVarSd <- function(val) {
                            .env$maxeta <- .curEta$neta1 <-
                              .curEta$neta2 <- .env$maxeta + 1L
                            .env$etas <- rbind(.env$etas, .curEta)
+                           .env$extraEtas <- c(.env$extraEtas, .curEta)
                          }
                          if (.xform == "logsd") {
                            str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
