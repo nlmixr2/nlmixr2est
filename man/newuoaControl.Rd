@@ -36,6 +36,7 @@ newuoaControl(
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 }

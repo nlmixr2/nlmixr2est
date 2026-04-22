@@ -6313,12 +6313,17 @@ void parHistData(Environment e, bool focei){
 
 
 void foceiFinalizeTables(Environment e){
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  Function preFinalParTableHooksRun = nlmixr2[".preFinalParTableHooksRun"];
+  preFinalParTableHooksRun(e);
+
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   e["censInformation"] = censEstGetFactor();
   resetCensFlag();
   arma::mat cov;
   bool covExists = e.exists("cov");
-  if (covExists){
+  if (covExists) {
     if (rxode2::rxIs(e["cov"], "matrix")){
       cov= as<arma::mat>(e["cov"]);
     } else {
@@ -6328,8 +6333,6 @@ void foceiFinalizeTables(Environment e){
   LogicalVector skipCov = e["skipCov"];
 
   if (covExists) {
-    Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function getCor = nlmixr2[".cov2cor"];
     e["fullCor"] = getCor(e["cov"]);
     arma::mat cor = as<arma::mat>(e["fullCor"]);
@@ -6358,7 +6361,7 @@ void foceiFinalizeTables(Environment e){
     }
   }
 
-  if (covExists && op_focei.eigen){
+  if (covExists && op_focei.eigen) {
     arma::vec eigval;
     arma::mat eigvec;
 

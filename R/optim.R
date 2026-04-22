@@ -176,7 +176,8 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "optim", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         boundedTransform=TRUE, ...) {
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
@@ -185,6 +186,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(trace, len=1, any.missing=FALSE, lower=0) #nolint
   checkmate::assertNumeric(fnscale, len=1, any.missing=FALSE)
   checkmate::assertNumeric(parscale, any.missing=FALSE)
@@ -338,7 +340,8 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "optimControl"
   .ret
 }
@@ -632,3 +635,7 @@ nlmixr2Est.optim <- function(env, ...) {
   .optimFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.optim, "covPresent") <- TRUE
+attr(nlmixr2Est.optim, "unbounded") <- function(control) {
+  if (is.null(control) || is.null(control$method)) return(TRUE)
+  !(control$method %in% c("L-BFGS-B", "Brent"))
+}
