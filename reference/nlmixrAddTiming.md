@@ -88,7 +88,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 8296
+#> → compress parHistData in nlmixr2 object, save 8280
 #> → compress phiM in nlmixr2 object, save 429432
 #> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
 #> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)

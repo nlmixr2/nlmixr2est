@@ -90,7 +90,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 8296
+#> → compress parHistData in nlmixr2 object, save 8280
 #> → compress phiM in nlmixr2 object, save 429432
 #> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
 #> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
@@ -111,8 +111,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other time2 time1
-#> elapsed 0.001528   0.006011 2.178 0.075    0.044 0.531461 1.001 1.003
+#>           setup covariance  saem table compress    other time2 time1
+#> elapsed 0.00204   0.009016 2.733 0.074    0.058 0.705944 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

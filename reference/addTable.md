@@ -116,7 +116,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 8296
+#> → compress parHistData in nlmixr2 object, save 8280
 #> → compress phiM in nlmixr2 object, save 429432
 #> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
 #> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
@@ -130,7 +130,7 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem compress    other
-#> elapsed 0.001523    0.00601 2.154    0.049 0.453467
+#> elapsed 0.001954   0.008014 2.735    0.061 0.620032
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -164,7 +164,7 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem compress    other
-#> elapsed 0.001523    0.00601 2.154    0.049 0.453467
+#> elapsed 0.001954   0.008014 2.735    0.061 0.620032
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
