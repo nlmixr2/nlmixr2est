@@ -73,7 +73,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         boundedTransform=TRUE, ...) {
 
   checkmate::assertNumeric(epsilon, len=1, any.missing=FALSE, lower=0)
   checkmate::assertIntegerish(max_iterations, len=1, any.missing=FALSE, lower=10)
@@ -89,6 +90,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -189,7 +191,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-    genRxControl=.genRxControl)
+    genRxControl=.genRxControl,
+    boundedTransform=boundedTransform)
   class(.ret) <- "n1qn1Control"
   .ret
 }
@@ -404,3 +407,4 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   .n1qn1FamilyFit(env,  ...)
 }
 attr(nlmixr2Est.n1qn1, "covPresent") <- TRUE
+attr(nlmixr2Est.n1qn1, "unbounded") <- TRUE

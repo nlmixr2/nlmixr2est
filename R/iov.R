@@ -84,6 +84,7 @@ nlmixr2iovVarSd <- function(val) {
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(env) {
   .uiIovEnv$iovVars <- NULL
+  .uiIovEnv$muModel <- NULL
   .xform <- env$control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
@@ -248,11 +249,11 @@ nlmixr2iovVarSd <- function(val) {
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
-    .uiIovEnv$iov <- env$ui
+    .uiIovEnv$ui <- env$ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
     env$ui <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
   } else {
-    .uiIovEnv$iov <- NULL
+    .uiIovEnv$ui <- NULL
     .uiIovEnv$iovDrop <- NULL
   }
 }
@@ -263,11 +264,12 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiFinalizeIov <- function(ret) {
-  if (!is.null(.uiIovEnv$iov)) {
+  if (!is.null(.uiIovEnv$ui)) {
     if (is.null(ret$ui)) return(ret)
 
     if (is.environment(ret$env)) {
-      .iniDf <- .uiIovEnv$iov$iniDf
+      .preFinalParTableHooksRun(.uiIovEnv)
+      .iniDf <- .uiIovEnv$ui$iniDf
       .finalDf <- ret$ui$iniDf
       .iovName <- new.env(parent=emptyenv())
       .iovName$var <- character(0)
@@ -292,7 +294,7 @@ nlmixr2iovVarSd <- function(val) {
       assign("iniDf0", .iniDf, envir = ret$env)
       .finalDf <- .iniDf
       .finalDf$est <- .est
-      .ui <- .uiIovEnv$iov
+      .ui <- .uiIovEnv$ui
       suppressMessages(rxode2::ini(.ui) <- .finalDf)
       assign("ui", .ui, envir = ret$env)
 

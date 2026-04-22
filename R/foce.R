@@ -111,3 +111,4 @@ nlmixr2Est.foce <- function(env, ...) {
   .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="foce"))
 }
 attr(nlmixr2Est.foce, "covPresent") <- TRUE
+attr(nlmixr2Est.foce, "unbounded") <- .foUnbounded

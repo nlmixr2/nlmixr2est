@@ -29,6 +29,26 @@
   methods so they can be saved better in packages like `nlmixr2save`
   and `shinyMixR`.
 
+- Added new `outerOpt`; methods to `focei` and related methods (`agq`,
+  `laplace`, `foce`, `fo`, `foi`): "uobyqa" and "newuoa".
+
+- `saem` and other methods now respect bounds by default by internally
+  adding the appropriate transform and then applying the
+  back-transformation just before returning.
+
+  For parameters that are mu-referenced, this breaks
+  mu-referencing. When it breaks mu-referencing there is a warning
+  issued.  The best practice is still to have unbounded parameters
+  with mu-referencing.
+
+  If you want to ignore this behavior you may
+  use `control=list(boundedTransform=FALSE)` or for saem
+  `control=saemControl(boundedTransform=FALSE)`
+
+- The mu referencing covariate procedure was made less fragile to
+  support mu referencing in conjunction with iov and bounded parameter
+  transformations.
+
 # nlmixr2est 5.0.0
 
 - Remove `qs` and change to `qs2`.  This breaks backward

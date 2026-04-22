@@ -26,6 +26,38 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
+.uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  .ctl <- control
+  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
+  .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ret <- minqa::uobyqa(par, fn,
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper)
+  .ret$x <- .ret$par
+  .ret$message <- .ret$msg
+  .ret$convergence <- .ret$ierr
+  .ret$value <- .ret$fval
+  .ret
+}
+
+.newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  .ctl <- control
+  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
+  .ctl$iprint <- 0L
+  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
+  .ret <- minqa::newuoa(par, fn,
+                        control = .ctl,
+                        lower = lower,
+                        upper = upper)
+  .ret$x <- .ret$par
+  .ret$message <- .ret$msg
+  .ret$convergence <- .ret$ierr
+  .ret$value <- .ret$fval
+  .ret
+}
+
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
@@ -1836,6 +1868,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
+  .env$ui <- ui
   .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   if (!is.null(.env$cov)) {
     if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
@@ -1876,8 +1909,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .ret <- .ret0
   if (!is.null(method))
     .ret$method <- method
-  ui <- rxode2::rxUiDecompress(ui)
-
+  if (exists("ui", envir=.ret)) {
+    ui <- rxode2::rxUiDecompress(get("ui", envir=.ret))
+  } else {
+    ui <- rxode2::rxUiDecompress(ui)
+  }
   if (exists(".predDfFocei", envir=ui)) {
     rm(".predDfFocei", envir=ui)
   }
@@ -1986,7 +2022,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # focei is available; add objective function
     .setOfvFo(.ret, "focei")
   }
-  .ret
+  .postFinalObjectHooksRun(.ret)
 }
 
 #'@rdname nlmixr2Est
@@ -2012,6 +2048,7 @@ nlmixr2Est.focei <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
+attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
 
 #' Add objective function line to the return object
 #'

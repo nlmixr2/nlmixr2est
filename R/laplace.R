@@ -180,7 +180,7 @@ nlmixr2Est.laplace <- function(env, ...) {
   .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="laplace"))
 }
 attr(nlmixr2Est.laplace, "covPresent") <- TRUE
-
+attr(nlmixr2Est.laplace, "unbounded") <- .foUnbounded
 
 #' @export
 rxUiDeparse.laplaceControl <- function(object, var) {

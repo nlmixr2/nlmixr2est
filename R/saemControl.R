@@ -172,6 +172,7 @@ saemControl <- function(seed = 99,
                         muRefCovAlg=TRUE,
                         handleUninformativeEtas=TRUE,
                         iovXform = c("sd", "var", "logsd", "logvar"),
+                        boundedTransform = TRUE,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -224,6 +225,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
   checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
+  checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -307,7 +309,8 @@ saemControl <- function(seed = 99,
     muRefCov=muRefCov,
     muRefCovAlg=muRefCovAlg,
     handleUninformativeEtas=handleUninformativeEtas,
-    iovXform=iovXform
+    iovXform=iovXform,
+    boundedTransform=boundedTransform
   )
   class(.ret) <- "saemControl"
   .ret

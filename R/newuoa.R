@@ -70,7 +70,8 @@ newuoaControl <- function(npt=NULL,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                          boundedTransform=TRUE, ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -86,6 +87,7 @@ newuoaControl <- function(npt=NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -183,7 +185,8 @@ newuoaControl <- function(npt=NULL,
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "newuoaControl"
   .ret
 }
@@ -392,5 +395,6 @@ nlmixr2Est.newuoa <- function(env, ...) {
   .newuoaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.newuoa, "covPresent") <- TRUE
+attr(nlmixr2Est.newuoa, "unbounded") <- TRUE
 
 #minqa::newuoa()
