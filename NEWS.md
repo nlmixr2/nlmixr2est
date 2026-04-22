@@ -19,6 +19,12 @@
 
 - Tests are optimized to reduce redundant fits and run in parallel.
 
+- `nlm` (and related pooled optimizers: `bobyqa`, `newuoa`, `uobyqa`,
+  `n1qn1`, `lbfgsb3c`, `optim`, `nlminb`) now support the same
+  censoring behavior (M2/M3/M4) as FOCEI and SAEM.  The
+  `$censInformation` field is populated for these fits in the same way
+  as FOCEI/SAEM.
+
 - `agqControl()` and `laplaceControl()` now have `rxUiDeparse()`
   methods so they can be saved better in packages like `nlmixr2save`
   and `shinyMixR`.

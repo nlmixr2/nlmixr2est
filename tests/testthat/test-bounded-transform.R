@@ -284,7 +284,7 @@ nmTest({
       })
     }
 
-    tmp <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    expect_error(nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast), NA)
 
 
     one.cmt.iov.mu2 <- function() {
@@ -310,7 +310,8 @@ nmTest({
       })
     }
 
-    tmp <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    expect_error(nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast),
+                 NA)
 
 
   })

@@ -590,8 +590,7 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .optim <- .collectWarn(.optimFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$optim <- .optim[[1]]
-  .ret$parHistData <- .ret$optim$parHistData
-  .ret$optim$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "optim")
   .ret$message <- .ret$optim$message
   if (rxode2::rxGetControl(.ui, "returnOptim", FALSE)) {
     return(.ret$optim)
@@ -599,8 +598,6 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .optimGetTheta(.ret$optim, .ui)
-  .ret$cov <- .ret$optim$cov
-  .ret$covMethod <- .ret$optim$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL

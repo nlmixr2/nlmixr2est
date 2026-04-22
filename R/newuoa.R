@@ -353,8 +353,7 @@ getValidNlmixrCtl.newuoa <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .newuoa <- .collectWarn(.newuoaFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$newuoa <- .newuoa[[1]]
-  .ret$parHistData <- .ret$newuoa$parHistData
-  .ret$newuoa$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "newuoa")
   .ret$message <- .ret$newuoa$message
   if (rxode2::rxGetControl(.ui, "returnNewuoa", FALSE)) {
     return(.ret$newuoa)
@@ -362,8 +361,6 @@ getValidNlmixrCtl.newuoa <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .newuoaGetTheta(.ret$newuoa, .ui)
-  .ret$cov <- .ret$newuoa$cov
-  .ret$covMethod <- .ret$newuoa$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL

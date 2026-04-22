@@ -307,7 +307,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
 extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
   if (TYPEOF(npdeSim) != VECSXP) {
-    Rf_errorcall(R_NilValue, "npdeSim needs to be a data.frame");
+    stop("npdeSim needs to be a data.frame");
   }
   List opt = as<List>(npdeOpt);
   double tolChol = 6.055454e-06;

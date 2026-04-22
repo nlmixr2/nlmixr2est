@@ -457,6 +457,25 @@ rxUiGet.nlmParams <- function(x, ...) {
 }
 attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 
+#' Extract rx_pred_f_ and rx_r_ model lines from symengine environment
+#'
+#' @param .s symengine environment
+#' @return named list with `f_line` and `r_line` character strings
+#' @noRd
+.nlmGetFRLines <- function(.s) {
+  .f_line <- ""
+  .r_line <- ""
+  if (exists("rx_pred_f_", envir = .s, inherits = FALSE)) {
+    .f <- get("rx_pred_f_", envir = .s)
+    .f_line <- paste0("rx_pred_f_=", rxode2::rxFromSE(.f))
+  }
+  if (exists("rx_r_", envir = .s, inherits = FALSE)) {
+    .r <- get("rx_r_", envir = .s)
+    .r_line <- paste0("rx_r_=", rxode2::rxFromSE(.r))
+  }
+  list(f_line = .f_line, r_line = .r_line)
+}
+
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlm(x, ...)
@@ -466,11 +485,15 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
+  .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
     .ddt,
     .prd,
+    .fr$f_line,
+    .fr$r_line,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""
@@ -594,6 +617,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
+  # Extract rx_pred_f_ and rx_r_ for censoring support
+  .fr <- .nlmGetFRLines(.s)
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
@@ -605,6 +630,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .low,
     .prd,
     .s$..HdTheta,
+    .fr$f_line,
+    .fr$r_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""
@@ -621,6 +648,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .hi,
     .low,
     .prd,
+    .fr$f_line,
+    .fr$r_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""
@@ -742,11 +771,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @noRd
 .nlmFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nlm' does not work with censored data", call. =FALSE)
-    }
-  }
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
@@ -867,8 +891,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
 
   .ret$nlm <- .nlm[[1]]
-  .ret$parHistData <- .ret$nlm$parHistData
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlm")
+
   .ret$message <- NULL
   lapply(.nlm[[2]], function(x){
     warning(x, call.=FALSE)
@@ -895,8 +919,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlmGetTheta(.ret$nlm, .ui)
-  .ret$cov <- .ret$nlm$cov
-  .ret$covMethod <- .ret$nlm$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
