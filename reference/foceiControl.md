@@ -61,7 +61,7 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin"),
+    "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -124,7 +124,8 @@ foceiControl(
   mceta = -1L,
   nAGQ = 0,
   agqLow = -Inf,
-  agqHi = Inf
+  agqHi = Inf,
+  boundedTransform = TRUE
 )
 ```
 

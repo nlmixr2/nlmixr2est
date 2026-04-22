@@ -21,7 +21,8 @@ logical indicating if the hook was removed (invisibly)
 
 ## See also
 
-Other preProcessHooks:
+Other preProcessHooks: `preFinalParTableHooks()`,
+`preFinalParTableHooksAdd()`, `preFinalParTableHooksRm()`,
 [`preProcessHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.md),
 [`preProcessHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksAdd.md)
 

@@ -95,6 +95,8 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
+#> Warning: gradient problems with covariance; see $scaleInfo
+#> Warning: initial ETAs were nudged; (can control by foceiControl(etaNudge=., etaNudge2=))
 
 # Population predictions
 ppred <- predict(fit, theo_sd, level="population")

@@ -43,6 +43,7 @@ saemControl(
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
   iovXform = c("sd", "var", "logsd", "logvar"),
+  boundedTransform = TRUE,
   ...
 )
 ```

@@ -37,6 +37,7 @@ uobyqaControl(
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 ```
@@ -446,8 +447,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table    other
-#> elapsed 0.002821 0.045 0.656179
+#>            setup table compress    other
+#> elapsed 0.010503 0.032    0.001 0.674497
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

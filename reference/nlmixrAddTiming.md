@@ -73,7 +73,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> params:  tka tcl tv  V(eta.ka)   V(eta.cl)   V(eta.v)    add.sd
+#> params:  tka rxBoundedTr.tcl tv  V(eta.ka)   V(eta.v)    V(eta.cl)   add.sd
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -81,14 +81,17 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → finding duplicate expressions in saem predOnly model 0...
 #> → finding duplicate expressions in saem predOnly model 1...
 #> → finding duplicate expressions in saem predOnly model 2...
+#> → optimizing duplicate expressions in saem predOnly model 2...
 #> ✔ done
 #>  
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 8288
-#> → compress phiM in nlmixr2 object, save 312904
+#> → compress parHistData in nlmixr2 object, save 8280
+#> → compress phiM in nlmixr2 object, save 429432
+#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
+#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
 
 # will add to the current setup
 nlmixrAddTiming(fit, "setup", 3)

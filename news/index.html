@@ -41,6 +41,13 @@
 <li><p><code>nlm</code> and related pooled methods now run in parallel (based on ID)</p></li>
 <li><p>Tests are optimized to reduce redundant fits and run in parallel.</p></li>
 <li><p><code><a href="../reference/agqControl.html">agqControl()</a></code> and <code><a href="../reference/laplaceControl.html">laplaceControl()</a></code> now have <code><a href="https://nlmixr2.github.io/rxode2/reference/rxUiDeparse.html" class="external-link">rxUiDeparse()</a></code> methods so they can be saved better in packages like <code>nlmixr2save</code> and <code>shinyMixR</code>.</p></li>
+<li><p>Added new <code>outerOpt</code>; methods to <code>focei</code> and related methods (<code>agq</code>, <code>laplace</code>, <code>foce</code>, <code>fo</code>, <code>foi</code>): “uobyqa” and “newuoa”.</p></li>
+<li>
+<p><code>saem</code> and other methods now respect bounds by default by internally adding the appropriate transform and then applying the back-transformation just before returning.</p>
+<p>For parameters that are mu-referenced, this breaks mu-referencing. When it breaks mu-referencing there is a warning issued. The best practice is still to have unbounded parameters with mu-referencing.</p>
+<p>If you want to ignore this behavior you may use <code>control=list(boundedTransform=FALSE)</code> or for saem <code>control=saemControl(boundedTransform=FALSE)</code></p>
+</li>
+<li><p>The mu referencing covariate procedure was made less fragile to support mu referencing in conjunction with iov and bounded parameter transformations.</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="5.0.0" id="nlmixr2est-500">nlmixr2est 5.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-500"></a></h2>
@@ -456,7 +463,7 @@
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Matthew Fidler, Yuan Xiong, Rik Schoemaker, Justin Wilkins, Wenping Wang, Vipul Mann, Richard Hooijmaijers.</p>
+  <p>Developed by Matthew Fidler, Wenping Wang, Justin Wilkins, Richard Hooijmaijers, Rik Schoemaker, Vipul Mann, Yuan Xiong.</p>
 </div>
 
 <div class="pkgdown-footer-right">

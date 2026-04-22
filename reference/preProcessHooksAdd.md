@@ -31,7 +31,8 @@ The function that was added (invisibly)
 
 ## See also
 
-Other preProcessHooks:
+Other preProcessHooks: `preFinalParTableHooks()`,
+`preFinalParTableHooksAdd()`, `preFinalParTableHooksRm()`,
 [`preProcessHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.md),
 [`preProcessHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.md)
 

@@ -522,26 +522,26 @@ If not specified, then it matches the significant digits in the
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 8320</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2672</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 8336</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2800</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">nlminb</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -637.4326 1206.445 1221.168      -600.2223        717.1534         71.8244</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -658.7064 1185.171 1199.894      -589.5853        2943.079        113.3684</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>            setup table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002827 0.033    0.012 1.258173</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.002952 0.032    0.011 0.957048</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>    <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(SD)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.5401 0.2165  40.1 -0.5401 (-0.9645, -0.1156)                    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    5.524   3.12 56.48     5.524 (-0.5909, 11.64)                    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>     3.6  1.843  51.2       3.6 (-0.0127, 7.212)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.4614 0.1955 42.37 -0.4614 (-0.8446, -0.0782)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    8.587  6.935 80.77      8.587 (-5.006, 22.18)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   4.697  2.679 57.04     4.697 (-0.5539, 9.948)                    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>         2  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                          2                    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r (nlminb)</span></span>
@@ -553,128 +553,135 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 1,000 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   ID      TIME    DV  IPRED      v</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.037<span style="text-decoration: underline;">6</span>     1 -<span style="color: #BB0000;">0.999</span> -<span style="color: #BB0000;">0.539</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.056<span style="text-decoration: underline;">8</span>     0 -<span style="color: #BB0000;">0.460</span> -<span style="color: #BB0000;">0.539</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.063<span style="text-decoration: underline;">8</span>     1 -<span style="color: #BB0000;">0.998</span> -<span style="color: #BB0000;">0.538</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.026<span style="text-decoration: underline;">1</span>     0 -<span style="color: #BB0000;">0.489</span> -<span style="color: #BB0000;">0.461</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.047<span style="text-decoration: underline;">6</span>     1 -<span style="color: #BB0000;">0.950</span> -<span style="color: #BB0000;">0.461</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.050<span style="text-decoration: underline;">5</span>     0 -<span style="color: #BB0000;">0.489</span> -<span style="color: #BB0000;">0.460</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 997 more rows</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># you can also get the nlm output with fit2$nlminb</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nlminb</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>         E0         Em        E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -0.5400661  5.5241462  3.5998064 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        E0        Em       E50 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -0.461394  8.586665  4.697008 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $objective</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 600.2223</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 589.5853</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $convergence</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $iterations</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 9</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $evaluations</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> function gradient </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>       15       10 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>       17       11 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $message</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "relative convergence (4)"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $scaleC</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.002751528 0.029833237 0.029063705</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.002895922 0.034035845 0.031273778</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $parHistData</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    iter                type     objf            E0            Em           E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 1     1              Scaled 688.8257 -1.000000e+00 -1.000000e+00  1.000000e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 2     1            Unscaled 688.8257  5.000000e-01  5.000000e-01  2.000000e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 3     1    Back-Transformed 688.8257  5.000000e-01  5.000000e-01  2.000000e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 4     2              Scaled 688.3273 -1.547526e+00 -2.480189e-01  1.174252e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 5     2            Unscaled 688.3273  4.984935e-01  5.224340e-01  2.005064e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 6     2    Back-Transformed 688.3273  4.984935e-01  5.224340e-01  2.005064e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 7     3              Scaled 686.8725 -3.400744e+00  1.849660e+00  1.862517e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 8     3            Unscaled 686.8725  4.933943e-01  5.850146e-01  2.025068e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 9     3    Back-Transformed 686.8725  4.933943e-01  5.850146e-01  2.025068e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 10    4              Scaled 681.5720 -1.227626e+01  8.119515e+00  5.892805e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 11    4            Unscaled 681.5720  4.689731e-01  7.720647e-01  2.142203e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 12    4    Back-Transformed 681.5720  4.689731e-01  7.720647e-01  2.142203e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 13    5              Scaled 663.2305 -5.181880e+01  2.412676e+01  2.419048e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 14    5            Unscaled 663.2305  3.601706e-01  1.249613e+00  2.674001e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 15    5    Back-Transformed 663.2305  3.601706e-01  1.249613e+00  2.674001e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 16    6              Scaled 624.5650 -2.290591e+02  7.807625e+01  8.996829e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 17    6            Unscaled 624.5650 -1.275110e-01  2.859101e+00  4.585748e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 18    6    Back-Transformed 624.5650 -1.275110e-01  2.859101e+00  4.585748e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 19    7              Scaled 656.7159 -3.690630e+02  1.258602e+02 -1.225990e+02</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 20    7            Unscaled 656.7159 -5.127357e-01  4.284649e+00 -1.592244e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 21    7    Back-Transformed 656.7159 -5.127357e-01  4.284649e+00 -1.592244e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 22    8              Scaled 622.8073 -2.715511e+02  1.175352e+02  1.404415e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 23    8            Unscaled 622.8073 -2.444290e-01  4.036289e+00  2.379111e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 24    8    Back-Transformed 622.8073 -2.444290e-01  4.036289e+00  2.379111e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 25    9              Scaled 605.1996 -3.170450e+02  1.025121e+02  2.263979e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 26    9            Unscaled 605.1996 -3.696065e-01  3.588102e+00  2.628933e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 27    9    Back-Transformed 605.1996 -3.696065e-01  3.588102e+00  2.628933e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 28   10              Scaled 601.0979 -3.558781e+02  1.285683e+02  3.889729e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 29   10            Unscaled 601.0979 -4.764569e-01  4.365441e+00  3.101436e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 30   10    Back-Transformed 601.0979 -4.764569e-01  4.365441e+00  3.101436e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 31   11              Scaled 600.2717 -3.843164e+02  1.528642e+02  4.798692e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 32   11            Unscaled 600.2717 -5.547057e-01  5.090266e+00  3.365614e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 33   11    Back-Transformed 600.2717 -5.547057e-01  5.090266e+00  3.365614e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 34   12              Scaled 600.2245 -3.797091e+02  1.641116e+02  5.432697e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 35   12            Unscaled 600.2245 -5.420286e-01  5.425813e+00  3.549879e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 36   12    Back-Transformed 600.2245 -5.420286e-01  5.425813e+00  3.549879e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 37   13              Scaled 600.2223 -3.790512e+02  1.671905e+02  5.592953e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 38   13            Unscaled 600.2223 -5.402183e-01  5.517668e+00  3.596456e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 39   13    Back-Transformed 600.2223 -5.402183e-01  5.517668e+00  3.596456e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 40   14              Scaled 600.2223 -3.789969e+02  1.674050e+02  5.604320e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 41   14            Unscaled 600.2223 -5.400690e-01  5.524068e+00  3.599759e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 42   14    Back-Transformed 600.2223 -5.400690e-01  5.524068e+00  3.599759e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 43   15              Scaled 600.2223 -3.789958e+02  1.674077e+02  5.604482e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 44   15            Unscaled 600.2223 -5.400661e-01  5.524146e+00  3.599806e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 45   15    Back-Transformed 600.2223 -5.400661e-01  5.524146e+00  3.599806e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 46   16              Scaled 600.2223 -3.789958e+02  1.674077e+02  5.604482e+01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 47   16            Unscaled 600.2223 -5.400661e-01  5.524146e+00  3.599806e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 48   16    Back-Transformed 600.2223 -5.400661e-01  5.524146e+00  3.599806e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 49    1 Forward Sensitivity       NA  2.984541e-01 -4.322108e-01 -8.996807e-02</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 50    6 Forward Sensitivity       NA  3.962978e-03 -3.903414e-01  2.537080e-01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 51    8 Forward Sensitivity       NA  2.540147e-01  5.100176e-01 -1.102089e+00</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 52    9 Forward Sensitivity       NA  9.829978e-02  5.015860e-02 -2.224233e-01</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 53   10 Forward Sensitivity       NA  2.916642e-02 -2.232011e-02 -2.206683e-02</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 54   11 Forward Sensitivity       NA -3.249141e-03 -1.270619e-02  1.164714e-02</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 55   12 Forward Sensitivity       NA -2.931311e-04 -2.377635e-03  2.071138e-03</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 56   13 Forward Sensitivity       NA -2.289096e-05 -1.425456e-04  1.217352e-04</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 57   14 Forward Sensitivity       NA -7.071978e-08 -4.872339e-07 -8.214017e-07</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> 58   15 Forward Sensitivity       NA  4.516929e-10  2.411824e-09 -2.164365e-08</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1     1              Scaled 677.3575 -1.000000e+00 -1.000000e+00  1.000000e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2     1            Unscaled 677.3575  5.000000e-01  5.000000e-01  2.000000e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3     1    Back-Transformed 677.3575  5.000000e-01  5.000000e-01  2.000000e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4     2              Scaled 676.7007 -1.356555e+00 -1.486384e-01  1.111798e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5     2            Unscaled 676.7007  4.989674e-01  5.289768e-01  2.003496e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6     2    Back-Transformed 676.7007  4.989674e-01  5.289768e-01  2.003496e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 7     3              Scaled 674.8328 -2.666810e+00  2.308910e+00  1.628328e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 8     3            Unscaled 674.8328  4.951730e-01  6.126216e-01  2.019650e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 9     3    Back-Transformed 674.8328  4.951730e-01  6.126216e-01  2.019650e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 10    4              Scaled 668.5453 -1.046939e+01  9.810505e+00  5.586290e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 11    4            Unscaled 668.5453  4.725774e-01  8.679447e-01  2.143431e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 12    4    Back-Transformed 668.5453  4.725774e-01  8.679447e-01  2.143431e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 13    5              Scaled 649.1847 -5.099130e+01  2.582848e+01  2.353783e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 14    5            Unscaled 649.1847  3.552291e-01  1.413130e+00  2.704843e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 15    5    Back-Transformed 649.1847  3.552291e-01  1.413130e+00  2.704843e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 16    6              Scaled 616.1000 -2.058084e+02  6.353692e+01  6.266781e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 17    6            Unscaled 616.1000 -9.310897e-02  2.696569e+00  3.928585e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 18    6    Back-Transformed 616.1000 -9.310897e-02  2.696569e+00  3.928585e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 19    7              Scaled 735.0190 -3.581761e+02  1.054654e+02 -9.565423e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 20    7            Unscaled 735.0190 -5.343541e-01  4.123641e+00 -1.022743e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 21    7    Back-Transformed 735.0190 -5.343541e-01  4.123641e+00 -1.022743e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 22    8              Scaled 601.9944 -2.211976e+02  9.056868e+01  3.358728e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 23    8            Unscaled 601.9944 -1.376751e-01  3.616617e+00  3.019128e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 24    8    Back-Transformed 601.9944 -1.376751e-01  3.616617e+00  3.019128e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 25    9              Scaled 595.8750 -2.564918e+02  1.128068e+02  4.512758e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 26    9            Unscaled 595.8750 -2.398841e-01  4.373510e+00  3.380036e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 27    9    Back-Transformed 595.8750 -2.398841e-01  4.373510e+00  3.380036e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 28   10              Scaled 590.8069 -3.342710e+02  1.445281e+02  5.141810e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 29   10            Unscaled 590.8069 -4.651268e-01  5.453171e+00  3.576764e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 30   10    Back-Transformed 590.8069 -4.651268e-01  5.453171e+00  3.576764e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 31   11              Scaled 589.9254 -3.410954e+02  1.739608e+02  6.058919e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 32   11            Unscaled 589.9254 -4.848895e-01  6.454940e+00  3.863579e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 33   11    Back-Transformed 589.9254 -4.848895e-01  6.454940e+00  3.863579e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 34   12              Scaled 589.6554 -3.360850e+02  2.041022e+02  7.424336e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 35   12            Unscaled 589.6554 -4.703797e-01  7.480826e+00  4.290596e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 36   12    Back-Transformed 589.6554 -4.703797e-01  7.480826e+00  4.290596e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 37   13              Scaled 589.5924 -3.339502e+02  2.254450e+02  8.294931e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 38   13            Unscaled 589.5924 -4.641976e-01  8.207247e+00  4.562865e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 39   13    Back-Transformed 589.5924 -4.641976e-01  8.207247e+00  4.562865e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 40   14              Scaled 589.5855 -3.331249e+02  2.348876e+02  8.659452e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 41   14            Unscaled 589.5855 -4.618078e-01  8.528635e+00  4.676864e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 42   14    Back-Transformed 589.5855 -4.618078e-01  8.528635e+00  4.676864e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 43   15              Scaled 589.5853 -3.329882e+02  2.365325e+02  8.721514e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 44   15            Unscaled 589.5853 -4.614118e-01  8.584618e+00  4.696273e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 45   15    Back-Transformed 589.5853 -4.614118e-01  8.584618e+00  4.696273e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 46   16              Scaled 589.5853 -3.329822e+02  2.365919e+02  8.723834e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 47   16            Unscaled 589.5853 -4.613943e-01  8.586641e+00  4.696999e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 48   16    Back-Transformed 589.5853 -4.613943e-01  8.586641e+00  4.696999e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 49   17              Scaled 589.5853 -3.329821e+02  2.365926e+02  8.723865e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 50   17            Unscaled 589.5853 -4.613940e-01  8.586665e+00  4.697008e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 51   17    Back-Transformed 589.5853 -4.613940e-01  8.586665e+00  4.697008e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 52   18              Scaled 589.5853 -3.329821e+02  2.365926e+02  8.723865e+01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 53   18            Unscaled 589.5853 -4.613940e-01  8.586665e+00  4.697008e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 54   18    Back-Transformed 589.5853 -4.613940e-01  8.586665e+00  4.697008e+00</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 55    1 Forward Sensitivity       NA  2.616394e-01 -6.654994e-01 -7.538535e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 56    6 Forward Sensitivity       NA  2.443167e-03 -5.200849e-01  3.141049e-01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 57    8 Forward Sensitivity       NA  1.380643e-01 -4.803583e-02 -1.323040e-01</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 58   10 Forward Sensitivity       NA -9.491358e-03 -7.868066e-02  8.810574e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 59   11 Forward Sensitivity       NA -4.487099e-03 -2.205376e-02  1.821818e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 60   12 Forward Sensitivity       NA -1.883785e-03 -9.088635e-03  1.047962e-02</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 61   13 Forward Sensitivity       NA -7.341984e-04 -2.826736e-03  4.019361e-03</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 62   14 Forward Sensitivity       NA -1.226289e-04 -4.233236e-04  6.569897e-04</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 63   15 Forward Sensitivity       NA -3.453039e-06 -1.131514e-05  1.441872e-05</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 64   16 Forward Sensitivity       NA -4.646287e-10  4.991195e-09 -1.824892e-07</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 65   17 Forward Sensitivity       NA  5.312978e-11  2.596048e-10 -2.838251e-09</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $par.scaled</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         E0         Em        E50 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -378.99583  167.40768   56.04482 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> -332.98205  236.59260   87.23865 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $hessian</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>               E0           Em          E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001589130  0.001727760 -0.003819311</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.001727760  0.004883265 -0.008796312</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.003819311 -0.008796312  0.017350816</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.001733752  0.001203659 -0.003386052</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.001203659  0.002300787 -0.005719193</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.003386052 -0.005719193  0.014902217</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "r (nlminb)"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov.scaled</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           E0        Em      E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  6193.588  3047.138 2908.152</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  3047.138 10937.230 6215.572</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 2908.152  6215.572 4021.785</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           E0        Em       E50</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  4557.836  4126.324  2619.228</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  4126.324 41518.858 16871.737</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 2619.228 16871.737  7338.610</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cov</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             E0        Em       E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.04689107 0.2501303 0.2325638</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.25013034 9.7343752 5.3893014</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.23256376 5.3893014 3.3971975</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             E0         Em        E50</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0  0.03822366  0.4067117  0.2372141</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em  0.40671165 48.0970553 17.9587745</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 0.23721409 17.9587745  7.1775215</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $r</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>               E0           Em          E50</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.000794565  0.000863880 -0.001909656</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.000863880  0.002441632 -0.004398156</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.001909656 -0.004398156  0.008675408</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                E0            Em          E50</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E0   0.0008668758  0.0006018296 -0.001693026</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Em   0.0006018296  0.0011503933 -0.002859596</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> E50 -0.0016930260 -0.0028595963  0.007451109</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
@@ -684,7 +691,7 @@ If not specified, then it matches the significant digits in the
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Matthew Fidler, Yuan Xiong, Rik Schoemaker, Justin Wilkins, Wenping Wang, Vipul Mann, Richard Hooijmaijers.</p>
+  <p>Developed by Matthew Fidler, Wenping Wang, Justin Wilkins, Richard Hooijmaijers, Rik Schoemaker, Vipul Mann, Yuan Xiong.</p>
 </div>
 
 <div class="pkgdown-footer-right">

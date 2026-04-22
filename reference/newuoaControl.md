@@ -37,6 +37,7 @@ newuoaControl(
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 ```
@@ -441,21 +442,21 @@ fit2 <- nlmixr(mod, dsn, est="newuoa")
 print(fit2)
 #> ── nlmixr² log-likelihood newuoa ──
 #> 
-#>           OBJF      AIC     BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -702.3505 1141.527 1156.25      -567.7633        238.3576        61.16735
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -653.9252 1189.952 1204.675      -591.9759        4000.671        156.3389
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.002902 0.034    0.001 0.723098
+#> elapsed 0.002953 0.032    0.001 0.738047
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.    SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.8111 0.279  34.4 -0.8111 (-1.358, -0.2642)                    
-#> Em    4.818 1.729 35.88       4.818 (1.43, 8.207)                    
-#> E50   2.325 1.012 43.54      2.325 (0.341, 4.308)                    
-#> g         2 FIXED FIXED                         2                    
+#>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.4965 0.2068 41.66 -0.4965 (-0.9018, -0.09113)                    
+#> Em     8.44  7.987 94.63         8.44 (-7.214, 24.1)                    
+#> E50   4.848  3.351 69.12       4.848 (-1.719, 11.41)                    
+#> g         2  FIXED FIXED                           2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -464,17 +465,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0165     0 -0.368 -0.811
-#> 2 1     0.0363     1 -1.18  -0.810
-#> 3 1     0.0655     1 -1.18  -0.807
+#> 1 1     0.0227     1 -0.972 -0.496
+#> 2 1     0.0376     0 -0.476 -0.496
+#> 3 1     0.0550     0 -0.476 -0.495
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with
 
 fit2$newuoa
-#> parameter estimates: -0.811109216556294, 4.81817076843801, 2.32462153323005 
-#> objective: 567.763282611857 
-#> number of function evaluations: 208 
+#> parameter estimates: -0.496480332954288, 8.44046351143032, 4.84762703353389 
+#> objective: 591.975924024439 
+#> number of function evaluations: 364 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

@@ -94,7 +94,7 @@
 <span>  fo <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  covTryHarder <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlminb"</span>, <span class="st">"bobyqa"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
-<span>    <span class="st">"Rvmmin"</span><span class="op">)</span>,</span>
+<span>    <span class="st">"Rvmmin"</span>, <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
 <span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"n1qn1"</span>, <span class="st">"BFGS"</span><span class="op">)</span>,</span>
 <span>  rhobeg <span class="op">=</span> <span class="fl">0.2</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -157,7 +157,8 @@
 <span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span>,</span>
 <span>  nAGQ <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  agqLow <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
-<span>  agqHi <span class="op">=</span> <span class="cn">Inf</span></span>
+<span>  agqHi <span class="op">=</span> <span class="cn">Inf</span>,</span>
+<span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -1069,7 +1070,7 @@ Optimization.</p>
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Matthew Fidler, Yuan Xiong, Rik Schoemaker, Justin Wilkins, Wenping Wang, Vipul Mann, Richard Hooijmaijers.</p>
+  <p>Developed by Matthew Fidler, Wenping Wang, Justin Wilkins, Richard Hooijmaijers, Rik Schoemaker, Vipul Mann, Yuan Xiong.</p>
 </div>
 
 <div class="pkgdown-footer-right">

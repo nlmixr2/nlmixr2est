@@ -85,6 +85,7 @@
 <span>  ci <span class="op">=</span> <span class="fl">0.95</span>,</span>
 <span>  sigdig <span class="op">=</span> <span class="fl">4</span>,</span>
 <span>  sigdigTable <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -591,15 +592,15 @@ If not specified, then it matches the significant digits in the
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → Calculating residuals/tables</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> done</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> → compress origData in nlmixr2 object, save 6592</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2184</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> → compress parHistData in nlmixr2 object, save 2552</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># You can access the underlying nls object with `$nls`</span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">nls</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Nonlinear regression model</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>   model: 0 ~ nlmixr2est::.nlmixrNlsFunValGrad(DV, tka, tcl, tv)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>   model: 0 ~ nlmixr2est::.nlmixrNlsFunValGrad(DV, tka, rxBoundedTr.tcl,     tv)</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    data: nlmixr2est::.nlmixrNlsData()</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>     tka     tcl      tv </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> -1.0097 -0.6696  1.0423 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>             tka rxBoundedTr.tcl              tv </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         -1.0097         -0.4351          1.0423 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  residual sum-of-squares: 249.7</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Algorithm "port", convergence message: relative convergence (4)</span>
@@ -612,7 +613,7 @@ If not specified, then it matches the significant digits in the
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Matthew Fidler, Yuan Xiong, Rik Schoemaker, Justin Wilkins, Wenping Wang, Vipul Mann, Richard Hooijmaijers.</p>
+  <p>Developed by Matthew Fidler, Wenping Wang, Justin Wilkins, Richard Hooijmaijers, Rik Schoemaker, Vipul Mann, Yuan Xiong.</p>
 </div>
 
 <div class="pkgdown-footer-right">

@@ -102,6 +102,9 @@ fit <- nlmixr(one.cmt, theo_sd, est="focei")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
+#> Warning: gradient problems with initial estimate and covariance; see $scaleInfo
+#> Warning: ETAs were reset to zero during optimization; (Can control by foceiControl(resetEtaP=.))
+#> Warning: initial ETAs were nudged; (can control by foceiControl(etaNudge=., etaNudge2=))
 
 head(vpcSim(fit, pred=TRUE))
 #>  

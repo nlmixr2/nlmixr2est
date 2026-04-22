@@ -209,7 +209,7 @@ foControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5569b6af7eb8>
+#> <bytecode: 0x559c41bbf5e0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -726,7 +726,10 @@ foControl()
 #> [1] 2
 #> 
 #> $indOwnAlloc
-#> [1] 1
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
 #> 
 #> $.zeros
 #> NULL
@@ -781,6 +784,9 @@ foControl()
 #> 
 #> $agqLow
 #> [1] -Inf
+#> 
+#> $boundedTransform
+#> [1] TRUE
 #> 
 #> $posthoc
 #> [1] TRUE

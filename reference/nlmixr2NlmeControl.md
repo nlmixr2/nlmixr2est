@@ -805,7 +805,10 @@ nlmeControl()
 #> [1] 2
 #> 
 #> $indOwnAlloc
-#> [1] 1
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
 #> 
 #> $.zeros
 #> NULL
@@ -1267,7 +1270,10 @@ nlmixr2NlmeControl()
 #> [1] 2
 #> 
 #> $indOwnAlloc
-#> [1] 1
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
 #> 
 #> $.zeros
 #> NULL

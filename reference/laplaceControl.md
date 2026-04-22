@@ -214,7 +214,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x5569b6af7eb8>
+#> <bytecode: 0x559c41bbf5e0>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -731,7 +731,10 @@ laplaceControl()
 #> [1] 2
 #> 
 #> $indOwnAlloc
-#> [1] 1
+#> [1] -1
+#> 
+#> $maxExtra
+#> [1] 1000
 #> 
 #> $.zeros
 #> NULL
@@ -787,6 +790,9 @@ laplaceControl()
 #> $agqLow
 #> [1] -Inf
 #> 
+#> $boundedTransform
+#> [1] TRUE
+#> 
 #> attr(,"class")
 #> [1] "laplaceControl"
 
@@ -830,6 +836,12 @@ fit <- nlmixr(f, r, est="laplace")
 #> as a work-around try putting the mu-referenced expression on a simple line
 #> → Calculating residuals/tables
 #> ✔ done
+#> Warning: gradient problems with initial estimate and covariance; see $scaleInfo
+#> Warning: last objective function was not at minimum, possible problems in optimization
+#> Warning: ETAs were reset to zero during optimization; (Can control by foceiControl(resetEtaP=.))
+#> Warning: initial ETAs were nudged; (can control by foceiControl(etaNudge=., etaNudge2=))
+#> Warning: Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))
+#> Warning: all parameters are the same value, switch to length normType
 
 
 p <- pump
@@ -866,6 +878,11 @@ fit <- nlmixr(f, p, est="laplace")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
+#> Warning: gradient problems with initial estimate and covariance; see $scaleInfo
+#> Warning: ETAs were reset to zero during optimization; (Can control by foceiControl(resetEtaP=.))
+#> Warning: initial ETAs were nudged; (can control by foceiControl(etaNudge=., etaNudge2=))
+#> Warning: Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))
+#> Warning: all parameters are the same value, switch to length normType
 
 # }
 ```

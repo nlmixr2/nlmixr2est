@@ -52,6 +52,7 @@ nlsControl(
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 ```
@@ -594,15 +595,15 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 2184
+#> → compress parHistData in nlmixr2 object, save 2552
 
 # You can access the underlying nls object with `$nls`
 fit2$nls
 #> Nonlinear regression model
-#>   model: 0 ~ nlmixr2est::.nlmixrNlsFunValGrad(DV, tka, tcl, tv)
+#>   model: 0 ~ nlmixr2est::.nlmixrNlsFunValGrad(DV, tka, rxBoundedTr.tcl,     tv)
 #>    data: nlmixr2est::.nlmixrNlsData()
-#>     tka     tcl      tv 
-#> -1.0097 -0.6696  1.0423 
+#>             tka rxBoundedTr.tcl              tv 
+#>         -1.0097         -0.4351          1.0423 
 #>  residual sum-of-squares: 249.7
 #> 
 #> Algorithm "port", convergence message: relative convergence (4)

@@ -5,50 +5,52 @@
 - **Matthew Fidler**. Author, maintainer.
   [](https://orcid.org/0000-0001-8538-6691)
 
-- **Yuan Xiong**. Author.
-
-- **Rik Schoemaker**. Author. [](https://orcid.org/0000-0002-7538-3005)
-
-- **Justin Wilkins**. Author. [](https://orcid.org/0000-0002-7099-9396)
-
 - **Wenping Wang**. Author.
 
-- **Robert Leary**. Contributor.
+- **Audrey Lavenu**. Contributor.
 
-- **Mason McComb**. Contributor.
-  [](https://orcid.org/0000-0001-9871-8616)
+- **Ben Goodrich**. Contributor.
 
-- **Vipul Mann**. Author.
-
-- **Mirjam Trame**. Contributor.
-
-- **Mahmoud Abdelwahab**. Contributor.
-
-- **Teun Post**. Contributor.
-
-- **Richard Hooijmaijers**. Author.
-
-- **Hadley Wickham**. Contributor.
+- **David Ardia**. Copyright holder.
 
 - **Dirk Eddelbuettel**. Copyright holder.
-
-- **Johannes Pfeifer**. Contributor.
-
-- **Robert B. Schnabel**. Contributor.
 
 - **Elizabeth Eskow**. Contributor.
 
 - **Emmanuelle Comets**. Contributor.
 
-- **Audrey Lavenu**. Contributor.
+- **Hadley Wickham**. Contributor.
 
-- **Marc Lavielle**. Contributor.
+- **Hajar Besbassi**. Contributor.
 
-- **David Ardia**. Copyright holder.
+- **Johannes Pfeifer**. Contributor.
+
+- **Justin Wilkins**. Author. [](https://orcid.org/0000-0002-7099-9396)
 
 - **Katharine Mullen**. Copyright holder.
 
-- **Ben Goodrich**. Contributor.
+- **Mahmoud Abdelwahab**. Contributor.
+
+- **Marc Lavielle**. Contributor.
+
+- **Mason McComb**. Contributor.
+  [](https://orcid.org/0000-0001-9871-8616)
+
+- **Mirjam Trame**. Contributor.
+
+- **Richard Hooijmaijers**. Author.
+
+- **Rik Schoemaker**. Author. [](https://orcid.org/0000-0002-7538-3005)
+
+- **Robert B. Schnabel**. Contributor.
+
+- **Robert Leary**. Contributor.
+
+- **Teun Post**. Contributor.
+
+- **Vipul Mann**. Author.
+
+- **Yuan Xiong**. Author.
 
 ## Citation
 

@@ -22,7 +22,8 @@ the hook
 
 ## See also
 
-Other preProcessHooks:
+Other preProcessHooks: `preFinalParTableHooks()`,
+`preFinalParTableHooksAdd()`, `preFinalParTableHooksRm()`,
 [`preProcessHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksAdd.md),
 [`preProcessHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.md)
 
