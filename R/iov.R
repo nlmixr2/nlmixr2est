@@ -1,3 +1,34 @@
+#' Check if an estimation method supports iov
+#'
+#' Uses the \code{"iov"} attribute on the \code{nlmixr2Est.<method>}
+#' S3 method. This allows external packages (babelmixr2, etc.) to register
+#' their own methods as bounded/unbounded without modifying this file.
+#'
+#' The attribute can be:
+#' \itemize{
+#'   \item \code{TRUE} - always unbounded
+#'   \item \code{FALSE} - handles bounds natively
+#'   \item \code{function(control)} returning logical - conditional
+#'     (e.g., optim method-dependent, FOCEI outer optimizer-dependent)
+#' }
+#'
+#' @param est estimation routine name
+#' @param control control object
+#' @return boolean
+#' @noRd
+#' @author Matthew Fidler
+.isIovMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .iov <- attr(utils::getS3method("nlmixr2Est", est), "iov")
+    if (is.null(.iov)) return(FALSE)
+    if (is.function(.iov)) return(isTRUE(.iov(control)))
+    return(isTRUE(.iov))
+  }
+  FALSE
+}
+
 .nlmixr2iov <- function(val, type, transform) {
   # First get the standard deviation
   if (transform == "logvar") {
@@ -74,25 +105,21 @@ nlmixr2iovVarSd <- function(val) {
 .uiIovEnv$iovVars <- NULL
 #' This applies the IOV method to the model based on the data used
 #'
-#' @param env environment to apply the IOV model transformation.  This should contain:
-#'
-#' - `ui`: the model to apply the IOV transformation to
-#' - `data`: the data to use for the IOV transformation
-#' - `control`: the control object, which should contain `iovXform`
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
-.uiApplyIov <- function(env) {
+.uiApplyIov <- function(ui, est, data, control) {
+  if (!.isIovMethod(est, control)) return(NULL)
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
-  .xform <- env$control$iovXform
+  .xform <- control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
   }
   if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
     .xform <- "sd"
   }
-  .ui <- env$ui
+  .ui <- ui
   .iniDf <- .ui$iniDf
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
                                     .iniDf$condition != "id" &
@@ -140,7 +167,7 @@ nlmixr2iovVarSd <- function(val) {
       .theta1 <- .etas[1,]
     }
 
-    .data <- env$data
+    .data <- data
     .lvls <- setNames(lapply(.lvls, function(l) {
       .v <- sort(unique(.data[[l]]))
       if (is.null(.v)) {
@@ -188,9 +215,9 @@ nlmixr2iovVarSd <- function(val) {
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed
 
-                         .w <- which(env$ui$muRefCurEval$parameter == v)
+                         .w <- which(ui$muRefCurEval$parameter == v)
                          if (length(.w) == 1L) {
-                           .curEval <- env$ui$muRefCurEval$curEval[.w]
+                           .curEval <- ui$muRefCurEval$curEval[.w]
                          } else {
                            .curEval <- ""
                          }
@@ -259,12 +286,13 @@ nlmixr2iovVarSd <- function(val) {
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
-    .uiIovEnv$ui <- env$ui
+    .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
-    env$ui <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
+    list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
   } else {
     .uiIovEnv$ui <- NULL
     .uiIovEnv$iovDrop <- NULL
+    NULL
   }
 }
 #' Finalizes IOV model
@@ -525,11 +553,10 @@ nlmixr2iovVarSd <- function(val) {
     # but the data drops the iovDrop
     if (inherits(ret, "data.frame")) {
       .w <- which(names(ret) %in% .uiIovEnv$iovDrop)
+      .cls <- class(ret)
       if (length(.w) > 0L) {
-        .cls <- class(ret)
         class(ret) <- "data.frame"
         ret <- ret[,-.w]
-        class(ret) <- .cls
       }
       .rename <- paste0(.uiIovEnv$iovVars, ".rx")
       names(ret) <- vapply(names(ret), function(n) {
@@ -539,8 +566,12 @@ nlmixr2iovVarSd <- function(val) {
           n
         }
       }, character(1), USE.NAMES = FALSE)
+      class(ret) <- .cls
     }
     .stripFastmatchHash(ret$env)
   }
   ret
 }
+
+preProcessHooksAdd(".uiApplyIov", .uiApplyIov)
+postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)

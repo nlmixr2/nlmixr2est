@@ -2035,7 +2035,6 @@ nlmixr2Est.focei <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'",
                                       .var.name=.ui$modelName)
   }
-  .uiApplyIov(env)
   .foceiFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
@@ -2044,11 +2043,11 @@ nlmixr2Est.focei <- function(env, ...) {
   })
   .ui <- env$ui
   .ret <- .foceiFamilyReturn(env, .ui, ..., est="focei")
-  .ret <- .uiFinalizeIov(.ret)
   .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.focei, "iov") <- TRUE
 
 #' Add objective function line to the return object
 #'
