@@ -109,7 +109,15 @@ nlmixr2iovVarSd <- function(val) {
 #' @noRd
 #' @author Matthew L. Fidler
 .uiApplyIov <- function(ui, est, data, control) {
-  if (!.isIovMethod(est, control)) return(NULL)
+  if (!.isIovMethod(est, control)) {
+    .uiIovEnv$ui <- NULL
+    .uiIovEnv$iovDrop <- NULL
+    .uiIovEnv$iovVars <- NULL
+    .uiIovEnv$iovRename <- NULL
+    .uiIovEnv$lines <- NULL
+    .uiIovEnv$muModel <- NULL
+    return(NULL)
+  }
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
   .xform <- control$iovXform
