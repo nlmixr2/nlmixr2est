@@ -354,7 +354,7 @@ nlmixr2iovVarSd <- function(val) {
         .etaDf$neta1 <- as.integer(.etaDf$neta1)
         .etaDf$neta2 <- as.integer(.etaDf$neta2)
 
-        .maxEta <- max(.etaDf$neta1)
+        .maxEta <- if (nrow(.etaDf) == 0L) 0L else max(.etaDf$neta1)
 
 
         # Go through each IOV variable and calculate the variance from the back-transform
