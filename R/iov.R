@@ -288,8 +288,8 @@ nlmixr2iovVarSd <- function(val) {
                        }))
                        .lst
                      })
-    .uiIovEnv$lines <- .lines[[1]]
-    .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
+    .uiIovEnv$lines <- do.call(`c`, .lines)
+    .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
@@ -359,13 +359,22 @@ nlmixr2iovVarSd <- function(val) {
 
         # Go through each IOV variable and calculate the variance from the back-transform
         # Add it to the .etaDf afterward, and remove from .thetaDf
+        # Use a template row; fall back to .iniDf when .etaDf is empty (all ETAs
+        # were IOV dummy ETAs that got dropped above).
+        .etaTemplate <- if (nrow(.etaDf) > 0L) {
+          .etaDf[1, , drop = FALSE]
+        } else {
+          .tmp <- .iniDf[1, , drop = FALSE]
+          .tmp$ntheta <- NA_real_
+          .tmp
+        }
         for (i in seq_along(.iovDf$name)) {
           .w <- which(.thetaDf$name == .iovDf$name[i])
           .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
           .fun <- get(.fun)
           .est <- .fun(.thetaDf[.w, "est"])^2
           .maxEta <- .maxEta + 1L
-          .cur <- .etaDf[1,]
+          .cur <- .etaTemplate
           .cur$neta1 <- .cur$neta2 <- .maxEta
           .cur$est <- .est
           .cur$fix <- .iovDf$fix[i]
