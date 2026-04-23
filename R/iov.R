@@ -340,7 +340,7 @@ nlmixr2iovVarSd <- function(val) {
       .iovName$var <- .iovDf$name
 
       getEstimateDf <- function(iniDf) {
-        .iniDf <- .ui$iniDf
+        .iniDf <- iniDf
         # Final thetaDf & etaDf
         .thetaDf <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
         .etaDf <- .iniDf[!is.na(.iniDf$neta1),, drop=FALSE]
