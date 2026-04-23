@@ -2,13 +2,13 @@
 #'
 #' Uses the \code{"iov"} attribute on the \code{nlmixr2Est.<method>}
 #' S3 method. This allows external packages (babelmixr2, etc.) to register
-#' their own methods as bounded/unbounded without modifying this file.
+#' whether their own methods support IOV without modifying this file.
 #'
 #' The attribute can be:
 #' \itemize{
-#'   \item \code{TRUE} - always unbounded
-#'   \item \code{FALSE} - handles bounds natively
-#'   \item \code{function(control)} returning logical - conditional
+#'   \item \code{TRUE} - supports IOV
+#'   \item \code{FALSE} - does not support IOV
+#'   \item \code{function(control)} returning logical - conditional support
 #'     (e.g., optim method-dependent, FOCEI outer optimizer-dependent)
 #' }
 #'
