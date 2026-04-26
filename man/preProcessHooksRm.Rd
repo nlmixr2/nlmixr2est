@@ -18,6 +18,9 @@ is issued.
 }
 \seealso{
 Other preProcessHooks: 
+\code{\link{postFinalObjectHooks}()},
+\code{\link{postFinalObjectHooksAdd}()},
+\code{\link{postFinalObjectHooksRm}()},
 \code{\link{preFinalParTableHooks}()},
 \code{\link{preFinalParTableHooksAdd}()},
 \code{\link{preFinalParTableHooksRm}()},

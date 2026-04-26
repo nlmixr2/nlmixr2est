@@ -471,7 +471,7 @@
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
 #'
-#' @return
+#' @return a named list with two logical elements: \code{pre} is \code{TRUE} if the pre-processing hook ran and injected transforms, and \code{post} is \code{TRUE} if the post-estimation hook ran and applied back-transforms. Both are \code{FALSE} if the hooks were not triggered (e.g., because the method is bounded-native or there are no bounded parameters).
 #' @keywords internal
 #' @noRd
 #' @author Matthew L. Fidler

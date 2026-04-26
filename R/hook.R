@@ -88,9 +88,10 @@ postFinalObjectHooks <- function(name=NULL) {
   # This is for updating the return object from the estimation process.
   # This is used for modifying the return object after the estimation process is complete, but
   # before it is returned to the user.
-    for (name in postFinalObjectHooks()) {
+  .ret <- ret
+  for (name in postFinalObjectHooks()) {
     .fun <- get(name, envir=.postFinalObjectHooks)
-    .ret <- .fun(ret)
+    .ret <- .fun(.ret)
   }
   .ret
 }
