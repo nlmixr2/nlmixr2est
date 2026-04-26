@@ -5,7 +5,7 @@
 \title{This is an internal function for replacing the ui with original
 model and dropping artificial data in output}
 \usage{
-.uiFinalizeMu2(ret, model)
+.uiFinalizeMu2(ret)
 }
 \arguments{
 \item{ret}{The object that would be returned, without modification}

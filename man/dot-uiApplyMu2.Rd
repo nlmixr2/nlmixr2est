@@ -4,7 +4,7 @@
 \alias{.uiApplyMu2}
 \title{This is an internal function for modifying the UI to apply mu2 referencing}
 \usage{
-.uiApplyMu2(env)
+.uiApplyMu2(ui, est, data, control)
 }
 \arguments{
 \item{env}{Environment needed for nlmixr2 fits}
