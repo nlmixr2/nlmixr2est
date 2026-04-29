@@ -849,6 +849,16 @@ gnlmm it was -700.}
 \item{agqHi}{The upper bound for adaptive quadrature
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
+
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
 }
 \value{
 The control object that changes the options for the FOCEi

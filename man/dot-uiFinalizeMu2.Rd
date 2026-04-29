@@ -9,8 +9,6 @@ model and dropping artificial data in output}
 }
 \arguments{
 \item{ret}{The object that would be returned, without modification}
-
-\item{model}{The original model to apply}
 }
 \value{
 modified fit updated to show the original model and without

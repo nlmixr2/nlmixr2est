@@ -260,13 +260,21 @@ mu2env$expit <- rxode2::expit
 #' transformation to a single value in the original dataset, and
 #' moving that around
 #'
-#' @param env Environment needed for nlmixr2 fits
+#' @param ui the ui for the model
+#'
+#' @param est the estimation method
+#'
+#' @param data the data provided
+#'
+#' @param control the control object
+#'
 #' @return Either the original model({}) block (if changed) or NULL if
 #'   not changed
+#'
 #' @export
+#'
 #' @author Matthew L. Fidler
 #' @keywords internal
-
 .uiApplyMu2 <- function(ui, est, data, control) {
   .muRefTrans$cur <- vector("list", 0L)
   if (!.isMuMethod(est, control)) {
@@ -284,7 +292,6 @@ mu2env$expit <- rxode2::expit
 #' model and dropping artificial data in output
 #'
 #' @param ret The object that would be returned, without modification
-#' @param model The original model to apply
 #' @return modified fit updated to show the original model and without
 #'   the internal transformations
 #' @export
