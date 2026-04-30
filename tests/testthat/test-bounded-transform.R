@@ -224,6 +224,30 @@ nmTest({
     expect_true(any(grepl("tka", fit$runInfo)))
   })
 
+  test_that("bounded mu-ref state does not leak into later expit models", {
+    suppressMessages(suppressWarnings(
+      nlmixr(.muRefBoundedModel, theo_sd, est = "saem", control = saemControlFast)
+    ))
+
+    .plainExpitModel <- function() {
+      ini({
+        E0 <- 0.5
+        Em <- 0.5
+        E50 <- 2
+        g <- fix(2)
+      })
+      model({
+        v <- E0 + Em * time^g / (E50^g + time^g) + wt
+        p <- expit(v)
+        ll(bin) ~ DV * v - log(1 + exp(v))
+      })
+    }
+
+    expect_error(suppressMessages(.plainExpitModel()), NA)
+    expect_s3_class(suppressMessages(.plainExpitModel()), "rxUi")
+    expect_false(nlmixr2est:::nlmixr2global$transformMu)
+  })
+
   test_that("iov + bounded transformation doesn't break", {
 
     theo_iov <- nlmixr2data::theo_md

@@ -244,6 +244,7 @@
 .preProcessBoundedTransform <- function(ui, est, data, control) {
   nlmixr2global$preProcessBoundedTransform <- FALSE
   nlmixr2global$postEstimationBoundedTransform  <- FALSE
+  nlmixr2global$transformMu <- FALSE
 
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
@@ -449,6 +450,9 @@
 #' @noRd
 #' @author Hajar Besbassi & Matt Fidler
 .postEstimationBoundedTransform <- function(env) {
+  on.exit({
+    nlmixr2global$transformMu <- FALSE
+  }, add = TRUE)
   .ui <- env$ui
   if (is.null(.ui)) return(invisible(NULL))
 
