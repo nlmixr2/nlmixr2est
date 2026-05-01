@@ -1,3 +1,23 @@
+#' Is the estimation method a "mu method"?
+#'
+#'
+#' @param est estimation routine
+#' @param control control object.
+#' @return boolean
+#' @noRd
+#' @author Matthew L. Fidler
+.isMuMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .mu <- attr(utils::getS3method("nlmixr2Est", est), "mu")
+    if (is.null(.mu)) return(FALSE)
+    if (is.function(.mu)) return(isTRUE(.mu(control)))
+    return(isTRUE(.mu))
+  }
+  FALSE
+}
+
 mu2env <- new.env(parent=baseenv())
 mu2env$pow <- function(x, y) {
   (x)^(y)
@@ -27,6 +47,9 @@ mu2env$expit <- rxode2::expit
     expr
   }
 }
+
+.muRefTrans <- new.env(parent=emptyenv())
+.muRefTrans$cur <- vector("list", 0L)
 
 #' Get mu3 covariate
 #'
@@ -217,6 +240,8 @@ mu2env$expit <- rxode2::expit
                                      ui$mu2RefCovariateReplaceDataFrame$covariateParameter[i]))
              .old <- str2lang(ui$mu2RefCovariateReplaceDataFrame$modelExpression[i])
              .datEnv$model <- .uiModifyForCovsRep(.datEnv$model, .old, .new)
+
+             .muRefTrans$cur[[length(.muRefTrans$cur)+1L]] <- list(old=.old, new=.new)
            } else {
              .txt <- paste0("not ",.mu2,", ", .mu3, " or ", .mu4," item: ", ui$mu2RefCovariateReplaceDataFrame$covariate[i])
              .minfo(.txt)
@@ -235,20 +260,30 @@ mu2env$expit <- rxode2::expit
 #' transformation to a single value in the original dataset, and
 #' moving that around
 #'
-#' @param env Environment needed for nlmixr2 fits
+#' @param ui the ui for the model
+#'
+#' @param est the estimation method
+#'
+#' @param data the data provided
+#'
+#' @param control the control object
+#'
 #' @return Either the original model({}) block (if changed) or NULL if
 #'   not changed
+#'
 #' @export
+#'
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiApplyMu2 <- function(env) {
-  if (isTRUE(env$control$muRefCovAlg) &&
-        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
-    .lst     <- .uiModifyForCovs(env$ui, env$data)
-    .model <- rxode2::as.model(env$ui)
-    env$ui   <- .lst$ui
-    env$data <- .lst$data
-    return(.model)
+.uiApplyMu2 <- function(ui, est, data, control) {
+  .muRefTrans$cur <- vector("list", 0L)
+  if (!.isMuMethod(est, control)) {
+    return(NULL)
+  }
+  if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(ui, data)
+    .model <- rxode2::as.model(ui)
+    .lst
   }
   NULL
 }
@@ -257,19 +292,23 @@ mu2env$expit <- rxode2::expit
 #' model and dropping artificial data in output
 #'
 #' @param ret The object that would be returned, without modification
-#' @param model The original model to apply
 #' @return modified fit updated to show the original model and without
 #'   the internal transformations
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiFinalizeMu2 <- function(ret, model) {
-  if (!is.null(model)) {
-    if (is.null(ret$ui)) return(ret)
+.uiFinalizeMu2 <- function(ret) {
+  if (length(.muRefTrans$cur) > 0L) {
+    if (is.null(model)) return(ret)
+    .model <- rxode2::as.model(ret$ui)
+    for (.cur in .muRefTrans$cur) {
+      .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
+    }
     .ui2 <- rxode2::rxUiDecompress(ret$ui)
-    if (is.null(.ui2)) return(ret)
-    rm("control", envir=.ui2)
-    rxode2::model(.ui2) <- model
+    if (exists("control", envir=.ui2)) {
+      rm("control", envir=.ui2)
+    }
+    rxode2::model(.ui2) <- .model
     assign("ui", .ui2, envir=ret$env)
     if (inherits(ret, "data.frame")) {
       .w <- which(grepl("nlmixrMuDerCov[0-9]+", names(ret)))
@@ -286,3 +325,10 @@ mu2env$expit <- rxode2::expit
   .saemModelEnv$predSymengine <- NULL
   ret
 }
+
+
+# -----------------------------------------------------------------------
+# Register hooks
+# -----------------------------------------------------------------------
+preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2)
+postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2)

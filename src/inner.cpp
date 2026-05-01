@@ -3591,7 +3591,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   {
     size_t nall_mix_chk = getRxNallAndMix(rx);
     if (nall_mix_chk > 65535) { // nocov
-      Rf_error("focei: dataset too large for this mixture model configuration " // nocov
+      stop("focei: dataset too large for this mixture model configuration " // nocov
                "(getRxNall * (mixIdxN+1) = %zu would produce an infeasibly large " // nocov
                "allocation). Reduce the number of observations or mixture components.", // nocov
                nall_mix_chk); // nocov
@@ -3605,7 +3605,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   {
     size_t _gEtaGTransN = (op_focei.neta + 1) * getRxNsubAndMix(rx);
     if (_gEtaGTransN > UINT_MAX) { // nocov
-      Rf_error("focei: neta * nsub_mix too large for gEtaGTransN"); // nocov
+      stop("focei: neta * nsub_mix too large for gEtaGTransN"); // nocov
     } // nocov
     op_focei.gEtaGTransN = (unsigned int)_gEtaGTransN;
   }
@@ -6463,12 +6463,17 @@ void parHistData(Environment e, bool focei){
 
 
 void foceiFinalizeTables(Environment e){
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  Function preFinalParTableHooksRun = nlmixr2[".preFinalParTableHooksRun"];
+  preFinalParTableHooksRun(e);
+
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   e["censInformation"] = censEstGetFactor();
   resetCensFlag();
   arma::mat cov;
   bool covExists = e.exists("cov");
-  if (covExists){
+  if (covExists) {
     if (rxode2::rxIs(e["cov"], "matrix")){
       cov= as<arma::mat>(e["cov"]);
     } else {
@@ -6478,8 +6483,6 @@ void foceiFinalizeTables(Environment e){
   LogicalVector skipCov = e["skipCov"];
 
   if (covExists) {
-    Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2est");
     Function getCor = nlmixr2[".cov2cor"];
     e["fullCor"] = getCor(e["cov"]);
     arma::mat cor = as<arma::mat>(e["fullCor"]);
@@ -6508,7 +6511,7 @@ void foceiFinalizeTables(Environment e){
     }
   }
 
-  if (covExists && op_focei.eigen){
+  if (covExists && op_focei.eigen) {
     arma::vec eigval;
     arma::mat eigvec;
 

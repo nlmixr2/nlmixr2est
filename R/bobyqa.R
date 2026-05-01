@@ -381,8 +381,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .bobyqa <- .collectWarn(.bobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$bobyqa <- .bobyqa[[1]]
-  .ret$parHistData <- .ret$bobyqa$parHistData
-  .ret$bobyqa$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "bobyqa")
   .ret$message <- .ret$bobyqa$message
   if (rxode2::rxGetControl(.ui, "returnBobyqa", FALSE)) {
     return(.ret$bobyqa)
@@ -390,8 +389,6 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .bobyqaGetTheta(.ret$bobyqa, .ui)
-  .ret$cov <- .ret$bobyqa$cov
-  .ret$covMethod <- .ret$bobyqa$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -426,5 +423,6 @@ nlmixr2Est.bobyqa <- function(env, ...) {
   .bobyqaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.bobyqa, "covPresent") <- TRUE
+attr(nlmixr2Est.bobyqa, "unbounded") <- FALSE
 
 #minqa::bobyqa()

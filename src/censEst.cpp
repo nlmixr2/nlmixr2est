@@ -4,8 +4,7 @@
 int globalCensFlag = 0;
 
 SEXP censEstGetFactor() {
-  Rcpp::IntegerVector ret(1);
-  ret[0] = globalCensFlag + 1;
+  Rcpp::IntegerVector ret = Rcpp::IntegerVector::create(globalCensFlag + 1);
   ret.attr("class") = "factor";
   // M2 = 1
   // M3 = 2
@@ -19,5 +18,5 @@ SEXP censEstGetFactor() {
                                   "M3 and M4 censoring", // 7
                                   "M2, M3 and M4 censoring" // 8
                                   );
-  return Rcpp::wrap(ret);
+  return ret;
 }

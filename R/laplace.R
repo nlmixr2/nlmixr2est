@@ -166,7 +166,6 @@ nlmixr2Est.laplace <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'laplace'",
                              .var.name=.ui$modelName)
   .control <- env$control
-  .uiApplyIov(env)
   .foceiFamilyControl(env, ..., type="laplaceControl")
   .laplaceControlToFoceiControl(env)
   on.exit({
@@ -177,10 +176,11 @@ nlmixr2Est.laplace <- function(env, ...) {
   env$laplaceControl <- .control
   env$est <- "laplace"
   .ui <- env$ui
-  .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="laplace"))
+  .foceiFamilyReturn(env, .ui, ..., est="laplace")
 }
+attr(nlmixr2Est.laplace, "iov") <- TRUE
 attr(nlmixr2Est.laplace, "covPresent") <- TRUE
-
+attr(nlmixr2Est.laplace, "unbounded") <- .foUnbounded
 
 #' @export
 rxUiDeparse.laplaceControl <- function(object, var) {

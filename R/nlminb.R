@@ -384,11 +384,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
 #' @noRd
 .nlminbFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nlminb' does not work with censored data", call. =FALSE)
-    }
-  }
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
@@ -527,8 +522,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlminb <- .nlminb[[1]]
-  .ret$parHistData <- .ret$nlminb$parHistData
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlminb")
   .ret$message <- .ret$nlminb$message
   if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
     return(.ret$nlminb)
@@ -536,8 +530,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlminbGetTheta(.ret$nlminb, .ui)
-  .ret$cov <- .ret$nlminb$cov
-  .ret$covMethod <- .ret$nlminb$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -572,3 +564,4 @@ nlmixr2Est.nlminb <- function(env, ...) {
   .nlminbFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nlminb, "covPresent") <- TRUE
+attr(nlmixr2Est.nlminb, "unbounded") <- FALSE

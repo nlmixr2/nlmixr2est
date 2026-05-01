@@ -153,6 +153,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
                              list(theta = NULL, eta = NULL)))
 }
 attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
+attr(nlmixr2Est.rxSolve, "unbounded") <- FALSE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -164,6 +165,7 @@ nlmixr2Est.simulate <- function(env, ...) {
                              list(theta = NULL, eta = NULL)))
 }
 attr(nlmixr2Est.simulate, "covPresent") <- TRUE
+attr(nlmixr2Est.simulate, "unbounded") <- FALSE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -182,6 +184,7 @@ nlmixr2Est.simulation <- function(env, ...) {
                              list(theta = NULL, eta = NULL)))
 }
 attr(nlmixr2Est.simulation, "covPresent") <- TRUE
+attr(nlmixr2Est.simulation, "unbounded") <- FALSE
 
 
 #'@rdname nlmixr2Est
@@ -204,6 +207,7 @@ nlmixr2Est.predict <- function(env, ...) {
           est="rxSolve", control=.rxControl)
 }
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
+attr(nlmixr2Est.predict, "unbounded") <- FALSE
 
 #' Get new data
 #'

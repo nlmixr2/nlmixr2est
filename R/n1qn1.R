@@ -73,7 +73,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          addProp = c("combined2", "combined1"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         boundedTransform=TRUE, ...) {
 
   checkmate::assertNumeric(epsilon, len=1, any.missing=FALSE, lower=0)
   checkmate::assertIntegerish(max_iterations, len=1, any.missing=FALSE, lower=10)
@@ -89,6 +90,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -189,7 +191,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-    genRxControl=.genRxControl)
+    genRxControl=.genRxControl,
+    boundedTransform=boundedTransform)
   class(.ret) <- "n1qn1Control"
   .ret
 }
@@ -358,8 +361,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .n1qn1 <- .collectWarn(.n1qn1FitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$n1qn1 <- .n1qn1[[1]]
-  .ret$parHistData <- .ret$n1qn1$parHistData
-  .ret$n1qn1$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "n1qn1")
   .ret$message <- .ret$n1qn1$message
   if (rxode2::rxGetControl(.ui, "returnN1qn1", FALSE)) {
     return(.ret$n1qn1)
@@ -367,8 +369,6 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .n1qn1GetTheta(.ret$n1qn1, .ui)
-  .ret$cov <- .ret$n1qn1$cov
-  .ret$covMethod <- .ret$n1qn1$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -407,3 +407,4 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   .n1qn1FamilyFit(env,  ...)
 }
 attr(nlmixr2Est.n1qn1, "covPresent") <- TRUE
+attr(nlmixr2Est.n1qn1, "unbounded") <- TRUE

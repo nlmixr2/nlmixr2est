@@ -28,7 +28,7 @@ Currently this re-evaluates the function in the current version of rxode2.
   # While it prints well, it can't be used in all functions because
   # Language features (like +var()) are not supported in the v3 version
 
-  print(fit)
+  try(print(fit))
 
   try(rxSolve(fit)) # should error, but with try it will just display the error
 

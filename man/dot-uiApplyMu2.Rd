@@ -4,10 +4,16 @@
 \alias{.uiApplyMu2}
 \title{This is an internal function for modifying the UI to apply mu2 referencing}
 \usage{
-.uiApplyMu2(env)
+.uiApplyMu2(ui, est, data, control)
 }
 \arguments{
-\item{env}{Environment needed for nlmixr2 fits}
+\item{ui}{the ui for the model}
+
+\item{est}{the estimation method}
+
+\item{data}{the data provided}
+
+\item{control}{the control object}
 }
 \value{
 Either the original model({}) block (if changed) or NULL if

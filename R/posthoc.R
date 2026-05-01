@@ -111,3 +111,4 @@ nlmixr2Est.posthoc <- function(env, ...) {
   .ret
 }
 attr(nlmixr2Est.posthoc, "covPresent") <- TRUE
+attr(nlmixr2Est.posthoc, "unbounded") <- FALSE

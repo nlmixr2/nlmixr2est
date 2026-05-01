@@ -726,6 +726,16 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
+#' @param boundedTransform boolean indicating if the bounded
+#'   parameters should by transformed when using a unbounded
+#'   optimization method to make sure they are in bounds.  By default
+#'   this is `TRUE`, which transforms during optimization and
+#'   back-transforms for the final estimates.  When `FALSE`, the
+#'   optimization is performed on the original scale and the bounds
+#'   are passed to the optimization method.  When `NA`, the bounded
+#'   parameters are transformed for the optimization, but the final
+#'   estimates are not back-transformed.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -837,7 +847,9 @@ foceiControl <- function(sigdig = 3, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin"), #
+                                      "Rvmmin",
+                                      "uobyqa",
+                                      "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #
@@ -906,7 +918,8 @@ foceiControl <- function(sigdig = 3, #
                          mceta=-1L,
                          nAGQ=0,
                          agqLow=-Inf,
-                         agqHi=Inf) { #
+                         agqHi=Inf,
+                         boundedTransform=TRUE) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1162,6 +1175,12 @@ foceiControl <- function(sigdig = 3, #
     } else if (outerOpt == "lbfgsbLG") {
       outerOptFun <- .lbfgsbLG
       outerOpt <- -1L
+    } else if (outerOpt == "uobyqa") {
+      outerOptFun <- .uobyqa
+      outerOpt <- -1L
+    } else if (outerOpt == "newuoa") {
+      outerOptFun <- .newuoa
+      outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
         outerOpt <- as.integer(outerOpt)
@@ -1298,6 +1317,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
   checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1422,7 +1442,8 @@ foceiControl <- function(sigdig = 3, #
     mceta=as.integer(mceta),
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
-    agqLow=as.double(agqLow)
+    agqLow=as.double(agqLow),
+    boundedTransform=boundedTransform
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA

@@ -39,6 +39,25 @@ static inline void resetCensFlag() {
   globalCensFlag=0;
 }
 
+static inline double logspace_sub(double logx, double logy) {
+  if (logy > logx) {
+    double tmp = logx;
+    logx = logy;
+    logy = tmp;
+  }
+  if (!R_FINITE(logy)) {
+    return logx;
+  }
+  return logx + log1p(-exp(logy - logx));
+}
+
+static inline double finite_log_prob(double logp) {
+  if (R_FINITE(logp)) {
+    return logp;
+  }
+  return log(DBL_MIN);
+}
+
 // This is the core censoring likelihood function for nlmixr2
 //
 // @param cens Censoring input value, can be -1, 0, or 1, based on the CENS column
@@ -62,19 +81,22 @@ static inline double doCensNormal1(double cens, double limDv, double lim, double
     // So the negative represents the fact this is the denominator
     // The M2 can also be applied for quantitation above the limit.
     updateCensFlag(censFlagM2);
-    return ll - log(1.0 - PHI(((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r))) - adj;
+    double z = ((lim<f)*2.0 - 1.0)*(lim - f)/sqrt(r);
+    return ll - finite_log_prob(R::pnorm5(z, 0.0, 1.0, 0, 1)) - adj;
   } else if (isM3orM4(cens)) {
     if (hasFiniteLimit(lim)) {
       // M4 method
       double sd = sqrt(r);
-      double cum1 = PHI(cens*(limDv-f)/sd);
-      double cum2 = PHI(cens*(lim - f)/sd);
+      double logCum1 = R::pnorm5(cens*(limDv-f)/sd, 0.0, 1.0, 1, 1);
+      double logCum2 = R::pnorm5(cens*(lim - f)/sd, 0.0, 1.0, 1, 1);
+      double logTail = R::pnorm5(cens*(lim - f)/sd, 0.0, 1.0, 0, 1);
       updateCensFlag(censFlagM4);
-      return log(cum1-cum2) - log(1.0 - cum2) - adj;
+      return finite_log_prob(logspace_sub(logCum1, logCum2)) -
+        finite_log_prob(logTail) - adj;
     } else {
       // M3 method
       updateCensFlag(censFlagM3);
-      return log(PHI(cens*(limDv-f)/sqrt(r))) - adj;
+      return finite_log_prob(R::pnorm5(cens*(limDv-f)/sqrt(r), 0.0, 1.0, 1, 1)) - adj;
     }
   }
   return ll;
