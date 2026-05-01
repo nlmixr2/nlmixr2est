@@ -194,9 +194,9 @@ nmTest({
   })
 
   # Model where tka is bounded AND mu-referenced via exp(tka + eta.ka).
-  # Applying the bounded transform renames tka to tka_untransformed and
-  # breaks mu-referencing; .getBoundedParams should emit a warning that
-  # is captured into fit$runInfo via the stash-and-reemit mechanism.
+  # The bounded transform rewrites the internal parameter, but the final
+  # fit should retain the original interface without emitting a spurious
+  # "performance degraded" warning when encoded mu-referencing is preserved.
   .muRefBoundedModel <- function() {
     ini({
       tka    <- c(-5, 0.45, 5)
@@ -215,13 +215,13 @@ nmTest({
     })
   }
 
-  test_that("mu-ref breaking warning is captured in fit$runInfo", {
+  test_that("bounded mu-ref rewrite preserves runInfo and public theta names", {
     fit <- suppressMessages(suppressWarnings(
       nlmixr(.muRefBoundedModel, theo_sd, est = "saem", control = saemControlFast)
     ))
-    expect_true(length(fit$runInfo) > 0)
-    expect_true(any(grepl("mu-reference transform", fit$runInfo)))
-    expect_true(any(grepl("tka", fit$runInfo)))
+    expect_true("tka" %in% names(fit$theta))
+    expect_false(any(grepl("^rxBoundedTr\\.", names(fit$theta))))
+    expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
   })
 
   test_that("bounded mu-ref state does not leak into later expit models", {
@@ -308,7 +308,9 @@ nmTest({
       })
     }
 
-    expect_error(nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast), NA)
+    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
 
 
     one.cmt.iov.mu2 <- function() {
@@ -334,8 +336,9 @@ nmTest({
       })
     }
 
-    expect_error(nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast),
-                 NA)
+    fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
 
 
   })

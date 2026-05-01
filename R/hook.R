@@ -231,6 +231,15 @@ preFinalParTableHooks <- function(name=NULL) {
 
 .preProcessHooks <- new.env(parent=emptyenv())
 
+.orderPreProcessHookNames <- function(names) {
+  .last <- ".preProcessBoundedTransform"
+  if (.last %in% names) {
+    c(names[names != .last], .last)
+  } else {
+    names
+  }
+}
+
 #' This adds a pre-processing hook to nlmixr2est
 #'
 #' This pre-processing hook is run before the estimation process begins.  It is
@@ -298,7 +307,7 @@ preProcessHooksRm <- function(name) {
 #' @family preProcessHooks
 preProcessHooks <- function(name=NULL) {
   if (is.null(name)) {
-    ls(envir=.preProcessHooks, all.names=TRUE)
+    .orderPreProcessHookNames(ls(envir=.preProcessHooks, all.names=TRUE))
   } else {
     checkmate::assertCharacter(name, len=1,
                                pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",

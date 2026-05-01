@@ -30,12 +30,7 @@
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
 
-  # Check which params already have a mu-ref transform
-  .ce <- ui$muRefCurEval
-
   .transforms <- list()
-  .muRef <-  .isMuMethod(est, control)
-  nlmixr2global$transformMu  <- .muRef
   for (i in seq_len(nrow(.thetaDf))) {
     .name <- .thetaDf$name[i]
     .lo <- .thetaDf$lower[i]
@@ -46,13 +41,15 @@
     if (.thetaDf$fix[i]) next
     # Skip residual error params (have non-NA err column)
     if (!is.na(.thetaDf$err[i])) next
+    # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
+    # path is handled in R/iov.R and should not be rewrapped here.
+    if (!is.na(.thetaDf$backTransform[i]) &&
+          grepl("^nlmixr2iov", .thetaDf$backTransform[i])) next
 
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)
-    .warn <- FALSE
 
     if (.hasLo && .hasHi) {
-      .warn <- TRUE
       .eps <- (.hi - .lo) * 1e-6
       .estClamped <- max(.lo + .eps, min(.hi - .eps, .est))
       .transforms[[length(.transforms) + 1]] <- list(
@@ -65,7 +62,6 @@
         initOrig = .est
       )
     } else if (.hasLo && !.hasHi) {
-      .warn <- TRUE
       .val <- .est - .lo
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -78,7 +74,6 @@
         initOrig = .est
       )
     } else if (!.hasLo && .hasHi) {
-      .warn <- TRUE
       .val <- .hi - .est
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -91,17 +86,36 @@
         initOrig = .est
       )
     }
-    # Warn if already mu-referenced has a transform because it breaks mu-referencing
-    if (.muRef && .warn) {
-      .w <- which(.ce$parameter == .name)
-      if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
-        warning(" mu-reference transform (", .ce$curEval[.w],
-                ") for `", .name, "` lost since bounded (and performance degraded)",
-                call. = FALSE)
-      }
-    }
   }
   .transforms
+}
+
+.warnOnLostBoundedMuRef <- function(ui, newUi, transforms, est, control) {
+  if (!.isMuMethod(est, control)) {
+    nlmixr2global$transformMu <- FALSE
+    return(invisible(NULL))
+  }
+  .oldCe <- ui$muRefCurEval
+  .newCe <- newUi$muRefCurEval
+  .lostMuRef <- FALSE
+  for (.tr in transforms) {
+    .wOld <- which(.oldCe$parameter == .tr$name)
+    if (length(.wOld) != 1L) next
+    .oldEval <- .oldCe$curEval[.wOld]
+    if (!.isCurEvalEncodedFunction(.oldEval) || nchar(.oldEval) == 0L) next
+    .wNew <- which(.newCe$parameter == .tr$internalName)
+    if (length(.wNew) == 1L &&
+          .isCurEvalEncodedFunction(.newCe$curEval[.wNew]) &&
+          nchar(.newCe$curEval[.wNew]) > 0L) {
+      next
+    }
+    .lostMuRef <- TRUE
+    warning(" mu-reference transform (", .oldEval,
+            ") for `", .tr$name, "` lost since bounded (and performance degraded)",
+            call. = FALSE)
+  }
+  nlmixr2global$transformMu <- .lostMuRef
+  invisible(NULL)
 }
 
 #' Build the transform expression for a parameter
@@ -255,6 +269,7 @@
   nlmixr2global$preProcessBoundedTransform <- TRUE
 
   .newUi <- .rewriteModelWithTransforms(ui, .transforms)
+  .warnOnLostBoundedMuRef(ui, .newUi, .transforms, est, control)
 
   list(ui = .newUi)
 }
