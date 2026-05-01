@@ -2558,29 +2558,33 @@ static inline double foceiLik0(double *theta) {
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
-    if (op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN){
-      // atolRtolFactor_() is per-thread; apply the inverse factor to every
-      // individual so the next foceiLik0 call sees restored tolerances.
-      double _resetFactor = pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN);
-      int _nsub = (int)getRxNsubAndMix(rx);
-      for (int _i = 0; _i < _nsub; _i++) {
-        rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
-        setIndTolFactor(_indI, getIndTolFactor(_indI) * _resetFactor);
-      }
-    } else {
+    // Per-individual tolFactor is sticky: stiff subjects keep their loosened
+    // tolerance across optimizer calls — no tolerance reset.
+    if (op_focei.stickyRecalcN1 > op_focei.stickyRecalcN) {
       op_focei.stickyTol=1;
     }
   }
   double ret = -2*foceiLik0(theta);
+  rx_solving_options *_op0 = getSolvingOptions(rx);
   while (!op_focei.calcGrad && op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN &&
          (std::isnan(ret) || std::isinf(ret)) &&
          op_focei.objfRecalN < op_focei.maxOdeRecalc){
     op_focei.reducedTol=1;
-    // Loosen tolerances on every individual so the retry sees relaxed ODE tols.
-    int _nsub = (int)getRxNsubAndMix(rx);
-    for (int _i = 0; _i < _nsub; _i++) {
-      rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
-      setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
+    // Only loosen subjects whose ODE solve produced NaN/Inf — stiff subjects
+    // accumulate loosening across calls; non-stiff subjects are unaffected.
+    if (getOpNeq(_op0) > 0) {
+      int _nsub = (int)getRxNsubAndMix(rx);
+      for (int _i = 0; _i < _nsub; _i++) {
+        rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
+        double *_solveI = getIndSolve(_indI);
+        int _nsolveI = getOpNeq(_op0) * getIndNallTimes(_indI);
+        for (int _ns = 0; _ns < _nsolveI; _ns++) {
+          if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
+            setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
+            break;
+          }
+        }
+      }
     }
     ret = -2*foceiLik0(theta);
     op_focei.objfRecalN++;

@@ -1992,22 +1992,27 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int j=0;
   while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
-    // atolRtolFactor_() is now per-thread, so a serial call before par_solve
-    // would only affect one individual's tolFactor.  Set it on every subject
-    // directly so par_solve / iniSubject picks up the loosened tolerance.
-    for (int _i = 0; _i < _Nnlmixr2; _i++) {
-      rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-      setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+    // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
+    // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
+    // subsequent SAEM iterations — genuinely stiff subjects stay loosened.
+    if (getOpNeq(op) > 0) {
+      for (int _i = 0; _i < _Nnlmixr2; _i++) {
+        rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+        double *_solveI = getIndSolve(_indI);
+        int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
+        for (int _ns = 0; _ns < _nsolveI; _ns++) {
+          if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
+            setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+            break;
+          }
+        }
+      }
     }
     resetRxBadSolve(_rx);
     par_solve(_rx);
     j++;
   }
-  if (j != 0) {
-    for (int _i = 0; _i < _Nnlmixr2; _i++) {
-      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
-    }
-  }
+  // No reset: stiff subjects retain their loosened tolFactor across iterations.
   mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
   int elt=0;
   bool hasNan = false;
