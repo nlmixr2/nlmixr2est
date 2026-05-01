@@ -821,18 +821,18 @@ nlmixr2Est.saem <- function(env, ...) {
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
-  .uiApplyIov(env)
   .saemFamilyControl(env, ...)
   on.exit({
     if (exists("control", envir=.ui)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)
-  .uiFinalizeIov(.saemFamilyFit(env,  ...))
+  .saemFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.saem, "covPresent") <- TRUE
 attr(nlmixr2Est.saem, "unbounded") <- TRUE
 attr(nlmixr2Est.saem, "mu") <- TRUE
+attr(nlmixr2Est.saem, "iov") <- TRUE
 
 
 #' @rdname nmObjGet

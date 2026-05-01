@@ -30,12 +30,7 @@
   .iniDf <- ui$iniDf
   .thetaDf <- .iniDf[!is.na(.iniDf$ntheta), ]
 
-  # Check which params already have a mu-ref transform
-  .ce <- ui$muRefCurEval
-
   .transforms <- list()
-  .muRef <-  .isMuMethod(est, control)
-  nlmixr2global$transformMu  <- .muRef
   for (i in seq_len(nrow(.thetaDf))) {
     .name <- .thetaDf$name[i]
     .lo <- .thetaDf$lower[i]
@@ -46,13 +41,15 @@
     if (.thetaDf$fix[i]) next
     # Skip residual error params (have non-NA err column)
     if (!is.na(.thetaDf$err[i])) next
+    # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
+    # path is handled in R/iov.R and should not be rewrapped here.
+    if (!is.na(.thetaDf$backTransform[i]) &&
+          grepl("^nlmixr2iov", .thetaDf$backTransform[i])) next
 
     .hasLo <- is.finite(.lo)
     .hasHi <- is.finite(.hi)
-    .warn <- FALSE
 
     if (.hasLo && .hasHi) {
-      .warn <- TRUE
       .eps <- (.hi - .lo) * 1e-6
       .estClamped <- max(.lo + .eps, min(.hi - .eps, .est))
       .transforms[[length(.transforms) + 1]] <- list(
@@ -65,7 +62,6 @@
         initOrig = .est
       )
     } else if (.hasLo && !.hasHi) {
-      .warn <- TRUE
       .val <- .est - .lo
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -78,7 +74,6 @@
         initOrig = .est
       )
     } else if (!.hasLo && .hasHi) {
-      .warn <- TRUE
       .val <- .hi - .est
       if (.val <= 0) .val <- 1e-6
       .transforms[[length(.transforms) + 1]] <- list(
@@ -91,17 +86,100 @@
         initOrig = .est
       )
     }
-    # Warn if already mu-referenced has a transform because it breaks mu-referencing
-    if (.muRef && .warn) {
-      .w <- which(.ce$parameter == .name)
-      if (length(.w) == 1L && nchar(.ce$curEval[.w]) > 0) {
-        warning(" mu-reference transform (", .ce$curEval[.w],
-                ") for `", .name, "` lost since bounded (and performance degraded)",
-                call. = FALSE)
-      }
-    }
   }
   .transforms
+}
+
+.warnOnLostBoundedMuRef <- function(ui, newUi, transforms, est, control) {
+  if (!.isMuMethod(est, control)) {
+    nlmixr2global$transformMu <- FALSE
+    return(invisible(NULL))
+  }
+  .oldCe <- ui$muRefCurEval
+  .newCe <- newUi$muRefCurEval
+  .lostMuRef <- FALSE
+  for (.tr in transforms) {
+    .wOld <- which(.oldCe$parameter == .tr$name)
+    if (length(.wOld) != 1L) next
+    .oldEval <- .oldCe$curEval[.wOld]
+    if (!.isCurEvalEncodedFunction(.oldEval) || nchar(.oldEval) == 0L) next
+    .wNew <- which(.newCe$parameter == .tr$internalName)
+    if (length(.wNew) == 1L &&
+          .isCurEvalEncodedFunction(.newCe$curEval[.wNew]) &&
+          nchar(.newCe$curEval[.wNew]) > 0L) {
+      next
+    }
+    .lostMuRef <- TRUE
+    warning(" mu-reference transform (", .oldEval,
+            ") for `", .tr$name, "` lost since bounded (and performance degraded)",
+            call. = FALSE)
+  }
+  nlmixr2global$transformMu <- .lostMuRef
+  invisible(NULL)
+}
+#' These are synthetic eta parameters from IOV
+#'
+#' @param ui rxode2 ui object
+#' @return names of synthetic IOV eta parameters (character vector)
+#' @noRd
+#' @author Matthew L. Fidler
+.getSyntheticIovEtaNames <- function(ui) {
+  .iniDf <- ui$iniDf
+  unique(.iniDf$name[
+    is.na(.iniDf$ntheta) &
+      !is.na(.iniDf$neta1) &
+      grepl("^rx[.]", .iniDf$name)
+  ])
+}
+#' Reduce the warning message to remove synthetic iov etas
+#'
+#' @param msg warning message
+#' @param iovEtaNames character vector of synthetic IOV eta names to
+#'   filter out
+#' @return boolean: TRUE if the message is a synthetic IOV mu warning
+#'   that should be filtered out, FALSE otherwise
+ #' @export
+#' @author Matthew L. Fidler
+.isSyntheticIovMuWarning <- function(msg, iovEtaNames) {
+  .prefix <- "some etas defaulted to non-mu referenced, possible parsing error:"
+  if (!startsWith(msg, .prefix)) return(FALSE)
+  .line <- strsplit(msg, "\n", fixed = TRUE)[[1]][1]
+  .etas <- trimws(strsplit(sub(.prefix, "", .line, fixed = TRUE), ",", fixed = TRUE)[[1]])
+  length(.etas) > 0L && all(.etas %in% iovEtaNames)
+}
+#' filter the synthetic IOVs
+#'
+#'
+#' @param warnings character vector of warning messages
+#' @param ui rxode2 ui object
+#' @return character vector of warning messages with synthetic IOV mu
+#'   warnings filtered out
+#' @noRd
+#' @author Matthew L. Fidler
+.filterSyntheticIovMuWarnings <- function(warnings, ui) {
+  if (length(warnings) == 0L) return(warnings)
+  .iovEtaNames <- .getSyntheticIovEtaNames(ui)
+  if (length(.iovEtaNames) == 0L) return(warnings)
+  warnings[!vapply(warnings, .isSyntheticIovMuWarning, logical(1), iovEtaNames = .iovEtaNames)]
+}
+#' Decompress model functions
+#'
+#'
+#' @param ui rxode2 ui object
+#' @return rxode2 ui object with model functions decompressed, suppressing warnings
+#' @noRd
+#' @author Matthew L. Fidler
+.rxUiDecompressModelFun <- function(ui) {
+  .iovEtaNames <- .getSyntheticIovEtaNames(ui)
+  withCallingHandlers(
+    rxode2::rxUiDecompress(ui$fun()),
+    warning = function(w) {
+      .msg <- conditionMessage(w)
+      if (.isSyntheticIovMuWarning(.msg, .iovEtaNames)) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
 }
 
 #' Build the transform expression for a parameter
@@ -183,7 +261,16 @@
   .ini[[1]] <- quote(`ini`)
 
   .mod <- .getUiFunFromIniAndModel(ui, .ini, .model)
-  .newUi <- .mod()
+  .iovEtaNames <- .getSyntheticIovEtaNames(ui)
+  .newUi <- withCallingHandlers(
+    .mod(),
+    warning = function(w) {
+      .msg <- conditionMessage(w)
+      if (.isSyntheticIovMuWarning(.msg, .iovEtaNames)) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
 
   # Store transform info and original model for post-estimation hook
   .newUi$boundedTransforms <- transforms
@@ -244,6 +331,7 @@
 .preProcessBoundedTransform <- function(ui, est, data, control) {
   nlmixr2global$preProcessBoundedTransform <- FALSE
   nlmixr2global$postEstimationBoundedTransform  <- FALSE
+  nlmixr2global$transformMu <- FALSE
 
   if (!.isUnboundedMethod(est, control)) return(NULL)
 
@@ -254,6 +342,7 @@
   nlmixr2global$preProcessBoundedTransform <- TRUE
 
   .newUi <- .rewriteModelWithTransforms(ui, .transforms)
+  .warnOnLostBoundedMuRef(ui, .newUi, .transforms, est, control)
 
   list(ui = .newUi)
 }
@@ -449,6 +538,9 @@
 #' @noRd
 #' @author Hajar Besbassi & Matt Fidler
 .postEstimationBoundedTransform <- function(env) {
+  on.exit({
+    nlmixr2global$transformMu <- FALSE
+  }, add = TRUE)
   .ui <- env$ui
   if (is.null(.ui)) return(invisible(NULL))
 
@@ -471,7 +563,7 @@
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
 #'
-#' @return
+#' @return a named list with two logical elements: \code{pre} is \code{TRUE} if the pre-processing hook ran and injected transforms, and \code{post} is \code{TRUE} if the post-estimation hook ran and applied back-transforms. Both are \code{FALSE} if the hooks were not triggered (e.g., because the method is bounded-native or there are no bounded parameters).
 #' @keywords internal
 #' @noRd
 #' @author Matthew L. Fidler
