@@ -17,10 +17,10 @@
 #include <atomic>
 
 // Flag indicating we're inside the parallel inner optimization region.
-// When set, thread-unsafe operations (atolRtolFactor_, R warnings/errors,
-// running mean accumulation) are skipped or deferred.  Atomic so that
-// worker threads see a consistent value without a data race on the plain
-// int read that TSan would flag.
+// When set, thread-unsafe operations (R warnings/errors, running mean
+// accumulation) are skipped or deferred.  Atomic so that worker threads
+// see a consistent value without a data race on the plain int read that
+// TSan would flag.
 static std::atomic<int> _innerParallel{0};
 
 // Generation counter: incremented by any thread whose ODE solve genuinely
@@ -984,17 +984,14 @@ double likInner0(double *eta, int id) {
         }
       } else {
         // Serial path: retry with relaxed tolerances on ODE failure.
-        // Cannot run in parallel because ind_liblsoda reads op->atol2/
-        // rtol2 without synchronisation — swapping those pointers from
-        // one thread while another thread enters ind_liblsoda causes
-        // the non-retrying thread to pick up the wrong tolerance array.
+        // atolRtolFactor_() is per-thread and updates ind->tolFactor so
+        // iniSubject() reapplies the factor on every subsequent re-solve.
         j=0;
         while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
                && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
           op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
           op_focei.reducedTol.store(1, std::memory_order_relaxed);
           op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-          // Safe in serial: only one thread touches op->atol2/rtol2.
           rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
           setIndSolve(ind,-1);
           resetOpBadSolve(op);
@@ -2562,7 +2559,14 @@ static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
     if (op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN){
-      rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN));
+      // atolRtolFactor_() is per-thread; apply the inverse factor to every
+      // individual so the next foceiLik0 call sees restored tolerances.
+      double _resetFactor = pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN);
+      int _nsub = (int)getRxNsubAndMix(rx);
+      for (int _i = 0; _i < _nsub; _i++) {
+        rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
+        setIndTolFactor(_indI, getIndTolFactor(_indI) * _resetFactor);
+      }
     } else {
       op_focei.stickyTol=1;
     }
@@ -2572,7 +2576,12 @@ static inline double foceiOfv0(double *theta){
          (std::isnan(ret) || std::isinf(ret)) &&
          op_focei.objfRecalN < op_focei.maxOdeRecalc){
     op_focei.reducedTol=1;
-    rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
+    // Loosen tolerances on every individual so the retry sees relaxed ODE tols.
+    int _nsub = (int)getRxNsubAndMix(rx);
+    for (int _i = 0; _i < _nsub; _i++) {
+      rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
+      setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
+    }
     ret = -2*foceiLik0(theta);
     op_focei.objfRecalN++;
   }

@@ -1992,14 +1992,21 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int j=0;
   while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
-    rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
+    // atolRtolFactor_() is now per-thread, so a serial call before par_solve
+    // would only affect one individual's tolFactor.  Set it on every subject
+    // directly so par_solve / iniSubject picks up the loosened tolerance.
+    for (int _i = 0; _i < _Nnlmixr2; _i++) {
+      rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+      setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+    }
     resetRxBadSolve(_rx);
     par_solve(_rx);
     j++;
   }
   if (j != 0) {
-    // Not thread safe
-    rxode2::atolRtolFactor_(pow(_saemOdeRecalcFactor, -j));
+    for (int _i = 0; _i < _Nnlmixr2; _i++) {
+      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
+    }
   }
   mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
   int elt=0;

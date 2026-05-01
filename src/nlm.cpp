@@ -299,7 +299,6 @@ void nlmSolveNlm(int id) {
          hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol  = 1;
-    // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     nlmOde(id);
@@ -307,7 +306,6 @@ void nlmSolveNlm(int id) {
   }
   if (j != 0) {
     if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
       rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
     } else {
       nlmOp.stickyTol=1;
@@ -324,7 +322,6 @@ void nlmSolvePred(int &id) {
          hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
     nlmOp.stickyRecalcN2++;
     nlmOp.reducedTol2 = 1;
-    // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     predOde(id);
@@ -332,7 +329,6 @@ void nlmSolvePred(int &id) {
   }
   if (j != 0) {
     if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
       rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
     } else {
       nlmOp.stickyTol=1;
