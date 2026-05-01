@@ -305,9 +305,8 @@ void nlmSolveNlm(int id) {
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (nlmOp.stickyRecalcN2 > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -328,9 +327,8 @@ void nlmSolvePred(int &id) {
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (nlmOp.stickyRecalcN2 > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
