@@ -311,6 +311,7 @@ nmTest({
     fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
     expect_true(inherits(fit, "nlmixr2FitCore"))
     expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
+    expect_false(any(grepl("rx.iov.cl.2", fit$runInfo, fixed = TRUE)))
 
 
     one.cmt.iov.mu2 <- function() {
@@ -339,6 +340,7 @@ nmTest({
     fit <- nlmixr(one.cmt.iov.mu2, theo_iov, est="saem", control = saemControlFast)
     expect_true(inherits(fit, "nlmixr2FitCore"))
     expect_false(any(grepl("performance degraded", fit$runInfo, fixed = TRUE)))
+    expect_false(any(grepl("rx.iov.cl.2", fit$runInfo, fixed = TRUE)))
 
 
   })
