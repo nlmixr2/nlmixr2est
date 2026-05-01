@@ -341,6 +341,10 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   int pro = 0;
   SEXP s0 = PROTECT(VECTOR_ELT(npdeSim, 0)); pro++;
   int simLen = Rf_length(s0);
+  if (simLen == 0) {
+    UNPROTECT(pro);
+    stop("npdeCalc: simulation input has zero rows");
+  }
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;
