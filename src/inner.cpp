@@ -194,6 +194,7 @@ struct focei_options {
   std::atomic<int> stickyRecalcN2{0};
   int stickyRecalcN;
   std::atomic<int> stickyTol{0};
+  bool indTolRelax;
 
   int nsim;
   unsigned int nzm;
@@ -2558,10 +2559,24 @@ static inline double foceiLik0(double *theta) {
 static inline double foceiOfv0(double *theta){
   if (op_focei.objfRecalN != 0 && !op_focei.calcGrad) {
     op_focei.stickyRecalcN1++;
-    // Per-individual tolFactor is sticky: stiff subjects keep their loosened
-    // tolerance across optimizer calls — no tolerance reset.
-    if (op_focei.stickyRecalcN1 > op_focei.stickyRecalcN) {
-      op_focei.stickyTol=1;
+    if (op_focei.indTolRelax) {
+      // Per-individual tolFactor is sticky: stiff subjects keep their loosened
+      // tolerance across optimizer calls — no tolerance reset.
+      if (op_focei.stickyRecalcN1 > op_focei.stickyRecalcN) {
+        op_focei.stickyTol=1;
+      }
+    } else {
+      if (op_focei.stickyRecalcN1 <= op_focei.stickyRecalcN) {
+        // Reset all subjects' tolerances to prepare for the next evaluation.
+        double _resetFactor = pow(op_focei.odeRecalcFactor, -op_focei.objfRecalN);
+        int _nsub = (int)getRxNsubAndMix(rx);
+        for (int _i = 0; _i < _nsub; _i++) {
+          rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
+          setIndTolFactor(_indI, getIndTolFactor(_indI) * _resetFactor);
+        }
+      } else {
+        op_focei.stickyTol=1;
+      }
     }
   }
   double ret = -2*foceiLik0(theta);
@@ -2570,20 +2585,29 @@ static inline double foceiOfv0(double *theta){
          (std::isnan(ret) || std::isinf(ret)) &&
          op_focei.objfRecalN < op_focei.maxOdeRecalc){
     op_focei.reducedTol=1;
-    // Only loosen subjects whose ODE solve produced NaN/Inf — stiff subjects
-    // accumulate loosening across calls; non-stiff subjects are unaffected.
-    if (getOpNeq(_op0) > 0) {
+    if (op_focei.indTolRelax) {
+      // Only loosen subjects whose ODE solve produced NaN/Inf — stiff subjects
+      // accumulate loosening across calls; non-stiff subjects are unaffected.
+      if (getOpNeq(_op0) > 0) {
+        int _nsub = (int)getRxNsubAndMix(rx);
+        for (int _i = 0; _i < _nsub; _i++) {
+          rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
+          double *_solveI = getIndSolve(_indI);
+          int _nsolveI = getOpNeq(_op0) * getIndNallTimes(_indI);
+          for (int _ns = 0; _ns < _nsolveI; _ns++) {
+            if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
+              setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      // Loosen all subjects uniformly.
       int _nsub = (int)getRxNsubAndMix(rx);
       for (int _i = 0; _i < _nsub; _i++) {
         rx_solving_options_ind *_indI = getSolvingOptionsInd(rx, _i);
-        double *_solveI = getIndSolve(_indI);
-        int _nsolveI = getOpNeq(_op0) * getIndNallTimes(_indI);
-        for (int _ns = 0; _ns < _nsolveI; _ns++) {
-          if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
-            setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
-            break;
-          }
-        }
+        setIndTolFactor(_indI, getIndTolFactor(_indI) * op_focei.odeRecalcFactor);
       }
     }
     ret = -2*foceiLik0(theta);
@@ -3805,6 +3829,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
+  op_focei.indTolRelax = as<bool>(foceiO["indTolRelax"]);
   op_focei.reducedTol = 0;
   op_focei.repeatGill=0;
   op_focei.repeatGillN=0;

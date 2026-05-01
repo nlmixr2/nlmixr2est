@@ -597,6 +597,12 @@
 #' @param stickyRecalcN The number of bad ODE solves before reducing
 #'     the atol/rtol for the rest of the problem.
 #'
+#' @param indTolRelax When `TRUE` (default), only subjects whose ODE
+#'     solve produced NaN/Inf have their tolerances relaxed, and the
+#'     relaxed tolerance persists across optimizer calls (sticky).
+#'     When `FALSE`, all subjects have their tolerances relaxed on
+#'     each retry and tolerances are reset afterward.
+#'
 #' @param nRetries If FOCEi doesn't fit with the current parameter
 #'     estimates, randomly sample new parameter estimates and restart
 #'     the problem.  This is similar to 'PsN' resampling.
@@ -903,6 +909,7 @@ foceiControl <- function(sigdig = 3, #
                          etaMat = NULL, #
                          repeatGillMax = 1,#
                          stickyRecalcN = 4, #
+                         indTolRelax = TRUE, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
@@ -1300,6 +1307,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
@@ -1421,6 +1429,7 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
+    indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
