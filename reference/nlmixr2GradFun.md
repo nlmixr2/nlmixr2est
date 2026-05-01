@@ -104,6 +104,7 @@ This is an internal module used with dynmodel
 ## Examples
 
 ``` r
+
 func0 <- function(x){ sum(sin(x))  }
 
 ## This will printout every interation or when print=X

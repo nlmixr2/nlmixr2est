@@ -21,6 +21,7 @@ Matthew Fidler
 ## Examples
 
 ``` r
+
 # nmSupressMsg() is called with nlmixr2()
 
 # In nlmixr2, we use REprintf so that interrupted threads do not crash R

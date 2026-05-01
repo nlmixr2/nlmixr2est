@@ -396,6 +396,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 # A logit regression example with emax model
 
@@ -458,8 +459,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup table    other
-#> elapsed 0.003031 0.037 1.782969
+#>            setup table compress    other
+#> elapsed 0.005575 0.039    0.001 1.673425
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

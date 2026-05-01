@@ -139,6 +139,7 @@ Matrix package authors.
 ## Examples
 
 ``` r
+
 set.seed(27)
 m <- matrix(round(rnorm(25),2), 5, 5)
 m <- m + t(m)

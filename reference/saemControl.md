@@ -332,6 +332,17 @@ saemControl(
 
   - `logvar` Estimate the IOV as the log(var) instead of variance.
 
+- boundedTransform:
+
+  boolean indicating if the bounded parameters should by transformed
+  when using a unbounded optimization method to make sure they are in
+  bounds. By default this is \`TRUE\`, which transforms during
+  optimization and back-transforms for the final estimates. When
+  \`FALSE\`, the optimization is performed on the original scale and the
+  bounds are passed to the optimization method. When \`NA\`, the bounded
+  parameters are transformed for the optimization, but the final
+  estimates are not back-transformed.
+
 - ...:
 
   Other arguments to control SAEM.

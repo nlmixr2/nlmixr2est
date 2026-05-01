@@ -36,6 +36,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 one.cmt <- function() {
@@ -89,11 +90,9 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
+#> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429432
-#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
-#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
+#> → compress phiM in nlmixr2 object, save 429424
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -111,8 +110,8 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>           setup covariance  saem table compress    other time2 time1
-#> elapsed 0.00204   0.009016 2.733 0.074    0.058 0.705944 1.002 1.002
+#>            setup covariance  saem table compress    other time2 time1
+#> elapsed 0.004707   0.008014 2.955 0.059    0.058 0.662279 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -126,9 +125,6 @@ print(fit)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
-#>   Information about run found ($runInfo):
-#>    • mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded) 
-#>    • to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE) 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

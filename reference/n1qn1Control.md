@@ -360,6 +360,17 @@ n1qn1Control(
   it matches the significant digits in the \`sigdig\` optimization
   algorithm. If \`sigdig\` is NULL, use 3.
 
+- boundedTransform:
+
+  boolean indicating if the bounded parameters should by transformed
+  when using a unbounded optimization method to make sure they are in
+  bounds. By default this is \`TRUE\`, which transforms during
+  optimization and back-transforms for the final estimates. When
+  \`FALSE\`, the optimization is performed on the original scale and the
+  bounds are passed to the optimization method. When \`NA\`, the bounded
+  parameters are transformed for the optimization, but the final
+  estimates are not back-transformed.
+
 - ...:
 
   Ignored parameters
@@ -375,6 +386,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 # A logit regression example with emax model
 
@@ -437,8 +449,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>          setup table compress  other
-#> elapsed 0.0052 0.037    0.001 0.9248
+#>            setup table compress    other
+#> elapsed 0.006238 0.029    0.001 0.908762
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

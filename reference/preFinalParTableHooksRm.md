@@ -1,24 +1,23 @@
-# Return a list of all pre-processing hooks
+# Remove the hook from the pre-final table nlmixr2est
 
-Return a list of all pre-processing hooks
+This removes the hook from nlmixr2est. If the hook does not exist, a
+warning is issued.
 
 ## Usage
 
 ``` r
-preProcessHooks(name = NULL)
+preFinalParTableHooksRm(name)
 ```
 
 ## Arguments
 
 - name:
 
-  when specified, the name of the hook, otherwise \`NULL\` to list all
-  hooks
+  Character vector representing the name of the hook
 
 ## Value
 
-a charcter vector listing all pre-processing hooks or the function for
-the hook
+logical indicating if the hook was removed (invisibly)
 
 ## See also
 
@@ -28,7 +27,7 @@ Other preProcessHooks:
 [`postFinalObjectHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/postFinalObjectHooksRm.md),
 [`preFinalParTableHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooks.md),
 [`preFinalParTableHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooksAdd.md),
-[`preFinalParTableHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooksRm.md),
+[`preProcessHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.md),
 [`preProcessHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksAdd.md),
 [`preProcessHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.md)
 

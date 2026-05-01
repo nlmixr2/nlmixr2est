@@ -29,6 +29,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 mod <- function ()  {
  description <- "One compartment PK model with linear clearance"
  ini({

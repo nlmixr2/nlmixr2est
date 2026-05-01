@@ -6,7 +6,7 @@ and dropping artificial data in output
 ## Usage
 
 ``` r
-.uiFinalizeMu2(ret, model)
+.uiFinalizeMu2(ret)
 ```
 
 ## Arguments
@@ -14,10 +14,6 @@ and dropping artificial data in output
 - ret:
 
   The object that would be returned, without modification
-
-- model:
-
-  The original model to apply
 
 ## Value
 

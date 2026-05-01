@@ -7,14 +7,26 @@ that around
 ## Usage
 
 ``` r
-.uiApplyMu2(env)
+.uiApplyMu2(ui, est, data, control)
 ```
 
 ## Arguments
 
-- env:
+- ui:
 
-  Environment needed for nlmixr2 fits
+  the ui for the model
+
+- est:
+
+  the estimation method
+
+- data:
+
+  the data provided
+
+- control:
+
+  the control object
 
 ## Value
 

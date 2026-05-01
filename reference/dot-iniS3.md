@@ -19,6 +19,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # For tools like nlmixr2shiny, this export allows nlmixr2shiny to
 # not depend on `nlmixr2est`, but can import it instead
 

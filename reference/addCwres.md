@@ -40,6 +40,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 one.cmt <- function() {
@@ -101,11 +102,9 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
+#> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429432
-#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
-#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
+#> → compress phiM in nlmixr2 object, save 429424
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -116,7 +115,7 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem table compress    other
-#> elapsed 0.001869   0.010016 3.258 0.077    0.053 2.059115
+#> elapsed 0.003345   0.010018 3.385 0.073    0.057 1.964637
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -130,9 +129,6 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
-#>   Information about run found ($runInfo):
-#>    • mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded) 
-#>    • to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE) 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
@@ -187,7 +183,7 @@ if (!inherits(f, "try-error")) {
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem table compress    other
-#> elapsed 0.001869   0.010016 3.258 0.077    0.053 2.059115
+#> elapsed 0.003345   0.010018 3.385 0.073    0.057 1.964637
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -201,9 +197,6 @@ if (!inherits(f, "try-error")) {
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
-#>   Information about run found ($runInfo):
-#>    • mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded) 
-#>    • to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE) 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

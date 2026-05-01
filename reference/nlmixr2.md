@@ -126,67 +126,47 @@ estimation routines.
 
 The nlmixr object has the following fields:
 
-|                 |      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-|-----------------|------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Field           | Note | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| censInfo        |      | Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset)                                                                                                                                                                                                                                                                                                                                                           |
-| conditionNumber |      | Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix                                                                                                                                                                                                                                                                                                                                                              |
-| cor             |      | Correlation matrix                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| cov             |      | Variance-covariance matrix                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| covMethod       |      | Method used to calculate covariance of the fixed effects                                                                                                                                                                                                                                                                                                                                                                                                                |
-| dataLloq        |      | Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step                                                                                                                                                                                                                                                                                                                                                              |
-| dataMergeFull   |      | Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                                                                                                                                                                                                                                      |
-| dataMergeInner  |      | Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                                                                                                                                                                                                                                     |
-| dataMergeLeft   |      | Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                                                                                                                                                                                                                                      |
-| dataMergeRight  |      | Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood                                                                                                                                                                                                                                                                                                     |
-| dataUloq        |      | Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step                                                                                                                                                                                                                                                                                                                                                             |
-| env             |      | This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence \$\`env                                                                                                                                                                                                                                                                                                                                 |
-| eta             |      | IIV values for each indiviudal                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| etaObf          |      | Estimates for eta for each individual, This also includes the objective function for each individual                                                                                                                                                                                                                                                                                                                                                                    |
-| finalUi         |      | The model with the estimates replaced as values                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| fixef           |      | Estimates of fixed effects                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| foceiControl    |      | Estimation options if focei was used                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| iniUi           |      | The initial model used to start the estimation                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ipredModel      |      | rxode2 estimation model for fit (internal will likely be removed from visibility                                                                                                                                                                                                                                                                                                                                                                                        |
-| modelName       |      | Name of the R object containing the model                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| objDF           |      | Data frame containing objective function information (AIC, BIC, etc.)                                                                                                                                                                                                                                                                                                                                                                                                   |
-| omega           |      | Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega)                                                                                                                                                                                                                                                                                                                                                    |
-| omegaR          |      | The correlation matirx of omega with standard deviations for the diagonal pieces                                                                                                                                                                                                                                                                                                                                                                                        |
-| origData        |      | Original dataset                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| parFixed        |      | Table of parameter estimates (rounded and pretty looking)                                                                                                                                                                                                                                                                                                                                                                                                               |
-| parFixedDF      |      | Table of parameter estimates as a data frame                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| parHist         |      | Value of objective function and parameters at each iteration (wide format)                                                                                                                                                                                                                                                                                                                                                                                              |
-| parHistStacked  |      | Value of objective function and parameters at each iteration (tall format)                                                                                                                                                                                                                                                                                                                                                                                              |
-| phiR            |      | correlation matrix of each individual's eta (if present)                                                                                                                                                                                                                                                                                                                                                                                                                |
-| phiRSE          |      | Relative standard error of each individuals eta                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| phiSE           |      | Standard error of each individuals eta                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| props           |      | Model properties with the following fields: cmt - name of compartments (ODEs); cmtProp - This gives a data-frame of the compartment and properties used; linCmt - boolean that is TRUE if linear solutions are used; output - model outputs, fitted parameters for subjects (output`$primary), secondary or derived parameters (output$`secondary), model endpoints (output\`\$endpoint), states/compartment (output\$state); pop - fitted typical values of parameters |
-| runInfo         |      | This returns a list of all the warnings or fit information                                                                                                                                                                                                                                                                                                                                                                                                              |
-| rxControl       |      | Integration options used to control rxode2                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| scaleInfo       |      | The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc)                                                                                                                                                                                                               |
-| seed            |      | This is the initial seed used for saem                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| shrink          |      | This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error                                                                                                                                                                                                                                                                                                               |
-| simInfo         |      | This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish                                                                                                                                                                                                                                                                                                                                       |
-| table           |      | These are the table options that were used when generating the table output (were CWRES included, etc                                                                                                                                                                                                                                                                                                                                                                   |
-| theta           |      | Estimates for eta for each individual                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| time            |      | Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.)                                                                                                                                                                                                                                                                                                                                                                 |
-| ui              |      | Final estimates for the model                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| atol            | n2r  | Absolute tolerance that NONMEM specified; will be used when solving                                                                                                                                                                                                                                                                                                                                                                                                     |
-| dfObs           | n2r  | Degrees of freedom by observation                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| dfSub           | n2r  | Degrees of freedom by subject                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| etaData         | n2r  | Subject level IIV values                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ipredAtol       | n2r  | Absolute tolerance difference between NONMEM and rxode2 individual predictions                                                                                                                                                                                                                                                                                                                                                                                          |
-| ipredCompare    | n2r  | Data frame with ipred values                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ipredRtol       | n2r  | Relative tolerance difference between NONMEM and rxode2 individual predictions                                                                                                                                                                                                                                                                                                                                                                                          |
-| nonmemData      | n2r  | Original dataset used for NONMEM analysis                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| predAtol        | n2r  | Absolute tolerance difference between NONMEM and rxode2 population predictions                                                                                                                                                                                                                                                                                                                                                                                          |
-| predCompare     | n2r  | Data frame with pred values                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| predRtol        | n2r  | Relative tolerance difference between NONMEM and rxode2 population predictions                                                                                                                                                                                                                                                                                                                                                                                          |
-| rtol            | n2r  | Relative tolerance that NONMEM specified; will be used when solving                                                                                                                                                                                                                                                                                                                                                                                                     |
-| sigma           | n2r  | Error model matrix                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ssAtol          | n2r  | Steady state absolute tolerance that NONMEM specified; will be used for solving.                                                                                                                                                                                                                                                                                                                                                                                        |
-| ssRtol          | n2r  | Steady state relative tolerance that NONMEM specified will be used for solving                                                                                                                                                                                                                                                                                                                                                                                          |
-| thetaMat        | n2r  | Covariance Matrix (matches rxSolve(thetaMat=)                                                                                                                                                                                                                                                                                                                                                                                                                           |
+|  |  |  |
+|----|----|----|
+| Field | Note | Description |
+| censInfo |  | Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset) |
+| conditionNumber |  | Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix |
+| cor |  | Correlation matrix |
+| cov |  | Variance-covariance matrix |
+| covMethod |  | Method used to calculate covariance of the fixed effects |
+| dataLloq |  | Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step |
+| dataMergeFull |  | Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood |
+| dataMergeInner |  | Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood |
+| dataMergeLeft |  | Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood |
+| dataMergeRight |  | Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood |
+| dataUloq |  | Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step |
+| env |  | This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence \$env |
+| runInfo |  | This returns a list of all the warnings or fit information |
+| rxControl |  | Integration options used to control rxode2 |
+| scaleInfo |  | The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) |
+| seed |  | This is the initial seed used for saem |
+| shrink |  | This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error |
+| simInfo |  | This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish |
+| table |  | These are the table options that were used when generating the table output (were CWRES included, etc |
+| theta |  | Estimates for eta for each individual |
+| time |  | Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) |
+| ui |  | Final estimates for the model |
+| atol | n2r | Absolute tolerance that NONMEM specified; will be used when solving |
+| dfObs | n2r | Degrees of freedom by observation |
+| dfSub | n2r | Degrees of freedom by subject |
+| etaData | n2r | Subject level IIV values |
+| ipredAtol | n2r | Absolute tolerance difference between NONMEM and rxode2 individual predictions |
+| ipredCompare | n2r | Data frame with ipred values |
+| ipredRtol | n2r | Relative tolerance difference between NONMEM and rxode2 individual predictions |
+| nonmemData | n2r | Original dataset used for NONMEM analysis |
+| predAtol | n2r | Absolute tolerance difference between NONMEM and rxode2 population predictions |
+| predCompare | n2r | Data frame with pred values |
+| predRtol | n2r | Relative tolerance difference between NONMEM and rxode2 population predictions |
+| rtol | n2r | Relative tolerance that NONMEM specified; will be used when solving |
+| sigma | n2r | Error model matrix |
+| ssAtol | n2r | Steady state absolute tolerance that NONMEM specified; will be used for solving. |
+| ssRtol | n2r | Steady state relative tolerance that NONMEM specified will be used for solving |
+| thetaMat | n2r | Covariance Matrix (matches rxSolve(thetaMat=) |
 
 n2r - These fields are added when a NONMEM model is imported using
 `nonmem2rx()`
@@ -229,6 +209,7 @@ support parameter boundaries).
 
 To explain how these initial estimates are specified we will start with
 an annotated example:
+
 
     f <- function(){ ## Note the arguments to the function are currently
                      ## ignored by nlmixr
@@ -299,6 +280,7 @@ parameters.
 Continuing the prior example, we can annotate the estimates for the
 between subject error distribution
 
+
     f <- function(){
         ini({
             lCl <- 1.6      #log Cl (L/hr)
@@ -346,6 +328,7 @@ The current method of defining a nlmixr model is to specify the
 parameters, and then possibly the RxODE lines:
 
 Continuing describing the syntax with an annotated example:
+
 
     f <- function(){
         ini({
@@ -410,6 +393,7 @@ below:
 
 \##'
 
+
     f <- function(){
         ini({
             lCl <- 1.6      #log Cl (L/hr)
@@ -457,6 +441,7 @@ interpreting it correctly by using the `nlmixr` function on it.
 
 Using the above function we can get:
 
+
     > nlmixr(f)
     ## 1-compartment model with first-order absorption in terms of Cl
     ## Initialization:
@@ -502,10 +487,12 @@ the `nlmixr` function to run the appropriate code.
 
 The method to estimate the model is:
 
+
     fit <- nlmixr(model.function, dataset, est="est", control=estControl(options))
 
 Currently `nlme` and `saem` are implemented. For example, to run the
 above model with `saem`, we could have the following:
+
 
     > f <- function(){
         ini({
@@ -579,6 +566,7 @@ In addition to unifying the modeling language sent to each of the
 estimation routines, the outputs currently have a unified structure.
 
 You can see the fit object by typing the object name:
+
 
     > fit.s
      -- nlmixr SAEM fit (ODE); OBJF calculated from FOCEi approximation -------------
@@ -724,6 +712,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 one.cmt <- function() {
@@ -781,11 +770,9 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 8968
-#> → compress phiM in nlmixr2 object, save 438136
-#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
-#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
+#> → compress origData in nlmixr2 object, save 6584
+#> → compress parHistData in nlmixr2 object, save 8944
+#> → compress phiM in nlmixr2 object, save 438128
 
 # }
 ```

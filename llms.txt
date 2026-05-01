@@ -9,6 +9,7 @@ You can install the development version of nlmixr2est from
 [GitHub](https://github.com/) with:
 
 ``` r
+
 # install.packages("remotes")
 remotes::install_github("nlmixr2/rxode2")
 remotes::install_github("nlmixr2/nlmixr2data")
@@ -19,6 +20,7 @@ remotes::install_github("nlmixr2/nlmixr2est")
 For most people, using nlmixr2 directly would be likely easier.
 
 ``` r
+
 library(nlmixr2est)
 #> Loading required package: nlmixr2data
 
@@ -131,6 +133,7 @@ plot(fit)
 ![](reference/figures/README-example-1.png)
 
 ``` r
+
 # does not give the standard goodness of fit plots
 ```
 

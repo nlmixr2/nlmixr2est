@@ -486,6 +486,17 @@ optimControl(
   it matches the significant digits in the \`sigdig\` optimization
   algorithm. If \`sigdig\` is NULL, use 3.
 
+- boundedTransform:
+
+  boolean indicating if the bounded parameters should by transformed
+  when using a unbounded optimization method to make sure they are in
+  bounds. By default this is \`TRUE\`, which transforms during
+  optimization and back-transforms for the final estimates. When
+  \`FALSE\`, the optimization is performed on the original scale and the
+  bounds are passed to the optimization method. When \`NA\`, the bounded
+  parameters are transformed for the optimization, but the final
+  estimates are not back-transformed.
+
 - ...:
 
   Further arguments to be passed to `fn` and `gr`.
@@ -562,8 +573,8 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>           setup table compress   other
-#> elapsed 0.00301 0.034    0.001 0.92199
+#>            setup table    other
+#> elapsed 0.005561 0.036 0.872439
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 

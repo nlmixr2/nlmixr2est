@@ -49,6 +49,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 one.cmt <- function() {
@@ -103,11 +104,9 @@ f <- nlmixr2(one.cmt, theo_sd, "saem")
 #>  
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
+#> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429432
-#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
-#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
+#> → compress phiM in nlmixr2 object, save 429424
 
 # even though you may have forgotten to add the NPDE, you can add it to the data.frame:
 

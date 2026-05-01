@@ -35,6 +35,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 boxCox(1:3,1) ## Normal
 #> [1] 0 1 2
 iBoxCox(boxCox(1:3,1))

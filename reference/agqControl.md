@@ -72,6 +72,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 agqControl()
@@ -230,7 +231,7 @@ agqControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x562c0973ffa0>
+#> <bytecode: 0x55bf71dd3880>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg

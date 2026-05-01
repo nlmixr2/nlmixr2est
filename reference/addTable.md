@@ -62,6 +62,7 @@ Matthew Fidler
 ## Examples
 
 ``` r
+
 # \donttest{
 
 one.cmt <- function() {
@@ -115,11 +116,9 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #> ✔ done
 #>  
 #>  
-#> → compress origData in nlmixr2 object, save 6592
+#> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429432
-#> Warning:  mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded)
-#> Warning: to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE)
+#> → compress phiM in nlmixr2 object, save 429424
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -130,7 +129,7 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem compress    other
-#> elapsed 0.001954   0.008014 2.735    0.061 0.620032
+#> elapsed 0.003221   0.007014 2.882    0.057 0.594765
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -144,9 +143,6 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
-#>   Information about run found ($runInfo):
-#>    • mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded) 
-#>    • to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE) 
 #>   Censoring ($censInformation): No censoring
 
 # Now add the tables
@@ -164,7 +160,7 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>            setup covariance  saem compress    other
-#> elapsed 0.001954   0.008014 2.735    0.061 0.620032
+#> elapsed 0.003221   0.007014 2.882    0.057 0.594765
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -178,9 +174,6 @@ print(f)
 #>   No correlations in between subject variability (BSV) matrix
 #>   Full BSV covariance ($omega) or correlation ($omegaR; diagonals=SDs) 
 #>   Distribution stats (mean/skewness/kurtosis/p-value) available in $shrink 
-#>   Information about run found ($runInfo):
-#>    • mu-reference transform (exp) for `tcl` lost since bounded (and performance degraded) 
-#>    • to keep mu-referencing remove bounds or use control=list(boundedTransform=FALSE) 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──

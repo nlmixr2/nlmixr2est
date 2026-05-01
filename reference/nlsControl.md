@@ -494,6 +494,17 @@ nlsControl(
   it matches the significant digits in the \`sigdig\` optimization
   algorithm. If \`sigdig\` is NULL, use 3.
 
+- boundedTransform:
+
+  boolean indicating if the bounded parameters should by transformed
+  when using a unbounded optimization method to make sure they are in
+  bounds. By default this is \`TRUE\`, which transforms during
+  optimization and back-transforms for the final estimates. When
+  \`FALSE\`, the optimization is performed on the original scale and the
+  bounds are passed to the optimization method. When \`NA\`, the bounded
+  parameters are transformed for the optimization, but the final
+  estimates are not back-transformed.
+
 - ...:
 
   Additional optional arguments. None are used at present.
@@ -560,8 +571,8 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 2240
+#> → compress origData in nlmixr2 object, save 6584
+#> → compress parHistData in nlmixr2 object, save 2224
 
 # Uses port and respect parameter boundaries
 fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="port"))
@@ -594,8 +605,8 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 6592
-#> → compress parHistData in nlmixr2 object, save 2552
+#> → compress origData in nlmixr2 object, save 6584
+#> → compress parHistData in nlmixr2 object, save 2568
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

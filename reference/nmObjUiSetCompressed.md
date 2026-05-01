@@ -26,6 +26,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 nmObjUiSetCompressed(FALSE) # now the $ui will return an environment
 nmObjUiSetCompressed(TRUE) # now the $ui will return a compressed value
 ```

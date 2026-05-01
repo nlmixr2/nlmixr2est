@@ -31,8 +31,13 @@ The function that was added (invisibly)
 
 ## See also
 
-Other preProcessHooks: `preFinalParTableHooks()`,
-`preFinalParTableHooksAdd()`, `preFinalParTableHooksRm()`,
+Other preProcessHooks:
+[`postFinalObjectHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/postFinalObjectHooks.md),
+[`postFinalObjectHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/postFinalObjectHooksAdd.md),
+[`postFinalObjectHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/postFinalObjectHooksRm.md),
+[`preFinalParTableHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooks.md),
+[`preFinalParTableHooksAdd()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooksAdd.md),
+[`preFinalParTableHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preFinalParTableHooksRm.md),
 [`preProcessHooks()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooks.md),
 [`preProcessHooksRm()`](https://nlmixr2.github.io/nlmixr2est/reference/preProcessHooksRm.md)
 

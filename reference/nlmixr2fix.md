@@ -27,6 +27,7 @@ Matthew L. Fidler
 ## Examples
 
 ``` r
+
 if (FALSE) { # \dontrun{
 
 
