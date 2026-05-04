@@ -15,6 +15,7 @@
   #include <omp.h>
 #endif
 #include <atomic>
+#include <memory>
 
 // Flag indicating we're inside the parallel inner optimization region.
 // When set, R-API operations (warnings/errors, R memory allocations) and
@@ -776,6 +777,28 @@ struct EtaRestoreGuard {
   void disarm() { armed = false; }
 };
 
+// RAII guard for ind->neqOverride.  Snapshots the per-individual override
+// on construction, restores it on destruction.  Used to switch a single
+// subject's effective neq for a predOde finite-difference pass without
+// mutating shared op->neq from a parallel worker thread.  rxode2 honours
+// the override via rxEffNeq(ind, op) inside its solve loop (par_solve.cpp,
+// par_solve.h, rx2api.c, inst/include/rxode2.h) so concurrent threads on
+// other subjects see a stable state count.
+struct IndNeqOverrideGuard {
+  rx_solving_options_ind *ind;
+  int saved;
+  bool armed;
+  IndNeqOverrideGuard(rx_solving_options_ind *_ind, int newOverride)
+      : ind(_ind), armed(true) {
+    saved = getIndNeqOverride(ind);
+    setIndNeqOverride(ind, newOverride);
+  }
+  ~IndNeqOverrideGuard() {
+    if (armed) setIndNeqOverride(ind, saved);
+  }
+  void disarm() { armed = false; }
+};
+
 arma::vec getCurEta(int cid) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
   arma::vec eta(op_focei.neta);
@@ -849,23 +872,13 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
   arma::vec ret(fInd->nObs);
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(id));
   rx_solving_options *op = getSolvingOptions(rx);
-  // KNOWN LIMITATION: setOpNeq(op, predNeq) below mutates shared
-  // global state.  Under cores > 1, concurrent threads doing inner
-  // solves can read op->neq while it is briefly in pred mode and
-  // produce wrong results / heap corruption (Matt Fidler 2026-05-01
-  // on PR #621: "your code in rxode2 ind_solve will corrupt any etas
-  // where they are used in f(), dur() or the inner problem has an
-  // issue with the solve and falls back to numerical differences").
-  // We record the pred neq on the per-individual ind via the new
-  // rxode2 setIndNeqOverride() C-API as forward-compat metadata for
-  // a future rxode2 PR that will plumb it through par_solve.cpp.
-  // Until then, models whose f() / dur() depend on ETAs (or any
-  // model that triggers the shi21 finite-difference path) should not
-  // use cores > 1 — see test-focei-parallel.R.
-  int oldOverride = getIndNeqOverride(ind);
-  setIndNeqOverride(ind, op_focei.predNeq);
-  int oldNeq = getOpNeq(op);
-  setOpNeq(op, op_focei.predNeq);
+  // Per-individual neqOverride: rxode2's solve loop honors this via
+  // rxEffNeq(ind, op).  Switches THIS subject's effective neq to predNeq
+  // for the predOde finite-difference pass; concurrent worker threads on
+  // other subjects keep using op->neq for their inner solves.  No
+  // mutation of shared op->neq, so this is safe under cores > 1 even
+  // when the model's f() / dur() / rate() / alag() depend on ETAs.
+  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq);
   predOde(id); // Assumes same order of parameters
   int kk, k = 0;
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
@@ -887,9 +900,7 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
       break;
     }
   }
-  setOpNeq(op, oldNeq);
-  setIndNeqOverride(ind, oldOverride);
-  // ETAs auto-restored when etaGuard goes out of scope.
+  // neqGuard restores ind->neqOverride; etaGuard restores ind->par_ptr.
   return ret;
 }
 
@@ -975,6 +986,12 @@ double likInner0(double *eta, int id) {
     // tolFactor that is re-applied automatically by iniSubject() on every
     // re-solve; see rxode2 PR #1006).
     bool predSolve = false;
+    // Guard for ind->neqOverride.  Allocated lazily inside the doFD
+    // branch and lives until likInner0 returns so that every subsequent
+    // read of ind->solve in this regime (bad-solve scan, FD perturbation
+    // loop, solveSave) sees the same predNeq stride rxPred wrote.  In the
+    // common (innerOde) path this stays nullptr — no-op.
+    std::unique_ptr<IndNeqOverrideGuard> neqGuard;
     if (fInd->doFD == 0) {
       // Snapshot the per-individual sticky factor up front.  If no retry
       // is needed we want to leave it untouched; if retries succeed we
@@ -1009,13 +1026,24 @@ double likInner0(double *eta, int id) {
         }
       }
     } else {
+      // doFD: inner sensitivity solve has failed; fall back to perturbing
+      // the simpler prediction model.  Switch this subject's effective neq
+      // to predNeq for the predOde call AND keep the override alive until
+      // the end of likInner0 so all subsequent reads of ind->solve (the
+      // bad-solve scan, getOpIndSolve in the FD loop, the solveSave copy)
+      // see the same compact stride that rxPred wrote at.
+      neqGuard.reset(new IndNeqOverrideGuard(ind, op_focei.predNeq));
       predOde(id);
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
     bool isBadSolve = false;
-    int nsolve = (getOpNeq(op) + getOpNlin(op))*getIndNallTimes(ind);
-    if (getOpNeq(op) > 0) {
+    // Under predSolve the buffer is laid out at predNeq stride; scan only
+    // those slots so stale tail values (sensitivity slots not written by
+    // rxPred) don't trigger false NaN flags.
+    int effNeq = predSolve ? op_focei.predNeq : getOpNeq(op);
+    int nsolve = (effNeq + getOpNlin(op))*getIndNallTimes(ind);
+    if (effNeq > 0) {
       for (int ns = 0; ns < nsolve; ++ns) {
         if (ISNA(solve[ns]) || std::isnan(solve[ns]) ||
             std::isinf(solve[ns])) {

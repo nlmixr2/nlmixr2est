@@ -22,16 +22,19 @@
   per-individual mixture-state writes inside the parallel inner loop
   are per-subject and safe.
 
-- **Known limitation:** models whose `f()`, `dur()`, `rate()`, or
-  `lag()` depend on ETAs (or any model that triggers the shi21
-  finite-difference fallback path) currently crash under `cores >= 2`
-  with a heap corruption rooted in shared-global `op->neq` mutation in
-  `shi21EtaGeneral()` racing with concurrent inner solves on other
-  threads.  Until rxode2's `par_solve.cpp` consumes the new
-  per-individual `setIndNeqOverride()` C-API (slots 56/57, exposed in
-  rxode2 5.0.x) at every `op->neq` read site, run such models with
-  `cores = 1`.  See `inst/reprex_fbio_eta_parallel.R` for a minimal
-  reproducer.
+- Fix parallel-FOCEi crashes ("ewt[1] = 0 <= 0", "double free or
+  corruption") on models whose `f()`, `dur()`, `rate()`, or `alag()`
+  depend on ETAs (or any model that triggers the shi21 finite-difference
+  fallback path).  `shi21EtaGeneral()` and the `likInner0` doFD branch
+  now use a new `IndNeqOverrideGuard` RAII helper to set
+  `ind->neqOverride = predNeq` for the duration of the predOde
+  perturbation pass; the rxode2 solver consumes the override via
+  `rxEffNeq(ind, op)` so concurrent worker threads on other subjects
+  keep solving with `op->neq` and observe no shared-state race.  The
+  legacy `setOpNeq()` mutation has been removed entirely, so this
+  version of nlmixr2est requires the matching rxode2 version
+  (`rxEffNeq` plumbing).  See `inst/reprex_fbio_eta_parallel.R` for the
+  reprex that motivated the fix.
 
 - Add `predict(fit, level="ipred")`, `predict(fit,
   level="individual")` or `predict(fit, level=1)` to predict
