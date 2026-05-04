@@ -402,6 +402,14 @@ struct focei_ind {
   int doFD=0;
   int doEtaNudge;
   int badSolve=0;
+  // Per-subject cumulative count of tolerance-loosening retries this
+  // subject has consumed in its likInner0 inner-retry loop.  Replaces
+  // the formerly-shared op_focei.stickyRecalcN2 atomic, which could be
+  // mutated by another thread mid-loop and made the retry decision (and
+  // therefore the final ETA / objective) non-deterministic across runs.
+  // The cap is op_focei.stickyRecalcN; once exceeded the subject's
+  // tolFactor stays loose and op_focei.stickyTol latches.
+  int stickyRecalcN2=0;
   int parWarnBadHess=0;  // deferred "non-positive definite Hessian" warning
   int parErrorNoEta=0;   // deferred "could not find best eta" error
   double curF;
@@ -777,6 +785,32 @@ struct EtaRestoreGuard {
   void disarm() { armed = false; }
 };
 
+// Per-subject "did this individual's solve fail" check.  Replaces the
+// shared `hasOpBadSolve(op)` poll inside parallel inner-retry loops.
+// op->badSolve is set globally by rxode2's badSolveExit macro whenever
+// ANY thread's solve fails — but that is THIS thread's failure
+// information mixed with other threads' failures.  Reading it from a
+// retry-loop condition is racy: thread A's flip may cause thread B to
+// do an extra retry even though thread B's own solve was clean.  That
+// races the retry count, which races the final ETA, which races the
+// objective.  Each subject's solve writes NA_REAL into its own
+// ind->solve buffer on failure (also via badSolveExit), so a per-
+// subject NaN scan answers "did THIS subject's solve fail?" without
+// touching shared state.
+static inline bool indHasBadSolve(rx_solving_options *op,
+                                  rx_solving_options_ind *ind) {
+  int neq = getOpNeq(op);
+  if (neq <= 0) return false;
+  double *solve = getIndSolve(ind);
+  int n = neq * getIndNallTimes(ind);
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // RAII guard for ind->neqOverride.  Snapshots the per-individual override
 // on construction, restores it on destruction.  Used to switch a single
 // subject's effective neq for a predOde finite-difference pass without
@@ -970,21 +1004,24 @@ double likInner0(double *eta, int id) {
     for (j = op_focei.neta; j--;){
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
-    if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN){
-      op_focei.stickyRecalcN2.store(0, std::memory_order_relaxed);
+    // Per-subject sticky-recalc counter: reset only when this subject
+    // hasn't itself exhausted its retry budget yet.  Once it has, the
+    // counter stays high and subsequent likInner0 calls for THIS subject
+    // short-circuit the retry loop (the subject's tolFactor is already
+    // permanently loose, so retries would just churn).
+    if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
+      fInd->stickyRecalcN2 = 0;
     }
     setIndSolve(ind, -1);
-    // Reset shared badSolve flag before each individual's ODE solve.
-    // op->badSolve is non-atomic plain int; resetOpBadSolve() writes 0.
-    // The seq_cst fence below makes this visible to all threads before
-    // any of them enter ind_liblsoda0 with a cached stale view.
+    // Reset shared op->badSolve before the solve as a courtesy (rxode2
+    // doesn't read it from any internal control flow we depend on, but
+    // resetting keeps op->badSolve a meaningful "any-thread failed
+    // recently" indicator for the post-solve diagnostic path).  Our
+    // retry loop reads per-subject indHasBadSolve() instead — the
+    // shared flag is racy under cores>1 (another thread's failed solve
+    // would flip it, causing this thread to retry unnecessarily and
+    // therefore producing a non-deterministic ETA).
     resetOpBadSolve(op);
-    std::atomic_thread_fence(std::memory_order_seq_cst);
-    // Solve ODE.  Tolerance loosening on failure is unified across the
-    // serial and parallel paths now that rxode2's atolRtolFactor_() is
-    // thread-safe (per-thread tolerance slices + per-individual sticky
-    // tolFactor that is re-applied automatically by iniSubject() on every
-    // re-solve; see rxode2 PR #1006).
     bool predSolve = false;
     // Guard for ind->neqOverride.  Allocated lazily inside the doFD
     // branch and lives until likInner0 returns so that every subsequent
@@ -999,9 +1036,9 @@ double likInner0(double *eta, int id) {
       double prevTol = getIndTolFactor(ind);
       innerOde(id);
       j = 0;
-      while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
-             && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
-        op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
+      while (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN
+             && indHasBadSolve(op, ind) && j < op_focei.maxOdeRecalc) {
+        fInd->stickyRecalcN2++;
         op_focei.reducedTol.store(1, std::memory_order_relaxed);
         op_focei.reducedTol2.store(1, std::memory_order_relaxed);
         // Thread-safe: writes to the calling thread's tolerance slice
@@ -1014,14 +1051,14 @@ double likInner0(double *eta, int id) {
         j++;
       }
       if (j != 0) {
-        if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN) {
-          // Solve eventually succeeded within the per-iteration retry
+        if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
+          // Solve eventually succeeded within this subject's retry
           // budget; un-stick by restoring the prior factor.
           setIndTolFactor(ind, prevTol);
         } else {
-          // Hit the sticky threshold; the per-individual tolFactor stays
-          // loosened and the global stickyTol flag is raised so that the
-          // outer FOCEi loop knows tolerances are permanently relaxed.
+          // This subject hit its sticky threshold; tolFactor stays
+          // loose and the global stickyTol flag latches so the outer
+          // FOCEi loop knows at least one subject is in sticky mode.
           op_focei.stickyTol.store(1, std::memory_order_relaxed);
         }
       }

@@ -100,14 +100,14 @@ nmTest({
                                           rxControl = rxode2::rxControl(cores = 2L)))
     expect_s3_class(fit1, "nlmixr2FitData")
     expect_s3_class(fit2, "nlmixr2FitData")
-    # Both fits must complete without crashing (the original bug under
-    # cores=2 was a heap-corruption double-free).  These models often have
-    # unstable optimization (ETA resets, Hessian resets), so the objective
-    # need not match cores=1 bit-for-bit — non-associative FP summation
-    # across subjects under parallelism takes a different path through bad
-    # regions.  Just require both fits to finish and produce finite obj.
+    # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
+    # and indHasBadSolve() (replacing the shared op->badSolve poll) make
+    # the inner-retry loop fully deterministic per subject, so the
+    # objective is reproducible across cores even when the optimizer
+    # crosses bad regions and triggers tolerance loosening.
     expect_true(is.finite(fit1$objective))
     expect_true(is.finite(fit2$objective))
+    expect_equal(fit1$objective, fit2$objective, tolerance = 1e-8)
   })
 
   test_that("FOCEi cores=2 works when dur(state) depends on eta", {
@@ -141,14 +141,14 @@ nmTest({
     fit2 <- .nlmixr(mod_dur, d, est = "focei",
                     control = foceiControl(print = 0, covMethod = "",
                                           rxControl = rxode2::rxControl(cores = 2L)))
-    # Both fits must complete without crashing (the original bug under
-    # cores=2 was a heap-corruption double-free).  These models often have
-    # unstable optimization (ETA resets, Hessian resets), so the objective
-    # need not match cores=1 bit-for-bit — non-associative FP summation
-    # across subjects under parallelism takes a different path through bad
-    # regions.  Just require both fits to finish and produce finite obj.
+    # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
+    # and indHasBadSolve() (replacing the shared op->badSolve poll) make
+    # the inner-retry loop fully deterministic per subject, so the
+    # objective is reproducible across cores even when the optimizer
+    # crosses bad regions and triggers tolerance loosening.
     expect_true(is.finite(fit1$objective))
     expect_true(is.finite(fit2$objective))
+    expect_equal(fit1$objective, fit2$objective, tolerance = 1e-8)
   })
 
   test_that("FOCEi cores=2 works when rate(state) depends on eta", {
@@ -182,14 +182,14 @@ nmTest({
     fit2 <- .nlmixr(mod_rate, d, est = "focei",
                     control = foceiControl(print = 0, covMethod = "",
                                           rxControl = rxode2::rxControl(cores = 2L)))
-    # Both fits must complete without crashing (the original bug under
-    # cores=2 was a heap-corruption double-free).  These models often have
-    # unstable optimization (ETA resets, Hessian resets), so the objective
-    # need not match cores=1 bit-for-bit — non-associative FP summation
-    # across subjects under parallelism takes a different path through bad
-    # regions.  Just require both fits to finish and produce finite obj.
+    # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
+    # and indHasBadSolve() (replacing the shared op->badSolve poll) make
+    # the inner-retry loop fully deterministic per subject, so the
+    # objective is reproducible across cores even when the optimizer
+    # crosses bad regions and triggers tolerance loosening.
     expect_true(is.finite(fit1$objective))
     expect_true(is.finite(fit2$objective))
+    expect_equal(fit1$objective, fit2$objective, tolerance = 1e-8)
   })
 
   test_that("FOCEi cores=2 works when alag(state) depends on eta", {
@@ -221,13 +221,13 @@ nmTest({
     fit2 <- .nlmixr(mod_alag, nlmixr2data::theo_sd, est = "focei",
                     control = foceiControl(print = 0, covMethod = "",
                                           rxControl = rxode2::rxControl(cores = 2L)))
-    # Both fits must complete without crashing (the original bug under
-    # cores=2 was a heap-corruption double-free).  These models often have
-    # unstable optimization (ETA resets, Hessian resets), so the objective
-    # need not match cores=1 bit-for-bit — non-associative FP summation
-    # across subjects under parallelism takes a different path through bad
-    # regions.  Just require both fits to finish and produce finite obj.
+    # cores=2 must match cores=1 bit-for-bit.  Per-subject stickyRecalcN2
+    # and indHasBadSolve() (replacing the shared op->badSolve poll) make
+    # the inner-retry loop fully deterministic per subject, so the
+    # objective is reproducible across cores even when the optimizer
+    # crosses bad regions and triggers tolerance loosening.
     expect_true(is.finite(fit1$objective))
     expect_true(is.finite(fit2$objective))
+    expect_equal(fit1$objective, fit2$objective, tolerance = 1e-8)
   })
 })
