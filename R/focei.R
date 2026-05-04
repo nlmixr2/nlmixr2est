@@ -1909,6 +1909,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .ret <- .ret0
   if (!is.null(method))
     .ret$method <- method
+  .priorEnvTolFactor <- NULL
+  if (is.environment(ui) && exists("foceiEnv", envir=ui, inherits=FALSE)) {
+    .priorEnv <- ui$foceiEnv
+    if (is.environment(.priorEnv) && exists("tolFactor", envir=.priorEnv, inherits=FALSE)) {
+      .priorEnvTolFactor <- .priorEnv$tolFactor
+    }
+  }
   if (exists("ui", envir=.ret)) {
     ui <- rxode2::rxUiDecompress(get("ui", envir=.ret))
   } else {
@@ -1933,6 +1940,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .nlmixr2FitUpdateParams(.ret)
   .ret$IDlabel <- rxode2::.getLastIdLvl()
+  .idLvl <- if (exists("idLvl", envir=.ret)) .ret$idLvl else character(0)
+  if (exists("tolFactor", envir=.ret)) {
+    .tf <- .ret$tolFactor
+    if (length(.tf) == length(.idLvl)) {
+      .tf <- setNames(.tf, .idLvl)
+    }
+    .ret$tolFactor <- .tf
+  }
+  if (!is.null(.priorEnvTolFactor) && length(.priorEnvTolFactor) == length(.idLvl)) {
+    .foceiTf <- if (exists("tolFactor", envir=.ret)) unname(.ret$tolFactor) else rep(1.0, length(.priorEnvTolFactor))
+    .ret$tolFactor <- setNames(pmax(.foceiTf, .priorEnvTolFactor), .idLvl)
+  }
   if (exists("skipTable", envir=.ret)) {
     if (is.na(.ret$skipTable)) {
     } else if (.ret$skipTable) {

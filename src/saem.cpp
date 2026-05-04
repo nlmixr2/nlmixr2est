@@ -2145,6 +2145,11 @@ SEXP saem_fit(SEXP xSEXP) {
   saem.set_fn(user_function);
   saem.saem_fit();
 
+  int _saemNsub = (int)getRxNsub(_rx);
+  NumericVector _saemTf(_saemNsub);
+  for (int _i = 0; _i < _saemNsub; _i++) {
+    _saemTf[_i] = getIndTolFactor(getSolvingOptionsInd(_rx, _i));
+  }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
     Named("transMat") = saem.get_trans(),
@@ -2156,7 +2161,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
-    Named("res_info") = saem.get_resInfo()
+    Named("res_info") = saem.get_resInfo(),
+    Named("tolFactor") = _saemTf
   );
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";

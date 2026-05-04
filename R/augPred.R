@@ -143,9 +143,11 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
   .events <- .augPredExpandData(fit, covsInterpolation = covsInterpolation,
                                 minimum = minimum, maximum = maximum,
                                 length.out = length.out)
+  .tolFactor <- fit$env$tolFactor
   # ipred
   .sim <- rxode2::rxSolve(object=.rx, .params, .events,
                           keepInterpolation="na",
+                          tolFactor=.tolFactor,
                           keep=c("DV", "CMT"), returnType="data.frame")
   # now do pred
   if (is.null(.omega)) {
@@ -159,6 +161,7 @@ nlmixr2AugPredSolve <- function(fit, covsInterpolation = c("locf", "nocb", "line
                                    dimnames(.omega)[[2]],
                                    dimnames(.sigma)[[2]]))
     .sim2 <- rxode2::rxSolve(object=.rx, params=.params, events=.events,
+                             tolFactor=.tolFactor,
                              returnType="data.frame")
     .sim$pred <- .sim2$sim
     .stk <- stack(.sim[, c("ipred", "pred", "DV")])

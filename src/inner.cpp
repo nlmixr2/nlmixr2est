@@ -7088,6 +7088,14 @@ void foceiFinalizeTables(Environment e){
     }
   }
   // rxode2::rxSolveFree();
+  {
+    int _nsub = (int)getRxNsub(rx);
+    NumericVector _tf(_nsub);
+    for (int _i = 0; _i < _nsub; _i++) {
+      _tf[_i] = getIndTolFactor(getSolvingOptionsInd(rx, _i));
+    }
+    e["tolFactor"] = _tf;
+  }
   e.attr("class") = "nlmixr2FitCore";
 }
 

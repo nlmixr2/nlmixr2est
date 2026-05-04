@@ -788,6 +788,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   }
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
+  if (!is.null(.ret$saem$tolFactor)) {
+    .ret$tolFactor <- .ret$saem$tolFactor
+  }
   .ret$control <- .control
   nmObjHandleControlObject(.ret$control, .ret)
   .ret$ui <- .ui
