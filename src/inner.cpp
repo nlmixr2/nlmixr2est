@@ -17,17 +17,11 @@
 #include <atomic>
 
 // Flag indicating we're inside the parallel inner optimization region.
-// When set, thread-unsafe operations (R warnings/errors, running mean
-// accumulation) are skipped or deferred.  Atomic so that worker threads
-// see a consistent value without a data race on the plain int read that
-// TSan would flag.
+// When set, R-API operations (warnings/errors, R memory allocations) and
+// running-mean accumulation are deferred to the post-parallel phase.
+// Atomic so that worker threads see a consistent value without a data
+// race on the plain int read that TSan would flag.
 static std::atomic<int> _innerParallel{0};
-
-// Generation counter: incremented by any thread whose ODE solve genuinely
-// fails (ind->solve[] contains NAs).  Other threads snapshot this before
-// their solve; if it changes during their solve, cross-thread badSolve
-// contamination may have occurred and a re-solve is needed.
-static std::atomic<int> _badSolveGeneration{0};
 
 extern "C" {
 #define iniLbfgsb3ptr _nlmixr2est_iniLbfgsb3ptr
@@ -330,6 +324,12 @@ struct focei_options {
   bool zeroGradBobyqaRun=false;
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
+
+  // Pre-drawn ETA samples for mceta >= 1 path.  Shape is
+  // (neta x (mceta-1) x nsub).  Filled serially on the main thread in
+  // innerOpt() before entering the parallel for-loop so that worker
+  // threads can read by id without R API calls.  Empty when mceta < 1.
+  arma::cube mcetaSamples;
 
   unsigned int mixIdxN = 0;
   int *mixIdx = NULL;
@@ -749,6 +749,33 @@ void updateEta(double *eta, int cid) {
   }
 }
 
+// RAII guard that snapshots a per-individual ETA vector on construction
+// and restores it on destruction unless disarm() is called.  Protects
+// the inner problem against ETA-leak when an ODE solve throws/returns
+// NA halfway through a finite-difference perturbation in shi21EtaGeneral
+// or a doFD=1 fallback.  Without this, ind->par_ptr can carry a perturbed
+// ETA into the next call and silently corrupt subsequent likelihoods —
+// the bug Matt Fidler flagged on PR #621 (2026-05-01).
+struct EtaRestoreGuard {
+  rx_solving_options_ind *ind;
+  arma::vec saved;
+  bool armed;
+  EtaRestoreGuard(int cid) : armed(true) {
+    ind = getSolvingOptionsInd(rx, getRxId(cid));
+    saved.set_size(op_focei.neta);
+    for (int i = op_focei.neta; i--;) {
+      saved[i] = getIndParPtr(ind, op_focei.etaTrans[i]);
+    }
+  }
+  ~EtaRestoreGuard() {
+    if (!armed) return;
+    for (int i = op_focei.neta; i--;) {
+      setIndParPtr(ind, op_focei.etaTrans[i], saved[i]);
+    }
+  }
+  void disarm() { armed = false; }
+};
+
 arma::vec getCurEta(int cid) {
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(cid));
   arma::vec eta(op_focei.neta);
@@ -811,13 +838,32 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
 
 // This is needed for shi21 h optimization
 arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
-  // save eta to reset later
-  arma::vec curEta = getCurEta(id);
+  // ETA-restoration RAII: snapshot the per-subject ETAs from
+  // ind->par_ptr on entry and restore them on every exit path.  Without
+  // this, an early return / throw inside predOde / iniSubjectE / the
+  // calc_lhs loop would leave perturbed ETAs in ind->par_ptr and
+  // corrupt the next call to f() / dur() / rate() that reads them.
+  EtaRestoreGuard etaGuard(id);
   updateEta(eta.memptr(), id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec ret(fInd->nObs);
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, getRxId(id));
   rx_solving_options *op = getSolvingOptions(rx);
+  // KNOWN LIMITATION: setOpNeq(op, predNeq) below mutates shared
+  // global state.  Under cores > 1, concurrent threads doing inner
+  // solves can read op->neq while it is briefly in pred mode and
+  // produce wrong results / heap corruption (Matt Fidler 2026-05-01
+  // on PR #621: "your code in rxode2 ind_solve will corrupt any etas
+  // where they are used in f(), dur() or the inner problem has an
+  // issue with the solve and falls back to numerical differences").
+  // We record the pred neq on the per-individual ind via the new
+  // rxode2 setIndNeqOverride() C-API as forward-compat metadata for
+  // a future rxode2 PR that will plumb it through par_solve.cpp.
+  // Until then, models whose f() / dur() depend on ETAs (or any
+  // model that triggers the shi21 finite-difference path) should not
+  // use cores > 1 — see test-focei-parallel.R.
+  int oldOverride = getIndNeqOverride(ind);
+  setIndNeqOverride(ind, op_focei.predNeq);
   int oldNeq = getOpNeq(op);
   setOpNeq(op, op_focei.predNeq);
   predOde(id); // Assumes same order of parameters
@@ -841,9 +887,9 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
       break;
     }
   }
-  // reset eta
-  updateEta(curEta.memptr(), id);
   setOpNeq(op, oldNeq);
+  setIndNeqOverride(ind, oldOverride);
+  // ETAs auto-restored when etaGuard goes out of scope.
   return ret;
 }
 
@@ -918,93 +964,48 @@ double likInner0(double *eta, int id) {
     }
     setIndSolve(ind, -1);
     // Reset shared badSolve flag before each individual's ODE solve.
-    // In parallel mode, another thread's failed solve sets the shared
-    // op->badSolve = 1 (in rxode2's badSolveExit macro), which causes
-    // ALL threads to skip dose/event handling in ind_liblsoda0 →
-    // cascading state corruption → crash.  Resetting here confines
-    // the flag's effect to the current solve only.
+    // op->badSolve is non-atomic plain int; resetOpBadSolve() writes 0.
+    // The seq_cst fence below makes this visible to all threads before
+    // any of them enter ind_liblsoda0 with a cached stale view.
     resetOpBadSolve(op);
-    // Force the reset to be globally visible before any thread enters
-    // innerOde — resetOpBadSolve writes op->badSolve = 0 non-atomically;
-    // without this fence, thread A could enter ind_liblsoda0 with its
-    // cached view of op->badSolve == 1 left by a prior failure.  This
-    // complements the _badSolveGeneration contamination guard below.
     std::atomic_thread_fence(std::memory_order_seq_cst);
-    // Snapshot generation counter so we can detect if another thread's
-    // solve fails during ours (which would contaminate us via the
-    // shared op->badSolve flag).
-    int preGen = _badSolveGeneration.load(std::memory_order_acquire);
-    // Solve ODE
+    // Solve ODE.  Tolerance loosening on failure is unified across the
+    // serial and parallel paths now that rxode2's atolRtolFactor_() is
+    // thread-safe (per-thread tolerance slices + per-individual sticky
+    // tolFactor that is re-applied automatically by iniSubject() on every
+    // re-solve; see rxode2 PR #1006).
     bool predSolve = false;
     if (fInd->doFD == 0) {
+      // Snapshot the per-individual sticky factor up front.  If no retry
+      // is needed we want to leave it untouched; if retries succeed we
+      // promote the factor to "sticky" only when the threshold is hit.
+      double prevTol = getIndTolFactor(ind);
       innerOde(id);
-      if (_innerParallel.load(std::memory_order_acquire) != 0) {
-        // ── Parallel contamination guard ──
-        // Check if our individual's solve genuinely failed (NAs in solve[]).
-        bool ourFailed = false;
-        if (getOpNeq(op) > 0) {
-          double *solveChk = getIndSolve(ind);
-          int nsolveChk = getOpNeq(op) * getIndNallTimes(ind);
-          for (int ns = 0; ns < nsolveChk; ++ns) {
-            if (ISNA(solveChk[ns]) || std::isnan(solveChk[ns]) ||
-                std::isinf(solveChk[ns])) {
-              ourFailed = true;
-              break;
-            }
-          }
-        }
-        if (ourFailed) {
-          // Our solve genuinely failed.  Announce to other threads so
-          // they can detect potential contamination of their solves.
-          _badSolveGeneration.fetch_add(1, std::memory_order_release);
-        } else if (_badSolveGeneration.load(std::memory_order_acquire) != preGen
-                   || hasOpBadSolve(op)) {
-          // Another thread's solve failed during ours.  The shared
-          // op->badSolve may have been 1 while ind_liblsoda0 was
-          // running our time-stepping loop, causing it to skip dose/
-          // event handling → silently wrong results.  Re-solve.
-          setIndSolve(ind, -1);
-          resetOpBadSolve(op);
-          innerOde(id);
-          // If the re-solve itself failed, announce it.
-          bool retryFailed = false;
-          if (getOpNeq(op) > 0) {
-            double *solveChk2 = getIndSolve(ind);
-            int nsolveChk2 = getOpNeq(op) * getIndNallTimes(ind);
-            for (int ns = 0; ns < nsolveChk2; ++ns) {
-              if (ISNA(solveChk2[ns]) || std::isnan(solveChk2[ns]) ||
-                  std::isinf(solveChk2[ns])) {
-                retryFailed = true;
-                break;
-              }
-            }
-          }
-          if (retryFailed) {
-            _badSolveGeneration.fetch_add(1, std::memory_order_release);
-          }
-        }
-      } else {
-        // Serial path: retry with relaxed tolerances on ODE failure.
-        // atolRtolFactor_() is per-thread and updates ind->tolFactor so
-        // iniSubject() reapplies the factor on every subsequent re-solve.
-        j=0;
-        while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
-               && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
-          op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
-          op_focei.reducedTol.store(1, std::memory_order_relaxed);
-          op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-          rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
-          setIndSolve(ind,-1);
-          resetOpBadSolve(op);
-          innerOde(id);
-          j++;
-        }
-        if (j != 0) {
-          if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN){
-            rxode2::atolRtolFactor_(pow(op_focei.odeRecalcFactor, -j));
-          } else {
-            op_focei.stickyTol.store(1, std::memory_order_relaxed);
-          }
+      j = 0;
+      while (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN
+             && hasOpBadSolve(op) && j < op_focei.maxOdeRecalc) {
+        op_focei.stickyRecalcN2.fetch_add(1, std::memory_order_relaxed);
+        op_focei.reducedTol.store(1, std::memory_order_relaxed);
+        op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+        // Thread-safe: writes to the calling thread's tolerance slice
+        // (gatol2Thread / grtol2Thread) and updates ind->tolFactor so
+        // iniSubject() on the next re-solve re-applies the loosening.
+        rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
+        setIndSolve(ind, -1);
+        resetOpBadSolve(op);
+        innerOde(id);
+        j++;
+      }
+      if (j != 0) {
+        if (op_focei.stickyRecalcN2.load(std::memory_order_relaxed) <= op_focei.stickyRecalcN) {
+          // Solve eventually succeeded within the per-iteration retry
+          // budget; un-stick by restoring the prior factor.
+          setIndTolFactor(ind, prevTol);
+        } else {
+          // Hit the sticky threshold; the per-individual tolFactor stays
+          // loosened and the global stickyTol flag is raised so that the
+          // outer FOCEi loop knows tolerances are permanently relaxed.
+          op_focei.stickyTol.store(1, std::memory_order_relaxed);
         }
       }
     } else {
@@ -1778,29 +1779,14 @@ static inline int innerOpt1(int id, int likId) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
   } else if (op_focei.mceta >= 1) {
-    // Hard guard: this branch calls the R API (loadNamespace, Rcpp::Function)
-    // which is not safe inside an OpenMP worker thread.  innerOpt() disables
-    // parallelism when mceta >= 1 at the outer entry; this stop() makes that
-    // invariant an abort-on-violation rather than a silent segfault risk.
-    if (_innerParallel.load(std::memory_order_acquire) != 0) {
-      Rcpp::stop("mceta sampling entered the parallel inner loop; "
-                 "this is a bug in nlmixr2est");
-    }
+    // mceta sampling: ETA samples are pre-drawn serially in innerOpt()
+    // before entering the parallel loop (op_focei.mcetaSamples cube).
+    // Reading them here is pure memory access, safe under OpenMP.
     int nmc = op_focei.mceta-1;
     double fcur = likInner0(fInd->eta, id); // last eta
     std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
     double ftry = likInner0(fInd->tryEta, id); // zero eta
-    // Not thread safe, accessing R memory stack
-    NumericMatrix omega;
-    if (nmc > 0) {
-      omega = getOmega();
-    }
-    Function loadNamespace("loadNamespace", R_BaseNamespace);
-    Environment nlmixr2 = loadNamespace("nlmixr2est");
-    Function f = as<Function>(nlmixr2[".sampleOmega"]);
-    NumericMatrix samp(op_focei.neta, 1);
-    // Get the lowest sampled eta for starting point
-    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
+    int sampCol = 0;
     while (true) {
       if (ftry < fcur) {
         std::copy(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, &fInd->eta[0]);
@@ -1808,12 +1794,12 @@ static inline int innerOpt1(int id, int likId) {
       }
       if (nmc <= 0) break;
       nmc--;
-      // Now sample a new eta from multivariate normal
-      samp = f(omega);
+      // Read the next pre-drawn sample for this individual.
+      arma::vec samp = op_focei.mcetaSamples.slice(id).col(sampCol);
+      sampCol++;
       std::copy(samp.begin(), samp.end(), &fInd->tryEta[0]);
       ftry = likInner0(fInd->tryEta, id); // sampled eta
     }
-    std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, samp.begin());
   }
   if (!op_focei.calcGrad) {
     if (op_focei.resetEtaSize <= 0) {
@@ -2408,13 +2394,35 @@ void innerOpt() {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-  // Disable parallel for MC eta sampling (uses R API) and mixture models
-  if (op_focei.mceta >= 1 || op_focei.mixIdxN != 0) {
-    cores = 1;
-  }
   if (op_focei.neta > 0) {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
+  }
+  // For mceta >= 1, pre-draw all the per-subject ETA samples serially on
+  // the main thread before entering the parallel for-loop.  Worker
+  // threads then read by id from op_focei.mcetaSamples — pure memory
+  // access, no R API calls.  This makes mceta safe under cores > 1.
+  if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0) {
+    int nsubAll = (int)getRxNsubAndMix(rx);
+    int nmc = op_focei.mceta - 1;
+    if (nmc > 0 && op_focei.neta > 0) {
+      op_focei.mcetaSamples.set_size(op_focei.neta, nmc, nsubAll);
+      NumericMatrix omega = getOmega();
+      Function loadNamespace("loadNamespace", R_BaseNamespace);
+      Environment nlmixr2 = loadNamespace("nlmixr2est");
+      Function fSample = as<Function>(nlmixr2[".sampleOmega"]);
+      for (int id = 0; id < nsubAll; ++id) {
+        for (int k = 0; k < nmc; ++k) {
+          NumericMatrix samp = fSample(omega);
+          std::copy(samp.begin(), samp.end(),
+                    op_focei.mcetaSamples.slice(id).colptr(k));
+        }
+      }
+    } else {
+      op_focei.mcetaSamples.reset();
+    }
+  } else {
+    op_focei.mcetaSamples.reset();
   }
   if (op_focei.maxInnerIterations <= 0){
     std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0); // All etas = -42;  Unlikely if normal
@@ -2433,7 +2441,6 @@ void innerOpt() {
     int nsub = getRxNsubAndMix(rx);
     if (cores > 1) {
       _innerParallel.store(1, std::memory_order_release);
-      _badSolveGeneration.store(0, std::memory_order_relaxed);
     }
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
@@ -2442,7 +2449,6 @@ void innerOpt() {
       innerOptId(id);
     }
     _innerParallel.store(0, std::memory_order_release);
-    _badSolveGeneration.store(0, std::memory_order_relaxed);
 
     if (cores > 1) {
       // --- Post-parallel: deferred error handling ---

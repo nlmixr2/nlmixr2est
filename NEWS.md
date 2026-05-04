@@ -1,5 +1,38 @@
 # nlmixr2est (development version)
 
+- FOCEi inner ETA optimization now runs in parallel across subjects
+  when `cores > 1` is set on the `rxControl`.  The implementation
+  consumes the thread-safe `atolRtolFactor_()` and per-individual
+  sticky `tolFactor` interface introduced in rxode2 5.0.x (PR #1006),
+  replacing the previous per-thread `_badSolveGeneration` contamination
+  counter on the same hot path.  An `EtaRestoreGuard` RAII helper in
+  `src/inner.cpp` snapshots ETAs at the entry of `shi21EtaGeneral()`
+  and restores them on every exit path, preventing perturbed ETAs from
+  leaking into subsequent calls when an inner solve throws or returns
+  NA mid finite-difference.
+
+- Parallel mceta: the mceta sampling path no longer forces `cores=1`.
+  Per-subject ETA samples are drawn serially on the main thread before
+  entering the parallel region (`op_focei.mcetaSamples` cube) so worker
+  threads read by id without R API calls.
+
+- Parallel mixture models: dropped the defensive `cores=1` clamp on
+  `op_focei.mixIdxN != 0`.  Mixture probabilities and gradients are
+  computed at the outer `updateTheta()` level (already serial), and
+  per-individual mixture-state writes inside the parallel inner loop
+  are per-subject and safe.
+
+- **Known limitation:** models whose `f()`, `dur()`, `rate()`, or
+  `lag()` depend on ETAs (or any model that triggers the shi21
+  finite-difference fallback path) currently crash under `cores >= 2`
+  with a heap corruption rooted in shared-global `op->neq` mutation in
+  `shi21EtaGeneral()` racing with concurrent inner solves on other
+  threads.  Until rxode2's `par_solve.cpp` consumes the new
+  per-individual `setIndNeqOverride()` C-API (slots 56/57, exposed in
+  rxode2 5.0.x) at every `op->neq` read site, run such models with
+  `cores = 1`.  See `inst/reprex_fbio_eta_parallel.R` for a minimal
+  reproducer.
+
 - Add `predict(fit, level="ipred")`, `predict(fit,
   level="individual")` or `predict(fit, level=1)` to predict
   individual fits (with possibly a new dataset).
