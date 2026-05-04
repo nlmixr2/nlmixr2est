@@ -159,6 +159,7 @@ saemControl <- function(seed = 99,
                         lambdaRange = 3,
                         odeRecalcFactor=10^(0.5),
                         maxOdeRecalc=5L,
+                        indTolRelax=TRUE,
                         perSa=0.75,
                         perNoCor=0.75,
                         perFixOmega=0.1,
@@ -218,6 +219,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(lambdaRange, any.missing=FALSE, len=1, lower=0)
   checkmate::assertNumeric(odeRecalcFactor, any.missing=FALSE, lower=0, len=1, finite=TRUE)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(perSa, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perNoCor, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perFixOmega, any.missing=FALSE, lower=0, upper=1, len=1)
@@ -295,6 +297,7 @@ saemControl <- function(seed = 99,
     lambdaRange = lambdaRange,
     odeRecalcFactor=odeRecalcFactor,
     maxOdeRecalc=maxOdeRecalc,
+    indTolRelax=indTolRelax,
     perSa=perSa,
     perNoCor=perNoCor,
     perFixOmega=perFixOmega,

@@ -1,5 +1,41 @@
 # nlmixr2est (development version)
 
+- FOCEi inner ETA optimization now runs in parallel across subjects
+  when `cores > 1` is set on the `rxControl`.  The implementation
+  consumes the thread-safe `atolRtolFactor_()` and per-individual
+  sticky `tolFactor` interface introduced in rxode2 5.0.x (PR #1006),
+  replacing the previous per-thread `_badSolveGeneration` contamination
+  counter on the same hot path.  An `EtaRestoreGuard` RAII helper in
+  `src/inner.cpp` snapshots ETAs at the entry of `shi21EtaGeneral()`
+  and restores them on every exit path, preventing perturbed ETAs from
+  leaking into subsequent calls when an inner solve throws or returns
+  NA mid finite-difference.
+
+- Parallel mceta: the mceta sampling path no longer forces `cores=1`.
+  Per-subject ETA samples are drawn serially on the main thread before
+  entering the parallel region (`op_focei.mcetaSamples` cube) so worker
+  threads read by id without R API calls.
+
+- Parallel mixture models: dropped the defensive `cores=1` clamp on
+  `op_focei.mixIdxN != 0`.  Mixture probabilities and gradients are
+  computed at the outer `updateTheta()` level (already serial), and
+  per-individual mixture-state writes inside the parallel inner loop
+  are per-subject and safe.
+
+- Fix parallel-FOCEi crashes ("ewt[1] = 0 <= 0", "double free or
+  corruption") on models whose `f()`, `dur()`, `rate()`, or `alag()`
+  depend on ETAs (or any model that triggers the shi21 finite-difference
+  fallback path).  `shi21EtaGeneral()` and the `likInner0` doFD branch
+  now use a new `IndNeqOverrideGuard` RAII helper to set
+  `ind->neqOverride = predNeq` for the duration of the predOde
+  perturbation pass; the rxode2 solver consumes the override via
+  `rxEffNeq(ind, op)` so concurrent worker threads on other subjects
+  keep solving with `op->neq` and observe no shared-state race.  The
+  legacy `setOpNeq()` mutation has been removed entirely, so this
+  version of nlmixr2est requires the matching rxode2 version
+  (`rxEffNeq` plumbing).  See `inst/reprex_fbio_eta_parallel.R` for the
+  reprex that motivated the fix.
+
 - Add `predict(fit, level="ipred")`, `predict(fit,
   level="individual")` or `predict(fit, level=1)` to predict
   individual fits (with possibly a new dataset).

@@ -41,6 +41,15 @@ struct nlmOptions {
   int stickyTol=0;
   int stickyRecalcN=1;
   int stickyRecalcN2=0;
+  // Per-subject inner-retry counter, sized at setup() to nsub.  Replaces
+  // the formerly shared stickyRecalcN2 plain int that was racy under the
+  // parallel-for over subjects in nlmSolveF / nlmSolveGradId.  Each
+  // subject owns its own slot, so the retry decision (and therefore the
+  // per-subject solve outcome) is deterministic across runs at any cores
+  // setting.  The shared `stickyRecalcN2` member above is kept for
+  // backward compatibility with code that just records "did we ever
+  // bump tolerances at all".
+  std::vector<int> stickyRecalcN2Per;
   int stickyRecalcN1=0;
   int maxOdeRecalc;
   int reducedTol;
@@ -134,6 +143,7 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
+  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
@@ -290,26 +300,42 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
+// Per-subject "did THIS solve fail" check — same idea as inner.cpp's
+// indHasBadSolve(): scan ind->solve for NaN/Inf rather than reading
+// the shared op->badSolve flag, which can be flipped by another
+// thread's failure mid-loop and induce a non-deterministic retry.
+static inline bool nlmIndHasBadSolve(rx_solving_options *op,
+                                     rx_solving_options_ind *ind) {
+  int neq = getOpNeq(op);
+  if (neq <= 0) return false;
+  double *solve = getIndSolve(ind);
+  int n = neq * getIndNallTimes(ind);
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void nlmSolveNlm(int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   nlmOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol  = 1;
-    // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     nlmOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -320,21 +346,19 @@ void nlmSolvePred(int &id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   predOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol2 = 1;
-    // Not thread safe
     rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     predOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
