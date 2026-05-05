@@ -51,6 +51,7 @@ newuoaControl <- function(npt=NULL,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           useColor = crayon::has_color(),
                           printNcol = floor((getOption("width") - 23) / 12), #
@@ -101,6 +102,7 @@ newuoaControl <- function(npt=NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -169,6 +171,7 @@ newuoaControl <- function(npt=NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                useColor=useColor,
                print=print,
@@ -271,7 +274,8 @@ getValidNlmixrCtl.newuoa <- function(control) {
                                 interaction=0L,
                                 compress=.newuoaControl$compress,
                                 ci=.newuoaControl$ci,
-                                sigdigTable=.newuoaControl$sigdigTable)
+                                sigdigTable=.newuoaControl$sigdigTable,
+                                indTolRelax=.newuoaControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

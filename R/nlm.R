@@ -89,6 +89,7 @@ nlmControl <- function(typsize = NULL,
                        stickyRecalcN=4,
                        maxOdeRecalc=5,
                        odeRecalcFactor=10^(0.5),
+                       indTolRelax=TRUE,
 
                        eventType=c("central", "forward"),
                        shiErr=(.Machine$double.eps)^(1/3),
@@ -154,6 +155,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -252,6 +254,7 @@ nlmControl <- function(typsize = NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                eventType=eventType,
                shiErr=shiErr,
@@ -853,7 +856,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 interaction=0L,
                                 compress=.nlmControl$compress,
                                 ci=.nlmControl$ci,
-                                sigdigTable=.nlmControl$sigdigTable)
+                                sigdigTable=.nlmControl$sigdigTable,
+                                indTolRelax=.nlmControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

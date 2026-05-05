@@ -91,6 +91,7 @@ nlminbControl <- function(eval.max=200,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           eventType=c("central", "forward"),
                           shiErr=(.Machine$double.eps)^(1/3),
@@ -174,6 +175,7 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -254,6 +256,7 @@ nlminbControl <- function(eval.max=200,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                eventType=eventType,
                shiErr=shiErr,
@@ -486,7 +489,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 interaction=0L,
                                 compress=.nlminbControl$compress,
                                 ci=.nlminbControl$ci,
-                                sigdigTable=.nlminbControl$sigdigTable)
+                                sigdigTable=.nlminbControl$sigdigTable,
+                                indTolRelax=.nlminbControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

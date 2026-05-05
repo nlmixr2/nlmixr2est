@@ -3900,7 +3900,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
-  op_focei.indTolRelax = as<bool>(foceiO["indTolRelax"]);
+  op_focei.indTolRelax = foceiO.containsElementNamed("indTolRelax") ? as<bool>(foceiO["indTolRelax"]) : true;
   op_focei.reducedTol = 0;
   op_focei.repeatGill=0;
   op_focei.repeatGillN=0;

@@ -65,6 +65,7 @@ nlsControl <- function(maxiter=10000,
                        stickyRecalcN=4,
                        maxOdeRecalc=5,
                        odeRecalcFactor=10^(0.5),
+                       indTolRelax=TRUE,
 
                        eventType=c("central", "forward"),
                        shiErr=(.Machine$double.eps)^(1/3),
@@ -101,6 +102,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(shi21maxFD, lower=1, any.missing=FALSE, len=1)
 
@@ -210,6 +212,7 @@ nlsControl <- function(maxiter=10000,
                stickyRecalcN=stickyRecalcN,
                maxOdeRecalc=maxOdeRecalc,
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
                eventType=eventType,
                shiErr=shiErr,
                shi21maxFD=shi21maxFD,
@@ -1009,7 +1012,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
                                 interaction=0L,
                                 compress=.nlsControl$compress,
                                 ci=.nlsControl$ci,
-                                sigdigTable=.nlsControl$sigdigTable)
+                                sigdigTable=.nlsControl$sigdigTable,
+                                indTolRelax=.nlsControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

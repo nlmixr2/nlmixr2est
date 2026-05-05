@@ -244,6 +244,7 @@
                         powRange=rxode2::rxGetControl(ui, "powRange", 10),
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
                         maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
+                        indTolRelax=rxode2::rxGetControl(ui, "indTolRelax", TRUE),
                         nres=ui$saemModNumEst,
                         perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
@@ -702,6 +703,7 @@
                                 compress=.saemControl$compress,
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
+                                indTolRelax=.saemControl$indTolRelax,
                                 rxControl=.rxControl)
   if (exists(".etaMat", env)) {
     rm(list=".etaMat", envir=env)
