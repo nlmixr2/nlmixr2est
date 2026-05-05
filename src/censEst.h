@@ -30,9 +30,8 @@
 extern int globalCensFlag;
 
 static inline void updateCensFlag(int censMethod) {
-  if ((globalCensFlag & censMethod) == 0) {
-    globalCensFlag += censMethod;
-  }
+#pragma omp atomic update
+  globalCensFlag |= censMethod;
 }
 
 static inline void resetCensFlag() {
