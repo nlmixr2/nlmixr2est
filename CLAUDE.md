@@ -23,6 +23,9 @@ devtools::document()
 
 # Full R CMD check
 devtools::check()
+
+# Set the number of threads for parallel processing (e.g., SAEM)
+rxode2::setRxThreads(threads = 4)  # Use 4 threads
 ```
 
 The package requires compilation (`NeedsCompilation: yes`). C++17 is required (set in `src/Makevars`). After changing C++ files, `devtools::load_all()` recompiles.
