@@ -1505,10 +1505,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
+  .strCmpP <- .mod$strCmpParams
+  .strCmpPNames <- tolower(names(.strCmpP))
   .lvls <- NULL
   for (.v in .covNames) {
     .d <- data[[.v]]
-    if (inherits(.d, "character")) {
+    .strCmpIdx <- match(tolower(.v), .strCmpPNames)
+    if (!is.na(.strCmpIdx)) {
+      .modelLvls <- levels(.strCmpP[[.strCmpIdx]])
+      .extraLvls <- sort(setdiff(unique(as.character(.d)), .modelLvls))
+      .fullLvls <- c(.modelLvls, .extraLvls)
+      if (inherits(.d, "character") || inherits(.d, "factor")) {
+        .l <- factor(as.character(.d), levels = .fullLvls)
+        data[[.v]] <- .l
+        .lvls <- c(.lvls, setNames(list(.fullLvls), .v))
+      }
+    } else if (inherits(.d, "character")) {
       .l <- factor(.d)
       data[[.v]] <- .l
       .lvls <- c(.lvls, setNames(list(levels(.l)), .v))
@@ -1518,7 +1531,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
-  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
   .et <- rxode2::etTrans(inData=data, obj=.mod,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
