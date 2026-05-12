@@ -2067,7 +2067,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } // evid=2 does not need to be calculated
     }
   }
-  if (getOpStiff(op) == 2) { // liblsoda
+  if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
     // Should it be done every time? Every x times?
     sortIds(_rx, 0);
