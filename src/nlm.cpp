@@ -7,7 +7,6 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
-#include <rxode2ptr.h>
 
 #define _(String) (String)
 
