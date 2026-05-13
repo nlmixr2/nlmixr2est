@@ -281,9 +281,6 @@ nlmixr2Est0 <- function(env, ...) {
       try(assign("runInfo", .warnings, .ret$env), silent=TRUE)
     }
   }
-  lapply(seq_along(.warnings), function(i) {
-    warning(.warnings[[i]])
-  })
   .nlmixrEstUpdatesOrigModel(.ret)
   .ret
 }
