@@ -328,7 +328,7 @@ void nlmSolveNlm(int id) {
          nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
     perN++;
     nlmOp.reducedTol  = 1;
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     nlmOde(id);
     j++;
@@ -351,7 +351,7 @@ void nlmSolvePred(int &id) {
          nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
     perN++;
     nlmOp.reducedTol2 = 1;
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     predOde(id);
     j++;
