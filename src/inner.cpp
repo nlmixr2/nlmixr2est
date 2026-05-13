@@ -1043,7 +1043,7 @@ double likInner0(double *eta, int id) {
         // Thread-safe: writes to the calling thread's tolerance slice
         // (gatol2Thread / grtol2Thread) and updates ind->tolFactor so
         // iniSubject() on the next re-solve re-applies the loosening.
-        rxode2::atolRtolFactor_(op_focei.odeRecalcFactor);
+        atolRtolFactor_(op_focei.odeRecalcFactor);
         setIndSolve(ind, -1);
         resetOpBadSolve(op);
         innerOde(id);
@@ -2503,21 +2503,36 @@ void innerOpt() {
     }
   } else {
     int nsub = getRxNsubAndMix(rx);
-    if (cores > 1) {
+    bool _doParallel = (cores > 1) && solveMethodThreadSafe(op);
+    if (_doParallel) {
+      sortIds(rx, 2); // only initialize if rx->ordId == NULL
       _innerParallel.store(1, std::memory_order_release);
     }
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
+#pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
     for (int i = 0; i < nsub; i++){
-      innerOptId(getOrdId(rx, i) - 1);
+      int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
+#ifdef _OPENMP
+      if (_doParallel) {
+        try {
+          innerOptId(_id);
+        } catch (...) {
+          inds_focei[_id].parErrorNoEta = 1;
+        }
+      } else {
+#endif
+        innerOptId(_id);
+#ifdef _OPENMP
+      }
+#endif
     }
     _innerParallel.store(0, std::memory_order_release);
-    if (solveMethodThreadSafe(op)) {
+    if (_doParallel) {
       sortIds(rx, 0);
     }
 
-    if (cores > 1) {
+    if (_doParallel) {
       // --- Post-parallel: deferred error handling ---
       for (int id = 0; id < nsub; id++) {
         focei_ind *indF = &(inds_focei[id]);
@@ -3690,7 +3705,6 @@ static inline void foceiSetupNoEta_(){
     fInd->llikObs = &op_focei.llikObsFull[iLO];
     iLO += getIndNallTimes(ind);
   }
-  sortIds(rx, 1);
   op_focei.alloc=true;
 }
 
@@ -3846,7 +3860,6 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->doEtaNudge=1;
   }
   op_focei.thetaGrad = &op_focei.gthetaGrad[jj];
-  sortIds(rx, 1);
   op_focei.alloc=true;
 }
 
