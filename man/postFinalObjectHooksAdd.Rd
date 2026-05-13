@@ -24,15 +24,15 @@ not returned, the original object is used.  If the element is returned, the
 original object is replaced with the new object.
 }
 \seealso{
-Other preProcessHooks: 
-\code{\link{postFinalObjectHooks}()},
-\code{\link{postFinalObjectHooksRm}()},
-\code{\link{preFinalParTableHooks}()},
-\code{\link{preFinalParTableHooksAdd}()},
-\code{\link{preFinalParTableHooksRm}()},
-\code{\link{preProcessHooks}()},
-\code{\link{preProcessHooksAdd}()},
-\code{\link{preProcessHooksRm}()}
+Other preProcessHooks:
+\code{\link[=postFinalObjectHooks]{postFinalObjectHooks()}},
+\code{\link[=postFinalObjectHooksRm]{postFinalObjectHooksRm()}},
+\code{\link[=preFinalParTableHooks]{preFinalParTableHooks()}},
+\code{\link[=preFinalParTableHooksAdd]{preFinalParTableHooksAdd()}},
+\code{\link[=preFinalParTableHooksRm]{preFinalParTableHooksRm()}},
+\code{\link[=preProcessHooks]{preProcessHooks()}},
+\code{\link[=preProcessHooksAdd]{preProcessHooksAdd()}},
+\code{\link[=preProcessHooksRm]{preProcessHooksRm()}}
 }
 \author{
 Matthew L. Fidler

@@ -18,15 +18,15 @@ a charcter vector listing all pre-processing hooks or the
 Return a list of all pre-final table processing hooks
 }
 \seealso{
-Other preProcessHooks: 
-\code{\link{postFinalObjectHooks}()},
-\code{\link{postFinalObjectHooksAdd}()},
-\code{\link{postFinalObjectHooksRm}()},
-\code{\link{preFinalParTableHooksAdd}()},
-\code{\link{preFinalParTableHooksRm}()},
-\code{\link{preProcessHooks}()},
-\code{\link{preProcessHooksAdd}()},
-\code{\link{preProcessHooksRm}()}
+Other preProcessHooks:
+\code{\link[=postFinalObjectHooks]{postFinalObjectHooks()}},
+\code{\link[=postFinalObjectHooksAdd]{postFinalObjectHooksAdd()}},
+\code{\link[=postFinalObjectHooksRm]{postFinalObjectHooksRm()}},
+\code{\link[=preFinalParTableHooksAdd]{preFinalParTableHooksAdd()}},
+\code{\link[=preFinalParTableHooksRm]{preFinalParTableHooksRm()}},
+\code{\link[=preProcessHooks]{preProcessHooks()}},
+\code{\link[=preProcessHooksAdd]{preProcessHooksAdd()}},
+\code{\link[=preProcessHooksRm]{preProcessHooksRm()}}
 }
 \author{
 Matthew L. Fidler

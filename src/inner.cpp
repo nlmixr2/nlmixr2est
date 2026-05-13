@@ -2526,7 +2526,7 @@ void innerOpt() {
     // Re-sort subjects by descending cumulative innerOptTime so the next
     // call submits the longest-running subjects to the scheduler first,
     // minimising the final-barrier stall under dynamic scheduling.
-    if (cores > 1 && nsub > 1) {
+    if (solveMethodThreadSafe(op) && cores > 1 && nsub > 1) {
       std::vector<int>& _ord = op_focei.innerOptOrder;
       std::sort(_ord.begin(), _ord.end(), [](int a, int b){
         return inds_focei[a].innerOptTime > inds_focei[b].innerOptTime;
