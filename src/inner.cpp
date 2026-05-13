@@ -336,7 +336,6 @@ struct focei_options {
   int *mixIdx = NULL;
   double *mixProb = NULL;
   double *mixProbGrad = NULL;
-  std::vector<int> innerOptOrder;  // subject indices 0…nsub-1 sorted most-expensive first
 };
 
 focei_options op_focei;
@@ -418,8 +417,6 @@ struct focei_ind {
   double *curS;
   int nNonNormal = 0;
   int nObs=0;
-  double innerOptTime = 0.0;  // cumulative wall-clock seconds in innerOptId for load-balance sort
-
   // Mixture options
   int    *mixest;
   double *mixProb;
@@ -2430,9 +2427,6 @@ static inline void resetToZeroWithoutOpt(focei_ind *indF, int& id) {
 }
 
 static inline void innerOptId(int id) {
-#ifdef _OPENMP
-  double _innerOptT0 = omp_get_wtime();
-#endif
   focei_ind *indF = &(inds_focei[id]);
   indF->parWarnBadHess = 0;
   indF->parErrorNoEta = 0;
@@ -2456,9 +2450,6 @@ static inline void innerOptId(int id) {
       }
     }
   }
-#ifdef _OPENMP
-  indF->innerOptTime += omp_get_wtime() - _innerOptT0;
-#endif
 }
 
 
@@ -2519,18 +2510,11 @@ void innerOpt() {
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(cores > 1)
 #endif
     for (int i = 0; i < nsub; i++){
-      innerOptId(op_focei.innerOptOrder[i]);
+      innerOptId(getOrdId(rx, i) - 1);
     }
     _innerParallel.store(0, std::memory_order_release);
-
-    // Re-sort subjects by descending cumulative innerOptTime so the next
-    // call submits the longest-running subjects to the scheduler first,
-    // minimising the final-barrier stall under dynamic scheduling.
-    if (solveMethodThreadSafe(op) && cores > 1 && nsub > 1) {
-      std::vector<int>& _ord = op_focei.innerOptOrder;
-      std::sort(_ord.begin(), _ord.end(), [](int a, int b){
-        return inds_focei[a].innerOptTime > inds_focei[b].innerOptTime;
-      });
+    if (solveMethodThreadSafe(op)) {
+      sortIds(rx, 0);
     }
 
     if (cores > 1) {
@@ -3706,11 +3690,7 @@ static inline void foceiSetupNoEta_(){
     fInd->llikObs = &op_focei.llikObsFull[iLO];
     iLO += getIndNallTimes(ind);
   }
-  {
-    int _nsub = getRxNsub(rx);
-    op_focei.innerOptOrder.resize(_nsub);
-    std::iota(op_focei.innerOptOrder.begin(), op_focei.innerOptOrder.end(), 0);
-  }
+  sortIds(rx, 1);
   op_focei.alloc=true;
 }
 
@@ -3866,11 +3846,7 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->doEtaNudge=1;
   }
   op_focei.thetaGrad = &op_focei.gthetaGrad[jj];
-  {
-    int _nsub = (int)getRxNsubAndMix(rx);
-    op_focei.innerOptOrder.resize(_nsub);
-    std::iota(op_focei.innerOptOrder.begin(), op_focei.innerOptOrder.end(), 0);
-  }
+  sortIds(rx, 1);
   op_focei.alloc=true;
 }
 
