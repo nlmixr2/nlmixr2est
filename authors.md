@@ -60,13 +60,13 @@ Source:
 Fidler M, Xiong Y, Schoemaker R, Wilkins J, Trame M, Hooijmaijers R,
 Post T, Wang W (2026). *nlmixr: Nonlinear Mixed Effects Models in
 Population Pharmacokinetics and Pharmacodynamics*. R package version
-5.0.2.9000, <https://CRAN.R-project.org/package=nlmixr>.
+6.0.0, <https://CRAN.R-project.org/package=nlmixr>.
 
     @Manual{,
       title = {{nlmixr}: Nonlinear Mixed Effects Models in Population Pharmacokinetics and Pharmacodynamics},
       author = {Matthew Fidler and Yuan Xiong and Rik Schoemaker and Justin Wilkins and Mirjam Trame and Richard Hooijmaijers and Teun Post and Wenping Wang},
       year = {2026},
-      note = {R package version 5.0.2.9000},
+      note = {R package version 6.0.0},
       url = {https://CRAN.R-project.org/package=nlmixr},
     }
 
