@@ -1,11 +1,12 @@
-# nlmixr2est (development version)
+# nlmixr2est 6.0.0
 
 - `focei`, `foce`, `fo`, `laplace`, and `agq` have all been
    successfully made thread safe and parallelized (for a single
    CPU). The default tolerance relaxation for difficult to solve ODEs
    has been changed to per individual instead of for the entire
-   population (which is a breaking change).  This should allow more
-   precision for a majority of the subjects in the optimization process.
+   population (which is a breaking change, so major release).  This
+   should allow more precision for a majority of the subjects in the
+   optimization process.
 
 - Add `predict(fit, level="ipred")`, `predict(fit,
   level="individual")` or `predict(fit, level=1)` to predict
