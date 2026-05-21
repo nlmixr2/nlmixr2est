@@ -138,7 +138,7 @@
 #'   filter out
 #' @return boolean: TRUE if the message is a synthetic IOV mu warning
 #'   that should be filtered out, FALSE otherwise
- #' @export
+ #' @noRd
 #' @author Matthew L. Fidler
 .isSyntheticIovMuWarning <- function(msg, iovEtaNames) {
   .prefix <- "some etas defaulted to non-mu referenced, possible parsing error:"
