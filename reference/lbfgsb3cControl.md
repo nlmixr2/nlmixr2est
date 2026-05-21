@@ -17,6 +17,7 @@ lbfgsb3cControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   useColor = crayon::has_color(),
   printNcol = floor((getOption("width") - 23)/12),
   print = 1L,
@@ -105,6 +106,14 @@ lbfgsb3cControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - useColor:
 
@@ -455,19 +464,19 @@ print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -686.1577 1157.719 1172.443      -575.8597         483.351        57.34331
+#> lPop -700.5228 1143.354 1158.077      -568.6771        40110.25        706.2739
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.005575 0.039    0.001 1.673425
+#> elapsed 0.007505 0.029    0.001 1.851495
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.5407 0.2195 40.59 -0.5407 (-0.9708, -0.1105)                    
-#> Em    5.814   2.68  46.1      5.814 (0.5605, 11.07)                    
-#> E50    3.18  1.302 40.96       3.18 (0.6268, 5.732)                    
+#> E0  -0.5584 0.2153 38.55 -0.5584 (-0.9803, -0.1365)                    
+#> Em    14.57  27.15 186.3      14.57 (-38.64, 67.78)                    
+#> E50   5.908  6.769 114.6      5.908 (-7.359, 19.18)                    
 #> g         2  FIXED FIXED                          2                    
 #>  
 #>   Covariance Type ($covMethod): r
@@ -479,9 +488,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0399     0 -0.459 -0.540
-#> 2 1     0.0448     1 -0.999 -0.540
-#> 3 1     0.0600     0 -0.460 -0.539
+#> 1 1     0.0399     1 -1.01  -0.558
+#> 2 1     0.0448     0 -0.453 -0.558
+#> 3 1     0.0681     0 -0.453 -0.556
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -489,16 +498,16 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.5406691  5.8138127  3.1795725 
+#> -0.5584245 14.5713983  5.9083423 
 #> 
 #> $grad
-#> [1]  2.954648e-06  4.659829e-06 -1.046212e-05
+#> [1] -9.450562e-08 -1.646714e-07  5.618707e-07
 #> 
 #> $value
-#> [1] 575.8597
+#> [1] 568.6771
 #> 
 #> $counts
-#> [1] 21 21
+#> [1] 25 25
 #> 
 #> $convergence
 #> [1] 0
@@ -507,29 +516,29 @@ fit2$lbfgsb3c
 #> [1] "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH"
 #> 
 #> $scaleC
-#> [1] 0.003061805 0.036899340 0.034371149
+#> [1] 0.002911054 0.035848377 0.032093329
 #> 
 #> $par.scaled
-#>         E0         Em        E50 
-#> -340.88750  143.00834   35.31868 
+#>        E0        Em       E50 
+#> -364.5881  391.5254  122.7805 
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001873293  0.002592273 -0.006437486
-#> Em   0.002592273  0.008465715 -0.017502395
-#> E50 -0.006437486 -0.017502395  0.040047476
+#>                E0            Em          E50
+#> E0   0.0016837811  0.0008000479 -0.003177108
+#> Em   0.0008000479  0.0009921098 -0.003694294
+#> E50 -0.0031771079 -0.0036942936  0.013883997
 #> 
 #> $cov.scaled
-#>           E0       Em      E50
-#> E0  5137.586 1391.754 1434.102
-#> Em  1391.754 5276.291 2529.676
-#> E50 1434.102 2529.676 1435.980
+#>            E0        Em        E50
+#> E0   5468.024  27171.21   8481.054
+#> Em  27171.210 573537.70 158826.203
+#> E50  8481.054 158826.20  44489.771
 #> 
 #> $r
-#>                E0           Em          E50
-#> E0   0.0009366465  0.001296137 -0.003218743
-#> Em   0.0012961366  0.004232858 -0.008751198
-#> E50 -0.0032187428 -0.008751198  0.020023738
+#>                E0            Em          E50
+#> E0   0.0008418905  0.0004000239 -0.001588554
+#> Em   0.0004000239  0.0004960549 -0.001847147
+#> E50 -0.0015885539 -0.0018471468  0.006941999
 #> 
 
 # The nlm control has been modified slightly to include

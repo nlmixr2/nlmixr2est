@@ -103,27 +103,24 @@ fit <- nlmixr(one.cmt, theo_sd, est="focei")
 #> ℹ Need to run with the source intact to parse comments
 #> → Calculating residuals/tables
 #> ✔ done
-#> Warning: gradient problems with initial estimate and covariance; see $scaleInfo
-#> Warning: ETAs were reset to zero during optimization; (Can control by foceiControl(resetEtaP=.))
-#> Warning: initial ETAs were nudged; (can control by foceiControl(etaNudge=., etaNudge2=))
 
 head(vpcSim(fit, pred=TRUE))
 #>  
 #>  
-#>   sim.id id time    ipred        sim  tad        depot  central nlmixrRowNums
-#> 1      1  1 0.00 0.000000 -0.2596802 0.00 319.99200000   0.0000             2
-#> 2      1  1 0.25 4.252698  3.8700870 0.25 170.25895023 148.4345             3
-#> 3      1  1 0.57 6.839730  7.2113993 0.57  75.91937329 238.7313             4
-#> 4      1  1 1.12 8.204266  7.2536392 1.12  18.94473093 286.3585             5
-#> 5      1  1 2.02 8.219393  8.2581311 2.02   1.95426490 286.8865             6
-#> 6      1  1 3.82 7.386697  7.6537916 3.82   0.02079569 257.8224             7
+#>   sim.id id time     ipred        sim  tad        depot  central nlmixrRowNums
+#> 1      1  1 0.00  0.000000  0.9485653 0.00 3.199920e+02   0.0000             2
+#> 2      1  1 0.25 10.041901 10.2000012 0.25 4.583738e+01 269.4264             3
+#> 3      1  1 0.57 11.234563 11.4319253 0.57 3.810684e+00 301.4257             4
+#> 4      1  1 1.12 10.727509 10.3367536 1.12 5.301276e-02 287.8214             5
+#> 5      1  1 2.02  9.746305 10.6974795 2.02 4.855911e-05 261.4954             6
+#> 6      1  1 3.82  8.041929  8.5018306 3.82 4.074284e-11 215.7667             7
 #>   rxLambda rxYj rxLow rxHi     pred
 #> 1        1    2     0    1 0.000000
-#> 2        1    2     0    1 3.264110
-#> 3        1    2     0    1 5.832395
-#> 4        1    2     0    1 7.868348
-#> 5        1    2     0    1 8.508967
-#> 6        1    2     0    1 7.623610
+#> 2        1    2     0    1 3.257260
+#> 3        1    2     0    1 5.823935
+#> 4        1    2     0    1 7.863516
+#> 5        1    2     0    1 8.510299
+#> 6        1    2     0    1 7.628016
 
 # }
 ```

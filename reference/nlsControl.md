@@ -26,6 +26,7 @@ nlsControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -207,6 +208,14 @@ nlsControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - eventType:
 
@@ -606,7 +615,7 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 2568
+#> → compress parHistData in nlmixr2 object, save 2560
 
 # You can access the underlying nls object with `$nls`
 fit2$nls

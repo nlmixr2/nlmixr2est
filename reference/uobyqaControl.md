@@ -15,6 +15,7 @@ uobyqaControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   useColor = crayon::has_color(),
   printNcol = floor((getOption("width") - 23)/12),
   print = 1L,
@@ -104,6 +105,14 @@ uobyqaControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - useColor:
 
@@ -454,21 +463,21 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -708.8943 1134.983 1149.706      -564.4914        180.4682        55.19697
+#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0932        67.95289
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.005491 0.037    0.001 0.668509
+#> elapsed 0.007316 0.024    0.001 0.733684
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.7484  0.289 38.62 -0.7484 (-1.315, -0.1819)                    
-#> Em    4.537  1.463 32.25       4.537 (1.67, 7.405)                    
-#> E50   2.079 0.8504 40.91     2.079 (0.4121, 3.746)                    
-#> g         2  FIXED FIXED                         2                    
+#>        Est.    SE  %RSE  Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.8062 0.247 30.64 -0.8062 (-1.29, -0.3221)                    
+#> Em    5.487 2.368 43.16    5.487 (0.8456, 10.13)                    
+#> E50   2.898 1.244 42.94    2.898 (0.4592, 5.337)                    
+#> g         2 FIXED FIXED                        2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -477,17 +486,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0383     0 -0.388 -0.747
-#> 2 1     0.0509     1 -1.13  -0.746
-#> 3 1     0.0543     0 -0.388 -0.745
+#> 1 1     0.0383     0 -0.369 -0.805
+#> 2 1     0.0509     0 -0.370 -0.805
+#> 3 1     0.0543     1 -1.17  -0.804
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.748381749286645, 4.53705636474939, 2.07892639881751 
-#> objective: 564.491360130744 
-#> number of function evaluations: 60 
+#> parameter estimates: -0.806218133511085, 5.4866229034296, 2.89816170901102 
+#> objective: 579.080149823443 
+#> number of function evaluations: 72 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

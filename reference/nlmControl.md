@@ -20,6 +20,7 @@ nlmControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -148,6 +149,14 @@ nlmControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - eventType:
 
@@ -535,20 +544,20 @@ print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -675.9084 1167.969 1182.692      -580.9843         2230920          198635
+#> lPop -659.8511 1184.026 1198.749       -589.013         2023540        236931.2
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.008955  0.03    0.001 0.915045
+#> elapsed 0.006291 0.027    0.001 0.929709
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.    SE  %RSE Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.4397  5.84  1328 -0.4397 (-11.89, 11.01)                    
-#> Em    7.042 182.2  2588   7.042 (-350.1, 364.2)                    
-#> E50   3.988 90.86  2279   3.988 (-174.1, 182.1)                    
-#> g         2 FIXED FIXED                       2                    
+#>       Est.    SE  %RSE Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.443 6.926  1563  -0.443 (-14.02, 13.13)                    
+#> Em   5.966 165.8  2779       5.966 (-319, 331)                    
+#> E50   3.67 96.41  2627    3.67 (-185.3, 192.6)                    
+#> g        2 FIXED FIXED                       2                    
 #>  
 #>   Covariance Type ($covMethod): r (nlm)
 #>   Censoring ($censInformation): No censoring
@@ -559,29 +568,29 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0646     0 -0.498 -0.438
-#> 2 1     0.0661     0 -0.498 -0.438
-#> 3 1     0.0815     0 -0.498 -0.437
+#> 1 1     0.0646     1 -0.938 -0.441
+#> 2 1     0.0661     1 -0.938 -0.441
+#> 3 1     0.0811     1 -0.937 -0.440
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$nlm
 #> $minimum
-#> [1] 580.9843
+#> [1] 589.013
 #> 
 #> $estimate
 #>         E0         Em        E50 
-#> -0.4396644  7.0422015  3.9878829 
+#> -0.4429779  5.9664580  3.6697220 
 #> 
 #> $gradient
-#> [1] -4.552810e-09 -2.281597e-08 -3.583457e-07
+#> [1] -9.698108e-09 -1.203613e-07 -1.373070e-06
 #> 
 #> $hessian
 #>               E0           Em          E50
-#> E0   0.001924282  0.001732356 -0.004505964
-#> Em   0.001732356  0.003797413 -0.008835318
-#> E50 -0.004505964 -0.008835318  0.019041451
+#> E0   0.001891660  0.001931320 -0.004538376
+#> Em   0.001931320  0.004743359 -0.009682365
+#> E50 -0.004538376 -0.009682365  0.018783901
 #> 
 #> $code
 #> [1] 1
@@ -590,23 +599,23 @@ fit2$nlm
 #> [1] 9
 #> 
 #> $scaleC
-#> [1] 0.003077565 0.035174832 0.032430774
+#> [1] 0.00303103 0.03281210 0.03107269
 #> 
 #> $estimate.scaled
-#>         E0         Em        E50 
-#> -306.32720  184.99098   62.29619 
+#>        E0        Em       E50 
+#> -312.1081  165.5989   54.7360 
 #> 
 #> $cov.scaled
-#>          E0       Em      E50
-#> E0  3601255  9825418  5314501
-#> Em  9825418 26840995 14515214
-#> E50 5314501 14515214  7850066
+#>           E0       Em      E50
+#> E0   5221263 11542357  7087303
+#> Em  11542357 25540086 15679686
+#> E50  7087303 15679686  9626630
 #> 
 #> $r
-#>                E0           Em          E50
-#> E0   0.0009621412  0.000866178 -0.002252982
-#> Em   0.0008661780  0.001898706 -0.004417659
-#> E50 -0.0022529822 -0.004417659  0.009520726
+#>                E0            Em          E50
+#> E0   0.0009458300  0.0009656602 -0.002269188
+#> Em   0.0009656602  0.0023716795 -0.004841182
+#> E50 -0.0022691878 -0.0048411824  0.009391950
 #> 
 
 # The nlm control has been modified slightly to include

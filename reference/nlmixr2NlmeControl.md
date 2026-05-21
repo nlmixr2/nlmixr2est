@@ -810,6 +810,15 @@ nlmeControl()
 #> $maxExtra
 #> [1] 1000
 #> 
+#> $tolFactor
+#> NULL
+#> 
+#> $serializeFile
+#> NULL
+#> 
+#> $dense
+#> [1] FALSE
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -1274,6 +1283,15 @@ nlmixr2NlmeControl()
 #> 
 #> $maxExtra
 #> [1] 1000
+#> 
+#> $tolFactor
+#> NULL
+#> 
+#> $serializeFile
+#> NULL
+#> 
+#> $dense
+#> [1] FALSE
 #> 
 #> $.zeros
 #> NULL

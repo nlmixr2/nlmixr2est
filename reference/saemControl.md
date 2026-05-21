@@ -30,6 +30,7 @@ saemControl(
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
   maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
   perSa = 0.75,
   perNoCor = 0.75,
   perFixOmega = 0.1,
@@ -228,6 +229,14 @@ saemControl(
 
   Maximum number of times to reduce the ODE tolerances and try to
   resolve the system if there was a bad ODE solve.
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - perSa:
 

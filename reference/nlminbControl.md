@@ -29,6 +29,7 @@ nlminbControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -181,6 +182,14 @@ nlminbControl(
 
   The ODE recalculation factor when ODE solving goes bad, this is the
   factor the rtol/atol is reduced
+
+- indTolRelax:
+
+  When \`TRUE\` (default), only subjects whose ODE solve produced
+  NaN/Inf have their tolerances relaxed, and the relaxed tolerance
+  persists across optimizer calls (sticky). When \`FALSE\`, all subjects
+  have their tolerances relaxed on each retry and tolerances are reset
+  afterward.
 
 - eventType:
 
@@ -530,27 +539,27 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 8328
-#> → compress parHistData in nlmixr2 object, save 2784
+#> → compress origData in nlmixr2 object, save 8360
+#> → compress parHistData in nlmixr2 object, save 2904
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -658.7064 1185.171 1199.894      -589.5853        2943.079        113.3684
+#> lPop -634.9123 1208.965 1223.688      -601.4824          120009        935.5517
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>            setup table compress    other
-#> elapsed 0.005409 0.029    0.011 0.962591
+#> elapsed 0.006322 0.032    0.012 1.002678
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.4614 0.1955 42.37 -0.4614 (-0.8446, -0.0782)                    
-#> Em    8.587  6.935 80.77      8.587 (-5.006, 22.18)                    
-#> E50   4.697  2.679 57.04     4.697 (-0.5539, 9.948)                    
-#> g         2  FIXED FIXED                          2                    
+#>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.3711 0.1918  51.7 -0.3711 (-0.7471, 0.004905)                    
+#> Em    17.26  45.73   265       17.26 (-72.38, 106.9)                    
+#> E50   7.909  12.21 154.3       7.909 (-16.01, 31.83)                    
+#> g         2  FIXED FIXED                           2                    
 #>  
 #>   Covariance Type ($covMethod): r (nlminb)
 #>   Censoring ($censInformation): No censoring
@@ -561,58 +570,58 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0261     0 -0.489 -0.461
-#> 2 1     0.0476     1 -0.950 -0.461
-#> 3 1     0.0505     0 -0.489 -0.460
+#> 1 1     0.0261     0 -0.525 -0.371
+#> 2 1     0.0476     0 -0.525 -0.370
+#> 3 1     0.0505     0 -0.525 -0.370
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlminb
 
 fit2$nlminb
 #> $par
-#>        E0        Em       E50 
-#> -0.461394  8.586665  4.697008 
+#>         E0         Em        E50 
+#> -0.3710903 17.2550218  7.9093700 
 #> 
 #> $objective
-#> [1] 589.5853
+#> [1] 601.4824
 #> 
 #> $convergence
 #> [1] 0
 #> 
 #> $iterations
-#> [1] 10
+#> [1] 14
 #> 
 #> $evaluations
 #> function gradient 
-#>       17       11 
+#>       21       15 
 #> 
 #> $message
 #> [1] "relative convergence (4)"
 #> 
 #> $scaleC
-#> [1] 0.002895922 0.034035845 0.031273778
+#> [1] 0.002863784 0.030813757 0.029116520
 #> 
 #> $par.scaled
-#>         E0         Em        E50 
-#> -332.98205  236.59260   87.23865 
+#>        E0        Em       E50 
+#> -305.1746  542.7513  203.9559 
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001733752  0.001203659 -0.003386052
-#> Em   0.001203659  0.002300787 -0.005719193
-#> E50 -0.003386052 -0.005719193  0.014902217
+#>                E0            Em          E50
+#> E0   0.0017400253  0.0004542875 -0.001736241
+#> Em   0.0004542875  0.0003568154 -0.001293392
+#> E50 -0.0017362413 -0.0012933920  0.004717977
 #> 
 #> $cov.scaled
-#>           E0        Em       E50
-#> E0  4557.836  4126.324  2619.228
-#> Em  4126.324 41518.858 16871.737
-#> E50 2619.228 16871.737  7338.610
+#>            E0         Em       E50
+#> E0   4487.334   43384.11  13544.74
+#> Em  43384.107 2202580.85 619783.89
+#> E50 13544.738  619783.89 175740.70
 #> 
 #> $r
-#>                E0            Em          E50
-#> E0   0.0008668758  0.0006018296 -0.001693026
-#> Em   0.0006018296  0.0011503933 -0.002859596
-#> E50 -0.0016930260 -0.0028595963  0.007451109
+#>                E0            Em           E50
+#> E0   0.0008700127  0.0002271437 -0.0008681206
+#> Em   0.0002271437  0.0001784077 -0.0006466960
+#> E50 -0.0008681206 -0.0006466960  0.0023589883
 #> 
 # }
 ```

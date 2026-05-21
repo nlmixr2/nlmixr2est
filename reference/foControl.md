@@ -210,7 +210,7 @@ foControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x55bf71dd3880>
+#> <bytecode: 0x55fa92ae81f8>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -365,6 +365,9 @@ foControl()
 #> 
 #> $stickyRecalcN
 #> [1] 4
+#> 
+#> $indTolRelax
+#> [1] TRUE
 #> 
 #> $eventType
 #> [1] 2
@@ -731,6 +734,15 @@ foControl()
 #> 
 #> $maxExtra
 #> [1] 1000
+#> 
+#> $tolFactor
+#> NULL
+#> 
+#> $serializeFile
+#> NULL
+#> 
+#> $dense
+#> [1] FALSE
 #> 
 #> $.zeros
 #> NULL

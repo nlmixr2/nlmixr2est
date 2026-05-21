@@ -246,5 +246,5 @@ exact <- sc2.g(x0)
 g <- nlmixr2Gill83(sc2.f, x0)
 
 max(abs(exact - g$df)/(1 + abs(exact)))
-#> [1] 0.0008992151
+#> [1] 0.0009138107
 ```
