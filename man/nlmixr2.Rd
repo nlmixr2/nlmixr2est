@@ -107,6 +107,52 @@ and pharmacokinetic-pharmacodynamic (PKPD) models.
 \details{
 The nlmixr2 generalized function allows common access to the nlmixr2
 estimation routines.
+
+The nlmixr object has the following fields:\tabular{lll}{
+   Field \tab Note \tab Description \cr
+   censInfo \tab  \tab Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset) \cr
+   conditionNumber \tab  \tab Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix \cr
+   cor \tab  \tab Correlation matrix \cr
+   cov \tab  \tab Variance-covariance matrix \cr
+   covMethod \tab  \tab Method used to calculate covariance of the fixed effects \cr
+   dataLloq \tab  \tab Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step \cr
+   dataMergeFull \tab  \tab Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeInner \tab  \tab Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeLeft \tab  \tab Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataMergeRight \tab  \tab Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood \cr
+   dataUloq \tab  \tab Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step \cr
+   env \tab  \tab This is the environment where all the information for the fit is stored outside of the data-frame. It is an R environment hence $env \cr
+   runInfo \tab  \tab This returns a list of all the warnings or fit information \cr
+   rxControl \tab  \tab Integration options used to control rxode2 \cr
+   scaleInfo \tab  \tab The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=…) if you think these are unreasonable. It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc) \cr
+   seed \tab  \tab This is the initial seed used for saem \cr
+   shrink \tab  \tab This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error \cr
+   simInfo \tab  \tab This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish \cr
+   table \tab  \tab These are the table options that were used when generating the table output (were CWRES included, etc \cr
+   theta \tab  \tab Estimates for eta for each individual \cr
+   time \tab  \tab Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.) \cr
+   ui \tab  \tab Final estimates for the model \cr
+   atol \tab n2r \tab Absolute tolerance that NONMEM specified; will be used when solving \cr
+   dfObs \tab n2r \tab Degrees of freedom by observation \cr
+   dfSub \tab n2r \tab Degrees of freedom by subject \cr
+   etaData \tab n2r \tab Subject level IIV values \cr
+   ipredAtol \tab n2r \tab Absolute tolerance difference between NONMEM and rxode2 individual predictions \cr
+   ipredCompare \tab n2r \tab Data frame with ipred values \cr
+   ipredRtol \tab n2r \tab Relative tolerance difference between NONMEM and rxode2 individual predictions \cr
+   nonmemData \tab n2r \tab Original dataset used for NONMEM analysis \cr
+   predAtol \tab n2r \tab Absolute tolerance difference between NONMEM and rxode2 population predictions \cr
+   predCompare \tab n2r \tab Data frame with pred values \cr
+   predRtol \tab n2r \tab Relative tolerance difference between NONMEM and rxode2 population predictions \cr
+   rtol \tab n2r \tab Relative tolerance that NONMEM specified; will be used when solving \cr
+   sigma \tab n2r \tab Error model matrix \cr
+   ssAtol \tab n2r \tab Steady state absolute tolerance that NONMEM specified; will be used for solving. \cr
+   ssRtol \tab n2r \tab Steady state relative tolerance that NONMEM specified will be used for solving \cr
+   thetaMat \tab n2r \tab Covariance Matrix (matches rxSolve(thetaMat=) \cr
+}
+
+
+n2r - These fields are added when a NONMEM model is imported using
+\code{nonmem2rx()}
 }
 \section{nlmixr modeling mini-language}{
 
