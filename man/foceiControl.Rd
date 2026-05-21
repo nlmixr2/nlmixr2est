@@ -108,6 +108,7 @@ foceiControl(
   etaMat = NULL,
   repeatGillMax = 1,
   stickyRecalcN = 4,
+  indTolRelax = TRUE,
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
   badSolveObjfAdj = 100,
@@ -740,6 +741,12 @@ parameter.}
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
 
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
+
 \item{gradProgressOfvTime}{This is the time for a single objective
 function evaluation (in seconds) to start progress bars on gradient evaluations}
 
@@ -898,9 +905,9 @@ Optimization.
 
 \code{\link[rxode2]{rxSolve}}
 
-Other Estimation control: 
-\code{\link{nlmixr2NlmeControl}()},
-\code{\link{saemControl}()}
+Other Estimation control:
+\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}},
+\code{\link[=saemControl]{saemControl()}}
 }
 \author{
 Matthew L. Fidler

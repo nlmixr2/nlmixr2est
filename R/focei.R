@@ -1505,10 +1505,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
+  .strCmpP <- .mod$strCmpParams
+  .strCmpPNames <- tolower(names(.strCmpP))
   .lvls <- NULL
   for (.v in .covNames) {
     .d <- data[[.v]]
-    if (inherits(.d, "character")) {
+    .strCmpIdx <- match(tolower(.v), .strCmpPNames)
+    if (!is.na(.strCmpIdx)) {
+      .modelLvls <- levels(.strCmpP[[.strCmpIdx]])
+      .extraLvls <- sort(setdiff(unique(as.character(.d)), .modelLvls))
+      .fullLvls <- c(.modelLvls, .extraLvls)
+      if (inherits(.d, "character") || inherits(.d, "factor")) {
+        .l <- factor(as.character(.d), levels = .fullLvls)
+        data[[.v]] <- .l
+        .lvls <- c(.lvls, setNames(list(.fullLvls), .v))
+      }
+    } else if (inherits(.d, "character")) {
       .l <- factor(.d)
       data[[.v]] <- .l
       .lvls <- c(.lvls, setNames(list(levels(.l)), .v))
@@ -1518,7 +1531,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
-  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
   .et <- rxode2::etTrans(inData=data, obj=.mod,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
@@ -1909,6 +1921,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .ret <- .ret0
   if (!is.null(method))
     .ret$method <- method
+  .priorEnvTolFactor <- NULL
+  if (is.environment(ui) && exists("foceiEnv", envir=ui, inherits=FALSE)) {
+    .priorEnv <- ui$foceiEnv
+    if (is.environment(.priorEnv) && exists("tolFactor", envir=.priorEnv, inherits=FALSE)) {
+      .priorEnvTolFactor <- .priorEnv$tolFactor
+    }
+  }
   if (exists("ui", envir=.ret)) {
     ui <- rxode2::rxUiDecompress(get("ui", envir=.ret))
   } else {
@@ -1933,6 +1952,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   .nlmixr2FitUpdateParams(.ret)
   .ret$IDlabel <- rxode2::.getLastIdLvl()
+  .idLvl <- if (exists("idLvl", envir=.ret)) .ret$idLvl else character(0)
+  if (exists("tolFactor", envir=.ret)) {
+    .tf <- .ret$tolFactor
+    if (length(.tf) == length(.idLvl)) {
+      .tf <- setNames(.tf, .idLvl)
+    }
+    .ret$tolFactor <- .tf
+  }
+  if (!is.null(.priorEnvTolFactor) && length(.priorEnvTolFactor) == length(.idLvl)) {
+    .foceiTf <- if (exists("tolFactor", envir=.ret)) unname(.ret$tolFactor) else rep(1.0, length(.priorEnvTolFactor))
+    .ret$tolFactor <- setNames(pmax(.foceiTf, .priorEnvTolFactor), .idLvl)
+  }
   if (exists("skipTable", envir=.ret)) {
     if (is.na(.ret$skipTable)) {
     } else if (.ret$skipTable) {

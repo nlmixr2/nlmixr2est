@@ -27,6 +27,7 @@ optimControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -142,6 +143,12 @@ ODE solve.}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}

@@ -50,6 +50,7 @@ int _saemIncreaseTol=0;
 int _saemIncreasedTol2=0;
 double _saemOdeRecalcFactor = 1.0;
 int _saemMaxOdeRecalc = 0;
+bool _saemIndTolRelax = true;
 mat _saemUE;
 
 int _saemFixedIdx[4] = {0, 0, 0, 0};
@@ -586,6 +587,7 @@ public:
     _saemIncreasedTol2=0;
     _saemMaxOdeRecalc = abs(as<int>(x["maxOdeRecalc"]));
     _saemOdeRecalcFactor = fabs(as<double>(x["odeRecalcFactor"]));
+    _saemIndTolRelax = as<bool>(x["indTolRelax"]);
     _saemUE = as<mat>(x["ue"]);
 
     nmc = as<int>(x["nmc"]);
@@ -1992,15 +1994,41 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   int j=0;
   while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
     _saemIncreaseTol=1;
-    rxode2::atolRtolFactor_(_saemOdeRecalcFactor);
+    if (_saemIndTolRelax) {
+      // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
+      // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
+      // subsequent SAEM iterations — genuinely stiff subjects stay loosened.
+      if (getOpNeq(op) > 0) {
+        for (int _i = 0; _i < _Nnlmixr2; _i++) {
+          rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+          double *_solveI = getIndSolve(_indI);
+          int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
+          for (int _ns = 0; _ns < _nsolveI; _ns++) {
+            if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
+              setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+              break;
+            }
+          }
+        }
+      }
+    } else {
+      // Loosen all subjects uniformly; reset after retry.
+      for (int _i = 0; _i < _Nnlmixr2; _i++) {
+        rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
+        setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+      }
+    }
     resetRxBadSolve(_rx);
     par_solve(_rx);
     j++;
   }
-  if (j != 0) {
-    // Not thread safe
-    rxode2::atolRtolFactor_(pow(_saemOdeRecalcFactor, -j));
+  if (!_saemIndTolRelax && j != 0) {
+    // Reset all subjects' tolFactor after the non-selective retry.
+    for (int _i = 0; _i < _Nnlmixr2; _i++) {
+      setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
+    }
   }
+  // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
   mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
   int elt=0;
   bool hasNan = false;
@@ -2039,7 +2067,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       } // evid=2 does not need to be calculated
     }
   }
-  if (getOpStiff(op) == 2) { // liblsoda
+  if (solveMethodThreadSafe(op)) { // liblsoda
     // Order by the overall solve time
     // Should it be done every time? Every x times?
     sortIds(_rx, 0);
@@ -2117,6 +2145,11 @@ SEXP saem_fit(SEXP xSEXP) {
   saem.set_fn(user_function);
   saem.saem_fit();
 
+  int _saemNsub = (int)getRxNsub(_rx);
+  NumericVector _saemTf(_saemNsub);
+  for (int _i = 0; _i < _saemNsub; _i++) {
+    _saemTf[_i] = getIndTolFactor(getSolvingOptionsInd(_rx, _i));
+  }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
     Named("transMat") = saem.get_trans(),
@@ -2128,7 +2161,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
-    Named("res_info") = saem.get_resInfo()
+    Named("res_info") = saem.get_resInfo(),
+    Named("tolFactor") = _saemTf
   );
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";

@@ -29,6 +29,7 @@ saemControl(
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
   maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
   perSa = 0.75,
   perNoCor = 0.75,
   perFixOmega = 0.1,
@@ -175,6 +176,12 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 tolerances and try to resolve the system if there was a bad
 ODE solve.}
 
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
+
 \item{perSa}{This is the percent of the time the `nBurn`
 iterations in phase runs runs a simulated annealing.}
 
@@ -277,9 +284,9 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 Control Options for SAEM
 }
 \seealso{
-Other Estimation control: 
-\code{\link{foceiControl}()},
-\code{\link{nlmixr2NlmeControl}()}
+Other Estimation control:
+\code{\link[=foceiControl]{foceiControl()}},
+\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}}
 }
 \author{
 Wenping Wang & Matthew L. Fidler

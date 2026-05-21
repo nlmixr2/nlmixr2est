@@ -152,6 +152,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          stickyRecalcN=4,
                          maxOdeRecalc=5,
                          odeRecalcFactor=10^(0.5),
+                         indTolRelax=TRUE,
                          eventType=c("central", "forward"),
                          shiErr=(.Machine$double.eps)^(1/3),
                          shi21maxFD=20L,
@@ -230,6 +231,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -321,6 +323,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
                eventType=eventType,
                shiErr=shiErr,
                shi21maxFD=as.integer(shi21maxFD),
@@ -554,7 +557,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
                                 interaction=0L,
                                 compress=.optimControl$compress,
                                 ci=.optimControl$ci,
-                                sigdigTable=.optimControl$sigdigTable)
+                                sigdigTable=.optimControl$sigdigTable,
+                                indTolRelax=.optimControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

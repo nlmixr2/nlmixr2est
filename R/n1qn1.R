@@ -53,6 +53,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          stickyRecalcN=4,
                          maxOdeRecalc=5,
                          odeRecalcFactor=10^(0.5),
+                         indTolRelax=TRUE,
 
                          useColor = crayon::has_color(),
                          printNcol = floor((getOption("width") - 23) / 12), #
@@ -104,6 +105,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -175,6 +177,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     stickyRecalcN=as.integer(stickyRecalcN),
     maxOdeRecalc=as.integer(maxOdeRecalc),
     odeRecalcFactor=odeRecalcFactor,
+    indTolRelax=indTolRelax,
 
     useColor=useColor,
     print=print,
@@ -278,7 +281,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 interaction=0L,
                                 compress=.n1qn1Control$compress,
                                 ci=.n1qn1Control$ci,
-                                sigdigTable=.n1qn1Control$sigdigTable)
+                                sigdigTable=.n1qn1Control$sigdigTable,
+                                indTolRelax=.n1qn1Control$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
