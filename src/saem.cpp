@@ -46,12 +46,15 @@ double _saemLambdaR;
 double _saemPowR;
 int _saemPropT=0;
 bool _warnAtolRtol=false;
-int _saemIncreaseTol=0;
-int _saemIncreasedTol2=0;
-double _saemOdeRecalcFactor = 1.0;
-int _saemMaxOdeRecalc = 0;
-bool _saemIndTolRelax = true;
-mat _saemUE;
+struct saem_state_t {
+  int _saemIncreaseTol=0;
+  int _saemIncreasedTol2=0;
+  double _saemOdeRecalcFactor = 1.0;
+  int _saemMaxOdeRecalc = 0;
+  bool _saemIndTolRelax = true;
+  mat _saemUE;
+};
+static thread_local saem_state_t* current_saem_state = nullptr;
 
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
@@ -571,7 +574,7 @@ public:
   mat get_eta() {
     mat eta = mpost_phi.cols(i1);
     eta -= mprior_phi1;
-    mat ue = _saemUE.rows(0, eta.n_rows - 1);
+    mat ue = current_saem_state->_saemUE.rows(0, eta.n_rows - 1);
     ue = ue.cols(i1);
     eta = eta % ue;
     return eta;
@@ -583,12 +586,12 @@ public:
     _saemType = as<int>(x["type"]);
     _saemLambdaR = fabs(as<double>(x["lambdaRange"]));
     _saemPowR = fabs(as<double>(x["powRange"]));
-    _saemIncreaseTol=0;
-    _saemIncreasedTol2=0;
-    _saemMaxOdeRecalc = abs(as<int>(x["maxOdeRecalc"]));
-    _saemOdeRecalcFactor = fabs(as<double>(x["odeRecalcFactor"]));
-    _saemIndTolRelax = as<bool>(x["indTolRelax"]);
-    _saemUE = as<mat>(x["ue"]);
+    current_saem_state->_saemIncreaseTol=0;
+    current_saem_state->_saemIncreasedTol2=0;
+    current_saem_state->_saemMaxOdeRecalc = abs(as<int>(x["maxOdeRecalc"]));
+    current_saem_state->_saemOdeRecalcFactor = fabs(as<double>(x["odeRecalcFactor"]));
+    current_saem_state->_saemIndTolRelax = as<bool>(x["indTolRelax"]);
+    current_saem_state->_saemUE = as<mat>(x["ue"]);
 
     nmc = as<int>(x["nmc"]);
     nu = as<uvec>(x["nu"]);
@@ -1874,16 +1877,16 @@ private:
         mat phiMc=phiM;
         switch (method) {
         case 1:
-          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % _saemUE.cols(i) +
+          phiMc.cols(i)=randn<mat>(mx.nM,mphi.nphi)*mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
             mphi.mprior_phiM;
           break;
         case 2:
           phiMc.cols(i)=phiM.cols(i) +
-            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % _saemUE.cols(i);
+            randn<mat>(mx.nM,mphi.nphi)*mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
           break;
         case 3:
           phiMc.col(i(k1))=phiM.col(i(k1))+
-            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % _saemUE.col(k1);
+            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(k1);
           // Rcpp::print(Rcpp::wrap(phiM.cols(i(k1))));
           break;
         }
@@ -1992,9 +1995,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   resetRxBadSolve(_rx);
   par_solve(_rx); // Solve the complete system (possibly in parallel)
   int j=0;
-  while (hasRxBadSolve(_rx) && j < _saemMaxOdeRecalc){
-    _saemIncreaseTol=1;
-    if (_saemIndTolRelax) {
+  while (hasRxBadSolve(_rx) && j < current_saem_state->_saemMaxOdeRecalc){
+    current_saem_state->_saemIncreaseTol=1;
+    if (current_saem_state->_saemIndTolRelax) {
       // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
       // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
       // subsequent SAEM iterations — genuinely stiff subjects stay loosened.
@@ -2005,7 +2008,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
           int _nsolveI = getOpNeq(op) * getIndNallTimes(_indI);
           for (int _ns = 0; _ns < _nsolveI; _ns++) {
             if (ISNA(_solveI[_ns]) || std::isnan(_solveI[_ns]) || std::isinf(_solveI[_ns])) {
-              setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+              setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
               break;
             }
           }
@@ -2015,14 +2018,14 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
       // Loosen all subjects uniformly; reset after retry.
       for (int _i = 0; _i < _Nnlmixr2; _i++) {
         rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
-        setIndTolFactor(_indI, getIndTolFactor(_indI) * _saemOdeRecalcFactor);
+        setIndTolFactor(_indI, getIndTolFactor(_indI) * current_saem_state->_saemOdeRecalcFactor);
       }
     }
     resetRxBadSolve(_rx);
     par_solve(_rx);
     j++;
   }
-  if (!_saemIndTolRelax && j != 0) {
+  if (!current_saem_state->_saemIndTolRelax && j != 0) {
     // Reset all subjects' tolFactor after the non-selective retry.
     for (int _i = 0; _i < _Nnlmixr2; _i++) {
       setIndTolFactor(getSolvingOptionsInd(_rx, _i), 1.0);
@@ -2123,7 +2126,14 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   _rx=getRxSolve_();
   mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
+  saem_state_t dummy_st;
+  if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
+  if (opt.containsElementNamed("odeRecalcFactor")) dummy_st._saemOdeRecalcFactor = fabs(as<double>(opt["odeRecalcFactor"]));
+  if (opt.containsElementNamed("indTolRelax")) dummy_st._saemIndTolRelax = as<bool>(opt["indTolRelax"]);
+  if (opt.containsElementNamed("ue")) dummy_st._saemUE = as<mat>(opt["ue"]);
+  current_saem_state = &dummy_st;
   mat gMat = user_function(phi, evt, opt);
+  current_saem_state = nullptr;
   vec g = gMat.col(0);
   return wrap(g);
 }
@@ -2140,9 +2150,17 @@ SEXP saem_fit(SEXP xSEXP) {
   saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
 
+  saem_state_t dummy_st;
+  if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
+  if (opt.containsElementNamed("odeRecalcFactor")) dummy_st._saemOdeRecalcFactor = fabs(as<double>(opt["odeRecalcFactor"]));
+  if (opt.containsElementNamed("indTolRelax")) dummy_st._saemIndTolRelax = as<bool>(opt["indTolRelax"]);
+  if (opt.containsElementNamed("ue")) dummy_st._saemUE = as<mat>(opt["ue"]);
+  current_saem_state = &dummy_st;
+
   SAEM saem;
   saem.inits(x);
   saem.set_fn(user_function);
+
   saem.saem_fit();
 
   int _saemNsub = (int)getRxNsub(_rx);
@@ -2164,6 +2182,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf
   );
+  current_saem_state = nullptr;
   out.attr("saem.cfg") = x;
   out.attr("class") = "saemFit";
   return out;

@@ -1,5 +1,6 @@
 #define STRICT_R_HEADER
 #include "npde.h"
+#include "rxProtect.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -306,6 +307,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
 
 extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
+  rxProtect rx_protect;
   if (TYPEOF(npdeSim) != VECSXP) {
     stop("npdeSim needs to be a data.frame");
   }
@@ -338,8 +340,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
   //arma::vec npde(REAL(npdeSEXP), dv.size(), false, true);
-  int pro = 0;
-  SEXP s0 = PROTECT(VECTOR_ELT(npdeSim, 0)); pro++;
+  SEXP s0 = rx_protect.protect(VECTOR_ELT(npdeSim, 0));
   int simLen = Rf_length(s0);
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
@@ -403,13 +404,13 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::vec ru2 = randu(simLen);
   arma::vec ru3 = randu(simLen);
 
-  SEXP npdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP npdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP pdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP pdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP epredSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP dvSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP eresSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
+  SEXP npdeSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP npdSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP pdeSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP pdSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP epredSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP dvSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP eresSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   arma::vec npde(REAL(npdeSEXP), dvLen, false, true);
   arma::vec npd(REAL(npdSEXP), dvLen, false, true);
   arma::vec pde(REAL(pdeSEXP), dvLen, false, true);
@@ -537,8 +538,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   ret[3] = List::create(_["NPD"]=npd);
   ret[4] = List::create(_["PDE"]=pde);
   ret[5] = List::create(_["PD"]=pd);
-  SEXP ret2 = PROTECT(dfCbindList(wrap(ret))); pro++;
-  UNPROTECT(pro);
+  SEXP ret2 = rx_protect.protect(dfCbindList(wrap(ret)));
   return List::create(dvf, ret2);
   END_RCPP
  }
