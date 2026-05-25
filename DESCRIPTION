@@ -95,4 +95,3 @@ Language: en-US
 NeedsCompilation: yes
 LazyData: true
 Config/roxygen2/version: 8.0.0
-Config/testthat/parallel: true
