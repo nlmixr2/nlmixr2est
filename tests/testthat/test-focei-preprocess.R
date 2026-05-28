@@ -41,6 +41,19 @@ test_that(".foceiPreProcessData works with data.frame and tibble data", {
   expect_equal(env_orig$dataSav$nlmixrRowNums, c(NA, 1, 2))
 })
 
+test_that(".foceiPreProcessData preserves rxEt extra columns", {
+  env_orig <- new.env()
+  et <- rxode2::et(amt=0)
+  et <- rxode2::et(et, 1)
+  et$DV <- 100
+
+  expect_equal(nrow(et), 2L)
+  .foceiPreProcessData(data = et, env = env_orig, ui = ui)
+
+  expect_equal(env_orig$origData$DV, c(100, 100))
+  expect_true("DV" %in% names(env_orig$dataSav))
+})
+
 test_that(".foceiPreProcessData works with ID as character or factor", {
   env_orig <- new.env()
   df <- data.frame(ID=c("A", "B"), DV=1:2, time=1:2)

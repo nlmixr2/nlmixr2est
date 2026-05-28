@@ -1480,7 +1480,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     rxControl <- rxControl()
   }
-  env$origData <- as.data.frame(data)
+  if (inherits(data, "data.frame")) {
+    env$origData <- as.data.frame(data[, names(data), drop = FALSE])
+  } else {
+    env$origData <- as.data.frame(data)
+  }
   data <- env$origData
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
