@@ -234,3 +234,63 @@
   }
   .ret
 }
+
+.nlmixr2BenchmarkReplicate <- function(cases = .nlmixr2BenchmarkDefaultCases(),
+                                       threads = NULL,
+                                       reps = 1L,
+                                       warmup = 0L,
+                                       file = NULL,
+                                       quiet = TRUE) {
+  checkmate::assertInt(as.integer(reps), lower = 1L, .var.name = "reps")
+  checkmate::assertInt(as.integer(warmup), lower = 0L, .var.name = "warmup")
+  .reps <- as.integer(reps)
+  .warmup <- as.integer(warmup)
+  if (.warmup > 0L) {
+    for (.i in seq_len(.warmup)) {
+      invisible(.nlmixr2BenchmarkRun(cases = cases, threads = threads, quiet = quiet))
+    }
+  }
+  .ret <- lapply(seq_len(.reps), function(.rep) {
+    .run <- .nlmixr2BenchmarkRun(cases = cases, threads = threads, quiet = quiet)
+    .run$replicate <- .rep
+    .run
+  })
+  .ret <- do.call(rbind, .ret)
+  row.names(.ret) <- NULL
+  if (!is.null(file)) {
+    utils::write.csv(.ret, file = file, row.names = FALSE)
+  }
+  .ret
+}
+
+.nlmixr2BenchmarkSummarize <- function(benchmarks) {
+  checkmate::assertDataFrame(benchmarks, min.rows = 1, .var.name = "benchmarks")
+  .required <- c("case", "estimator", "method", "subjects", "observations",
+                 "ntheta", "neta", "rx_threads", "omp_threads",
+                 "stage", "raw_stage", "elapsed", "total_elapsed", "replicate")
+  checkmate::assertSubset(.required, choices = names(benchmarks), .var.name = "names(benchmarks)")
+  .groupCols <- c("case", "estimator", "method", "subjects", "observations",
+                  "ntheta", "neta", "rx_threads", "omp_threads",
+                  "stage", "raw_stage")
+  .keys <- benchmarks[, .groupCols, drop = FALSE]
+  .keyId <- do.call(paste, c(.keys, sep = "\r"))
+  .groups <- split(seq_len(nrow(benchmarks)), match(.keyId, unique(.keyId)))
+  .ret <- lapply(.groups, function(.idx) {
+    .x <- benchmarks[.idx, , drop = FALSE]
+    data.frame(
+      .x[1, .groupCols, drop = FALSE],
+      reps = length(unique(.x$replicate)),
+      elapsed_mean = mean(.x$elapsed),
+      elapsed_min = min(.x$elapsed),
+      elapsed_max = max(.x$elapsed),
+      total_elapsed_mean = mean(.x$total_elapsed),
+      total_elapsed_min = min(.x$total_elapsed),
+      total_elapsed_max = max(.x$total_elapsed),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+  .ret <- do.call(rbind, .ret)
+  row.names(.ret) <- NULL
+  .ret
+}
