@@ -311,9 +311,18 @@ mu2env$expit <- rxode2::expit
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiFinalizeMu2 <- function(ret) {
+.uiFinalizeMu2 <- function(ret, model) {
+  if (!is.null(model)) {
+    return(.uiFinalizeMu2hook(ret))
+  }
+  # Reset symengine environments
+  .saemModelEnv$symengine <- NULL
+  .saemModelEnv$predSymengine <- NULL
+  ret
+}
+.uiFinalizeMu2hook <- function(ret) {
   if (length(.muRefTrans$cur) > 0L) {
-    if (is.null(model)) return(ret)
+    if (is.null(ret$ui)) return(ret)
     .model <- rxode2::as.model(ret$ui)
     for (.cur in .muRefTrans$cur) {
       .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
@@ -345,4 +354,4 @@ mu2env$expit <- rxode2::expit
 # Register hooks
 # -----------------------------------------------------------------------
 preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2hook)
-postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2)
+postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2hook)
