@@ -78,7 +78,10 @@ Suggests:
     sfsmisc,
     minpack.lm,
     remotes,
-    fastGHQuad
+    fastGHQuad,
+    rmarkdown
+VignetteBuilder:
+    knitr
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
