@@ -1491,13 +1491,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }, character(1))
   if (is.null(data$ID)) data$ID <- 1L
-  colnames(data) <- vapply(names(data), function(x) {
-    if (any(x == .covNames)) {
-      x
-    } else {
-      toupper(x)
-    }
-  }, character(1))
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   checkmate::assert_names(names(data), must.include = c("DV", "TIME"))
@@ -1881,7 +1874,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .env$table <- env$table
   .data <- env$data
   .env$ui <- ui
-  .foceiPreProcessData(.data, .env, ui, .control$rxControl)
+  nlmixrWithTiming("setup", {
+    .foceiPreProcessData(.data, .env, ui, .control$rxControl)
+  })
   if (!is.null(.env$cov)) {
     if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
                                row.names="strict", col.names="strict")) {

@@ -248,7 +248,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .minfo("use {.code est} from pipeline")
     est <- .nlmixr2pipeEst
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -331,7 +333,9 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -427,7 +431,9 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .env$missingEst <- missing(est)
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }

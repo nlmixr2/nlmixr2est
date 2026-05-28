@@ -773,12 +773,14 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
   .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
-                         addlKeepsCov = .control$rxControl$addlKeepsCov,
-                         addlDropSs = .control$rxControl$addlDropSs,
-                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
- .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+  nlmixrWithTiming("setup", {
+    .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+    .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
+                           addlKeepsCov = .control$rxControl$addlKeepsCov,
+                           addlDropSs = .control$rxControl$addlDropSs,
+                           ssAtDoseTime = .control$rxControl$ssAtDoseTime)
+  })
+  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
   if (is.null(.nTv)) {
     .tv <- names(.et)[-seq(1, 6)]
     .nTv <- length(.tv)

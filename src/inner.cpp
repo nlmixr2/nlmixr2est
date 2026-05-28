@@ -15,6 +15,7 @@
   #include <omp.h>
 #endif
 #include <atomic>
+#include <chrono>
 #include <memory>
 
 // Flag indicating we're inside the parallel inner optimization region.
@@ -36,6 +37,12 @@ extern "C" {
 #define _(String) (String)
 
 #define PHI(x) 0.5*(1.0+erf((x)/M_SQRT2))
+
+using focei_wall_clock = std::chrono::steady_clock;
+
+static inline double foceiElapsedSeconds(const focei_wall_clock::time_point& start) {
+  return std::chrono::duration<double>(focei_wall_clock::now() - start).count();
+}
 
 void saveIntoEnvrionment(Environment e);
 void restoreFromEnvrionment(Environment e);
@@ -7142,7 +7149,7 @@ void setupAq1_(Environment e) {
 //' @export
 //[[Rcpp::export]]
 Environment foceiFitCpp_(Environment e){
-  clock_t t0 = clock();
+  focei_wall_clock::time_point wallT0 = focei_wall_clock::now();
   List model = e["model"];
   bool doPredOnly = false;
   op_focei.canDoFD = false;
@@ -7299,11 +7306,11 @@ Environment foceiFitCpp_(Environment e){
   }
   setupAq1_(e);
   if (e.exists("setupTime")){
-    e["setupTime"] = as<double>(e["setupTime"])+(((double)(clock() - t0))/CLOCKS_PER_SEC);
+    e["setupTime"] = as<double>(e["setupTime"]) + foceiElapsedSeconds(wallT0);
   } else {
-    e["setupTime"] = (((double)(clock() - t0))/CLOCKS_PER_SEC);
+    e["setupTime"] = foceiElapsedSeconds(wallT0);
   }
-  t0 = clock();
+  wallT0 = focei_wall_clock::now();
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
   IntegerVector logTheta;
   IntegerVector logitTheta;
@@ -7455,6 +7462,7 @@ Environment foceiFitCpp_(Environment e){
       thetaReset(op_focei.resetThetaFinalSize);
     }
   }
+  e["optimTime"] = foceiElapsedSeconds(wallT0);
   NumericVector scaleSave(op_focei.ntheta+op_focei.omegan);
   for (unsigned int i =op_focei.ntheta+op_focei.omegan;i--;){
     scaleSave[i] = getScaleC(i);
@@ -7486,7 +7494,7 @@ Environment foceiFitCpp_(Environment e){
   gillRet.attr("levels") = gillLvl;
   gillRet.attr("class") = "factor";
   e["gillRet"] = gillRet;
-  t0 = clock();
+  wallT0 = focei_wall_clock::now();
   foceiCalcCov(e);
   if (op_focei.didPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));
@@ -7505,14 +7513,12 @@ Environment foceiFitCpp_(Environment e){
   gillRetC.attr("levels") = gillLvl;
   gillRetC.attr("class") = "factor";
   e["gillRetC"] = gillRetC;
-  e["optimTime"] = (((double)(clock() - t0))/CLOCKS_PER_SEC);
-
-  e["covTime"] = (((double)(clock() - t0))/CLOCKS_PER_SEC);
+  e["covTime"] = foceiElapsedSeconds(wallT0);
   List timeDf = List::create(_["setup"]=as<double>(e["setupTime"]),
                              _["optimize"]=as<double>(e["optimTime"]),
                              _["covariance"]=as<double>(e["covTime"]));
   timeDf.attr("class") = "data.frame";
-  timeDf.attr("row.names") = "";
+  timeDf.attr("row.names") = CharacterVector::create("elapsed");
   e["time"] = timeDf;
   List scaleInfo = List::create(as<NumericVector>(e["fullTheta"]),
                                 as<NumericVector>(e["scaleC"]), gillRet,
