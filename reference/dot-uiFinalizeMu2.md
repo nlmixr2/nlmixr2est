@@ -6,7 +6,7 @@ and dropping artificial data in output
 ## Usage
 
 ``` r
-.uiFinalizeMu2(ret)
+.uiFinalizeMu2(ret, model)
 ```
 
 ## Arguments
