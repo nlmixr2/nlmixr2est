@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include <atomic>
 
 #define _(String) (String)
 
@@ -70,8 +71,8 @@ struct nlmOptions {
 #define save_pred 1
 #define save_grad 2
 #define save_hess 3
-  int naZero;
-  int naGrad;
+  std::atomic<int> naZero{0};
+  std::atomic<int> naGrad{0};
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   scaling scale;
   bool loaded=false;
@@ -146,9 +147,9 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
-  nlmOp.naZero=0;
+  nlmOp.naZero.store(0, std::memory_order_relaxed);
   nlmOp.saveType = 0;
-  nlmOp.naGrad=0;
+  nlmOp.naGrad.store(0, std::memory_order_relaxed);
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -405,7 +406,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
-        nlmOp.naZero=1;
+        nlmOp.naZero.store(1, std::memory_order_relaxed);
         lhs[0] = 0.0;
       }
       double val = lhs[0];
@@ -508,7 +509,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         if (kk > nlmOp.ntheta) break; // skip rx_pred_f_ and rx_r_ lhs values
         if (ISNA(lhs[kk])) {
           lhs[kk] = 0.0;
-          nlmOp.naZero=1;
+          nlmOp.naZero.store(1, std::memory_order_relaxed);
         }
         if (kk == 0) {
           double val = lhs[0];
@@ -548,7 +549,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       if (!ret.col(ii+1).has_nan()) {
         continue;
       }
-      nlmOp.naGrad=1;
+      nlmOp.naGrad.store(1, std::memory_order_relaxed);
     }
     if (thetahf[ii] == 0.0) {
       double h = 0;
@@ -684,7 +685,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
-      nlmOp.naZero=1;
+      nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
     double llik;
@@ -961,10 +962,10 @@ RObject nlmPrintHeader() {
 //[[Rcpp::export]]
 RObject nlmWarnings() {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  if (nlmOp.naGrad) {
+  if (nlmOp.naGrad.load(std::memory_order_relaxed)) {
     warning(_("NaN symbolic gradients were resolved with finite differences"));
   }
-  if (nlmOp.naZero) {
+  if (nlmOp.naZero.load(std::memory_order_relaxed)) {
     warning(_("solved items that were NaN/NA were replaced with 0.0"));
   }
   if (nlmOp.reducedTol){
