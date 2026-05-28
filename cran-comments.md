@@ -2,6 +2,8 @@
 - Fixed examples that called `qs` since it isn't available on CRAN
   anymore (as requested)
 
+- Add backward compatibility fixes for babelmixr2
+
 Additionally
 
 # nlmixr2est 6.0.0

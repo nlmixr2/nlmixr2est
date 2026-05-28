@@ -57,7 +57,7 @@
   support mu referencing in conjunction with iov and bounded parameter
   transformations.
 
-- Add some bench-marking capabilities and fixes for focei/saem
+- Add some bench-marking capabilities and small speed fixes for focei/saem
 
 # nlmixr2est 5.0.0
 
