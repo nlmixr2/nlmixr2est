@@ -1116,14 +1116,14 @@ double likInner0(double *eta, int id) {
         }
         if (finiteDiffNeeded) break;
       }
-      arma::mat etaGradF;
-      arma::mat etaGradR;
+      arma::mat etaGradF(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
+                         op_focei.neta, false, true);
+      arma::mat etaGradR(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
+                         op_focei.neta, false, true);
       if (finiteDiffNeeded) {
         // need to optimize finite difference
         // First get the f0 for F and R based on current solve
         arma::mat rf0mat = grabRFmatFromInner(id, predSolve);
-        etaGradF = arma::mat(fInd->nObs, op_focei.neta);
-        etaGradR = arma::mat(fInd->nObs, op_focei.neta);
         // now save the prior solve
         arma::vec solveSave(nsolve);
         std::copy(solve, solve + nsolve, solveSave.memptr());
