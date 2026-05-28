@@ -179,50 +179,50 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemFitModel <- function(ui, data, timeVaryingCovariates=character(0)) {
-  nlmixrWithTiming("saem", {
-    .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
-    if (length(timeVaryingCovariates) > 0) {
-      # Drop time-varying covariates
-      # First get the time varying covariates
-      .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
-      # next find out the theta for the phi expression
-      .covPar <- .muRefCovariateDataFrame[.w, "theta"]
-      .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
-      if (length(.w2) > 0) {
-        # see if the expression is on a log scale
-        .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
-        if (length(.w3) > 0) {
-          .w2 <- .w2[.w3]
-          .texp <- ui$muRefCurEval$parameter[.w2]
-          # now get parameters
-          .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
-          ## warning(paste0("log-scale mu referenced time varying covariates (",
-          ##                paste(.pars, collapse=", "),
-          ##                ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
-          ##         call.=FALSE)
-        }
+  .muRefCovariateDataFrame <- ui$muRefCovariateDataFrame
+  if (length(timeVaryingCovariates) > 0) {
+    # Drop time-varying covariates
+    # First get the time varying covariates
+    .w <- which(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates)
+    # next find out the theta for the phi expression
+    .covPar <- .muRefCovariateDataFrame[.w, "theta"]
+    .w2 <- which(ui$muRefCurEval$parameter %in% .covPar)
+    if (length(.w2) > 0) {
+      # see if the expression is on a log scale
+      .w3 <- which("exp" == ui$muRefCurEval$curEval[.w2])
+      if (length(.w3) > 0) {
+        .w2 <- .w2[.w3]
+        .texp <- ui$muRefCurEval$parameter[.w2]
+        # now get parameters
+        .pars <- .muRefCovariateDataFrame$covariateParameter[.muRefCovariateDataFrame$theta %in% .texp]
+        ## warning(paste0("log-scale mu referenced time varying covariates (",
+        ##                paste(.pars, collapse=", "),
+        ##                ") may have better results on no log-transformed scale (https://github.com/nlmixr2/nlmixr2est/issues/348), check results for plausibility"),
+        ##         call.=FALSE)
+      }
 
-      }
-      .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
     }
-    assign("muRefFinal", .muRefCovariateDataFrame, ui)
-    assign("timeVaryingCovariates", timeVaryingCovariates, ui)
-    on.exit({
-      if (exists("muRefFinal", envir=ui)) {
-        rm(list="muRefFinal", envir=ui)
-      }
-      if (exists("timeVaryingCovariates", envir=ui)) {
-        rm(list="timeVaryingCovariates", envir=ui)
-      }
-    })
-    .model <- ui$saemModelList
-    .inits <- ui$saemInit
-    .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
-    .ue <- .uninformativeEtas(ui,
-                              handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
-                              data=data,
-                              attr(.model$saem_mod, "rx"),
-                              rxControl=.rxControl)
+    .muRefCovariateDataFrame <- .muRefCovariateDataFrame[!(.muRefCovariateDataFrame$covariate %in% timeVaryingCovariates), ]
+  }
+  assign("muRefFinal", .muRefCovariateDataFrame, ui)
+  assign("timeVaryingCovariates", timeVaryingCovariates, ui)
+  on.exit({
+    if (is.environment(ui) && exists("muRefFinal", envir=ui, inherits=FALSE)) {
+      rm(list="muRefFinal", envir=ui)
+    }
+    if (is.environment(ui) && exists("timeVaryingCovariates", envir=ui, inherits=FALSE)) {
+      rm(list="timeVaryingCovariates", envir=ui)
+    }
+  })
+  .model <- ui$saemModelList
+  .inits <- ui$saemInit
+  .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  .ue <- .uninformativeEtas(ui,
+                            handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
+                            data=data,
+                            attr(.model$saem_mod, "rx"),
+                            rxControl=.rxControl)
+  .cfg <- nlmixrWithTiming("configure", {
     .cfg <- .configsaem(model=.model,
                         data=data,
                         inits=.inits,
@@ -265,9 +265,12 @@
     .cfg$addProp <- ui$saemAddProp
     .cfg$resValue <- ui$saemResValue
     if (.cfg$print > 0) {
-      message("params:\t", paste(ui$saemParHistNames,collapse="\t"))
+      message("params:\t", paste(ui$saemParHistNames, collapse="\t"))
     }
     .saemCheckCfg(.cfg)
+    .cfg
+  })
+  nlmixrWithTiming("saem", {
     .model$saem_mod(.cfg)
   })
 }
@@ -792,28 +795,31 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   }
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
-  if (!is.null(.ret$saem$tolFactor)) {
-    .ret$tolFactor <- .ret$saem$tolFactor
-  }
-  .ret$control <- .control
-  nmObjHandleControlObject(.ret$control, .ret)
   .ret$ui <- .ui
   .saemCalcCov(.ret)
-  .getSaemTheta(.ret)
-  .getSaemOmega(.ret)
-  .nlmixr2FitUpdateParams(.ret)
-  .saemAddParHist(.ret)
-  .saemCalcLikelihood(.ret)
-   if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-   }
-  .ret$theta <- .ui$saemThetaDataFrame
-  .ret$model <- .ui$saemModelPred
-  .ret$message <- "" # no message for now
-  .ret$est <- "saem"
-  .saemControlToFoceiControl(.ret)
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
-  .setSaemExtra(.ret, "FOCEi")
+  .ret <- nlmixrWithTiming("postprocess", {
+    if (!is.null(.ret$saem$tolFactor)) {
+      .ret$tolFactor <- .ret$saem$tolFactor
+    }
+    .ret$control <- .control
+    nmObjHandleControlObject(.ret$control, .ret)
+    .getSaemTheta(.ret)
+    .getSaemOmega(.ret)
+    .nlmixr2FitUpdateParams(.ret)
+    .saemAddParHist(.ret)
+    .saemCalcLikelihood(.ret)
+    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
+      rm(list="control", envir=.ui)
+    }
+    .ret$theta <- .ui$saemThetaDataFrame
+    .ret$model <- .ui$saemModelPred
+    .ret$message <- "" # no message for now
+    .ret$est <- "saem"
+    .saemControlToFoceiControl(.ret)
+    .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+    .setSaemExtra(.ret, "FOCEi")
+    .ret
+  })
   .env <- .ret$env
   .env$method <- "SAEM "
   .ret
@@ -830,7 +836,7 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   .saemFamilyControl(env, ...)
   on.exit({
-    if (exists("control", envir=.ui)) {
+    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm("control", envir=.ui)
     }
   }, add=TRUE)

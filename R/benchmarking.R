@@ -1,9 +1,11 @@
 .nlmixr2BenchmarkStageMap <- c(
   preprocess = "preprocess",
   setup = "setup",
+  configure = "setup",
   optimize = "estimate",
   saem = "estimate",
   covariance = "covariance",
+  postprocess = "postprocess",
   table = "table",
   compress = "compress",
   CWRES = "CWRES",
@@ -103,6 +105,32 @@
   invisible()
 }
 
+.nlmixr2BenchmarkFit <- function(model, data, est, control, quiet = TRUE) {
+  if (!isTRUE(quiet)) {
+    return(nlmixr2(model, data, est = est, control = control))
+  }
+  .outPath <- tempfile("nlmixr2-benchmark-out-")
+  .msgPath <- tempfile("nlmixr2-benchmark-msg-")
+  .out <- file(.outPath, open = "wt")
+  .msg <- file(.msgPath, open = "wt")
+  .outSink <- sink.number()
+  .msgSink <- sink.number(type = "message")
+  on.exit({
+    while (sink.number(type = "message") > .msgSink) {
+      sink(type = "message")
+    }
+    while (sink.number() > .outSink) {
+      sink()
+    }
+    close(.out)
+    close(.msg)
+    unlink(c(.outPath, .msgPath))
+  }, add = TRUE)
+  sink(.out)
+  sink(.msg, type = "message")
+  suppressWarnings(nlmixr2(model, data, est = est, control = control))
+}
+
 .nlmixr2BenchmarkNormalizeTime <- function(timeDf) {
   checkmate::assertDataFrame(timeDf, min.rows = 1, max.rows = 1, .var.name = "timeDf")
   .raw <- names(timeDf)
@@ -194,13 +222,9 @@
   .ret <- lapply(names(cases), function(.caseName) {
     .case <- cases[[.caseName]]
     .control <- if (is.function(.case$control)) .case$control() else .case$control
-    .fit <- if (isTRUE(quiet)) {
-      suppressWarnings(suppressMessages(
-        nlmixr2(.case$model, .case$data, est = .case$est, control = .control)
-      ))
-    } else {
-      nlmixr2(.case$model, .case$data, est = .case$est, control = .control)
-    }
+    .fit <- .nlmixr2BenchmarkFit(.case$model, .case$data,
+                                 est = .case$est, control = .control,
+                                 quiet = quiet)
     .nlmixr2BenchmarkExtractFit(.fit, .caseName, threads = .threads)
   })
   .ret <- do.call(rbind, .ret)
