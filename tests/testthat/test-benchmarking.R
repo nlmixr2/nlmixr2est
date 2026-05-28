@@ -54,4 +54,31 @@ nmTest({
     expect_true(nrow(.bench) > 0)
     expect_true(any(.bench$stage == "estimate"))
   })
+
+  test_that("benchmark summaries aggregate replicated runs", {
+    .bench <- data.frame(
+      case = c("x", "x", "x", "x"),
+      estimator = c("focei", "focei", "focei", "focei"),
+      method = c("FOCE", "FOCE", "FOCE", "FOCE"),
+      subjects = c(12L, 12L, 12L, 12L),
+      observations = c(132L, 132L, 132L, 132L),
+      ntheta = c(4L, 4L, 4L, 4L),
+      neta = c(3L, 3L, 3L, 3L),
+      rx_threads = c(1L, 1L, 1L, 1L),
+      omp_threads = c(NA_character_, NA_character_, NA_character_, NA_character_),
+      total_elapsed = c(5, 7, 5, 7),
+      stage = c("estimate", "estimate", "covariance", "covariance"),
+      raw_stage = c("optimize", "optimize", "covariance", "covariance"),
+      elapsed = c(4, 6, 1, 1),
+      replicate = c(1L, 2L, 1L, 2L),
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+
+    .summary <- .nlmixr2BenchmarkSummarize(.bench)
+
+    expect_equal(.summary$reps[.summary$stage == "estimate"], 2)
+    expect_equal(.summary$elapsed_mean[.summary$stage == "estimate"], 5)
+    expect_equal(.summary$total_elapsed_mean[.summary$stage == "covariance"], 6)
+  })
 })
