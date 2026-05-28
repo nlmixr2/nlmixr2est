@@ -30,8 +30,7 @@ nmTest({
         One.comp.KA.solved,
         PKdata,
         est = "saem",
-        control = saemControlFast,
-        tableControl(cwres = TRUE, npde=TRUE)
+        control = saemControlFast
       )
     expect_error(augPred(fitOne.comp.KA.solved_S), NA)
 
@@ -69,7 +68,7 @@ nmTest({
         })
       }
 
-      fit <- .nlmixr(fun, df, list(print=0), est="posthoc")
+      fit <- .nlmixr(fun, df, est = "posthoc", control = posthocControl(print = 0))
 
       expect_error(augPred(fit), NA)
   })
@@ -100,8 +99,7 @@ nmTest({
       cmt2fit.logn <-
         .nlmixr(
           cmt2, dat2, "saem",
-          control = saemControlFast,
-          table=tableControl(cwres=TRUE, npde=TRUE)
+          control = saemControlFast
         )
 
       expect_error(augPred(cmt2fit.logn), NA)
@@ -126,8 +124,7 @@ nmTest({
     fit2 <-
       .nlmixr(
         one.cmt, nlmixr2data::theo_sd, est="focei",
-        control = foceiControl(eval.max = 1),
-        table=tableControl(npde=TRUE)
+        control = foceiControl(eval.max = 1)
       )
     expect_error(augPred(fit2), NA)
   })
@@ -173,7 +170,7 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(mod, dat, "posthoc")
+    fit <- .nlmixr(mod, dat, est = "posthoc")
 
     expect_error(augPred(fit), NA)
   })

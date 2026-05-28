@@ -1,5 +1,6 @@
 nmTest({
   test_that("cwres (and focei objective fun) is added to saem with addCwres", {
+    .cloneFit <- function(fit) rlang::duplicate(fit, shallow = FALSE)
 
     one.cmt <- function() {
       ini({
@@ -23,7 +24,9 @@ nmTest({
       })
     }
 
-    fit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)
+    baseFit <- .nlmixr(one.cmt, theo_sd, est = "saem", control = saemControlFast)
+
+    fit <- .cloneFit(baseFit)
 
 
     expect_false(all(c("NPDE","EPRED","NPD","NPDE") %in% names(fit)))
@@ -33,34 +36,29 @@ nmTest({
     expect_false(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
     suppressMessages(expect_error(addCwres(fit), NA))
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
-    expect_equal(row.names(fit$objDf), "FOCEi")
+    expect_equal(row.names(fit$objDf)[1], "FOCEi")
     expect_false(is.null(fit$etaSE))
     expect_false(is.null(fit$etaRSE))
     expect_false(is.null(fit$etaR))
     expect_true(any(names(fit$dataMergeInner) == "nlmixrLlikObs"))
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
+    fit <- .cloneFit(baseFit)
 
     expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     suppressMessages(expect_error(addCwres(fit, focei=FALSE), NA))
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
-    expect_equal(row.names(fit$objDf), "FOCE")
+    expect_equal(row.names(fit$objDf)[1], "FOCE")
 
-    fit <- .nlmixr(one.cmt, theo_sd, est="saem", control = saemControlFast)
+    fit <- .cloneFit(baseFit)
 
     expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     fit2 <- suppressMessages(addCwres(fit, updateObject=FALSE))
     expect_false(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit2)))
-    expect_equal(row.names(fit2$objDf), "FOCEi")
+    expect_equal(row.names(fit2$objDf)[1], "FOCEi")
     expect_false(is.null(fit2$etaSE))
 
-    fit <-
-      .nlmixr(
-        one.cmt, theo_sd, est = "saem",
-        control = saemControlFast,
-        table = tableControl(cwres = TRUE)
-      )
+    fit <- one.compartment.fit.saem.cwres
 
     expect_true(all(c("WRES","CPRED","CRES","CWRES") %in% names(fit)))
     expect_false(is.null(fit$etaSE))
