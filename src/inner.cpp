@@ -3749,12 +3749,20 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   {
     size_t nall_mix = getRxNallAndMix(rx);
     size_t nsub_mix = getRxNsubAndMix(rx);
+    size_t totalVid = 0;
+    for (size_t i = 0; i < nsub_mix; ++i) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId((int)i));
+      size_t nobs = (size_t)(getIndNallTimes(ind) -
+        getIndNdoses(ind) -
+        getIndNevid2(ind));
+      totalVid += nobs * nobs;
+    }
     op_focei.etaUpper = R_Calloc(
       (size_t)op_focei.gEtaGTransN * 10 +
       op_focei.npars * (nsub_mix + 1) + nz +
       2 * op_focei.neta * nall_mix +
       nall_mix +
-      nall_mix * nall_mix +
+      totalVid +
       op_focei.neta * 6 +
       2 * op_focei.neta * op_focei.neta * nsub_mix +
       nall_mix,
