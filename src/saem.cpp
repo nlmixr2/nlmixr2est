@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <thread>
 #include <chrono>
+#include <vector>
 #include <R_ext/Rdynload.h>
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
@@ -46,6 +47,18 @@ double _saemLambdaR;
 double _saemPowR;
 int _saemPropT=0;
 bool _warnAtolRtol=false;
+static std::vector<double> _saemFtCache;
+static std::vector<double> _saemYtrCache;
+static std::vector<double> _saemFaCache;
+static std::vector<double> _saemFaAdjustCache;
+static double* _saemCacheYptr = nullptr;
+static double* _saemCacheFptr = nullptr;
+static int _saemCacheLen = -1;
+static int _saemCacheYj = -1;
+static int _saemCachePropT = -1;
+static double _saemCacheLambda = std::numeric_limits<double>::quiet_NaN();
+static double _saemCacheLow = std::numeric_limits<double>::quiet_NaN();
+static double _saemCacheHi = std::numeric_limits<double>::quiet_NaN();
 struct saem_state_t {
   int _saemIncreaseTol=0;
   int _saemIncreasedTol2=0;
@@ -84,6 +97,40 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
   return fa;
 }
 
+static inline void ensureSaemFixedTransformCache() {
+  if (_saemCacheYptr == _saemYptr &&
+      _saemCacheFptr == _saemFptr &&
+      _saemCacheLen == _saemLen &&
+      _saemCacheYj == _saemYj &&
+      _saemCachePropT == _saemPropT &&
+      _saemCacheLambda == _saemLambda &&
+      _saemCacheLow == _saemLow &&
+      _saemCacheHi == _saemHi) {
+    return;
+  }
+
+  _saemFtCache.resize(_saemLen);
+  _saemYtrCache.resize(_saemLen);
+  _saemFaCache.resize(_saemLen);
+  _saemFaAdjustCache.resize(_saemLen);
+  for (int i = 0; i < _saemLen; ++i) {
+    double ft = _powerD(_saemFptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
+    double f = _saemFptr[i];
+    _saemFtCache[i] = ft;
+    _saemYtrCache[i] = _powerD(_saemYptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
+    _saemFaCache[i] = handleF(_saemPropT, ft, f, false, false);
+    _saemFaAdjustCache[i] = handleF(_saemPropT, ft, f, false, true);
+  }
+  _saemCacheYptr = _saemYptr;
+  _saemCacheFptr = _saemFptr;
+  _saemCacheLen = _saemLen;
+  _saemCacheYj = _saemYj;
+  _saemCachePropT = _saemPropT;
+  _saemCacheLambda = _saemLambda;
+  _saemCacheLow = _saemLow;
+  _saemCacheHi = _saemHi;
+}
+
 #define toLambda(x) _powerDi(x, 1.0, 4, -_saemLambdaR, _saemLambdaR)
 #define toLambdaEst(x) _powerD((x < -0.99*_saemLambdaR ? -0.99*_saemLambdaR : (x > 0.99*_saemLambdaR ? 0.99*_saemLambdaR : x)), 1.0, 4, -_saemLambdaR, _saemLambdaR)
 
@@ -92,6 +139,7 @@ static inline double handleF(int powt, double &ft, double &f, bool trunc, bool a
 
 // add+prop
 void obj(double *ab, double *fx) {
+  ensureSaemFixedTransformCache();
   int i;
   double g, sum, cur, fa;
   double xmin = 1.0e-200, xmax=1e300, ft, ytr;
@@ -111,12 +159,9 @@ void obj(double *ab, double *fx) {
   ab02 = ab02*ab02;
   ab12 = ab12*ab12;
   for (i=0, sum=0; i<_saemLen; ++i) {
-    // nelder_() does not al_saemLow _saemLower bounds; we force ab[] be positive here
-    ft  = _powerD(_saemFptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
-    ytr = _powerD(_saemYptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
-    // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-    // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
-    fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
+    ft = _saemFtCache[i];
+    ytr = _saemYtrCache[i];
+    fa = _saemFaCache[i];
     if (_saemAddProp == 1) {
       g = ab02 + ab12*fa;
     } else {
@@ -132,6 +177,7 @@ void obj(double *ab, double *fx) {
 
 // add + pow
 void objC(double *ab, double *fx) {
+  ensureSaemFixedTransformCache();
   int i;
   double g, sum, cur, ft, ytr, fa=1.0;
   double xmin = 1.0e-200, xmax = 1e300;
@@ -154,12 +200,9 @@ void objC(double *ab, double *fx) {
   }
   double pw = toPow(ab22);
   for (i=0, sum=0; i<_saemLen; ++i) {
-    // nelder_() does not al_saemLow _saemLower bounds; we force ab[] be positive here
-    ft  = _powerD(_saemFptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
-    ytr = _powerD(_saemYptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
-    // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-    // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
-    fa = handleF(_saemPropT, ft, _saemFptr[i], false, false);
+    ft = _saemFtCache[i];
+    ytr = _saemYtrCache[i];
+    fa = _saemFaCache[i];
     if (_saemAddProp == 1){
       g = ab02*ab02 + ab12*ab12*pow(fa, pw);
     } else {
@@ -177,6 +220,7 @@ void objC(double *ab, double *fx) {
 
 // Power only
 void objD(double *ab, double *fx) {
+  ensureSaemFixedTransformCache();
   int i;
   double g, sum, cur, ft, ytr;
   double xmin = 1.0e-200, xmax = 1e300;
@@ -195,10 +239,9 @@ void objD(double *ab, double *fx) {
   double pw = toPow(ab12);
   double fa;
   for (i=0, sum=0; i<_saemLen; ++i) {
-    // nelder_() does not al_saemLow _saemLower bounds; we force ab[] be positive here
-    ft = _powerD(_saemFptr[i],  _saemLambda, _saemYj, _saemLow, _saemHi);
-    ytr = _powerD(_saemYptr[i], _saemLambda, _saemYj, _saemLow, _saemHi);
-    fa = handleF(_saemPropT, ft, _saemFptr[i], false, true);
+    ft = _saemFtCache[i];
+    ytr = _saemYtrCache[i];
+    fa = _saemFaAdjustCache[i];
     g = ab02*ab02*pow(fa, pw);
     if (g < xmin) g = xmin;
     if (g > xmax) g = xmax;
@@ -703,6 +746,26 @@ public:
     ix_idM=as<umat>(x["ix_idM"]);
     res_offset=as<uvec>(x["res_offset"]);
     addProp=as<uvec>(x["addProp"]);
+    hasFixedObsTransform = true;
+    for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
+      if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
+        hasFixedObsTransform = false;
+        break;
+      }
+    }
+    if (hasFixedObsTransform) {
+      yMTrans = yM;
+      for (unsigned int i = 0; i < yMTrans.n_elem; ++i) {
+        int cur = ix_endpnt(i);
+        yMTrans[i] = _powerD(yM[i], lambda(cur), yj(cur), low(cur), hi(cur));
+      }
+      ysTrans = ys;
+      for (int b = 0; b < nendpnt; ++b) {
+        for (unsigned int i = y_offset(b); i < y_offset(b + 1); ++i) {
+          ysTrans[i] = _powerD(ys[i], lambda(b), yj(b), low(b), hi(b));
+        }
+      }
+    }
     nres = res_offset.max();
     vcsig2.set_size(nres);
     vecares = ares(ix_endpnt);
@@ -805,12 +868,14 @@ public:
         // REprintf("dist=1\n");
         vec ft = f;
         vec ftT(ft.size());
-        vec yt = yM;
+        vec yt = hasFixedObsTransform ? yMTrans : yM;
         for (int i = ft.size(); i--;) {
           int cur = ix_endpnt(i);
           limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
           ft(i)   = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          yt(i)   = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          if (!hasFixedObsTransform) {
+            yt(i) = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          }
           ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
         }
         // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
@@ -900,12 +965,15 @@ public:
         double ft, fa;
         //loop thru endpoints here
         for(int b=0; b<nendpnt; ++b) {
-          y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+          if (hasFixedObsTransform) {
+            y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
+          } else {
+            y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+          }
           f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
           vec resid(y_cur.size());
           for (int i = y_cur.size(); i--;){
-            // lambda(cur), yj(cur), low(cur), hi(cur)
-            resid(i) = _powerD(y_cur[i], lambda(b), yj(b), low(b), hi(b));
+            resid(i) = y_cur[i];
             if (std::isnan(resid(i))) {
               Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
             }
@@ -1799,6 +1867,9 @@ private:
 
   mat DYF;
   cube phi;
+  bool hasFixedObsTransform = false;
+  vec yMTrans;
+  vec ysTrans;
 
   vec L;
   mat Ha, Hb, DDa, DDb;
@@ -1899,12 +1970,14 @@ private:
         fc = fcMat.col(0);
         vec fcT(fc.size());
         fs = fc;
-        vec yt(fc.size());
+        vec yt = hasFixedObsTransform ? yMTrans : mx.yM;
         for (int i = fc.size(); i--;) {
           int cur = ix_endpnt(i);
           limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
           fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          yt(i)     = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          if (!hasFixedObsTransform) {
+            yt(i) = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          }
           fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
         }
         gc = vecares + vecbres % abs(fcT); //make sure gc > 0
