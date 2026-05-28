@@ -7,7 +7,9 @@ that around
 ## Usage
 
 ``` r
-.uiApplyMu2(ui, est, data, control)
+.uiApplyMu2(env)
+
+.uiApplyMu2hook(ui, est, data, control)
 ```
 
 ## Arguments

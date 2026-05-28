@@ -82,7 +82,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> ℹ calculate uninformed etas
 #> ℹ done
 #> params:  tka rxBoundedTr.tcl tv  V(eta.ka)   V(eta.v)    V(eta.cl)   add.sd
-#> rxode2 5.1.1 using 2 threads (see ?getRxThreads)
+#> rxode2 5.1.2 using 2 threads (see ?getRxThreads)
 #>   no cache: create with `rxCreateCache()`
 #> 
 #> Attaching package: ‘rxode2’
@@ -103,7 +103,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8296
+#> → compress parHistData in nlmixr2 object, save 8280
 #> → compress phiM in nlmixr2 object, save 429424
 
 print(f)
@@ -114,8 +114,8 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other
-#> elapsed 0.003713   0.012011 3.171 0.297    0.054 1.866276
+#>           setup covariance  saem table compress    other
+#> elapsed 0.00365   0.011009 3.486 0.284    0.055 1.731341
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -182,8 +182,8 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup covariance  saem table compress    other
-#> elapsed 0.003713   0.012011 3.171 0.297    0.054 1.866276
+#>           setup covariance  saem table compress    other
+#> elapsed 0.00365   0.011009 3.486 0.284    0.055 1.731341
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
