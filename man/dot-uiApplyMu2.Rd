@@ -2,9 +2,12 @@
 % Please edit documentation in R/mu2.R
 \name{.uiApplyMu2}
 \alias{.uiApplyMu2}
+\alias{.uiApplyMu2hook}
 \title{This is an internal function for modifying the UI to apply mu2 referencing}
 \usage{
-.uiApplyMu2(ui, est, data, control)
+.uiApplyMu2(env)
+
+.uiApplyMu2hook(ui, est, data, control)
 }
 \arguments{
 \item{ui}{the ui for the model}

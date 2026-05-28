@@ -275,18 +275,32 @@ mu2env$expit <- rxode2::expit
 #'
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiApplyMu2 <- function(ui, est, data, control) {
+.uiApplyMu2 <- function(env) {
+  if (isTRUE(env$control$muRefCovAlg) &&
+        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(env$ui, env$data)
+    .model <- rxode2::as.model(env$ui)
+    env$ui   <- .lst$ui
+    env$data <- .lst$data
+    return(.model)
+  }
+  NULL
+}
+
+#' @rdname dot-uiApplyMu2
+#' @export
+.uiApplyMu2hook <- function(ui, est, data, control) {
   .muRefTrans$cur <- vector("list", 0L)
   if (!.isMuMethod(est, control)) {
     return(NULL)
   }
   if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
-    .lst     <- .uiModifyForCovs(ui, data)
-    .model <- rxode2::as.model(ui)
-    .lst
+    .uiModifyForCovs(ui, data)
+  } else {
+    NULL
   }
-  NULL
 }
+
 
 #' This is an internal function for replacing the ui with original
 #' model and dropping artificial data in output
@@ -330,5 +344,5 @@ mu2env$expit <- rxode2::expit
 # -----------------------------------------------------------------------
 # Register hooks
 # -----------------------------------------------------------------------
-preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2)
+preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2hook)
 postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2)
