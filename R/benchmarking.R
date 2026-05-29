@@ -19,6 +19,10 @@ eta.ka <- eta.cl <- eta.v <- add.sd <-
 `lag<-` <- function(x, value) {
   stop("lag()<- is not supported in this context", call. = FALSE)
 }
+
+`/<-` <- function(x, x1, value) {
+  stop("/<- is not supported in this context", call. = FALSE)
+}
 dt <- stats::dt
 
 

@@ -79,7 +79,9 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
     rxode2::.s3register("generics::augment", "nlmixr2FitCore")
     rxode2::.s3register("generics::augment", "nlmixr2FitCoreSilent")
   }
-  rxode2::.s3register("base::dim", "rxEt")
+  if (any(as.character(utils::methods("dim")) == "dim.rxEt")) {
+    rxode2::.s3register("base::dim", "rxEt")
+  }
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCoreSilent")
   rxode2::.s3register("rxode2::getBaseSimModel", "nlmixr2FitCoreSilent")
