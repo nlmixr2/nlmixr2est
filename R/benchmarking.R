@@ -13,6 +13,15 @@
   other = "other"
 )
 
+eta.ka <- eta.cl <- eta.v <- add.sd <-
+  dvid <-depot <- center <- eta.tlag <- central <- NULL
+
+`lag<-` <- function(x, value) {
+  stop("lag()<- is not supported in this context", call. = FALSE)
+}
+dt <- stats::dt
+
+
 .nlmixr2BenchmarkOneCompartment <- function() {
   ini({
     tka <- 0.45

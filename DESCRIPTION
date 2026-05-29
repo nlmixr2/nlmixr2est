@@ -79,9 +79,8 @@ Suggests:
     minpack.lm,
     remotes,
     fastGHQuad,
-    rmarkdown
-VignetteBuilder:
-    knitr
+    rmarkdown,
+    rlang
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),

@@ -4,6 +4,8 @@
 
 - Add backward compatibility fixes for babelmixr2
 
+- Fix bench-marking scripts.
+
 Additionally
 
 # nlmixr2est 6.0.0
