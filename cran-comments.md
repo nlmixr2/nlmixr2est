@@ -6,6 +6,10 @@
 
 - Fix bench-marking scripts.
 
+- Add aaaCranNlmixrThreads() which will set the threads to 2 for all
+  examples run on the CRAN machine.  It is the first example run, its
+  effects should be for all processes.
+
 Additionally
 
 # nlmixr2est 6.0.0
