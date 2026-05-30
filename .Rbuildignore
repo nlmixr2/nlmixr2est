@@ -1,5 +1,12 @@
+^.augment$
 ^CLAUDE.md$
 ^.antigravity$
+^.continue$
+^.kilocode$
+^.kiro$
+^.windsurf$
+^.zed$
+^AGENTS.md$
 ^.claude$
 ^.vexp
 ^.vscode$
