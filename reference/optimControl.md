@@ -583,7 +583,7 @@ fit2
 #> ── Time (sec value$time): ──
 #> 
 #>              setup    optimize preprocess postprocess table     other
-#> elapsed 0.01571759 0.000538768      0.048       0.012 0.024 0.8027436
+#> elapsed 0.01449952 0.000547585      0.045       0.013 0.023 0.8019529
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
