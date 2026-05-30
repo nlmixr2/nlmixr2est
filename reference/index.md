@@ -2,6 +2,8 @@
 
 ## All functions
 
+- [`aaaCranNlmixrThreads()`](https://nlmixr2.github.io/nlmixr2est/reference/aaaCranNlmixrThreads.md)
+  : This function is to set the number of threads to 2
 - [`addCwres()`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
   : Add CWRES
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
