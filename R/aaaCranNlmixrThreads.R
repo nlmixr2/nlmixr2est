@@ -23,6 +23,8 @@ aaaCranNlmixrThreads <- function() {
     # when testing CRAN, only use two thread
     rxode2::setRxThreads(2L)
     data.table::setDTthreads(2L)
+    Sys.setenv(OMP_NUM_THREADS = "2")
+    Sys.setenv(MKL_NUM_THREADS = "2")
     #rxode2::rxUnloadAll(FALSE)  # don't unload any models (seems to affect ASAN checks)
   }
 
