@@ -1,3 +1,8 @@
+# nlmixr2est 6.0.1
+
+- Fix LTO violation as requested by CRAN by adding
+  -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
+
 # nlmixr2est 6.0.0
 
 - `focei`, `foce`, `fo`, `laplace`, and `agq` have all been
