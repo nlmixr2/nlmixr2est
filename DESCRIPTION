@@ -56,7 +56,7 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (>= 5.1.1),
+    rxode2 (>= 5.1.2),
     stats,
     symengine,
     utils

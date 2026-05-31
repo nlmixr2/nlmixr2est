@@ -3798,13 +3798,23 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd = &(inds_focei[i]);
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(i));
 
-    fInd->mixest = op_focei.mixIdx +
-      op_focei.mixIdxN + getRxId(i);
-
-    fInd->mixProb = op_focei.mixProb +
-      (getRxId(i) + 1)*(op_focei.mixIdxN + 1);
-    fInd->mixProbGrad = op_focei.mixProbGrad +
-      (getRxId(i) + 1)*(op_focei.mixIdxN);
+    // Guard against null-pointer arithmetic (UBSan): mixIdx/mixProb are
+    // allocated later in foceiSetup_; when mixIdxN==0 these pointers are
+    // never dereferenced, so NULL is the correct sentinel value.
+    if (op_focei.mixIdx != NULL) {
+      fInd->mixest = op_focei.mixIdx + op_focei.mixIdxN + getRxId(i);
+    } else {
+      fInd->mixest = NULL;
+    }
+    if (op_focei.mixProb != NULL) {
+      fInd->mixProb    = op_focei.mixProb +
+        (getRxId(i) + 1)*(op_focei.mixIdxN + 1);
+      fInd->mixProbGrad = op_focei.mixProbGrad +
+        (getRxId(i) + 1)*(op_focei.mixIdxN);
+    } else {
+      fInd->mixProb    = NULL;
+      fInd->mixProbGrad = NULL;
+    }
 
     fInd->doChol=!(op_focei.cholSEOpt);
     fInd->doFD = 0;
