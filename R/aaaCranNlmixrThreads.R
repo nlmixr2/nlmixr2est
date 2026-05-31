@@ -25,6 +25,8 @@ aaaCranNlmixrThreads <- function() {
     data.table::setDTthreads(2L)
     Sys.setenv(OMP_NUM_THREADS = "2")
     Sys.setenv(MKL_NUM_THREADS = "2")
+    if (identical(Sys.info()["sysname"], "Darwin")) {
+      rxode2::rxUnloadAll(set=FALSE)
+    }
   }
-
 }
