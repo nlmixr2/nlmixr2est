@@ -2,6 +2,8 @@
 
 ## nlmixr2est 6.0.0
 
+CRAN release: 2026-05-31
+
 - `focei`, `foce`, `fo`, `laplace`, and `agq` have all been successfully
   made thread safe and parallelized (for a single CPU). The default
   tolerance relaxation for difficult to solve ODEs has been changed to

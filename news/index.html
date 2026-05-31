@@ -28,11 +28,11 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v6.0.0/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
-<h2 class="pkg-version" data-toc-text="6.0.0" id="nlmixr2est-600">nlmixr2est 6.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-600"></a></h2>
+<h2 class="pkg-version" data-toc-text="6.0.0" id="nlmixr2est-600">nlmixr2est 6.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-600"></a></h2><p class="text-muted">CRAN release: 2026-05-31</p>
 <ul><li><p><code>focei</code>, <code>foce</code>, <code>fo</code>, <code>laplace</code>, and <code>agq</code> have all been successfully made thread safe and parallelized (for a single CPU). The default tolerance relaxation for difficult to solve ODEs has been changed to per individual instead of for the entire population (which is a breaking change, so major release). This should allow more precision for a majority of the subjects in the optimization process.</p></li>
 <li><p>Add <code>predict(fit, level="ipred")</code>, <code>predict(fit, level="individual")</code> or <code>predict(fit, level=1)</code> to predict individual fits (with possibly a new dataset).</p></li>
 <li><p>Change test files to <code>.rds</code> files</p></li>
