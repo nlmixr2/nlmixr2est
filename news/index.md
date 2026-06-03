@@ -2,6 +2,8 @@
 
 ## nlmixr2est 6.0.1
 
+CRAN release: 2026-06-03
+
 - Fix LTO violation as requested by CRAN by adding
   -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
 
