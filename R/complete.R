@@ -6,6 +6,8 @@
   cov="Covariance of fixed effects",
   covMethod="Covariance Method for fixed effects",
   etaObf="ETAs and their individual objective function contribution (if applicable)",
+  mixList="List of ETAs and posterior probabilities per mixture component (mixture models only)",
+  mixNum="Data frame with ID and best MIXNUM per subject (mixture models only)",
   objDf="Objective Function DF",
   omega="Omega Matrix",
   origData="Original Data",

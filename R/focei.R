@@ -1939,6 +1939,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     ui <- rxode2::rxUiCompress(ui)
     .ret$ui <- ui
     .foceiSetupParHistData(.ret)
+    # For mixture models: fix ranef (remove MIXEST), build mixList and mixNum
+    .mixFix(.ret, ui)
     if (!all(is.na(ui$iniDf$neta1))) {
       .etas <- .ret$ranef
       .thetas <- .ret$fixef
