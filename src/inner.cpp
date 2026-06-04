@@ -2846,7 +2846,7 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
     nm[j+1+mixest] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-  for (j=(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx)); j--;) {
+  for (j=(bestMixEst ? (int)getRxNsub(rx) : (int)getRxNsubAndMix(rx)); j--;) {
     ids[j] = getRxId(j)+1;
     focei_ind *fInd = &(inds_focei[j]);
     // Update based on the best mix estimate when requested
@@ -2856,7 +2856,9 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
     }
     ofv[j] = -2*fInd->lik[0];
     if (mixest == 1) {
-      mixesti[j] = getRxMixFromId(j);
+      // For bestMixEst: use the stored 1-indexed best mixture assignment
+      // For full listing: convert 0-indexed mixture row to 1-indexed
+      mixesti[j] = (bestMixEst ? inds_focei[j].mixest[0] : getRxMixFromId(j) + 1);
     }
     for (eta = op_focei.neta; eta--;) {
       tmp = ret[eta+1+mixest];
@@ -2881,7 +2883,8 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
   nm[op_focei.neta+1+mixest] = "OBJI";
   ret.attr("names") = nm;
   ret.attr("class") = "data.frame";
-  ret.attr("row.names") = IntegerVector::create(NA_INTEGER,-getRxNsubAndMix(rx));
+  ret.attr("row.names") = IntegerVector::create(NA_INTEGER,
+             bestMixEst ? -(int)getRxNsub(rx) : -(int)getRxNsubAndMix(rx));
   return(wrap(ret));
 }
 
@@ -4228,6 +4231,16 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
   op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
   op_focei.gillDf2 = op_focei.mixProbGrad + (op_focei.mixIdxN)*(getRxNsub(rx)+1);
+  // Now that mixIdx/mixProb/mixProbGrad are allocated, patch the per-individual
+  // pointers that were left as NULL during the earlier inds_focei initialisation loop.
+  if (op_focei.mixIdxN != 0) {
+    for (size_t _mi = getRxNsubAndMix(rx); _mi--;) {
+      focei_ind *_fI = &(inds_focei[_mi]);
+      _fI->mixest     = op_focei.mixIdx + op_focei.mixIdxN + getRxId(_mi);
+      _fI->mixProb    = op_focei.mixProb + (getRxId(_mi) + 1)*(op_focei.mixIdxN + 1);
+      _fI->mixProbGrad= op_focei.mixProbGrad + (getRxId(_mi) + 1)*(op_focei.mixIdxN);
+    }
+  }
   op_focei.gillErr = op_focei.gillDf2+totN;
   op_focei.rEps=op_focei.gillErr + totN;
   op_focei.aEps = op_focei.rEps + totN;
@@ -6685,9 +6698,14 @@ void foceiFinalizeTables(Environment e){
     List tmpL2 = as<List>(e["etaObf"]);
     CharacterVector tmpN  = tmpL.attr("names");
     CharacterVector tmpN2 = tmpL2.attr("names");
-    for (i = 0; i < etaNames.size(); i++){
-      if (i + 1 <  tmpN.size())  tmpN[i+1] = etaNames[i];
-      if (i + 1 < tmpN2.size()) tmpN2[i+1] = etaNames[i];
+    // For mixture models the columns are: ID, MIXEST, ETA[1], ..., ETA[n]
+    // so eta names start at offset 2; for non-mixture: offset 1 (ID only)
+    {
+      int offset = (op_focei.mixIdxN != 0) ? 2 : 1;
+      for (i = 0; i < etaNames.size(); i++){
+        if (i + offset <  tmpN.size())  tmpN[i+offset] = etaNames[i];
+        if (i + offset < tmpN2.size()) tmpN2[i+offset] = etaNames[i];
+      }
     }
     ////////////////////////////////////////////////////////////////////////////////
     tmpL.attr("names") = tmpN;

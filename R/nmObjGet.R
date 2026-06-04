@@ -1090,4 +1090,26 @@ nmObjGet.simulationModel <- function(x, ...) {
 nmObjGet.rxControl <- function(x, ...) {
   nmObjGetRxSolve(.createEstObject(x[[1]]), NULL)
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.mixList <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("mixList", envir=.env)) return(get("mixList", envir=.env))
+  NULL
+}
+attr(nmObjGet.mixList, "desc") <- "List of ETAs and posterior probabilities for each mixture component"
+attr(nmObjGet.mixList, "rstudio") <- list(mix1=data.frame(ID=1L, prob=0.8))
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.mixNum <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("mixNum", envir=.env)) return(get("mixNum", envir=.env))
+  NULL
+}
+attr(nmObjGet.mixNum, "desc") <- "Data frame with ID and most likely mixture number (MIXNUM) per subject"
+attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID=1L, MIXNUM=1L)
 attr(nmObjGet.rxControl, "desc") <- "rxode2 solving options"
