@@ -1379,6 +1379,11 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
     }
+    # Mixture probability parameters are estimated on the mlogit scale; their
+    # covariance cannot be meaningfully interpreted, so skip them.
+    if (length(.ui$mixProbs) > 0) {
+      .skipCov[which(.theta$name %in% .ui$mixProbs)] <- TRUE
+    }
     .skipCov
   }
 }
@@ -1953,6 +1958,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$table <- tableControl()
     }
     .nlmixr2FitUpdateParams(.ret)
+    .mixFixParFixed(.ret, ui)
     .ret$IDlabel <- rxode2::.getLastIdLvl()
     .idLvl <- if (exists("idLvl", envir=.ret)) .ret$idLvl else character(0)
     if (exists("tolFactor", envir=.ret)) {

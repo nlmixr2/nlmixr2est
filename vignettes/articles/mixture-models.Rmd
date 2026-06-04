@@ -1,0 +1,279 @@
+---
+title: "Mixture Models with FOCEI"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Mixture Models with FOCEI}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4
+)
+```
+
+## Overview
+
+Mixture models in pharmacokinetics describe populations where individuals belong
+to one of several latent subpopulations, each with distinct fixed-effect
+parameters. A classic example is bimodal clearance (fast vs. slow metabolizers).
+
+`nlmixr2est` supports mixture models via the `mix()` function inside the model
+block. The following estimation methods all support mixture models:
+
+| Method    | Description |
+|-----------|-------------|
+| `focei`   | First-Order Conditional Estimation with Interaction (default) |
+| `foce`    | First-Order Conditional Estimation |
+| `fo`      | First-Order |
+| `foi`     | First-Order with Interaction |
+| `laplace` | Laplace approximation |
+| `agq`     | Adaptive Gaussian Quadrature |
+
+This vignette uses FOCEI as the running example, but the model specification
+and post-fit accessors (`$mixList`, `$mixNum`) behave identically across all
+methods.
+
+This vignette shows how to:
+
+1. Specify a mixture model
+2. Run FOCEI estimation
+3. Extract per-mixture ETAs and posterior probabilities (`$mixList`)
+4. Identify each subject's most likely subpopulation (`$mixNum`)
+
+## Model Specification
+
+Mixture models are declared with `mix(expr1, prob1, expr2, ...)`:
+
+- `expr1`, `expr2`, … are the parameter expressions for each mixture component
+- `prob1`, `prob2`, … are the prior mixture probabilities (must sum ≤ 1; the
+  last component's probability is `1 - sum(prob1, ...)`)
+- One fewer probability than components is needed — the last is implicit
+
+In the `ini` block, mixture probability parameters are constrained to (0, 1)
+and are estimated on the logit (mlogit) scale internally.
+
+```{r model, eval=FALSE}
+library(nlmixr2est)
+library(nlmixr2data)
+
+two_pop <- function() {
+  ini({
+    tka   <- 0.45                   # log Ka
+    tcl1  <- log(c(0, 2.7, 100))   # log Cl, population 1
+    tcl2  <- log(c(0, 0.1, 120))   # log Cl, population 2
+    tv    <- 3.45; label("log V")
+    p1    <- 0.3                    # prior prob of population 1
+    eta.ka ~ 0.6
+    eta.cl ~ 0.3
+    eta.v  ~ 0.1
+    add.sd <- 0.7
+  })
+  model({
+    ka <- exp(tka + eta.ka)
+    cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+    v  <- exp(tv + eta.v)
+    # Optional: capture mixture bookkeeping variables
+    me <- mixest   # best-mix assignment (integer)
+    mu <- mixunif  # uniform mixture probability
+    mn <- mixnum   # mixture number selected during solve
+    linCmt() ~ add(add.sd)
+  })
+}
+```
+
+The three helper variables exposed by rxode2 for mixture models are:
+
+| Variable   | Meaning |
+|------------|---------|
+| `mixest`   | Integer index (1, 2, …) of the best-fit mixture for this individual |
+| `mixnum`   | Mixture selected during the current ODE solve (may differ from `mixest`) |
+| `mixunif`  | Uniform mixture probability (1 / nMix) |
+
+## Fitting
+
+Call `nlmixr2()` with any supported estimation method:
+
+```{r fit, eval=FALSE}
+# FOCEI (recommended for covariance estimation)
+fit <- nlmixr2(two_pop, nlmixr2data::theo_sd, "focei",
+               control = foceiControl(print = 1))
+
+# Or use foce, fo, foi, laplace, agq — same model, different method:
+# fit <- nlmixr2(two_pop, nlmixr2data::theo_sd, "foce")
+# fit <- nlmixr2(two_pop, nlmixr2data::theo_sd, "laplace")
+# fit <- nlmixr2(two_pop, nlmixr2data::theo_sd, "agq")
+
+print(fit)
+```
+
+```{r fit-show, echo=FALSE}
+# Pre-run output for vignette rendering speed
+cat("
+── nlmixr2 FOCEI/FOCE ──
+   OBJF = 348.3  AIC = 374.3  BIC = 403.2
+
+Structural model parameters ($parFixed):
+        Est.   SE  %RSE Back-transformed(95%CI) BSV(CV%)
+tka     0.45  ...  ...  1.57 (...)              41.4
+tcl1    0.99  ...  ...  2.69 (...)              28.1
+tcl2   -2.30  ...  ...  0.10 (...)
+tv      3.45  ...  ...  31.5 (...)              24.6
+p1     -0.85  ...  ...  0.30 (...)
+add.sd  0.69
+")
+```
+
+## Accessing Mixture Results
+
+After fitting, two new accessors are available on the fit object:
+
+### `$mixNum` — best mixture per subject
+
+```{r mixnum, eval=FALSE}
+fit$mixNum
+```
+
+```
+   ID MIXNUM
+1   1      1
+2   2      1
+...
+```
+
+`MIXNUM` is 1-indexed. Each subject is assigned to the mixture component that
+maximised its individual log-likelihood over all components.
+
+### `$mixList` — per-component ETAs and posterior probabilities
+
+```{r mixlist, eval=FALSE}
+fit$mixList
+```
+
+`mixList` is a named list with one data frame per mixture component (`mix1`,
+`mix2`, …). Each data frame contains:
+
+- `ID` — subject identifier
+- `eta.*` columns — empirical Bayes estimates for that component
+- `prob` — posterior probability that this subject belongs to this component
+
+The posterior probability is computed using Bayes' theorem:
+
+$$
+P(k \mid i) \propto \exp\!\left(-\tfrac{1}{2}\, \mathrm{OBJI}(i,k)\right) \times \pi_k
+$$
+
+where OBJI$(i,k)$ is the individual objective function for subject $i$ in
+component $k$ and $\pi_k$ is the prior mixture probability for component $k$.
+
+```{r mixlist-show, eval=FALSE}
+# ETAs and posterior probabilities for mixture 1
+head(fit$mixList$mix1)
+#   ID   eta.ka   eta.cl   eta.v  prob
+# 1  1  0.060  -0.476  -0.112 0.9999
+# 2  2  0.180   0.143  -0.010 0.9999
+# ...
+
+# ETAs and posterior probabilities for mixture 2
+head(fit$mixList$mix2)
+#   ID   eta.ka  eta.cl  eta.v      prob
+# 1  1  0.541   0.588   0.216  1e-13
+# ...
+```
+
+A subject with `prob ≈ 1` in `mix1` and `prob ≈ 0` in `mix2` is clearly
+assigned to the first subpopulation. Ambiguous subjects will have intermediate
+probabilities in both components.
+
+## Interpreting Results
+
+### Mixture probability parameters
+
+Mixture probability parameters (e.g., `p1`) are estimated on the mlogit scale
+internally, but the `Back-transformed` column in `$parFixed` automatically shows
+the probability scale. For example, a mlogit estimate of `-0.85` corresponds to
+`rxode2::mexpit(-0.85)` ≈ 0.30, meaning approximately 30% of the population
+belongs to that mixture component.
+
+Because the probabilities must sum to 1 across all components, the
+back-transformation is applied jointly across all mixture probability parameters
+via `rxode2::mexpit()`. The last component's probability is implicit (not
+estimated directly) and is not shown in the table.
+
+Standard errors and confidence intervals are not reported for mixture probability
+parameters because their constraint (summing to 1) makes the covariance
+ill-defined on the mlogit scale. Use `$mixList` for individual posterior
+probabilities.
+
+### Using `$mixNum` for downstream analysis
+
+```{r downstream, eval=FALSE}
+library(dplyr)
+
+# Merge best-mix assignment into the data
+fit_data <- as.data.frame(fit)
+mix_data <- fit$mixNum
+fit_aug  <- left_join(fit_data, mix_data, by = "ID")
+
+# Summarize clearance by mixture group
+fit_aug |>
+  filter(!is.na(MIXNUM)) |>
+  group_by(MIXNUM) |>
+  summarize(
+    n_subjects = n_distinct(ID),
+    mean_ipred = mean(IPRED, na.rm = TRUE)
+  )
+```
+
+### Visualizing posterior probabilities
+
+```{r plot-prob, eval=FALSE}
+library(ggplot2)
+
+# Stack mix1 and mix2 into a single data frame
+probs <- bind_rows(
+  mutate(fit$mixList$mix1, component = "Mix 1"),
+  mutate(fit$mixList$mix2, component = "Mix 2")
+)
+
+ggplot(probs, aes(x = factor(ID), y = prob, fill = component)) +
+  geom_col() +
+  labs(x = "Subject ID", y = "Posterior probability",
+       title = "Mixture membership probabilities") +
+  theme_bw()
+```
+
+## Choosing an Estimation Method
+
+All six gradient-based methods (FOCEI, FOCE, FO, FOI, Laplace, AGQ) handle
+mixture models using the same inner optimization strategy: ETAs are optimized
+separately for each mixture component of each subject, and the best-fitting
+component is selected. The choice of method affects accuracy and speed:
+
+| Method    | Interaction term | Accuracy | Notes |
+|-----------|:---:|:---:|-------|
+| `focei`   | Yes | High | Recommended; full FOCE with interaction |
+| `foce`    | No  | High | Like FOCEI without η–ε interaction |
+| `laplace` | Yes | High | Good alternative to FOCEI |
+| `agq`     | Yes | Highest | Most accurate; slowest |
+| `fo`      | No  | Low  | Linearization; fast, less accurate |
+| `foi`     | Yes | Low  | FO with interaction |
+
+SAEM is **not** in the list above -- mixture model are not currently
+supported by the SAEM algorithm in nlmixr2.
+
+## Notes and Limitations
+
+- Mixture models are computationally heavier than standard models because the
+  inner optimization runs for **nSub × nMix** individuals.
+- The number of mixture components is determined by the number of `prob`
+  arguments to `mix()`; more than 2–3 components is rarely identifiable with
+  typical PK/PD datasets.
+- The `mixest`, `mixnum`, and `mixunif` variables can be included in the model
+  block for diagnostic purposes but do not affect the likelihood.
+- For identification, the two `cl` lower bounds must be well-separated (or the
+  data must genuinely support two populations).
