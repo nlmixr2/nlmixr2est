@@ -109,6 +109,64 @@
   invisible(NULL)
 }
 
+#' Back-transform mixture probability parameters in the parFixed table
+#'
+#' Mixture probability parameters are estimated on the mlogit scale and must be
+#' back-transformed jointly via \code{rxode2::mexpit()} because the constraint
+#' that all mixture probabilities sum to 1 couples the parameters. This function
+#' patches the \code{parFixed} and \code{parFixedDf} tables in \code{env} after
+#' they have been built by \code{.updateParFixed()} and
+#' \code{.nlmixr2FitUpdateParams()}.
+#'
+#' @param env Fit environment
+#' @param ui rxode2 UI object
+#' @return Nothing; modifies env in place for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.mixFixParFixed <- function(env, ui) {
+  .mixProbs <- ui$mixProbs
+  if (length(.mixProbs) == 0L) return(invisible(NULL))
+  if (!exists("parFixed", envir=env)) return(invisible(NULL))
+  if (!exists("parFixedDf", envir=env)) return(invisible(NULL))
+
+  .pf  <- get("parFixed", envir=env)
+  .pfd <- get("parFixedDf", envir=env)
+
+  # Find which rows correspond to mixture probability params
+  .rows <- match(.mixProbs, row.names(.pfd))
+  .rows <- .rows[!is.na(.rows)]
+  if (length(.rows) == 0L) return(invisible(NULL))
+
+  # Collect mlogit-scale estimates (in the order they appear in mixProbs)
+  .mlogitEsts <- .pfd$Estimate[.rows]
+
+  # Joint back-transform: mexpit takes all mlogit values and returns
+  # the full probability vector (including the implicit last component)
+  .probs <- rxode2::mexpit(.mlogitEsts)
+
+  # Update parFixedDf (numeric) — only the explicit params (not the last implicit one)
+  .pfd[["Back-transformed"]][.rows] <- .probs[seq_along(.rows)]
+  # CI bounds are NA (skipCov=TRUE), leave as-is
+  assign("parFixedDf", .pfd, envir=env)
+
+  # Update parFixed (formatted character table)
+  .sigdig <- 3L
+  if (exists("control", envir=env)) {
+    .ctl <- get("control", envir=env)
+    if (is.list(.ctl) && !is.null(.ctl$sigdig)) .sigdig <- .ctl$sigdig
+  }
+  .fmt <- paste0("%", .sigdig, "g")
+  # Find which column holds the back-transformed values (4th col if SE present, 2nd if not)
+  .btCol <- if ("SE" %in% names(.pf)) 4L else 2L
+  if (length(names(.pf)) >= .btCol) {
+    for (.i in seq_along(.rows)) {
+      .pf[[.btCol]][.rows[.i]] <- sprintf(.fmt, .probs[.i])
+    }
+    assign("parFixed", .pf, envir=env)
+  }
+  invisible(NULL)
+}
+
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {
   .ui <- x[[1]]
