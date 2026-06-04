@@ -1,3 +1,7 @@
+# nlmixr2est 6.1.0
+
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
