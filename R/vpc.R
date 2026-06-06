@@ -59,7 +59,11 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   set.seed(seed)
   .si <- object$simInfo
-  .si$object <- eval(.getSimModel(object, hideIpred=FALSE))
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- object$ui
+  .env$data <- object$origData
+  suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
+  .si$object <- eval(.getSimModel(.env$ui, hideIpred=FALSE))
   .w <- which(names(.si) == "rx")
   .si <- .si[-.w]
   .si$nsim <- n
@@ -69,7 +73,7 @@ vpcSim <- function(object, ..., keep=NULL, n=300,
   .data <- .si$events
   .data$nlmixrRowNums <- seq_along(.data[, 1])
   if (normRelated) {
-    .ui <- object$ui
+    .ui <- .env$ui
     .predDf <-.ui$predDf
     if (all(.predDf$dist %in% c("norm", "dnorm","t", "cauchy"))) {
     } else {
@@ -183,14 +187,19 @@ vpcNameDataCmts <- function(object, data) {
   on.exit(nlmixr2global$finalUiCompressed <- TRUE)
   .wdvid <- which(tolower(names(data)) == "dvid")
   .wcmt <- which(tolower(names(data)) == "cmt")
-  .info <- get("predDf", object$ui)
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- object$ui
+  .env$data <- object$origData
+  suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
+  .env$ui <- rxode2::rxUiDecompress(.env$ui)
+  .info <- get("predDf", .env$ui)
   if (is.null(.info)) {
     return(invisible(data))
   }
   if (length(.info$cond) == 1L) {
     return(invisible(data))
   }
-  .state0 <- rxode2::rxModelVars(object$ui)$state
+  .state0 <- rxode2::rxModelVars(.env$ui)$state
   .maxCmt <- max(.info$cmt)
   .cmtF <- character(max(length(.state0), .maxCmt))
   .dvidF <- character(length(.info$cmt))

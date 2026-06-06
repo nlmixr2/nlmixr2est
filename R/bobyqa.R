@@ -80,6 +80,7 @@ bobyqaControl <- function(npt=NULL,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           useColor = crayon::has_color(),
                           printNcol = floor((getOption("width") - 23) / 12), #
@@ -95,8 +96,9 @@ bobyqaControl <- function(npt=NULL,
                           rxControl=NULL,
                           optExpression=TRUE, sumProd=FALSE,
                           literalFix=TRUE,
+                          literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=TRUE,
+                          calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -108,6 +110,7 @@ bobyqaControl <- function(npt=NULL,
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
+  checkmate::assertLogical(literalFixRes, len=1, any.missing=FALSE)
   checkmate::assertLogical(sumProd, len=1, any.missing=FALSE)
   checkmate::assertLogical(returnBobyqa, len=1, any.missing=FALSE)
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -116,7 +119,7 @@ bobyqaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -126,6 +129,7 @@ bobyqaControl <- function(npt=NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -186,6 +190,7 @@ bobyqaControl <- function(npt=NULL,
                covMethod=match.arg(covMethod),
                optExpression=optExpression,
                literalFix=literalFix,
+               literalFixRes=literalFixRes,
                sumProd=sumProd,
                rxControl=rxControl,
                returnBobyqa=returnBobyqa,
@@ -193,6 +198,7 @@ bobyqaControl <- function(npt=NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                useColor=useColor,
                print=print,
@@ -286,6 +292,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
                                 sumProd=.bobyqaControl$sumProd,
                                 optExpression=.bobyqaControl$optExpression,
                                 literalFix=.bobyqaControl$literalFix,
+                                literalFixRes=.bobyqaControl$literalFixRes,
                                 scaleTo=0,
                                 calcTables=.bobyqaControl$calcTables,
                                 addProp=.bobyqaControl$addProp,
@@ -293,7 +300,8 @@ getValidNlmixrCtl.bobyqa <- function(control) {
                                 interaction=0L,
                                 compress=.bobyqaControl$compress,
                                 ci=.bobyqaControl$ci,
-                                sigdigTable=.bobyqaControl$sigdigTable)
+                                sigdigTable=.bobyqaControl$sigdigTable,
+                                indTolRelax=.bobyqaControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -377,8 +385,7 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .bobyqa <- .collectWarn(.bobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$bobyqa <- .bobyqa[[1]]
-  .ret$parHistData <- .ret$bobyqa$parHistData
-  .ret$bobyqa$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "bobyqa")
   .ret$message <- .ret$bobyqa$message
   if (rxode2::rxGetControl(.ui, "returnBobyqa", FALSE)) {
     return(.ret$bobyqa)
@@ -386,8 +393,6 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .bobyqaGetTheta(.ret$bobyqa, .ui)
-  .ret$cov <- .ret$bobyqa$cov
-  .ret$covMethod <- .ret$bobyqa$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -422,5 +427,6 @@ nlmixr2Est.bobyqa <- function(env, ...) {
   .bobyqaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.bobyqa, "covPresent") <- TRUE
+attr(nlmixr2Est.bobyqa, "unbounded") <- FALSE
 
 #minqa::bobyqa()

@@ -134,14 +134,36 @@ nsis <- function() { ## build installer...
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
+#'
 #' @param lst When \code{TRUE} return a list with
-#'     list(object,warnings) instead of issuing the warnings.
-#'     Otherwise, when \code{FALSE} issue the warnings and return the
-#'     object.
-#' @return The value of the expression or a list with the value of
-#'     the expression and a list of warning messages
+#'     \code{list(object, warning = ws, error = es)} instead of issuing
+#'     the warnings.  Otherwise, when \code{FALSE} issue the warnings
+#'     and return the object.
+#'
+#' @param collectErr When \code{TRUE}, errors raised during evaluation
+#'     of \code{expr} are also captured (via a calling-handler that
+#'     records the messages and invokes a restart to continue
+#'     evaluation) instead of being allowed to propagate.  The
+#'     collected error messages are returned in the \code{error}
+#'     element of the result list (only meaningful when \code{lst =
+#'     TRUE}; when \code{lst = FALSE} the collected errors are
+#'     re-raised via \code{stop()}).  When \code{FALSE} (the default)
+#'     errors are not intercepted and propagate as normal.  This is
+#'     used by \code{nlmixr2Est0()} so that all errors from a failed
+#'     estimation run are reported together rather than only the last
+#'     one.
+#'
+#' @return The value of the expression, or when \code{lst = TRUE} a
+#'     list of the form \code{list(object, warning = ws, error = es)}
+#'     where \code{ws} and \code{es} are character vectors of unique
+#'     warning and error messages (\code{es} is always \code{NULL}
+#'     when \code{collectErr = FALSE}).
+#'
 #' @author Matthew L. Fidler
-#' @noRd
+#'
+#' @export
+#'
+#' @keywords internal
 .collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
   ws <- NULL
   es <- NULL

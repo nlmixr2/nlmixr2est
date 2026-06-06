@@ -29,6 +29,6 @@ test_that("est='simulation'", {
       ID=1
     )
 
-  expect_error(nlmixr(f, data=d_sim_prep, est="simulate"), NA)
+  expect_error(.nlmixr(f, data=d_sim_prep, est="simulate"), NA)
 
 })

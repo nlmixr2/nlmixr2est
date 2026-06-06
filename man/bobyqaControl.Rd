@@ -14,6 +14,7 @@ bobyqaControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   useColor = crayon::has_color(),
   printNcol = floor((getOption("width") - 23)/12),
   print = 1L,
@@ -27,9 +28,10 @@ bobyqaControl(
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", ""),
   adjObf = TRUE,
   ci = 0.95,
@@ -84,6 +86,12 @@ ODE solve.}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
 
 \item{useColor}{Boolean indicating if focei can use ASCII color codes}
 
@@ -257,6 +265,10 @@ high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
 \item{literalFix}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
+\item{literalFixRes}{boolean, substitute fixed population values as
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 

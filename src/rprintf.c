@@ -21,7 +21,7 @@ int F77_SUB(basout)(int *io, int *lunit, char *string,long int nbcharacters){
              if we do basout(io,lunit,'     []',7) it works ...
              temp workaround , we returns to old version with a allocation
           */
-	  char *buffer = (char *)R_Calloc(nbcharacters+1,char);
+	  char *buffer = (char *)R_Calloc((size_t)nbcharacters+1,char);
           if (buffer) {
               strncpy(buffer,string,nbcharacters);
               buffer[nbcharacters]='\0';

@@ -53,7 +53,16 @@
                          "monolix2rx",
                          "babelmixr2",
                          "PopED",
-                         "PKNCA")
+                         "PKNCA",
+                         "lotri",
+                         "nlmixr2data",
+                         "nlmixr2est",
+                         "nlmixr2extra",
+                         "nlmixr2plot",
+                         "rxode2",
+                         "ggPMX",
+                         "shinyMixR",
+                         "xpose.nlmixr2")
 
 #' Adds a package to the nlmixr2's $sessioninfo inside the fit
 #'

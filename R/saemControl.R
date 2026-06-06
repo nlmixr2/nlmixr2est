@@ -159,6 +159,7 @@ saemControl <- function(seed = 99,
                         lambdaRange = 3,
                         odeRecalcFactor=10^(0.5),
                         maxOdeRecalc=5L,
+                        indTolRelax=TRUE,
                         perSa=0.75,
                         perNoCor=0.75,
                         perFixOmega=0.1,
@@ -171,6 +172,8 @@ saemControl <- function(seed = 99,
                         muRefCov=TRUE,
                         muRefCovAlg=TRUE,
                         handleUninformativeEtas=TRUE,
+                        iovXform = c("sd", "var", "logsd", "logvar"),
+                        boundedTransform = TRUE,
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -182,6 +185,7 @@ saemControl <- function(seed = 99,
     call.=FALSE)
   }
 
+  iovXform <- match.arg(iovXform)
   checkmate::assertIntegerish(seed, any.missing=FALSE, min.len=1)
   if (!is.null(.xtra$mcmc)) {
     #mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
@@ -215,6 +219,7 @@ saemControl <- function(seed = 99,
   checkmate::assertNumeric(lambdaRange, any.missing=FALSE, len=1, lower=0)
   checkmate::assertNumeric(odeRecalcFactor, any.missing=FALSE, lower=0, len=1, finite=TRUE)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(perSa, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perNoCor, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertNumeric(perFixOmega, any.missing=FALSE, lower=0, upper=1, len=1)
@@ -222,6 +227,7 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(muRefCov, any.missing=FALSE, len=1)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
   checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
+  checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -291,6 +297,7 @@ saemControl <- function(seed = 99,
     lambdaRange = lambdaRange,
     odeRecalcFactor=odeRecalcFactor,
     maxOdeRecalc=maxOdeRecalc,
+    indTolRelax=indTolRelax,
     perSa=perSa,
     perNoCor=perNoCor,
     perFixOmega=perFixOmega,
@@ -304,7 +311,9 @@ saemControl <- function(seed = 99,
     calcTables=calcTables,
     muRefCov=muRefCov,
     muRefCovAlg=muRefCovAlg,
-    handleUninformativeEtas=handleUninformativeEtas
+    handleUninformativeEtas=handleUninformativeEtas,
+    iovXform=iovXform,
+    boundedTransform=boundedTransform
   )
   class(.ret) <- "saemControl"
   .ret

@@ -47,8 +47,8 @@ foceiNumericGrad <- function(theta) {
     .Call(`_nlmixr2est_foceiNumericGrad`, theta)
 }
 
-foceiSetup_ <- function(obj, data, theta, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
-    .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
+foceiSetup_ <- function(obj, data, theta, mixIdx, thetaFixed = NULL, skipCov = NULL, rxInv = NULL, lower = NULL, upper = NULL, etaMat = NULL, control = NULL) {
+    .Call(`_nlmixr2est_foceiSetup_`, obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control)
 }
 
 foceiOuterF <- function(theta) {
@@ -196,6 +196,10 @@ nlmWarnings <- function() {
     .Call(`_nlmixr2est_nlmWarnings`)
 }
 
+nlmCensInfo <- function() {
+    .Call(`_nlmixr2est_nlmCensInfo`)
+}
+
 nlmGetParHist <- function(p = TRUE) {
     .Call(`_nlmixr2est_nlmGetParHist`, p)
 }
@@ -210,6 +214,10 @@ nlmAdjustCov <- function(CovIn, theta) {
 
 augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
+}
+
+rxode2stateOde <- function(inp) {
+    .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
 
 saem_do_pred <- function(in_phi, in_evt, in_opt) {

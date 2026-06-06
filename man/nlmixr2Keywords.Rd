@@ -8,6 +8,7 @@
 A data frame with 2 columns and 40 or more rows
 \describe{
 \item{Field}{Name of the field in the nlmixr2 object}
+\item{Note}{Note regarding the source of the field}
 \item{Description}{Description of the information in the field}
 }
 }

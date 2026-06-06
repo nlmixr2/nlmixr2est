@@ -14,6 +14,7 @@ n1qn1Control(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   useColor = crayon::has_color(),
   printNcol = floor((getOption("width") - 23)/12),
   print = 1L,
@@ -28,14 +29,16 @@ n1qn1Control(
   optExpression = TRUE,
   sumProd = FALSE,
   literalFix = TRUE,
+  literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 }
@@ -64,6 +67,12 @@ ODE solve.}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
 
 \item{useColor}{Boolean indicating if focei can use ASCII color codes}
 
@@ -244,6 +253,10 @@ this is \code{FALSE}.}
 literals and re-adjust ui and parameter estimates after
 optimization; Default is `TRUE`.}
 
+\item{literalFixRes}{boolean, substitute fixed population values as
+literals and re-adjust ui and parameter estimates after
+optimization; Default is `TRUE`.}
+
 \item{addProp}{specifies the type of additive plus proportional
   errors, the one where standard deviations add (combined1) or the
   type where the variances add (combined2).
@@ -318,6 +331,16 @@ function.  By default this is \code{TRUE}}
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
 
 \item{...}{Ignored parameters}
 }

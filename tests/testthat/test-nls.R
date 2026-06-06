@@ -61,7 +61,8 @@ nmTest({
       })
     }
 
-    expect_error(.nlmixr(pheno, nlmixr2data::pheno_sd, est="nls", nlsControl(algorithm="LM",print=0L)), NA)
+    expect_error(.nlmixr(pheno, nlmixr2data::pheno_sd, est="nls",
+                         nlsControl(algorithm="LM", print=0L)), NA)
 
   })
 
@@ -86,11 +87,12 @@ nmTest({
       })
     }
 
-    fit1 <- .nlmixr(one.cmt, d, est="nls")
+    fit1 <- .nlmixr(one.cmt, d, est="nls", list(print=0L))
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
 
-    fit1 <- .nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun"))
+    fit1 <- .nlmixr(one.cmt, d, est="nls", nlsControl(solveType = "fun",
+                                                      print=0L))
 
     Treated <- Puromycin[Puromycin$state == "treated", ]
     names(Treated) <- gsub("rate", "DV", gsub("conc", "time", names(Treated)))
@@ -108,7 +110,8 @@ nmTest({
       })
     }
 
-    fit1 <- .nlmixr(f, Treated, est="nls", control=nlsControl(algorithm="default"))
+    fit1 <- .nlmixr(f, Treated, est="nls", control=nlsControl(algorithm="default",
+                                                              print=0L))
 
     expect_true(inherits(fit1, "nlmixr2.nls"))
   })

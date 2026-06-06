@@ -165,8 +165,14 @@ print.nlmixr2FitCore <- function(x, ...) {
   if (.nb) .nb <- .pagedPrint(x$time, "Time (sec)", .bound)
   if (.nb) {
     .pagedPrint(x$parFixedDf, "Pop. Pars", .bound)
-    .pagedPrint(x$omega, "BSV Cov", .bound)
-    .pagedPrint(x$omegaR, "BSV Corr", .bound)
+    .omega <- x$omega
+    .omegaR <- x$omegaR
+    if (is.list(.omega)) {
+      .omega <- .omega$id
+      .omegaR <- .omegaR$id
+    }
+    .pagedPrint(.omega, "BSV Cov", .bound)
+    .pagedPrint(.omegaR, "BSV Corr", .bound)
     .pagedPrint(x$shrink, "Dist. Stats", .bound)
     .pagedPrint(x$notes, "Fit notes", .bound)
     .pagedPrint(x, "Fit Data", .bound)
@@ -225,6 +231,9 @@ print.nlmixr2FitCore <- function(x, ...) {
     cat("\n")
     .boundChar <- nchar(.bound)
     .tmp <- x$omega
+    if (is.list(.tmp)) {
+      .tmp <- .tmp$id
+    }
     .noEta <- (dim(.tmp)[1] == 0)
 
     .populationParameters <- ifelse(.noEta, "Parameters", "Population Parameters")
@@ -284,6 +293,9 @@ print.nlmixr2FitCore <- function(x, ...) {
       }
     }
     .tmp <- x$omega
+    if (is.list(.tmp)) {
+      .tmp <- .tmp$id
+    }
     if (!is.null(.tmp)) {
       diag(.tmp) <- 0
       if (!.noEta) {
@@ -291,7 +303,11 @@ print.nlmixr2FitCore <- function(x, ...) {
           cat("  No correlations in between subject variability (BSV) matrix\n")
         } else {
           cat("  Correlations in between subject variability (BSV) matrix:\n")
-          .getCorPrint(x$omegaR)
+          .omegaR <- x$omegaR
+          if (is.list(.omegaR)) {
+            .omegaR <- .omegaR$id
+          }
+          .getCorPrint(.omegaR)
         }
         if (.boundChar * 2 + 70 < .width && !.noEta) {
           cat(paste0("  Full BSV covariance (", crayon::yellow(.bound), crayon::bold$blue("$omega"), ") or correlation (", crayon::yellow(.bound), crayon::bold$blue("$omegaR"), "; diagonals=SDs)"), "\n")

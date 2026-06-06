@@ -29,6 +29,7 @@ saemControl(
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
   maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
   perSa = 0.75,
   perNoCor = 0.75,
   perFixOmega = 0.1,
@@ -41,6 +42,8 @@ saemControl(
   muRefCov = TRUE,
   muRefCovAlg = TRUE,
   handleUninformativeEtas = TRUE,
+  iovXform = c("sd", "var", "logsd", "logvar"),
+  boundedTransform = TRUE,
   ...
 )
 }
@@ -173,6 +176,12 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 tolerances and try to resolve the system if there was a bad
 ODE solve.}
 
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
+
 \item{perSa}{This is the percent of the time the `nBurn`
 iterations in phase runs runs a simulated annealing.}
 
@@ -240,6 +249,31 @@ changes the system to a linear compartment model.  Therefore, by default this is
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
 
+\item{iovXform}{This is the transformation used on the diagonal
+    of the `iov`. The possibilities are:
+
+\itemize{
+
+ \item \code{sd} Estimate the IOV as the standard deviation for IOV
+
+ \item \code{var} Estimate the IOV as the variance for IOV.
+
+ \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+
+ \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+
+}}
+
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
+
 \item{...}{Other arguments to control SAEM.}
 }
 \value{
@@ -250,9 +284,9 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 Control Options for SAEM
 }
 \seealso{
-Other Estimation control: 
-\code{\link{foceiControl}()},
-\code{\link{nlmixr2NlmeControl}()}
+Other Estimation control:
+\code{\link[=foceiControl]{foceiControl()}},
+\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}}
 }
 \author{
 Wenping Wang & Matthew L. Fidler

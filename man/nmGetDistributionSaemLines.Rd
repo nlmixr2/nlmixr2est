@@ -4,7 +4,8 @@
 \alias{nmGetDistributionSaemLines}
 \alias{nmGetDistributionSaemLines.rxUi}
 \alias{nmGetDistributionSaemLines.norm}
-\title{This is a S3 method for getting the distribution lines for a base rxode2 saem problem}
+\title{This is a S3 method for getting the distribution lines for a base
+rxode2 saem problem}
 \usage{
 nmGetDistributionSaemLines(line)
 
@@ -19,7 +20,8 @@ nmGetDistributionSaemLines(line)
 Lines for the estimation of saem
 }
 \description{
-This is a S3 method for getting the distribution lines for a base rxode2 saem problem
+This is a S3 method for getting the distribution lines for a base
+rxode2 saem problem
 }
 \author{
 Matthew Fidler

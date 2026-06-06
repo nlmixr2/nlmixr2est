@@ -14,6 +14,7 @@
 #define _(String) (String)
 
 #include "utilc.h"
+#include "rxProtect.h"
 
 int _setSilentErr=0;
 extern void setSilentErr(int silent){
@@ -21,43 +22,44 @@ extern void setSilentErr(int silent){
 }
 
 SEXP _nlmixr2est_setSilentErr(SEXP in) {
-  SEXP ret = PROTECT(Rf_allocVector(LGLSXP, 1));
+  rxProtectGuard;
+  SEXP ret = rxP(Rf_allocVector(LGLSXP, 1));
   int t = TYPEOF(in);
   if (Rf_length(in) > 0) {
     if (t == INTSXP) {
       if (INTEGER(in)[0] > 0) {
         _setSilentErr = 1;
         INTEGER(ret)[0] = 1;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
       } else {
         _setSilentErr = 0;
         INTEGER(ret)[0] = 0;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
       }
     } else if (t == LGLSXP) {
       if (INTEGER(in)[0] > 0) {
         _setSilentErr = 1;
         INTEGER(ret)[0] = 1;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
       } else {
         _setSilentErr = 0;
         INTEGER(ret)[0] = 0;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
       }
     } else if (t == REALSXP) {
       if (REAL(in)[0] > 0) {
         _setSilentErr = 1;
         INTEGER(ret)[0] = 1;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
       } else {
         _setSilentErr = 0;
         INTEGER(ret)[0] = 0;
-        UNPROTECT(1);
+        rxUPAll();
         return ret;
         return R_NilValue;
       }
@@ -65,7 +67,7 @@ SEXP _nlmixr2est_setSilentErr(SEXP in) {
   }
   _setSilentErr = 0;
   INTEGER(ret)[0] = 0;
-  UNPROTECT(1);
+  rxUPAll();
   return ret;
 }
 
@@ -123,12 +125,13 @@ SEXP _nlmixr2est_powerD(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   } else {
     Rf_errorcall(R_NilValue, _("'low' must be a real number"));
   }
-  SEXP retS = PROTECT(Rf_allocVector(REALSXP, len));
+  rxProtectGuard;
+  SEXP retS = rxP(Rf_allocVector(REALSXP, len));
   double *ret = REAL(retS);
   for (int i = len; i--;) {
     ret[i] = _powerD(x[i], lambda[i], yj[i], low[i], hi[i]);
   }
-  UNPROTECT(1);
+  rxUPAll();
   return retS;
 }
 
@@ -178,13 +181,14 @@ SEXP _nlmixr2est_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   } else {
     Rf_errorcall(R_NilValue, _("'low' must be a real number"));
   }
-  SEXP retS = PROTECT(Rf_allocVector(REALSXP, 1));
+  rxProtectGuard;
+  SEXP retS = rxP(Rf_allocVector(REALSXP, 1));
   double *ret = REAL(retS);
   ret[0] = 0;
   for (int i = len; i--;) {
     ret[0] += _powerL(x[i], lambda[i], yj[i], low[i], hi[i]);
   }
-  UNPROTECT(1);
+  rxUPAll();
   return retS;
 }
 
@@ -192,12 +196,12 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   int type = TYPEOF(lhs);
   if (type != STRSXP) return R_NilValue;
   if (Rf_length(lhs) == 0) return R_NilValue;
-  int pro = 0;
-  SEXP ipredNames = PROTECT(Rf_getAttrib(ipred, R_NamesSymbol)); pro++;
-  int *keepVals = R_Calloc(Rf_length(ipredNames), int);
-  int k = 0;
-  for (int i = 0; i < Rf_length(ipredNames); ++i) {
-    for (int j = 0; j < Rf_length(lhs); ++j) {
+  rxProtectGuard;
+  SEXP ipredNames = rxP(Rf_getAttrib(ipred, R_NamesSymbol));
+  int *keepVals = R_Calloc((size_t)Rf_length(ipredNames), int);
+  R_xlen_t k = 0;
+  for (R_xlen_t i = 0; i < Rf_length(ipredNames); ++i) {
+    for (R_xlen_t j = 0; j < Rf_length(lhs); ++j) {
       if (!strcmp(CHAR(STRING_ELT(ipredNames, i)), CHAR(STRING_ELT(lhs, j)))) {
         keepVals[k++] = i;
         break;
@@ -206,26 +210,26 @@ SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   }
   if (k == 0) {
     R_Free(keepVals);
-    UNPROTECT(pro);
+    rxUPAll();
     return R_NilValue;
   }
-  SEXP ret = PROTECT(Rf_allocVector(VECSXP, k)); pro++;
-  SEXP nm = PROTECT(Rf_allocVector(STRSXP, k)); pro++;
-  for (int i = 0; i < k; ++i) {
+  SEXP ret = rxP(Rf_allocVector(VECSXP, k));
+  SEXP nm = rxP(Rf_allocVector(STRSXP, k));
+  for (R_xlen_t i = 0; i < k; ++i) {
     SET_VECTOR_ELT(ret,i,VECTOR_ELT(ipred, keepVals[i]));
     SET_STRING_ELT(nm,i,STRING_ELT(ipredNames, keepVals[i]));
   }
   Rf_setAttrib(ret, R_NamesSymbol, nm);
-  SEXP cls = PROTECT(allocVector(STRSXP, 1)); pro++;
+  SEXP cls = rxP(allocVector(STRSXP, 1));
   SET_STRING_ELT(cls, 0, mkChar("data.frame"));
   Rf_setAttrib(ret, R_ClassSymbol, cls);
-  SEXP rn = PROTECT(Rf_allocVector(INTSXP, 2)); pro++;
+  SEXP rn = rxP(Rf_allocVector(INTSXP, 2));
   int *rni =INTEGER(rn);
   rni[0] = NA_INTEGER;
   rni[1] = -Rf_length(VECTOR_ELT(ret,0));
   Rf_setAttrib(ret, R_RowNamesSymbol, rn);
   R_Free(keepVals);
-  UNPROTECT(pro);
+  rxUPAll();
   return ret;
 }
 
@@ -234,27 +238,27 @@ SEXP dfCbindList(SEXP lst) {
   int type = TYPEOF(lst);
   if (type != VECSXP) return R_NilValue;
   int totN=0;
-  int pro = 0;
+  rxProtectGuard;
   SEXP curS;
   SEXP curN;
   SEXP curElt;
   for (int i = 0; i < Rf_length(lst); ++i) {
-    curS = PROTECT(VECTOR_ELT(lst, i)); pro++;
+    curS = rxP(VECTOR_ELT(lst, i));
     if (TYPEOF(curS) == VECSXP) {
       totN += Rf_length(curS);
     }
   }
   if (totN == 0) {
-    UNPROTECT(pro);
+    rxUPAll();
     return R_NilValue;
   }
-  SEXP ret = PROTECT(Rf_allocVector(VECSXP, totN)); pro++;
-  SEXP nm  = PROTECT(Rf_allocVector(STRSXP, totN)); pro++;
+  SEXP ret = rxP(Rf_allocVector(VECSXP, totN));
+  SEXP nm  = rxP(Rf_allocVector(STRSXP, totN));
   int k=0;
   for (int i = 0; i < Rf_length(lst); ++i) {
-    curS = PROTECT(VECTOR_ELT(lst, i)); pro++;
+    curS = rxP(VECTOR_ELT(lst, i));
     if (TYPEOF(curS) == VECSXP) {
-      curN = PROTECT(Rf_getAttrib(curS, R_NamesSymbol)); pro++;
+      curN = rxP(Rf_getAttrib(curS, R_NamesSymbol));
       for (int j = 0; j < Rf_length(curN); ++j) {
         curElt = VECTOR_ELT(curS, j);
         Rf_setAttrib(curElt, R_DimSymbol, R_NilValue);
@@ -264,14 +268,14 @@ SEXP dfCbindList(SEXP lst) {
     }
   }
   Rf_setAttrib(ret, R_NamesSymbol, nm);
-  SEXP rn = PROTECT(Rf_allocVector(INTSXP, 2)); pro++;
+  SEXP rn = rxP(Rf_allocVector(INTSXP, 2));
   int *rni = INTEGER(rn);
   rni[0] = NA_INTEGER;
   rni[1] = -Rf_length(VECTOR_ELT(ret, 0));
   Rf_setAttrib(ret, R_RowNamesSymbol, rn);
-  SEXP cls = PROTECT(allocVector(STRSXP, 1)); pro++;
+  SEXP cls = rxP(allocVector(STRSXP, 1));
   SET_STRING_ELT(cls, 0, mkChar("data.frame"));
   Rf_setAttrib(ret, R_ClassSymbol, cls);
-  UNPROTECT(pro);
+  rxUPAll();
   return ret;
 }

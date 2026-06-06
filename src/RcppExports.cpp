@@ -57,7 +57,7 @@ RcppExport SEXP _nlmixr2est_nlmixrExpandFdParNlme_(SEXP stateSEXP, SEXP varsSEXP
     if (rcpp_isError_gen) {
         SEXP rcpp_msgSEXP_gen = Rf_asChar(rcpp_result_gen);
         UNPROTECT(1);
-        Rf_error("%s", CHAR(rcpp_msgSEXP_gen));
+        (Rf_error)("%s", CHAR(rcpp_msgSEXP_gen));
     }
     UNPROTECT(1);
     return rcpp_result_gen;
@@ -152,14 +152,15 @@ BEGIN_RCPP
 END_RCPP
 }
 // foceiSetup_
-NumericVector foceiSetup_(const RObject& obj, const RObject& data, NumericVector theta, Nullable<LogicalVector> thetaFixed, Nullable<LogicalVector> skipCov, RObject rxInv, Nullable<NumericVector> lower, Nullable<NumericVector> upper, Nullable<NumericMatrix> etaMat, Nullable<List> control);
-RcppExport SEXP _nlmixr2est_foceiSetup_(SEXP objSEXP, SEXP dataSEXP, SEXP thetaSEXP, SEXP thetaFixedSEXP, SEXP skipCovSEXP, SEXP rxInvSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP etaMatSEXP, SEXP controlSEXP) {
+NumericVector foceiSetup_(const RObject& obj, const RObject& data, NumericVector theta, IntegerVector mixIdx, Nullable<LogicalVector> thetaFixed, Nullable<LogicalVector> skipCov, RObject rxInv, Nullable<NumericVector> lower, Nullable<NumericVector> upper, Nullable<NumericMatrix> etaMat, Nullable<List> control);
+RcppExport SEXP _nlmixr2est_foceiSetup_(SEXP objSEXP, SEXP dataSEXP, SEXP thetaSEXP, SEXP mixIdxSEXP, SEXP thetaFixedSEXP, SEXP skipCovSEXP, SEXP rxInvSEXP, SEXP lowerSEXP, SEXP upperSEXP, SEXP etaMatSEXP, SEXP controlSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< const RObject& >::type obj(objSEXP);
     Rcpp::traits::input_parameter< const RObject& >::type data(dataSEXP);
     Rcpp::traits::input_parameter< NumericVector >::type theta(thetaSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type mixIdx(mixIdxSEXP);
     Rcpp::traits::input_parameter< Nullable<LogicalVector> >::type thetaFixed(thetaFixedSEXP);
     Rcpp::traits::input_parameter< Nullable<LogicalVector> >::type skipCov(skipCovSEXP);
     Rcpp::traits::input_parameter< RObject >::type rxInv(rxInvSEXP);
@@ -167,7 +168,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Nullable<NumericVector> >::type upper(upperSEXP);
     Rcpp::traits::input_parameter< Nullable<NumericMatrix> >::type etaMat(etaMatSEXP);
     Rcpp::traits::input_parameter< Nullable<List> >::type control(controlSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiSetup_(obj, data, theta, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control));
+    rcpp_result_gen = Rcpp::wrap(foceiSetup_(obj, data, theta, mixIdx, thetaFixed, skipCov, rxInv, lower, upper, etaMat, control));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -529,6 +530,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmCensInfo
+SEXP nlmCensInfo();
+RcppExport SEXP _nlmixr2est_nlmCensInfo() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(nlmCensInfo());
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmGetParHist
 RObject nlmGetParHist(bool p);
 RcppExport SEXP _nlmixr2est_nlmGetParHist(SEXP pSEXP) {
@@ -577,6 +588,17 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< NumericVector& >::type low(lowSEXP);
     Rcpp::traits::input_parameter< NumericVector& >::type hi(hiSEXP);
     rcpp_result_gen = Rcpp::wrap(augPredTrans(pred, ipred, lambda, yjIn, low, hi));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rxode2stateOde
+SEXP rxode2stateOde(SEXP inp);
+RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< SEXP >::type inp(inpSEXP);
+    rcpp_result_gen = Rcpp::wrap(rxode2stateOde(inp));
     return rcpp_result_gen;
 END_RCPP
 }

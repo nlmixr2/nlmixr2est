@@ -1,5 +1,6 @@
 #define STRICT_R_HEADER
 #include "res.h"
+#include "rxProtect.h"
 #include <boost/algorithm/string.hpp>
 #include <string>
 
@@ -102,13 +103,12 @@ List getDfIdentifierCols(List &ipred, int &npred, SEXP cmtNames, SEXP idLabels) 
 
 static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
   if (TYPEOF(inS) != VECSXP) return R_NilValue;
-  SEXP nmS = PROTECT(Rf_getAttrib(inS, R_NamesSymbol));
+  rxProtect rx_protect;
+  SEXP nmS = rx_protect.protect(Rf_getAttrib(inS, R_NamesSymbol));
   if (Rf_isNull(nmS)) {
-    UNPROTECT(1);
     return R_NilValue;
   }
   if (TYPEOF(nmS) != STRSXP) {
-    UNPROTECT(1);
     return R_NilValue;
   }
   CharacterVector nm = as<CharacterVector>(nmS);
@@ -130,7 +130,6 @@ static inline SEXP dfProtectedNames(SEXP inS, std::string what) {
   }
   //in.names() = nm;
   Rf_setAttrib(inS, R_NamesSymbol, wrap(nmS));
-  UNPROTECT(1);
   return inS;
 }
 

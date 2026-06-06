@@ -34,6 +34,7 @@ jobs:
             nlmixr2/rxode2ll
             nlmixr2/rxode2
             nlmixr2/PreciseSums
+            qs=?ignore
           needs: coverage
 
       - name: Test coverage

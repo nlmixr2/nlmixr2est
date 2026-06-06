@@ -256,7 +256,68 @@
     }
     .msuccess("done")
   }
+  .ret$censInformation <- .Call(`_nlmixr2est_nlmCensInfo`)
   .Call(`_nlmixr2est_nlmWarnings`)
   .nlmFreeEnv()
   .ret
+}
+#' Adjust nlm and family output environment
+#'
+#' Will take information like `$censInformation`, `$parHistData`,
+#' `$cov` and `$covMethod` from the ret[[str]] and put it directly in
+#' the environment `ret`
+#'
+#' @param ret environment for fit output that needs to be adjusted
+#' @param str string for the fit output
+#' @return updated environment
+#' @keywords internal
+#' @export
+#' @author Matthew L. Fidler
+.nlmFamilyAdjustOutput <- function(ret, str) {
+  .nlm <- ret[[str]]
+  .censInformation <- ret$censInformation
+  if (is.null(.censInformation) &&
+        !is.null(.nlm$censInformation)) {
+    .censInformation <- .nlm$censInformation
+    ret[[str]][["censInformation"]] <- NULL
+  }
+  ret$censInformation <- .censInformation
+
+  .parHistData <- ret$parHistData
+  if (is.null(.parHistData) &&
+        !is.null(.nlm$parHistData)) {
+    .parHistData <- .nlm$parHistData
+    ret[[str]][["parHistData"]] <- NULL
+  }
+  ret$parHistData <- .parHistData
+
+  .cov <- ret$cov
+  if (is.null(.cov) &&
+        !is.null(.nlm$cov)) {
+    .cov <- .nlm$cov
+    ret[[str]][["cov"]] <- NULL
+  }
+  ret$cov <- .cov
+
+  .covMethod <- ret$covMethod
+  if (is.null(.covMethod) &&
+        !is.null(.nlm$covMethod)) {
+    .covMethod <- .nlm$covMethod
+    ret[[str]][["covMethod"]] <- NULL
+  }
+  ret$covMethod <- .covMethod
+
+  ret
+}
+
+#' Adjust covariance matrix based on scaling parameters
+#'
+#' @param cov Covariance of scaled parameters
+#' @param parScaled The final scaled parameter value
+#' @return The adjusted covariance matrix based on the scaling
+#' @export
+#' @keywords internal
+#' @author Matthew L. Fidler
+.nlmAdjustCov <- function(cov, parScaled) {
+  .Call(`_nlmixr2est_nlmAdjustCov`, cov, parScaled)
 }

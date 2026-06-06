@@ -1,5 +1,6 @@
 The nlmixr object has the following fields:
 
 ```{r echo=FALSE}
-knitr::kable(nlmixr2Keywords)
+knitr::kable(nlmixr2Keywords) 
 ```
+n2r - These fields are added when a NONMEM model is imported using `nonmem2rx()`

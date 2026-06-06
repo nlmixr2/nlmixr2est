@@ -13,6 +13,7 @@
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
+#' @eval .nlmixr2estbuild()
 #' @import nlmixr2data
 #' @useDynLib nlmixr2est, .registration=TRUE
 
@@ -118,11 +119,17 @@ nlmixr2Version <- function() {
 nlmixr2 <- function(object, data, est = NULL, control = list(),
                     table = tableControl(), ..., save = NULL,
                     envir = parent.frame()) {
-  rxode2::rxUnloadAll()
+  ## rxode2::rxUnloadAll() # don't unload everything anymore
   .nlmixr2globalReset()
   nlmixr2global$nlmixr2Time <- proc.time()
   nlmixr2global$finalUiCompressed <- FALSE
   nlmixr2global$nlmixrEvalEnv$envir <- envir
+  if (inherits(object, "nlmixr2FitCore") &&
+        !is.null(object$eta)) {
+    nlmixr2global$etaMat <- object
+  } else {
+    nlmixr2global$etaMat <- NULL
+  }
   .objectName <- try(as.character(substitute(object)), silent=TRUE)
   if (inherits(.objectName, "try-error")) .objectName <- "object"
   if (!identical(.objectName, "object")) {
@@ -175,7 +182,7 @@ nlmixr <- nlmixr2
 .nlmixr2inferEst <- function(env, est) {
   if (!env$missingEst) {
     .cls <- class(est)
-    if (grepl("^.*?Control$", .cls)) {
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (env$missingControl) {
         env$control <- getValidNlmixrControl(est, .est)
@@ -241,7 +248,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .minfo("use {.code est} from pipeline")
     est <- .nlmixr2pipeEst
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -324,7 +333,9 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -340,12 +351,42 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .args <- as.list(match.call(expand.dots = TRUE))[-1]
   .modName <- deparse(substitute(object))
   nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
+  .cls <- class(est)
+  if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
+    .est <- sub("^(.*?)Control$", "\\1", .cls)
+    if (is.null(control)) {
+      control <- getValidNlmixrControl(est, .est)
+      est <- .est
+      .minfo(paste0("infer estimation {.code ", est, "} from control"))
+    }
+  }
+  if (is.character(data) && length(data) == 1 &&
+        data %in% nlmixr2AllEst() &&
+        is.null(est)) {
+    est <- data
+    data <- NULL
+  } else {
+    .cls <- class(data)
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
+      .est <- sub("^(.*?)Control$", "\\1", .cls)
+      if (is.null(control)) {
+        control <- getValidNlmixrControl(data, .est)
+        est <- .est
+        .minfo(paste0("infer estimation {.code ", est, "} from control"))
+        data <- NULL
+      }
+    }
+  }
   if (is.null(data) && !is.null(.nlmixr2pipeData)) {
     data <- .nlmixr2pipeData
     .minfo("use {.code data} from pipeline")
-  }  else if (missing(data)) {
+  } else if (missing(data)) {
     data <- object$origData
    .minfo("use {.code data} from prior/supplied fit")
+  }
+  if (!inherits(data, "data.frame")) {
+    data <- object$origData
+    .minfo("use {.code data} from prior/supplied fit")
   }
   if (is.null(est) && !is.null(.nlmixr2pipeEst)) {
     est <- .nlmixr2pipeEst
@@ -390,7 +431,9 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .env$missingEst <- missing(est)
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }

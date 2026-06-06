@@ -17,9 +17,15 @@ This removes the hook from nlmixr2est.  If the hook does not exist, a warning
 is issued.
 }
 \seealso{
-Other preProcessHooks: 
-\code{\link{preProcessHooks}()},
-\code{\link{preProcessHooksAdd}()}
+Other preProcessHooks:
+\code{\link[=postFinalObjectHooks]{postFinalObjectHooks()}},
+\code{\link[=postFinalObjectHooksAdd]{postFinalObjectHooksAdd()}},
+\code{\link[=postFinalObjectHooksRm]{postFinalObjectHooksRm()}},
+\code{\link[=preFinalParTableHooks]{preFinalParTableHooks()}},
+\code{\link[=preFinalParTableHooksAdd]{preFinalParTableHooksAdd()}},
+\code{\link[=preFinalParTableHooksRm]{preFinalParTableHooksRm()}},
+\code{\link[=preProcessHooks]{preProcessHooks()}},
+\code{\link[=preProcessHooksAdd]{preProcessHooksAdd()}}
 }
 \author{
 Matthew L. Fidler

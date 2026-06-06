@@ -1,0 +1,66 @@
+on:
+  workflow_dispatch:
+    inputs:
+      reps:
+        description: "Measured benchmark repetitions"
+        required: true
+        default: "3"
+      warmup:
+        description: "Warm-up runs before measurement"
+        required: true
+        default: "1"
+      threads:
+        description: "rxode2 thread count"
+        required: true
+        default: "1"
+
+name: runtime-benchmarks
+
+permissions: read-all
+
+jobs:
+  runtime-benchmarks:
+    runs-on: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: |
+            any::rcmdcheck
+            nlmixr2/lbfgsb3c
+            nlmixr2/dparser-R
+            nlmixr2/n1qn1c
+            nlmixr2/lotri
+            nlmixr2/rxode2ll
+            nlmixr2/rxode2
+            nlmixr2/PreciseSums
+            qs=?ignore
+          needs: check
+
+      - name: Install package
+        run: R CMD INSTALL .
+
+      - name: Run runtime benchmarks
+        env:
+          BENCH_REPS: ${{ github.event.inputs.reps }}
+          BENCH_WARMUP: ${{ github.event.inputs.warmup }}
+          BENCH_THREADS: ${{ github.event.inputs.threads }}
+        run: |
+          mkdir -p artifacts
+          Rscript -e 'source("inst/benchmarks/runtime-benchmarks.R"); run_nlmixr2_runtime_benchmarks(threads=as.integer(Sys.getenv("BENCH_THREADS")), calcTables=FALSE, quiet=TRUE, reps=as.integer(Sys.getenv("BENCH_REPS")), warmup=as.integer(Sys.getenv("BENCH_WARMUP")), file="artifacts/runtime-benchmarks-raw.csv", summary_file="artifacts/runtime-benchmarks-summary.csv"); print(utils::read.csv("artifacts/runtime-benchmarks-summary.csv"))'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runtime-benchmarks
+          path: artifacts/*.csv

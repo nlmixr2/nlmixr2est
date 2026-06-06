@@ -118,6 +118,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   recalc <- TRUE
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
+  .tolFactor <- fit$env$tolFactor
   while (recalc & length(odeMethods) > 0) {
     # Iterate through ODE methods
     recalcN <- 0
@@ -136,6 +137,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                 hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
                                 maxordn = fit$maxordn, maxords = fit$maxords,
                                 method = rxode2::odeMethodToInt(currentOdeMethod),
+                                tolFactor = .tolFactor,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
       recalc <- any(is.na(.res$rx_pred_))
@@ -561,7 +563,26 @@ addTable <- function(object, updateObject = FALSE,
     }
     .rownum <- as.integer(.df$nlmixrRowNums)
     assign(".rownum", .rownum, envir=.fit)
-    drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums")
+    drop <- c(drop, "rxLambda", "rxYj", "nlmixrRowNums",
+              "rx__sens_central_BY_p1",
+                "rx__sens_central_BY_v1",
+                "rx__sens_central_BY_p2",
+                "rx__sens_central_BY_p3",
+                "rx__sens_central_BY_p4",
+                "rx__sens_central_BY_ka",
+                "rx__sens_peripheral1_BY_p1",
+                "rx__sens_peripheral1_BY_v1",
+                "rx__sens_peripheral1_BY_p2",
+                "rx__sens_peripheral1_BY_p3",
+                "rx__sens_peripheral1_BY_p4",
+                "rx__sens_peripheral1_BY_ka",
+                "rx__sens_peripheral2_BY_p1",
+                "rx__sens_peripheral2_BY_v1",
+                "rx__sens_peripheral2_BY_p2",
+                "rx__sens_peripheral2_BY_p3",
+                "rx__sens_peripheral2_BY_p4",
+                "rx__sens_peripheral2_BY_ka",
+                "rx__sens_depot_BY_ka")
     .w <- -which(names(.df) %in% drop)
     if (length(.w) > 0) .df <- .df[, .w, drop=FALSE]
     class(.df) <- "data.frame"
@@ -733,7 +754,7 @@ tableControl <- function(npde = NULL,
     censMethod=.censMethod,
     cholSEtol=cholSEtol, state=state, lhs=lhs, eta=eta, covariates=covariates, addDosing=addDosing, subsetNonmem=subsetNonmem, cores=cores, keep=keep, drop=drop)
   class(.ret) <- "tableControl"
-  return(.ret)
+  .ret
 }
 
 #' @export

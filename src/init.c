@@ -42,7 +42,8 @@ SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiNumericGrad(SEXP);
 
 SEXP _nlmixr2est_foceiSetup_(SEXP, SEXP, SEXP, SEXP, SEXP,
-                             SEXP, SEXP, SEXP, SEXP, SEXP);
+                             SEXP, SEXP, SEXP, SEXP, SEXP,
+                             SEXP);
 
 SEXP _nlmixr2est_foceiOuterF(SEXP);
 SEXP _nlmixr2est_foceiOuterG(SEXP);
@@ -55,6 +56,9 @@ SEXP _nlmixr2est_iBoxCox_(SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_freeFocei(void);
 SEXP _nlmixr2est_nlmixr2Gill83_(SEXP, SEXP, SEXP, SEXP, SEXP,
                                 SEXP, SEXP, SEXP, SEXP);
+
+SEXP _nlmixr2est_rxode2version4(SEXP);
+SEXP _nlmixr2est_rxode2stateOde(SEXP);
 
 SEXP _nlmixr2est_nlmixr2Grad_(SEXP, SEXP);
 SEXP _nlmixr2est_nlmixr2Eval_(SEXP, SEXP);
@@ -100,6 +104,7 @@ SEXP _nlmixr2est_nlmSolveSwitch(SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlmWarnings(void);
+SEXP _nlmixr2est_nlmCensInfo(void);
 
 SEXP _nlmixr2est_nlmScalePar(SEXP);
 SEXP _nlmixr2est_nlmUnscalePar(SEXP);
@@ -121,7 +126,14 @@ SEXP _nlmixr2est_iniN1qn1cPtrs(SEXP ptr);
 
 SEXP _nlmixr2est_iniLbfgsb3ptr(SEXP ptr);
 
+SEXP _rxode2version4(SEXP);
+SEXP _nlmixr2est_rxode2stateOde(SEXP);
+SEXP _rxode2rxFixRes(SEXP, SEXP);
+
 static const R_CallMethodDef CallEntries[] = {
+  {"_rxode2rxFixRes", (DL_FUNC) &_rxode2rxFixRes, 2},
+  {"_rxode2version4", (DL_FUNC) &_rxode2version4, 1},
+  {"_nlmixr2est_rxode2stateOde", (DL_FUNC) &_nlmixr2est_rxode2stateOde, 1},
   {"_nlmixr2est_iniLbfgsb3ptr", (DL_FUNC) &_nlmixr2est_iniLbfgsb3ptr, 1},
   {"_nlmixr2est_iniN1qn1cPtrs", (DL_FUNC) &_nlmixr2est_iniN1qn1cPtrs, 1},
   {"_nlmixr2est_iniRxodePtrs", (DL_FUNC) &_nlmixr2est_iniRxodePtrs, 1},
@@ -138,6 +150,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_solveGradNls", (DL_FUNC) &_nlmixr2est_solveGradNls, 2},
   {"_nlmixr2est_nlminbFunC", (DL_FUNC) &_nlmixr2est_nlminbFunC, 2},
   {"_nlmixr2est_nlmWarnings", (DL_FUNC) &_nlmixr2est_nlmWarnings, 0},
+  {"_nlmixr2est_nlmCensInfo", (DL_FUNC) &_nlmixr2est_nlmCensInfo, 0},
   {"_nlmixr2est_optimFunC", (DL_FUNC) &_nlmixr2est_optimFunC, 2},
   {"_nlmixr2est_nlmSolveSwitch", (DL_FUNC) &_nlmixr2est_nlmSolveSwitch, 1},
   {"_nlmixr2est_nlmSolveR", (DL_FUNC) &_nlmixr2est_nlmSolveR, 1},
@@ -159,7 +172,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},
   {"_nlmixr2est_foceiNumericGrad", (DL_FUNC) &_nlmixr2est_foceiNumericGrad, 1},
-  {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 10},
+  {"_nlmixr2est_foceiSetup_", (DL_FUNC) &_nlmixr2est_foceiSetup_, 11},
   {"_nlmixr2est_foceiOuterF", (DL_FUNC) &_nlmixr2est_foceiOuterF, 1},
   {"_nlmixr2est_foceiOuterG", (DL_FUNC) &_nlmixr2est_foceiOuterG, 1},
   {"_nlmixr2est_foceiOuter", (DL_FUNC) &_nlmixr2est_foceiOuter, 1},

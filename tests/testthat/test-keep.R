@@ -1,6 +1,7 @@
 nmTest({
 
-  one.compartment <- function() {
+  # Use centralized model from helper-models.R and add keep/drop
+  one.compartment.keep.drop <- function() {
     ini({
       tka <- 0.45 # Log Ka
       tcl <- 1 # Log Cl
@@ -29,8 +30,8 @@ nmTest({
 
   for (est in c("fo", "foi", "foce", "focei", "saem", "posthoc")) {
     test_that(paste0("keep/drop in ", est), {
-      fitF <- suppressWarnings(suppressMessages(nlmixr(one.compartment, d, est=est)))
-      fitF2 <- suppressWarnings(suppressMessages(nlmixr(one.compartment, d, est=est, table=list(keep="WT2", drop="center"))))
+      fitF <- suppressWarnings(suppressMessages(nlmixr(one.compartment.keep.drop, d, est=est)))
+      fitF2 <- suppressWarnings(suppressMessages(nlmixr(one.compartment.keep.drop, d, est=est, table=list(keep="WT2", drop="center"))))
       expect_true(any(names(fitF) == "WT"))
       expect_true(!any(names(fitF) == "WT2"))
       expect_true(!any(names(fitF) == "WT3"))

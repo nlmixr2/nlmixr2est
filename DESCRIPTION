@@ -1,36 +1,32 @@
 Type: Package
 Package: nlmixr2est
-Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation
-    Routines
-Version: 4.0.0
+Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation Routines
+Version: 6.0.1
 Authors@R: c(
-    person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"),
-           comment = c(ORCID = "0000-0001-8538-6691")),
-    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut"),
-    person("Rik", "Schoemaker", , "rik.schoemaker@occams.com", role = "aut",
-           comment = c(ORCID = "0000-0002-7538-3005")),
-    person("Justin", "Wilkins", , "justin.wilkins@occams.com", role = "aut",
-           comment = c(ORCID = "0000-0002-7099-9396")),
+    person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-8538-6691")),
     person("Wenping", "Wang", , "wwang8198@gmail.com", role = "aut"),
-    person("Robert", "Leary", role = "ctb"),
-    person("Mason", "McComb", , "mason.c.mccomb@gmail.com", role = "ctb",
-           comment = c(ORCID = "0000-0001-9871-8616")),
-    person("Vipul", "Mann", , "vm2583@columbia.edu", role = "aut"),
-    person("Mirjam", "Trame", , "mirjam.trame@gmail.com", role = "ctb"),
-    person("Mahmoud", "Abdelwahab", , "mah.tareq87@gmail.com", role = "ctb"),
-    person("Teun", "Post", , "t.post@lapp.nl", role = "ctb"),
-    person("Richard", "Hooijmaijers", , "richardhooijmaijers@gmail.com", role = "aut"),
-    person("Hadley", "Wickham", role = "ctb"),
+    person("Audrey", "Lavenu", role = "ctb"),
+    person("Ben", "Goodrich", role = "ctb"),
+    person("David", "Ardia", role = "cph"),
     person("Dirk", "Eddelbuettel", , "edd@debian.org", role = "cph"),
-    person("Johannes", "Pfeifer", role = "ctb"),
-    person("Robert B.", "Schnabel", role = "ctb"),
     person("Elizabeth", "Eskow", role = "ctb"),
     person("Emmanuelle", "Comets", , "emmanuelle.comets@inserm.fr", role = "ctb"),
-    person("Audrey", "Lavenu", role = "ctb"),
-    person("Marc", "Lavielle", role = "ctb"),
-    person("David", "Ardia", role = "cph"),
+    person("Hadley", "Wickham", role = "ctb"),
+    person("Hajar", "Besbassi", , "", role="ctb"),
+    person("Johannes", "Pfeifer", role = "ctb"),
+    person("Justin", "Wilkins", , "justin.wilkins@occams.com", role = "aut", comment = c(ORCID = "0000-0002-7099-9396")),
     person("Katharine", "Mullen", role = "cph"),
-    person("Ben", "Goodrich", role = "ctb")
+    person("Mahmoud", "Abdelwahab", , "mah.tareq87@gmail.com", role = "ctb"),
+    person("Marc", "Lavielle", role = "ctb"),
+    person("Mason", "McComb", , "mason.c.mccomb@gmail.com", role = "ctb", comment = c(ORCID = "0000-0001-9871-8616")),
+    person("Mirjam", "Trame", , "mirjam.trame@gmail.com", role = "ctb"),
+    person("Richard", "Hooijmaijers", , "richardhooijmaijers@gmail.com", role = "aut"),
+    person("Rik", "Schoemaker", , "rik.schoemaker@occams.com", role = "aut",  comment = c(ORCID = "0000-0002-7538-3005")),
+    person("Robert B.", "Schnabel", role = "ctb"),
+    person("Robert", "Leary", role = "ctb"),
+    person("Teun", "Post", , "t.post@lapp.nl", role = "ctb"),
+    person("Vipul", "Mann", , "vm2583@columbia.edu", role = "aut"),
+    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut")
   )
 Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
 Description: Fit and compare nonlinear mixed-effects models in
@@ -44,7 +40,7 @@ URL: https://github.com/nlmixr2/nlmixr2est,
     https://nlmixr2.github.io/nlmixr2est/
 Depends:
     nlmixr2data,
-    R (>= 4.0)
+    R (>= 4.1.0)
 Imports:
     backports,
     checkmate,
@@ -53,7 +49,6 @@ Imports:
     knitr,
     lbfgsb3c,
     lotri,
-    magrittr,
     Matrix,
     methods,
     minqa,
@@ -61,7 +56,7 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (>= 3.0.0),
+    rxode2 (>= 5.1.2),
     stats,
     symengine,
     utils
@@ -74,7 +69,7 @@ Suggests:
     dplyr (>= 1.1.0),
     generics,
     nloptr,
-    qs,
+    qs2,
     sys,
     testthat,
     tibble,
@@ -82,7 +77,10 @@ Suggests:
     xgxr,
     sfsmisc,
     minpack.lm,
-    remotes
+    remotes,
+    fastGHQuad,
+    rmarkdown,
+    rlang
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
@@ -91,11 +89,11 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
-    rxode2 (>= 3.0.0)
+    rxode2 (>= 5.1.1)
 Biarch: true
 Config/testthat/edition: 3
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
-RoxygenNote: 7.3.2
 LazyData: true
+Config/roxygen2/version: 8.0.0

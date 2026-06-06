@@ -37,7 +37,7 @@ nmTest({
                    "theo 8", "theo 9", "theo 10", "theo 11", "theo 12"))
 
     expect_true(inherits(fit$LowID, "factor"))
-    expect_equal(levels(fit$LowID), c("No", "Yes"))
+    expect_equal(levels(fit$LowID), c("Yes", "No"))
 
     fitdata$LowID <- factor(fitdata$LowID, c("Yes", "No"))
     fit <- .nlmixr(one_compartment_textcov, fitdata, est = "focei", control = foceiControl(print = 0))

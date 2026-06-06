@@ -167,6 +167,22 @@
 #'
 #'  \item \code{identity} Estimates the diagonal elements without any transformations
 #' }
+#'
+#' @param iovXform This is the transformation used on the diagonal
+#'     of the `iov`. The possibilities are:
+#'
+#' \itemize{
+#'
+#'  \item \code{sd} Estimate the IOV as the standard deviation for IOV
+#'
+#'  \item \code{var} Estimate the IOV as the variance for IOV.
+#'
+#'  \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+#'
+#'  \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+#'
+#' }
+#'
 #' @param sumProd Is a boolean indicating if the model should change
 #'     multiplication to high precision multiplication and sums to
 #'     high precision sums using the PreciseSums package.  By default
@@ -177,6 +193,10 @@
 #'     calculation. By default this is turned on.
 #'
 #' @param literalFix boolean, substitute fixed population values as
+#'   literals and re-adjust ui and parameter estimates after
+#'   optimization; Default is `TRUE`.
+#'
+#' @param literalFixRes boolean, substitute fixed population values as
 #'   literals and re-adjust ui and parameter estimates after
 #'   optimization; Default is `TRUE`.
 #'
@@ -203,9 +223,6 @@
 #'
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
-#'
-#' @param addPosthoc Boolean indicating if posthoc parameters are
-#'     added to the table output.
 #'
 #' @param printNcol Number of columns to printout before wrapping
 #'     parameter estimates/gradient
@@ -494,7 +511,6 @@
 #'     initial estimate by.  So each iteration during the covariance
 #'     step is equal to the new step size = (prior step size)*gillStepCov
 #'
-#'
 #' @param gillStepCovLlik Same as above but during generalized focei
 #'   log-likelihood
 #'
@@ -581,6 +597,12 @@
 #' @param stickyRecalcN The number of bad ODE solves before reducing
 #'     the atol/rtol for the rest of the problem.
 #'
+#' @param indTolRelax When `TRUE` (default), only subjects whose ODE
+#'     solve produced NaN/Inf have their tolerances relaxed, and the
+#'     relaxed tolerance persists across optimizer calls (sticky).
+#'     When `FALSE`, all subjects have their tolerances relaxed on
+#'     each retry and tolerances are reset afterward.
+#'
 #' @param nRetries If FOCEi doesn't fit with the current parameter
 #'     estimates, randomly sample new parameter estimates and restart
 #'     the problem.  This is similar to 'PsN' resampling.
@@ -599,6 +621,16 @@
 #'
 #' @param etaMat Eta matrix for initial estimates or final estimates
 #'   of the ETAs.
+#'
+#'   This can also be a fit to take use the final estimation estimates
+#'   and use them as the initial eta value of the next fit.
+#'
+#'   By default, it will be the initial values of the etas from the
+#'   last fit (if supplied) or missing, meaning all ETAs start at
+#'   zero (`NULL`)
+#'
+#'   When this value is `NA`, the initial ETA estimates are not taken
+#'   from the last fit.
 #'
 #' @param addProp specifies the type of additive plus proportional
 #'   errors, the one where standard deviations add (combined1) or the
@@ -683,6 +715,33 @@
 #'   - `n` the last eta and eta=0 are used, as well as n-1 sampled
 #'   etas from the omega matrix
 #'
+#' @param nAGQ Number of Gauss-Hermite Adaptive Quadrature points to
+#'   take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
+#'   is equivalent to the Laplace method. The adaptive quadrature
+#'   expands every node for each of the ETAs, so it can be quite
+#'   expensive with a large amount of ETAs.  Once the EBE is obtained
+#'   for a subject, you will have nAGQ^neta additional function
+#'   evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+#'   function evaluations for odd nAGQ numbers.
+#'
+#' @param agqLow The lower bound for adaptive quadrature
+#'   log-likelihood. By default this is -Inf; in the original nlmixr's
+#'   gnlmm it was -700.
+#'
+#' @param agqHi The upper bound for adaptive quadrature
+#'   log-likelihood.  By default this is Inf; in the original nlmixr's
+#'   gnlmm was 400.
+#'
+#' @param boundedTransform boolean indicating if the bounded
+#'   parameters should by transformed when using a unbounded
+#'   optimization method to make sure they are in bounds.  By default
+#'   this is `TRUE`, which transforms during optimization and
+#'   back-transforms for the final estimates.  When `FALSE`, the
+#'   optimization is performed on the original scale and the bounds
+#'   are passed to the optimization method.  When `NA`, the bounded
+#'   parameters are transformed for the optimization, but the final
+#'   estimates are not back-transformed.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -756,11 +815,12 @@ foceiControl <- function(sigdig = 3, #
                          lbfgsPgtol = 0, #
                          lbfgsFactr = NULL, #
                          eigen = TRUE, #
-                         addPosthoc = TRUE, #
                          diagXform = c("sqrt", "log", "identity"), #
+                         iovXform = c("sd", "var", "logsd", "logvar"), #
                          sumProd = FALSE, #
                          optExpression = TRUE,#
                          literalFix=TRUE,
+                         literalFixRes=TRUE,
                          ci = 0.95, #
                          useColor = crayon::has_color(), #
                          boundTol = NULL, #
@@ -793,7 +853,9 @@ foceiControl <- function(sigdig = 3, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin"), #
+                                      "Rvmmin",
+                                      "uobyqa",
+                                      "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
                          ##
                          rhobeg = .2, #
@@ -847,10 +909,11 @@ foceiControl <- function(sigdig = 3, #
                          etaMat = NULL, #
                          repeatGillMax = 1,#
                          stickyRecalcN = 4, #
+                         indTolRelax = TRUE, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
-                         compress=TRUE, #
+                         compress=FALSE, #
                          rxControl=NULL,
                          sigdigTable=NULL,
                          fallbackFD=FALSE,
@@ -859,7 +922,11 @@ foceiControl <- function(sigdig = 3, #
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
-                         mceta=-1L) { #
+                         mceta=-1L,
+                         nAGQ=0,
+                         agqLow=-Inf,
+                         agqHi=Inf,
+                         boundedTransform=TRUE) { #
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -995,14 +1062,10 @@ foceiControl <- function(sigdig = 3, #
   }
   eigen <- as.integer(eigen)
 
-  if (!checkmate::testIntegerish(addPosthoc, lower=0, upper=1, any.missing=FALSE, len=1)) {
-    checkmate::assertLogical(addPosthoc, any.missing=FALSE, len=1)
-  }
-  addPosthoc <- as.integer(addPosthoc)
-
   checkmate::assertLogical(sumProd, any.missing=FALSE, len=1)
   checkmate::assertLogical(optExpression, any.missing=FALSE, len=1)
   checkmate::assertLogical(literalFix, any.missing=FALSE, len=1)
+  checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
@@ -1118,6 +1181,12 @@ foceiControl <- function(sigdig = 3, #
       outerOpt <- -1L
     } else if (outerOpt == "lbfgsbLG") {
       outerOptFun <- .lbfgsbLG
+      outerOpt <- -1L
+    } else if (outerOpt == "uobyqa") {
+      outerOptFun <- .uobyqa
+      outerOpt <- -1L
+    } else if (outerOpt == "newuoa") {
+      outerOptFun <- .newuoa
       outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
@@ -1238,6 +1307,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
@@ -1252,6 +1322,10 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
+  checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(agqHi, len=1, any.missing=FALSE)
+  checkmate::assertNumeric(agqLow, len=1, any.missing=FALSE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
   .ret <- list(
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
@@ -1268,11 +1342,12 @@ foceiControl <- function(sigdig = 3, #
     covMethod = covMethod,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
-    addPosthoc = addPosthoc,
     diagXform = match.arg(diagXform),
+    iovXform = match.arg(iovXform),
     sumProd = sumProd,
     optExpression = optExpression,
     literalFix=literalFix,
+    literalFixRes=literalFixRes,
     outerOpt = as.integer(outerOpt),
     ci = as.double(ci),
     sigdig = as.double(sigdig),
@@ -1354,6 +1429,7 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
+    indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
@@ -1372,15 +1448,23 @@ foceiControl <- function(sigdig = 3, #
     zeroGradFirstReset=zeroGradFirstReset,
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
-    mceta=as.integer(mceta)
+    mceta=as.integer(mceta),
+    nAGQ=as.integer(nAGQ),
+    agqHi=as.double(agqHi),
+    agqLow=as.double(agqLow),
+    boundedTransform=boundedTransform
   )
-  if (!missing(etaMat) && missing(maxInnerIterations)) {
-    warning("by supplying 'etaMat', assume you wish to evaluate at ETAs, so setting 'maxInnerIterations=0'",
-            call.=FALSE)
-    .ret$maxInnerIterations <- 0L
-    checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
-    .ret$etaMat <- etaMat
+  if (length(etaMat) == 1L && is.na(etaMat)) {
+    .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
+    .doWarn <- TRUE
+    if (inherits(etaMat, "nlmixr2FitCore")) {
+      etaMat <- etaMat$etaMat
+      .doWarn <- FALSE
+    }
+    if (.doWarn && missing(maxInnerIterations)) {
+      warning(sprintf("using 'etaMat' assuming 'maxInnerIterations=%d', set 'maxInnerIterations' explicitly to avoid this warning", maxInnerIterations))
+    }
     checkmate::assertMatrix(etaMat, mode="double", any.missing=FALSE, min.rows=1, min.cols=1)
     .ret$etaMat <- etaMat
   }
@@ -1388,21 +1472,22 @@ foceiControl <- function(sigdig = 3, #
   .ret
 }
 
-#' @export
-rxUiDeparse.foceiControl <- function(object, var) {
-  .ret <- foceiControl()
+.rxUiDeparseFoceiControl <- function(object, var, type="foceiControl") {
+  .ret <- eval(str2lang(paste0(type, "()")))
   .outerOpt <- character(0)
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (object$outerOptTxt != "nlminb") {
+  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
-    return(str2lang(paste0(var, " <- foceiControl()")))
+    return(str2lang(paste0(var, " <- ", type, "()")))
   }
-  .retD <- c(vapply(names(.ret)[.w], function(x) {
+  .n <- names(.ret)[.w]
+  .n <- .n[.n != "outerOpt"]
+  .retD <- c(vapply(.n, function(x) {
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
@@ -1410,8 +1495,13 @@ rxUiDeparse.foceiControl <- function(object, var) {
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
-    } else if (x %in% c("derivMethod", "covDerivMethod", "optimHessType", "optimHessCovType",
-                        "eventType")) {
+    } else if (x %in% c("optimHessType", "optimHessCovType")) {
+      .methodIdx <- c("central" = 1L, "forward" = 3L)
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x == "eventType") {
+      .methodIdx <- c("central" = 2L, "forward" = 3L)
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+    } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {
@@ -1425,5 +1515,10 @@ rxUiDeparse.foceiControl <- function(object, var) {
       paste0(x, "=", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- foceiControl(", paste(.retD, collapse=","),")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=","),")"))
+}
+
+#' @export
+rxUiDeparse.foceiControl <- function(object, var) {
+  .rxUiDeparseFoceiControl(object, var, type="foceiControl")
 }

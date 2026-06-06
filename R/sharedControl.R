@@ -31,7 +31,8 @@ getValidNlmixrCtl.focei <- function(control) {
   .ctl <- control[[1]]
   .cls <- class(control)[1]
   if (is.null(.ctl)) .ctl <- foceiControl()
-  if (is.null(attr(.ctl, "class")) && is(.ctl, "list")) .ctl <- do.call("foceiControl", .ctl)
+  if (is.null(attr(.ctl, "class")) && is(.ctl, "list"))
+    .ctl <- do.call("foceiControl", .ctl)
   if (!inherits(.ctl, "foceiControl")) {
     .minfo(paste0("invalid control for `est=\"", .cls, "\"`, using default"))
     .ctl <- foceiControl()
@@ -40,26 +41,6 @@ getValidNlmixrCtl.focei <- function(control) {
   }
   .ctl
 }
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.fo <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.foi <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.posthoc <- getValidNlmixrCtl.focei
-
-#' @rdname getValidNlmixrControl
-#' @export
-getValidNlmixrCtl.foce <- getValidNlmixrCtl.focei
 
 #' @rdname getValidNlmixrControl
 #' @export

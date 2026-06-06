@@ -416,6 +416,7 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 sumProd=.nlmeControl$sumProd,
                                 optExpression=.nlmeControl$optExpression,
                                 literalFix=.nlmeControl$literalFix,
+                                literalFixRes=FALSE,
                                 scaleTo=0,
                                 calcTables=.nlmeControl$calcTables,
                                 addProp=.nlmeControl$addProp,
@@ -423,7 +424,8 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 interaction=1L,
                                 compress=.nlmeControl$compress,
                                 ci=.nlmeControl$ci,
-                                sigdigTable=.nlmeControl$sigdigTable)
+                                sigdigTable=.nlmeControl$sigdigTable,
+                                indTolRelax=TRUE)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -526,7 +528,6 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
-  .model <- .uiApplyMu2(env)
   .ui <- env$ui
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
@@ -535,6 +536,10 @@ nlmixr2Est.nlme <- function(env, ...) {
   rxode2::assertRxUiEstimatedResiduals(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   .nlmeFamilyControl(env, ...)
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
-  .uiFinalizeMu2(.nlmeFamilyFit(env,  ...), .model)
+  .nlmeFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nlme, "covPresent") <- TRUE
+attr(nlmixr2Est.nlme, "unbounded") <- TRUE
+attr(nlmixr2Est.nlme, "mu") <- function(control) {
+  isTRUE(control$muRefCovAlg)
+}
