@@ -19,14 +19,14 @@ nmTest({
       })
     }
 
-    f <-.nlmixr(
+    f <- .nlmixr(
       one.compartment, data = theo_sd, est="saem", control = saemControl(print=0, nEm=10, nBurn=10, literalFix=FALSE))
 
     expect_true(inherits(f, "nlmixr2FitData"))
 
-    m2 <- rxode2::rxFixPop(one.compartment)
+    m2 <- suppressMessages(suppressMessages(rxode2::rxFixPop(one.compartment)))
 
-    expect_error(m2$saemModelPred, NA)
+    expect_error(suppressMessages(m2$saemModelPred), NA)
 
     f <-.nlmixr(
       one.compartment, data = theo_sd, est="saem", control = saemControl(print=0, nEm=10, nBurn=10, literalFix=TRUE))

@@ -89,6 +89,7 @@ nlmControl <- function(typsize = NULL,
                        stickyRecalcN=4,
                        maxOdeRecalc=5,
                        odeRecalcFactor=10^(0.5),
+                       indTolRelax=TRUE,
 
                        eventType=c("central", "forward"),
                        shiErr=(.Machine$double.eps)^(1/3),
@@ -115,9 +116,10 @@ nlmControl <- function(typsize = NULL,
                        literalFix=TRUE,
                        literalFixRes=TRUE,
                        addProp = c("combined2", "combined1"),
-                       calcTables=TRUE, compress=TRUE,
+                       calcTables=TRUE, compress=FALSE,
                        covMethod=c("r", "nlm", ""),
-                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                       adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                       boundedTransform=TRUE, ...) {
   checkmate::assertNumeric(shiErr, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(hessErr, lower=0, any.missing=FALSE, len=1)
 
@@ -139,10 +141,11 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -152,6 +155,7 @@ nlmControl <- function(typsize = NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -250,6 +254,7 @@ nlmControl <- function(typsize = NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                eventType=eventType,
                shiErr=shiErr,
@@ -276,7 +281,8 @@ nlmControl <- function(typsize = NULL,
                compress=compress,
                solveType=solveType,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "nlmControl"
   .ret
 }
@@ -404,6 +410,7 @@ rxUiGet.nlmModel0 <- function(x, ...) {
                     list(str2lang("rx_pred_ <- -rx_pred_"))))
   as.call(c(list(quote(`rxModelVars`)), .ret))
 }
+attr(rxUiGet.nlmModel0, "rstudio") <- quote(rxModelVar({}))
 
 #' Load the nlm model into symengine
 #'
@@ -435,6 +442,7 @@ rxUiGet.loadPruneNlm <- function(x, ...) {
   .p <- .nlmPrune(x)
   .loadSymengine(.p, promoteLinSens = FALSE)
 }
+attr(rxUiGet.loadPruneNlm, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmParams <- function(x, ...) {
@@ -450,6 +458,26 @@ rxUiGet.nlmParams <- function(x, ...) {
          }, character(1), USE.NAMES = FALSE), "DV"),
          collapse=","), ")")
 }
+attr(rxUiGet.nlmParams, "rstudio") <- "params()"
+
+#' Extract rx_pred_f_ and rx_r_ model lines from symengine environment
+#'
+#' @param .s symengine environment
+#' @return named list with `f_line` and `r_line` character strings
+#' @noRd
+.nlmGetFRLines <- function(.s) {
+  .f_line <- ""
+  .r_line <- ""
+  if (exists("rx_pred_f_", envir = .s, inherits = FALSE)) {
+    .f <- get("rx_pred_f_", envir = .s)
+    .f_line <- paste0("rx_pred_f_=", rxode2::rxFromSE(.f))
+  }
+  if (exists("rx_r_", envir = .s, inherits = FALSE)) {
+    .r <- get("rx_r_", envir = .s)
+    .r_line <- paste0("rx_r_=", rxode2::rxFromSE(.r))
+  }
+  list(f_line = .f_line, r_line = .r_line)
+}
 
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
@@ -460,11 +488,15 @@ rxUiGet.nlmRxModel <- function(x, ...) {
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
+  .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
     .ddt,
     .prd,
+    .fr$f_line,
+    .fr$r_line,
     #.s$..stateInfo["statef"],
     #.s$..stateInfo["dvid"],
     ""
@@ -511,12 +543,14 @@ rxUiGet.nlmRxModel <- function(x, ...) {
 rxUiGet.loadPruneNlmSens <- function(x, ...) {
   .loadSymengine(.nlmPrune(x), promoteLinSens = TRUE)
 }
+attr(rxUiGet.loadPruneNlmSens, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmThetaS <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlmSens(x, ...)
   .sensEtaOrTheta(.s, theta=TRUE)
 }
+attr(rxUiGet.nlmThetaS, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmHdTheta <- function(x, ...) {
@@ -562,6 +596,7 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   rxode2::rxProgressStop()
   .s
 }
+attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 
 #' Finalize nlm rxode2 based on symengine saved info
 #'
@@ -585,6 +620,8 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
   if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
+  # Extract rx_pred_f_ and rx_r_ for censoring support
+  .fr <- .nlmGetFRLines(.s)
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
@@ -596,6 +633,8 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
     .low,
     .prd,
     .s$..HdTheta,
+    .fr$f_line,
+    .fr$r_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""
@@ -612,6 +651,8 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
     .hi,
     .low,
     .prd,
+    .fr$f_line,
+    .fr$r_line,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     ""
@@ -675,7 +716,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
 
   .s
 }
-#attr(rxUiGet.foceEnv, "desc") <- "Get the foce environment"
+attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
@@ -700,6 +741,7 @@ rxUiGet.nlmParNameFun <- function(x, ...) {
              .ret
            }, character(1), USE.NAMES=FALSE), collapse=","), ")}")))
 }
+attr(rxUiGet.nlmParNameFun, "rstudio") <- function(){c(`THETA[1]`=1, `THETA[2]`=2, `THETA[3]`=3)}
 
 #' @export
 rxUiGet.optimParNameFun <- rxUiGet.nlmParNameFun
@@ -709,6 +751,7 @@ rxUiGet.nlmParIni <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$est[!.ui$iniDf$fix]
 }
+attr(rxUiGet.nlmParIni, "rstudio") <- c(1, 2, 3)
 
 #' @export
 rxUiGet.optimParIni <- rxUiGet.nlmParIni
@@ -718,6 +761,7 @@ rxUiGet.nlmParName <- function(x, ...) {
   .ui <- x[[1]]
   .ui$iniDf$name[!.ui$iniDf$fix]
 }
+attr(rxUiGet.nlmParName, "rstudio") <- c("THETA[1]", "THETA[2]", "THETA[3]")
 
 #' @export
 rxUiGet.optimParName <- rxUiGet.nlmParName
@@ -730,11 +774,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 #' @noRd
 .nlmFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nlm' does not work with censored data", call. =FALSE)
-    }
-  }
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
@@ -817,7 +856,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 interaction=0L,
                                 compress=.nlmControl$compress,
                                 ci=.nlmControl$ci,
-                                sigdigTable=.nlmControl$sigdigTable)
+                                sigdigTable=.nlmControl$sigdigTable,
+                                indTolRelax=.nlmControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -855,8 +895,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
 
   .ret$nlm <- .nlm[[1]]
-  .ret$parHistData <- .ret$nlm$parHistData
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlm")
+
   .ret$message <- NULL
   lapply(.nlm[[2]], function(x){
     warning(x, call.=FALSE)
@@ -883,8 +923,6 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlmGetTheta(.ret$nlm, .ui)
-  .ret$cov <- .ret$nlm$cov
-  .ret$covMethod <- .ret$nlm$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -923,3 +961,4 @@ nlmixr2Est.nlm <- function(env, ...) {
   .nlmFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nlm, "covPresent") <- TRUE
+attr(nlmixr2Est.nlm, "unbounded") <- TRUE

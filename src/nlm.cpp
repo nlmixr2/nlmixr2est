@@ -7,7 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
-
+#include <atomic>
 
 #define _(String) (String)
 
@@ -18,13 +18,13 @@
 #define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 
 struct nlmOptions {
-  int ntheta=0;
+  unsigned int ntheta=0;
   int *thetaFD=NULL; // theta needs finite difference?
   int *nobs = NULL;
   int *idS  = NULL;
   int *idF  = NULL;
   int *xPar = NULL;
-  int nobsTot = 0;
+  unsigned int nobsTot = 0;
   double *thetahf=NULL; // Shi step size
   double *thetahh=NULL;
   double *initPar= NULL; // initial parameters
@@ -41,6 +41,15 @@ struct nlmOptions {
   int stickyTol=0;
   int stickyRecalcN=1;
   int stickyRecalcN2=0;
+  // Per-subject inner-retry counter, sized at setup() to nsub.  Replaces
+  // the formerly shared stickyRecalcN2 plain int that was racy under the
+  // parallel-for over subjects in nlmSolveF / nlmSolveGradId.  Each
+  // subject owns its own slot, so the retry decision (and therefore the
+  // per-subject solve outcome) is deterministic across runs at any cores
+  // setting.  The shared `stickyRecalcN2` member above is kept for
+  // backward compatibility with code that just records "did we ever
+  // bump tolerances at all".
+  std::vector<int> stickyRecalcN2Per;
   int stickyRecalcN1=0;
   int maxOdeRecalc;
   int reducedTol;
@@ -62,8 +71,9 @@ struct nlmOptions {
 #define save_pred 1
 #define save_grad 2
 #define save_hess 3
-  int naZero;
-  int naGrad;
+  std::atomic<int> naZero{0};
+  std::atomic<int> naGrad{0};
+  int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   scaling scale;
   bool loaded=false;
 };
@@ -102,6 +112,15 @@ RObject nlmSetup(Environment e) {
   RObject pred = e["predOnly"];
   List mvp = rxode2::rxModelVars_(pred);
   rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
+  // Check if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2]) for censoring support
+  CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
+  nlmOp.hasFR = 0;
+  for (int i = 0; i < predLhs.size(); ++i) {
+    std::string lhsName = as<std::string>(predLhs[i]);
+    if (lhsName == "rx_pred_f_" || lhsName == "rx_r_") nlmOp.hasFR++;
+  }
+  nlmOp.hasFR = (nlmOp.hasFR == 2) ? 1 : 0;
+  resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
   RObject model;
@@ -119,17 +138,18 @@ RObject nlmSetup(Environment e) {
   List rxControl = as<List>(e["rxControl"]);
 
   NumericVector p = as<NumericVector>(e["param"]);
-  nlmOp.ntheta = p.size();
+  nlmOp.ntheta = (unsigned int)p.size();
 
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
+  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
-  nlmOp.naZero=0;
+  nlmOp.naZero.store(0, std::memory_order_relaxed);
   nlmOp.saveType = 0;
-  nlmOp.naGrad=0;
+  nlmOp.naGrad.store(0, std::memory_order_relaxed);
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -151,18 +171,18 @@ RObject nlmSetup(Environment e) {
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
 
-  nlmOp.thetaFD = R_Calloc(nlmOp.ntheta*2 + getRxNsub(rx)*3, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta * 2u + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
   nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
   nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
   nlmOp.xPar = nlmOp.idF + getRxNsub(rx); // [ntheta]
 
   // now calculate nobs per id
-  nlmOp.nobsTot = 0;
-  for (int id = 0; id < getRxNsub(rx); ++id) {
-    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
+  nlmOp.nobsTot = 0U;
+  for (unsigned int id = 0; id < (unsigned int)getRxNsub(rx); ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, (int)id);
     int no = 0;
-    for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    for (unsigned int j = 0; j < (unsigned int)getIndNallTimes(ind); ++j) {
       if (getIndEvid(ind, j) == 0) {
         nlmOp.nobsTot++;
         no++;
@@ -184,7 +204,10 @@ RObject nlmSetup(Environment e) {
   // nlmOp.ntheta nlmOp.ntheta+1
   switch(nlmOp.solveType) {
   case solveType_nls:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(5+getRxNsub(rx)) + nlmOp.nobsTot*(1+nlmOp.ntheta), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(
+      nlmOp.ntheta * (5 + (size_t)getRxNsub(rx)) +
+      (size_t)nlmOp.nobsTot * ((size_t)1 + (size_t)nlmOp.ntheta),
+      double); // [ntheta*nsub]
     nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
@@ -194,7 +217,7 @@ RObject nlmSetup(Environment e) {
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+getRxNsub(rx)), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+(size_t)getRxNsub(rx)), double);// [ntheta*nsub]
     nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
     nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
@@ -206,7 +229,7 @@ RObject nlmSetup(Environment e) {
 #define ntheta nlmOp.ntheta
 #define nsub getRxNsub(rx)
     //nsub*ntheta
-    nlmOp.thetahf = R_Calloc(ntheta*(nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
+    nlmOp.thetahf = R_Calloc(ntheta*((size_t)nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
     nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
     nlmOp.thetaSave = nlmOp.thetahh + ntheta; // [ntheta]
     nlmOp.valSave = nlmOp.thetaSave + ntheta; // [1]
@@ -277,26 +300,42 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
+// Per-subject "did THIS solve fail" check — same idea as inner.cpp's
+// indHasBadSolve(): scan ind->solve for NaN/Inf rather than reading
+// the shared op->badSolve flag, which can be flipped by another
+// thread's failure mid-loop and induce a non-deterministic retry.
+static inline bool nlmIndHasBadSolve(rx_solving_options *op,
+                                     rx_solving_options_ind *ind) {
+  int neq = getOpNeq(op);
+  if (neq <= 0) return false;
+  double *solve = getIndSolve(ind);
+  int n = neq * getIndNallTimes(ind);
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void nlmSolveNlm(int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   nlmOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol  = 1;
-    // Not thread safe
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     nlmOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -307,21 +346,19 @@ void nlmSolvePred(int &id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   predOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol2 = 1;
-    // Not thread safe
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     predOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -369,10 +406,31 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
-        nlmOp.naZero=1;
+        nlmOp.naZero.store(1, std::memory_order_relaxed);
         lhs[0] = 0.0;
       }
-      ret(k) = lhs[0];
+      double val = lhs[0];
+      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
+        int yj = getIndYj(ind), dist = 0, yj0 = 0;
+        _splitYj(&yj, &dist, &yj0);
+        if (dist == rxDistributionDnorm || dist == rxDistributionNorm) {
+          int censi = 0;
+          if (hasRxCens(rx)) censi = getIndCens(ind, kk);
+          double dvi = getIndDv(ind, kk);
+          double limiti = R_NegInf;
+          if (hasRxLimit(rx)) {
+            limiti = getIndLimit(ind, kk);
+            if (ISNA(limiti)) limiti = R_NegInf;
+          }
+          if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
+            double f = lhs[1]; // rx_pred_f_
+            double r = lhs[2]; // rx_r_
+            double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+            val = -ll;
+          }
+        }
+      }
+      ret(k) = val;
       k++;
     }
   }
@@ -391,9 +449,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
   double *retD = ret.memptr();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(cores)
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores)
+#endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
   }
@@ -428,13 +486,44 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      // Save outer kk (time index) for censoring data access before inner kk loop shadows it
+      int kkOuter = kk;
+      // Determine censoring status for this observation (only for normal distributions)
+      bool hasCensObs = false;
+      int censi = 0;
+      double dvi = 0.0, limiti = R_NegInf;
+      if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
+        int yj = getIndYj(ind), dist = 0, yj0 = 0;
+        _splitYj(&yj, &dist, &yj0);
+        if (dist == rxDistributionNorm || dist == rxDistributionDnorm) {
+          if (hasRxCens(rx)) censi = getIndCens(ind, kkOuter);
+          dvi = getIndDv(ind, kkOuter);
+          if (hasRxLimit(rx)) {
+            limiti = getIndLimit(ind, kkOuter);
+            if (ISNA(limiti)) limiti = R_NegInf;
+          }
+          hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
+        }
+      }
       for (int kk = 0; kk < getOpNlhs(op); ++kk) {
+        if (kk > nlmOp.ntheta) break; // skip rx_pred_f_ and rx_r_ lhs values
         if (ISNA(lhs[kk])) {
           lhs[kk] = 0.0;
-          nlmOp.naZero=1;
+          nlmOp.naZero.store(1, std::memory_order_relaxed);
         }
         if (kk == 0) {
-          ret(k, kk) = lhs[kk];
+          double val = lhs[0];
+          if (hasCensObs) {
+            double f = lhs[nlmOp.ntheta + 1]; // rx_pred_f_
+            double r = lhs[nlmOp.ntheta + 2]; // rx_r_
+            if (!ISNA(f) && !ISNA(r)) {
+              double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
+              val = -ll;
+            }
+          }
+          ret(k, 0) = val;
+        } else if (hasCensObs) {
+          ret(k, kk) = R_NaN; // force finite differences for censored observations
         } else {
           ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[kk], &theta[0], kk-1);
         }
@@ -460,7 +549,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       if (!ret.col(ii+1).has_nan()) {
         continue;
       }
-      nlmOp.naGrad=1;
+      nlmOp.naGrad.store(1, std::memory_order_relaxed);
     }
     if (thetahf[ii] == 0.0) {
       double h = 0;
@@ -517,9 +606,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-  // #ifdef _OPENMP
-  // #pragma omp parallel for num_threads(cores)
-  // #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores)
+#endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
   }
@@ -596,7 +685,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
-      nlmOp.naZero=1;
+      nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
     double llik;
@@ -873,10 +962,10 @@ RObject nlmPrintHeader() {
 //[[Rcpp::export]]
 RObject nlmWarnings() {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  if (nlmOp.naGrad) {
+  if (nlmOp.naGrad.load(std::memory_order_relaxed)) {
     warning(_("NaN symbolic gradients were resolved with finite differences"));
   }
-  if (nlmOp.naZero) {
+  if (nlmOp.naZero.load(std::memory_order_relaxed)) {
     warning(_("solved items that were NaN/NA were replaced with 0.0"));
   }
   if (nlmOp.reducedTol){
@@ -887,6 +976,21 @@ RObject nlmWarnings() {
     }
   }
   return R_NilValue;
+}
+
+//[[Rcpp::export]]
+SEXP nlmCensInfo() {
+  Rcpp::IntegerVector ret = Rcpp::IntegerVector::create(globalCensFlag + 1);
+  ret.attr("class") = "factor";
+  ret.attr("levels") = Rcpp::CharacterVector::create("No censoring",
+                                                     "M2 censoring",
+                                                     "M3 censoring",
+                                                     "M2 and M3 censoring",
+                                                     "M4 censoring",
+                                                     "M2 and M4 censoring",
+                                                     "M3 and M4 censoring",
+                                                     "M2, M3 and M4 censoring");
+  return ret;
 }
 
 //[[Rcpp::export]]

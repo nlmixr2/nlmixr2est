@@ -127,7 +127,7 @@
     .valCharPrep <- .valNumber
   } else {
     assign(".cvOnly", FALSE, envir=.env)
-    .valNumber <- .v
+    .valNumber <- sqrt(.v)
     .valCharPrep <- sqrt(.v)
   }
   if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {
@@ -628,7 +628,8 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 #'
 #' @param x Data to fix
 #' @return Nothing, called for side effects
-#' @noRd
+#' @keywords internal
+#' @export
 .nlmixr2FitUpdateParams <- function(x) {
   # Update initial estimates to match current initial estimates
   .ui <- x$ui

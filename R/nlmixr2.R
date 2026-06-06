@@ -13,6 +13,7 @@
 #' @importFrom Rcpp evalCpp
 #' @importFrom lbfgsb3c lbfgsb3c
 #' @importFrom rxode2 rxUiGet .malert .minfo .msuccess .mwarn
+#' @eval .nlmixr2estbuild()
 #' @import nlmixr2data
 #' @useDynLib nlmixr2est, .registration=TRUE
 
@@ -181,7 +182,7 @@ nlmixr <- nlmixr2
 .nlmixr2inferEst <- function(env, est) {
   if (!env$missingEst) {
     .cls <- class(est)
-    if (grepl("^.*?Control$", .cls)) {
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (env$missingControl) {
         env$control <- getValidNlmixrControl(est, .est)
@@ -247,7 +248,9 @@ nlmixr2.function <- function(object, data=NULL, est = NULL, control = NULL, tabl
     .minfo("use {.code est} from pipeline")
     est <- .nlmixr2pipeEst
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -330,7 +333,9 @@ nlmixr2.rxUi <- function(object, data=NULL, est = NULL, control = NULL, table = 
     est <- .nlmixr2pipeEst
     .minfo("use {.code est} from pipeline")
   }
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }
@@ -347,7 +352,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .modName <- deparse(substitute(object))
   nlmixr2global$nlmixr2SimInfo <- .simInfo(object)
   .cls <- class(est)
-  if (grepl("^.*?Control$", .cls)) {
+  if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
     .est <- sub("^(.*?)Control$", "\\1", .cls)
     if (is.null(control)) {
       control <- getValidNlmixrControl(est, .est)
@@ -362,7 +367,7 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
     data <- NULL
   } else {
     .cls <- class(data)
-    if (grepl("^.*?Control$", .cls)) {
+    if (length(.cls) == 1L && grepl("^.*?Control$", .cls)) {
       .est <- sub("^(.*?)Control$", "\\1", .cls)
       if (is.null(control)) {
         control <- getValidNlmixrControl(data, .est)
@@ -426,7 +431,9 @@ nlmixr2.nlmixr2FitCore <- function(object, data=NULL, est = NULL, control = NULL
   .env$missingEst <- missing(est)
   est <- .nlmixr2inferEst(.env, est)
   control <- .env$control
-  est <- .preProcessHooksRun(.env, est)
+  est <- nlmixrWithTiming("preprocess", {
+    .preProcessHooksRun(.env, est)
+  })
   class(.env) <- c(est, "nlmixr2Est")
   nlmixr2Est0(.env)
 }

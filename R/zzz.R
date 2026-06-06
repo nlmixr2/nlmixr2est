@@ -57,7 +57,19 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   .iniN1qn1ptr()
   .iniLbfgsb3c()
 }
-
+#' Initialize S3 methods
+#'
+#' @return nothing, called for side effects
+#' @export
+#' @keywords internal
+#' @author Matthew L. Fidler
+#' @examples
+#'
+#' # For tools like nlmixr2shiny, this export allows nlmixr2shiny to
+#' # not depend on `nlmixr2est`, but can import it instead
+#'
+#' .iniS3() # run to register S3 methods
+#'
 .iniS3 <- function() {
   if (requireNamespace("generics", quietly = TRUE)) {
     rxode2::.s3register("generics::tidy", "nlmixr2FitCore")
@@ -66,6 +78,9 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
     rxode2::.s3register("generics::glance", "nlmixr2FitCoreSilent")
     rxode2::.s3register("generics::augment", "nlmixr2FitCore")
     rxode2::.s3register("generics::augment", "nlmixr2FitCoreSilent")
+  }
+  if (exists("dim.rxEt", envir = asNamespace("nlmixr2est"), inherits = FALSE)) {
+    rxode2::.s3register("base::dim", "rxEt")
   }
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCore")
   rxode2::.s3register("rxode2::rxModelVarsS3", "nlmixr2FitCoreSilent")
@@ -86,6 +101,8 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   rxode2::.s3register("rxode2::rxUiDeparse", "optimControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "uobyqaControl")
   rxode2::.s3register("rxode2::rxUiDeparse", "tableControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "agqControl")
+  rxode2::.s3register("rxode2::rxUiDeparse", "laplaceControl")
   .resetCacheIfNeeded()
   .Call(`_rxode2version4`, as.integer(utils::packageVersion("rxode2") >= "4.0.0"))
 }

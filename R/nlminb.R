@@ -91,6 +91,7 @@ nlminbControl <- function(eval.max=200,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           eventType=c("central", "forward"),
                           shiErr=(.Machine$double.eps)^(1/3),
@@ -174,6 +175,7 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -254,6 +256,7 @@ nlminbControl <- function(eval.max=200,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                eventType=eventType,
                shiErr=shiErr,
@@ -384,11 +387,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
 #' @noRd
 .nlminbFitDataSetup <- function(dataSav) {
   .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nlminb' does not work with censored data", call. =FALSE)
-    }
-  }
   nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
@@ -491,7 +489,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 interaction=0L,
                                 compress=.nlminbControl$compress,
                                 ci=.nlminbControl$ci,
-                                sigdigTable=.nlminbControl$sigdigTable)
+                                sigdigTable=.nlminbControl$sigdigTable,
+                                indTolRelax=.nlminbControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -527,8 +526,7 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$nlminb <- .nlminb[[1]]
-  .ret$parHistData <- .ret$nlminb$parHistData
-  .ret$nlm$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "nlminb")
   .ret$message <- .ret$nlminb$message
   if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
     return(.ret$nlminb)
@@ -536,8 +534,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .nlminbGetTheta(.ret$nlminb, .ui)
-  .ret$cov <- .ret$nlminb$cov
-  .ret$covMethod <- .ret$nlminb$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -572,3 +568,4 @@ nlmixr2Est.nlminb <- function(env, ...) {
   .nlminbFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.nlminb, "covPresent") <- TRUE
+attr(nlmixr2Est.nlminb, "unbounded") <- FALSE

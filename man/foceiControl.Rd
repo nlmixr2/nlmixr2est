@@ -36,8 +36,8 @@ foceiControl(
   lbfgsPgtol = 0,
   lbfgsFactr = NULL,
   eigen = TRUE,
-  addPosthoc = TRUE,
   diagXform = c("sqrt", "log", "identity"),
+  iovXform = c("sd", "var", "logsd", "logvar"),
   sumProd = FALSE,
   optExpression = TRUE,
   literalFix = TRUE,
@@ -60,7 +60,7 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin"),
+    "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -108,10 +108,11 @@ foceiControl(
   etaMat = NULL,
   repeatGillMax = 1,
   stickyRecalcN = 4,
+  indTolRelax = TRUE,
   gradProgressOfvTime = 10,
   addProp = c("combined2", "combined1"),
   badSolveObjfAdj = 100,
-  compress = TRUE,
+  compress = FALSE,
   rxControl = NULL,
   sigdigTable = NULL,
   fallbackFD = FALSE,
@@ -120,7 +121,11 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L
+  mceta = -1L,
+  nAGQ = 0,
+  agqLow = -Inf,
+  agqHi = Inf,
+  boundedTransform = TRUE
 )
 }
 \arguments{
@@ -419,9 +424,6 @@ exact tolerance by multiplying this value by
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
 
-\item{addPosthoc}{Boolean indicating if posthoc parameters are
-added to the table output.}
-
 \item{diagXform}{This is the transformation used on the diagonal
     of the \code{chol(solve(omega))}. This matrix and values are the
     parameters estimated in FOCEi. The possibilities are:
@@ -432,6 +434,21 @@ added to the table output.}
  \item \code{log} Estimates the log of the diagonal elements of \code{chol(solve(omega))}
 
  \item \code{identity} Estimates the diagonal elements without any transformations
+}}
+
+\item{iovXform}{This is the transformation used on the diagonal
+    of the `iov`. The possibilities are:
+
+\itemize{
+
+ \item \code{sd} Estimate the IOV as the standard deviation for IOV
+
+ \item \code{var} Estimate the IOV as the variance for IOV.
+
+ \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+
+ \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+
 }}
 
 \item{sumProd}{Is a boolean indicating if the model should change
@@ -724,6 +741,12 @@ parameter.}
 \item{stickyRecalcN}{The number of bad ODE solves before reducing
 the atol/rtol for the rest of the problem.}
 
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
+
 \item{gradProgressOfvTime}{This is the time for a single objective
 function evaluation (in seconds) to start progress bars on gradient evaluations}
 
@@ -816,6 +839,33 @@ when the first gradient is zero.  Default is `TRUE`}
 
   - `n` the last eta and eta=0 are used, as well as n-1 sampled
   etas from the omega matrix}
+
+\item{nAGQ}{Number of Gauss-Hermite Adaptive Quadrature points to
+take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
+is equivalent to the Laplace method. The adaptive quadrature
+expands every node for each of the ETAs, so it can be quite
+expensive with a large amount of ETAs.  Once the EBE is obtained
+for a subject, you will have nAGQ^neta additional function
+evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
+function evaluations for odd nAGQ numbers.}
+
+\item{agqLow}{The lower bound for adaptive quadrature
+log-likelihood. By default this is -Inf; in the original nlmixr's
+gnlmm it was -700.}
+
+\item{agqHi}{The upper bound for adaptive quadrature
+log-likelihood.  By default this is Inf; in the original nlmixr's
+gnlmm was 400.}
+
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
 }
 \value{
 The control object that changes the options for the FOCEi
@@ -855,9 +905,9 @@ Optimization.
 
 \code{\link[rxode2]{rxSolve}}
 
-Other Estimation control: 
-\code{\link{nlmixr2NlmeControl}()},
-\code{\link{saemControl}()}
+Other Estimation control:
+\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}},
+\code{\link[=saemControl]{saemControl()}}
 }
 \author{
 Matthew L. Fidler

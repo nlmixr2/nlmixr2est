@@ -1,42 +1,59 @@
-Field,Description
-conditionNumber,"Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix"
-cor,Correlation matrix
-phiR,correlation matrix of each individual's eta (if present)
-objDF,"Data frame containing objective function information (AIC, BIC, etc.)"
-time,"Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.)"
-theta,Estimates for eta for each individual
-etaObf,"Estimates for eta for each individual, This also includes the objective function for each individual"
-fixef,Estimates of fixed effects
-foceiControl,Estimation options if focei was used
-ui,Final estimates for the model
-dataMergeFull,Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
-censInfo,Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset)
-dataLloq,Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step
-dataUloq,Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step
-eta,IIV values for each indiviudal 
-dataMergeInner,Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
-rxControl,Integration options used to control rxode2
-dataMergeLeft,Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
-omega,Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega)
-covMethod,Method used to calculate covariance of the fixed effects
-modelName,Name of the R object containing the model
-origData,Original dataset 
-phiRSE,Relative standard error of each individuals eta
-dataMergeRight,Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
-ipredModel,rxode2 estimation model for fit (internal will likely be removed from visibility
-phiSE,Standard error of each individuals eta
-parFixed,Table of parameter estimates (rounded and pretty looking)
-parFixedDF,Table of parameter estimates as a data frame
-omegaR,The correlation matirx of omega with standard deviations for the diagonal pieces
-iniUi,The initial model used to start the estimation
-finalUi,The model with the estimates replaced as values
-scaleInfo,"The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=...) if you think these are unreasonable.  It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc)"
-table,"These are the table options that were used when generating the table output (were CWRES included, etc"
-shrink,This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error
-env,This is the environment where all the information for the fit is stored outside of the data-frame.  It is an R environment hence $env
-seed,This is the initial seed used for saem
-simInfo,"This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish"
-runInfo,This returns a list of all the warnings or fit information
-parHistStacked,Value of objective function and parameters at each iteration (tall format)
-parHist ,Value of objective function and parameters at each iteration (wide format)
-cov,Variance-covariance matrix
+Field,Note,Description
+conditionNumber,,"Condition number, that is the highest divided by the lowest eigenvalue in the population covariance matrix"
+cor,,Correlation matrix
+phiR,,correlation matrix of each individual's eta (if present)
+objDF,,"Data frame containing objective function information (AIC, BIC, etc.)"
+time,,"Duration of different parts of the analysis (e.g. setup, optimization, calculation of covariance, etc.)"
+theta,,Estimates for eta for each individual
+etaObf,,"Estimates for eta for each individual, This also includes the objective function for each individual"
+fixef,,Estimates of fixed effects
+foceiControl,,Estimation options if focei was used
+ui,,Final estimates for the model
+dataMergeFull,,Full data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
+censInfo,,Gives the censorng information abot the fit (the type of censoring that was seend and handled in the dataset)
+dataLloq,,Gives the lloq from the dataset (average) when cesoring has occured; Requires the fit to have a table step
+dataUloq,,Gives the uloq from the dataset (average) when censoring has occured; requires the fit to have a table step
+eta,,IIV values for each indiviudal 
+dataMergeInner,,Inner data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
+rxControl,,Integration options used to control rxode2
+dataMergeLeft,,Left data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
+omega,,Matrix containing the estimates of the multivarte normal covariance matrix for between subject varaibilities (omega)
+covMethod,,Method used to calculate covariance of the fixed effects
+modelName,,Name of the R object containing the model
+origData,,Original dataset 
+phiRSE,,Relative standard error of each individuals eta
+dataMergeRight,,Right data merge with the fit output and the original dataset; Also includes nlmixrLlikObs which includes the individual observation contribution to the likelihood
+ipredModel,,rxode2 estimation model for fit (internal will likely be removed from visibility
+phiSE,,Standard error of each individuals eta
+parFixed,,Table of parameter estimates (rounded and pretty looking)
+parFixedDF,,Table of parameter estimates as a data frame
+omegaR,,The correlation matirx of omega with standard deviations for the diagonal pieces
+iniUi,,The initial model used to start the estimation
+finalUi,,The model with the estimates replaced as values
+scaleInfo,,"The scaling factors used for nlmixr2 estimation in focei; The can be changed by foceiControl(scaleC=...) if you think these are unreasonable.  It also tells the Gill83 outcome of trying to find the best step size (High gradient error, bad gradient etc)"
+table,,"These are the table options that were used when generating the table output (were CWRES included, etc"
+shrink,,This is a table of shrinkages for all the individual ETAs as well as the variance shrinkage as well as summary statistics for the ETAs and Residual Error
+env,,This is the environment where all the information for the fit is stored outside of the data-frame.  It is an R environment hence $env
+seed,,This is the initial seed used for saem
+simInfo,,"This returns a list of all the fit information used for a traditional rxode2 simulation, which you can tweak yourself if you wish"
+runInfo,,This returns a list of all the warnings or fit information
+parHistStacked,,Value of objective function and parameters at each iteration (tall format)
+parHist ,,Value of objective function and parameters at each iteration (wide format)
+cov,,Variance-covariance matrix
+props,,"Model properties with the following fields: cmt - name of compartments (ODEs); cmtProp - This gives a data-frame of the compartment and properties used;  linCmt - boolean that is TRUE if linear solutions are used; output - model outputs, fitted parameters for subjects (output$primary), secondary or derived parameters (output$secondary), model endpoints (output$endpoint), states/compartment (output$state); pop - fitted typical values of parameters"
+nonmemData ,n2r, Original dataset used for NONMEM analysis
+etaData ,n2r, Subject level IIV values
+ipredAtol ,n2r, Absolute tolerance difference between NONMEM and rxode2 individual predictions
+ipredRtol ,n2r, Relative tolerance difference between NONMEM and rxode2 individual predictions
+ipredCompare ,n2r, Data frame with ipred values
+predAtol ,n2r, Absolute tolerance difference between NONMEM and rxode2 population predictions
+predRtol ,n2r, Relative tolerance difference between NONMEM and rxode2 population predictions
+predCompare ,n2r, Data frame with pred values
+sigma ,n2r, Error model matrix
+thetaMat ,n2r, Covariance Matrix (matches rxSolve(thetaMat=)
+dfSub ,n2r, Degrees of freedom by subject
+dfObs ,n2r, Degrees of freedom by observation
+atol ,n2r, Absolute tolerance that NONMEM specified; will be used when solving
+rtol ,n2r, Relative tolerance that NONMEM specified; will be used when solving
+ssRtol ,n2r, Steady state relative tolerance that NONMEM specified will be used for solving
+ssAtol ,n2r, Steady state absolute tolerance that NONMEM specified; will be used for solving.

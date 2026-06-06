@@ -99,7 +99,11 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
 .nlmixr2TidyRandom <- function(x, ...) {
   rxode2::rxReq("tibble")
-  .d <- dim(x$omegaR)
+  .omegaR <- x$omegaR
+  if (is.list(.omegaR)) {
+    .omegaR <- .omegaR$id
+  }
+  .d <- dim(.omegaR)
   if (.d[1] > 0) {
     .tmp <- stack(x$eta[, -1])
     .df <- data.frame(group = "ID", level = x$eta$ID, term = .tmp$ind, estimate = .tmp$values)
@@ -111,14 +115,18 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
 .nlmixr2TidyRandomPar <- function(x, ...) {
   rxode2::rxReq("tibble")
-  .pars <- .getR(x$omegaR, TRUE)
+  .omegaR <- x$omegaR
+  if (is.list(.omegaR)) {
+    .omegaR <- .omegaR$id
+  }
+  .pars <- .getR(.omegaR, TRUE)
   if (length(.pars) > 0) {
     .p1 <- data.frame(
       effect = "ran_pars", group = "ID", term = names(.pars), estimate = .pars, std.error = NA_real_,
       statistic = NA_real_, p.value = NA_real_, stringsAsFactors = FALSE
-    ) %>%
+    ) |>
       .reorderCols()
-    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) %>%
+    .p2 <- data.frame(.nlmixr2TidyFixed(x, .ranpar = TRUE), stringsAsFactors = FALSE) |>
       .reorderCols()
     .df <- rbind(.p1, .p2)
     for (.v in c("statistic", "p.value", "std.error")) {
@@ -156,7 +164,11 @@ confint.nlmixr2FitCoreSilent <- confint.nlmixr2FitCore
 
 .coefPar <- function(x, exponentiate = FALSE, ...) {
   rxode2::rxReq("tibble")
-  .d <- dim(x$omegaR)
+  .omegaR <- x$omegaR
+  if (is.list(.omegaR)) {
+    .omegaR <- .omegaR$id
+  }
+  .d <- dim(.omegaR)
   if (.d[1] == 0) {
     return(NULL)
   }
@@ -238,9 +250,9 @@ tidy.nlmixr2FitCore <- function(x, ...) {
   if (all(unlist(lapply(seq_along(.ret), is.null)))) {
     return(NULL)
   }
-  return(dplyr::bind_rows(.ret, .id = "effect") %>%
-    tibble::as_tibble() %>%
-    .reorderCols())
+  dplyr::bind_rows(.ret, .id = "effect") |>
+    tibble::as_tibble() |>
+    .reorderCols()
 }
 
 tidy.nlmixr2FitCoreSilent <- tidy.nlmixr2FitCore

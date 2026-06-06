@@ -38,28 +38,23 @@ extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
   double ystar, xlo, xhi, y2star, bignum;
   double ylo, dchk, z, dn, dabit, yoldlo=0;
 
-  //FIXME: check malloc status
-  p = (double *) R_Calloc(n*(n+1),double);
-  pstar = (double *) R_Calloc(n,double);
-  p2star = (double *) R_Calloc(n,double);
-  pbar = (double *) R_Calloc(n,double);
-  y = (double *) R_Calloc((n+1),double);
-
   kcount = 1000000;
   *nfcall = 0;
   *it = 0;
   *iconv = 0;
 
-  /* check inputs */
-  if (n <= 0 || n > MXPAR) *nfcall += -10;
-  if (*nfcall < 0){
-    R_Free(p);
-    R_Free(pstar);
-    R_Free(p2star);
-    R_Free(pbar);
-    R_Free(y);
+  /* check inputs before allocating */
+  if (n <= 0 || n > MXPAR) {
+    *nfcall += -10;
     return;
   }
+
+  size_t un = (size_t)n;
+  p = (double *) R_Calloc(un*(un+1), double);
+  pstar = (double *) R_Calloc(un, double);
+  p2star = (double *) R_Calloc(un, double);
+  pbar = (double *) R_Calloc(un, double);
+  y = (double *) R_Calloc(un+1, double);
 
   /* constants */
   dabit = 2.2204460492503131e-16;

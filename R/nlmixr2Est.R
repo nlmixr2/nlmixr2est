@@ -148,7 +148,7 @@ nlmixr2Est.default <- function(env, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 nlmixr2Est0 <- function(env, ...) {
-  ## rxode2::rxUnloadAll() # don't unload everything anymore
+  rxode2::rxUnloadAll()
   .ui <- rxode2::rxUiDecompress(get("ui", env))
   assign("ui", .ui, envir=env)
   if (!exists("missingTable", envir=env)) {
@@ -166,7 +166,7 @@ nlmixr2Est0 <- function(env, ...) {
   if (inherits(env$ui, "rxUi")) {
     .modelName <- env$ui$modelName
     assign("ui",
-           rxode2::rxUiDecompress(env$ui$fun()),
+           .rxUiDecompressModelFun(env$ui),
            envir=env) # re-evaluate so it doesn't overwrite inital ui
     assign("modelName", .modelName, envir=env$ui)
   }
@@ -255,6 +255,7 @@ nlmixr2Est0 <- function(env, ...) {
             }
             gc()
             .minfo("try resetting cache and unloading all rxode2 models")
+            rxode2::rxUnloadAll(TRUE) # make sure this is actually unloading models
             try(rxode2::rxUnloadAll())
             rxode2::rxClean()
             assign("unload", TRUE, envir=.envReset)
@@ -270,12 +271,14 @@ nlmixr2Est0 <- function(env, ...) {
   }
   .lst <- get("ret", envir=.envReset)
   .ret <- .lst[[1]]
+  .warnings <- c(nlmixr2global$preProcessHookWarnings, .lst[[2]])
+  .warnings <- .filterSyntheticIovMuWarnings(.warnings, get("ui", envir = env))
   if (inherits(.ret, "nlmixr2FitCore") ||
         inherits(.ret, "nlmixr2Fit")) {
     if (is.environment(.ret)) {
-      try(assign("runInfo", .lst[[2]], .ret), silent=TRUE)
+      try(assign("runInfo", .warnings, .ret), silent=TRUE)
     } else {
-      try(assign("runInfo", .lst[[2]], .ret$env), silent=TRUE)
+      try(assign("runInfo", .warnings, .ret$env), silent=TRUE)
     }
   } else {
     .w <-.lst[[2]]

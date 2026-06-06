@@ -89,7 +89,8 @@
   })
 }
 
-#' This is a S3 method for getting the distribution lines for a base rxode2 saem problem
+#' This is a S3 method for getting the distribution lines for a base
+#' rxode2 saem problem
 #'
 #' @param line Parsed rxode2 model environment
 #' @return Lines for the estimation of saem
@@ -159,6 +160,7 @@ rxUiGet.saemParamsLine <- function(x, ...) {
   .names <- .names[!(.names %in% .cov$covariateParameter)]
   str2lang(paste0("param(", paste(.names, collapse=", "), ")"))
 }
+attr(rxUiGet.saemParamsLine, "rstudio") <- quote(param(tcl))
 
 #' @export
 rxUiGet.saemModel0 <- function(x, ...) {
@@ -171,6 +173,7 @@ rxUiGet.saemModel0 <- function(x, ...) {
                               lstExpr=.saemDropMuRefFromModel(.f))
 }
 #attr(rxUiGet.saemModel0, "desc") <- "saem initial model"
+attr(rxUiGet.saemModel0, "rstudio") <- quote(rxModelVars({}))
 
 #'@export
 rxUiGet.saemModelPred0 <- function(x, ...) {
@@ -183,7 +186,7 @@ rxUiGet.saemModelPred0 <- function(x, ...) {
                               lstExpr=.saemDropMuRefFromModel(.f))
 }
 # attr(rxUiGet.saemModel0, "desc") <- "saem predOnly for use in calculating residuals with focei engine"
-
+attr(rxUiGet.saemModelPred0, "rstudio") <- quote(rxModelVars({}))
 
 
 #' Load the saem model into symengine
@@ -243,12 +246,14 @@ rxUiGet.loadPruneSaem <- function(x, ...) {
   .loadSymengine(.saemPrune(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
+attr(rxUiGet.loadPruneSaem, "rstudio") <- emptyenv()
 
 #' @export
 rxUiGet.loadPruneSaemPred <- function(x, ...) {
   .loadSymengine(.saemPrunePred(x), promoteLinSens = FALSE)
 }
 #attr(rxUiGet.loadPruneSaem, "desc") <- "load the saem model into symengine"
+attr(rxUiGet.loadPruneSaemPred, "rstudio") <- emptyenv()
 
 
 #' @export
@@ -277,6 +282,7 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   c(.ret, .ui$nonMuEtas)
 }
 #attr(rxUiGet.saemParamsToEstimate, "desc") <- "Get the parameters to estimate"
+attr(rxUiGet.saemParamsToEstimate, "rstudio") <- "tcl"
 
 #' @export
 rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
@@ -284,6 +290,7 @@ rxUiGet.saemParamsToEstimateCov <- function(x, ...) {
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .pars[!(.pars %in% .cov$covariateParameter)]
 }
+attr(rxUiGet.saemParamsToEstimateCov, "rstudio") <- "tcl"
 
 #' @export
 rxUiGet.saemThetaName <- rxUiGet.saemParamsToEstimate
@@ -296,6 +303,7 @@ rxUiGet.saemParams <- function(x, ...) {
   paste0("params(", paste(.par, collapse=","), ")")
 }
 attr(rxUiGet.saemParams, "desc") <- "Get the params() for a saem model"
+attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
 
 #' @export
 rxUiGet.saemModel <- function(x, ...) {
@@ -335,6 +343,7 @@ rxUiGet.saemModel <- function(x, ...) {
   paste(c(rxUiGet.saemParams(x, ...), .cmt,
           .ret, .foceiToCmtLinesAndDvid(x[[1]])), collapse="\n")
 }
+attr(rxUiGet.saemModel, "rstudio") <- "params(tcl)"
 
 #'@export
 rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
@@ -384,6 +393,7 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   .thetaValue
 }
 #attr(rxUiGet.saemModelPredReplaceLst, "desc") <- "Replace the mu referenced thetas with these values"
+attr(rxUiGet.saemModelPredReplaceLst, "rstudio") <- c(tka="THETA[1] + ETA[1]")
 
 .saemModelEnv <- new.env(parent = emptyenv())
 .saemModelEnv$symengine <- NULL
@@ -400,6 +410,7 @@ rxUiGet.interpLinesStr <- function(x, ...) {
   }
   .interp
 }
+attr(rxUiGet.interpLinesStr, "rstudio") <- ""
 
 #' @export
 rxUiGet.saemModelPred <- function(x, ...) {

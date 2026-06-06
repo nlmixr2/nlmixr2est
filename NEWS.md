@@ -1,7 +1,160 @@
 # nlmixr2est development version
 
-- New function `formatMinWidth()` to make $parFixed show shorter text and more
-  often show non-scientific notation representations. (#346)
+- New function `formatMinWidth()` to make `$parFixed` show shorter text
+  and more often show non-scientific notation representations. The
+  `$parFixed` data.frame is now built directly with data.frame
+  operations rather than environment side-effects, and `FIXED` and
+  shrinkage suffixes are appended. (#346, #516)
+
+# nlmixr2est 6.0.1
+
+- Fix LTO violation as requested by CRAN by adding
+  -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
+
+- Require rxode2 5.1.2 which has the fixed M1-san issues observed
+  here.
+
+- Guard against null pointer arithmetic in inner.cpp
+
+# nlmixr2est 6.0.0
+
+- `focei`, `foce`, `fo`, `laplace`, and `agq` have all been
+   successfully made thread safe and parallelized (for a single
+   CPU). The default tolerance relaxation for difficult to solve ODEs
+   has been changed to per individual instead of for the entire
+   population (which is a breaking change, so major release).  This
+   should allow more precision for a majority of the subjects in the
+   optimization process.
+
+- Add `predict(fit, level="ipred")`, `predict(fit,
+  level="individual")` or `predict(fit, level=1)` to predict
+  individual fits (with possibly a new dataset).
+
+- Change test files to `.rds` files
+
+- Drop magrittr `%>%` in favor of `|>`.
+
+- **Breaking change:** Minimum R version increased from 4.0 to 4.1.0.
+  This change is required to support the native pipe operator `|>`.
+  Users on R < 4.1.0 will need to upgrade R to install this version
+  of nlmixr2est.
+
+- Bug fixes for deparsing nlmixr2 control objects
+
+- `nlm` and related pooled methods now run in parallel (based on ID)
+
+- Tests are optimized to reduce redundant fits and run in parallel.
+
+- `nlm` (and related pooled optimizers: `bobyqa`, `newuoa`, `uobyqa`,
+  `n1qn1`, `lbfgsb3c`, `optim`, `nlminb`) now support the same
+  censoring behavior (M2/M3/M4) as FOCEI and SAEM.  The
+  `$censInformation` field is populated for these fits in the same way
+  as FOCEI/SAEM.
+
+- `agqControl()` and `laplaceControl()` now have `rxUiDeparse()`
+  methods so they can be saved better in packages like `nlmixr2save`
+  and `shinyMixR`.
+
+- Added new `outerOpt`; methods to `focei` and related methods (`agq`,
+  `laplace`, `foce`, `fo`, `foi`): "uobyqa" and "newuoa".
+
+- `saem` and other methods now respect bounds by default by internally
+  adding the appropriate transform and then applying the
+  back-transformation just before returning.
+
+  For parameters that are mu-referenced, this breaks
+  mu-referencing. When it breaks mu-referencing there is a warning
+  issued.  The best practice is still to have unbounded parameters
+  with mu-referencing.
+
+  If you want to ignore this behavior you may
+  use `control=list(boundedTransform=FALSE)` or for saem
+  `control=saemControl(boundedTransform=FALSE)`
+
+- The mu referencing covariate procedure was made less fragile to
+  support mu referencing in conjunction with iov and bounded parameter
+  transformations.
+
+- Add some bench-marking capabilities and small speed fixes for focei/saem
+
+# nlmixr2est 5.0.0
+
+- Remove `qs` and change to `qs2`.  This breaks backward
+  compatibility.
+
+- Default to non-compressed nlmixr2 objects
+
+# nlmixr2est 4.1.1
+
+- Request nlmixr2est's pre-processing hooks for `augPred()`, `vpcSim()` and
+  `$simInfo`, which fixes augPred in cases where `etas=0` are used in
+  `nlmixr2` (#587)
+
+- Fix scale.h so that `scaleType="none"` does not also require
+  `scaleTo=0`
+
+- Request Armadillo 15 with the special flag in the new `RcppArmadillo`
+
+- Fix `focei` without etas (and without log-likelihood normal) to run
+  `ELS` (See #590).
+
+- Change the IOV implementation (#596):
+   - Now shows estimates as `CV%` or `sd` without shrinkage calculation.
+   - Allow different forms of `iov` estimation, controlled by
+     `iovXform`.
+   - Retains the `iov` parameter(s) in the output `data.frame`.
+   - With `iov`, the `$omega` shows a list of variability by the
+     conditioning variable(s).
+   - `fit$iov` will show the IOV deviations by the conditioning
+     variables(s) with the exception of `id`
+   - IOV models can be used in other estimation methods and inherits
+     the ETA values.
+
+ - Added `$etaMat` method for `nlmixr2` fits to give the value that
+   needs to be passed between each estimation method (related to iov #596)
+
+
+# nlmixr2est 4.1.0
+
+- Updated inferring the estimation method from the control
+  object. Requires the control object to have a class of length one
+  and match the estimation method.  For example `foceiControl()` would
+  assume that the estimation method is related to `focei`.
+
+- Changed Rstudio completion to not evaluate (in case it gets turned
+  on for data.frames) (See #568)
+
+- Turned on data completion for items like `$fitMergeInner`
+
+- **Breaking change:** Changed the estimation method `posthoc` to add
+  tables and calculate the covariance by default.  It is now a method
+  with it's own control, `posthocControl()`.  As previously the
+  default is not to include the interaction term (but you can turn it
+  on with `posthocControl(interaction=TRUE)`).
+
+- Added `foceControl()`, `foControl()` and `foiControl()` for the
+  `foce`, `fo` and `foi` methods, respectively.  They try to convert
+  the related control structures to the correct control structure for
+  the estimation method.
+
+- Added iov support for `focei`,  `foce`, and `saem` (#614)
+
+- Added new estimation method `agq` which uses adaptive Gauss-Hermite
+  Quadrature to fit a nonlinear-mixed effect model. In this method,
+  you can choose the number of quadrature points to estimate the
+  likelihood, with higher numbers giving more accurate likelihoods.
+  The AGQ implementation in nlmixr2est allows you to specify the
+  number of quadrature points via the `agqControl()` function, and
+  supports both single and multiple subject models. This method is
+  particularly useful for models where accurate likelihood estimation
+  is critical.
+
+- Also added a `laplace` method which is the same as
+  `agq` with 1 node (and is numerically the same as `focei`, `foce` or
+  log-likelihood `focei`/`laplace`, etc), but uses the `agq` routine.
+
+- Fixed saem mu-reference display by not compressing the internal item
+  `saem0`.
 
 # nlmixr2est 4.0.2
 

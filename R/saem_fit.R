@@ -108,7 +108,9 @@
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
-                       maxOdeRecalc=5L, nres,
+                       maxOdeRecalc=5L,
+                       indTolRelax=TRUE,
+                       nres,
                        perSa=0.75,
                        perNoCor=0.75,
                        perFixOmega=0.5,
@@ -625,6 +627,7 @@
   cfg$powRange <- powRange
   cfg$odeRecalcFactor <- odeRecalcFactor
   cfg$maxOdeRecalc <- maxOdeRecalc
+  cfg$indTolRelax <- indTolRelax
   cfg
 }
 

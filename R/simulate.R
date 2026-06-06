@@ -1,6 +1,6 @@
 #' Expands the simulation model to add tad data item
 #'
-#' 
+#'
 #' @param obj Object to expand
 #' @return quoted model
 #' @author Matthew L. Fidler
@@ -45,7 +45,7 @@
 }
 #' Get the simulation model for VPC and NPDE
 #'
-#' 
+#'
 #' @param obj nlmixr fit object
 #' @param hideIpred Hide the ipred (by default FALSE)
 #' @param tad Include `tad` calculation (by default FALSE)
@@ -91,13 +91,17 @@
 }
 
 .simInfo <- function(object) {
-  .mod <- .getSimModel(object, hideIpred=FALSE)
-  .omega <- object$omega
+  .env <- new.env(parent=emptyenv())
+  .env$ui <- object$ui
+  .env$data <- object$origData
+  suppressMessages(.preProcessHooksRun(.env, "rxSolve"))
+  .mod <- .getSimModel(.env$ui, hideIpred=FALSE)
+  .omega <- .env$ui$omega
   .etaN <- dimnames(.omega)[[1]]
-  .params <- nlme::fixed.effects(object)
+  .params <- nlme::fixed.effects(.env$ui)
   .params <- .params
   .dfObs <- object$nobs
-  .nlmixr2Data <- object$origData
+  .nlmixr2Data <- .env$data
   .dfSub <- object$nsub
   .env <- object$env
   if (exists("cov", .env)) {
@@ -105,11 +109,11 @@
   } else {
     .thetaMat <- NULL
   }
-  if (all(is.na(object$ui$ini$neta1))) {
+  if (all(is.na(.env$ui$ini$neta1))) {
     .omega <- NULL
     .dfSub <- 0
   }
-  .sigma <- object$ui$simulationSigma
+  .sigma <- .env$ui$simulationSigma
   return(list(
     rx = .mod, params = .params, events = .nlmixr2Data, thetaMat = .thetaMat,
     omega = .omega, sigma = .sigma, dfObs = .dfObs, dfSub = .dfSub

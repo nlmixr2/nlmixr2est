@@ -28,7 +28,8 @@ nmTest({
     }
 
     f <- .nlmixr(one.compartment, theo_sd, "focei",
-                 control=foceiControl(print=0, maxOuterIterations = 1L, maxInnerIterations = 1L))
+                 control=foceiControl(print=0, maxOuterIterations = 1L,
+                                      maxInnerIterations = 1L))
 
     expect_true(inherits(f$a, "factor"))
 
@@ -36,7 +37,7 @@ nmTest({
                  structure(1:2, levels = c("<5", ">=5"),
                            class = "factor"))
 
-    f <- addNpde(f)
+    f <- suppressMessages(addNpde(f))
 
     expect_true(inherits(f$a, "factor"))
 
@@ -77,10 +78,10 @@ nmTest({
     f <- .nlmixr(one.compartment, theo_sd, "saem", control = saemControlFast)
     expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
 
-    f <- addNpde(f)
+    f <- suppressMessages(addNpde(f))
     expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
 
-    f <- addCwres(f)
+    f <- suppressMessages(addCwres(f))
     expect_equal(unique(f$a), factor(1:2, labels = c("<5", ">=5")))
   })
 
@@ -119,7 +120,7 @@ nmTest({
                  structure(1:2, levels = c("<5", ">=5"),
                            class = "factor"))
 
-    f <- addNpde(f)
+    f <- suppressMessages(addNpde(f))
 
     expect_true(inherits(f$a, "factor"))
 
@@ -127,7 +128,7 @@ nmTest({
                  structure(1:2, levels = c("<5", ">=5"),
                            class = "factor"))
 
-    f <- addCwres(f)
+    f <- suppressMessages(addCwres(f))
 
     expect_true(inherits(f$a, "factor"))
 
@@ -160,7 +161,7 @@ nmTest({
       })
     }
 
-    f  <- .nlmixr(one.compartment, theo_sd, "nlm")
+    f  <- .nlmixr(one.compartment, theo_sd, "nlm", nlmControl(print=0L))
 
     expect_true(inherits(f$a, "factor"))
 
@@ -168,7 +169,7 @@ nmTest({
                  structure(1:2, levels = c("<5", ">=5"),
                            class = "factor"))
 
-    f  <- .nlmixr(one.compartment, theo_sd, "nls")
+    f  <- .nlmixr(one.compartment, theo_sd, "nls", nlsControl(print=0L))
 
     expect_true(inherits(f$a, "factor"))
 

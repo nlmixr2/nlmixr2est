@@ -84,6 +84,7 @@ lbfgsb3cControl <- function(trace=0,
                             stickyRecalcN=4,
                             maxOdeRecalc=5,
                             odeRecalcFactor=10^(0.5),
+                            indTolRelax=TRUE,
 
                             useColor = crayon::has_color(),
                             printNcol = floor((getOption("width") - 23) / 12), #
@@ -102,7 +103,7 @@ lbfgsb3cControl <- function(trace=0,
                             literalFix=TRUE,
                             literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
-                            calcTables=TRUE, compress=TRUE,
+                            calcTables=TRUE, compress=FALSE,
                             covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
 
@@ -124,7 +125,7 @@ lbfgsb3cControl <- function(trace=0,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -134,6 +135,7 @@ lbfgsb3cControl <- function(trace=0,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -208,6 +210,7 @@ lbfgsb3cControl <- function(trace=0,
     stickyRecalcN=as.integer(stickyRecalcN),
     maxOdeRecalc=as.integer(maxOdeRecalc),
     odeRecalcFactor=odeRecalcFactor,
+    indTolRelax=indTolRelax,
 
     useColor=useColor,
     print=print,
@@ -309,7 +312,8 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 interaction=0L,
                                 compress=.lbfgsb3cControl$compress,
                                 ci=.lbfgsb3cControl$ci,
-                                sigdigTable=.lbfgsb3cControl$sigdigTable)
+                                sigdigTable=.lbfgsb3cControl$sigdigTable,
+                                indTolRelax=.lbfgsb3cControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -395,8 +399,9 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .lbfgsb3c <- .collectWarn(.lbfgsb3cFitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$lbfgsb3c <- .lbfgsb3c[[1]]
-  .ret$parHistData <- .ret$lbfgsb3c$parHistData
-  .ret$lbfgsb3c$parHistData <- NULL
+
+  .ret <- .nlmFamilyAdjustOutput(.ret, "lbfgsb3c")
+
   .ret$message <- .ret$lbfgsb3c$message
   if (rxode2::rxGetControl(.ui, "returnLbfgsb3c", FALSE)) {
     return(.ret$lbfgsb3c)
@@ -404,8 +409,6 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .lbfgsb3cGetTheta(.ret$lbfgsb3c, .ui)
-  .ret$cov <- .ret$lbfgsb3c$cov
-  .ret$covMethod <- .ret$lbfgsb3c$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -440,3 +443,4 @@ nlmixr2Est.lbfgsb3c <- function(env, ...) {
   .lbfgsb3cFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.lbfgsb3c, "covPresent") <- TRUE
+attr(nlmixr2Est.lbfgsb3c, "unbounded") <- FALSE

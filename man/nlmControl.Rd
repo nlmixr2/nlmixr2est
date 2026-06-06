@@ -19,6 +19,7 @@ nlmControl(
   stickyRecalcN = 4,
   maxOdeRecalc = 5,
   odeRecalcFactor = 10^(0.5),
+  indTolRelax = TRUE,
   eventType = c("central", "forward"),
   shiErr = (.Machine$double.eps)^(1/3),
   shi21maxFD = 20L,
@@ -42,12 +43,13 @@ nlmControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   calcTables = TRUE,
-  compress = TRUE,
+  compress = FALSE,
   covMethod = c("r", "nlm", ""),
   adjObf = TRUE,
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  boundedTransform = TRUE,
   ...
 )
 }
@@ -122,6 +124,12 @@ ODE solve.}
 
 \item{odeRecalcFactor}{The ODE recalculation factor when ODE
 solving goes bad, this is the factor the rtol/atol is reduced}
+
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
@@ -392,6 +400,16 @@ function.  By default this is \code{TRUE}}
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
 
 \item{...}{additional arguments to be passed to \code{f}.}
 }

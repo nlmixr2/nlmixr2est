@@ -53,6 +53,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          stickyRecalcN=4,
                          maxOdeRecalc=5,
                          odeRecalcFactor=10^(0.5),
+                         indTolRelax=TRUE,
 
                          useColor = crayon::has_color(),
                          printNcol = floor((getOption("width") - 23) / 12), #
@@ -71,9 +72,10 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
-                         calcTables=TRUE, compress=TRUE,
+                         calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
-                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                         adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                         boundedTransform=TRUE, ...) {
 
   checkmate::assertNumeric(epsilon, len=1, any.missing=FALSE, lower=0)
   checkmate::assertIntegerish(max_iterations, len=1, any.missing=FALSE, lower=10)
@@ -89,10 +91,11 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -102,6 +105,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -173,6 +177,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     stickyRecalcN=as.integer(stickyRecalcN),
     maxOdeRecalc=as.integer(maxOdeRecalc),
     odeRecalcFactor=odeRecalcFactor,
+    indTolRelax=indTolRelax,
 
     useColor=useColor,
     print=print,
@@ -189,7 +194,8 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-    genRxControl=.genRxControl)
+    genRxControl=.genRxControl,
+    boundedTransform=boundedTransform)
   class(.ret) <- "n1qn1Control"
   .ret
 }
@@ -275,7 +281,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 interaction=0L,
                                 compress=.n1qn1Control$compress,
                                 ci=.n1qn1Control$ci,
-                                sigdigTable=.n1qn1Control$sigdigTable)
+                                sigdigTable=.n1qn1Control$sigdigTable,
+                                indTolRelax=.n1qn1Control$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -358,8 +365,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .n1qn1 <- .collectWarn(.n1qn1FitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret$n1qn1 <- .n1qn1[[1]]
-  .ret$parHistData <- .ret$n1qn1$parHistData
-  .ret$n1qn1$parHistData <- NULL
+  .ret <- .nlmFamilyAdjustOutput(.ret, "n1qn1")
   .ret$message <- .ret$n1qn1$message
   if (rxode2::rxGetControl(.ui, "returnN1qn1", FALSE)) {
     return(.ret$n1qn1)
@@ -367,8 +373,6 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .ret$ui <- .ui
   .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
   .ret$fullTheta <- .n1qn1GetTheta(.ret$n1qn1, .ui)
-  .ret$cov <- .ret$n1qn1$cov
-  .ret$covMethod <- .ret$n1qn1$covMethod
   #.ret$etaMat <- NULL
   #.ret$etaObf <- NULL
   #.ret$omega <- NULL
@@ -407,3 +411,4 @@ nlmixr2Est.n1qn1 <- function(env, ...) {
   .n1qn1FamilyFit(env,  ...)
 }
 attr(nlmixr2Est.n1qn1, "covPresent") <- TRUE
+attr(nlmixr2Est.n1qn1, "unbounded") <- TRUE

@@ -51,6 +51,7 @@ uobyqaControl <- function(npt=NULL,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           useColor = crayon::has_color(),
                           printNcol = floor((getOption("width") - 23) / 12), #
@@ -68,9 +69,10 @@ uobyqaControl <- function(npt=NULL,
                           literalFix=TRUE,
                           literalFixRes=TRUE,
                           addProp = c("combined2", "combined1"),
-                          calcTables=TRUE, compress=TRUE,
+                          calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                          boundedTransform=TRUE, ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -86,10 +88,11 @@ uobyqaControl <- function(npt=NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% c("genRxControl"))]
+  .bad <- .bad[!(.bad %in% "genRxControl")]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -99,6 +102,7 @@ uobyqaControl <- function(npt=NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -167,6 +171,7 @@ uobyqaControl <- function(npt=NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                useColor=useColor,
                print=print,
@@ -183,7 +188,8 @@ uobyqaControl <- function(npt=NULL,
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
-               genRxControl=.genRxControl)
+               genRxControl=.genRxControl,
+               boundedTransform=boundedTransform)
   class(.ret) <- "uobyqaControl"
   .ret
 }
@@ -268,7 +274,8 @@ getValidNlmixrCtl.uobyqa <- function(control) {
                                 interaction=0L,
                                 compress=.uobyqaControl$compress,
                                 ci=.uobyqaControl$ci,
-                                sigdigTable=.uobyqaControl$sigdigTable)
+                                sigdigTable=.uobyqaControl$sigdigTable,
+                                indTolRelax=.uobyqaControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -402,4 +409,5 @@ nlmixr2Est.uobyqa <- function(env, ...) {
   .uobyqaFamilyFit(env,  ...)
 }
 attr(nlmixr2Est.uobyqa, "covPresent") <- TRUE
+attr(nlmixr2Est.uobyqa, "unbounded") <- TRUE
 #minqa::uobyqa()
