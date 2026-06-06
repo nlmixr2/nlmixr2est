@@ -148,12 +148,24 @@
   )
 }
 
-#'  This will add the between subject variability to the mu-referenced theta.
-#'  It also expands the table to include non-mu referenced ETAs
+#'  Add the between-subject variability column to the popDf data.frame
 #'
-#' @param .ret The focei return environment
-#' @param .ui The rxode2 ui environment
-#' @returns Nothing called for side effects on popDf in the .ret environment
+#' Both mu-referenced and non-mu-referenced ETAs are added.  The list
+#' of row names (within the returned data.frame) whose corresponding
+#' omega is fixed is also returned so that the formatting step can
+#' wrap those values with `fix(...)`.
+#'
+#' @param popDf data.frame of parameter estimates (numeric)
+#' @param iniDf The `ini` data.frame from the rxUi object
+#' @param omega The omega matrix
+#' @param .sigdig Number of significant digits for the character
+#'   representation used inside `.updateParFixedGetEtaRow()` (the
+#'   numeric values added to `popDf` are not rounded)
+#' @param .muRefDataFrame `.ui$muRefDataFrame`
+#' @param .muRefCurEval `.ui$muRefCurEval`
+#' @returns A list with `popDf` (popDf with a BSV column appended,
+#'   plus any non-mu-referenced ETA rows) and `bsvFixedNames` (row
+#'   names whose BSV is fixed)
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {
@@ -165,6 +177,7 @@
   .env$.cvOnly <- TRUE
   .env$.sdOnly <- TRUE
   .env$.muRefVars <- NULL
+  .env$.bsvFixedNames <- character()
   .cvp <- lapply(row.names(popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
@@ -172,6 +185,9 @@
     }
     .eta <- .muRefDataFrame$eta[.w]
     assign(".muRefVars", c(.env$.muRefVars, .eta), envir=.env)
+    if (.eta %in% names(.omegaFix) && isTRUE(.omegaFix[[.eta]])) {
+      .env$.bsvFixedNames <- c(.env$.bsvFixedNames, x)
+    }
     .updateParFixedGetEtaRow(.eta, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
   })
   .cvp <- do.call("rbind", .cvp)
@@ -185,28 +201,38 @@
   popDf <- data.frame(popDf, "BSD" = .cvp$v, check.names = FALSE)
   if (length(.nonMuRef) > 0) {
     .cvp <- lapply(row.names(popDf2), function(x) {
+      if (x %in% names(.omegaFix) && isTRUE(.omegaFix[[x]])) {
+        .env$.bsvFixedNames <- c(.env$.bsvFixedNames, x)
+      }
       .updateParFixedGetEtaRow(x, .env, omega, .omegaFix, .muRefCurEval, .sigdig)
     })
     .cvp <- do.call("rbind", .cvp)
     popDf2 <- data.frame(popDf2, "BSD" = .cvp$v, check.names = FALSE)
-    popDf <- rbind(popDf, .ret$popDf2)
+    popDf <- rbind(popDf, popDf2)
   }
   .w <- which(names(popDf) == "BSD")
   if (length(.w) == 1) {
     names(popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
-  popDf
+  list(popDf = popDf, bsvFixedNames = .env$.bsvFixedNames)
 }
 
-.updateParFixedAddShrinkage <- function(.ret, .ui) {
-  .shrink <- .ret$shrink
-  .errs <- as.data.frame(.ui$ini)
+#' Add the Shrink(SD)% column to the popDf data.frame
+#'
+#' @param popDf data.frame of parameter estimates
+#' @param shrink Shrinkage matrix (`.ret$shrink`)
+#' @param ui The rxode2 ui environment
+#' @returns `popDf` with a `Shrink(SD)%` column appended
+#' @author Matthew L. Fidler
+#' @noRd
+.updateParFixedAddShrinkage <- function(popDf, shrink, ui) {
+  .errs <- as.data.frame(ui$ini)
   .errs <- paste(.errs[which(!is.na(.errs$err)), "name"])
-  .muRefDataFrame <- .ui$muRefDataFrame
-  .sh <- lapply(row.names(.ret$popDf), function(x) {
+  .muRefDataFrame <- ui$muRefDataFrame
+  .sh <- lapply(row.names(popDf), function(x) {
     .w <- which(.muRefDataFrame$theta == x)
     if (length(.w) != 1) {
-      .w <- which(names(.shrink) == x)
+      .w <- which(names(shrink) == x)
       if (length(.w) != 1) {
         if (any(x == .errs)) {
           x <- "IWRES"
@@ -218,35 +244,27 @@
     } else {
       .eta <- .muRefDataFrame$eta[.w]
     }
-    .v <- .shrink[7, .eta]
+    .v <- shrink[7, .eta]
     if (length(.v) != 1) {
       return(data.frame(v = NA_real_))
     }
     data.frame(v = .v)
   })
   .sh <- do.call("rbind", .sh)
-  .ret$popDf <- data.frame(.ret$popDf, "Shrink(SD)%" = .sh$v, check.names = FALSE)
+  data.frame(popDf, "Shrink(SD)%" = .sh$v, check.names = FALSE)
 }
 
-#' Create the $popDfSig data.frame with all formatting
+#' Create the formatted $parFixed data.frame from the numeric $popDf
 #'
-#' @param df The $popDf data.frame
+#' @param df The $popDf data.frame (numeric values)
 #' @param digits The number of significant digits
 #' @param ci The confidence interval (for the column name of the back-transformed column)
-#' @param fixedNames Character vector of parameters that are fixed
+#' @param fixedNames Character vector of theta parameters that are fixed
+#' @param bsvFixedNames Character vector of row names whose BSV is
+#'   fixed (wrap the BSV column with `fix(...)` for these rows)
 #' @returns `df` with formatting applied
 #' @noRd
-.updateParFixedApplySig <- function(df, digits, ci, fixedNames) {
-  if (is.null(digits)) {
-    # The FO method does not have a `control` element (see to
-    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
-    digits <- 3
-  }
-  if (is.null(ci)) {
-    # The FO method does not have a `control` element (see to
-    # https://github.com/nlmixr2/nlmixr2est/pull/509#issuecomment-2802688590)
-    ci <- 0.95
-  }
+.updateParFixedApplySig <- function(df, digits, ci, fixedNames, bsvFixedNames = character()) {
   ret <- df
   colNumEst <- which(names(ret) %in% "Estimate")
   names(ret)[colNumEst] <- "Est."
@@ -285,6 +303,15 @@
   if (length(fixedNames) > 0) {
     ret[fixedNames, "SE"] <- "FIXED"
     ret[fixedNames, "%RSE"] <- "FIXED"
+  }
+  # Wrap fixed BSV cells with fix(...) so the printed table preserves the
+  # information that the omega is fixed
+  if (length(bsvFixedNames) > 0) {
+    .bsvCol <- which(startsWith(names(ret), "BSV("))
+    if (length(.bsvCol) == 1L) {
+      .have <- intersect(bsvFixedNames, rownames(ret))
+      ret[.have, .bsvCol] <- paste0("fix(", ret[.have, .bsvCol], ")")
+    }
   }
   ret
 }
@@ -334,26 +361,32 @@
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
+  .bsv <- .updateParFixedAddBsv(
+    popDf, iniDf = .ui$iniDf, omega = .ret$omega,
+    .sigdig = rxode2::rxGetControl(.ui, "sigdig", 3L),
+    .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
+  )
+  popDf <- .bsv$popDf
+  popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
   .ret$popDf <- popDf
-  browser()
-  stop()
-  popDf <-
-   .updateParFixedAddBsv(
-      popDf, iniDf = .ui$iniDf, omega = .ret$omega, .sigdig = rxode2::rxGetControl(.ui, "sigdig", 3L),
-      .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
-    )
-  .updateParFixedAddShrinkage(.ret, .ui)
-  # Applying significant digits happens via .updateParFixedApplySig
-  # (.ret$popDfSig is ignored)
+  # Applying significant digits happens via .updateParFixedApplySig.
+  # The C++ side may have populated $popDfSig but it is no longer used
+  # here.
   .ret$parFixed <-
     .updateParFixedApplySig(
-      .ret$popDf,
+      popDf,
       digits = .ret$control$sigdig,
       ci = .ret$control$ci,
-      fixedNames = .fixedNames
+      fixedNames = .fixedNames,
+      bsvFixedNames = .bsv$bsvFixedNames
     )
-  .ret$parFixedDf <- .ret$popDf
-  rm(list=c("popDfSig", "popDf"), envir=.ret)
+  .ret$parFixedDf <- popDf
+  if (exists("popDfSig", envir = .ret, inherits = FALSE)) {
+    rm("popDfSig", envir = .ret)
+  }
+  if (exists("popDf", envir = .ret, inherits = FALSE)) {
+    rm("popDf", envir = .ret)
+  }
   class(.ret$parFixed) <- c("nlmixr2ParFixed", "data.frame")
 }
 
