@@ -201,6 +201,13 @@
 - `parHistData` Back-Transformed rows now show mixture probability
   parameters on the natural probability scale (0, 1) instead of the
   raw mlogit estimation scale.
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude.
+  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
+  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
+  unit steps in scaled space to negligible steps in unscaled space and
+  effectively pinned such parameters at their initial value (e.g.
+  `tvemax <- -40` with no transform).
 
 # nlmixr2est 6.0.1
 
