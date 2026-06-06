@@ -2144,9 +2144,11 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     }
   }
   if (solveMethodThreadSafe(op)) { // liblsoda
-    // Order by the overall solve time
-    // Should it be done every time? Every x times?
-    sortIds(_rx, 0);
+    // Reset to deterministic iota ordering (1..nsub).  Using sortIds(_rx, 0)
+    // here would re-order by wall-time each subject took to solve, leaking
+    // system load into the algorithmic path and making cores>1 SAEM
+    // trajectories non-reproducible across runs.
+    sortIds(_rx, 2);
   }
   if (hasNan && !_warnAtolRtol) {
     RSprintf("NaN in prediction; Consider: relax atol & rtol; change initials; change seed; change structural model\n  warning only issued once per problem\n");

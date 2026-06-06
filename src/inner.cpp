@@ -2536,7 +2536,13 @@ void innerOpt() {
     }
     _innerParallel.store(0, std::memory_order_release);
     if (_doParallel) {
-      sortIds(rx, 0);
+      // Reset to deterministic iota ordering (1..nsub) for the next outer
+      // iteration.  Using sortIds(rx, 0) here would re-order by the wall-time
+      // each subject took to solve, which leaks system load into the
+      // algorithmic path and makes cores>1 trajectories non-reproducible
+      // across runs.  Force iota so subject dispatch order at the top of
+      // each innerOpt() is deterministic.
+      sortIds(rx, 2);
     }
 
     if (_doParallel) {

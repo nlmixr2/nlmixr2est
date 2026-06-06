@@ -1,3 +1,15 @@
+# nlmixr2est (development version)
+
+- Make parallel FOCEI and SAEM optimizer trajectories deterministic across
+  runs. The post-parallel `sortIds(rx, 0)` calls in `src/inner.cpp` (FOCEI
+  inner loop) and `src/saem.cpp` (SAEM solve) were ordering subjects by the
+  wall-time each one took to solve, leaking system load into the algorithmic
+  path. Switched to `sortIds(rx, 2)` (deterministic iota order) so dispatch
+  order at the top of each outer iteration is reproducible. Combined with
+  the per-thread tolerance arrays in rxode2 (development version), this
+  closes the non-determinism observed in
+  https://github.com/nlmixr2/nlmixr2est/issues/641 under `cores > 1`.
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
