@@ -210,8 +210,11 @@ nlmixr2Est0 <- function(env, ...) {
       assign("reset", FALSE, envir=.envReset)
       ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
       if (!is.null(ret[[1]])) {
-        # Only assign the new model if there is a model object (no errors)
-        assign("ret", ret[[1]], envir=.envReset)
+        # Only assign the new result when the inner fit produced a
+        # model object.  Store the full list (model + warnings) so the
+        # downstream code that reads `.lst[[1]]`/`.lst[[2]]` after the
+        # while loop gets the same shape as the non-reset branch above.
+        assign("ret", ret, envir=.envReset)
       }
       if (length(ret$error) > 0) {
         if (any(regexpr(pattern = "not provided by package", text = ret$error) != -1)) {
