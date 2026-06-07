@@ -145,9 +145,15 @@
   .btRows <- as.character(parHist$type) == "Back-Transformed"
   if (!any(.btRows)) return(parHist)
   .mlogitMat <- as.matrix(parHist[.btRows, .mixCols, drop=FALSE])
-  parHist[.btRows, .mixCols] <- t(apply(.mlogitMat, 1L, function(.row) {
-    rxode2::mexpit(.row)[seq_along(.mixCols)]
-  }))
+  .nBt <- sum(.btRows)
+  .nMix <- length(.mixCols)
+  # apply() + t() transposes correctly only when nrow > 1 and ncol > 1.
+  # Wrap in matrix() with explicit dimensions to handle the single-column
+  # (one mixture parameter) and single-row edge cases uniformly.
+  parHist[.btRows, .mixCols] <- matrix(
+    t(apply(.mlogitMat, 1L, function(.row) rxode2::mexpit(.row)[seq_len(.nMix)])),
+    nrow = .nBt, ncol = .nMix
+  )
   parHist
 }
 
