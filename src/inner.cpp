@@ -1108,6 +1108,10 @@ double likInner0(double *eta, int id) {
                   op_focei.neta, false, true);
       arma::mat Vid(fInd->Vid, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                     getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), false, true);
+      // a.zeros(); already reset
+      // B.zeros(); already reset
+      // c.zeros(); already reset
+      // Vid.zeros(); // already reset when needed
       // Check to see if finite difference step size needs to be optimized
       bool finiteDiffNeeded = predSolve;
       for (int ii = 0; ii < op_focei.neta; ++ii) {
@@ -1118,8 +1122,10 @@ double likInner0(double *eta, int id) {
       }
       arma::mat etaGradF(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                          op_focei.neta, false, true);
+      etaGradF.zeros();
       arma::mat etaGradR(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                          op_focei.neta, false, true);
+      etaGradR.zeros();
       if (finiteDiffNeeded) {
         // need to optimize finite difference
         // First get the f0 for F and R based on current solve
@@ -1518,14 +1524,13 @@ bool calcEtaHessian(double *eta, int likId, int id,
                     mat &H, mat &H0) {
   H.zeros();
   int k, l;
-  mat tmp;
   // This is actually -H
   if (op_focei.needOptimHess) {
-    arma::vec gr0(op_focei.neta);
+    arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
-    arma::vec grPH(op_focei.neta);
-    arma::vec grMH(op_focei.neta);
+    arma::vec grPH(op_focei.neta, fill::zeros);
+    arma::vec grMH(op_focei.neta, fill::zeros);
 
     double h = 0;
 
@@ -1669,8 +1674,8 @@ double LikInner2(double *eta, int likId, int id) {
     }
     // Calculate lik first to calculate components for Hessian
     // Hessian
-    mat H(op_focei.neta, op_focei.neta);
-    mat H0(op_focei.neta, op_focei.neta);
+    mat H(op_focei.neta, op_focei.neta, fill::zeros);
+    mat H0(op_focei.neta, op_focei.neta, fill::zeros);
 
     if (!calcEtaHessian(eta, likId, id, fInd, ind, H, H0)) {
       return NA_REAL;
@@ -1721,7 +1726,7 @@ double LikInner2(double *eta, int likId, int id) {
         lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
       }
-      arma::mat Ginv_5(op_focei.neta, op_focei.neta);
+      arma::mat Ginv_5(op_focei.neta, op_focei.neta, fill::zeros);
       if (_aqn > 1) {
         // The Ginv_5 only needs to be calculated for the
         // non-Laplace case
@@ -1841,10 +1846,28 @@ static inline int innerOpt1(int id, int likId) {
   }
   fInd->nInnerF=0;
   fInd->nInnerG=0;
+  // Zero when eta has changed from the last computed value.
+  if (fInd->setup) {
+    bool _etaChanged = false;
+    for (int _j = 0; _j < op_focei.neta; _j++) {
+      if (fInd->eta[_j] != fInd->oldEta[_j]) { _etaChanged = true; break; }
+    }
+    if (_etaChanged) {
+      rx = getRxSolve_();
+      rx_solving_options_ind *_zInd = getSolvingOptionsInd(rx, getRxId(id));
+      int _nobs = getIndNallTimes(_zInd) - getIndNdoses(_zInd) - getIndNevid2(_zInd);
+      std::fill_n(fInd->lp, op_focei.neta, 0.0);
+      std::fill_n(fInd->a,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->B,   _nobs, 0.0);
+      std::fill_n(fInd->c,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->Vid, (size_t)_nobs * _nobs, 0.0);
+      fInd->setup = 0;
+    }
+  }
   bool n1qn1Inner = true;
   // Use eta
   // Convert Zm to Hessian, if applicable.
-  mat etaMat(fop->neta, 1) ;
+  mat etaMat(fop->neta, 1, fill::zeros);
   if (op_focei.mceta == -1) {
   } else if (op_focei.mceta == 0) {
     // always reset to zero
@@ -1923,12 +1946,12 @@ static inline int innerOpt1(int id, int likId) {
   }
   int npar = fop->neta;
   std::copy(&fInd->eta[0], &fInd->eta[0]+fop->neta, fInd->x);
-  double f, epsilon = max2(fop->epsilon, sqrt(DBL_EPSILON));
+  double f = 0.0, epsilon = max2(fop->epsilon, sqrt(DBL_EPSILON));
 
   // Since these are pointers, without reassignment they are modified.
   int mode = fInd->mode, maxInnerIterations=fop->maxInnerIterations,
     nsim=fop->nsim, imp=fop->imp;
-  int izs; float rzs; double dzs;
+  int izs = 0; float rzs = 0.0f; double dzs = 0.0;
 
   int nF = fInd->nInnerF;
   if (n1qn1Inner) {
