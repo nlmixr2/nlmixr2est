@@ -189,7 +189,9 @@
 
   .thetaDf$theta[.mixIdx] <- .probs[seq_along(.mixIdx)]
   env$theta <- .thetaDf
-  env$mixProbabilities <- .probs
+  # mexpit returns only the n explicit probabilities (not the implicit last component).
+  # .mixFix uses length(mixProbabilities) as nMix, so we must append the last component.
+  env$mixProbabilities <- c(.probs, 1 - sum(.probs))
 
   if (exists("parHistData", envir=env) && exists("thetaNames", envir=env)) {
     .phd <- env$parHistData
