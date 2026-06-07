@@ -123,6 +123,34 @@
   invisible(NULL)
 }
 
+#' Back-transform mixture probability columns in the "Back-Transformed" rows of parHistData
+#'
+#' Each FOCEI iteration records three row types in \code{parHistData}: "Scaled",
+#' "Unscaled" (shown in \code{fit$parHist}), and "Back-Transformed".  C++ applies
+#' \code{exp}/\code{expit} for known transforms in the last row type but falls
+#' through to the raw unscaled value for mixture parameters (mlogit scale).  This
+#' function corrects only the "Back-Transformed" rows by applying
+#' \code{rxode2::mexpit()} jointly to all mixture parameter columns.  "Scaled" and
+#' "Unscaled" rows are intentionally left at their mlogit values.
+#'
+#' @param parHist data frame returned by C++ \code{parHistData()}
+#' @param mixColNames character vector of column names to back-transform
+#' @return \code{parHist} with mixture columns corrected in "Back-Transformed" rows
+#' @noRd
+#' @author Matthew L. Fidler
+.backTransformParHistMix <- function(parHist, mixColNames) {
+  .mixCols <- match(mixColNames, names(parHist))
+  .mixCols <- .mixCols[!is.na(.mixCols)]
+  if (length(.mixCols) == 0L) return(parHist)
+  .btRows <- as.character(parHist$type) == "Back-Transformed"
+  if (!any(.btRows)) return(parHist)
+  .mlogitMat <- as.matrix(parHist[.btRows, .mixCols, drop=FALSE])
+  parHist[.btRows, .mixCols] <- t(apply(.mlogitMat, 1L, function(.row) {
+    rxode2::mexpit(.row)[seq_along(.mixCols)]
+  }))
+  parHist
+}
+
 #' Pre-final parameter table hook: back-transform mixture probability parameters
 #'
 #' Registered via \code{preFinalParTableHooksAdd()}. Runs after estimation
@@ -156,6 +184,13 @@
   .thetaDf$theta[.mixIdx] <- .probs[seq_along(.mixIdx)]
   env$theta <- .thetaDf
   env$mixProbabilities <- .probs
+
+  if (exists("parHistData", envir=env) && exists("thetaNames", envir=env)) {
+    .phd <- env$parHistData
+    if (is.data.frame(.phd) && nrow(.phd) > 0L) {
+      env$parHistData <- .backTransformParHistMix(.phd, env$thetaNames[.mixIdx])
+    }
+  }
 
   invisible(NULL)
 }

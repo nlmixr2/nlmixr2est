@@ -51,6 +51,21 @@ nmTest({
 
     # Residuals/table step completed (CWRES exists)
     expect_true("CWRES" %in% names(fit))
+
+    # "Back-Transformed" rows in parHistData must show probabilities (in (0,1)).
+    # "Unscaled" rows (fit$parHist) legitimately stay as mlogit (unbounded).
+    phd <- fit$parHistData
+    bt_rows <- as.character(phd$type) == "Back-Transformed"
+    expect_true(any(bt_rows),
+                label = "parHistData has Back-Transformed rows")
+    expect_true(all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
+                label = "Back-Transformed rows: p1 is a valid probability in (0,1)")
+
+    # Posterior mixture probabilities must sum to 1 per subject
+    ml <- fit$mixList
+    prob_sums <- ml[["mix1"]]$prob + ml[["mix2"]]$prob
+    expect_equal(prob_sums, rep(1, nrow(ml[["mix1"]])), tolerance = 1e-8,
+                 label = "posterior mixture probabilities sum to 1 per subject")
   })
 
   test_that("test mixture models -- ui components", {
