@@ -1108,12 +1108,10 @@ double likInner0(double *eta, int id) {
                   op_focei.neta, false, true);
       arma::mat Vid(fInd->Vid, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                     getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), false, true);
-      // Pool-backed views: zero before accumulation so stale values from prior
-      // outer iterations do not corrupt gradients or the likelihood.
-      a.zeros();
-      B.zeros();
-      c.zeros();
-      Vid.zeros();
+      // a.zeros(); already reset
+      // B.zeros(); already reset
+      // c.zeros(); already reset
+      // Vid.zeros(); // already reset when needed
       // Check to see if finite difference step size needs to be optimized
       bool finiteDiffNeeded = predSolve;
       for (int ii = 0; ii < op_focei.neta; ++ii) {
@@ -1235,6 +1233,9 @@ double likInner0(double *eta, int id) {
         }
         // restore the prior solve
         std::copy(solveSave.begin(), solveSave.end(), solve);
+      }
+      if (op_focei.fo == 1){
+        Vid.zeros();
       }
       // RSprintf("ID: %d; Solve #2: %f\n", id, solve[2]);
       // Calculate matricies
@@ -1845,22 +1846,23 @@ static inline int innerOpt1(int id, int likId) {
   }
   fInd->nInnerF=0;
   fInd->nInnerG=0;
-  // Zero pool-backed sensitivity arrays at thread entry and force a fresh
-  // recalculation on the first likInner0() call for this outer iteration.
-  // Without this, needOptimHess perturbation calls from the previous outer
-  // iteration can leave a/B/c/Vid holding perturbed-eta values; if the
-  // opening eta matches oldEta the !recalc cache path bypasses the zeros
-  // inside likInner0(), so the stale data would reach calcEtaHessian().
-  {
-    rx = getRxSolve_();
-    rx_solving_options_ind *_zInd = getSolvingOptionsInd(rx, getRxId(id));
-    int _nobs = getIndNallTimes(_zInd) - getIndNdoses(_zInd) - getIndNevid2(_zInd);
-    std::fill_n(fInd->lp, op_focei.neta, 0.0);
-    std::fill_n(fInd->a,   (size_t)_nobs * op_focei.neta, 0.0);
-    std::fill_n(fInd->B,   _nobs, 0.0);
-    std::fill_n(fInd->c,   (size_t)_nobs * op_focei.neta, 0.0);
-    std::fill_n(fInd->Vid, (size_t)_nobs * _nobs, 0.0);
-    fInd->setup = 0;
+  // Zero when eta has changed from the last computed value.
+  if (fInd->setup) {
+    bool _etaChanged = false;
+    for (int _j = 0; _j < op_focei.neta; _j++) {
+      if (fInd->eta[_j] != fInd->oldEta[_j]) { _etaChanged = true; break; }
+    }
+    if (_etaChanged) {
+      rx = getRxSolve_();
+      rx_solving_options_ind *_zInd = getSolvingOptionsInd(rx, getRxId(id));
+      int _nobs = getIndNallTimes(_zInd) - getIndNdoses(_zInd) - getIndNevid2(_zInd);
+      std::fill_n(fInd->lp, op_focei.neta, 0.0);
+      std::fill_n(fInd->a,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->B,   _nobs, 0.0);
+      std::fill_n(fInd->c,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->Vid, (size_t)_nobs * _nobs, 0.0);
+      fInd->setup = 0;
+    }
   }
   bool n1qn1Inner = true;
   // Use eta
