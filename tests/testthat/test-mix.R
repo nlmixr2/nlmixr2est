@@ -34,9 +34,9 @@ nmTest({
     # mixNum: one row per subject
     mn <- fit$mixNum
     expect_true(is.data.frame(mn))
-    expect_true(all(c("ID", "MIXNUM") %in% names(mn)))
+    expect_true(all(c("ID", "mixnum") %in% names(mn)))
     expect_equal(nrow(mn), length(unique(nlmixr2data::theo_sd$ID)))
-    expect_true(all(mn$MIXNUM %in% c(1L, 2L)))
+    expect_true(all(mn$mixnum %in% c(1L, 2L)))
 
     # mixList: one component per mixture
     ml <- fit$mixList
