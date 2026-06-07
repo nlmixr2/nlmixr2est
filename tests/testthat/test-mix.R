@@ -68,6 +68,47 @@ nmTest({
                  label = "posterior mixture probabilities sum to 1 per subject")
   })
 
+  if (rxode2hasLlik()) {
+    test_that("test mixture models -- focei fit with llik (dnorm) error", {
+      one.cmt.ll <- function() {
+        ini({
+          tka <- 0.45
+          tcl1 <- log(c(0, 2.7, 100))
+          tcl2 <- log(c(0, 0.1, 120))
+          tv <- 3.45
+          p1 <- 0.3
+          eta.ka ~ 0.6
+          eta.cl ~ 0.3
+          eta.v ~ 0.1
+          add.sd <- 0.7
+        })
+        model({
+          ka <- exp(tka + eta.ka)
+          cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+          v <- exp(tv + eta.v)
+          linCmt() ~ add(add.sd) + dnorm()
+        })
+      }
+
+      withr::with_seed(42, {
+        fit <- nlmixr2(one.cmt.ll, nlmixr2data::theo_sd, "focei",
+                       control = foceiControl(print = 0, maxOuterIterations = 5))
+      })
+
+      # Should complete without error; p1 should be a valid probability
+      expect_true("CWRES" %in% names(fit))
+      expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1,
+                  label = "mixture probability p1 in (0,1) for llik model")
+
+      # Back-Transformed rows in parHistData must show probabilities
+      phd <- fit$parHistData
+      bt_rows <- as.character(phd$type) == "Back-Transformed"
+      expect_true(any(bt_rows))
+      expect_true(all(phd$p1[bt_rows] > 0 & phd$p1[bt_rows] < 1),
+                  label = "parHistData Back-Transformed p1 in (0,1) for llik model")
+    })
+  }
+
   test_that("test mixture models -- ui components", {
 
     one.cmt <- function() {
