@@ -119,6 +119,19 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
+  # For mixture models, pass per-subject mixture assignments via iCov so that
+  # rxode2 sets ind->mixest correctly (fixes 'me <- mixest' and uses the right
+  # parameter branch for each individual during the table solve).
+  # fit IS the underlying nlmixr2FitCore environment (passed via addTable ->
+  # object$env), so we can access it directly with exists()/get().
+  .iCov <- NULL
+  if (exists("mixIcov", envir=fit)) {
+    .iCov <- get("mixIcov", envir=fit)
+  }
+  # Safety flag: if rxode2 rejects the iCov (e.g. older version before the
+  # lName[i]/liName[i] typo fix), fall back gracefully to no-iCov and let
+  # .mixFixTable() post-correct me/mn/mu from mixNum.
+  .iCovOK <- !is.null(.iCov)
   while (recalc & length(odeMethods) > 0) {
     # Iterate through ODE methods
     recalcN <- 0
@@ -130,7 +143,22 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
       ## message("\t", .atol, " ", .rtol)
-      .res <- .foceiSolveWithId(model, pars, fit$dataSav,
+      .res <- if (.iCovOK) {
+        tryCatch(
+          .foceiSolveWithId(model, pars, fit$dataSav,
+                            returnType = returnType,
+                            atol = .atol, rtol = .rtol,
+                            maxsteps = fit$maxstepsOde,
+                            hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                            maxordn = fit$maxordn, maxords = fit$maxords,
+                            method = rxode2::odeMethodToInt(currentOdeMethod),
+                            tolFactor = .tolFactor,
+                            iCov = .iCov,
+                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
+          error = function(e) {
+            if (grepl("time.varying|mixest must be", conditionMessage(e), ignore.case=TRUE)) {
+              .iCovOK <<- FALSE
+              .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = .atol, rtol = .rtol,
                                 maxsteps = fit$maxstepsOde,
@@ -138,7 +166,22 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                 maxordn = fit$maxordn, maxords = fit$maxords,
                                 method = rxode2::odeMethodToInt(currentOdeMethod),
                                 tolFactor = .tolFactor,
+                                iCov = NULL,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
+            } else stop(e)
+          })
+      } else {
+        .foceiSolveWithId(model, pars, fit$dataSav,
+                          returnType = returnType,
+                          atol = .atol, rtol = .rtol,
+                          maxsteps = fit$maxstepsOde,
+                          hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                          maxordn = fit$maxordn, maxords = fit$maxords,
+                          method = rxode2::odeMethodToInt(currentOdeMethod),
+                          tolFactor = .tolFactor,
+                          iCov = NULL,
+                          keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
+      }
       rxode2::rxSolveFree()
       recalc <- any(is.na(.res$rx_pred_))
       recalcN <- recalcN + 1

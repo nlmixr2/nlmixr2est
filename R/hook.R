@@ -126,7 +126,7 @@ preFinalParTableHooksAdd <- function(name, fun) {
                              pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
                              min.chars=1)
   checkmate::assertFunction(fun, args="env")
-  if (exists(name, envir=.preProcessHooks)) {
+  if (exists(name, envir=.preFinalParTableHooks)) {
     stop("nlmixr2est pre-table hook '", name, "' already exists",
          call.=FALSE)
   }
