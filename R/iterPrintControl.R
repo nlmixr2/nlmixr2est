@@ -70,17 +70,16 @@ iterPrintControl <- function(every = 1L,
 #' Wrap scalar or list arguments into an iterPrintControl object
 #'
 #' Internal helper used by every `*Control()` function to absorb the
-#' historical scalar arguments (`print`, `printNcol`, `useColor`) into
-#' a single [iterPrintControl()] sub-list.  If the user already passed
-#' a pre-built `iterPrintControl()` object via the `print` argument
-#' (or, on round-trip, via an `iterPrintControl =` slot in `...`),
-#' return it directly.
+#' scalar `print` / `printNcol` / `useColor` arguments into a single
+#' [iterPrintControl()] sub-list.  If the user already passed a
+#' pre-built `iterPrintControl()` object via the `print` argument (or,
+#' on round-trip, via an `iterPrintControl =` slot in `...`), return
+#' it directly.
 #'
 #' @param print Either an integer print-frequency or an
 #'   `iterPrintControl` object.
-#' @param printNcol,useColor Scalar arguments that historically lived
-#'   on each `*Control()` function.  Forwarded to [iterPrintControl()]
-#'   only when `print` is a scalar.
+#' @param printNcol,useColor Scalar `*Control()` arguments forwarded
+#'   to [iterPrintControl()] only when `print` is a scalar.
 #' @param iterPrintControl Optional pre-built [iterPrintControl()]
 #'   object.  Wins over `print` and the other scalars when supplied —
 #'   used by the round-trip case where a returned control list is

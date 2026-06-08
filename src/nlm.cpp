@@ -247,10 +247,10 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
-  // Iteration-print fields (print/printNcol/useColor/printHeader) come from
-  // the iterPrintControl sub-list built R-side; scaleApplyIterPrintControl
-  // populates them on the scaling struct.  scaleSetup itself only needs
-  // placeholders for those four args since they get overwritten right after.
+  // Iteration-print fields come from the iterPrintControl sub-list built
+  // R-side; scaleApplyIterPrintControl populates them on the scaling
+  // struct.  The useColor/printNcol/print args to scaleSetup are passed
+  // as placeholders since they get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -1000,9 +1000,9 @@ SEXP nlmCensInfo() {
 //[[Rcpp::export]]
 RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
-  nlmOp.scale.print = 0;
+  nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.printNcol));
+    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }

@@ -261,12 +261,11 @@
     .cfg$addProp <- ui$saemAddProp
     .cfg$resValue <- ui$saemResValue
     # Iteration-print formatting flows through one sub-list consumed by
-    # the shared src/scale.h helper scaleApplyIterPrintControl.  Older
-    # `params:` line that used to be emitted in R is now handled by
-    # scalePrintHeader inside the C++ engine.  saem always uses
-    # simple-mode printing (one row per iter, no U/X rows) because the
-    # printed vector mixes theta+omega+sigma and the optimizer has no
-    # internal scaling, so U and X would be degenerate copies of #.
+    # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
+    # always uses simple-mode printing (one row per iter, no U/X rows)
+    # because the printed vector mixes theta+omega+sigma and the
+    # optimizer has no internal scaling, so U and X would be
+    # degenerate copies of #.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
     .ipc <- rxode2::rxGetControl(ui, "iterPrintControl", iterPrintControl())
     .ipc$simple <- TRUE

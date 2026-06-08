@@ -4644,14 +4644,14 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
       vPar.push_back(unscalePar(x, i));
     }
   }
-  // Emit the per-iteration #/U/X rows via the shared scale.h helper.  Gating
-  // (every printOuter calls) and column wrapping happen inside scalePrintFun.
-  // When scaleObjective is on, op_focei.scaleObjectiveTo is the optimizer's
-  // working OFV magnitude; pass the unscaled (model-level) OFV so all three
-  // rows show the same number the user expects.  The function-eval counter
-  // shown in the # column is scale.cn (incremented inside scalePrintFun),
-  // which differs from op_focei.nF+nF2 only across theta-resets — a minor
-  // semantic shift relative to the previous inline print.
+  // Emit the per-iteration #/U/X rows via the shared scale.h helper.
+  // Gating (every `scale.every` calls) and column wrapping happen inside
+  // scalePrintFun.  When scaleObjective is on, op_focei.scaleObjectiveTo
+  // is the optimizer's working OFV magnitude; pass the unscaled (model-
+  // level) OFV so all three rows show the same number the user expects.
+  // The counter shown in the # column is scale.cn (incremented inside
+  // scalePrintFun); it differs from op_focei.nF+nF2 only across theta-
+  // resets.
   double displayedOfv = op_focei.scaleObjective
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
@@ -4684,10 +4684,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  // Gradient row via the shared scale.h helper.  The type code passed here
-  // matches the gradType convention focei has used inline: 1=Gill, 2=Mixed,
-  // 3=Forward, 4=Central, 5=Shi21.  scalePrintGrad maps these to the same
-  // G/M/F/C/S labels the previous inline switch emitted.
+  // Gradient row via the shared scale.h helper.  The type code passed
+  // here uses focei's gradType convention: 1=Gill, 2=Mixed, 3=Forward,
+  // 4=Central, 5=Shi21.  scalePrintGrad maps these to G/M/F/C/S labels.
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
@@ -7232,11 +7231,11 @@ Environment foceiFitCpp_(Environment e){
   }
   // Populate the shared scale.h struct from op_focei's already-filled fields.
   // We do this unconditionally (even when print is off) so that scalePrintFun
-  // calls below can no-op cleanly via scale.print==0.  scale.save=0 because
+  // calls below can no-op cleanly via scale.every==0.  scale.save=0 because
   // focei keeps its own iteration history in the module-level globals
-  // (vPar/niter/iterType/vGrad/niterGrad/gradType).  printKey=0 because the
-  // focei-specific Key text below already covers the U/X legend (plus the
-  // G/F/C/M gradient method labels and the diagXform omega note).
+  // (vPar/niter/iterType/vGrad/niterGrad/gradType).  scale.keyExtra holds the
+  // focei-specific suffix appended to the standard "Key:" line (gradient
+  // method labels and the diagXform omega note).
   {
     // Build a CharacterVector with the printed column names in the same
     // order scalePrintFun emits them (fixedTrans-indexed).

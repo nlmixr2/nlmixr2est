@@ -426,11 +426,12 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
   return 0;
 }
 
-// Read the user-facing iterPrintControl() sub-list and populate the four
-// iteration-print fields on a scaling struct.  Each estimator's setup code
-// calls this exactly once to wire its R-side configuration into the shared
-// printer.  Other scaling fields (printSimple, printKey) are estimator-
-// internal and remain the caller's responsibility to set.
+// Read the user-facing iterPrintControl() sub-list and populate the
+// matching iteration-print fields on a scaling struct (every, ncol,
+// headerEvery, useColor, simple).  Each estimator's setup code calls
+// this exactly once to wire its R-side configuration into the shared
+// printer.  The keyExtra pointer is estimator-internal and remains
+// the caller's responsibility to set.
 static inline void scaleApplyIterPrintControl(scaling *scale,
                                               const Rcpp::List &ipc) {
   scale->every       = Rcpp::as<int>(ipc["every"]);
@@ -540,7 +541,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
     // Count this parameter-print event and, when configured, re-emit the
-    // column header every `printHeader` events (event 1 already has the
+    // column header every `headerEvery` events (event 1 already has the
     // startup header printed elsewhere, so re-prints happen at 1+N, 1+2N, ...).
     scale->printCount++;
     if (scale->headerEvery > 0 &&
@@ -663,8 +664,8 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
-    // Method-specific label for the gradient row.  Matches focei's existing
-    // gradType encoding: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
+    // Method-specific label for the gradient row, keyed by `type`:
+    //   1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
     // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
     // generic "Gradient" label.
     const char *label = NULL;

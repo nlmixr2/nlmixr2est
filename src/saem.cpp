@@ -795,9 +795,11 @@ public:
 
     // Set up the shared scale.h iteration-print struct.  saem has no
     // internal optimizer scaling and the printed vector mixes
-    // theta/omega/sigma, so we use scaleTypeNone + printSimple=1 to emit
-    // a single "#" row per iter using focei's column-wrap/color/header
-    // machinery.
+    // theta/omega/sigma, so we use scaleTypeNone and rely on the
+    // R-side saem.R forcing iterPrintControl$simple = TRUE — that
+    // makes scaleApplyIterPrintControl set scale.simple = 1, which
+    // emits a single "#" row per iter using focei's column-wrap/
+    // color/header machinery.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
@@ -805,12 +807,12 @@ public:
     scaleXPar.assign(std::max(nprint, 1), 0);
     scaleLogitLow.assign(1, 0.0);
     scaleLogitHi.assign(1, 1.0);
-    // Plain scaleSetup with print/printNcol/useColor placeholders; the
-    // user's iterPrintControl values are then applied via the shared helper.
-    // saem's R-side configuration always sets simple=TRUE on its
-    // iterPrintControl (Plambda lives on model scale with no internal
-    // optimizer scaling, so the U and X rows would be degenerate), so the
-    // scale.simple field is set automatically by scaleApplyIterPrintControl.
+    // The useColor/printNcol/print scaleSetup args are passed as
+    // placeholders; the user's iterPrintControl values are then applied
+    // via scaleApplyIterPrintControl.  saem's R-side configuration
+    // always sets simple=TRUE on its iterPrintControl (Plambda lives on
+    // model scale with no internal optimizer scaling, so the U and X
+    // rows would be degenerate), so scale.simple is set automatically.
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
@@ -1837,13 +1839,10 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function; NA_REAL renders as "nan"
-      // in the OFV column.  scalePrintFun increments its own counter and gates
-      // the print on (cn % print == 0); with default print=1 every iteration
-      // prints exactly like before, plus the unified focei-style column
-      // wrapping/header/colors.  scalePrintFun also calls
-      // Rcpp::checkUserInterrupt() internally so the explicit call here is no
-      // longer needed.
+      // saem has no per-iteration objective function; NA_REAL renders as
+      // "nan" in the OFV column.  scalePrintFun increments its own counter
+      // and gates printing on (cn % every == 0); user-interrupt checking
+      // happens inside scalePrintFun too.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
