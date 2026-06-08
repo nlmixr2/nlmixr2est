@@ -4635,14 +4635,13 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     vPar.push_back(ret);
   }
   for (i = 0; i < n; i++){
-    if (op_focei.xPar[i] == 1){
-      vPar.push_back(exp(unscalePar(x, i)));
-    } else if (op_focei.xPar[i] < 0){
-      int m = -op_focei.xPar[i]-1;
-      vPar.push_back(expit(unscalePar(x, i), op_focei.logitThetaLow[m], op_focei.logitThetaHi[m]));
-    } else {
-      vPar.push_back(unscalePar(x, i));
-    }
+    int probitCode = (op_focei.scale.probitIdx != NULL) ? op_focei.scale.probitIdx[i] : 0;
+    vPar.push_back(scaleBackTransform(unscalePar(x, i),
+                                      op_focei.xPar[i], probitCode,
+                                      op_focei.scale.logitThetaLow,
+                                      op_focei.scale.logitThetaHi,
+                                      op_focei.scale.probitThetaLow,
+                                      op_focei.scale.probitThetaHi));
   }
   // Emit the per-iteration #/U/X rows via the shared scale.h helper.
   // Gating (every `scale.every` calls) and column wrapping happen inside
@@ -6625,7 +6624,12 @@ void foceiFinalizeTables(Environment e){
   CharacterVector btCi(Estimate.size());
   // LogicalVector EstBT(Estimate.size());
   // Rf_pt(stat[7],(double)n1,1,0)
-  // FIXME figure out log thetas outside of foceisetup.
+  // Build per-theta transform codes from the env's parallel arrays so
+  // every theta back-transforms through the same scaleBackTransform()
+  // call that scalePrintFun (and parHistData) use for the iteration
+  // X row.  The env arrays (logThetasF, logitThetasF, probitThetasF)
+  // are 1-based ntheta indices in ascending order; thetaXPar /
+  // thetaProbitIdx are 0-based and length-ntheta.
   IntegerVector logTheta;
   IntegerVector logitTheta;
   NumericVector logitThetaHi;
@@ -6650,130 +6654,59 @@ void foceiFinalizeTables(Environment e){
       probitThetaLow = as<NumericVector>(e["probitThetasLowF"]);
     }
   }
-  j = logTheta.size()-1;
-  k = logitTheta.size()-1;
-  l = probitTheta.size()-1;
-  double qn= Rf_qnorm5(1.0-(1-op_focei.ci)/2, 0.0, 1.0, 1, 0);
+  std::vector<int> thetaXPar(Estimate.size(), 0);
+  std::vector<int> thetaProbitIdx(Estimate.size(), 0);
+  for (int jj = 0; jj < logTheta.size(); jj++) {
+    thetaXPar[logTheta[jj] - 1] = 1;
+  }
+  for (int kk = 0; kk < logitTheta.size(); kk++) {
+    thetaXPar[logitTheta[kk] - 1] = -(kk + 1);
+  }
+  for (int ll = 0; ll < probitTheta.size(); ll++) {
+    thetaProbitIdx[probitTheta[ll] - 1] = ll + 1;
+  }
+  const double *logitLowP  = logitThetaLow.size()  ? &logitThetaLow[0]  : NULL;
+  const double *logitHiP   = logitThetaHi.size()   ? &logitThetaHi[0]   : NULL;
+  const double *probitLowP = probitThetaLow.size() ? &probitThetaLow[0] : NULL;
+  const double *probitHiP  = probitThetaHi.size()  ? &probitThetaHi[0]  : NULL;
+  double qn = Rf_qnorm5(1.0-(1-op_focei.ci)/2, 0.0, 1.0, 1, 0);
   std::string cur;
   char buff[100];
-  LogicalVector thetaFixed =thetaDf["fixed"];
-  for (i = Estimate.size(); i--;){
+  LogicalVector thetaFixed = thetaDf["fixed"];
+  for (i = Estimate.size(); i--;) {
+    int xpc = thetaXPar[i];
+    int ppc = thetaProbitIdx[i];
     snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, Estimate[i]);
-    EstS[i]=buff;
-    if (logTheta.size() > 0 && j >= 0 && logTheta[j]-1==i) {
-      EstBT[i] = exp(Estimate[i]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
+    EstS[i] = buff;
+    EstBT[i] = scaleBackTransform(Estimate[i], xpc, ppc,
+                                  logitLowP, logitHiP, probitLowP, probitHiP);
+    snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
+    cur = buff;
+    if (ISNA(SE[i])) {
+      EstLower[i] = NA_REAL;
+      EstUpper[i] = NA_REAL;
+      if (thetaFixed[i]) {
+        SeS[i]  = "FIXED";
+        rseS[i] = "FIXED";
       } else {
-        EstLower[i] = exp(Estimate[i]-SE[i]*qn);
-        EstUpper[i] = exp(Estimate[i]+SE[i]*qn);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
+        SeS[i]  = "";
+        rseS[i] = "";
       }
-      btCi[i] = cur;
-      j--;
-    } else if (logitTheta.size() > 0 && k >= 0 && logitTheta[k]-1==i) {
-      EstBT[i] = expit(Estimate[i], logitThetaLow[k], logitThetaHi[k]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = expit(Estimate[i]-SE[i]*qn, logitThetaLow[k], logitThetaHi[k]);
-        EstUpper[i] = expit(Estimate[i]+SE[i]*qn, logitThetaLow[k], logitThetaHi[k]);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
-      k--;
-    } else if (probitTheta.size() > 0 && l >= 0 && probitTheta[l]-1==i) {
-      EstBT[i] = probitInv(Estimate[i], probitThetaLow[l], probitThetaHi[l]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = probitInv(Estimate[i]-SE[i]*qn, probitThetaLow[l], probitThetaHi[l]);
-        EstUpper[i] = probitInv(Estimate[i]+SE[i]*qn, probitThetaLow[l], probitThetaHi[l]);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
-      l--;
     } else {
-      EstBT[i]= Estimate[i];
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, Estimate[i]);
-      EstS[i]=buff;
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = Estimate[i]-SE[i]*qn;
-        EstUpper[i] = Estimate[i]+SE[i]*qn;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
+      EstLower[i] = scaleBackTransform(Estimate[i] - SE[i]*qn, xpc, ppc,
+                                       logitLowP, logitHiP, probitLowP, probitHiP);
+      EstUpper[i] = scaleBackTransform(Estimate[i] + SE[i]*qn, xpc, ppc,
+                                       logitLowP, logitHiP, probitLowP, probitHiP);
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
+      SeS[i] = buff;
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
+      rseS[i] = buff;
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
+      cur = cur + " (" + buff + ", ";
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
+      cur = cur + buff + ")";
     }
+    btCi[i] = cur;
   }
   tmpL["Back-transformed"] = EstBT;
   tmpL["CI Lower"] = EstLower;
