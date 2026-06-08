@@ -2,6 +2,7 @@
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
+#define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
 
 #define scaleTypeNorm    1
 #define scaleTypeNlmixr2 2
@@ -63,6 +64,16 @@ struct scaling {
   int *xPar;
   double *logitThetaLow;
   double *logitThetaHi;
+  // Probit transform marker + bounds, parallel to logitThetaLow/Hi.
+  // probitIdx[i] is 0 when parameter i has no probit transform, else
+  // the 1-based index into probitThetaLow / probitThetaHi.  Stored
+  // separately from xPar because positive xPar values 2-5 are already
+  // reserved by scaleGetScaleC for omega scaling.  probitIdx may be
+  // NULL when no parameter uses probit; scaleBackTransform treats that
+  // as "no probit anywhere".
+  int *probitIdx;
+  double *probitThetaLow;
+  double *probitThetaHi;
   CharacterVector thetaNames;
   std::vector<int> niter;
   std::vector<int> iterType;
@@ -112,6 +123,12 @@ static inline void scaleSetup(scaling *scale,
   scale->xPar = xPar;
   scale->logitThetaLow =logitThetaLow;
   scale->logitThetaHi =logitThetaHi;
+  // Probit fields default to "no probit"; callers that wire it up
+  // (saem/focei when those estimators gain probit support) set these
+  // directly on the struct after scaleSetup returns.
+  scale->probitIdx = NULL;
+  scale->probitThetaLow = NULL;
+  scale->probitThetaHi = NULL;
   scale->thetaNames = thetaNames;
 
   scale->useColor = useColor;
@@ -559,6 +576,39 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
   }
 }
 
+// Apply the back-transform encoded by xParCode/probitCode to a single
+// (unscaled, model-scale) estimate.  Used by both the iteration-print
+// X row (scalePrintFun, below) and the final-fit-summary parFixed
+// loop in src/inner.cpp so the two paths stay in sync.
+//
+//   xParCode == 1              -> log:    exp(est)
+//   xParCode <= -1             -> logit:  expit(est, logitLow[m], logitHi[m])
+//                                          where m = -xParCode-1
+//   probitCode >= 1            -> probit: probitInv(est, probitLow[m], probitHi[m])
+//                                          where m = probitCode-1
+//   anything else              -> identity (no transform)
+//
+// Bounds pointers may be NULL when the corresponding code is never
+// triggered (xParCode never < 0, or probitCode always 0).  The caller
+// is responsible for ensuring the bounds arrays are large enough for
+// any encoded index that does appear.
+static inline double scaleBackTransform(double est, int xParCode, int probitCode,
+                                        const double *logitLow, const double *logitHi,
+                                        const double *probitLow, const double *probitHi) {
+  if (xParCode == 1) {
+    return exp(est);
+  }
+  if (xParCode <= -1) {
+    int m = -xParCode - 1;
+    return expit(est, logitLow[m], logitHi[m]);
+  }
+  if (probitCode >= 1) {
+    int m = probitCode - 1;
+    return probitInv(est, probitLow[m], probitHi[m]);
+  }
+  return est;
+}
+
 static inline void scalePrintFun(scaling *scale, double *x, double f) {
   // Scaled
   int finalize = 0, i = 0;
@@ -599,14 +649,11 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       scale->niter.push_back(scale->niter.back());
       scale->vPar.push_back(f);
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          scale->vPar.push_back(exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          scale->vPar.push_back(expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          scale->vPar.push_back(scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        scale->vPar.push_back(scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                                 scale->xPar[i], probitCode,
+                                                 scale->logitThetaLow, scale->logitThetaHi,
+                                                 scale->probitThetaLow, scale->probitThetaHi));
       }
     }
   }
@@ -688,14 +735,12 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       if (scale->showOfv) RSprintf("|    X|               |");
       else                RSprintf("|    X|");
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          RSprintf("%#10.4g |", expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        RSprintf("%#10.4g |",
+                 scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                    scale->xPar[i], probitCode,
+                                    scale->logitThetaLow, scale->logitThetaHi,
+                                    scale->probitThetaLow, scale->probitThetaHi));
         if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
           if (scale->useColor && scale->ncol + i >= scale->npars){
             RSprintf("%s", scaleWrapMarker(scale, 1));
