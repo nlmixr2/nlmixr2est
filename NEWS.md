@@ -178,6 +178,21 @@
 
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
 
+- Fix `focei` mixture models with llik residual distributions (`dnorm`,
+  `t`, `cauchy`): a matrix-orientation bug in `.backTransformParHistMix`
+  caused a "replacement has 1 row, data has N" error during
+  `foceiFinalizeTables` when a model had exactly one mixture probability
+  parameter.
+
+- Fix `fit$mixList` returning only the first mixture component: the
+  prior probability vector stored in `env$mixProbabilities` was missing
+  the implicit last component, so `nMix` was derived as 1 instead of
+  the true number of components.
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale (0, 1) instead of the
+  raw mlogit estimation scale.
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding

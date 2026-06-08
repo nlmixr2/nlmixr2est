@@ -355,6 +355,46 @@ ggplot(probs, aes(x = factor(ID), y = prob, fill = component)) +
 Most subjects will show a bar that is essentially 100% one colour, confirming
 clear separation of the two populations.
 
+## Log-Likelihood Residual Distributions with Mixture Models
+
+In addition to the standard additive / proportional / combined residual models,
+`nlmixr2est` supports fully-specified log-likelihood (llik) residual
+distributions — `dnorm()`, `t()`, and `cauchy()` — and these work with mixture
+models.  A typical use-case is a model where the residual distribution is
+heavier-tailed than Gaussian, combined with a mixture on a structural parameter:
+
+```{r llik-model, eval=FALSE}
+twoPop_llik <- function() {
+  ini({
+    tka   <- log(1.2)
+    tcl1  <- log(c(0.01, 8,  200))
+    tcl2  <- log(c(0.01, 0.8, 20))
+    tv    <- log(30)
+    p1    <- 0.67
+    eta.cl ~ 0.09
+    eta.v  ~ 0.04
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+    v  <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd) + dnorm()   # uses llik pass
+  })
+}
+
+fit_llik <- nlmixr2(twoPop_llik, simData, "focei",
+                    control = foceiControl(print = 5))
+```
+
+Appending `+ dnorm()` (or `+ t()` / `+ cauchy()`) tells `focei` to run a
+second "llik pass" that computes the exact log-likelihood of the residual
+distribution in place of the standard CWRES-based objective. The mixture
+structure is fully preserved during this pass.
+
+The post-fit accessors (`$mixNum`, `$mixList`, `$parHistData`) behave
+identically to the non-llik case.
+
 ## Choosing an Estimation Method
 
 All six gradient-based methods handle mixture models using the same strategy:
