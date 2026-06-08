@@ -807,6 +807,10 @@ public:
     scaleLogitHi.assign(1, 1.0);
     // Plain scaleSetup with print/printNcol/useColor placeholders; the
     // user's iterPrintControl values are then applied via the shared helper.
+    // saem's R-side configuration always sets simple=TRUE on its
+    // iterPrintControl (Plambda lives on model scale with no internal
+    // optimizer scaling, so the U and X rows would be degenerate), so the
+    // scale.simple field is set automatically by scaleApplyIterPrintControl.
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
@@ -820,11 +824,7 @@ public:
                1e-7, 1e7, 0.0,
                nprint);
     scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
-    scale.printSimple = 1;
     scale.save = 0; // par_hist already records the iteration history
-    // Mirror the print frequency into the SAEM::print member for any
-    // existing call sites that still consult it.
-    print = scale.print;
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -861,7 +861,7 @@ public:
       RSprintf("initialization successful\n");
     }
     // Emit the unified column header once at fit start.  Periodic re-emits
-    // (every scale.printHeader parameter-print events) are handled inside
+    // (every scale.headerEvery parameter-print events) are handled inside
     // scalePrintFun.
     scalePrintHeader(&scale);
     fsaveMat = user_fn(phiM, evtM, optM);
@@ -1921,9 +1921,8 @@ private:
 
   mcmcaux mx;
 
-  int print;
   // Iteration-print formatting shared with focei/nlm via src/scale.h.
-  // scaleType=None + printSimple=1 → one row per iter using focei's column
+  // scaleType=None + simple=1 → one row per iter using focei's column
   // wrapping/colors/headers, without the U/X rows (saem has no internal
   // optimizer scaling and the printed vector mixes theta+omega+sigma).
   scaling scale;
@@ -1933,9 +1932,6 @@ private:
   std::vector<double> scaleLogitLow;
   std::vector<double> scaleLogitHi;
   CharacterVector scaleNames;
-  // printNcol/useColor/printHeader live on the embedded `scale` struct above
-  // (populated by scaleApplyIterPrintControl from the user's iterPrintControl
-  // sub-list); no separate class members needed.
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;

@@ -27,25 +27,22 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
+  // Iteration-print formatting, populated from the user's iterPrintControl()
+  // sub-list via scaleApplyIterPrintControl().  Field names mirror the R
+  // argument names of iterPrintControl() for code-search consistency.
   int useColor;
-  int printNcol;
-  int print;
-  // printSimple: 0 = print 3 rows per iteration (#=scaled, U=unscaled, X=back-transformed)
-  //              1 = print only the # row (for methods like saem that have no internal
-  //                  optimizer scaling, where # == U and X requires extra transform info)
-  int printSimple;
-  // printKey: 0 = scalePrintHeader skips the "Key: U: ... X: ..." legend and emits
-  //               only the column header + separator.  For callers (e.g. focei)
-  //               that emit their own richer Key text manually.
-  //           1 = scalePrintHeader emits both the Key legend and the column header
-  //               (default — matches the prior behavior).
-  int printKey;
-  // printHeader: 0 = print column header only once at fit startup
-  //              N>0 = re-print header every N parameter-print events
-  // Default in scaleSetup is 10.
-  int printHeader;
-  // printCount: internal — count of parameter-print events emitted so far (not iterations).
-  // Used to gate periodic header re-prints when printHeader > 0.
+  int ncol;        // iterPrintControl$ncol         — columns per row
+  int every;       // iterPrintControl$every        — print row every N evals (0=silent)
+  int simple;      // iterPrintControl$simple       — single-row mode (skip U/X)
+  int headerEvery; // iterPrintControl$headerEvery  — re-emit header every N prints (0=once)
+  // keyExtra: estimator-specific text appended to the "Key:" legend line
+  // (between "X: Back-transformed parameters; " and the trailing newline).
+  // NULL emits just the standard Key.  Used by focei to inject its
+  // G/F/C/M gradient-method legend and omega note.  Setting it is the
+  // estimator's responsibility; iterPrintControl() does not expose it.
+  const char *keyExtra;
+  // printCount: internal — count of parameter-print events emitted so far
+  // (not iterations).  Gates periodic header re-prints when headerEvery > 0.
   int printCount;
   int save;
   int cn;
@@ -80,7 +77,7 @@ static inline void scaleNone(scaling *scale) {
   scale->scaleType= scaleTypeNone;
   scale->normType=normTypeConstant;
   scale->scaleTo = 0.0;
-  scale->print = 0;
+  scale->every = 0;
   scale->save = 0;
 }
 
@@ -111,11 +108,11 @@ static inline void scaleSetup(scaling *scale,
   scale->thetaNames = thetaNames;
 
   scale->useColor = useColor;
-  scale->printNcol = printNcol;
-  scale->print = print;
-  scale->printSimple = 0;
-  scale->printKey = 1;
-  scale->printHeader = 10;
+  scale->ncol = printNcol;
+  scale->every = print;
+  scale->simple = 0;
+  scale->keyExtra = NULL;
+  scale->headerEvery = 10;
   scale->printCount = 0;
   scale->save = 1;
 
@@ -436,10 +433,11 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
 // internal and remain the caller's responsibility to set.
 static inline void scaleApplyIterPrintControl(scaling *scale,
                                               const Rcpp::List &ipc) {
-  scale->print       = Rcpp::as<int>(ipc["every"]);
-  scale->printNcol   = Rcpp::as<int>(ipc["ncol"]);
-  scale->printHeader = Rcpp::as<int>(ipc["headerEvery"]);
+  scale->every       = Rcpp::as<int>(ipc["every"]);
+  scale->ncol        = Rcpp::as<int>(ipc["ncol"]);
+  scale->headerEvery = Rcpp::as<int>(ipc["headerEvery"]);
   scale->useColor    = Rcpp::as<int>(ipc["useColor"]);
+  scale->simple      = Rcpp::as<int>(ipc["simple"]);
 }
 
 static inline void scalePrintLine(int ncol){
@@ -454,14 +452,22 @@ static inline void scalePrintLine(int ncol){
 }
 
 static inline void scalePrintHeader(scaling *scale) {
-  if (scale->print != 0) {
-    if (!scale->printSimple && scale->printKey) {
+  if (scale->every != 0) {
+    if (!scale->simple) {
       if (scale->useColor)
         RSprintf("\033[1mKey:\033[0m ");
       else
         RSprintf("Key: ");
       RSprintf("U: Unscaled Parameters; ");
-      RSprintf("X: Back-transformed parameters; \n");
+      RSprintf("X: Back-transformed parameters; ");
+      // Estimator-specific Key suffix (e.g. focei's G/F/C/M gradient
+      // legend and omega note).  When NULL the standard "Key:" line is
+      // closed with a newline so the column header follows on a fresh row.
+      if (scale->keyExtra != NULL) {
+        RSprintf("%s", scale->keyExtra);
+      } else {
+        RSprintf("\n");
+      }
     }
     int i, finalize=0, n=scale->thetaNames.size();
     RSprintf("\n|    #| Function Val. |");
@@ -469,8 +475,8 @@ static inline void scalePrintHeader(scaling *scale) {
     for (i = 0; i < n; i++){
       tmpS = scale->thetaNames[i];
       RSprintf("%#10s |", tmpS.c_str());
-      if ((i + 1) != n && (i + 1) % scale->printNcol == 0){
-        if (scale->useColor && scale->printNcol + i  >= n){
+      if ((i + 1) != n && (i + 1) % scale->ncol == 0){
+        if (scale->useColor && scale->ncol + i  >= n){
           RSprintf("\n\033[4m|.....................|");
         } else {
           RSprintf("\n|.....................|");
@@ -480,7 +486,7 @@ static inline void scalePrintHeader(scaling *scale) {
     }
     if (finalize){
       while(true){
-        if ((i++) % scale->printNcol == 0){
+        if ((i++) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
@@ -491,7 +497,7 @@ static inline void scalePrintHeader(scaling *scale) {
     } else {
       RSprintf("\n");
     }
-    scalePrintLine(min2(scale->npars, scale->printNcol));
+    scalePrintLine(min2(scale->npars, scale->ncol));
   }
 }
 
@@ -507,7 +513,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     for (i = 0; i < scale->npars; i++){
       scale->vPar.push_back(x[i]);
     }
-    if (!scale->printSimple) {
+    if (!scale->simple) {
       // Unscaled
       scale->iterType.push_back(iterTypeUnscaled);
       scale->niter.push_back(scale->niter.back());
@@ -531,15 +537,15 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
   }
-  if (scale->print != 0 &&
-      scale->cn % scale->print == 0){
+  if (scale->every != 0 &&
+      scale->cn % scale->every == 0){
     // Count this parameter-print event and, when configured, re-emit the
     // column header every `printHeader` events (event 1 already has the
     // startup header printed elsewhere, so re-prints happen at 1+N, 1+2N, ...).
     scale->printCount++;
-    if (scale->printHeader > 0 &&
+    if (scale->headerEvery > 0 &&
         scale->printCount > 1 &&
-        ((scale->printCount - 1) % scale->printHeader == 0)) {
+        ((scale->printCount - 1) % scale->headerEvery == 0)) {
       scalePrintHeader(scale);
     }
     if (scale->useColor && !isRstudio())
@@ -548,8 +554,8 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       RSprintf("|%5d|%#14.8g |", scale->cn, f);
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g |", x[i]);
-      if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-        if (scale->useColor && scale->printNcol + i  > scale->npars){
+      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
+        if (scale->useColor && scale->ncol + i  > scale->npars){
           RSprintf("\n\033[4m|.....................|");
         } else {
           RSprintf("\n|.....................|");
@@ -559,7 +565,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     }
     if (finalize){
       while(true){
-        if ((i++) % scale->printNcol == 0){
+        if ((i++) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
@@ -570,12 +576,12 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     } else {
       RSprintf("\n");
     }
-    if (!scale->printSimple) {
+    if (!scale->simple) {
       RSprintf("|    U|               |");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-        if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-          if (scale->useColor && scale->printNcol + i  > scale->npars){
+        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
+          if (scale->useColor && scale->ncol + i  > scale->npars){
             RSprintf("\n\033[4m|.....................|");
           } else {
             RSprintf("\n|.....................|");
@@ -584,7 +590,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
       if (finalize){
         while(true){
-          if ((i++) % scale->printNcol == 0){
+          if ((i++) % scale->ncol == 0){
             if (scale->useColor) RSprintf("\033[0m");
             RSprintf("\n");
             break;
@@ -605,8 +611,8 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
         } else {
           RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
         }
-        if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-          if (scale->useColor && scale->printNcol + i >= scale->npars){
+        if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
+          if (scale->useColor && scale->ncol + i >= scale->npars){
             RSprintf("\n\033[4m|.....................|");
           } else {
             RSprintf("\n|.....................|");
@@ -615,7 +621,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
       if (finalize){
         while(true){
-          if ((i++) % scale->printNcol == 0){
+          if ((i++) % scale->ncol == 0){
             if (scale->useColor) RSprintf("\033[0m");
             RSprintf("\n");
             break;
@@ -655,8 +661,8 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     scale->niterGrad.push_back(scale->niter.back());
     scale->gradType.push_back(type);
   }
-  if (scale->print != 0 &&
-      scale->cn % scale->print == 0){
+  if (scale->every != 0 &&
+      scale->cn % scale->every == 0){
     // Method-specific label for the gradient row.  Matches focei's existing
     // gradType encoding: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
     // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
@@ -670,19 +676,19 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
     default: label = "    G|    Gradient   |"; break;
     }
-    if (scale->useColor && scale->printNcol >= scale->npars){
+    if (scale->useColor && scale->ncol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
-      if (scale->useColor && scale->printNcol >= scale->npars && i == scale->npars-1){
+      if (scale->useColor && scale->ncol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-        if (scale->useColor && scale->printNcol + i  >= scale->npars){
+      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
+        if (scale->useColor && scale->ncol + i  >= scale->npars){
           RSprintf("\n\033[4m|.....................|");
         } else {
           RSprintf("\n|.....................|");
@@ -692,7 +698,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     }
     if (finalize){
       while(true){
-        if ((i++) % scale->printNcol == 0){
+        if ((i++) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
@@ -704,7 +710,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       RSprintf("\n");
     }
     if (!scale->useColor){
-      scalePrintLine(min2(scale->npars, scale->printNcol));
+      scalePrintLine(min2(scale->npars, scale->ncol));
     }
   }
   if (scale->save) {

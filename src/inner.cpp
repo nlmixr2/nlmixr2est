@@ -210,7 +210,6 @@ struct focei_options {
 
   int imp;
   // int printInner;
-  int printOuter;
 
 
   mat omega;
@@ -255,13 +254,7 @@ struct focei_options {
   int cur = 0;
   int curTick = 0;
   int totTick = 100;
-  int useColor;
   double boundTol;
-  int printNcol;
-  // How often the column header is re-emitted during iteration printing
-  // (counted in parameter-print events).  0 = print header once at fit start.
-  // Wired through scale.printHeader in foceiSetupScale().
-  int printHeader;
   int noabort;
   int interaction;
   double cholSEtol;
@@ -3258,11 +3251,11 @@ void numericGrad(double *theta, double *g){
   op_focei.curGill=0;
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
-    int finalSlow = (op_focei.printOuter == 1) &&
+    int finalSlow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
     int maxiter = op_focei.shi21maxOuter;
     op_focei.totTick = op_focei.npars * maxiter * 2;
-    op_focei.slow = (op_focei.printOuter == 1) &&
+    op_focei.slow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC*op_focei.totTick >= op_focei.gradProgressOfvTime;
     // Use Shi Difference
     if (op_focei.slow) {
@@ -3302,13 +3295,13 @@ void numericGrad(double *theta, double *g){
     op_focei.slow = finalSlow;
   } else if ((op_focei.repeatGill == 1 || op_focei.nF == 1) && op_focei.gillK > 0) {
     clock_t t = clock() - op_focei.t0;
-    int finalSlow = (op_focei.printOuter == 1) &&
+    int finalSlow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
 
     op_focei.repeatGill=0;
     op_focei.reducedTol2=0;
     double hf, hphif, err;
-    op_focei.slow = (op_focei.printOuter == 1) &&
+    op_focei.slow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC*op_focei.npars * op_focei.gillK >= op_focei.gradProgressOfvTime;
     if (op_focei.slow){
       op_focei.cur = 0;
@@ -4131,8 +4124,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
   // op_focei.printInner=as<int>(foceiO["printInner"]);
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
-  // op_focei.printOuter is populated below from foceiO["iterPrintControl"]
-  // via scaleApplyIterPrintControl, after the other op_focei fields are set.
   unsigned int totN=op_focei.ntheta + op_focei.omegan;
   NumericVector cEps=foceiO["derivEps"];
   if (cEps.size() != 2){
@@ -4282,17 +4273,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ci=as<double>(foceiO["ci"]);
   op_focei.sigdig=as<double>(foceiO["sigdigTable"]);
   op_focei.boundTol=as<double>(foceiO["boundTol"]);
-  // Iteration-print configuration arrives as a single sub-list built by
-  // R-side iterPrintControl(); scaleApplyIterPrintControl populates the
-  // op_focei.scale struct, and we mirror the values onto the bare
-  // op_focei.useColor/printNcol/printHeader fields used by the legacy
-  // header code path further down (see scalePrintHeader call site).
   scaleApplyIterPrintControl(&op_focei.scale,
                              as<List>(foceiO["iterPrintControl"]));
-  op_focei.useColor    = op_focei.scale.useColor;
-  op_focei.printNcol   = op_focei.scale.printNcol;
-  op_focei.printHeader = op_focei.scale.printHeader;
-  op_focei.printOuter  = op_focei.scale.print;
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
@@ -6970,7 +6952,7 @@ void foceiFinalizeTables(Environment e){
       e["extra"] = "";
       e["skipTable"] = LogicalVector::create(true);
     } else if (op_focei.interaction || op_focei.needOptimHess){
-      if(op_focei.useColor){
+      if(op_focei.scale.useColor){
         e["extra"] = "\033[31;1mi\033[0m";
       } else {
         e["extra"] = "i";
@@ -7282,32 +7264,22 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.scaleTo       = op_focei.scaleTo;
     op_focei.scale.c1            = op_focei.c1;
     op_focei.scale.c2            = op_focei.c2;
-    op_focei.scale.printSimple   = 0;
-    op_focei.scale.printKey      = 0;  // focei prints its richer Key manually
+    op_focei.scale.simple        = 0;
+    // focei's richer Key suffix — gradient-method legend and omega note.
+    // Appended after "X: Back-transformed parameters; " by scalePrintHeader.
+    op_focei.scale.keyExtra =
+      "G: Gill difference gradient approximation\n"
+      "F: Forward difference gradient approximation\n"
+      "C: Central difference gradient approximation\n"
+      "M: Mixed forward and central difference gradient approximation\n"
+      "Unscaled parameters for Omegas=chol(solve(omega));\n"
+      "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
     op_focei.scale.printCount    = 0;
-    // print / printNcol / useColor / printHeader already populated by
-    // scaleApplyIterPrintControl(&op_focei.scale, ...) earlier in
-    // foceiSetup_; intentionally not re-set here.
     op_focei.scale.save          = 0;  // focei records into module-level globals
     op_focei.scale.cn            = 0;
   }
-  if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1 && op_focei.printOuter != 0){
-    if (op_focei.useColor)
-      RSprintf("\033[1mKey:\033[0m ");
-    else
-      RSprintf("Key: ");
-
-    RSprintf("U: Unscaled Parameters; ");
-    RSprintf("X: Back-transformed parameters; ");
-    RSprintf("G: Gill difference gradient approximation\n");
-    RSprintf("F: Forward difference gradient approximation\n");
-    RSprintf("C: Central difference gradient approximation\n");
-    RSprintf("M: Mixed forward and central difference gradient approximation\n");
-    RSprintf("Unscaled parameters for Omegas=chol(solve(omega));\nDiagonals are transformed, as specified by foceiControl(diagXform=)\n");
+  if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
     op_focei.t0 = clock();
-    // Column header + separator now come from the shared helper.  Since
-    // op_focei.scale.printKey == 0 the helper skips its own Key line (we
-    // already emitted the richer focei-specific Key above).
     scalePrintHeader(&op_focei.scale);
   }
   if (doPredOnly){

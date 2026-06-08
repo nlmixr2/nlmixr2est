@@ -28,6 +28,12 @@
 #'   only.  `NULL` (default) uses `10L`.
 #' @param useColor Logical or `NULL`.  Whether to emit ANSI bold/color
 #'   escapes.  `NULL` (default) uses [crayon::has_color()].
+#' @param simple Logical.  When `TRUE`, the printer emits a single
+#'   row per iteration (just the optimizer-scale parameters) and
+#'   suppresses the unscaled (`U`) / back-transformed (`X`) follow-up
+#'   rows.  Used by estimators (like saem) that have no internal
+#'   optimizer scaling, where U and X would be degenerate copies of
+#'   the first row.  Defaults to `FALSE` (full three-row output).
 #' @return A list with the validated, defaulted iteration-print
 #'   options.  Has class `"iterPrintControl"` so the outer `*Control()`
 #'   functions can distinguish a pre-built object from a scalar
@@ -40,7 +46,8 @@
 iterPrintControl <- function(every = 1L,
                              ncol = NULL,
                              headerEvery = NULL,
-                             useColor = NULL) {
+                             useColor = NULL,
+                             simple = FALSE) {
   if (is.null(ncol))        ncol        <- floor((getOption("width") - 23) / 12)
   if (is.null(headerEvery)) headerEvery <- 10L
   if (is.null(useColor))    useColor    <- crayon::has_color()
@@ -48,11 +55,13 @@ iterPrintControl <- function(every = 1L,
   checkmate::assertIntegerish(ncol,        len = 1, lower = 1, any.missing = FALSE)
   checkmate::assertIntegerish(headerEvery, len = 1, lower = 0, any.missing = FALSE)
   checkmate::assertLogical(useColor,       len = 1, any.missing = FALSE)
+  checkmate::assertLogical(simple,         len = 1, any.missing = FALSE)
   .ret <- list(
     every       = as.integer(every),
     ncol        = as.integer(ncol),
     headerEvery = as.integer(headerEvery),
-    useColor    = as.logical(useColor)
+    useColor    = as.logical(useColor),
+    simple      = as.logical(simple)
   )
   class(.ret) <- c("iterPrintControl", "list")
   .ret
@@ -60,43 +69,28 @@ iterPrintControl <- function(every = 1L,
 
 #' Wrap scalar or list arguments into an iterPrintControl object
 #'
-#' Internal helper used by every `*Control()` function to absorb
+#' Internal helper used by every `*Control()` function to absorb the
 #' historical scalar arguments (`print`, `printNcol`, `useColor`) into
 #' a single [iterPrintControl()] sub-list.  If the user already passed
-#' a pre-built `iterPrintControl()` object via the `print` argument,
-#' return it directly (and warn if any of the historical scalar args
-#' were also set, since they would be silently ignored).
+#' a pre-built `iterPrintControl()` object via the `print` argument
+#' (or, on round-trip, via an `iterPrintControl =` slot in `...`),
+#' return it directly.
 #'
 #' @param print Either an integer print-frequency or an
 #'   `iterPrintControl` object.
 #' @param printNcol,useColor Scalar arguments that historically lived
 #'   on each `*Control()` function.  Forwarded to [iterPrintControl()]
 #'   only when `print` is a scalar.
-#' @param printHeader Deprecated.  Was briefly exposed as a top-level
-#'   `*Control()` argument; now lives only in [iterPrintControl()]
-#'   (the `headerEvery` argument there).  Accepted here only to issue
-#'   a clear error pointing users at the new location.
+#' @param iterPrintControl Optional pre-built [iterPrintControl()]
+#'   object.  Wins over `print` and the other scalars when supplied —
+#'   used by the round-trip case where a returned control list is
+#'   passed back through `do.call(*Control, .ctl)`.
 #' @return An `iterPrintControl` list.
 #' @noRd
 .absorbIterPrintControl <- function(print = 1L,
                                     printNcol = NULL,
                                     useColor = NULL,
-                                    printHeader = NULL,
-                                    printUseColor = NULL,
                                     iterPrintControl = NULL) {
-  if (!is.null(printHeader)) {
-    stop("`printHeader` is no longer a top-level *Control() argument; pass ",
-         "`print = iterPrintControl(headerEvery = ", printHeader, ")` instead.",
-         call. = FALSE)
-  }
-  if (!is.null(printUseColor)) {
-    stop("`printUseColor` is no longer a top-level *Control() argument; pass ",
-         "`print = iterPrintControl(useColor = ", printUseColor, ")` instead.",
-         call. = FALSE)
-  }
-  # If a fully-built iterPrintControl object came in via the dedicated
-  # `iterPrintControl` argument (typical when a *Control() return value
-  # round-trips back through do.call(*Control, .ctl)), use it directly.
   if (!is.null(iterPrintControl)) {
     if (!inherits(iterPrintControl, "iterPrintControl")) {
       stop("`iterPrintControl` must be the result of iterPrintControl()",
