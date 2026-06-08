@@ -113,45 +113,45 @@ iterPrintControl <- function(every = 1L,
 #' Derive every iteration-print transform vector from a ui object
 #'
 #' Pure inspection helper.  Walks `ui$muRefCurEval` against
-#' `ui$iniDf` and emits, in one pass, every transform vector any
-#' estimator's iteration printer or C-side setup needs:
+#' `ui$iniDf` and emits, in one pass, every per-printed-parameter
+#' transform vector any estimator's iteration printer or C-side
+#' setup needs.  All output vectors are aligned to `printNames` —
+#' index `i` describes the i-th printed parameter.
 #'
-#' Print-vector-ordered (length == length(printNames), or all
-#' unfixed thetas in `ntheta` order when `printNames` is NULL):
-#'
-#'   `xPar`            integer transform code per printed parameter:
-#'                     `1`  = log-transformed; X shows `exp(value)`
-#'                     `-m` = m-th logit-transformed parameter
-#'                            (1-based); X shows
-#'                            `expit(value, logitThetaLow[m-1],
-#'                                  logitThetaHi[m-1])`
-#'                     `0`  = no transform.
-#'   `logitThetaLow`   lower bounds (one per logit entry, in
-#'                     occurrence order in xPar).
-#'   `logitThetaHi`    upper bounds (same ordering).
-#'
-#' ntheta-indexed (always populated from iniDf$ntheta, independent
-#' of `printNames`):
-#'
-#'   `logNthetas`        ntheta values for log-transformed thetas.
-#'   `logitNthetas`      ntheta values for logit-transformed thetas.
-#'   `logitNthetasLow`   matching lower bounds.
-#'   `logitNthetasHi`    matching upper bounds.
-#'   `probitNthetas`     ntheta values for probit-transformed thetas.
-#'   `probitNthetasLow`  matching lower bounds.
-#'   `probitNthetasHi`   matching upper bounds.
+#'   `xPar`              integer log/logit code per printed param:
+#'                       `1`  = log-transformed; X shows `exp(value)`
+#'                       `-m` = m-th logit-transformed parameter
+#'                              (1-based); X shows
+#'                              `expit(value, logitThetaLow[m-1],
+#'                                    logitThetaHi[m-1])`
+#'                       `0`  = no log/logit transform.
+#'   `probitIdx`         integer probit index per printed param:
+#'                       `k`  = k-th probit-transformed parameter
+#'                              (1-based); X shows
+#'                              `probitInv(value, probitThetaLow[k-1],
+#'                                        probitThetaHi[k-1])`
+#'                       `0`  = no probit transform.
+#'                       Probit is carried as a parallel index rather
+#'                       than folded into `xPar` so omega xPar codes
+#'                       (2-5, used by `scaleGetScaleC`) cannot collide.
+#'   `logitThetaLow`     lower bounds (one per logit entry, in the
+#'                       occurrence order encoded in `xPar`).
+#'   `logitThetaHi`      upper bounds, same ordering as logitThetaLow.
+#'   `probitThetaLow`    lower bounds for probit, in occurrence order.
+#'   `probitThetaHi`     upper bounds for probit, same ordering.
 #'
 #' Function is pure — never mutates the ui or any environment.
 #' Callers do their own assignments.
 #'
 #' Names in `printNames` not present in `ui$muRefCurEval`
 #' (e.g. saem's `V(eta.*)` omega-variance names or residual-error
-#' names) silently get `xPar = 0`.
+#' names) silently get `xPar = 0` and `probitIdx = 0`.
 #'
 #' @param ui rxode2 ui object.
 #' @param printNames Character vector of parameter names in the same
 #'   order as the printed parameter vector.  When `NULL` (default)
-#'   uses all unfixed thetas in `ntheta` order.
+#'   uses all thetas (fixed + unfixed) in `ntheta` order — the form
+#'   focei's C-side consumes for its theta-indexed back-transform.
 #' @return Named list of integer / numeric vectors as documented above.
 #' @noRd
 .iterPrintXParFromUi <- function(ui, printNames = NULL) {
@@ -161,19 +161,18 @@ iterPrintControl <- function(every = 1L,
   printNames <- as.character(printNames)
   muRef <- ui$muRefCurEval
   xPar <- integer(length(printNames))
+  probitIdx <- integer(length(printNames))
   logitThetaLow <- numeric(0)
   logitThetaHi <- numeric(0)
+  probitThetaLow <- numeric(0)
+  probitThetaHi <- numeric(0)
   empty <- function() list(
-    xPar = xPar,
-    logitThetaLow = logitThetaLow,
-    logitThetaHi = logitThetaHi,
-    logNthetas = integer(0),
-    logitNthetas = integer(0),
-    logitNthetasLow = numeric(0),
-    logitNthetasHi = numeric(0),
-    probitNthetas = integer(0),
-    probitNthetasLow = numeric(0),
-    probitNthetasHi = numeric(0)
+    xPar           = xPar,
+    probitIdx      = probitIdx,
+    logitThetaLow  = logitThetaLow,
+    logitThetaHi   = logitThetaHi,
+    probitThetaLow = probitThetaLow,
+    probitThetaHi  = probitThetaHi
   )
   if (is.null(muRef) || nrow(muRef) == 0L) return(empty())
   if (!is.null(ui$boundedTransforms)) {
@@ -185,7 +184,7 @@ iterPrintControl <- function(every = 1L,
       }
     }
   }
-  # Per-printed-name xPar / logit bounds, in printNames order.
+  # Per-printed-name xPar / probitIdx / bounds, in printNames order.
   for (i in seq_along(printNames)) {
     nm <- printNames[i]
     idx <- which(muRef$parameter == nm)
@@ -198,25 +197,19 @@ iterPrintControl <- function(every = 1L,
       logitThetaLow <- c(logitThetaLow, muRef$low[idx])
       logitThetaHi  <- c(logitThetaHi,  muRef$hi[idx])
       xPar[i] <- -as.integer(length(logitThetaLow))
+    } else if (isTRUE(ce == "probitInv")) {
+      probitThetaLow <- c(probitThetaLow, muRef$low[idx])
+      probitThetaHi  <- c(probitThetaHi,  muRef$hi[idx])
+      probitIdx[i] <- as.integer(length(probitThetaLow))
     }
   }
-  # ntheta-indexed views over the unfixed-theta order.  These are
-  # always emitted regardless of `printNames` because focei consumes
-  # them on the env (and via the focei C setup) under
-  # logThetasF/logitThetasF/probitThetasF names.
-  tr <- merge(iniThetas, muRef, by.x = "name", by.y = "parameter")
-  tr <- tr[order(tr$ntheta), ]
   list(
-    xPar             = xPar,
-    logitThetaLow    = logitThetaLow,
-    logitThetaHi     = logitThetaHi,
-    logNthetas       = as.integer(tr[which(tr$curEval == "exp"),       "ntheta"]),
-    logitNthetas     = as.integer(tr[which(tr$curEval == "expit"),     "ntheta"]),
-    logitNthetasLow  = as.double( tr[which(tr$curEval == "expit"),     "low"]),
-    logitNthetasHi   = as.double( tr[which(tr$curEval == "expit"),     "hi"]),
-    probitNthetas    = as.integer(tr[which(tr$curEval == "probitInv"), "ntheta"]),
-    probitNthetasLow = as.double( tr[which(tr$curEval == "probitInv"), "low"]),
-    probitNthetasHi  = as.double( tr[which(tr$curEval == "probitInv"), "hi"])
+    xPar           = xPar,
+    probitIdx      = probitIdx,
+    logitThetaLow  = logitThetaLow,
+    logitThetaHi   = logitThetaHi,
+    probitThetaLow = probitThetaLow,
+    probitThetaHi  = probitThetaHi
   )
 }
 

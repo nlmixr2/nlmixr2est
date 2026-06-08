@@ -117,6 +117,12 @@
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
+  # Iteration-print transforms: ship a single xform sub-list so the C
+  # side wires log/logit/probit back-transforms through one helper
+  # (scaleAttachXform in src/scale.h), identical to every other method.
+  # nlm-family fits are population-only, so the printed parameters are
+  # just thetas in `par` order.
+  .ctl$iterPrintXform <- .iterPrintXParFromUi(ui, names(par))
   .env$control <- .ctl
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)

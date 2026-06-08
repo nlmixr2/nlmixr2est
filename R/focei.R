@@ -1450,20 +1450,18 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  # Theta-side transform indexes (log/logit/probit) come from the
-  # shared pure inspector .iterPrintXParFromUi.  The helper does not
-  # mutate env; we copy its ntheta-indexed outputs onto the focei env
-  # under the names the focei C-side reads via e["logThetasF"] etc.
-  # The C code assumes 1-based theta indices, which is exactly what
-  # iniDf$ntheta gives.
+  # Theta-side transform codes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  Default call gives
+  # vectors of length ntheta_total in ntheta order — exactly what
+  # focei's C-side consumes (both the iteration printer and the
+  # final-fit-summary back-transform read these by ntheta index).
   .xform <- .iterPrintXParFromUi(ui)
-  env$logThetasF       <- .xform$logNthetas
-  env$logitThetasF     <- .xform$logitNthetas
-  env$logitThetasLowF  <- .xform$logitNthetasLow
-  env$logitThetasHiF   <- .xform$logitNthetasHi
-  env$probitThetasF    <- .xform$probitNthetas
-  env$probitThetasLowF <- .xform$probitNthetasLow
-  env$probitThetasHiF  <- .xform$probitNthetasHi
+  env$thetaXPar       <- .xform$xPar
+  env$thetaProbitIdx  <- .xform$probitIdx
+  env$logitThetaLow   <- .xform$logitThetaLow
+  env$logitThetaHi    <- .xform$logitThetaHi
+  env$probitThetaLow  <- .xform$probitThetaLow
+  env$probitThetaHi   <- .xform$probitThetaHi
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -2116,8 +2114,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
-                    "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
-                    "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                    "thetaXPar", "thetaProbitIdx",
+                    "logitThetaLow", "logitThetaHi",
+                    "probitThetaLow", "probitThetaHi",
+                    "lower", "noLik", "objf", "OBJF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                     "xType", "IDlabel", "ODEmodel", "model",
                     # times

@@ -824,45 +824,32 @@ public:
     // Set up the shared scale.h iteration-print struct.  saem uses
     // scaleTypeNone (no internal optimizer scaling — Plambda is on
     // model scale) so scalePrintFun's auto-skip drops the redundant U
-    // row.  xPar / logitThetaLow / logitThetaHi come from the R side
-    // via .iterPrintXParFromUi(ui$muRefCurEval), so the X row shows
-    // exp(theta) for log-transformed thetas and expit(theta, lo, hi)
-    // for logit-transformed thetas — same back-transforms focei
-    // applies.  Omega and residual-error entries in the printed
-    // vector have xPar = 0 and so contribute no X-row delta.
+    // row.  The xform sub-list (xPar / probitIdx / logitThetaLow /
+    // logitThetaHi / probitThetaLow / probitThetaHi) is shipped from
+    // R by .iterPrintXParFromUi() and wired in one call through
+    // scaleAttachXform — the same path every other estimator uses,
+    // so the X row back-transforms exp / expit / probitInv identically
+    // to focei and the final-fit-summary block.  Omega and residual-
+    // error entries in the printed vector have xPar=0 / probitIdx=0
+    // and so contribute no X-row delta.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
+    // Mixture models add (nMix - 1) mixture-weight rows to the printed vector.
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
-    {
-      IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
-      NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
-      NumericVector logitHiIn  = as<NumericVector>(x["logitThetaHi"]);
-      scaleInitPar.assign(std::max(nprint, 1), 0.0);
-      scaleC.assign(std::max(nprint, 1), NA_REAL);
-      scaleXPar.assign(xParIn.begin(), xParIn.end());
-      if (scaleXPar.empty()) scaleXPar.assign(1, 0);
-      if (logitLowIn.size() > 0) {
-        scaleLogitLow.assign(logitLowIn.begin(), logitLowIn.end());
-        scaleLogitHi.assign(logitHiIn.begin(), logitHiIn.end());
-      } else {
-        // scalePrintFun's logit branch is only reached when xPar < 0;
-        // a one-element placeholder satisfies the data-pointer demand
-        // when no logit-transformed parameters are present.
-        scaleLogitLow.assign(1, 0.0);
-        scaleLogitHi.assign(1, 1.0);
-      }
-    }
+    scaleInitPar.assign(std::max(nprint, 1), 0.0);
+    scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
-               scaleXPar.data(),
-               scaleLogitLow.data(),
-               scaleLogitHi.data(),
+               /*xPar*/        NULL,
+               /*logitThetaLow*/NULL,
+               /*logitThetaHi*/ NULL,
                scaleNames,
                /*useColor*/0, /*printNcol*/1, /*print*/0,
                normTypeConstant,
                scaleTypeNone,
                1e-7, 1e7, 0.0,
                nprint);
+    scaleAttachXform(&scale, as<List>(x["xform"]));
     scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
     // saem has no per-iteration objective function; suppress the Function
     // Val column entirely so users don't see "nan" in every iteration row.
@@ -2336,15 +2323,13 @@ private:
   mcmcaux mx;
 
   // Iteration-print formatting shared with focei/nlm via src/scale.h.
-  // saem uses scaleTypeNone with all-zero xPar (Plambda is already on
-  // the model scale), so scalePrintFun's U and X rows mirror the # row.
-  // Format matches the other estimators.
+  // saem uses scaleTypeNone (Plambda is already on the model scale).
+  // The transform fields (xPar / probitIdx / bounds) are populated
+  // by scaleAttachXform from the R-side xform sub-list at setup time;
+  // backing storage lives on the scaling struct itself.
   scaling scale;
   std::vector<double> scaleInitPar;
   std::vector<double> scaleC;
-  std::vector<int>    scaleXPar;
-  std::vector<double> scaleLogitLow;
-  std::vector<double> scaleLogitHi;
   CharacterVector scaleNames;
   mat par_hist;
   uvec parHistThetaKeep;

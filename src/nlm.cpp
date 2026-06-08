@@ -253,16 +253,18 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
-  // Iteration-print fields come from the iterPrintControl sub-list built
-  // R-side; scaleApplyIterPrintControl populates them on the scaling
-  // struct.  The useColor/printNcol/print args to scaleSetup are passed
-  // as placeholders since they get overwritten right after.
+  // Iteration-print formatting + transforms come from R-side sub-lists.
+  // scaleAttachXform wires the log/logit/probit back-transform arrays
+  // through one shared helper (mirrors saem); scaleApplyIterPrintControl
+  // handles every/ncol/headerEvery/useColor/simple.  The
+  // useColor/printNcol/print args to scaleSetup are placeholders that
+  // get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
-             nlmOp.xPar,
-             nlmOp.logitThetaLow,
-             nlmOp.logitThetaHi,
+             /*xPar*/         NULL,
+             /*logitThetaLow*/NULL,
+             /*logitThetaHi*/ NULL,
              as<CharacterVector>(e["thetaNames"]) ,
              /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
@@ -271,6 +273,8 @@ RObject nlmSetup(Environment e) {
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  scaleAttachXform(&(nlmOp.scale),
+                   as<List>(control["iterPrintXform"]));
   scaleApplyIterPrintControl(&(nlmOp.scale),
                              as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
