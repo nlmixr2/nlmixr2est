@@ -263,6 +263,13 @@ RObject nlmSetup(Environment e) {
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  // Override the periodic-header-reprint cadence from the user's
+  // <method>Control(printHeader=...).  scaleSetup defaults to 10; if the
+  // R-side control doesn't supply the field (older callers), the default
+  // remains in effect.
+  if (control.containsElementNamed("printHeader")) {
+    nlmOp.scale.printHeader = as<int>(control["printHeader"]);
+  }
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];

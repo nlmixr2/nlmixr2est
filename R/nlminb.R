@@ -104,6 +104,7 @@ nlminbControl <- function(eval.max=200,
                           useColor = crayon::has_color(),
                           printNcol = floor((getOption("width") - 23) / 12), #
                           print = 1L, #
+                          printHeader = 10L, #
                           normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
                           scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
                           scaleCmax = 1e5, #
@@ -217,6 +218,7 @@ nlminbControl <- function(eval.max=200,
 
   checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
   checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
+  checkmate::assertIntegerish(printHeader, len=1, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
@@ -268,6 +270,7 @@ nlminbControl <- function(eval.max=200,
 
                useColor=useColor,
                print=print,
+               printHeader=as.integer(printHeader),
                printNcol=printNcol,
                scaleType=scaleType,
                normType=normType,
