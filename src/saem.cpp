@@ -11,6 +11,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "solveWarnHelper.h"
 
 #define _(String) (String)
 
@@ -1803,6 +1804,9 @@ public:
           RSprintf("%f\t", pl[j]);
         }
         RSprintf("\n");
+        /* See inner.cpp's foceiOfvOptim: collapse per-iteration ODE-solve
+           warning floods into one summary line. */
+        nmFlushRxSolveWarn(5);
       }
       Rcpp::checkUserInterrupt();
     }//kiter

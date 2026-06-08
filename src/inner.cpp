@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "solveWarnHelper.h"
 #include <n1qn1c.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
@@ -4736,6 +4737,11 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     } else {
       RSprintf("\n");
     }
+    /* One summary line per printed iteration for any ODE-solve warnings
+       (currently intdy window-misses) that accumulated since the last
+       flush. Without this, a difficult model floods the console with
+       hundreds of identical lines per iteration. */
+    nmFlushRxSolveWarn(5);
   }
   return ret;
 }
