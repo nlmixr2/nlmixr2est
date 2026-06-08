@@ -454,13 +454,21 @@ static inline void scalePrintLine(int ncol){
 
 static inline void scalePrintHeader(scaling *scale) {
   if (scale->every != 0) {
-    if (!scale->simple) {
+    // Match scalePrintFun's auto-skip rules so the Key text only
+    // mentions rows that will actually appear in iteration output.
+    int skipU = (scale->scaleType == scaleTypeNone);
+    int anyXform = 0;
+    for (int k = 0; k < scale->npars; k++) {
+      if (scale->xPar[k] != 0) { anyXform = 1; break; }
+    }
+    int skipX = skipU && !anyXform;
+    if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
       if (scale->useColor)
         RSprintf("\033[1mKey:\033[0m ");
       else
         RSprintf("Key: ");
-      RSprintf("U: Unscaled Parameters; ");
-      RSprintf("X: Back-transformed parameters; ");
+      if (!skipU) RSprintf("U: Unscaled Parameters; ");
+      if (!skipX) RSprintf("X: Back-transformed parameters; ");
       // Estimator-specific Key suffix (e.g. focei's G/F/C/M gradient
       // legend and omega note).  When NULL the standard "Key:" line is
       // closed with a newline so the column header follows on a fresh row.
@@ -506,6 +514,19 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
   // Scaled
   int finalize = 0, i = 0;
   scale->cn = scale->cn+1;
+  // Auto-skip degenerate rows.  When scaleType == None, scaleUnscalePar
+  // returns x[i] unchanged so the U row is identical to # and is skipped.
+  // When U is skipped AND no xPar entry asks for a back-transform, the
+  // X row is also identical to # and is skipped too — methods with no
+  // scaling and no log/logit-transformed parameters collapse to a single
+  // # row.  The user's iterPrintControl(simple=TRUE) override still
+  // forces both rows off regardless of auto-detection.
+  int skipU = (scale->scaleType == scaleTypeNone);
+  int anyXform = 0;
+  for (i = 0; i < scale->npars; i++){
+    if (scale->xPar[i] != 0) { anyXform = 1; break; }
+  }
+  int skipX = skipU && !anyXform;
   if (scale->save) {
     scale->niter.push_back(scale->cn);
 
@@ -514,7 +535,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     for (i = 0; i < scale->npars; i++){
       scale->vPar.push_back(x[i]);
     }
-    if (!scale->simple) {
+    if (!scale->simple && !skipU) {
       // Unscaled
       scale->iterType.push_back(iterTypeUnscaled);
       scale->niter.push_back(scale->niter.back());
@@ -522,6 +543,8 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       for (i = 0; i < scale->npars; i++){
         scale->vPar.push_back(scaleUnscalePar(scale, x, i));
       }
+    }
+    if (!scale->simple && !skipX) {
       // Back-transformed (7)
       scale->iterType.push_back(iterTypeBack);
       scale->niter.push_back(scale->niter.back());
@@ -577,7 +600,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     } else {
       RSprintf("\n");
     }
-    if (!scale->simple) {
+    if (!scale->simple && !skipU) {
       RSprintf("|    U|               |");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
@@ -602,6 +625,8 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       } else {
         RSprintf("\n");
       }
+    }
+    if (!scale->simple && !skipX) {
       RSprintf("|    X|               |");
       for (i = 0; i < scale->npars; i++){
         if (scale->xPar[i] == 1){

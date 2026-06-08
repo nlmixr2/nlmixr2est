@@ -17,13 +17,20 @@
   continues to work — internally the outer `*Control()` wraps the
   scalar arguments into an `iterPrintControl()` call.
 
-- saem now uses the same default iteration-print format as every
-  other estimator (full three-row `#`/`U`/`X` output).  Because
-  saem's parameter vector is already on the model scale with no
-  internal optimizer scaling, the `U` and `X` rows mirror the `#`
-  row — but the layout matches the other methods.  Users who prefer
-  the old single-row output can pass
-  `saemControl(print = iterPrintControl(simple = TRUE))`.
+- saem now applies the same parameter back-transforms as focei.
+  The `X` row shows `exp(theta)` for log-transformed thetas and
+  `expit(theta, lower, upper)` for logit-transformed ones, derived
+  from `ui$muRefCurEval` on the R side.
+
+- The shared iteration-printer auto-skips degenerate rows: when a
+  method has no internal optimizer scaling (saem, group-C
+  optimizers with `scaleType = "none"`) the `U` row is dropped
+  because it would mirror `#`, and when there are also no
+  log/logit-transformed parameters the `X` row is dropped too —
+  so models with no transforms collapse to a single `#` row per
+  iteration.  Users who want to force-skip the U/X rows even with
+  transforms present can pass
+  `*Control(print = iterPrintControl(simple = TRUE))`.
 
 # nlmixr2est 6.0.1
 

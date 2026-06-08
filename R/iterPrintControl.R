@@ -110,6 +110,61 @@ iterPrintControl <- function(every = 1L,
   .ret
 }
 
+#' Derive xPar / logitThetaLow / logitThetaHi from a ui object
+#'
+#' Build the integer transform code vector (xPar) and matching logit
+#' bound vectors that the shared C++ printer uses to render the X
+#' (back-transformed) row.  Encoding matches focei's existing
+#' convention in src/inner.cpp:
+#'
+#'   xPar[i] =  1  → name is log-transformed; X shows `exp(value)`
+#'   xPar[i] = -m  → name is the m-th logit-transformed parameter
+#'                   (1-based); X shows
+#'                   `expit(value, logitThetaLow[m-1], logitThetaHi[m-1])`
+#'   xPar[i] =  0  → no transform; X mirrors U (and the row is
+#'                   typically auto-skipped if all xPar are 0)
+#'
+#' Names not present in `ui$muRefCurEval` (e.g. saem's `V(eta.*)`
+#' omega-variance names, residual-error names) silently get
+#' `xPar = 0` — they have no back-transform view.
+#'
+#' @param ui rxode2 ui object.
+#' @param printNames Character vector of parameter names in the same
+#'   order as the printed parameter vector.
+#' @return A list with `xPar` (integer vector), `logitThetaLow`,
+#'   `logitThetaHi` (numeric vectors, one entry per logit-transformed
+#'   parameter).
+#' @noRd
+.iterPrintXParFromUi <- function(ui, printNames) {
+  printNames <- as.character(printNames)
+  muRef <- ui$muRefCurEval
+  xPar <- integer(length(printNames))
+  logitThetaLow <- numeric(0)
+  logitThetaHi <- numeric(0)
+  if (is.null(muRef) || nrow(muRef) == 0L) {
+    return(list(xPar = xPar,
+                logitThetaLow = logitThetaLow,
+                logitThetaHi = logitThetaHi))
+  }
+  for (i in seq_along(printNames)) {
+    nm <- printNames[i]
+    idx <- which(muRef$parameter == nm)
+    if (length(idx) == 0L) next
+    idx <- idx[1L]
+    ce <- muRef$curEval[idx]
+    if (isTRUE(ce == "exp")) {
+      xPar[i] <- 1L
+    } else if (isTRUE(ce == "expit")) {
+      logitThetaLow <- c(logitThetaLow, muRef$low[idx])
+      logitThetaHi  <- c(logitThetaHi,  muRef$hi[idx])
+      xPar[i] <- -as.integer(length(logitThetaLow))
+    }
+  }
+  list(xPar = xPar,
+       logitThetaLow = logitThetaLow,
+       logitThetaHi = logitThetaHi)
+}
+
 #' Wrap scalar or list arguments into an iterPrintControl object
 #'
 #' Internal helper used by every `*Control()` function to absorb the

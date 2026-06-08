@@ -263,10 +263,16 @@
     # Iteration-print formatting flows through one sub-list consumed by
     # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
     # uses the same default as every other method (full #/U/X output);
-    # because Plambda lives on the model scale with no internal
-    # optimizer scaling and xPar is all-zeros, U and X are identical
-    # copies of the # row — but the layout matches the other methods.
+    # because Plambda lives on the model scale (no internal optimizer
+    # scaling), the U row will auto-skip — leaving # and X.  xPar comes
+    # from ui$muRefCurEval so X shows exp(theta) for log-transformed
+    # parameters and expit(theta, lo, hi) for logit-transformed ones,
+    # exactly like focei.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
+    .xform <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
+    .cfg$xPar          <- as.integer(.xform$xPar)
+    .cfg$logitThetaLow <- as.double(.xform$logitThetaLow)
+    .cfg$logitThetaHi  <- as.double(.xform$logitThetaHi)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
     .saemCheckCfg(.cfg)

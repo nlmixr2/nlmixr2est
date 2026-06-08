@@ -793,26 +793,36 @@ public:
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
 
-    // Set up the shared scale.h iteration-print struct.  saem has no
-    // internal optimizer scaling and the printed vector mixes
-    // theta/omega/sigma, so we use scaleTypeNone and rely on the
-    // R-side saem.R forcing iterPrintControl$simple = TRUE — that
-    // makes scaleApplyIterPrintControl set scale.simple = 1, which
-    // emits a single "#" row per iter using focei's column-wrap/
-    // color/header machinery.
+    // Set up the shared scale.h iteration-print struct.  saem uses
+    // scaleTypeNone (no internal optimizer scaling — Plambda is on
+    // model scale) so scalePrintFun's auto-skip drops the redundant U
+    // row.  xPar / logitThetaLow / logitThetaHi come from the R side
+    // via .iterPrintXParFromUi(ui$muRefCurEval), so the X row shows
+    // exp(theta) for log-transformed thetas and expit(theta, lo, hi)
+    // for logit-transformed thetas — same back-transforms focei
+    // applies.  Omega and residual-error entries in the printed
+    // vector have xPar = 0 and so contribute no X-row delta.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
-    scaleInitPar.assign(std::max(nprint, 1), 0.0);
-    scaleC.assign(std::max(nprint, 1), NA_REAL);
-    scaleXPar.assign(std::max(nprint, 1), 0);
-    scaleLogitLow.assign(1, 0.0);
-    scaleLogitHi.assign(1, 1.0);
-    // The useColor/printNcol/print scaleSetup args are passed as
-    // placeholders; the user's iterPrintControl values are then applied
-    // via scaleApplyIterPrintControl.  saem uses scaleTypeNone with
-    // an all-zero xPar (Plambda is already on the model scale), so the
-    // U and X rows that scalePrintFun emits are identical copies of #.
-    // The layout still matches the other estimators.
+    {
+      IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
+      NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
+      NumericVector logitHiIn  = as<NumericVector>(x["logitThetaHi"]);
+      scaleInitPar.assign(std::max(nprint, 1), 0.0);
+      scaleC.assign(std::max(nprint, 1), NA_REAL);
+      scaleXPar.assign(xParIn.begin(), xParIn.end());
+      if (scaleXPar.empty()) scaleXPar.assign(1, 0);
+      if (logitLowIn.size() > 0) {
+        scaleLogitLow.assign(logitLowIn.begin(), logitLowIn.end());
+        scaleLogitHi.assign(logitHiIn.begin(), logitHiIn.end());
+      } else {
+        // scalePrintFun's logit branch is only reached when xPar < 0;
+        // a one-element placeholder satisfies the data-pointer demand
+        // when no logit-transformed parameters are present.
+        scaleLogitLow.assign(1, 0.0);
+        scaleLogitHi.assign(1, 1.0);
+      }
+    }
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
