@@ -1,6 +1,7 @@
 #' nlmixr2 optim defaults
 #'
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::optim
 #' @inheritParams foceiControl
 #' @inheritParams saemControl

@@ -1,5 +1,6 @@
 #' nlmixr2 defaults controls for nls
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::nls
 #' @inheritParams stats::nls.control
 #' @inheritParams foceiControl

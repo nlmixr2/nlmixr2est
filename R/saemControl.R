@@ -29,12 +29,7 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
-#' @param print Either a scalar print-frequency (`0` = suppress; `1`
-#'     (default) = print every iteration; `N` = every N iterations),
-#'     OR a pre-built [iterPrintControl()] object bundling all
-#'     iteration-print options (column wrap, header cadence, color).
-#'     See [iterPrintControl()] for the full set of formatting
-#'     options.
+#' @inheritParams iterPrintParams
 #'
 #' @param trace An integer indicating if you want to trace(1) the
 #'     SAEM algorithm process.  Useful for debugging, but not for

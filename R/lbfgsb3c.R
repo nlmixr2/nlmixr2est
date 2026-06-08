@@ -1,5 +1,6 @@
 #' Control for lbfgsb3c estimation method in nlmixr2
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams lbfgsb3c::lbfgsb3c

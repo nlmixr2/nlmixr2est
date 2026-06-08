@@ -1,5 +1,6 @@
 #' Control for newuoa estimation method in nlmixr2
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams bobyqaControl

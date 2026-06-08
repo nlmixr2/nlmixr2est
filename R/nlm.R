@@ -1,5 +1,6 @@
 #' nlmixr2 defaults controls for nlm
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::nlm
 #' @inheritParams foceiControl
 #' @inheritParams saemControl

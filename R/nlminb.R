@@ -1,5 +1,6 @@
 #' nlmixr2 nlminb defaults
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::nlminb
 #' @inheritParams foceiControl
 #' @inheritParams saemControl

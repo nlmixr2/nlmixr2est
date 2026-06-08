@@ -28,13 +28,7 @@
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
-#' @param print Either an integer print-frequency (`0` = suppress
-#'     iteration output, `1` = print every function evaluation
-#'     (default), `5` = print every 5 evaluations), OR a pre-built
-#'     [iterPrintControl()] object bundling all iteration-print
-#'     options.  Passing the scalar form is equivalent to
-#'     `iterPrintControl(every = <value>, ncol = printNcol,
-#'     useColor = useColor)`.
+#' @inheritParams iterPrintParams
 #'
 #' @param scaleTo Scale the initial parameter estimate to this value.
 #'     By default this is 1.  When zero or below, no scaling is performed.
@@ -207,11 +201,6 @@
 #' @param ci Confidence level for some tables.  By default this is
 #'     0.95 or 95\% confidence.
 #'
-#' @param useColor Logical (or `NULL`) indicating if focei can use ANSI
-#'     color/bold codes.  When `NULL` (the default), uses
-#'     [iterPrintControl()]'s default ([crayon::has_color()]).
-#'     Equivalent to `print = iterPrintControl(useColor = ...)`.
-#'
 #' @param boundTol Tolerance for boundary issues.
 #'
 #' @param calcTables This boolean is to determine if the foceiFit
@@ -230,11 +219,6 @@
 #'
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
-#'
-#' @param printNcol Number of columns to printout before wrapping
-#'     parameter estimates/gradient.  When `NULL` (the default), uses
-#'     [iterPrintControl()]'s default (`floor((getOption("width") - 23) / 12)`).
-#'     Equivalent to `print = iterPrintControl(ncol = ...)`.
 #'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)

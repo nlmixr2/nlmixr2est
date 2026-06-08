@@ -1,5 +1,6 @@
 #' Control for n1qn1 estimation method in nlmixr2
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams n1qn1::n1qn1
