@@ -1454,14 +1454,12 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   # shared pure inspector .iterPrintXParFromUi.  Default call gives
   # vectors of length ntheta_total in ntheta order — exactly what
   # focei's C-side consumes (both the iteration printer and the
-  # final-fit-summary back-transform read these by ntheta index).
-  .xform <- .iterPrintXParFromUi(ui)
-  env$thetaXPar       <- .xform$xPar
-  env$thetaProbitIdx  <- .xform$probitIdx
-  env$logitThetaLow   <- .xform$logitThetaLow
-  env$logitThetaHi    <- .xform$logitThetaHi
-  env$probitThetaLow  <- .xform$probitThetaLow
-  env$probitThetaHi   <- .xform$probitThetaHi
+  # final-fit-summary back-transform read xform$xPar / xform$probitIdx
+  # by ntheta index, and xform$logitThetaLow/Hi / probitThetaLow/Hi
+  # by the codes those arrays encode).  Single transport sub-list,
+  # consistent with how saem (.cfg$xform) and nlm (.ctl$iterPrintXform)
+  # ship the same data.
+  env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -2114,9 +2112,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
-                    "thetaXPar", "thetaProbitIdx",
-                    "logitThetaLow", "logitThetaHi",
-                    "probitThetaLow", "probitThetaHi",
+                    "xform",
                     "lower", "noLik", "objf", "OBJF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                     "xType", "IDlabel", "ODEmodel", "model",
