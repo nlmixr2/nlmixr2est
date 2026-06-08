@@ -2,7 +2,8 @@
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
-                           "neta", "ntheta", "nF", "printTop", "needOptimHess")
+                           "neta", "ntheta", "nF", "printTop", "needOptimHess",
+                           "iterPrintControl")
 
 #' Control Options for FOCEi
 #'
@@ -27,10 +28,13 @@
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
-#' @param print Integer representing when the outer step is
-#'     printed. When this is 0 or do not print the iterations.  1 is
-#'     print every function evaluation (default), 5 is print every 5
-#'     evaluations.
+#' @param print Either an integer print-frequency (`0` = suppress
+#'     iteration output, `1` = print every function evaluation
+#'     (default), `5` = print every 5 evaluations), OR a pre-built
+#'     [iterPrintControl()] object bundling all iteration-print
+#'     options.  Passing the scalar form is equivalent to
+#'     `iterPrintControl(every = <value>, ncol = printNcol,
+#'     useColor = useColor)`.
 #'
 #' @param scaleTo Scale the initial parameter estimate to this value.
 #'     By default this is 1.  When zero or below, no scaling is performed.
@@ -203,7 +207,10 @@
 #' @param ci Confidence level for some tables.  By default this is
 #'     0.95 or 95\% confidence.
 #'
-#' @param useColor Boolean indicating if focei can use ASCII color codes
+#' @param useColor Logical (or `NULL`) indicating if focei can use ANSI
+#'     color/bold codes.  When `NULL` (the default), uses
+#'     [iterPrintControl()]'s default ([crayon::has_color()]).
+#'     Equivalent to `print = iterPrintControl(useColor = ...)`.
 #'
 #' @param boundTol Tolerance for boundary issues.
 #'
@@ -225,13 +232,9 @@
 #'     to include a condition number calculation.
 #'
 #' @param printNcol Number of columns to printout before wrapping
-#'     parameter estimates/gradient
-#'
-#' @param printHeader How often the column header is re-emitted during
-#'     iteration printing, counted in parameter-print events.  With
-#'     `print = 5` and `printHeader = 10`, the header re-prints every
-#'     50 iterations.  A value of `0` prints the header once at fit
-#'     start only.  Default `10`.
+#'     parameter estimates/gradient.  When `NULL` (the default), uses
+#'     [iterPrintControl()]'s default (`floor((getOption("width") - 23) / 12)`).
+#'     Equivalent to `print = iterPrintControl(ncol = ...)`.
 #'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)
@@ -794,8 +797,7 @@ foceiControl <- function(sigdig = 3, #
                          maxOuterIterations = 5000, #
                          n1qn1nsim = NULL, #
                          print = 1L, #
-                         printNcol = floor((getOption("width") - 23) / 12), #
-                         printHeader = 10L, #
+                         printNcol = NULL, #
                          scaleTo = 1.0, #
                          scaleObjective = 0, #
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -829,7 +831,7 @@ foceiControl <- function(sigdig = 3, #
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          ci = 0.95, #
-                         useColor = crayon::has_color(), #
+                         useColor = NULL, #
                          boundTol = NULL, #
                          calcTables = TRUE,#
                          noAbort = TRUE, #
@@ -985,9 +987,17 @@ foceiControl <- function(sigdig = 3, #
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
   checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertIntegerish(printHeader, len=1, lower=0, any.missing=FALSE)
+  # All print-related arguments are absorbed (and validated) by
+  # iterPrintControl() — pass either a scalar `print = N` plus the
+  # historical `printNcol` / `useColor` siblings, or a pre-built
+  # `print = iterPrintControl(...)` object.  `list(...)$iterPrintControl`
+  # picks up the round-trip case where the returned control list is
+  # passed back through do.call(foceiControl, .ctl) (the field arrives
+  # via `...` since iterPrintControl is not a formal foceiControl arg).
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = list(...)$iterPrintControl)
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
@@ -1076,7 +1086,6 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
   checkmate::assertNumeric(boundTol, lower=0, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -1338,7 +1347,7 @@ foceiControl <- function(sigdig = 3, #
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
     n1qn1nsim = as.integer(n1qn1nsim),
-    print = as.integer(print),
+    iterPrintControl = .iterPrintControl,
     lbfgsLmm = as.integer(lbfgsLmm),
     lbfgsPgtol = as.double(lbfgsPgtol),
     lbfgsFactr = as.double(lbfgsFactr),
@@ -1361,11 +1370,8 @@ foceiControl <- function(sigdig = 3, #
     sigdig = as.double(sigdig),
     sigdigTable=sigdigTable,
     scaleObjective = as.double(scaleObjective),
-    useColor = useColor,
     boundTol = as.double(boundTol),
     calcTables = calcTables,
-    printNcol = as.integer(printNcol),
-    printHeader = as.integer(printHeader),
     noAbort = noAbort,
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),

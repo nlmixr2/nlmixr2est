@@ -29,22 +29,12 @@
 #'     The third value represents the number of bootstrap/reshuffling or
 #'     uni-dimensional random samples are taken.
 #'
-#' @param print The number it iterations that are completed before
-#'     anything is printed to the console.  By default, this is 1.
-#'
-#' @param printNcol Number of columns to print per iteration row before
-#'     wrapping to a continuation row.  Defaults to a width-derived value
-#'     so the output fits an 80-column terminal.  Shared with the focei
-#'     iteration printer.
-#'
-#' @param printHeader How often the column header is re-emitted during
-#'     iteration printing, counted in parameter-print events (not raw
-#'     iterations).  With `print = 5` and `printHeader = 10`, the header
-#'     re-prints every 50 iterations.  A value of `0` prints the header
-#'     once at fit startup only.  Default `10`.
-#'
-#' @param printUseColor Logical; whether to use ANSI color/bold escapes in
-#'     the iteration print.  Defaults to terminal support.
+#' @param print Either a scalar print-frequency (`0` = suppress; `1`
+#'     (default) = print every iteration; `N` = every N iterations),
+#'     OR a pre-built [iterPrintControl()] object bundling all
+#'     iteration-print options (column wrap, header cadence, color).
+#'     See [iterPrintControl()] for the full set of formatting
+#'     options.
 #'
 #' @param trace An integer indicating if you want to trace(1) the
 #'     SAEM algorithm process.  Useful for debugging, but not for
@@ -154,10 +144,7 @@ saemControl <- function(seed = 99,
                         nEm = 300,
                         nmc = 3,
                         nu = c(2, 2, 2),
-                        print = 1,
-                        printNcol = floor((getOption("width") - 23) / 12),
-                        printHeader = 10L,
-                        printUseColor = crayon::has_color(),
+                        print = 1L,
                         trace = 0, # nolint
                         covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
                         calcTables = TRUE,
@@ -195,7 +182,7 @@ saemControl <- function(seed = 99,
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% c("genRxControl", "mcmc",
-                             "DEBUG"))]
+                             "DEBUG", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -217,10 +204,13 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nEm, any.missing=FALSE, len=1, lower=0)
   checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
   checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
-  checkmate::assertIntegerish(print, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertIntegerish(printNcol, any.missing=FALSE, lower=1, len=1)
-  checkmate::assertIntegerish(printHeader, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertLogical(printUseColor, any.missing=FALSE, len=1)
+  # `print` can be either a scalar print-frequency or a pre-built
+  # iterPrintControl object; .absorbIterPrintControl validates either form
+  # and returns the canonical iterPrintControl list.  list(...)$iterPrintControl
+  # catches the round-trip case where the previous saemControl()'s return
+  # value is passed back through do.call(saemControl, .ctl).
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (!is.null(.xtra$DEBUG)) {
     trace <- .xtra$DEBUG # nolint
   }
@@ -301,10 +291,7 @@ saemControl <- function(seed = 99,
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     rxControl = rxControl,
     seed = seed,
-    print = print,
-    printNcol = as.integer(printNcol),
-    printHeader = as.integer(printHeader),
-    printUseColor = as.logical(printUseColor),
+    iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint
     optExpression = optExpression,
     literalFix=literalFix,

@@ -158,10 +158,9 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          shi21maxFD=20L,
                          solveType=c("grad", "fun"),
 
-                         useColor = crayon::has_color(),
-                         printNcol = floor((getOption("width") - 23) / 12), #
+                         useColor = NULL,
+                         printNcol = NULL, #
                          print = 1L, #
-                         printHeader = 10L, #
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
                          scaleCmax = 1e5, #
@@ -236,7 +235,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -271,10 +270,10 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printHeader, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -329,10 +328,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                eventType=eventType,
                shiErr=shiErr,
                shi21maxFD=as.integer(shi21maxFD),
-               useColor=useColor,
-               print=print,
-               printHeader=as.integer(printHeader),
-               printNcol=printNcol,
+               iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
                scaleCmax=scaleCmax,

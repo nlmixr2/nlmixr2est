@@ -429,6 +429,19 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
   return 0;
 }
 
+// Read the user-facing iterPrintControl() sub-list and populate the four
+// iteration-print fields on a scaling struct.  Each estimator's setup code
+// calls this exactly once to wire its R-side configuration into the shared
+// printer.  Other scaling fields (printSimple, printKey) are estimator-
+// internal and remain the caller's responsibility to set.
+static inline void scaleApplyIterPrintControl(scaling *scale,
+                                              const Rcpp::List &ipc) {
+  scale->print       = Rcpp::as<int>(ipc["every"]);
+  scale->printNcol   = Rcpp::as<int>(ipc["ncol"]);
+  scale->printHeader = Rcpp::as<int>(ipc["headerEvery"]);
+  scale->useColor    = Rcpp::as<int>(ipc["useColor"]);
+}
+
 static inline void scalePrintLine(int ncol){
   RSprintf("|-----+---------------+");
   for (int i = 0; i < ncol; i++){

@@ -247,6 +247,10 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
+  // Iteration-print fields (print/printNcol/useColor/printHeader) come from
+  // the iterPrintControl sub-list built R-side; scaleApplyIterPrintControl
+  // populates them on the scaling struct.  scaleSetup itself only needs
+  // placeholders for those four args since they get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -254,22 +258,15 @@ RObject nlmSetup(Environment e) {
              nlmOp.logitThetaLow,
              nlmOp.logitThetaHi,
              as<CharacterVector>(e["thetaNames"]) ,
-             as<int>(control["useColor"]),
-             as<int>(control["printNcol"]),
-             as<int>(control["print"]),
+             /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
              as<int>(control["scaleType"]),
              as<double>(control["scaleCmin"]),
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
-  // Override the periodic-header-reprint cadence from the user's
-  // <method>Control(printHeader=...).  scaleSetup defaults to 10; if the
-  // R-side control doesn't supply the field (older callers), the default
-  // remains in effect.
-  if (control.containsElementNamed("printHeader")) {
-    nlmOp.scale.printHeader = as<int>(control["printHeader"]);
-  }
+  scaleApplyIterPrintControl(&(nlmOp.scale),
+                             as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];

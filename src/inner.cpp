@@ -4131,8 +4131,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
   // op_focei.printInner=as<int>(foceiO["printInner"]);
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
-  op_focei.printOuter=as<int>(foceiO["print"]);
-  if (op_focei.printOuter < 0) op_focei.printOuter = -op_focei.printOuter;
+  // op_focei.printOuter is populated below from foceiO["iterPrintControl"]
+  // via scaleApplyIterPrintControl, after the other op_focei fields are set.
   unsigned int totN=op_focei.ntheta + op_focei.omegan;
   NumericVector cEps=foceiO["derivEps"];
   if (cEps.size() != 2){
@@ -4281,10 +4281,18 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.eigen = as<int>(foceiO["eigen"]);
   op_focei.ci=as<double>(foceiO["ci"]);
   op_focei.sigdig=as<double>(foceiO["sigdigTable"]);
-  op_focei.useColor=as<int>(foceiO["useColor"]);
   op_focei.boundTol=as<double>(foceiO["boundTol"]);
-  op_focei.printNcol=as<int>(foceiO["printNcol"]);
-  op_focei.printHeader=as<int>(foceiO["printHeader"]);
+  // Iteration-print configuration arrives as a single sub-list built by
+  // R-side iterPrintControl(); scaleApplyIterPrintControl populates the
+  // op_focei.scale struct, and we mirror the values onto the bare
+  // op_focei.useColor/printNcol/printHeader fields used by the legacy
+  // header code path further down (see scalePrintHeader call site).
+  scaleApplyIterPrintControl(&op_focei.scale,
+                             as<List>(foceiO["iterPrintControl"]));
+  op_focei.useColor    = op_focei.scale.useColor;
+  op_focei.printNcol   = op_focei.scale.printNcol;
+  op_focei.printHeader = op_focei.scale.printHeader;
+  op_focei.printOuter  = op_focei.scale.print;
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
@@ -7267,9 +7275,6 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
     op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
     op_focei.scale.thetaNames    = scaleNames;
-    op_focei.scale.useColor      = op_focei.useColor;
-    op_focei.scale.printNcol     = op_focei.printNcol;
-    op_focei.scale.print         = op_focei.printOuter;
     op_focei.scale.normType      = op_focei.normType;
     op_focei.scale.scaleType     = op_focei.scaleType;
     op_focei.scale.scaleCmin     = op_focei.scaleCmin;
@@ -7279,8 +7284,10 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.c2            = op_focei.c2;
     op_focei.scale.printSimple   = 0;
     op_focei.scale.printKey      = 0;  // focei prints its richer Key manually
-    op_focei.scale.printHeader   = op_focei.printHeader;
     op_focei.scale.printCount    = 0;
+    // print / printNcol / useColor / printHeader already populated by
+    // scaleApplyIterPrintControl(&op_focei.scale, ...) earlier in
+    // foceiSetup_; intentionally not re-set here.
     op_focei.scale.save          = 0;  // focei records into module-level globals
     op_focei.scale.cn            = 0;
   }

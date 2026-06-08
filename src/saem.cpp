@@ -787,7 +787,6 @@ public:
       statrese[b] = 0.0;
     }
 
-    print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
     parHistThetaKeep = find(parHistThetaKeep);
@@ -800,15 +799,14 @@ public:
     // a single "#" row per iter using focei's column-wrap/color/header
     // machinery.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
-    printNcol  = as<int>(x["printNcol"]);
-    printUseColor = as<int>(x["printUseColor"]);
-    printHeader = as<int>(x["printHeader"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
     scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleXPar.assign(std::max(nprint, 1), 0);
     scaleLogitLow.assign(1, 0.0);
     scaleLogitHi.assign(1, 1.0);
+    // Plain scaleSetup with print/printNcol/useColor placeholders; the
+    // user's iterPrintControl values are then applied via the shared helper.
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
@@ -816,18 +814,17 @@ public:
                scaleLogitLow.data(),
                scaleLogitHi.data(),
                scaleNames,
-               printUseColor,
-               printNcol,
-               print,
+               /*useColor*/0, /*printNcol*/1, /*print*/0,
                normTypeConstant,
                scaleTypeNone,
-               1e-7, // scaleCmin (unused with scaleTypeNone)
-               1e7,  // scaleCmax (unused with scaleTypeNone)
-               0.0,  // scaleTo
+               1e-7, 1e7, 0.0,
                nprint);
+    scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
     scale.printSimple = 1;
-    scale.printHeader = printHeader;
     scale.save = 0; // par_hist already records the iteration history
+    // Mirror the print frequency into the SAEM::print member for any
+    // existing call sites that still consult it.
+    print = scale.print;
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -1936,9 +1933,9 @@ private:
   std::vector<double> scaleLogitLow;
   std::vector<double> scaleLogitHi;
   CharacterVector scaleNames;
-  int printNcol;
-  int printUseColor;
-  int printHeader;
+  // printNcol/useColor/printHeader live on the embedded `scale` struct above
+  // (populated by scaleApplyIterPrintControl from the user's iterPrintControl
+  // sub-list); no separate class members needed.
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
