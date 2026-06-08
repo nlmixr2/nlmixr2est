@@ -9,6 +9,13 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+
+// scale.h uses `_("...")` for translatable strings; provide the trivial
+// passthrough macro before including it (matches saem.cpp's usage).
+#ifndef _
+#define _(String) (String)
+#endif
+#include "scale.h"
 #include <n1qn1c.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
@@ -251,6 +258,10 @@ struct focei_options {
   int useColor;
   double boundTol;
   int printNcol;
+  // How often the column header is re-emitted during iteration printing
+  // (counted in parameter-print events).  0 = print header once at fit start.
+  // Wired through scale.printHeader in foceiSetupScale().
+  int printHeader;
   int noabort;
   int interaction;
   double cholSEtol;
@@ -343,6 +354,13 @@ struct focei_options {
   int *mixIdx = NULL;
   double *mixProb = NULL;
   double *mixProbGrad = NULL;
+
+  // Iteration-print formatting shared with saem/nlm via src/scale.h.
+  // Populated by foceiSetupScale() after the other op_focei fields
+  // (xPar, scaleC, initPar, logitThetaLow/Hi, etc.) are filled in.
+  // scale.save=0 because focei already records iteration history into the
+  // module-level vPar/niter/iterType/vGrad/niterGrad/gradType globals.
+  scaling scale;
 };
 
 focei_options op_focei;
@@ -4266,6 +4284,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.useColor=as<int>(foceiO["useColor"]);
   op_focei.boundTol=as<double>(foceiO["boundTol"]);
   op_focei.printNcol=as<int>(foceiO["printNcol"]);
+  op_focei.printHeader=as<int>(foceiO["printHeader"]);
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
@@ -4635,108 +4654,18 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
       vPar.push_back(unscalePar(x, i));
     }
   }
-  if (op_focei.printOuter != 0 && op_focei.nF % op_focei.printOuter == 0){
-    if (op_focei.useColor && !isRstudio())
-      RSprintf("|\033[1m%5d\033[0m|%#14.8g |", op_focei.nF+op_focei.nF2, ret);
-    else
-      RSprintf("|%5d|%#14.8g |", op_focei.nF+op_focei.nF2, ret);
-    for (i = 0; i < n; i++){
-      RSprintf("%#10.4g |", x[i]);
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  > n){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (op_focei.scaleObjective){
-      RSprintf("|    U|%14.8g |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-    } else {
-      RSprintf("|    U|%14.8g |", ret);
-    }
-    for (i = 0; i < n; i++){
-      // new  = (theta[k] - op_focei.scaleTo)*op_focei.scaleC[k] +  op_focei.initPar[k]
-      // (new-ini)/c+scaleTo = theta[]
-      RSprintf("%#10.4g |", unscalePar(x, i));
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  > op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (op_focei.scaleObjective){
-      if (op_focei.useColor && !isRstudio()){
-        RSprintf("|    X|\033[1m%14.8g\033[0m |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-      } else {
-        RSprintf("|    X|%14.8g |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-      }
-    } else {
-      if (op_focei.useColor && !isRstudio())
-        RSprintf("|    X|\033[1m%14.8g\033[0m |", ret);
-      else
-        RSprintf("|    X|%14.8g |", ret);
-    }
-    for (i = 0; i < n; i++){
-      if (op_focei.xPar[i] == 1){
-        RSprintf("%#10.4g |", exp(unscalePar(x, i)));
-      } else if (op_focei.xPar[i] < 0){
-        int m = -op_focei.xPar[i]-1;
-        RSprintf("%#10.4g |", expit(unscalePar(x, i), op_focei.logitThetaLow[m], op_focei.logitThetaHi[m]));
-      } else {
-        RSprintf("%#10.4g |", unscalePar(x, i));
-      }
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-  }
+  // Emit the per-iteration #/U/X rows via the shared scale.h helper.  Gating
+  // (every printOuter calls) and column wrapping happen inside scalePrintFun.
+  // When scaleObjective is on, op_focei.scaleObjectiveTo is the optimizer's
+  // working OFV magnitude; pass the unscaled (model-level) OFV so all three
+  // rows show the same number the user expects.  The function-eval counter
+  // shown in the # column is scale.cn (incremented inside scalePrintFun),
+  // which differs from op_focei.nF+nF2 only across theta-resets — a minor
+  // semantic shift relative to the previous inline print.
+  double displayedOfv = op_focei.scaleObjective
+    ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
+    : ret;
+  scalePrintFun(&op_focei.scale, x, displayedOfv);
   return ret;
 }
 
@@ -4765,76 +4694,11 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  if (op_focei.printOuter != 0 && op_focei.nG % op_focei.printOuter == 0){
-    if (op_focei.useColor && op_focei.printNcol >= n){
-      switch(gradType.back()){
-      case 1:
-        RSprintf("|\033[4m    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|\033[4m    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|\033[4m    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|\033[4m    C| Central Diff. |");
-        break;
-      case 5:
-        RSprintf("|\033[4m    S|   Shi21 Diff. |");
-        break;
-      }
-    } else {
-      switch(gradType.back()){
-      case 1:
-        RSprintf("|    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|    C| Central Diff. |");
-        break;
-      case 5:
-        RSprintf("|    S|   Shi21 Diff. |");
-        break;
-      }
-    }
-    for (i = 0; i < n; i++){
-      RSprintf("%#10.4g ", gr[i]);
-      if (op_focei.useColor && op_focei.printNcol >= n && i == n-1){
-        RSprintf("\033[0m");
-      }
-      RSprintf("|");
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (!op_focei.useColor){
-      foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    }
-  }
+  // Gradient row via the shared scale.h helper.  The type code passed here
+  // matches the gradType convention focei has used inline: 1=Gill, 2=Mixed,
+  // 3=Forward, 4=Central, 5=Shi21.  scalePrintGrad maps these to the same
+  // G/M/F/C/S labels the previous inline switch emitted.
+  scalePrintGrad(&op_focei.scale, gr, gradType.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
@@ -7376,6 +7240,50 @@ Environment foceiFitCpp_(Environment e){
     Environment thetaReset = nlmixr2[".thetaReset"];
     restoreFromEnvrionment(thetaReset);
   }
+  // Populate the shared scale.h struct from op_focei's already-filled fields.
+  // We do this unconditionally (even when print is off) so that scalePrintFun
+  // calls below can no-op cleanly via scale.print==0.  scale.save=0 because
+  // focei keeps its own iteration history in the module-level globals
+  // (vPar/niter/iterType/vGrad/niterGrad/gradType).  printKey=0 because the
+  // focei-specific Key text below already covers the U/X legend (plus the
+  // G/F/C/M gradient method labels and the diagXform omega note).
+  {
+    // Build a CharacterVector with the printed column names in the same
+    // order scalePrintFun emits them (fixedTrans-indexed).
+    CharacterVector scaleNames(op_focei.npars);
+    int k = 1;
+    for (unsigned int i = 0; i < op_focei.npars; i++) {
+      int jj = op_focei.fixedTrans[i];
+      if (jj < thetaNames.size()) {
+        scaleNames[i] = thetaNames[jj];
+      } else {
+        scaleNames[i] = "o" + std::to_string(k++);
+      }
+    }
+    op_focei.scale.npars         = op_focei.npars;
+    op_focei.scale.initPar       = op_focei.initPar;
+    op_focei.scale.scaleC        = op_focei.scaleC;
+    op_focei.scale.xPar          = op_focei.xPar;
+    op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
+    op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
+    op_focei.scale.thetaNames    = scaleNames;
+    op_focei.scale.useColor      = op_focei.useColor;
+    op_focei.scale.printNcol     = op_focei.printNcol;
+    op_focei.scale.print         = op_focei.printOuter;
+    op_focei.scale.normType      = op_focei.normType;
+    op_focei.scale.scaleType     = op_focei.scaleType;
+    op_focei.scale.scaleCmin     = op_focei.scaleCmin;
+    op_focei.scale.scaleCmax     = op_focei.scaleCmax;
+    op_focei.scale.scaleTo       = op_focei.scaleTo;
+    op_focei.scale.c1            = op_focei.c1;
+    op_focei.scale.c2            = op_focei.c2;
+    op_focei.scale.printSimple   = 0;
+    op_focei.scale.printKey      = 0;  // focei prints its richer Key manually
+    op_focei.scale.printHeader   = op_focei.printHeader;
+    op_focei.scale.printCount    = 0;
+    op_focei.scale.save          = 0;  // focei records into module-level globals
+    op_focei.scale.cn            = 0;
+  }
   if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1 && op_focei.printOuter != 0){
     if (op_focei.useColor)
       RSprintf("\033[1mKey:\033[0m ");
@@ -7390,44 +7298,10 @@ Environment foceiFitCpp_(Environment e){
     RSprintf("M: Mixed forward and central difference gradient approximation\n");
     RSprintf("Unscaled parameters for Omegas=chol(solve(omega));\nDiagonals are transformed, as specified by foceiControl(diagXform=)\n");
     op_focei.t0 = clock();
-    foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    RSprintf("|    #| Objective Fun |");
-    int j,  i=0, finalize=0, k=1;
-
-    for (i = 0; i < op_focei.npars; i++){
-      j=op_focei.fixedTrans[i];
-      if (j < thetaNames.size()){
-        tmpS = thetaNames[j];
-        RSprintf("%#10s |", tmpS.c_str());
-      } else {
-        tmpS = "o" +std::to_string(k++);
-        RSprintf("%#10s |", tmpS.c_str());
-      }
-      if ((i + 1) != op_focei.npars && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (!op_focei.useColor){
-      foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    }
+    // Column header + separator now come from the shared helper.  Since
+    // op_focei.scale.printKey == 0 the helper skips its own Key line (we
+    // already emitted the richer focei-specific Key above).
+    scalePrintHeader(&op_focei.scale);
   }
   if (doPredOnly){
     if (e.exists("objective")){

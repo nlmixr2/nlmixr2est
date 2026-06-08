@@ -227,6 +227,12 @@
 #' @param printNcol Number of columns to printout before wrapping
 #'     parameter estimates/gradient
 #'
+#' @param printHeader How often the column header is re-emitted during
+#'     iteration printing, counted in parameter-print events.  With
+#'     `print = 5` and `printHeader = 10`, the header re-prints every
+#'     50 iterations.  A value of `0` prints the header once at fit
+#'     start only.  Default `10`.
+#'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)
 #'
@@ -789,6 +795,7 @@ foceiControl <- function(sigdig = 3, #
                          n1qn1nsim = NULL, #
                          print = 1L, #
                          printNcol = floor((getOption("width") - 23) / 12), #
+                         printHeader = 10L, #
                          scaleTo = 1.0, #
                          scaleObjective = 0, #
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -980,6 +987,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
   checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
   checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertIntegerish(printHeader, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
@@ -1357,6 +1365,7 @@ foceiControl <- function(sigdig = 3, #
     boundTol = as.double(boundTol),
     calcTables = calcTables,
     printNcol = as.integer(printNcol),
+    printHeader = as.integer(printHeader),
     noAbort = noAbort,
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),

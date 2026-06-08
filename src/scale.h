@@ -34,6 +34,12 @@ struct scaling {
   //              1 = print only the # row (for methods like saem that have no internal
   //                  optimizer scaling, where # == U and X requires extra transform info)
   int printSimple;
+  // printKey: 0 = scalePrintHeader skips the "Key: U: ... X: ..." legend and emits
+  //               only the column header + separator.  For callers (e.g. focei)
+  //               that emit their own richer Key text manually.
+  //           1 = scalePrintHeader emits both the Key legend and the column header
+  //               (default — matches the prior behavior).
+  int printKey;
   // printHeader: 0 = print column header only once at fit startup
   //              N>0 = re-print header every N parameter-print events
   // Default in scaleSetup is 10.
@@ -108,6 +114,7 @@ static inline void scaleSetup(scaling *scale,
   scale->printNcol = printNcol;
   scale->print = print;
   scale->printSimple = 0;
+  scale->printKey = 1;
   scale->printHeader = 10;
   scale->printCount = 0;
   scale->save = 1;
@@ -435,7 +442,7 @@ static inline void scalePrintLine(int ncol){
 
 static inline void scalePrintHeader(scaling *scale) {
   if (scale->print != 0) {
-    if (!scale->printSimple) {
+    if (!scale->printSimple && scale->printKey) {
       if (scale->useColor)
         RSprintf("\033[1mKey:\033[0m ");
       else
@@ -637,10 +644,23 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
   if (scale->print != 0 &&
       scale->cn % scale->print == 0){
+    // Method-specific label for the gradient row.  Matches focei's existing
+    // gradType encoding: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
+    // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
+    // generic "Gradient" label.
+    const char *label = NULL;
+    switch (type) {
+    case 1:  label = "    G|    Gill Diff. |"; break;  // Gill
+    case 2:  label = "    M|   Mixed Diff. |"; break;  // Mixed
+    case 3:  label = "    F| Forward Diff. |"; break;  // Forward
+    case 4:  label = "    C| Central Diff. |"; break;  // Central
+    case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
+    default: label = "    G|    Gradient   |"; break;
+    }
     if (scale->useColor && scale->printNcol >= scale->npars){
-      RSprintf("|\033[4m    G|   Gradient    |");
+      RSprintf("|\033[4m%s", label);
     } else {
-      RSprintf("|    G|    Gradient   |");
+      RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
