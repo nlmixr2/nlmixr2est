@@ -74,6 +74,18 @@ struct scaling {
   int *probitIdx;
   double *probitThetaLow;
   double *probitThetaHi;
+  // Backing storage for the six transform pointers above, populated
+  // by scaleAttachXform() from the R-side xform list returned by
+  // .iterPrintXParFromUi().  Estimators that own their own buffers
+  // (focei merges per-theta xPar with per-omega xType, so the npars-
+  // sized buffer lives on op_focei) leave these empty and assign the
+  // raw pointers to their own arrays directly.
+  std::vector<int>    xParStorage;
+  std::vector<int>    probitIdxStorage;
+  std::vector<double> logitLowStorage;
+  std::vector<double> logitHiStorage;
+  std::vector<double> probitLowStorage;
+  std::vector<double> probitHiStorage;
   CharacterVector thetaNames;
   std::vector<int> niter;
   std::vector<int> iterType;
@@ -466,6 +478,53 @@ static inline void scaleApplyIterPrintControl(scaling *scale,
   scale->simple      = Rcpp::as<int>(ipc["simple"]);
 }
 
+// Wire every per-parameter transform array onto a scaling struct from
+// a single R-side xform sub-list (output of .iterPrintXParFromUi()).
+// Required list elements:
+//
+//   xPar            integer (length scale->npars).  1=log, -m=m-th
+//                    logit, 0=no log/logit transform.
+//   probitIdx       integer (same length).  k=k-th probit transform,
+//                    0=no probit transform.
+//   logitThetaLow   numeric.  Bounds indexed by -xPar[i]-1 when xPar<0.
+//   logitThetaHi    numeric.  Same length as logitThetaLow.
+//   probitThetaLow  numeric.  Bounds indexed by probitIdx[i]-1 when >0.
+//   probitThetaHi   numeric.  Same length as probitThetaLow.
+//
+// The struct's own std::vector backing storage absorbs the data so
+// the pointers survive the caller's stack frame.  Empty arrays leave
+// the corresponding pointer NULL (scaleBackTransform treats that as
+// "no transform of that type anywhere").
+//
+// This is the single point of wiring for log/logit/probit back-
+// transforms — every estimator that calls it inherits identical
+// behavior across the iteration X row, parHistData, and the final-
+// fit-summary parFixed column.  Estimators with method-specific
+// per-parameter codes (focei mixes per-theta xPar with per-omega
+// xType in the same npars-sized array) skip this helper and assign
+// the raw pointers directly.
+static inline void scaleAttachXform(scaling *scale,
+                                    const Rcpp::List &xform) {
+  IntegerVector x  = Rcpp::as<IntegerVector>(xform["xPar"]);
+  IntegerVector pi = Rcpp::as<IntegerVector>(xform["probitIdx"]);
+  NumericVector ll = Rcpp::as<NumericVector>(xform["logitThetaLow"]);
+  NumericVector lh = Rcpp::as<NumericVector>(xform["logitThetaHi"]);
+  NumericVector pl = Rcpp::as<NumericVector>(xform["probitThetaLow"]);
+  NumericVector ph = Rcpp::as<NumericVector>(xform["probitThetaHi"]);
+  scale->xParStorage     .assign(x.begin(),  x.end());
+  scale->probitIdxStorage.assign(pi.begin(), pi.end());
+  scale->logitLowStorage .assign(ll.begin(), ll.end());
+  scale->logitHiStorage  .assign(lh.begin(), lh.end());
+  scale->probitLowStorage.assign(pl.begin(), pl.end());
+  scale->probitHiStorage .assign(ph.begin(), ph.end());
+  scale->xPar           = scale->xParStorage     .empty() ? NULL : scale->xParStorage     .data();
+  scale->probitIdx      = scale->probitIdxStorage.empty() ? NULL : scale->probitIdxStorage.data();
+  scale->logitThetaLow  = scale->logitLowStorage .empty() ? NULL : scale->logitLowStorage .data();
+  scale->logitThetaHi   = scale->logitHiStorage  .empty() ? NULL : scale->logitHiStorage  .data();
+  scale->probitThetaLow = scale->probitLowStorage.empty() ? NULL : scale->probitLowStorage.data();
+  scale->probitThetaHi  = scale->probitHiStorage .empty() ? NULL : scale->probitHiStorage .data();
+}
+
 // Wrap-continuation marker emitted at the start of a wrapped row when a
 // row has more parameter columns than fit in the chosen `ncol` width.
 // Width matches the left-hand "label" prefix on the data rows so the
@@ -512,6 +571,7 @@ static inline void scalePrintHeader(scaling *scale) {
     int anyXform = 0;
     for (int k = 0; k < scale->npars; k++) {
       if (scale->xPar[k] != 0) { anyXform = 1; break; }
+      if (scale->probitIdx != NULL && scale->probitIdx[k] != 0) { anyXform = 1; break; }
     }
     int skipX = skipU && !anyXform;
     if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
@@ -614,6 +674,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
   int anyXform = 0;
   for (i = 0; i < scale->npars; i++){
     if (scale->xPar[i] != 0) { anyXform = 1; break; }
+    if (scale->probitIdx != NULL && scale->probitIdx[i] != 0) { anyXform = 1; break; }
   }
   int skipX = skipU && !anyXform;
   if (scale->save) {

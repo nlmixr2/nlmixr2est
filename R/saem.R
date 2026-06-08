@@ -264,15 +264,12 @@
     # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
     # uses the same default as every other method (full #/U/X output);
     # because Plambda lives on the model scale (no internal optimizer
-    # scaling), the U row will auto-skip — leaving # and X.  xPar comes
-    # from ui$muRefCurEval so X shows exp(theta) for log-transformed
-    # parameters and expit(theta, lo, hi) for logit-transformed ones,
-    # exactly like focei.
+    # scaling), the U row will auto-skip — leaving # and X.  The xform
+    # sub-list (xPar + probitIdx + bounds) flows through one helper —
+    # scaleAttachXform — so the saem X row back-transforms exp / expit /
+    # probitInv identically to every other estimator.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
-    .xform <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
-    .cfg$xPar          <- as.integer(.xform$xPar)
-    .cfg$logitThetaLow <- as.double(.xform$logitThetaLow)
-    .cfg$logitThetaHi  <- as.double(.xform$logitThetaHi)
+    .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
     .saemCheckCfg(.cfg)
