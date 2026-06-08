@@ -1,3 +1,30 @@
+# nlmixr2est (development version)
+
+- The iteration-time progress output emitted by every estimator
+  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
+  newuoa, uobyqa) now flows through a single shared printer
+  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
+  Each estimator's iteration trace has the same `#`/`U`/`X` row
+  layout, column wrapping, ANSI handling, periodic header re-emit
+  cadence, and per-iteration user-interrupt check.
+
+- New `iterPrintControl()` function bundles every iteration-print
+  option (`every`, `ncol`, `headerEvery`, `useColor`, `simple`) into
+  one validated, classed list.  Pass it via the existing `print`
+  argument on any `*Control()` function:
+  `foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))`.
+  The historical scalar form `foceiControl(print = 5, printNcol = 8)`
+  continues to work — internally the outer `*Control()` wraps the
+  scalar arguments into an `iterPrintControl()` call.
+
+- saem now uses the same default iteration-print format as every
+  other estimator (full three-row `#`/`U`/`X` output).  Because
+  saem's parameter vector is already on the model scale with no
+  internal optimizer scaling, the `U` and `X` rows mirror the `#`
+  row — but the layout matches the other methods.  Users who prefer
+  the old single-row output can pass
+  `saemControl(print = iterPrintControl(simple = TRUE))`.
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding

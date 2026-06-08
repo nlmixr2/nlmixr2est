@@ -809,10 +809,10 @@ public:
     scaleLogitHi.assign(1, 1.0);
     // The useColor/printNcol/print scaleSetup args are passed as
     // placeholders; the user's iterPrintControl values are then applied
-    // via scaleApplyIterPrintControl.  saem's R-side configuration
-    // always sets simple=TRUE on its iterPrintControl (Plambda lives on
-    // model scale with no internal optimizer scaling, so the U and X
-    // rows would be degenerate), so scale.simple is set automatically.
+    // via scaleApplyIterPrintControl.  saem uses scaleTypeNone with
+    // an all-zero xPar (Plambda is already on the model scale), so the
+    // U and X rows that scalePrintFun emits are identical copies of #.
+    // The layout still matches the other estimators.
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
@@ -1921,9 +1921,9 @@ private:
   mcmcaux mx;
 
   // Iteration-print formatting shared with focei/nlm via src/scale.h.
-  // scaleType=None + simple=1 → one row per iter using focei's column
-  // wrapping/colors/headers, without the U/X rows (saem has no internal
-  // optimizer scaling and the printed vector mixes theta+omega+sigma).
+  // saem uses scaleTypeNone with all-zero xPar (Plambda is already on
+  // the model scale), so scalePrintFun's U and X rows mirror the # row.
+  // Format matches the other estimators.
   scaling scale;
   std::vector<double> scaleInitPar;
   std::vector<double> scaleC;

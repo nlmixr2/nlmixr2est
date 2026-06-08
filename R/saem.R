@@ -262,14 +262,13 @@
     .cfg$resValue <- ui$saemResValue
     # Iteration-print formatting flows through one sub-list consumed by
     # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
-    # always uses simple-mode printing (one row per iter, no U/X rows)
-    # because the printed vector mixes theta+omega+sigma and the
-    # optimizer has no internal scaling, so U and X would be
-    # degenerate copies of #.
+    # uses the same default as every other method (full #/U/X output);
+    # because Plambda lives on the model scale with no internal
+    # optimizer scaling and xPar is all-zeros, U and X are identical
+    # copies of the # row — but the layout matches the other methods.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
-    .ipc <- rxode2::rxGetControl(ui, "iterPrintControl", iterPrintControl())
-    .ipc$simple <- TRUE
-    .cfg$iterPrintControl <- .ipc
+    .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
+                                                  iterPrintControl())
     .saemCheckCfg(.cfg)
     .cfg
   })
