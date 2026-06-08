@@ -43,8 +43,8 @@
 #'     re-prints every 50 iterations.  A value of `0` prints the header
 #'     once at fit startup only.  Default `10`.
 #'
-#' @param useColor Logical; whether to use ANSI color/bold escapes in the
-#'     iteration print.  Defaults to terminal support.
+#' @param printUseColor Logical; whether to use ANSI color/bold escapes in
+#'     the iteration print.  Defaults to terminal support.
 #'
 #' @param trace An integer indicating if you want to trace(1) the
 #'     SAEM algorithm process.  Useful for debugging, but not for
@@ -157,7 +157,7 @@ saemControl <- function(seed = 99,
                         print = 1,
                         printNcol = floor((getOption("width") - 23) / 12),
                         printHeader = 10L,
-                        useColor = crayon::has_color(),
+                        printUseColor = crayon::has_color(),
                         trace = 0, # nolint
                         covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
                         calcTables = TRUE,
@@ -220,7 +220,7 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(print, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(printNcol, any.missing=FALSE, lower=1, len=1)
   checkmate::assertIntegerish(printHeader, any.missing=FALSE, lower=0, len=1)
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
+  checkmate::assertLogical(printUseColor, any.missing=FALSE, len=1)
   if (!is.null(.xtra$DEBUG)) {
     trace <- .xtra$DEBUG # nolint
   }
@@ -304,7 +304,7 @@ saemControl <- function(seed = 99,
     print = print,
     printNcol = as.integer(printNcol),
     printHeader = as.integer(printHeader),
-    useColor = as.logical(useColor),
+    printUseColor = as.logical(printUseColor),
     DEBUG = trace, # nolint
     optExpression = optExpression,
     literalFix=literalFix,

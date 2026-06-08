@@ -270,7 +270,7 @@
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
     .cfg$printNcol <- as.integer(rxode2::rxGetControl(ui, "printNcol",
                                                      floor((getOption("width") - 23) / 12)))
-    .cfg$useColor <- as.integer(rxode2::rxGetControl(ui, "useColor", crayon::has_color()))
+    .cfg$printUseColor <- as.integer(rxode2::rxGetControl(ui, "printUseColor", crayon::has_color()))
     .cfg$printHeader <- as.integer(rxode2::rxGetControl(ui, "printHeader", 10L))
     .saemCheckCfg(.cfg)
     .cfg

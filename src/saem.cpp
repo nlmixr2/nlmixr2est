@@ -801,7 +801,7 @@ public:
     // machinery.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
     printNcol  = as<int>(x["printNcol"]);
-    useColor   = as<int>(x["useColor"]);
+    printUseColor = as<int>(x["printUseColor"]);
     printHeader = as<int>(x["printHeader"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
@@ -816,7 +816,7 @@ public:
                scaleLogitLow.data(),
                scaleLogitHi.data(),
                scaleNames,
-               useColor,
+               printUseColor,
                printNcol,
                print,
                normTypeConstant,
@@ -1844,9 +1844,10 @@ public:
       // in the OFV column.  scalePrintFun increments its own counter and gates
       // the print on (cn % print == 0); with default print=1 every iteration
       // prints exactly like before, plus the unified focei-style column
-      // wrapping/header/colors.
+      // wrapping/header/colors.  scalePrintFun also calls
+      // Rcpp::checkUserInterrupt() internally so the explicit call here is no
+      // longer needed.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
-      Rcpp::checkUserInterrupt();
     }//kiter
     phiFile.close();
   }
@@ -1936,7 +1937,7 @@ private:
   std::vector<double> scaleLogitHi;
   CharacterVector scaleNames;
   int printNcol;
-  int useColor;
+  int printUseColor;
   int printHeader;
   mat par_hist;
   uvec parHistThetaKeep;

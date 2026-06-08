@@ -608,6 +608,12 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
   }
+  // Universal user-interrupt check at each per-iteration print event.  Doing
+  // this here (rather than in each estimator's outer loop) ensures every
+  // method routed through scalePrintFun — saem, nlm, optim, nls, nlminb — is
+  // interruptible without each one needing its own Rcpp::checkUserInterrupt()
+  // call site.
+  Rcpp::checkUserInterrupt();
 }
 
 static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
