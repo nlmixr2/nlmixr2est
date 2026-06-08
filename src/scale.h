@@ -111,12 +111,15 @@ static inline void scaleNone(scaling *scale) {
   scale->save = 0;
 }
 
+// Set the scale/print fields that don't come from the R-side xform
+// sub-list.  Transform pointers (xPar, logitThetaLow/Hi, probitIdx,
+// probitThetaLow/Hi) are wired by scaleAttachXform; callers that own
+// their own buffers (focei) assign the raw pointers directly.  Either
+// way, the six transform pointers are NULL-initialized here and the
+// caller's wiring runs after this returns.
 static inline void scaleSetup(scaling *scale,
                               double *initPar,
                               double *scaleC,
-                              int *xPar,
-                              double *logitThetaLow,
-                              double *logitThetaHi,
                               CharacterVector thetaNames,
                               int useColor,
                               int printNcol,
@@ -132,12 +135,9 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleC = scaleC;
   scale->normType = normType;
   scale->scaleType = scaleType;
-  scale->xPar = xPar;
-  scale->logitThetaLow =logitThetaLow;
-  scale->logitThetaHi =logitThetaHi;
-  // Probit fields default to "no probit"; callers that wire it up
-  // (saem/focei when those estimators gain probit support) set these
-  // directly on the struct after scaleSetup returns.
+  scale->xPar = NULL;
+  scale->logitThetaLow = NULL;
+  scale->logitThetaHi = NULL;
   scale->probitIdx = NULL;
   scale->probitThetaLow = NULL;
   scale->probitThetaHi = NULL;
