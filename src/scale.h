@@ -30,6 +30,17 @@ struct scaling {
   int useColor;
   int printNcol;
   int print;
+  // printSimple: 0 = print 3 rows per iteration (#=scaled, U=unscaled, X=back-transformed)
+  //              1 = print only the # row (for methods like saem that have no internal
+  //                  optimizer scaling, where # == U and X requires extra transform info)
+  int printSimple;
+  // printHeader: 0 = print column header only once at fit startup
+  //              N>0 = re-print header every N parameter-print events
+  // Default in scaleSetup is 10.
+  int printHeader;
+  // printCount: internal — count of parameter-print events emitted so far (not iterations).
+  // Used to gate periodic header re-prints when printHeader > 0.
+  int printCount;
   int save;
   int cn;
   double *initPar; // initial parameter estimates before scaling
@@ -96,6 +107,9 @@ static inline void scaleSetup(scaling *scale,
   scale->useColor = useColor;
   scale->printNcol = printNcol;
   scale->print = print;
+  scale->printSimple = 0;
+  scale->printHeader = 10;
+  scale->printCount = 0;
   scale->save = 1;
 
   scale->scaleCmin = scaleCmin;
@@ -419,14 +433,16 @@ static inline void scalePrintLine(int ncol){
   RSprintf("\n");
 }
 
-void scalePrintHeader(scaling *scale) {
+static inline void scalePrintHeader(scaling *scale) {
   if (scale->print != 0) {
-    if (scale->useColor)
-      RSprintf("\033[1mKey:\033[0m ");
-    else
-      RSprintf("Key: ");
-    RSprintf("U: Unscaled Parameters; ");
-    RSprintf("X: Back-transformed parameters; \n");
+    if (!scale->printSimple) {
+      if (scale->useColor)
+        RSprintf("\033[1mKey:\033[0m ");
+      else
+        RSprintf("Key: ");
+      RSprintf("U: Unscaled Parameters; ");
+      RSprintf("X: Back-transformed parameters; \n");
+    }
     int i, finalize=0, n=scale->thetaNames.size();
     RSprintf("\n|    #| Function Val. |");
     std::string tmpS;
@@ -459,7 +475,7 @@ void scalePrintHeader(scaling *scale) {
   }
 }
 
-void scalePrintFun(scaling *scale, double *x, double f) {
+static inline void scalePrintFun(scaling *scale, double *x, double f) {
   // Scaled
   int finalize = 0, i = 0;
   scale->cn = scale->cn+1;
@@ -471,30 +487,41 @@ void scalePrintFun(scaling *scale, double *x, double f) {
     for (i = 0; i < scale->npars; i++){
       scale->vPar.push_back(x[i]);
     }
-    // Unscaled
-    scale->iterType.push_back(iterTypeUnscaled);
-    scale->niter.push_back(scale->niter.back());
-    scale->vPar.push_back(f);
-    for (i = 0; i < scale->npars; i++){
-      scale->vPar.push_back(scaleUnscalePar(scale, x, i));
-    }
-    // Back-transformed (7)
-    scale->iterType.push_back(iterTypeBack);
-    scale->niter.push_back(scale->niter.back());
-    scale->vPar.push_back(f);
-    for (i = 0; i < scale->npars; i++){
-      if (scale->xPar[i] == 1){
-        scale->vPar.push_back(exp(scaleUnscalePar(scale, x, i)));
-      } else if (scale->xPar[i] < 0){
-        int m = -scale->xPar[i]-1;
-        scale->vPar.push_back(expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-      } else {
+    if (!scale->printSimple) {
+      // Unscaled
+      scale->iterType.push_back(iterTypeUnscaled);
+      scale->niter.push_back(scale->niter.back());
+      scale->vPar.push_back(f);
+      for (i = 0; i < scale->npars; i++){
         scale->vPar.push_back(scaleUnscalePar(scale, x, i));
+      }
+      // Back-transformed (7)
+      scale->iterType.push_back(iterTypeBack);
+      scale->niter.push_back(scale->niter.back());
+      scale->vPar.push_back(f);
+      for (i = 0; i < scale->npars; i++){
+        if (scale->xPar[i] == 1){
+          scale->vPar.push_back(exp(scaleUnscalePar(scale, x, i)));
+        } else if (scale->xPar[i] < 0){
+          int m = -scale->xPar[i]-1;
+          scale->vPar.push_back(expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
+        } else {
+          scale->vPar.push_back(scaleUnscalePar(scale, x, i));
+        }
       }
     }
   }
   if (scale->print != 0 &&
       scale->cn % scale->print == 0){
+    // Count this parameter-print event and, when configured, re-emit the
+    // column header every `printHeader` events (event 1 already has the
+    // startup header printed elsewhere, so re-prints happen at 1+N, 1+2N, ...).
+    scale->printCount++;
+    if (scale->printHeader > 0 &&
+        scale->printCount > 1 &&
+        ((scale->printCount - 1) % scale->printHeader == 0)) {
+      scalePrintHeader(scale);
+    }
     if (scale->useColor && !isRstudio())
       RSprintf("|\033[1m%5d\033[0m|%#14.8g |", scale->cn, f);
     else
@@ -523,65 +550,67 @@ void scalePrintFun(scaling *scale, double *x, double f) {
     } else {
       RSprintf("\n");
     }
-    RSprintf("|    U|               |");
-    for (i = 0; i < scale->npars; i++){
-      RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-      if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-        if (scale->useColor && scale->printNcol + i  > scale->npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->printNcol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    RSprintf("|    X|               |");
-    for (i = 0; i < scale->npars; i++){
-      if (scale->xPar[i] == 1){
-        RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
-      } else if (scale->xPar[i] < 0){
-        int m = -scale->xPar[i]-1;
-        RSprintf("%#10.4g |", expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-      } else {
+    if (!scale->printSimple) {
+      RSprintf("|    U|               |");
+      for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-      }
-      if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
-        if (scale->useColor && scale->printNcol + i >= scale->npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
+        if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
+          if (scale->useColor && scale->printNcol + i  > scale->npars){
+            RSprintf("\n\033[4m|.....................|");
+          } else {
+            RSprintf("\n|.....................|");
+          }
         }
       }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % scale->printNcol == 0){
-          if (scale->useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
+      if (finalize){
+        while(true){
+          if ((i++) % scale->printNcol == 0){
+            if (scale->useColor) RSprintf("\033[0m");
+            RSprintf("\n");
+            break;
+          } else {
+            RSprintf("...........|");
+          }
+        }
+      } else {
+        RSprintf("\n");
+      }
+      RSprintf("|    X|               |");
+      for (i = 0; i < scale->npars; i++){
+        if (scale->xPar[i] == 1){
+          RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
+        } else if (scale->xPar[i] < 0){
+          int m = -scale->xPar[i]-1;
+          RSprintf("%#10.4g |", expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
         } else {
-          RSprintf("...........|");
+          RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
+        }
+        if ((i + 1) != scale->npars && (i + 1) % scale->printNcol == 0){
+          if (scale->useColor && scale->printNcol + i >= scale->npars){
+            RSprintf("\n\033[4m|.....................|");
+          } else {
+            RSprintf("\n|.....................|");
+          }
         }
       }
-    } else {
-      RSprintf("\n");
+      if (finalize){
+        while(true){
+          if ((i++) % scale->printNcol == 0){
+            if (scale->useColor) RSprintf("\033[0m");
+            RSprintf("\n");
+            break;
+          } else {
+            RSprintf("...........|");
+          }
+        }
+      } else {
+        RSprintf("\n");
+      }
     }
   }
 }
 
-void scalePrintGrad(scaling *scale, double *gr, int type) {
+static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
   // if (op_focei.derivMethod == 0){
   //   if (op_focei.curGill == 1){
@@ -647,7 +676,7 @@ void scalePrintGrad(scaling *scale, double *gr, int type) {
   }
 }
 
-RObject scaleParHisDf(scaling *scale) {
+static inline RObject scaleParHisDf(scaling *scale) {
   if (scale->iterType.size() == 0)  return R_NilValue;
   CharacterVector dfNames(3+scale->thetaNames.size());
   dfNames[0] = "iter";

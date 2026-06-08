@@ -25,6 +25,10 @@ using namespace std;
 using namespace arma;
 using namespace Rcpp;
 
+// scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
+// — must be included AFTER the `using namespace Rcpp;` above.
+#include "scale.h"
+
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
@@ -790,6 +794,41 @@ public:
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
 
+    // Set up the shared scale.h iteration-print struct.  saem has no
+    // internal optimizer scaling and the printed vector mixes
+    // theta/omega/sigma, so we use scaleTypeNone + printSimple=1 to emit
+    // a single "#" row per iter using focei's column-wrap/color/header
+    // machinery.
+    scaleNames = as<CharacterVector>(x["parHistNames"]);
+    printNcol  = as<int>(x["printNcol"]);
+    useColor   = as<int>(x["useColor"]);
+    printHeader = as<int>(x["printHeader"]);
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
+    scaleInitPar.assign(std::max(nprint, 1), 0.0);
+    scaleC.assign(std::max(nprint, 1), NA_REAL);
+    scaleXPar.assign(std::max(nprint, 1), 0);
+    scaleLogitLow.assign(1, 0.0);
+    scaleLogitHi.assign(1, 1.0);
+    scaleSetup(&scale,
+               scaleInitPar.data(),
+               scaleC.data(),
+               scaleXPar.data(),
+               scaleLogitLow.data(),
+               scaleLogitHi.data(),
+               scaleNames,
+               useColor,
+               printNcol,
+               print,
+               normTypeConstant,
+               scaleTypeNone,
+               1e-7, // scaleCmin (unused with scaleTypeNone)
+               1e7,  // scaleCmax (unused with scaleTypeNone)
+               0.0,  // scaleTo
+               nprint);
+    scale.printSimple = 1;
+    scale.printHeader = printHeader;
+    scale.save = 0; // par_hist already records the iteration history
+
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
     Hb = zeros<mat>(nb_param,nb_param);
@@ -824,6 +863,10 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
+    // Emit the unified column header once at fit start.  Periodic re-emits
+    // (every scale.printHeader parameter-print events) are handled inside
+    // scalePrintFun.
+    scalePrintHeader(&scale);
     fsaveMat = user_fn(phiM, evtM, optM);
     limit = fsaveMat.col(2);
     limitT = fsaveMat.col(2);
@@ -1797,13 +1840,12 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
-        RSprintf("%03d: ", kiter+1);
-        for (arma::uword j=0; j < pl.size(); ++j) {
-          RSprintf("%f\t", pl[j]);
-        }
-        RSprintf("\n");
-      }
+      // saem has no per-iteration objective function; NA_REAL renders as "nan"
+      // in the OFV column.  scalePrintFun increments its own counter and gates
+      // the print on (cn % print == 0); with default print=1 every iteration
+      // prints exactly like before, plus the unified focei-style column
+      // wrapping/header/colors.
+      scalePrintFun(&scale, pl.memptr(), NA_REAL);
       Rcpp::checkUserInterrupt();
     }//kiter
     phiFile.close();
@@ -1882,6 +1924,20 @@ private:
   mcmcaux mx;
 
   int print;
+  // Iteration-print formatting shared with focei/nlm via src/scale.h.
+  // scaleType=None + printSimple=1 → one row per iter using focei's column
+  // wrapping/colors/headers, without the U/X rows (saem has no internal
+  // optimizer scaling and the printed vector mixes theta+omega+sigma).
+  scaling scale;
+  std::vector<double> scaleInitPar;
+  std::vector<double> scaleC;
+  std::vector<int>    scaleXPar;
+  std::vector<double> scaleLogitLow;
+  std::vector<double> scaleLogitHi;
+  CharacterVector scaleNames;
+  int printNcol;
+  int useColor;
+  int printHeader;
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;

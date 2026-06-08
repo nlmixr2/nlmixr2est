@@ -32,6 +32,20 @@
 #' @param print The number it iterations that are completed before
 #'     anything is printed to the console.  By default, this is 1.
 #'
+#' @param printNcol Number of columns to print per iteration row before
+#'     wrapping to a continuation row.  Defaults to a width-derived value
+#'     so the output fits an 80-column terminal.  Shared with the focei
+#'     iteration printer.
+#'
+#' @param printHeader How often the column header is re-emitted during
+#'     iteration printing, counted in parameter-print events (not raw
+#'     iterations).  With `print = 5` and `printHeader = 10`, the header
+#'     re-prints every 50 iterations.  A value of `0` prints the header
+#'     once at fit startup only.  Default `10`.
+#'
+#' @param useColor Logical; whether to use ANSI color/bold escapes in the
+#'     iteration print.  Defaults to terminal support.
+#'
 #' @param trace An integer indicating if you want to trace(1) the
 #'     SAEM algorithm process.  Useful for debugging, but not for
 #'     typical fitting.
@@ -141,6 +155,9 @@ saemControl <- function(seed = 99,
                         nmc = 3,
                         nu = c(2, 2, 2),
                         print = 1,
+                        printNcol = floor((getOption("width") - 23) / 12),
+                        printHeader = 10L,
+                        useColor = crayon::has_color(),
                         trace = 0, # nolint
                         covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
                         calcTables = TRUE,
@@ -201,6 +218,9 @@ saemControl <- function(seed = 99,
   checkmate::assertIntegerish(nmc, any.missing=FALSE, len=1, lower=1)
   checkmate::assertIntegerish(nu, any.missing=FALSE, len=3, lower=1)
   checkmate::assertIntegerish(print, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertIntegerish(printNcol, any.missing=FALSE, lower=1, len=1)
+  checkmate::assertIntegerish(printHeader, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
   if (!is.null(.xtra$DEBUG)) {
     trace <- .xtra$DEBUG # nolint
   }
@@ -282,6 +302,9 @@ saemControl <- function(seed = 99,
     rxControl = rxControl,
     seed = seed,
     print = print,
+    printNcol = as.integer(printNcol),
+    printHeader = as.integer(printHeader),
+    useColor = as.logical(useColor),
     DEBUG = trace, # nolint
     optExpression = optExpression,
     literalFix=literalFix,

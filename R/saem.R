@@ -253,7 +253,7 @@
                         resFixed=ui$saemResFixed,
                         ue=.ue)
     .print <- rxode2::rxGetControl(ui, "print", 1)
-    if (inherits(.print, "numeric")) {
+    if (is.numeric(.print)) {
       .cfg$print <- as.integer(.print)
     }
     .cfg$cres <- ui$saemCres
@@ -264,9 +264,14 @@
     .cfg$propT <- ui$saemPropT
     .cfg$addProp <- ui$saemAddProp
     .cfg$resValue <- ui$saemResValue
-    if (.cfg$print > 0) {
-      message("params:\t", paste(ui$saemParHistNames, collapse="\t"))
-    }
+    # Fields consumed by the shared src/scale.h iteration printer; the
+    # corresponding "params:" message that used to be emitted here is now
+    # handled by scalePrintHeader inside the C++ engine.
+    .cfg$parHistNames <- as.character(ui$saemParHistNames)
+    .cfg$printNcol <- as.integer(rxode2::rxGetControl(ui, "printNcol",
+                                                     floor((getOption("width") - 23) / 12)))
+    .cfg$useColor <- as.integer(rxode2::rxGetControl(ui, "useColor", crayon::has_color()))
+    .cfg$printHeader <- as.integer(rxode2::rxGetControl(ui, "printHeader", 10L))
     .saemCheckCfg(.cfg)
     .cfg
   })
