@@ -6641,21 +6641,16 @@ void foceiFinalizeTables(Environment e){
   // LogicalVector EstBT(Estimate.size());
   // Rf_pt(stat[7],(double)n1,1,0)
   // Per-theta transform codes shipped from R by .iterPrintXParFromUi
-  // (see R/focei.R::.foceiOptEnvLik).  thetaXPar[i] / thetaProbitIdx[i]
+  // (see R/focei.R::.foceiOptEnvLik).  xform$xPar[i] / xform$probitIdx[i]
   // hold the i-th theta's log/logit/probit code; the bounds vectors
   // are indexed by the absolute value of the relevant code minus one.
-  IntegerVector thetaXPar = e.exists("thetaXPar")
-    ? as<IntegerVector>(e["thetaXPar"]) : IntegerVector(0);
-  IntegerVector thetaProbitIdx = e.exists("thetaProbitIdx")
-    ? as<IntegerVector>(e["thetaProbitIdx"]) : IntegerVector(0);
-  NumericVector logitThetaLow = e.exists("logitThetaLow")
-    ? as<NumericVector>(e["logitThetaLow"]) : NumericVector(0);
-  NumericVector logitThetaHi = e.exists("logitThetaHi")
-    ? as<NumericVector>(e["logitThetaHi"])  : NumericVector(0);
-  NumericVector probitThetaLow = e.exists("probitThetaLow")
-    ? as<NumericVector>(e["probitThetaLow"]) : NumericVector(0);
-  NumericVector probitThetaHi = e.exists("probitThetaHi")
-    ? as<NumericVector>(e["probitThetaHi"])  : NumericVector(0);
+  List xform = as<List>(e["xform"]);
+  IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
+  IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
+  NumericVector logitThetaLow  = as<NumericVector>(xform["logitThetaLow"]);
+  NumericVector logitThetaHi   = as<NumericVector>(xform["logitThetaHi"]);
+  NumericVector probitThetaLow = as<NumericVector>(xform["probitThetaLow"]);
+  NumericVector probitThetaHi  = as<NumericVector>(xform["probitThetaHi"]);
   const double *logitLowP  = logitThetaLow.size()  ? &logitThetaLow[0]  : NULL;
   const double *logitHiP   = logitThetaHi.size()   ? &logitThetaHi[0]   : NULL;
   const double *probitLowP = probitThetaLow.size() ? &probitThetaLow[0] : NULL;
@@ -7106,21 +7101,17 @@ Environment foceiFitCpp_(Environment e){
     std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
   }
   // Theta transforms — ntheta-indexed.  Shipped from R by
-  // .iterPrintXParFromUi via .foceiOptEnvLik (see R/focei.R).  Length
-  // == ntheta_total (fixed + unfixed); we re-index by op_focei.fixedTrans
-  // below to map them into the npars-sized op_focei.xPar / probitIdxArr.
-  IntegerVector thetaXPar = e.exists("thetaXPar")
-    ? as<IntegerVector>(e["thetaXPar"]) : IntegerVector(0);
-  IntegerVector thetaProbitIdx = e.exists("thetaProbitIdx")
-    ? as<IntegerVector>(e["thetaProbitIdx"]) : IntegerVector(0);
-  op_focei.logitThetaLow = e.exists("logitThetaLow")
-    ? as<NumericVector>(e["logitThetaLow"]) : NumericVector(0);
-  op_focei.logitThetaHi = e.exists("logitThetaHi")
-    ? as<NumericVector>(e["logitThetaHi"])  : NumericVector(0);
-  op_focei.probitThetaLow = e.exists("probitThetaLow")
-    ? as<NumericVector>(e["probitThetaLow"]) : NumericVector(0);
-  op_focei.probitThetaHi = e.exists("probitThetaHi")
-    ? as<NumericVector>(e["probitThetaHi"])  : NumericVector(0);
+  // .iterPrintXParFromUi via .foceiOptEnvLik (see R/focei.R) as a single
+  // env$xform sub-list.  Length == ntheta_total (fixed + unfixed); we
+  // re-index by op_focei.fixedTrans below to map them into the npars-
+  // sized op_focei.xPar / probitIdxArr.
+  List xform = as<List>(e["xform"]);
+  IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
+  IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
+  op_focei.logitThetaLow  = as<NumericVector>(xform["logitThetaLow"]);
+  op_focei.logitThetaHi   = as<NumericVector>(xform["logitThetaHi"]);
+  op_focei.probitThetaLow = as<NumericVector>(xform["probitThetaLow"]);
+  op_focei.probitThetaHi  = as<NumericVector>(xform["probitThetaHi"]);
   // Setup which parameters are transformed.  For theta slots (j < ntheta)
   // the per-printed-parameter code comes from thetaXPar[j] / probitIdx[j];
   // for omega slots (j >= ntheta) the existing omega scaling code from
