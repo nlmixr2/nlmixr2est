@@ -22,6 +22,11 @@
   `expit(theta, lower, upper)` for logit-transformed ones, derived
   from `ui$muRefCurEval` on the R side.
 
+- Estimators with no per-iteration objective function (saem) now
+  suppress the `Function Val.` column entirely instead of printing
+  `nan` in every iteration row.  The column header, separator, and
+  per-row prefix all shrink accordingly.
+
 - The shared iteration-printer auto-skips degenerate rows: when a
   method has no internal optimizer scaling (saem, group-C
   optimizers with `scaleType = "none"`) the `U` row is dropped

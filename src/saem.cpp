@@ -836,6 +836,9 @@ public:
                1e-7, 1e7, 0.0,
                nprint);
     scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
+    // saem has no per-iteration objective function; suppress the Function
+    // Val column entirely so users don't see "nan" in every iteration row.
+    scale.showOfv = 0;
     scale.save = 0; // par_hist already records the iteration history
 
     L  = zeros<vec>(nb_param);
@@ -1849,10 +1852,12 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function; NA_REAL renders as
-      // "nan" in the OFV column.  scalePrintFun increments its own counter
-      // and gates printing on (cn % every == 0); user-interrupt checking
-      // happens inside scalePrintFun too.
+      // saem has no per-iteration objective function; scale.showOfv was
+      // set to 0 in inits() so the Function Val column is suppressed and
+      // the `f` argument is ignored at print time (passing NA_REAL just
+      // to satisfy the signature).  scalePrintFun increments its own
+      // counter, gates printing on (cn % every == 0), and runs the
+      // user-interrupt check internally.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
