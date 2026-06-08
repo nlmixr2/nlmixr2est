@@ -11,6 +11,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "solveWarnHelper.h"
 
 #define _(String) (String)
 
@@ -2243,6 +2244,9 @@ public:
       // counter, gates printing on (cn % every == 0), and runs the
       // user-interrupt check internally.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
+      // One summary line per printed iteration for any ODE-solve warnings
+      // accumulated since the last flush (see inner.cpp foceiOfvOptim).
+      nmFlushRxSolveWarn(5);
     }//kiter
     phiFile.close();
   }

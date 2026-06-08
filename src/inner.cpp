@@ -10,6 +10,7 @@
 #include "shi21.h"
 #include "inner.h"
 #include "rxomp.h"
+#include "solveWarnHelper.h"
 
 // scale.h uses `_("...")` for translatable strings; provide the trivial
 // passthrough macro before including it (matches saem.cpp's usage).
@@ -4770,6 +4771,10 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
   scalePrintFun(&op_focei.scale, x, displayedOfv);
+  // One summary line per printed iteration for any ODE-solve warnings (e.g.
+  // intdy window-misses) accumulated since the last flush; without this a
+  // difficult model floods the console with identical lines each iteration.
+  nmFlushRxSolveWarn(5);
   return ret;
 }
 
