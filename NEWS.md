@@ -1,3 +1,11 @@
+# nlmixr2est development version
+
+- New function `formatMinWidth()` to make `$parFixed` show shorter text
+  and more often show non-scientific notation representations. The
+  `$parFixed` data.frame is now built directly with data.frame
+  operations rather than environment side-effects, and `FIXED` and
+  shrinkage suffixes are appended. (#346, #516)
+
 # nlmixr2est 6.0.1
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
