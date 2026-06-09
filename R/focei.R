@@ -26,8 +26,21 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
+#' Get the maxfun control for minqa optimizers
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxfun <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxfun <- control$maxOuterIterations
+  }
+  control
+}
+
 .uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -43,7 +56,7 @@ is.latex <- function() {
 }
 
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -59,7 +72,21 @@ is.latex <- function() {
   .ret
 }
 
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxit <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxit <- control$maxOuterIterations
+  }
+  control
+}
+
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
@@ -68,6 +95,7 @@ is.latex <- function() {
 }
 
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
@@ -106,8 +134,22 @@ is.latex <- function() {
   .ret
 }
 
+
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with iter.max updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlIterMax <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$iter.max <- control$maxOuterIterations
+  }
+  control
+}
+
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlIterMax(control)
   .ctl <- .ctl[names(.ctl) %in% c(
     "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
     "scale.inti", "diff.g"
