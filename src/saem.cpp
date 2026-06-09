@@ -659,7 +659,6 @@ public:
     y  = as<vec>(x["y"]);
     yM = as<vec>(x["yM"]);
     evt  = as<mat>(x["evt"]);
-    evtM = as<mat>(x["evtM"]);
     phiM = as<mat>(x["phiM"]);
     indioM = as<uvec>(x["indioM"]);
     int mlen = as<int>(x["mlen"]);
@@ -803,7 +802,7 @@ public:
     mx.nM     = nM;
     mx.yM     = yM;
     mx.indioM = indioM;
-    mx.evtM   = evtM;
+    mx.evtM   = evt;
     mx.optM   = optM;
 
     distribution=as<int>(x["distribution"]);
@@ -824,7 +823,7 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
-    fsaveMat = user_fn(phiM, evtM, optM);
+    fsaveMat = user_fn(phiM, evt, optM);
     limit = fsaveMat.col(2);
     limitT = fsaveMat.col(2);
     cens = fsaveMat.col(1);
@@ -1831,7 +1830,7 @@ private:
 
   int ntotal, N;
   vec y, yM, ys;    //ys is y sorted by endpnt
-  mat evt, evtM;
+  mat evt;
   mat phiM;
   uvec indioM;
   mat Mcovariables;
@@ -2049,8 +2048,8 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
-  vec _id = _evt.col(0);
-  int _Nnlmixr2=(int)(_id.max()+1);
+  // _phi has N*nmc rows (all chains); _evt has only N subjects (chain 0 template)
+  int _Nnlmixr2 = (int)_phi.n_rows;
   SEXP paramUpdate = _opt["paramUpdate"];
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
@@ -2105,7 +2104,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     }
   }
   // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
-  mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
+  mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
@@ -2155,36 +2154,36 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   return g;
 }
 
-void setupRx(List &opt, SEXP evt, SEXP evtM) {
+// Set up the rxode2 solve structure for N subjects across nmc chains.
+// Passing an N*nmc-row params matrix triggers rxode2's nsim mechanism:
+//   nsim = nPopPar / nsub = (N*nmc) / N = nmc
+// Chains 1..nmc-1 automatically share chain 0's event data pointers
+// (all_times, evid, dose, ii, idose, cov_ptr) while each subject retains
+// its own solve/ix/tolFactor buffers, reducing event-table memory by ~nmc×.
+void setupRx(List &opt, SEXP evt, int nmc, int N) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);
   rxUpdateFuns(mv["trans"], &rxInner);
   parNames = mv[RxMv_params];
 
   if (!Rf_isNull(obj)){
-    // Now need to get the largest item to setup the solving space
-    RObject pars = opt[".pars"];
+    RObject pars0 = opt[".pars"];
     List odeO = opt["rxControl"];
-    // SEXP evt = x["evt"];
-    // SEXP evtM = x["evtM"];
-    int nEvt = INTEGER(Rf_getAttrib(evt, R_DimSymbol))[0];
-    int nEvtM = INTEGER(Rf_getAttrib(evtM, R_DimSymbol))[0];
-    SEXP ev;
-    if (nEvt > nEvtM) {
-      ev = evt;
-    } else {
-      ev = evtM;
-    }
-    if (Rf_isNull(pars)) {
+    if (Rf_isNull(pars0)) {
       stop("params must be non-nil");
     }
+    NumericVector parsV = as<NumericVector>(pars0);
+    int npars = parsV.size();
+    int nrows = N * nmc;
+    NumericMatrix parsM(nrows, npars);
+    CharacterVector parsNames = parsV.names();
+    for (int k = 0; k < nrows; k++) {
+      for (int j = 0; j < npars; j++) parsM(k, j) = parsV[j];
+    }
+    parsM.attr("dimnames") = List::create(R_NilValue, parsNames);
     rxode2::rxSolve_(obj, odeO,
-     		    R_NilValue,//const Nullable<CharacterVector> &specParams =
-     		    R_NilValue,//const Nullable<List> &extraArgs =
-     		    pars,//const RObject &params =
-     		    ev,//const RObject &events =
-     		    R_NilValue, // inits
-     		    1);//const int setupOnly = 0
+                     R_NilValue, R_NilValue,
+                     parsM, evt, R_NilValue, 1);
   } else {
     stop("cannot find rxode2 model");
   }
@@ -2193,11 +2192,11 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
 //[[Rcpp::export]]
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   List opt = List(in_opt);
-  setupRx(opt, in_evt, in_evt);
+  mat phi = as<mat>(in_phi);
+  setupRx(opt, in_evt, 1, (int)phi.n_rows);
   saem_lhs = rxInner.calc_lhs;
   saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
-  mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
   saem_state_t dummy_st;
   if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
@@ -2216,7 +2215,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
 SEXP saem_fit(SEXP xSEXP) {
   List x(xSEXP);
   List opt = x["opt"];
-  setupRx(opt,x["evt"],x["evtM"]);
+  setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
   saem_lhs = rxInner.calc_lhs;

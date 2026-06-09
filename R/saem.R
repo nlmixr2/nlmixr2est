@@ -83,7 +83,6 @@
 
   # event table matrix
   checkmate::assertMatrix(cfg$evt, mode="numeric", .var.name="saem.cfg$evt")
-  checkmate::assertMatrix(cfg$evtM, mode="numeric", .var.name="saem.cfg$evtM")
   # phi matrix
   checkmate::assertMatrix(cfg$phiM, mode="numeric", ncols=.nphi, .var.name="saem.cfg$phiM")
 
