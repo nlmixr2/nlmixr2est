@@ -62,6 +62,7 @@ Imports:
     utils
 Suggests:
     broom.mixed,
+    callr,
     crayon,
     data.table,
     devtools,
