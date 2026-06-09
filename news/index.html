@@ -28,12 +28,13 @@
 <div class="row">
   <main id="main" class="col-md-9"><div class="page-header">
       <img src="../logo.png" class="logo" alt=""><h1>Changelog</h1>
-      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/v6.0.1/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
+      <small>Source: <a href="https://github.com/nlmixr2/nlmixr2est/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.0.1" id="nlmixr2est-601">nlmixr2est 6.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-601"></a></h2><p class="text-muted">CRAN release: 2026-06-03</p>
-<ul><li><p>Fix LTO violation as requested by CRAN by adding -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in</p></li>
+<ul><li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session affecting every pooled estimator except <code>nls</code> (<code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>);</p></li>
+<li><p>Fix LTO violation as requested by CRAN by adding -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in</p></li>
 <li><p>Require rxode2 5.1.2 which has the fixed M1-san issues observed here.</p></li>
 <li><p>Guard against null pointer arithmetic in inner.cpp</p></li>
 </ul></div>
