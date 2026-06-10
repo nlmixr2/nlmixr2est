@@ -2515,6 +2515,16 @@ void innerOpt() {
       sortIds(rx, 2); // only initialize if rx->ordId == NULL
       _innerParallel.store(1, std::memory_order_release);
     }
+    // Cross-DLL OpenMP thread-id fix (Windows static libgomp).  rxode2 and
+    // nlmixr2est each statically link their own libgomp, so inside rxode2's
+    // ind_solve (called from THIS team) rxode2's omp_get_thread_num() returns 0
+    // for every worker -> rxode2's per-thread solve buffers all collapse onto
+    // slot 0 and race -> heap corruption (Windows-only; Linux shares one
+    // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
+    // Resolved once on the main thread.
+    typedef void(*t_setRxThreadId)(int);
+    static t_setRxThreadId _setRxThreadId =
+      (t_setRxThreadId) R_GetCCallable("rxode2", "setRxThreadId");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
@@ -2522,11 +2532,13 @@ void innerOpt() {
       int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (_doParallel) {
+        _setRxThreadId(omp_get_thread_num());
         try {
           innerOptId(_id);
         } catch (...) {
           inds_focei[_id].parErrorNoEta = 1;
         }
+        _setRxThreadId(-1);
       } else {
 #endif
         innerOptId(_id);
