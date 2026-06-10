@@ -78,12 +78,9 @@
   .ntotal <- cfg$ntotal
   # observed
   checkmate::assertNumeric(cfg$y, len=.ntotal, .var.name="saem.cfg$y")
-  # repeated observed
-  checkmate::assertNumeric(cfg$yM, len=.ntotal * .nmc, .var.name="saem.cfg$yM")
 
   # event table matrix
   checkmate::assertMatrix(cfg$evt, mode="numeric", .var.name="saem.cfg$evt")
-  checkmate::assertMatrix(cfg$evtM, mode="numeric", .var.name="saem.cfg$evtM")
   # phi matrix
   checkmate::assertMatrix(cfg$phiM, mode="numeric", ncols=.nphi, .var.name="saem.cfg$phiM")
 
@@ -92,8 +89,7 @@
   # maximum number of measurments for an indiviaul
   .mlen <- cfg$mlen
 
-  # FIXME indioM len should be known
-  checkmate::assertIntegerish(cfg$indioM, min.len=1, .var.name="saem.cfg$indioM")
+  checkmate::assertIntegerish(cfg$indio, min.len=1, .var.name="saem.cfg$indio")
 
   # covstruct and Mcovariables
   checkmate::assertMatrix(cfg$covstruct1, mode="numeric", .var.name="saem.cfg$covstruct1")
@@ -145,7 +141,7 @@
   checkmate::assertIntegerish(cfg$nendpnt, len=1, .var.name="saem.cfg$nendpnt")
   .nendpnt <- cfg$nendpnt
   checkmate::assertIntegerish(cfg$ix_sorting, .var.name="ix_sorting")
-  checkmate::assertNumeric(cfg$ysM, .var.name=cfg$ysM)
+  checkmate::assertNumeric(cfg$ys, .var.name="saem.cfg$ys")
   checkmate::assertIntegerish(cfg$y_offset, .var.name="saem.cfg$y_offset")
   # The should match the number of endpoints
   checkmate::assertIntegerish(cfg$res.mod, len=.nendpnt, .var.name="saem.cfg$res.mod")
