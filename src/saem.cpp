@@ -519,9 +519,9 @@ struct mcmcphi {
 
 struct mcmcaux {
   int nM;
-  uvec indioM;
+  uvec indio;
   //double sigma2;  //not needed?
-  vec yM;
+  vec y;
   mat evtM;
   List optM;
 };
@@ -656,12 +656,11 @@ public:
 
     N = as<int>(x["N"]);
     ntotal = as<int>(x["ntotal"]);
+    mlen = as<int>(x["mlen"]);
     y  = as<vec>(x["y"]);
-    yM = as<vec>(x["yM"]);
     evt  = as<mat>(x["evt"]);
     phiM = as<mat>(x["phiM"]);
-    indioM = as<uvec>(x["indioM"]);
-    int mlen = as<int>(x["mlen"]);
+    indio = as<uvec>(x["indio"]);
     nM = N*nmc;
 
     opt = as<List>(x["opt"]);                                      //CHECKME
@@ -724,19 +723,14 @@ public:
     nendpnt=as<int>(x["nendpnt"]);
     ix_sorting=as<uvec>(x["ix_sorting"]);
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
-    ysM=as<vec>(x["ysM"]);
     y_offset=as<uvec>(x["y_offset"]);
     res_mod = as<uvec>(x["res.mod"]);
-    // REprintf("res.mod\n");
-    // Rcpp::print(Rcpp::wrap(res_mod));
     ares = as<vec>(x["ares"]);
     bres = as<vec>(x["bres"]);
     cres = as<vec>(x["cres"]);
     lres = as<vec>(x["lres"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
-    // REprintf("yj\n");
-    // Rcpp::print(Rcpp::wrap(yj));
     lambda = as<vec>(x["lambda"]);
     low = as<vec>(x["low"]);
     hi = as<vec>(x["hi"]);
@@ -753,10 +747,11 @@ public:
       }
     }
     if (hasFixedObsTransform) {
-      yMTrans = yM;
-      for (unsigned int i = 0; i < yMTrans.n_elem; ++i) {
+      // Compute yTrans for N subjects only (not repeated nmc times)
+      yTrans = y;
+      for (unsigned int i = 0; i < yTrans.n_elem; ++i) {
         int cur = ix_endpnt(i);
-        yMTrans[i] = _powerD(yM[i], lambda(cur), yj(cur), low(cur), hi(cur));
+        yTrans[i] = _powerD(y[i], lambda(cur), yj(cur), low(cur), hi(cur));
       }
       ysTrans = ys;
       for (int b = 0; b < nendpnt; ++b) {
@@ -800,8 +795,8 @@ public:
     statphi01.set_size(N, nphi0);
 
     mx.nM     = nM;
-    mx.yM     = yM;
-    mx.indioM = indioM;
+    mx.y      = y;
+    mx.indio  = indio;
     mx.evtM   = evt;
     mx.optM   = optM;
 
@@ -825,7 +820,6 @@ public:
     }
     fsaveMat = user_fn(phiM, evt, optM);
     limit = fsaveMat.col(2);
-    limitT = fsaveMat.col(2);
     cens = fsaveMat.col(1);
     fsave = fsaveMat.col(0);
     if (DEBUG>0){
@@ -864,34 +858,47 @@ public:
       vec f = fsave;
       fsave = f;
       if (distribution == 1){
-        // REprintf("dist=1\n");
-        vec ft = f;
-        vec ftT(ft.size());
-        vec yt = hasFixedObsTransform ? yMTrans : yM;
-        for (int i = ft.size(); i--;) {
-          int cur = ix_endpnt(i);
-          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
-          ft(i)   = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          if (!hasFixedObsTransform) {
-            yt(i) = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+        for (int k = 0; k < nmc; k++) {
+          int obs_start = k * ntotal;
+          vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+          vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+          vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+          vec ftk = fk;
+          vec limitTk = limitk;
+          vec ftTk(ntotal);
+          vec yt = hasFixedObsTransform ? yTrans : y;
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            limitTk(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            ftk(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            if (!hasFixedObsTransform) {
+              yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            }
+            ftTk(i) = handleF(propT(cur), ftk(i), fk(i), false, true);
           }
-          ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
+          vec gk = vecares + vecbres % abs(ftTk);
+          gk.elem(find(gk == 0.0)).fill(1.0);
+          gk.elem(find(gk < double_xmin)).fill(double_xmin);
+          gk.elem(find(gk > xmax)).fill(xmax);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYF(indio_k) = 0.5*(((yt - ftk)/gk) % ((yt - ftk)/gk)) + log(gk);
+          for (int j = ntotal; j--;) {
+            DYF(indio_k(j)) = doCensNormal1(censk[j], y[j], limitTk[j],
+                                             DYF(indio_k(j)), fk[j], gk[j], 0);
+          }
         }
-        // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-        // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
-        // This does not match focei's definition of add+prop
-        vec g;
-        g = vecares + vecbres % abs(ftT); //make sure g > 0
-        g.elem( find( g == 0.0) ).fill(1.0); // like Uppusla IWRES allows prop when f=0
-        g.elem( find( g < double_xmin) ).fill(double_xmin);
-        g.elem( find(g > xmax)).fill(xmax);
-
-        DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
-        doCens(DYF, cens, limitT, f, g, yM);
       } else if (distribution == 2){
-        DYF(indioM)=-yM%log(f)+f;
+        for (int k = 0; k < nmc; k++) {
+          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYF(indio_k) = -y % log(fk) + fk;
+        }
       } else if (distribution == 3) {
-        DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
+        for (int k = 0; k < nmc; k++) {
+          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+        }
       }
       else {
         RSprintf("unknown distribution (id=%d)\n", distribution);
@@ -1132,8 +1139,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1204,8 +1219,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1285,8 +1308,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1349,8 +1380,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1413,8 +1452,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1477,8 +1524,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1554,8 +1609,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1631,8 +1694,16 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            {
+              int nb_b = (int)idx.n_elem;
+              uvec fsb_idx((arma::uword)(nmc * nb_b));
+              for (int k = 0; k < nmc; k++) {
+                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+                  idx + (arma::uword)(k * ntotal);
+              }
+              fsb = fsM(fsb_idx);
+              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+            }
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1828,11 +1899,11 @@ private:
   int nmc;
   int nM;
 
-  int ntotal, N;
-  vec y, yM, ys;    //ys is y sorted by endpnt
+  int ntotal, N, mlen;
+  vec y, ys;    //ys is y sorted by endpnt
   mat evt;
   mat phiM;
-  uvec indioM;
+  uvec indio;
   mat Mcovariables;
   List opt, optM;
 
@@ -1867,7 +1938,7 @@ private:
   mat DYF;
   cube phi;
   bool hasFixedObsTransform = false;
-  vec yMTrans;
+  vec yTrans;
   vec ysTrans;
 
   vec L;
@@ -1895,11 +1966,9 @@ private:
   vec vcsig2;
   int nres;
   uvec ix_sorting;
-  vec ysM;
   mat fsaveMat;
   vec cens;
   vec limit;
-  vec limitT;
   vec fsave;
 
   int DEBUG;
@@ -1963,39 +2032,57 @@ private:
 
         fcMat = user_fn(phiMc, mx.evtM, mx.optM);
         limit = fcMat.col(2);
-        limitT = fcMat.col(2);
         cens = fcMat.col(1);
 
         fc = fcMat.col(0);
-        vec fcT(fc.size());
         fs = fc;
-        vec yt = hasFixedObsTransform ? yMTrans : mx.yM;
-        for (int i = fc.size(); i--;) {
-          int cur = ix_endpnt(i);
-          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
-          fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          if (!hasFixedObsTransform) {
-            yt(i) = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          }
-          fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
-        }
-        gc = vecares + vecbres % abs(fcT); //make sure gc > 0
-        gc.elem( find( gc == 0.0) ).fill(1);
-        gc.elem( find( gc < double_xmin) ).fill(double_xmin);
-        gc.elem( find( gc > xmax) ).fill(xmax);
-
         switch (distribution) {
         case 1:
-          DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
+          for (int k = 0; k < nmc; k++) {
+            int obs_start = k * ntotal;
+            vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
+            vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+            vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+            vec fck = fsk;
+            vec limitTk = limitk;
+            vec fcTk(ntotal);
+            vec yt = hasFixedObsTransform ? yTrans : mx.y;
+            for (int i = ntotal; i--;) {
+              int cur = ix_endpnt(i);
+              limitTk(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              fck(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              if (!hasFixedObsTransform) {
+                yt(i) = _powerD(mx.y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              }
+              fcTk(i) = handleF(propT(cur), fsk(i), fck(i), false, true);
+            }
+            vec gck = vecares + vecbres % abs(fcTk);
+            gck.elem(find(gck == 0.0)).fill(1);
+            gck.elem(find(gck < double_xmin)).fill(double_xmin);
+            gck.elem(find(gck > xmax)).fill(xmax);
+            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = 0.5*(((yt - fck)/gck) % ((yt - fck)/gck)) + log(gck);
+            for (int j = ntotal; j--;) {
+              DYF(indio_k(j)) = doCensNormal1(censk[j], mx.y[j], limitTk[j],
+                                               DYF(indio_k(j)), fck[j], gck[j], 0);
+            }
+          }
           break;
         case 2:
-          DYF(mx.indioM)=-mx.yM%log(fc)+fc;
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -mx.y % log(fck) + fck;
+          }
           break;
         case 3:
-          DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+          }
           break;
         }
-        doCens(DYF, cens, limitT, fc, gc, mx.yM);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
