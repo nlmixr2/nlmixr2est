@@ -566,7 +566,6 @@
     lres = inits$lres,
     opt = opt,
     optM = optM,
-    print = mcmc$print,
     distribution = distribution,
     parHistThetaKeep=parHistThetaKeep,
     parHistOmegaKeep=parHistOmegaKeep,

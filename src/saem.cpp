@@ -25,6 +25,10 @@ using namespace std;
 using namespace arma;
 using namespace Rcpp;
 
+// scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
+// — must be included AFTER the `using namespace Rcpp;` above.
+#include "scale.h"
+
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
@@ -783,12 +787,59 @@ public:
       statrese[b] = 0.0;
     }
 
-    print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+
+    // Set up the shared scale.h iteration-print struct.  saem uses
+    // scaleTypeNone (no internal optimizer scaling — Plambda is on
+    // model scale) so scalePrintFun's auto-skip drops the redundant U
+    // row.  xPar / logitThetaLow / logitThetaHi come from the R side
+    // via .iterPrintXParFromUi(ui$muRefCurEval), so the X row shows
+    // exp(theta) for log-transformed thetas and expit(theta, lo, hi)
+    // for logit-transformed thetas — same back-transforms focei
+    // applies.  Omega and residual-error entries in the printed
+    // vector have xPar = 0 and so contribute no X-row delta.
+    scaleNames = as<CharacterVector>(x["parHistNames"]);
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
+    {
+      IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
+      NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
+      NumericVector logitHiIn  = as<NumericVector>(x["logitThetaHi"]);
+      scaleInitPar.assign(std::max(nprint, 1), 0.0);
+      scaleC.assign(std::max(nprint, 1), NA_REAL);
+      scaleXPar.assign(xParIn.begin(), xParIn.end());
+      if (scaleXPar.empty()) scaleXPar.assign(1, 0);
+      if (logitLowIn.size() > 0) {
+        scaleLogitLow.assign(logitLowIn.begin(), logitLowIn.end());
+        scaleLogitHi.assign(logitHiIn.begin(), logitHiIn.end());
+      } else {
+        // scalePrintFun's logit branch is only reached when xPar < 0;
+        // a one-element placeholder satisfies the data-pointer demand
+        // when no logit-transformed parameters are present.
+        scaleLogitLow.assign(1, 0.0);
+        scaleLogitHi.assign(1, 1.0);
+      }
+    }
+    scaleSetup(&scale,
+               scaleInitPar.data(),
+               scaleC.data(),
+               scaleXPar.data(),
+               scaleLogitLow.data(),
+               scaleLogitHi.data(),
+               scaleNames,
+               /*useColor*/0, /*printNcol*/1, /*print*/0,
+               normTypeConstant,
+               scaleTypeNone,
+               1e-7, 1e7, 0.0,
+               nprint);
+    scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
+    // saem has no per-iteration objective function; suppress the Function
+    // Val column entirely so users don't see "nan" in every iteration row.
+    scale.showOfv = 0;
+    scale.save = 0; // par_hist already records the iteration history
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -824,6 +875,10 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
+    // Emit the unified column header once at fit start.  Periodic re-emits
+    // (every scale.headerEvery parameter-print events) are handled inside
+    // scalePrintFun.
+    scalePrintHeader(&scale);
     fsaveMat = user_fn(phiM, evt, optM);
     limit = fsaveMat.col(2);
     cens = fsaveMat.col(1);
@@ -1805,14 +1860,13 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
-        RSprintf("%03d: ", kiter+1);
-        for (arma::uword j=0; j < pl.size(); ++j) {
-          RSprintf("%f\t", pl[j]);
-        }
-        RSprintf("\n");
-      }
-      Rcpp::checkUserInterrupt();
+      // saem has no per-iteration objective function; scale.showOfv was
+      // set to 0 in inits() so the Function Val column is suppressed and
+      // the `f` argument is ignored at print time (passing NA_REAL just
+      // to satisfy the signature).  scalePrintFun increments its own
+      // counter, gates printing on (cn % every == 0), and runs the
+      // user-interrupt check internally.
+      scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
   }
@@ -1889,7 +1943,17 @@ private:
 
   mcmcaux mx;
 
-  int print;
+  // Iteration-print formatting shared with focei/nlm via src/scale.h.
+  // saem uses scaleTypeNone with all-zero xPar (Plambda is already on
+  // the model scale), so scalePrintFun's U and X rows mirror the # row.
+  // Format matches the other estimators.
+  scaling scale;
+  std::vector<double> scaleInitPar;
+  std::vector<double> scaleC;
+  std::vector<int>    scaleXPar;
+  std::vector<double> scaleLogitLow;
+  std::vector<double> scaleLogitHi;
+  CharacterVector scaleNames;
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;

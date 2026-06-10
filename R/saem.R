@@ -248,10 +248,6 @@
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
                         ue=.ue)
-    .print <- rxode2::rxGetControl(ui, "print", 1)
-    if (inherits(.print, "numeric")) {
-      .cfg$print <- as.integer(.print)
-    }
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
@@ -260,9 +256,21 @@
     .cfg$propT <- ui$saemPropT
     .cfg$addProp <- ui$saemAddProp
     .cfg$resValue <- ui$saemResValue
-    if (.cfg$print > 0) {
-      message("params:\t", paste(ui$saemParHistNames, collapse="\t"))
-    }
+    # Iteration-print formatting flows through one sub-list consumed by
+    # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
+    # uses the same default as every other method (full #/U/X output);
+    # because Plambda lives on the model scale (no internal optimizer
+    # scaling), the U row will auto-skip — leaving # and X.  xPar comes
+    # from ui$muRefCurEval so X shows exp(theta) for log-transformed
+    # parameters and expit(theta, lo, hi) for logit-transformed ones,
+    # exactly like focei.
+    .cfg$parHistNames <- as.character(ui$saemParHistNames)
+    .xform <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
+    .cfg$xPar          <- as.integer(.xform$xPar)
+    .cfg$logitThetaLow <- as.double(.xform$logitThetaLow)
+    .cfg$logitThetaHi  <- as.double(.xform$logitThetaHi)
+    .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
+                                                  iterPrintControl())
     .saemCheckCfg(.cfg)
     .cfg
   })
