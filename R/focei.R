@@ -94,6 +94,19 @@ is.latex <- function() {
   .ret
 }
 
+.Rvmmin <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  rxode2::rxReq("Rvmmin")
+  control <- .controlMaxit(control)
+  .masked <- rep_len(1, length(par))
+  .ctl <- list(maxit = control$maxit,
+               trace = 0, dowarn = FALSE, checkgrad = FALSE, checkbounds = FALSE,
+               keepinputpar = FALSE, eps = control$abstol)
+  .ret <- Rvmmin::Rvmmin(par = par, fn = fn, gr = gr, lower = lower, upper = upper,
+                          bdmsk = .masked, control = .ctl, ...)
+  .ret$x <- .ret$par
+  .ret
+}
+
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   control <- .controlMaxit(control)
   .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
