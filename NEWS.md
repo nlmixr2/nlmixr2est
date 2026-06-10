@@ -1,5 +1,10 @@
 # nlmixr2est 6.0.1
 
+- Fix segfault in `nlmSetup` on the first estimator call of a fresh R
+  session affecting every pooled estimator except `nls`
+  (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
+  `newuoa`, `uobyqa`);
+
 - Fix LTO violation as requested by CRAN by adding
   -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
 
