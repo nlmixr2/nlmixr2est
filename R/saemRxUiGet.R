@@ -136,6 +136,9 @@ rxUiGet.saemFixed <- function(x, ...) {
   .dft <- .df[!is.na(.df$ntheta), ]
   .fixError <- .dft[!is.na(.dft$err), ]
   .dft <- .dft[is.na(.dft$err), ]
+  if (length(.ui$mixProbs) > 0) {
+    .dft <- .dft[!(.dft$name %in%.ui$mixProbs), ]
+  }
   .dft <- setNames(.dft$fix, paste(.dft$name))
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
@@ -525,9 +528,32 @@ rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...))
+  .ui <- x[[1]]
+  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
 }
 attr(rxUiGet.saemParHistNames, "rstudio") <- c("ka", "add.sd")
+
+#' @export
+rxUiGet.saemMixProb <- function(x, ...) {
+  .ui <- x[[1]]
+  if (length(.ui$mixProbs) > 0) {
+    .probs <- .ui$theta[.ui$mixProbs]
+    # To get the full simplex, we append 1 - sum(probs)
+    return(c(.probs, 1.0 - sum(.probs)))
+  } else {
+    return(numeric(0))
+  }
+}
+
+#' @export
+rxUiGet.saemNMix <- function(x, ...) {
+  .ui <- x[[1]]
+  if (length(.ui$mixProbs) > 0) {
+    return(length(.ui$mixProbs) + 1L)
+  } else {
+    return(1L)
+  }
+}
 
 #' @export
 rxUiGet.saemAres <- function(x, ...) {
@@ -666,6 +692,9 @@ rxUiGet.saemInitTheta <- function(x, ...) {
                    .iniDf[!is.na(.iniDf$ntheta) & is.na(.iniDf$err), "name"])
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   .est <- .est[!(names(.est) %in% .cov$covariateParameter)]
+  if (length(.ui$mixProbs) > 0) {
+    .est <- .est[!(names(.est) %in% .ui$mixProbs)]
+  }
   .etaNames <- .iniDf[is.na(.iniDf$ntheta), ]
   .etaNames <- .iniDf[.iniDf$neta1 == .iniDf$neta2, "name"]
   .fixed <- rxUiGet.saemFixed(x, ...)
@@ -677,17 +706,18 @@ rxUiGet.saemInitTheta <- function(x, ...) {
   .ret <- vapply(seq_along(.logEta),
                    function(i) {
                     .isEta <- any(.names[i] %in% .etaNames)
+                    .curName <- .names[i]
                     if (.logEta[i]) {
                       if (.isEta) {
                         return(1)
                       } else {
-                        return(exp(.est[i]))
+                        return(exp(.est[.curName]))
                       }
                     } else {
                       if (.isEta) {
                         return(0)
                       } else {
-                        return(.est[i])
+                        return(.est[.curName])
                       }
                     }
                   }, numeric(1), USE.NAMES=FALSE)

@@ -261,6 +261,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  if (length(.ui$mixProbs) > 0) {
+    .ret <- .ret[!(.ret %in% .ui$mixProbs)]
+  }
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret

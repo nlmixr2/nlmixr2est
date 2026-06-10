@@ -247,7 +247,8 @@
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
-                        ue=.ue)
+                        ue=.ue,
+                        mixProb=ui$saemMixProb)
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
@@ -378,6 +379,10 @@
       .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
     }
   }
+  if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
+    .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
+    .theta[.ui$mixProbs] <- .estMix
+  }
   env$fullTheta <- .theta
   if (.varSpec) {
     .minfo("variance residual estimates transformed from standard deviation")
@@ -433,6 +438,10 @@
   .ui <- env$ui
 
   .allThetaNames <- .ui$saemParHistNames
+  cat("DEBUG parHist: ncol(.saem$par_hist) =", ncol(.saem$par_hist), "\n")
+  cat("DEBUG parHist: length(.allThetaNames) =", length(.allThetaNames), "\n")
+  cat("DEBUG parHist: .allThetaNames =", paste(.allThetaNames, collapse=", "), "\n")
+  flush(stdout())
 
   .m <- .saem$par_hist
   if (ncol(.m) > length(.allThetaNames)) {
@@ -470,6 +479,9 @@
       .ini <- .ini[!is.na(.ini$ntheta), ]
       .ini <- .ini[!.ini$fix, ]
       .ini <- paste(.ini$name)
+      if (length(.ui$mixProbs) > 0) {
+        .ini <- .ini[!(.ini %in% .ui$mixProbs)]
+      }
       if (.calcCov && .nth == 0) {
         warning("no population parameters in the model, no covariance matrix calculated",
                 call.=FALSE)
@@ -825,6 +837,9 @@ nlmixr2Est.saem <- function(env, ...) {
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
+  if (length(.ui$mixProbs) > 0) {
+    message("mixture SAEM computation scales with the number of sub-populations")
+  }
   .saemFamilyControl(env, ...)
   on.exit({
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
