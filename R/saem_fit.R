@@ -613,6 +613,12 @@
   cat("DEBUG .configsaem: mixProb =", paste(mixProb, collapse=", "), "\n")
   cat("DEBUG .configsaem: nMix =", nMix, "\n")
   cat("DEBUG .configsaem: length(mixProb) =", length(mixProb), "\n")
+  cat("DEBUG .configsaem: nphi =", cfg$nphi, " nphi1 =", cfg$nphi1, " nphi0 =", cfg$nphi0, "\n")
+  cat("DEBUG .configsaem: i1 (1-based) =", (cfg$i1 + 1), "\n")
+  cat("DEBUG .configsaem: i0 (1-based) =", if(length(cfg$i0)) (cfg$i0 + 1) else "none", "\n")
+  cat("DEBUG .configsaem: inits theta ncol =", ncol(inits$theta), "\n")
+  cat("DEBUG .configsaem: inits theta rownames =", paste(rownames(inits$theta), collapse=","), "\n")
+  cat("DEBUG .configsaem: inits theta colnames =", paste(colnames(inits$theta), collapse=","), "\n")
   flush(stdout())
   cfg$nMix <- nMix
   cfg$mixProb <- mixProb
