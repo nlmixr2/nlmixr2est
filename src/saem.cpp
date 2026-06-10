@@ -11,7 +11,6 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
-#include "solveWarnHelper.h"
 
 #define _(String) (String)
 
@@ -25,6 +24,10 @@
 using namespace std;
 using namespace arma;
 using namespace Rcpp;
+
+// scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
+// — must be included AFTER the `using namespace Rcpp;` above.
+#include "scale.h"
 
 typedef void (*fn_ptr) (double *, double *);
 
@@ -784,12 +787,42 @@ public:
       statrese[b] = 0.0;
     }
 
-    print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+
+    // Set up the shared scale.h iteration-print struct.  saem uses
+    // scaleTypeNone (no internal optimizer scaling — Plambda is on
+    // model scale) so scalePrintFun's auto-skip drops the redundant U
+    // row.  The xform sub-list (xPar / probitIdx / logitThetaLow /
+    // logitThetaHi / probitThetaLow / probitThetaHi) is shipped from
+    // R by .iterPrintXParFromUi() and wired in one call through
+    // scaleAttachXform — the same path every other estimator uses,
+    // so the X row back-transforms exp / expit / probitInv identically
+    // to focei and the final-fit-summary block.  Omega and residual-
+    // error entries in the printed vector have xPar=0 / probitIdx=0
+    // and so contribute no X-row delta.
+    scaleNames = as<CharacterVector>(x["parHistNames"]);
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
+    scaleInitPar.assign(std::max(nprint, 1), 0.0);
+    scaleC.assign(std::max(nprint, 1), NA_REAL);
+    scaleSetup(&scale,
+               scaleInitPar.data(),
+               scaleC.data(),
+               scaleNames,
+               /*useColor*/0, /*printNcol*/1, /*print*/0,
+               normTypeConstant,
+               scaleTypeNone,
+               1e-7, 1e7, 0.0,
+               nprint);
+    scaleAttachXform(&scale, as<List>(x["xform"]));
+    scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
+    // saem has no per-iteration objective function; suppress the Function
+    // Val column entirely so users don't see "nan" in every iteration row.
+    scale.showOfv = 0;
+    scale.save = 0; // par_hist already records the iteration history
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -825,6 +858,10 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
+    // Emit the unified column header once at fit start.  Periodic re-emits
+    // (every scale.headerEvery parameter-print events) are handled inside
+    // scalePrintFun.
+    scalePrintHeader(&scale);
     fsaveMat = user_fn(phiM, evtM, optM);
     limit = fsaveMat.col(2);
     limitT = fsaveMat.col(2);
@@ -1798,17 +1835,14 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
-        RSprintf("%03d: ", kiter+1);
-        for (arma::uword j=0; j < pl.size(); ++j) {
-          RSprintf("%f\t", pl[j]);
-        }
-        RSprintf("\n");
-        /* See inner.cpp's foceiOfvOptim: collapse per-iteration ODE-solve
-           warning floods into one summary line. */
-        nmFlushRxSolveWarn(5);
-      }
-      Rcpp::checkUserInterrupt();
+      // saem has no per-iteration objective function; scale.showOfv was
+      // set to 0 in inits() so the Function Val column is suppressed and
+      // the `f` argument is ignored at print time (passing NA_REAL just
+      // to satisfy the signature).  scalePrintFun increments its own
+      // counter, gates printing on (cn % every == 0), and runs the
+      // user-interrupt check internally, and flushes any aggregated
+      // rxode2 solve warnings after each printed iteration.
+      scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
   }
@@ -1885,7 +1919,15 @@ private:
 
   mcmcaux mx;
 
-  int print;
+  // Iteration-print formatting shared with focei/nlm via src/scale.h.
+  // saem uses scaleTypeNone (Plambda is already on the model scale).
+  // The transform fields (xPar / probitIdx / bounds) are populated
+  // by scaleAttachXform from the R-side xform sub-list at setup time;
+  // backing storage lives on the scaling struct itself.
+  scaling scale;
+  std::vector<double> scaleInitPar;
+  std::vector<double> scaleC;
+  CharacterVector scaleNames;
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
