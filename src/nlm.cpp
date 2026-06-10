@@ -137,7 +137,9 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
-  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
+  // NB: per-subject sticky counter is sized below, AFTER rxSolve_ sets
+  // up `rx`.  Sizing it here would read getRxNsub(NULL) on the first
+  // nlmSetup call of a fresh R session and crash.
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
@@ -164,6 +166,9 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
+  // Size the per-subject inner-retry counter now that `rx` is valid
+  // (see comment above where this used to live).
+  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
   nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
