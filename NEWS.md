@@ -13,6 +13,8 @@
 
 - Guard against null pointer arithmetic in inner.cpp
 
+- Use OpenMP threading for S matrix calculation
+
 # nlmixr2est 6.0.0
 
 - `focei`, `foce`, `fo`, `laplace`, and `agq` have all been
