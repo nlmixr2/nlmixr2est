@@ -10,7 +10,7 @@ saemControl(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
-  print = 1,
+  print = 1L,
   trace = 0,
   covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
   calcTables = TRUE,
@@ -77,8 +77,14 @@ computation.  In Monolix this is equivalent to \code{L}.}
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
 
-\item{print}{The number it iterations that are completed before
-anything is printed to the console.  By default, this is 1.}
+\item{print}{Either a scalar print-frequency (`0` = suppress
+iteration output; `1` (default) = print every parameter
+evaluation; `N` = print every Nth evaluation), OR a pre-built
+[iterPrintControl()] object bundling all iteration-print options
+(column wrap, header cadence, color, simple/three-row mode).
+The scalar form is equivalent to
+`iterPrintControl(every = print, ncol = printNcol,
+useColor = useColor)`.}
 
 \item{trace}{An integer indicating if you want to trace(1) the
 SAEM algorithm process.  Useful for debugging, but not for

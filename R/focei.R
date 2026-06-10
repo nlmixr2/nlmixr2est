@@ -1306,34 +1306,6 @@ rxUiGet.scaleCnls <- function(x, ...) {
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
-#' This sets up the transformation bounds and indexes and bounds for inner.cpp
-#'
-#' Note that the C code assumes the index starts at 1
-#'
-#' @param ui rxode2 ui environment
-#' @param env focei environment used for solving
-#' @return Nothing called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.foceiOptEnvSetupTransformIndexs <- function(ui, env) {
-  .muRefCurEval <- ui$muRefCurEval
-  .ini <- ui$iniDf
-  .ini <- .ini[!is.na(.ini$ntheta), c("ntheta", "name")]
-  names(.ini)[2] <- "parameter"
-  .transform <- merge(.ini, .muRefCurEval)
-  .transform <- .transform[order(.transform$ntheta), ]
-
-  env$logThetasF <- .transform[which(.transform$curEval == "exp"), "ntheta"]
-
-  env$logitThetasF <- .transform[which(.transform$curEval == "expit"), "ntheta"]
-  env$logitThetasLowF <- .transform[which(.transform$curEval == "expit"), "low"]
-  env$logitThetasHiF <- .transform[which(.transform$curEval == "expit"), "hi"]
-
-  env$probitThetasF <- .transform[which(.transform$curEval == "probitInv"), "ntheta"]
-  env$probitThetasLowF <- .transform[which(.transform$curEval == "probitInv"), "low"]
-  env$probitThetasHiF <- .transform[which(.transform$curEval == "probitInv"), "hi"]
-}
-
 # focei.mu.ref
 # eta# and the corresponding theta number
 
@@ -1428,7 +1400,20 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  .foceiOptEnvSetupTransformIndexs(ui, env)
+  # Theta-side transform indexes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  The helper does not
+  # mutate env; we copy its ntheta-indexed outputs onto the focei env
+  # under the names the focei C-side reads via e["logThetasF"] etc.
+  # The C code assumes 1-based theta indices, which is exactly what
+  # iniDf$ntheta gives.
+  .xform <- .iterPrintXParFromUi(ui)
+  env$logThetasF       <- .xform$logNthetas
+  env$logitThetasF     <- .xform$logitNthetas
+  env$logitThetasLowF  <- .xform$logitNthetasLow
+  env$logitThetasHiF   <- .xform$logitNthetasHi
+  env$probitThetasF    <- .xform$probitNthetas
+  env$probitThetasLowF <- .xform$probitNthetasLow
+  env$probitThetasHiF  <- .xform$probitNthetasHi
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0

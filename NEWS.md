@@ -1,4 +1,42 @@
-# nlmixr2est 6.0.2
+# nlmixr2est (development version)
+
+- The iteration-time progress output emitted by every estimator
+  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
+  newuoa, uobyqa) now flows through a single shared printer
+  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
+  Each estimator's iteration trace has the same `#`/`U`/`X` row
+  layout, column wrapping, ANSI handling, periodic header re-emit
+  cadence, and per-iteration user-interrupt check.
+
+- New `iterPrintControl()` function bundles every iteration-print
+  option (`every`, `ncol`, `headerEvery`, `useColor`, `simple`) into
+  one validated, classed list.  Pass it via the existing `print`
+  argument on any `*Control()` function:
+  `foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))`.
+  The historical scalar form `foceiControl(print = 5, printNcol = 8)`
+  continues to work — internally the outer `*Control()` wraps the
+  scalar arguments into an `iterPrintControl()` call.
+
+- saem now applies the same parameter back-transforms as focei.
+  The `X` row shows `exp(theta)` for log-transformed thetas and
+  `expit(theta, lower, upper)` for logit-transformed ones, derived
+  from `ui$muRefCurEval` on the R side.
+
+- Estimators with no per-iteration objective function (saem) now
+  suppress the `Function Val.` column entirely instead of printing
+  `nan` in every iteration row.  The column header, separator, and
+  per-row prefix all shrink accordingly.
+
+- The shared iteration-printer auto-skips degenerate rows: when a
+  method has no internal optimizer scaling (saem, group-C
+  optimizers with `scaleType = "none"`) the `U` row is dropped
+  because it would mirror `#`, and when there are also no
+  log/logit-transformed parameters the `X` row is dropped too —
+  so models with no transforms collapse to a single `#` row per
+  iteration.  Users who want to force-skip the U/X rows even with
+  transforms present can pass
+  `*Control(print = iterPrintControl(simple = TRUE))`.
+  
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`
   (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
