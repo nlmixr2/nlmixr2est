@@ -2522,9 +2522,6 @@ void innerOpt() {
     // slot 0 and race -> heap corruption (Windows-only; Linux shares one
     // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
     // Resolved once on the main thread.
-    typedef void(*t_setRxThreadId)(int);
-    static t_setRxThreadId _setRxThreadId =
-      (t_setRxThreadId) R_GetCCallable("rxode2", "setRxThreadId");
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
@@ -2532,13 +2529,13 @@ void innerOpt() {
       int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (_doParallel) {
-        _setRxThreadId(omp_get_thread_num());
+        setRxThreadId(omp_get_thread_num());
         try {
           innerOptId(_id);
         } catch (...) {
           inds_focei[_id].parErrorNoEta = 1;
         }
-        _setRxThreadId(-1);
+        setRxThreadId(-1);
       } else {
 #endif
         innerOptId(_id);
@@ -5888,7 +5885,10 @@ int foceiS(double *theta, Environment e, bool &hasZero){
         int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
         focei_ind *fIndL = &(inds_focei[_gid]);
         fIndL->thetaGrad[cpar] = NA_REAL;
+        // Set thread id for windows
+        setRxThreadId(omp_get_thread_num());
         _opt1Res[_gid] = innerOpt1(_gid, 2);
+        setRxThreadId(-1);
         if (_opt1Res[_gid] && doForward) {
           fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
         }
@@ -5932,6 +5932,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
           int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
           focei_ind *fIndL = &(inds_focei[_gid]);
           if (ISNA(fIndL->thetaGrad[cpar])) {
+            setRxThreadId(omp_get_thread_num());
             if (!innerOpt1(_gid, 1)) {
               // forward only
               fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
@@ -5939,6 +5940,7 @@ int foceiS(double *theta, Environment e, bool &hasZero){
               // central
               fIndL->thetaGrad[cpar] = (fIndL->lik[2] - fIndL->lik[1]) / (2*delta);
             }
+            setRxThreadId(-1);
           }
         }
         _innerParallel.store(0, std::memory_order_release);
