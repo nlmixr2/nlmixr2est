@@ -766,6 +766,12 @@ public:
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
+    // Pre-allocate per-chain scratch buffers for the distribution==1 hot loops
+    _scratch_ft.set_size(ntotal);
+    _scratch_limitT.set_size(ntotal);
+    _scratch_ftT.set_size(ntotal);
+    _scratch_g.set_size(ntotal);
+    _scratch_indio = indio;  // same length as indio, initialise from it
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
       if (res_mod(b) == rmAdd) {
@@ -858,33 +864,37 @@ public:
       vec f = fsave;
       fsave = f;
       if (distribution == 1){
+        // Build yt once — it does not depend on chain index k
+        vec yt = hasFixedObsTransform ? yTrans : y;
+        if (!hasFixedObsTransform) {
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          }
+        }
+        const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
         for (int k = 0; k < nmc; k++) {
           int obs_start = k * ntotal;
           vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
-          vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
-          vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-          vec ftk = fk;
-          vec limitTk = limitk;
-          vec ftTk(ntotal);
-          vec yt = hasFixedObsTransform ? yTrans : y;
+          const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+          const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+          _scratch_ft = fk;
+          _scratch_limitT = limitk;
           for (int i = ntotal; i--;) {
             int cur = ix_endpnt(i);
-            limitTk(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            ftk(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            if (!hasFixedObsTransform) {
-              yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            }
-            ftTk(i) = handleF(propT(cur), ftk(i), fk(i), false, true);
+            _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
           }
-          vec gk = vecares + vecbres % abs(ftTk);
-          gk.elem(find(gk == 0.0)).fill(1.0);
-          gk.elem(find(gk < double_xmin)).fill(double_xmin);
-          gk.elem(find(gk > xmax)).fill(xmax);
-          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-          DYF(indio_k) = 0.5*(((yt - ftk)/gk) % ((yt - ftk)/gk)) + log(gk);
+          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+          _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+          _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+          _scratch_indio = indio + (arma::uword)k * stride;
+          DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
           for (int j = ntotal; j--;) {
-            DYF(indio_k(j)) = doCensNormal1(censk[j], y[j], limitTk[j],
-                                             DYF(indio_k(j)), fk[j], gk[j], 0);
+            DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                   DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
           }
         }
       } else if (distribution == 2){
@@ -1139,16 +1149,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1219,16 +1220,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1308,16 +1300,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1380,16 +1363,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1452,16 +1426,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1524,16 +1489,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1609,16 +1565,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1694,16 +1641,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            {
-              int nb_b = (int)idx.n_elem;
-              uvec fsb_idx((arma::uword)(nmc * nb_b));
-              for (int k = 0; k < nmc; k++) {
-                fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
-                  idx + (arma::uword)(k * ntotal);
-              }
-              fsb = fsM(fsb_idx);
-              ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
-            }
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1971,8 +1909,30 @@ private:
   vec limit;
   vec fsave;
 
+  // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
+  // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().
+  vec _scratch_ft;      // transformed-f per chain (replaces ftk/fck)
+  vec _scratch_limitT;  // transformed-limit per chain (replaces limitTk)
+  vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
+  vec _scratch_g;       // residual SD per chain (replaces gk/gck)
+  uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
+
   int DEBUG;
   std::vector< std::string > phiMFile;
+
+  // Build fsb (predictions across all nmc chains) and ysb (observations
+  // replicated nmc times) for a single endpoint b, used by the residual
+  // parameter estimation switch cases.
+  void buildFsbYsb(const uvec &idx, const vec &fsM, vec &fsb, vec &ysb) const {
+    int nb_b = (int)idx.n_elem;
+    uvec fsb_idx((arma::uword)(nmc * nb_b));
+    for (int k = 0; k < nmc; k++) {
+      fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+        idx + (arma::uword)(k * ntotal);
+    }
+    fsb = fsM(fsb_idx);
+    ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+  }
 
   void set_mcmcphi(mcmcphi &mphi1,
 		   const uvec i1,
@@ -2006,7 +1966,6 @@ private:
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
-    vec gc;
 
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
@@ -2038,48 +1997,60 @@ private:
         fs = fc;
         switch (distribution) {
         case 1:
-          for (int k = 0; k < nmc; k++) {
-            int obs_start = k * ntotal;
-            vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
-            vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-            vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
-            vec fck = fsk;
-            vec limitTk = limitk;
-            vec fcTk(ntotal);
+          {
+            // Build yt once — it does not depend on chain index k
             vec yt = hasFixedObsTransform ? yTrans : mx.y;
-            for (int i = ntotal; i--;) {
-              int cur = ix_endpnt(i);
-              limitTk(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              fck(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-              if (!hasFixedObsTransform) {
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
                 yt(i) = _powerD(mx.y(i), lambda(cur), yj(cur), low(cur), hi(cur));
               }
-              fcTk(i) = handleF(propT(cur), fsk(i), fck(i), false, true);
             }
-            vec gck = vecares + vecbres % abs(fcTk);
-            gck.elem(find(gck == 0.0)).fill(1);
-            gck.elem(find(gck < double_xmin)).fill(double_xmin);
-            gck.elem(find(gck > xmax)).fill(xmax);
-            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = 0.5*(((yt - fck)/gck) % ((yt - fck)/gck)) + log(gck);
-            for (int j = ntotal; j--;) {
-              DYF(indio_k(j)) = doCensNormal1(censk[j], mx.y[j], limitTk[j],
-                                               DYF(indio_k(j)), fck[j], gck[j], 0);
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fsk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              for (int j = ntotal; j--;) {
+                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
+                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
             }
           }
           break;
         case 2:
-          for (int k = 0; k < nmc; k++) {
-            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -mx.y % log(fck) + fck;
+          {
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -mx.y % log(fck) + fck;
+            }
           }
           break;
         case 3:
-          for (int k = 0; k < nmc; k++) {
-            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
-            uvec indio_k = mx.indio + (arma::uword)k * (arma::uword)(N * mlen);
-            DYF(indio_k) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+          {
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+            }
           }
           break;
         }
