@@ -116,7 +116,8 @@
                        perFixOmega=0.5,
                        perFixResid=0.75,
                        resFixed,
-                       ue) {
+                       ue,
+                       mixProb = numeric(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -608,7 +609,14 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed))
+  nMix <- max(1L, length(mixProb))
+  cat("DEBUG .configsaem: mixProb =", paste(mixProb, collapse=", "), "\n")
+  cat("DEBUG .configsaem: nMix =", nMix, "\n")
+  cat("DEBUG .configsaem: length(mixProb) =", length(mixProb), "\n")
+  flush(stdout())
+  cfg$nMix <- nMix
+  cfg$mixProb <- mixProb
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")
