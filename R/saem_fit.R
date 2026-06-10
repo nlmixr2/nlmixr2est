@@ -293,12 +293,9 @@
   ncov <- data$N.covar + 1
   nmc <- mcmc$nmc
   nM <- mcmc$nmc * N
-  yM <- rep(y, nmc)
   mlen <- max(nb_measures)
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
-  ix <- rep(1:dim(io)[1], nmc)
-  ioM <- io[ix, ]
-  indioM <- grep(1, t(ioM)) - 1
+  indio <- grep(1, t(io)) - 1
   ## mPars <- if (ninputpars == 0) NULL else unlist(stats::aggregate(.as.data.frame(data$data[, inPars]), list(id), unique)[, -1])
   ## if (!is.null(mPars)) {
   ##   dim(mPars) <- c(N, ninputpars)
@@ -338,9 +335,6 @@
 
   evt <- dat
   evt$ID <- evt$ID - 1
-  ## r
-  evtM <- evt[rep(1:dim(evt)[1], nmc), ]
-  evtM$ID <- cumsum(c(FALSE, diff(evtM$ID) != 0))
 
   # i1:
   i1 <- grep(1, diag(covstruct))
@@ -527,12 +521,10 @@
     N = N,
     ntotal = ntotal,
     y = y,
-    yM = yM,
     phiM = phiM,
     evt = as.matrix(evt),
-    evtM = as.matrix(evtM),
     mlen = mlen,
-    indioM = indioM,
+    indio = indio,
 
     pc1 = pc1,
     covstruct1 = covstruct1,
@@ -595,14 +587,15 @@
     stop(msg)
   }
   t <- unlist(split(1L:length(s), s))
-  cfg$ysM <- rep(cfg$y[t], cfg$nmc)
+  cfg$ys <- cfg$y[t]
   cfg$ix_sorting <- t - 1 # c-index for sorting by endpnt
   cfg$y_offset <- c(0, cumsum(table(s)))
-  s <- cfg$evtM[cfg$evtM[, "EVID"] == 0, "CMT"]
-  cfg$ix_endpnt <- as.integer(as.factor(s)) - 1 # to derive vecares & vecbres
-  s <- cfg$evtM[cfg$evtM[, "EVID"] == 0, "ID"]
-  t <- cumsum(c(0, table(s)))
-  cfg$ix_idM <- cbind(t[-length(t)], t[-1] - 1) # c-index of obs records of each subject
+  .s_cmt <- cfg$evt[cfg$evt[, "EVID"] == 0, "CMT"]
+  cfg$ix_endpnt <- as.integer(as.factor(.s_cmt)) - 1 # to derive vecares & vecbres (N-subject only)
+  .s_id <- cfg$evt[cfg$evt[, "EVID"] == 0, "ID"]
+  .obs_counts <- as.integer(table(.s_id)) # obs per subject in evt (N entries)
+  .t <- cumsum(c(0L, rep(.obs_counts, cfg$nmc))) # N*nmc + 1 entries
+  cfg$ix_idM <- cbind(.t[-length(.t)], .t[-1] - 1L) # c-index of obs records of each subject
 
   cfg$ares <- rep(10, cfg$nendpnt)
   cfg$bres <- rep(1, cfg$nendpnt)
