@@ -1,12 +1,13 @@
 # nlmixr2est 6.0.2
 
-- Fix Windows heap-corruption segfault building `focei`/`foce`/`fo`/
-  `laplace`/`agq` fits at more than one core.  On Windows each package
+- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
+  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
+  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
   statically links its own OpenMP runtime, so when the parallel inner
   loop called rxode2's solver across threads rxode2 saw every worker as
   thread 0 and collapsed its per-thread solve buffers onto a single
   slot, racing and corrupting the heap.  The inner loop now hands rxode2
-  the real thread id via `rxode2::setRxThreadId()` (requires the
+  the real thread id via `setRxThreadId()` from rxode2 api (requires the
   matching rxode2).
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
