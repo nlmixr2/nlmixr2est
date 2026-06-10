@@ -80,7 +80,6 @@ Suggests:
     remotes,
     fastGHQuad,
     rmarkdown,
-    Rvmmin,
     rlang
 LinkingTo:
     BH,

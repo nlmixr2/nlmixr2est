@@ -853,7 +853,6 @@ foceiControl <- function(sigdig = 3, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -1187,10 +1186,6 @@ foceiControl <- function(sigdig = 3, #
       outerOpt <- -1L
     } else if (outerOpt == "newuoa") {
       outerOptFun <- .newuoa
-      outerOpt <- -1L
-    } else if (outerOpt == "Rvmmin") {
-      rxode2::rxReq("Rvmmin")
-      outerOptFun <- .Rvmmin
       outerOpt <- -1L
     } else {
       if (checkmate::testIntegerish(outerOpt, lower=0, upper=1, len=1)) {
