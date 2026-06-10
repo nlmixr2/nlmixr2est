@@ -60,8 +60,8 @@
 <span>  optimHessType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  hessErr <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  shi21maxHess <span class="op">=</span> <span class="fl">20L</span>,</span>
-<span>  useColor <span class="op">=</span> <span class="fu">crayon</span><span class="fu">::</span><span class="fu"><a href="http://r-lib.github.io/crayon/reference/has_color.html" class="external-link">has_color</a></span><span class="op">(</span><span class="op">)</span>,</span>
-<span>  printNcol <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/Round.html" class="external-link">floor</a></span><span class="op">(</span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/options.html" class="external-link">getOption</a></span><span class="op">(</span><span class="st">"width"</span><span class="op">)</span> <span class="op">-</span> <span class="fl">23</span><span class="op">)</span><span class="op">/</span><span class="fl">12</span><span class="op">)</span>,</span>
+<span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  normType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"rescale2"</span>, <span class="st">"mean"</span>, <span class="st">"rescale"</span>, <span class="st">"std"</span>, <span class="st">"len"</span>, <span class="st">"constant"</span><span class="op">)</span>,</span>
 <span>  scaleType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlmixr2"</span>, <span class="st">"norm"</span>, <span class="st">"mult"</span>, <span class="st">"multAdd"</span><span class="op">)</span>,</span>
@@ -233,19 +233,29 @@ step size for the hessian calculation</p></dd>
 
 
 <dt id="arg-usecolor">useColor<a class="anchor" aria-label="anchor" href="#arg-usecolor"></a></dt>
-<dd><p>Boolean indicating if focei can use ASCII color codes</p></dd>
+<dd><p>Logical (or `NULL`) — whether to emit ANSI
+bold/color escapes in the iteration print.  `NULL` (the default)
+defers to [iterPrintControl()]'s default ([crayon::has_color()]).
+Equivalent to `print = iterPrintControl(useColor = ...)`.</p></dd>
 
 
 <dt id="arg-printncol">printNcol<a class="anchor" aria-label="anchor" href="#arg-printncol"></a></dt>
-<dd><p>Number of columns to printout before wrapping
-parameter estimates/gradient</p></dd>
+<dd><p>Integer (or `NULL`) — number of parameter columns
+emitted per row before wrapping to a continuation row.  `NULL`
+(the default) defers to [iterPrintControl()]'s default
+(`floor((getOption("width") - 23) / 12)`, which fits an 80-column
+terminal).  Equivalent to `print = iterPrintControl(ncol = ...)`.</p></dd>
 
 
 <dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
-<dd><p>Integer representing when the outer step is
-printed. When this is 0 or do not print the iterations.  1 is
-print every function evaluation (default), 5 is print every 5
-evaluations.</p></dd>
+<dd><p>Either a scalar print-frequency (`0` = suppress
+iteration output; `1` (default) = print every parameter
+evaluation; `N` = print every Nth evaluation), OR a pre-built
+[iterPrintControl()] object bundling all iteration-print options
+(column wrap, header cadence, color, simple/three-row mode).
+The scalar form is equivalent to
+`iterPrintControl(every = print, ncol = printNcol,
+useColor = useColor)`.</p></dd>
 
 
 <dt id="arg-normtype">normType<a class="anchor" aria-label="anchor" href="#arg-normtype"></a></dt>
@@ -544,8 +554,8 @@ estimates are not back-transformed.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             setup    optimize preprocess postprocess table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.0294659 0.000589101      0.047       0.013 0.024    0.001 0.790945</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize preprocess postprocess table compress     other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01490685 0.000535084      0.045       0.012 0.024    0.001 0.7995581</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

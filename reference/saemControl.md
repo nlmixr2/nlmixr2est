@@ -11,7 +11,7 @@ saemControl(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
-  print = 1,
+  print = 1L,
   trace = 0,
   covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
   calcTables = TRUE,
@@ -92,8 +92,13 @@ saemControl(
 
 - print:
 
-  The number it iterations that are completed before anything is printed
-  to the console. By default, this is 1.
+  Either a scalar print-frequency (\`0\` = suppress iteration output;
+  \`1\` (default) = print every parameter evaluation; \`N\` = print
+  every Nth evaluation), OR a pre-built \[iterPrintControl()\] object
+  bundling all iteration-print options (column wrap, header cadence,
+  color, simple/three-row mode). The scalar form is equivalent to
+  \`iterPrintControl(every = print, ncol = printNcol, useColor =
+  useColor)\`.
 
 - trace:
 

@@ -819,6 +819,34 @@ nlmeControl()
 #> $dense
 #> [1] FALSE
 #> 
+#> $cvodeLinSolver
+#> dense 
+#>     1 
+#> 
+#> $stiff2
+#> [1] 0
+#> 
+#> $autoSwitchMaxStiff
+#> [1] 10
+#> 
+#> $autoSwitchMaxNonstiff
+#> [1] 3
+#> 
+#> $autoSwitchStiffFirst
+#> [1] 0
+#> 
+#> $autoSwitchNonstifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchStifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchDtfac
+#> [1] 2
+#> 
+#> $autoSwitchSwitchMax
+#> [1] 5
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -1292,6 +1320,34 @@ nlmixr2NlmeControl()
 #> 
 #> $dense
 #> [1] FALSE
+#> 
+#> $cvodeLinSolver
+#> dense 
+#>     1 
+#> 
+#> $stiff2
+#> [1] 0
+#> 
+#> $autoSwitchMaxStiff
+#> [1] 10
+#> 
+#> $autoSwitchMaxNonstiff
+#> [1] 3
+#> 
+#> $autoSwitchStiffFirst
+#> [1] 0
+#> 
+#> $autoSwitchNonstifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchStifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchDtfac
+#> [1] 2
+#> 
+#> $autoSwitchSwitchMax
+#> [1] 5
 #> 
 #> $.zeros
 #> NULL

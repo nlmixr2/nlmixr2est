@@ -74,7 +74,6 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> params:  tka rxBoundedTr.tcl tv  V(eta.ka)   V(eta.v)    V(eta.cl)   add.sd
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...

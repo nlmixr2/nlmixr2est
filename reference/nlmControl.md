@@ -27,8 +27,8 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
-  useColor = crayon::has_color(),
-  printNcol = floor((getOption("width") - 23)/12),
+  useColor = NULL,
+  printNcol = NULL,
   print = 1L,
   normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
   scaleType = c("nlmixr2", "norm", "mult", "multAdd"),
@@ -195,18 +195,28 @@ nlmControl(
 
 - useColor:
 
-  Boolean indicating if focei can use ASCII color codes
+  Logical (or \`NULL\`) — whether to emit ANSI bold/color escapes in the
+  iteration print. \`NULL\` (the default) defers to
+  \[iterPrintControl()\]'s default (\[crayon::has_color()\]). Equivalent
+  to \`print = iterPrintControl(useColor = ...)\`.
 
 - printNcol:
 
-  Number of columns to printout before wrapping parameter
-  estimates/gradient
+  Integer (or \`NULL\`) — number of parameter columns emitted per row
+  before wrapping to a continuation row. \`NULL\` (the default) defers
+  to \[iterPrintControl()\]'s default (\`floor((getOption("width") - 23)
+  / 12)\`, which fits an 80-column terminal). Equivalent to \`print =
+  iterPrintControl(ncol = ...)\`.
 
 - print:
 
-  Integer representing when the outer step is printed. When this is 0 or
-  do not print the iterations. 1 is print every function evaluation
-  (default), 5 is print every 5 evaluations.
+  Either a scalar print-frequency (\`0\` = suppress iteration output;
+  \`1\` (default) = print every parameter evaluation; \`N\` = print
+  every Nth evaluation), OR a pre-built \[iterPrintControl()\] object
+  bundling all iteration-print options (column wrap, header cadence,
+  color, simple/three-row mode). The scalar form is equivalent to
+  \`iterPrintControl(every = print, ncol = printNcol, useColor =
+  useColor)\`.
 
 - normType:
 
@@ -548,8 +558,8 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup    optimize preprocess postprocess table compress    other
-#> elapsed 0.0294659 0.000589101      0.047       0.013 0.024    0.001 0.790945
+#>              setup    optimize preprocess postprocess table compress     other
+#> elapsed 0.01490685 0.000535084      0.045       0.012 0.024    0.001 0.7995581
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

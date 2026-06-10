@@ -46,6 +46,8 @@
 - [`getValidNlmixrControl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   [`getValidNlmixrCtl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
   : Get valid nlmixr control object
+- [`iterPrintControl()`](https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.md)
+  : Control iteration-time print formatting
 - [`laplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/laplaceControl.md)
   : Control options for the Laplace estimation method
 - [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md)

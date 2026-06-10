@@ -76,7 +76,6 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> params:  tka rxBoundedTr.tcl tv  V(eta.ka)   V(eta.v)    V(eta.cl)   add.sd
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -110,10 +109,10 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  covariance preprocess configure  saem postprocess table
-#> elapsed 0.02234715 0.008003244      0.065     0.023 2.289       0.461 0.058
+#>            setup  covariance preprocess configure  saem postprocess table
+#> elapsed 0.335239 0.008003295      0.062     0.022 2.375       0.447 0.059
 #>         compress     other time2 time1
-#> elapsed    0.058 0.3106496 1.002 1.001
+#> elapsed    0.058 0.3047577 1.002 1.002
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

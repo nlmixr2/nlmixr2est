@@ -69,8 +69,24 @@ laplaceControl()
 #> $n1qn1nsim
 #> [1] 10001
 #> 
-#> $print
+#> $iterPrintControl
+#> $every
 #> [1] 1
+#> 
+#> $ncol
+#> [1] 4
+#> 
+#> $headerEvery
+#> [1] 10
+#> 
+#> $useColor
+#> [1] TRUE
+#> 
+#> $simple
+#> [1] FALSE
+#> 
+#> attr(,"class")
+#> [1] "iterPrintControl" "list"            
 #> 
 #> $lbfgsLmm
 #> [1] 7
@@ -138,17 +154,11 @@ laplaceControl()
 #> $scaleObjective
 #> [1] 0
 #> 
-#> $useColor
-#> [1] TRUE
-#> 
 #> $boundTol
 #> [1] 0.05
 #> 
 #> $calcTables
 #> [1] TRUE
-#> 
-#> $printNcol
-#> [1] 4
 #> 
 #> $noAbort
 #> [1] 1
@@ -215,7 +225,7 @@ laplaceControl()
 #>     .ret$x <- .ret$par
 #>     .ret
 #> }
-#> <bytecode: 0x562ad7afba58>
+#> <bytecode: 0x5589536fa990>
 #> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
@@ -748,6 +758,34 @@ laplaceControl()
 #> 
 #> $dense
 #> [1] FALSE
+#> 
+#> $cvodeLinSolver
+#> dense 
+#>     1 
+#> 
+#> $stiff2
+#> [1] 0
+#> 
+#> $autoSwitchMaxStiff
+#> [1] 10
+#> 
+#> $autoSwitchMaxNonstiff
+#> [1] 3
+#> 
+#> $autoSwitchStiffFirst
+#> [1] 0
+#> 
+#> $autoSwitchNonstifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchStifftol
+#> [1] 0.9
+#> 
+#> $autoSwitchDtfac
+#> [1] 2
+#> 
+#> $autoSwitchSwitchMax
+#> [1] 5
 #> 
 #> $.zeros
 #> NULL

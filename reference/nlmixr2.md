@@ -756,7 +756,6 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> ✔ done
 #> ℹ calculate uninformed etas
 #> ℹ done
-#> params:  tka rxBoundedTr.tcl tv  V(eta.ka)   V(eta.v)    V(eta.cl)   add.sd  prop.sd
 #> Calculating covariance matrix
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of saem model...
@@ -771,8 +770,8 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9880
-#> → compress phiM in nlmixr2 object, save 446112
+#> → compress parHistData in nlmixr2 object, save 8944
+#> → compress phiM in nlmixr2 object, save 438128
 
 # }
 ```
