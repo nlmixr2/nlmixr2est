@@ -252,6 +252,10 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
+  // Iteration-print fields come from the iterPrintControl sub-list built
+  // R-side; scaleApplyIterPrintControl populates them on the scaling
+  // struct.  The useColor/printNcol/print args to scaleSetup are passed
+  // as placeholders since they get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -259,15 +263,15 @@ RObject nlmSetup(Environment e) {
              nlmOp.logitThetaLow,
              nlmOp.logitThetaHi,
              as<CharacterVector>(e["thetaNames"]) ,
-             as<int>(control["useColor"]),
-             as<int>(control["printNcol"]),
-             as<int>(control["print"]),
+             /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
              as<int>(control["scaleType"]),
              as<double>(control["scaleCmin"]),
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  scaleApplyIterPrintControl(&(nlmOp.scale),
+                             as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -1005,9 +1009,9 @@ SEXP nlmCensInfo() {
 //[[Rcpp::export]]
 RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
-  nlmOp.scale.print = 0;
+  nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.printNcol));
+    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }

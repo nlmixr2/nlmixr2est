@@ -24,7 +24,6 @@
 calc.2LL <- function(fit, nnodes.gq = 8, nsd.gq = 4, phiM) {
   ## nnodes.gq=8, nsd.gq=4
   saem.cfg <- attr(fit, "saem.cfg")
-  .evtM <- saem.cfg$evtM
   dopred <- attr(fit, "dopred")
   resMat <- fit$resMat
   transMat <- fit$transMat
@@ -269,7 +268,6 @@ calc.COV <- function(fit0) {
   }
   .env <- attr(fit, "env")
   saem.cfg <- attr(fit, "saem.cfg")
-  .evtM <- saem.cfg$evtM
   .rx <- .env$model
   .pars <- .rx$params
   .pars <- setNames(rep(1.1, length(.pars)), .pars)
