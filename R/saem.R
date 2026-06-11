@@ -381,8 +381,20 @@
   }
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
-    .theta[.ui$mixProbs] <- .estMix
+    if (length(.estMix) == 1L) {
+      .estMixClamped <- max(1e-6, min(1 - 1e-6, .estMix))
+      .theta[.ui$mixProbs] <- qlogis(.estMixClamped)
+    } else {
+      .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
+      .sumP <- sum(.estMixClamped)
+      if (.sumP >= 1.0) {
+        .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
+      }
+      .lastP <- 1.0 - sum(.estMixClamped)
+      .theta[.ui$mixProbs] <- log(.estMixClamped / .lastP)
+    }
   }
+
   env$fullTheta <- .theta
   if (.varSpec) {
     .minfo("variance residual estimates transformed from standard deviation")
@@ -421,7 +433,15 @@
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
   }
   env$omega <- .ome
-  env$.etaMat <- .mat2
+  # Always save the N-row (per-subject) etaMat so FOCEi post-processing
+  # gets the correct number of rows, even for mixture models.
+  env$.etaMatBase <- .mat2
+  if (length(.ui$mixProbs) > 0) {
+    .nMix <- length(.ui$mixProbs) + 1
+    env$.etaMat <- .mat2[rep(seq_len(nrow(.mat2)), .nMix), , drop = FALSE]
+  } else {
+    env$.etaMat <- .mat2
+  }
   env$etaObf <- data.frame(ID = seq_along(.mat2[, 1]),
                            setNames(as.data.frame(.mat2), .etaNames),
                            OBJI = NA)
@@ -438,10 +458,6 @@
   .ui <- env$ui
 
   .allThetaNames <- .ui$saemParHistNames
-  cat("DEBUG parHist: ncol(.saem$par_hist) =", ncol(.saem$par_hist), "\n")
-  cat("DEBUG parHist: length(.allThetaNames) =", length(.allThetaNames), "\n")
-  cat("DEBUG parHist: .allThetaNames =", paste(.allThetaNames, collapse=", "), "\n")
-  flush(stdout())
 
   .m <- .saem$par_hist
   if (ncol(.m) > length(.allThetaNames)) {
@@ -708,10 +724,19 @@
   .saemControl <- env$saemControl
   .ui <- env$ui
   .rxControl <- env$saemControl$rxControl
+  # For mixture models the env$.etaMat is the replicated (N*nMix)-row matrix
+  # used internally during SAEM.  For the FOCEi post-processing step we need
+  # exactly N rows (one per subject).  env$.etaMatBase always holds the
+  # N-row version, falling back to env$.etaMat for non-mixture models.
+  .etaForFocei <- if (exists(".etaMatBase", envir=env, inherits=FALSE)) {
+    env$.etaMatBase
+  } else {
+    env$.etaMat
+  }
   .foceiControl <- foceiControl(maxOuterIterations=0L,
                                 maxInnerIterations=0L,
                                 covMethod=0L,
-                                etaMat=env$.etaMat,
+                                etaMat=.etaForFocei,
                                 sumProd=.saemControl$sumProd,
                                 optExpression=.saemControl$optExpression,
                                 scaleTo=0,
@@ -724,8 +749,11 @@
                                 sigdigTable=.saemControl$sigdigTable,
                                 indTolRelax=.saemControl$indTolRelax,
                                 rxControl=.rxControl)
-  if (exists(".etaMat", env)) {
+  if (exists(".etaMat", envir=env, inherits=FALSE)) {
     rm(list=".etaMat", envir=env)
+  }
+  if (exists(".etaMatBase", envir=env, inherits=FALSE)) {
+    rm(list=".etaMatBase", envir=env)
   }
   if (assign) env$control <- .foceiControl
   .foceiControl

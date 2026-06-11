@@ -887,9 +887,6 @@ public:
   }
 
   void saem_fit() {
-    Rprintf("DEBUG C++: saem_fit() started, nMix = %d\n", nMix);
-    Rprintf("DEBUG C++: phiM rows = %d, cols = %d\n", (int)phiM.n_rows, (int)phiM.n_cols);
-    Rprintf("DEBUG C++: evt rows = %d, cols = %d\n", (int)evt.n_rows, (int)evt.n_cols);
     //arma_rng::set_seed(99);
     double double_xmin = 1.0e-200; //FIXME hard-coded xmin, also in neldermean.hpp
     double xmax = 1e300;
@@ -912,9 +909,7 @@ public:
       for (int jMix = 0; jMix < nMix; jMix++) {
         phiM_mix(jMix) = phiM;
         current_saem_state->_saemMixest = jMix + 1;
-        Rprintf("DEBUG C++: Calling user_fn for jMix = %d\n", jMix);
         mat initMat = user_fn(phiM, evt, optM);
-        Rprintf("DEBUG C++: user_fn returned matrix of size %d x %d\n", (int)initMat.n_rows, (int)initMat.n_cols);
         fsave_mix(jMix) = initMat.col(0);
         cens_mix(jMix) = initMat.col(1);
         limit_mix(jMix) = initMat.col(2);
@@ -1119,17 +1114,6 @@ public:
           }
         }
 
-        if (kiter <= 2) {
-          Rcout << "DEBUG C++ L_ji (first 5 subj, iter " << kiter << "):\n";
-          for (int i = 0; i < std::min(N, 5); i++) {
-            Rcout << "  Subj " << i << ": ";
-            for (int j = 0; j < nMix; j++) {
-              Rcout << "L" << j << "=" << std::fixed << std::setprecision(3) << L_ji(i, j) << " ";
-            }
-            Rcout << "diff=" << (L_ji(i, 0) - L_ji(i, 1)) << "\n";
-          }
-        }
-
         for (int i = 0; i < N; i++) {
           double min_L = L_ji(i, 0);
           for (int j = 1; j < nMix; j++) {
@@ -1158,6 +1142,9 @@ public:
           }
         }
         phiFile << phiM_weighted;
+        for (int k = 0; k < nmc; k++) {
+          phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
+        }
 
         // Integration / sufficient stats accumulation for nMix > 1
         field<mat> phi1_mix(nMix);
@@ -1465,6 +1452,14 @@ public:
       mprior_phi1=COV1*MCOV1;
       mprior_phi0=COV0*MCOV0;
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
+      if (nphi0 > 0) {
+        phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+        if (nMix > 1) {
+          for (int jMix = 0; jMix < nMix; jMix++) {
+            phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
+          }
+        }
+      }
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
       if (kiter<=(unsigned int)(nb_sa)) {
@@ -2180,27 +2175,11 @@ public:
           break;
         }
       }
-      if (kiter == 0) {
-        Rcout << "DEBUG C++ M-step: Plambda.n_elem = " << Plambda.n_elem << "\n";
-        Rcout << "DEBUG C++ M-step: ilambda1 = " << ilambda1.t();
-        Rcout << "DEBUG C++ M-step: ilambda0 = " << ilambda0.t();
-        Rcout << "DEBUG C++ M-step: Plambda1.n_elem = " << Plambda1.n_elem << "\n";
-        Rcout << "DEBUG C++ M-step: Plambda0.n_elem = " << Plambda0.n_elem << "\n";
-      }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
       if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
         mixProb = mixProb + pas(kiter) * (mean_aji - mixProb);
-        Rcout << "DEBUG C++: Iteration " << kiter << ", mean_aji = " << mean_aji.t() << ", mixProb = " << mixProb.t() << "\n";
-      }
-      if (kiter == 0) {
-        Rcout << "DEBUG C++: Plambda.n_elem = " << Plambda.n_elem << "\n";
-        Rcout << "DEBUG C++: parHistThetaKeep = " << parHistThetaKeep.t();
-        Rcout << "DEBUG C++: Gamma2_phi1.diag().n_elem = " << Gamma2_phi1.diag().n_elem << "\n";
-        Rcout << "DEBUG C++: parHistOmegaKeep = " << parHistOmegaKeep.t();
-        Rcout << "DEBUG C++: vcsig2.n_elem = " << vcsig2.n_elem << "\n";
-        Rcout << "DEBUG C++: resKeep = " << resKeep.t();
       }
       vec pl = Plambda.elem(parHistThetaKeep);
       vec g2 = Gamma2_phi1.diag();
@@ -2393,13 +2372,6 @@ private:
                vec &cur_fsave,
                vec &cur_cens,
                vec &cur_limit) {
-    Rprintf("DEBUG C++: do_mcmc(method=%d, nu=%d)\n", method, nu);
-    Rprintf("DEBUG C++: mphi.nphi = %d, mphi.i size = %d\n", mphi.nphi, (int)mphi.i.n_elem);
-    Rprintf("DEBUG C++: mphi.Gamma_phi: %d x %d\n", (int)mphi.Gamma_phi.n_rows, (int)mphi.Gamma_phi.n_cols);
-    Rprintf("DEBUG C++: _saemUE: %d x %d\n", (int)current_saem_state->_saemUE.n_rows, (int)current_saem_state->_saemUE.n_cols);
-    Rprintf("DEBUG C++: mphi.mprior_phiM: %d x %d\n", (int)mphi.mprior_phiM.n_rows, (int)mphi.mprior_phiM.n_cols);
-    Rprintf("DEBUG C++: phiM: %d x %d\n", (int)phiM.n_rows, (int)phiM.n_cols);
-    Rprintf("DEBUG C++: U_y size = %d, U_phi size = %d\n", (int)U_y.n_elem, (int)U_phi.n_elem);
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;

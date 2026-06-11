@@ -486,6 +486,8 @@
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
+  minv[i0] <- 1.0
+
 
   # preserve par order when printing iter history
   mcov[mcov == 1] <- 1:nlambda
@@ -610,16 +612,6 @@
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
   nMix <- max(1L, length(mixProb))
-  cat("DEBUG .configsaem: mixProb =", paste(mixProb, collapse=", "), "\n")
-  cat("DEBUG .configsaem: nMix =", nMix, "\n")
-  cat("DEBUG .configsaem: length(mixProb) =", length(mixProb), "\n")
-  cat("DEBUG .configsaem: nphi =", cfg$nphi, " nphi1 =", cfg$nphi1, " nphi0 =", cfg$nphi0, "\n")
-  cat("DEBUG .configsaem: i1 (1-based) =", (cfg$i1 + 1), "\n")
-  cat("DEBUG .configsaem: i0 (1-based) =", if(length(cfg$i0)) (cfg$i0 + 1) else "none", "\n")
-  cat("DEBUG .configsaem: inits theta ncol =", ncol(inits$theta), "\n")
-  cat("DEBUG .configsaem: inits theta rownames =", paste(rownames(inits$theta), collapse=","), "\n")
-  cat("DEBUG .configsaem: inits theta colnames =", paste(colnames(inits$theta), collapse=","), "\n")
-  flush(stdout())
   cfg$nMix <- nMix
   cfg$mixProb <- mixProb
   cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
