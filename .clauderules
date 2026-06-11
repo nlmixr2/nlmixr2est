@@ -1,0 +1,6 @@
+# Coding Style Conventions for nlmixr2est
+
+Please strictly adhere to the following style guidelines when writing or modifying code in this repository:
+
+- **R Coding Style**: All R variable, function, and object names must be written in `camelCase` (e.g., `simData`, `fitSaem`, `oneCompartmentMix`). Do not use `snake_case` or `dot.case` for R code objects.
+- **C++ Coding Style**: Follow standard Rcpp and Armadillo conventions (e.g., `snake_case` or `camelCase` where appropriate).
