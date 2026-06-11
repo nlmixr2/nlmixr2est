@@ -149,7 +149,6 @@
 }
 #' filter the synthetic IOVs
 #'
-#'
 #' @param warnings character vector of warning messages
 #' @param ui rxode2 ui object
 #' @return character vector of warning messages with synthetic IOV mu

@@ -70,6 +70,7 @@ struct saem_state_t {
   int _saemMaxOdeRecalc = 0;
   bool _saemIndTolRelax = true;
   mat _saemUE;
+  int _saemMixest = 0;
 };
 static thread_local saem_state_t* current_saem_state = nullptr;
 
@@ -618,6 +619,14 @@ public:
     return par_hist;
   }
 
+  vec get_mixProb() {
+    return mixProb;
+  }
+
+  mat get_mixWeights() {
+    return mixWeights;
+  }
+
   mat get_eta() {
     mat eta = mpost_phi.cols(i1);
     eta -= mprior_phi1;
@@ -666,6 +675,14 @@ public:
     phiM = as<mat>(x["phiM"]);
     indio = as<uvec>(x["indio"]);
     nM = N*nmc;
+
+    nMix = x.containsElementNamed("nMix") ? as<int>(x["nMix"]) : 1;
+    if (nMix > 1) {
+      mixProb = as<vec>(x["mixProb"]);
+      mixWeights.zeros(N, nMix);
+    } else {
+      mixProb.clear();
+    }
 
     opt = as<List>(x["opt"]);                                      //CHECKME
     optM = as<List>(x["optM"]);                                    //CHECKME
@@ -793,6 +810,15 @@ public:
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
 
+    obs_subject.set_size(ntotal);
+    for (int i = 0; i < N; i++) {
+      int start = ix_idM(i, 0);
+      int end = ix_idM(i, 1);
+      for (int idx = start; idx <= end; idx++) {
+        obs_subject(idx) = i;
+      }
+    }
+
     // Set up the shared scale.h iteration-print struct.  saem uses
     // scaleTypeNone (no internal optimizer scaling — Plambda is on
     // model scale) so scalePrintFun's auto-skip drops the redundant U
@@ -803,7 +829,7 @@ public:
     // applies.  Omega and residual-error entries in the printed
     // vector have xPar = 0 and so contribute no X-row delta.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
-    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
     {
       IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
       NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
@@ -879,10 +905,26 @@ public:
     // (every scale.headerEvery parameter-print events) are handled inside
     // scalePrintFun.
     scalePrintHeader(&scale);
-    fsaveMat = user_fn(phiM, evt, optM);
-    limit = fsaveMat.col(2);
-    cens = fsaveMat.col(1);
-    fsave = fsaveMat.col(0);
+    if (nMix > 1) {
+      phiM_mix.set_size(nMix);
+      fsave_mix.set_size(nMix);
+      cens_mix.set_size(nMix);
+      limit_mix.set_size(nMix);
+      for (int jMix = 0; jMix < nMix; jMix++) {
+        phiM_mix(jMix) = phiM;
+        current_saem_state->_saemMixest = jMix + 1;
+        mat initMat = user_fn(phiM, evt, optM);
+        fsave_mix(jMix) = initMat.col(0);
+        cens_mix(jMix) = initMat.col(1);
+        limit_mix(jMix) = initMat.col(2);
+      }
+      current_saem_state->_saemMixest = 0;
+    } else {
+      fsaveMat = user_fn(phiM, evt, optM);
+      limit = fsaveMat.col(2);
+      cens = fsaveMat.col(1);
+      fsave = fsaveMat.col(0);
+    }
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
     }
@@ -916,197 +958,475 @@ public:
         nu3=nu(2);
       }
 
-      vec f = fsave;
-      fsave = f;
-      if (distribution == 1){
-        // Build yt once — it does not depend on chain index k
-        vec yt = hasFixedObsTransform ? yTrans : y;
-        if (!hasFixedObsTransform) {
-          for (int i = ntotal; i--;) {
-            int cur = ix_endpnt(i);
-            yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          }
-        }
-        const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
-        for (int k = 0; k < nmc; k++) {
-          int obs_start = k * ntotal;
-          vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
-          const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
-          const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-          _scratch_ft = fk;
-          _scratch_limitT = limitk;
-          for (int i = ntotal; i--;) {
-            int cur = ix_endpnt(i);
-            _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-            _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
-          }
-          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
-          _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
-          _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
-          _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
-          _scratch_indio = indio + (arma::uword)k * stride;
-          DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
-          for (int j = ntotal; j--;) {
-            DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
-                                                   DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
-          }
-        }
-      } else if (distribution == 2){
-        for (int k = 0; k < nmc; k++) {
-          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-          DYF(indio_k) = -y % log(fk) + fk;
-        }
-      } else if (distribution == 3) {
-        for (int k = 0; k < nmc; k++) {
-          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
-          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
-          DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
-        }
+      mat Statphi11 = zeros<mat>(N, nphi1);
+      mat Statphi01 = zeros<mat>(N, nphi0);
+      mat Statphi12 = zeros<mat>(nphi1, nphi1);
+      mat Statphi02 = zeros<mat>(nphi0, nphi0);
+      double statr[MAXENDPNT];
+      for (int b = 0; b < nendpnt; b++) {
+        statr[b] = 0.0;
       }
-      else {
-        RSprintf("unknown distribution (id=%d)\n", distribution);
-        return;
-      }
-      //U_y is a vec of subject llik; summed over obs for each subject
-      vec U_y=sum(DYF, 0).t();
-
-      if(nphi1>0) {
-        vec U_phi;
-        do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi);
-        mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
-        U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-        do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi);
-        do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi);
-      }
-      if(nphi0>0) {
-        vec U_phi;
-        do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi);
-        mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
-        U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
-        do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi);
-        do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi);
-      }
-      if (DEBUG>0) Rcout << "mcmc successful\n";
-      phiFile << phiM;
-      //mat dphi=phiM.cols(i1)-mphi1.mprior_phiM;
-      //vec U_phi=0.5*sum(dphi%(dphi*IGamma2_phi1),1);
-
-      //  MCMC stochastic approximation
-      mat Statphi11=zeros<mat>(N,nphi1);
-      mat Statphi01=zeros<mat>(N,nphi0);
-      mat Statphi12=zeros<mat>(nphi1,nphi1);
-      mat Statphi02=zeros<mat>(nphi0,nphi0);
-      double statr[MAXENDPNT], resk;
-      for(int b=0; b<nendpnt; ++b) {
-        statr[b]= 0;
-      }
-
-      vec D1 = zeros<vec>(nb_param);    //CHG!!!
-      mat D11 = zeros<mat>(nb_param,nb_param);
-      mat D2 = zeros<mat>(nb_param,nb_param);
+      double resk = 0.0;
+      vec D1 = zeros<vec>(nb_param);
+      mat D11 = zeros<mat>(nb_param, nb_param);
+      mat D2 = zeros<mat>(nb_param, nb_param);
+      mat d2logk = zeros<mat>(nb_param, nb_param);
       vec resy(nmc);
-      mat d2logk = zeros<mat>(nb_param,nb_param);
-
-      d2logk(span(0,nlambda1-1), span(0,nlambda1-1))=-CGamma21;
-      if (nphi0 > 0) {
-        d2logk(span(nlambda1,nlambda-1), span(nlambda1,nlambda-1))=-CGamma20;
-      }
-
       vec fsM;
       fsM.set_size(0);
-      //integration
-      for(int k=0; k<nmc; k++) {
-        phi.slice(k)=phiM.rows(span(k*N, (k+1)*N-1));
 
-        Statphi11 += phi.slice(k).cols(i1);
-        Statphi01 += phi.slice(k).cols(i0);
-        mat phik=phi.slice(k);
-        mat phi1k=phik.cols(i1);
-        mat phi0k=phik.cols(i0);
-        Statphi12=Statphi12+phi1k.t()*phi1k;
-        Statphi02=Statphi02+phi0k.t()*phi0k;
+      if (nMix > 1) {
+        field<mat> DYF_mix(nMix);
+        field<vec> U_y_mix(nMix);
 
-        vec fk = fsave(span(k*ntotal, (k+1)*ntotal-1));
-        fk = fk(ix_sorting);    //sorted by endpnt
-        fsM = join_cols(fsM, fk);
-        // vec resid_all(ys.size());// = ys - fk;
-        vec gk, y_cur, f_cur;
-        double ft, fa;
-        //loop thru endpoints here
-        for(int b=0; b<nendpnt; ++b) {
-          if (hasFixedObsTransform) {
-            y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
-          } else {
-            y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
-          }
-          f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
-          vec resid(y_cur.size());
-          for (int i = y_cur.size(); i--;){
-            resid(i) = y_cur[i];
-            if (std::isnan(resid(i))) {
-              Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
-            }
-            ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-            resid(i) -=  ft;
-            if (res_mod(b) == rmProp) {
-              fa = handleF(propT(b), ft, f_cur[i], true, true);
-              if (fa <= double_xmin) {
-                fa = 1;
+        for (int jMix = 0; jMix < nMix; jMix++) {
+          current_saem_state->_saemMixest = jMix + 1;
+
+          mat &cur_phiM = phiM_mix(jMix);
+          vec &cur_fsave = fsave_mix(jMix);
+          vec &cur_cens = cens_mix(jMix);
+          vec &cur_limit = limit_mix(jMix);
+
+          mat &cur_DYF = DYF_mix(jMix);
+          cur_DYF.zeros(mlen, nM);
+
+          vec f = cur_fsave;
+          cur_fsave = f;
+
+          if (distribution == 1) {
+            vec yt = hasFixedObsTransform ? yTrans : y;
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
               }
-              resid(i) = resid(i)/fa;
+            }
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cur_cens.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = cur_limit.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = indio + (arma::uword)k * stride;
+              cur_DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              for (int j = ntotal; j--;) {
+                cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                       cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
+            }
+          } else if (distribution == 2) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              cur_DYF(indio_k) = -y % log(fk) + fk;
+            }
+          } else if (distribution == 3) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              cur_DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
             }
           }
-#if 0
-          uvec iix = find(resid>1e9);
-          Rcout << b << " " <<iix;
-          Rcout << ys(iix) << fk(iix) << gk(iix);
-#endif
 
-          if (res_mod(b) <= rmProp) {
-            resk = dot(resid, resid);
-            if (resk > xmax) {
-              resk = xmax;
-            } else if (resk < double_xmin) {
-              resk = double_xmin;
+          vec U_y = sum(cur_DYF, 0).t();
+
+          if (nphi1 > 0) {
+            vec U_phi;
+            do_mcmc(1, nu1, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            mat dphi = cur_phiM.cols(i1) - mphi1.mprior_phiM;
+            U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
+            do_mcmc(2, nu2, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(3, nu3, mx, mphi1, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+          }
+          if (nphi0 > 0) {
+            vec U_phi;
+            do_mcmc(1, nu1, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            mat dphi = cur_phiM.cols(i0) - mphi0.mprior_phiM;
+            U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+            do_mcmc(2, nu2, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+            do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
+          }
+
+          // Compute joint negative log-likelihood (U_y + U_phi) for mixture
+          // weight computation.  Using U_y (observation loss) alone is
+          // insufficient: MCMC adapts eta to minimise observation loss under
+          // every component, erasing the signal between components.  The prior
+          // penalty U_phi_k (Mahalanobis distance of each MCMC sample from the
+          // component mean) is what discriminates which component truly fits.
+          // We accumulate the per-sample joint NLL over all nmc MCMC samples.
+          {
+            vec joint_nll(N * nmc);
+            for (int k = 0; k < nmc; k++) {
+              // Observation loss for this MCMC sample (rows i + k*N for each subject)
+              for (int i = 0; i < N; i++) {
+                joint_nll(i + k * N) = 0.0;
+                for (int m = 0; m < mlen; m++) {
+                  joint_nll(i + k * N) += cur_DYF(m, i + k * N);
+                }
+              }
+              // Prior penalty for this MCMC sample.
+              // NB: mprior_phiM is N*nmc x nphi (repmat of the per-subject
+              //     prior mean over nmc MCMC samples); we use the k-th block.
+              //     subview (rows result) does not accept uvec for cols(); we
+              //     must first materialise the block as a mat.
+              if (nphi1 > 0) {
+                mat block1     = mat(cur_phiM).rows(k * N, (k + 1) * N - 1);
+                mat phi1_k     = block1.cols(i1);
+                mat prior1_k   = mat(mphi1.mprior_phiM).rows(k * N, (k + 1) * N - 1);
+                mat dphi1_k    = phi1_k - prior1_k;
+                vec uphi1_k    = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
+                for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi1_k(i);
+              }
+              if (nphi0 > 0) {
+                mat block0     = mat(cur_phiM).rows(k * N, (k + 1) * N - 1);
+                mat phi0_k     = block0.cols(i0);
+                mat prior0_k   = mat(mphi0.mprior_phiM).rows(k * N, (k + 1) * N - 1);
+                mat dphi0_k    = phi0_k - prior0_k;
+                vec uphi0_k    = 0.5 * sum(dphi0_k % (dphi0_k * IGamma2_phi0), 1);
+                for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi0_k(i);
+              }
+            }
+            U_y_mix(jMix) = joint_nll;
+          }
+          current_saem_state->_saemMixest = jMix + 1;
+          cur_fsave = user_fn(cur_phiM, evt, optM).col(0);
+        }
+        current_saem_state->_saemMixest = 0;
+
+        // Compute posterior weights a_ji
+        mat L_ji(N, nMix);
+        for (int j = 0; j < nMix; j++) {
+          const vec &U_y_j = U_y_mix(j);
+          for (int i = 0; i < N; i++) {
+            double sum_L = 0.0;
+            for (int k = 0; k < nmc; k++) {
+              sum_L += U_y_j(i + k * N);
+            }
+            L_ji(i, j) = sum_L / nmc;
+          }
+        }
+
+        for (int i = 0; i < N; i++) {
+          double min_L = L_ji(i, 0);
+          for (int j = 1; j < nMix; j++) {
+            if (L_ji(i, j) < min_L) min_L = L_ji(i, j);
+          }
+          rowvec w_i(nMix);
+          double sum_w = 0.0;
+          for (int j = 0; j < nMix; j++) {
+            w_i(j) = mixProb(j) * exp(min_L - L_ji(i, j));
+            sum_w += w_i(j);
+          }
+          if (sum_w > 0.0) {
+            mixWeights.row(i) = w_i / sum_w;
+          } else {
+            mixWeights.row(i) = mixProb.t();
+          }
+        }
+
+        if (DEBUG > 0) Rcout << "mcmc successful (mixture)\n";
+
+        mat phiM_weighted(N * nmc, nphi, fill::zeros);
+        for (int jMix = 0; jMix < nMix; jMix++) {
+          for (int row = 0; row < N * nmc; row++) {
+            int i_subj = row % N;
+            phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
+          }
+        }
+        phiFile << phiM_weighted;
+        for (int k = 0; k < nmc; k++) {
+          phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
+        }
+
+        // Integration / sufficient stats accumulation for nMix > 1
+        field<mat> phi1_mix(nMix);
+        field<mat> phi0_mix(nMix);
+        for (int j = 0; j < nMix; j++) {
+          phi1_mix(j) = phiM_mix(j).cols(i1);
+          phi0_mix(j) = phiM_mix(j).cols(i0);
+        }
+
+        for (int k = 0; k < nmc; k++) {
+          mat dphi1k_w(N, nphi1, fill::zeros);
+          mat dphi0k_w(N, nphi0, fill::zeros);
+          vec sdg1_w(nphi1, fill::zeros);
+          vec sdg0_w(nphi0, fill::zeros);
+
+          for (int i = 0; i < N; i++) {
+            int row_idx = i + k * N;
+            rowvec phi1_w = zeros<rowvec>(nphi1);
+            rowvec phi0_w = zeros<rowvec>(nphi0);
+
+            for (int jMix = 0; jMix < nMix; jMix++) {
+              rowvec phi1_ji = phi1_mix(jMix).row(row_idx);
+              rowvec phi0_ji = phi0_mix(jMix).row(row_idx);
+
+              phi1_w += mixWeights(i, jMix) * phi1_ji;
+              phi0_w += mixWeights(i, jMix) * phi0_ji;
+
+              Statphi12 += mixWeights(i, jMix) * phi1_ji.t() * phi1_ji;
+              Statphi02 += mixWeights(i, jMix) * phi0_ji.t() * phi0_ji;
+
+              rowvec dphi1_ji = phi1_ji - mprior_phi1.row(i);
+              rowvec dphi0_ji = phi0_ji - mprior_phi0.row(i);
+
+              dphi1k_w.row(i) += mixWeights(i, jMix) * dphi1_ji;
+              dphi0k_w.row(i) += mixWeights(i, jMix) * dphi0_ji;
+
+              sdg1_w += mixWeights(i, jMix) * (dphi1_ji % dphi1_ji).t();
+              sdg0_w += mixWeights(i, jMix) * (dphi0_ji % dphi0_ji).t();
+            }
+
+            Statphi11.row(i) += phi1_w;
+            Statphi01.row(i) += phi0_w;
+          }
+
+          for (int b = 0; b < nendpnt; b++) {
+            double resk = 0.0;
+            for (int jMix = 0; jMix < nMix; jMix++) {
+              vec fk = fsave_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              fk = fk(ix_sorting);
+              vec f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+              vec y_cur;
+              if (hasFixedObsTransform) {
+                y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
+              } else {
+                y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+              }
+              for (int i = 0; i < y_cur.size(); i++) {
+                int idx_orig = ix_sorting(y_offset(b) + i);
+                int i_subj = obs_subject(idx_orig);
+                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+                double r_ji = y_cur[i] - ft;
+                if (res_mod(b) == rmProp) {
+                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
+                  if (fa <= double_xmin) fa = 1.0;
+                  r_ji /= fa;
+                }
+                double r_ji_sq = r_ji * r_ji;
+                if (r_ji_sq > xmax) r_ji_sq = xmax;
+                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
+
+                resk += mixWeights(i_subj, jMix) * r_ji_sq;
+              }
+            }
+            statr[b] += resk;
+            resy(k) = resk;
+          }
+
+          vec sdg1 = sdg1_w / gamma2_phi1;
+          mat Md1 = (IGamma2_phi1 * (dphi1k_w.t() * Mcovariables)).t();
+          mat Md0 = (IGamma2_phi0 * (dphi0k_w.t() * Mcovariables)).t();
+          vec d1_mu_phi1 = Md1(ind_cov1);
+          vec d1_mu_phi0 = Md0(ind_cov0);
+          vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
+          vec d1_logsigma2(1);
+          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
+          D1 = D1 + d1logk;
+          D11 = D11 + d1logk * d1logk.t();
+
+          vec w2phi = -0.5 * sdg1;
+          for (int j = 0, l = 0; j < nphi1; j++) {
+            for (unsigned int jj = 0; jj < pc1(j); jj++) {
+              double temp = -dot(COV1.col(l), dphi1k_w.col(j)) / gamma2_phi1(j);
+              d2logk(l, nlambda + j) = temp;
+              d2logk(nlambda + j, l) = temp;
+              l = l + 1;
+            }
+            d2logk(nlambda + j, nlambda + j) = w2phi(j);
+          }
+          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
+          D2 = D2 + d2logk;
+        }
+        for (int k = 0; k < nmc; k++) {
+          vec fk_w(ntotal, fill::zeros);
+          for (int jMix = 0; jMix < nMix; jMix++) {
+            vec fk_j = fsave_mix(jMix).subvec(k * ntotal, (k + 1) * ntotal - 1);
+            fk_j = fk_j(ix_sorting);
+            for (int i = 0; i < ntotal; i++) {
+              int idx_orig = ix_sorting(i);
+              int i_subj = obs_subject(idx_orig);
+              fk_w[i] += mixWeights(i_subj, jMix) * fk_j[i];
             }
           }
-          else {
-            resk = 1;                                              //FIXME
-          }
-
-          statr[b]=statr[b]+resk;
-          resy(k) = resk;                                          //FIXME: resy(b,k)?
+          fsM = join_cols(fsM, fk_w);
         }
-        if (DEBUG>1) Rcout << "star[] successful\n";
-
-        mat dphi1k=phi1k-mprior_phi1;
-        mat dphi0k=phi0k-mprior_phi0;
-        vec sdg1=sum(dphi1k%dphi1k,0).t()/gamma2_phi1;
-        mat Md1=(IGamma2_phi1*(dphi1k.t()*Mcovariables)).t();
-        mat Md0=(IGamma2_phi0*(dphi0k.t()*Mcovariables)).t();
-        vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
-        vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
-        vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
-        vec d1_logsigma2(1);
-        d1_logsigma2[0] =  0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
-        vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
-        D1 = D1+d1logk;
-        D11= D11+d1logk*d1logk.t();
-
-        vec w2phi=-0.5*sdg1;                                       //CHK!!!
-        for(int j=0, l=0; j<nphi1; j++) {
-          for(unsigned int jj=0; jj<pc1(j); jj++) {
-            double temp=-dot(COV1.col(l),dphi1k.col(j))/gamma2_phi1(j);
-            d2logk(l,nlambda+j)=temp;
-            d2logk(nlambda+j,l)=temp;
-            l=l+1;
+      } else {
+        vec f = fsave;
+        fsave = f;
+        if (distribution == 1){
+          // Build yt once — it does not depend on chain index k
+          vec yt = hasFixedObsTransform ? yTrans : y;
+          if (!hasFixedObsTransform) {
+            for (int i = ntotal; i--;) {
+              int cur = ix_endpnt(i);
+              yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            }
           }
-          d2logk(nlambda+j,nlambda+j)=w2phi(j);
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            int obs_start = k * ntotal;
+            vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+            const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+            const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+            _scratch_ft = fk;
+            _scratch_limitT = limitk;
+            for (int i = ntotal; i--;) {
+              int cur = ix_endpnt(i);
+              _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+            }
+            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+            _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+            _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+            _scratch_indio = indio + (arma::uword)k * stride;
+            DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            for (int j = ntotal; j--;) {
+              DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                     DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+            }
+          }
+        } else if (distribution == 2){
+          for (int k = 0; k < nmc; k++) {
+            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -y % log(fk) + fk;
+          }
+        } else if (distribution == 3) {
+          for (int k = 0; k < nmc; k++) {
+            vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+            DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+          }
         }
-        d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
-        D2=D2+d2logk;
+        else {
+          RSprintf("unknown distribution (id=%d)\n", distribution);
+          return;
+        }
+        //U_y is a vec of subject llik; summed over obs for each subject
+        vec U_y=sum(DYF, 0).t();
+
+        if(nphi1>0) {
+          vec U_phi;
+          do_mcmc(1, nu1, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          mat dphi = phiM.cols(i1)-mphi1.mprior_phiM;
+          U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi1),1);
+          do_mcmc(2, nu2, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(3, nu3, mx, mphi1, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+        }
+        if(nphi0>0) {
+          vec U_phi;
+          do_mcmc(1, nu1, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          mat dphi = phiM.cols(i0)-mphi0.mprior_phiM;
+          U_phi    = 0.5*sum(dphi%(dphi*IGamma2_phi0),1);
+          do_mcmc(2, nu2, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+          do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
+        }
+        if (DEBUG>0) Rcout << "mcmc successful\n";
+        phiFile << phiM;
+
+        //integration
+        for(int k=0; k<nmc; k++) {
+          phi.slice(k)=phiM.rows(span(k*N, (k+1)*N-1));
+
+          Statphi11 += phi.slice(k).cols(i1);
+          Statphi01 += phi.slice(k).cols(i0);
+          mat phik=phi.slice(k);
+          mat phi1k=phik.cols(i1);
+          mat phi0k=phik.cols(i0);
+          Statphi12=Statphi12+phi1k.t()*phi1k;
+          Statphi02=Statphi02+phi0k.t()*phi0k;
+
+          vec fk = fsave(span(k*ntotal, (k+1)*ntotal-1));
+          fk = fk(ix_sorting);    //sorted by endpnt
+          fsM = join_cols(fsM, fk);
+          // vec resid_all(ys.size());// = ys - fk;
+          vec gk, y_cur, f_cur;
+          double ft, fa;
+          //loop thru endpoints here
+          for(int b=0; b<nendpnt; ++b) {
+            if (hasFixedObsTransform) {
+              y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
+            } else {
+              y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+            }
+            f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+            vec resid(y_cur.size());
+            for (int i = y_cur.size(); i--;){
+              resid(i) = y_cur[i];
+              if (std::isnan(resid(i))) {
+                Rcpp::stop(_("NaN in data or transformed data; please check transformation/data"));
+              }
+              ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+              resid(i) -=  ft;
+              if (res_mod(b) == rmProp) {
+                fa = handleF(propT(b), ft, f_cur[i], true, true);
+                if (fa <= double_xmin) {
+                  fa = 1;
+                }
+                resid(i) = resid(i)/fa;
+              }
+            }
+
+            if (res_mod(b) <= rmProp) {
+              resk = dot(resid, resid);
+              if (resk > xmax) {
+                resk = xmax;
+              } else if (resk < double_xmin) {
+                resk = double_xmin;
+              }
+            }
+            else {
+              resk = 1;                                              //FIXME
+            }
+
+            statr[b]=statr[b]+resk;
+            resy(k) = resk;                                          //FIXME: resy(b,k)?
+          }
+          if (DEBUG>1) Rcout << "star[] successful\n";
+
+          mat dphi1k=phi1k-mprior_phi1;
+          mat dphi0k=phi0k-mprior_phi0;
+          vec sdg1=sum(dphi1k%dphi1k,0).t()/gamma2_phi1;
+          mat Md1=(IGamma2_phi1*(dphi1k.t()*Mcovariables)).t();
+          mat Md0=(IGamma2_phi0*(dphi0k.t()*Mcovariables)).t();
+          vec d1_mu_phi1=Md1(ind_cov1);                              //CHK!! vec or mat
+          vec d1_mu_phi0=Md0(ind_cov0);                              //CHK!! vec or mat
+          vec d1_loggamma2_phi1=0.5*sdg1-0.5*N;
+          vec d1_logsigma2(1);
+          d1_logsigma2[0] =  0.5*resy(k)/sigma2[0]-0.5*ntotal; //FIXME: sigma2[0], sigma2[b] instead?
+          vec d1logk=join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
+          D1 = D1+d1logk;
+          D11= D11+d1logk*d1logk.t();
+
+          vec w2phi=-0.5*sdg1;                                       //CHK!!!
+          for(int j=0, l=0; j<nphi1; j++) {
+            for(unsigned int jj=0; jj<pc1(j); jj++) {
+              double temp=-dot(COV1.col(l),dphi1k.col(j))/gamma2_phi1(j);
+              d2logk(l,nlambda+j)=temp;
+              d2logk(nlambda+j,l)=temp;
+              l=l+1;
+            }
+            d2logk(nlambda+j,nlambda+j)=w2phi(j);
+          }
+          d2logk(nb_param-1,nb_param-1)=-0.5*resy(k)/sigma2[0];      //FIXME: sigma2[0], sigma2[b] instead?
+          D2=D2+d2logk;
+        }
       }//k
       if (DEBUG>0) Rcout << "integration successful\n";
 
@@ -1136,6 +1456,14 @@ public:
       mprior_phi1=COV1*MCOV1;
       mprior_phi0=COV0*MCOV0;
       mprior_phi0.set_size(N, nphi0);                              // deal w/ nphi0=0
+      if (nphi0 > 0) {
+        phiM.cols(i0) = repmat(mprior_phi0, nmc, 1);
+        if (nMix > 1) {
+          for (int jMix = 0; jMix < nMix; jMix++) {
+            phiM_mix(jMix).cols(i0) = repmat(mprior_phi0, nmc, 1);
+          }
+        }
+      }
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
       if (kiter<=(unsigned int)(nb_sa)) {
@@ -1853,12 +2181,20 @@ public:
       }
       Plambda(ilambda1) = Plambda1;
       Plambda(ilambda0) = Plambda0;
+      if (nMix > 1) {
+        vec mean_aji = mean(mixWeights, 0).t();
+        mixProb = mixProb + pas(kiter) * (mean_aji - mixProb);
+      }
       vec pl = Plambda.elem(parHistThetaKeep);
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
+      if (nMix > 1) {
+        vec mixP = mixProb.head(nMix - 1);
+        pl = join_cols(pl, mixP);
+      }
       par_hist.row(kiter) = pl.t();
       // saem has no per-iteration objective function; scale.showOfv was
       // set to 0 in inits() so the Function Val column is suppressed and
@@ -1973,6 +2309,14 @@ private:
   vec limit;
   vec fsave;
 
+  int nMix;
+  vec mixProb;
+  mat mixWeights;
+  field<mat> phiM_mix;
+  field<vec> fsave_mix;
+  field<vec> limit_mix;
+  field<vec> cens_mix;
+
   // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
   // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().
   vec _scratch_ft;      // transformed-f per chain (replaces ftk/fck)
@@ -1980,6 +2324,8 @@ private:
   vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
   vec _scratch_g;       // residual SD per chain (replaces gk/gck)
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
+
+  uvec obs_subject;
 
   int DEBUG;
   std::vector< std::string > phiMFile;
@@ -2026,7 +2372,10 @@ private:
                mat &DYF,
                mat &phiM,
                vec &U_y,
-               vec &U_phi) {
+               vec &U_phi,
+               vec &cur_fsave,
+               vec &cur_cens,
+               vec &cur_limit) {
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
@@ -2048,14 +2397,14 @@ private:
           break;
         case 3:
           phiMc.col(i(k1))=phiM.col(i(k1))+
-            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(k1);
+            randn<vec>(mx.nM)*mphi.Gdiag_phi(k1,k1) % current_saem_state->_saemUE.col(i(k1));
           // Rcpp::print(Rcpp::wrap(phiM.cols(i(k1))));
           break;
         }
 
         fcMat = user_fn(phiMc, mx.evtM, mx.optM);
-        limit = fcMat.col(2);
-        cens = fcMat.col(1);
+        cur_limit = fcMat.col(2);
+        cur_cens = fcMat.col(1);
 
         fc = fcMat.col(0);
         fs = fc;
@@ -2074,8 +2423,8 @@ private:
             for (int k = 0; k < nmc; k++) {
               int obs_start = k * ntotal;
               vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
-              const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
-              const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = cur_limit.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cur_cens.subvec(obs_start, obs_start + ntotal - 1);
               _scratch_ft = fsk;
               _scratch_limitT = limitk;
               for (int i = ntotal; i--;) {
@@ -2136,7 +2485,7 @@ private:
           U_phi(ind)=Uc_phi(ind);
         }
         ind = getObsIdx(ix_idM.rows(ind));
-        fsave(ind)=fs(ind);
+        cur_fsave(ind)=fs(ind);
         if (method<3) {
           break;
         }
@@ -2179,6 +2528,9 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = getSolvingOptionsInd(_rx, _i);
     setIndSolve(ind, -1);
+    if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
+      setIndMixest(ind, current_saem_state->_saemMixest);
+    }
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
       if (doParam[_j] == 1) {
@@ -2374,7 +2726,9 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
     Named("res_info") = saem.get_resInfo(),
-    Named("tolFactor") = _saemTf
+    Named("tolFactor") = _saemTf,
+    Named("mixProb") = wrap(saem.get_mixProb()),
+    Named("mixWeights") = wrap(saem.get_mixWeights())
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;
