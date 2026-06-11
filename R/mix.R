@@ -239,7 +239,6 @@ preFinalParTableHooksAdd(".aaaPostEstimationMixBacktransform", .aaaPostEstimatio
     fit[["mu"]] <- 1.0 / .nMix
   }
   fit
->>>>>>> finish-mix
 }
 
 #' @export

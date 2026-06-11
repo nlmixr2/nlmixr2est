@@ -2840,11 +2840,7 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
     nm[j+1+mixest] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-<<<<<<< HEAD
-  for (j=(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx)); j--;) {
-=======
   for (j=(bestMixEst ? (int)getRxNsub(rx) : (int)getRxNsubAndMix(rx)); j--;) {
->>>>>>> finish-mix
     ids[j] = getRxId(j)+1;
     focei_ind *fInd = &(inds_focei[j]);
     // Update based on the best mix estimate when requested
