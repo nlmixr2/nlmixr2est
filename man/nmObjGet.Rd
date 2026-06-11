@@ -37,6 +37,8 @@
 \alias{nmObjGet.control}
 \alias{nmObjGet.simulationModel}
 \alias{nmObjGet.rxControl}
+\alias{nmObjGet.mixList}
+\alias{nmObjGet.mixNum}
 \alias{nmObjGet.rxControlWithVar}
 \alias{nmObjGet.saemDopredIpred}
 \alias{nmObjGet.saemDopredPred}
@@ -113,6 +115,10 @@ nmObjGet(x, ...)
 \method{nmObjGet}{simulationModel}(x, ...)
 
 \method{nmObjGet}{rxControl}(x, ...)
+
+\method{nmObjGet}{mixList}(x, ...)
+
+\method{nmObjGet}{mixNum}(x, ...)
 
 \method{nmObjGet}{rxControlWithVar}(x, ...)
 

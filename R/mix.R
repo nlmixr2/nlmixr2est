@@ -31,6 +31,217 @@
   rxode2::dmexpit(val[idx])
 }
 
+#' Process mixture model information after a focei fit
+#'
+#' After the C++ focei fit completes, this function:
+#'  1. Removes the MIXEST column from ranef so nlmixr2Parameters() works correctly
+#'  2. Computes posterior mixture probabilities from etaObfFull and theta priors
+#'  3. Creates mixList (one data frame per mixture with ID, ETAs, and probability)
+#'  4. Creates mixNum (data frame with ID and best MIXNUM per subject)
+#'
+#' @param env Fit environment (the C++ output environment)
+#' @param ui rxode2 UI object
+#' @return Nothing; modifies env in place for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.mixFix <- function(env, ui) {
+  .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
+  if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
+  if (length(.mixIdx) == 0L) return(invisible(NULL))
+  if (!exists("etaObfFull", envir=env)) return(invisible(NULL))
+
+  .etaFull <- get("etaObfFull", envir=env)
+  .etaBest <- get("etaObf", envir=env)
+
+  # Fix ranef: remove MIXEST column so nlmixr2Parameters() gets ID + ETAs only
+  .ranef <- as.data.frame(get("ranef", envir=env))
+  .wMix <- which(names(.ranef) == "MIXEST")
+  if (length(.wMix) > 0L) {
+    .ranef <- .ranef[, -.wMix, drop=FALSE]
+    assign("ranef", .ranef, envir=env)
+  }
+
+  # Get final mixture prior probabilities.
+  # If the preFinalParTableHook ran, env$mixProbabilities already holds the
+  # back-transformed probability vector (including the implicit last component).
+  # Otherwise fall back to computing from fixef (mlogit scale).
+  if (exists("mixProbabilities", envir=env)) {
+    .priorProbs <- get("mixProbabilities", envir=env)
+  } else {
+    .finalTheta <- get("fixef", envir=env)
+    .priorProbs <- .getMixFromLog(.finalTheta, .mixIdx)
+  }
+  .nMix <- length(.priorProbs)
+  .nSub <- nrow(.ranef)
+
+  # etaObfFull: columns are "ID", "MIXEST"(1-indexed), "ETA[1]",...,"ETA[neta]", "OBJI"
+  # Rows ordered by mixture then subject; sort to ensure consistency
+  .etaFull <- .etaFull[order(.etaFull$MIXEST, as.integer(.etaFull$ID)), ]
+
+  .etaCols <- grep("^ETA\\[", names(.etaFull), value=TRUE)
+  .etaNames <- names(.ranef)[-1]  # eta names from fixed ranef (no ID, no MIXEST)
+
+  # Build unnormalised posterior: exp(-OBJI/2) * prior_prob for each subject x mixture
+  .llikMat <- matrix(NA_real_, nrow=.nSub, ncol=.nMix)
+  for (k in seq_len(.nMix)) {
+    .wk <- which(.etaFull$MIXEST == k)
+    # Sort by subject ID to align rows correctly
+    .wk <- .wk[order(as.integer(.etaFull$ID[.wk]))]
+    .llikMat[, k] <- exp(-0.5 * .etaFull$OBJI[.wk]) * .priorProbs[k]
+  }
+  .rowTotals <- rowSums(.llikMat)
+
+  # Create mixList: one data frame per mixture component
+  .mixList <- lapply(seq_len(.nMix), function(k) {
+    .wk <- which(.etaFull$MIXEST == k)
+    .wk <- .wk[order(as.integer(.etaFull$ID[.wk]))]
+    .df <- .etaFull[.wk, .etaCols, drop=FALSE]
+    .prob <- .llikMat[, k] / .rowTotals
+    .ret <- cbind(data.frame(ID=.etaFull$ID[.wk]), .df, data.frame(prob=.prob))
+    names(.ret) <- c("ID", .etaNames, "prob")
+    row.names(.ret) <- NULL
+    .ret
+  })
+  names(.mixList) <- paste0("mix", seq_len(.nMix))
+
+  # Create mixNum: best mixture assignment per subject (1-indexed)
+  # etaObf has columns: "ID", "MIXEST"(1-indexed best mix), eta names..., "OBJI"
+  .wMix2 <- which(names(.etaBest) == "MIXEST")
+  .mixNum <- data.frame(ID=.etaBest$ID,
+                        mixnum=if (length(.wMix2) > 0L) as.integer(.etaBest[[.wMix2]]) else NA_integer_)
+  row.names(.mixNum) <- NULL
+
+  assign("mixList", .mixList, envir=env)
+  assign("mixNum", .mixNum, envir=env)
+
+  # Store iCov for the table/solve step: rxode2 reads 'mixest' from iCov to
+  # fix each individual's mixture component during ODE solving.
+  # ID must be integer to match the data's ID column type.
+  .iCov <- data.frame(ID=as.integer(.mixNum$ID), mixest=.mixNum$mixnum)
+  assign("mixIcov", .iCov, envir=env)
+
+  invisible(NULL)
+}
+
+#' Back-transform mixture probability columns in the "Back-Transformed" rows of parHistData
+#'
+#' Each FOCEI iteration records three row types in \code{parHistData}: "Scaled",
+#' "Unscaled" (shown in \code{fit$parHist}), and "Back-Transformed".  C++ applies
+#' \code{exp}/\code{expit} for known transforms in the last row type but falls
+#' through to the raw unscaled value for mixture parameters (mlogit scale).  This
+#' function corrects only the "Back-Transformed" rows by applying
+#' \code{rxode2::mexpit()} jointly to all mixture parameter columns.  "Scaled" and
+#' "Unscaled" rows are intentionally left at their mlogit values.
+#'
+#' @param parHist data frame returned by C++ \code{parHistData()}
+#' @param mixColNames character vector of column names to back-transform
+#' @return \code{parHist} with mixture columns corrected in "Back-Transformed" rows
+#' @noRd
+#' @author Matthew L. Fidler
+.backTransformParHistMix <- function(parHist, mixColNames) {
+  .mixCols <- match(mixColNames, names(parHist))
+  .mixCols <- .mixCols[!is.na(.mixCols)]
+  if (length(.mixCols) == 0L) return(parHist)
+  .btRows <- as.character(parHist$type) == "Back-Transformed"
+  if (!any(.btRows)) return(parHist)
+  .mlogitMat <- as.matrix(parHist[.btRows, .mixCols, drop=FALSE])
+  .nBt <- sum(.btRows)
+  .nMix <- length(.mixCols)
+  # apply() + t() transposes correctly only when nrow > 1 and ncol > 1.
+  # Wrap in matrix() with explicit dimensions to handle the single-column
+  # (one mixture parameter) and single-row edge cases uniformly.
+  parHist[.btRows, .mixCols] <- matrix(
+    t(apply(.mlogitMat, 1L, function(.row) rxode2::mexpit(.row)[seq_len(.nMix)])),
+    nrow = .nBt, ncol = .nMix
+  )
+  parHist
+}
+
+#' Pre-final parameter table hook: back-transform mixture probability parameters
+#'
+#' Registered via \code{preFinalParTableHooksAdd()}. Runs after estimation
+#' but before the final parameter table is built (called from C++
+#' \code{foceiFinalizeTables} via \code{.preFinalParTableHooksRun}).
+#'
+#' Converts mixture probability parameters from the mlogit scale (used
+#' internally during estimation) to the natural probability scale by modifying
+#' \code{env$theta$theta} directly.  Because \code{skipCov} is already set to
+#' \code{TRUE} for these indices (see \code{rxUiGet.foceiSkipCov}), the C++
+#' table builder will leave SE and \%RSE as \code{NA} without any additional
+#' patching.  The full probability vector (including the implicit last
+#' component) is stored in \code{env$mixProbabilities} for use by
+#' \code{.mixFix()}.
+#'
+#' @param env Fit environment containing \code{mixIdx} and \code{theta}
+#' @return invisible \code{NULL}; called for its side effects on \code{env}
+#' @noRd
+#' @author Matthew L. Fidler
+.aaaPostEstimationMixBacktransform <- function(env) {
+  .mixIdx <- try(get("mixIdx", envir=env), silent=TRUE)
+  if (inherits(.mixIdx, "try-error")) return(invisible(NULL))
+  if (length(.mixIdx) == 0L) return(invisible(NULL))
+
+  .thetaDf <- env$theta
+  if (is.null(.thetaDf) || !is.data.frame(.thetaDf)) return(invisible(NULL))
+
+  .mlogitVals <- .thetaDf$theta[.mixIdx]
+  .probs <- rxode2::mexpit(.mlogitVals)
+
+  .thetaDf$theta[.mixIdx] <- .probs[seq_along(.mixIdx)]
+  env$theta <- .thetaDf
+  # mexpit returns only the n explicit probabilities (not the implicit last component).
+  # .mixFix uses length(mixProbabilities) as nMix, so we must append the last component.
+  env$mixProbabilities <- c(.probs, 1 - sum(.probs))
+
+  if (exists("parHistData", envir=env) && exists("thetaNames", envir=env)) {
+    .phd <- env$parHistData
+    if (is.data.frame(.phd) && nrow(.phd) > 0L) {
+      env$parHistData <- .backTransformParHistMix(.phd, env$thetaNames[.mixIdx])
+    }
+  }
+
+  invisible(NULL)
+}
+preFinalParTableHooksAdd(".aaaPostEstimationMixBacktransform", .aaaPostEstimationMixBacktransform)
+
+#' Fix mixture LHS variables in the assembled fit table
+#'
+#' With rxode2 >= 5.1.2 and the predOnlyModel built from the pruned mix() form,
+#' iCov with mixest sets ind->mixest correctly so me/mn/mu come from the solve.
+#' For older rxode2 versions (before the lName/liName typo fix in etTran.cpp),
+#' iCov is silently rejected and me/mn/mu are 0.  This function replaces those
+#' columns with correct values from mixNum (me/mn) and 1/nMix (mu) as a
+#' safety fallback that works regardless of the rxode2 version.
+#'
+#' @param fit nlmixr2FitData object (after addTable)
+#' @param env fit environment
+#' @param ui rxode2 UI object
+#' @return modified fit (or fit unchanged for non-mixture models)
+#' @noRd
+#' @author Matthew L. Fidler
+.mixFixTable <- function(fit, env, ui) {
+  if (!inherits(fit, "nlmixr2FitData")) return(fit)
+  if (!exists("mixNum", envir=env)) return(fit)
+  .mn <- get("mixNum", envir=env)
+  if (is.null(.mn) || nrow(.mn) == 0L) return(fit)
+  .nMix <- length(ui$mixProbs) + 1L  # nMix = n_explicit_probs + 1
+  # me and mn: best-fit mixture per individual (1-indexed)
+  if ("me" %in% names(fit)) {
+    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
+    fit[["me"]] <- .meMap[as.integer(fit[["ID"]])]
+  }
+  if ("mn" %in% names(fit)) {
+    .meMap <- setNames(as.integer(.mn$mixnum), as.integer(.mn$ID))
+    fit[["mn"]] <- .meMap[as.integer(fit[["ID"]])]
+  }
+  # mu: uniform mixture probability = 1/nMix (constant)
+  if ("mu" %in% names(fit) && .nMix > 0L) {
+    fit[["mu"]] <- 1.0 / .nMix
+  }
+  fit
+>>>>>>> finish-mix
+}
+
 #' @export
 rxUiGet.thetaIniMix <- function(x, ...) {
   .ui <- x[[1]]

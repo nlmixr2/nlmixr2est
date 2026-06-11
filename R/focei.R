@@ -880,12 +880,30 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     ), collapse = "\n")
     pred.opt <- s$..pred.nolhs
   }
+  # For mixture models build predOnly from the pruned model (which preserves the
+  # mix() call and therefore gives nMix > 0 in the compiled model).  This lets
+  # rxode2 accept per-individual mixest from iCov so that me/mn/mu are correct
+  # and IPRED uses the right mixture branch for each subject.
+  # NOTE: the *inner* model intentionally keeps the mixest==k symengine form
+  # (nMix == 0) because inner.cpp manages mixture selection itself; using mix()
+  # there would trigger a double-optimisation conflict.
+  .mixProbs <- try(ui$mixProbs, silent=TRUE)
+  .hasMix <- !inherits(.mixProbs, "try-error") && length(.mixProbs) > 0L
+  .predOnly <- if (.hasMix) {
+    .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
+                        collapse="\n")
+    .toRx(.prunedStr, ifelse(.getRxPredLlikOption(),
+                             "compiling Llik EBE model (mixture)...",
+                             "compiling EBE model (mixture)..."))
+  } else {
+    .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+                           "compiling Llik EBE model...",
+                           "compiling EBE model..."))
+  }
   .ret <- list(
     inner = inner,
     innerOeta = innerOeta,
-    predOnly = .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
-                                      "compiling Llik EBE model...",
-                                      "compiling EBE model...")),
+    predOnly = .predOnly,
     extra.pars = s$..extraPars,
     outer = .toRx(s$..outer),
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
@@ -1350,6 +1368,11 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     .skipCov[.theta$fix] <- TRUE
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
+    }
+    # Mixture probability parameters are estimated on the mlogit scale; their
+    # covariance cannot be meaningfully interpreted, so skip them.
+    if (length(.ui$mixProbs) > 0) {
+      .skipCov[which(.theta$name %in% .ui$mixProbs)] <- TRUE
     }
     .skipCov
   }
@@ -1927,6 +1950,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     ui <- rxode2::rxUiCompress(ui)
     .ret$ui <- ui
     .foceiSetupParHistData(.ret)
+    # For mixture models: fix ranef (remove MIXEST), build mixList and mixNum
+    .mixFix(.ret, ui)
     if (!all(is.na(ui$iniDf$neta1))) {
       .etas <- .ret$ranef
       .thetas <- .ret$fixef
@@ -1973,7 +1998,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (inherits(.tmp, "try-error")) {
       warning("error calculating tables, returning without table step", call.=FALSE)
     } else {
-      .ret <- .tmp
+      .ret <- .mixFixTable(.tmp, .env, ui)
     }
   }
   assign("sessioninfo", .sessionInfo(), envir=.env)
