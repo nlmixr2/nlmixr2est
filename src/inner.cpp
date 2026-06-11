@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
 
 // scale.h uses `_("...")` for translatable strings; provide the trivial
 // passthrough macro before including it (matches saem.cpp's usage).

@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
 #include <atomic>
 
 #define _(String) (String)
