@@ -424,6 +424,7 @@
   .curOme <- .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
+  colnames(.mat2) <- .etaNames
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]
@@ -748,7 +749,10 @@
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
                                 indTolRelax=.saemControl$indTolRelax,
-                                rxControl=.rxControl)
+                                rxControl=.rxControl,
+                                resetThetaP = 0,
+                                resetThetaFinalP = 0,
+                                est = "saem")
   if (exists(".etaMat", envir=env, inherits=FALSE)) {
     rm(list=".etaMat", envir=env)
   }
@@ -836,6 +840,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    # For mixture models: build mixList/mixNum/mixIcov from SAEM's mixWeights
+    # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
+    # available to rxode2 during the table/solve step.
+    .saemMixFix(.ret, .ui)
     .nlmixr2FitUpdateParams(.ret)
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
@@ -848,6 +856,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
     .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+    # For mixture models: post-correct me/mn/mu in the assembled fit table
+    # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
+    if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
+      .retEnv <- attr(class(.ret), ".foceiEnv")
+      if (is.null(.retEnv)) .retEnv <- .ret$env
+      .ret <- .mixFixTable(.ret, .retEnv, .ui)
+    }
     .setSaemExtra(.ret, "FOCEi")
     .ret
   })

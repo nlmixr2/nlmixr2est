@@ -623,6 +623,10 @@ public:
     return mixProb;
   }
 
+  mat get_mixWeights() {
+    return mixWeights;
+  }
+
   mat get_eta() {
     mat eta = mpost_phi.cols(i1);
     eta -= mprior_phi1;
@@ -2723,7 +2727,8 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("par_hist") = saem.get_par_hist(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
-    Named("mixProb") = wrap(saem.get_mixProb())
+    Named("mixProb") = wrap(saem.get_mixProb()),
+    Named("mixWeights") = wrap(saem.get_mixWeights())
   );
   current_saem_state = nullptr;
   out.attr("saem.cfg") = x;

@@ -355,6 +355,7 @@ struct focei_options {
   // scale.save=0 because focei already records iteration history into the
   // module-level vPar/niter/iterType/vGrad/niterGrad/gradType globals.
   scaling scale;
+  bool isSaem = false;
 };
 
 focei_options op_focei;
@@ -2256,6 +2257,7 @@ static inline bool isFixedTheta(int m) {
 }
 
 static inline bool thetaReset0(bool forceReset = false) {
+  if (op_focei.isSaem) return false;
   NumericVector thetaIni(op_focei.ntheta);
   NumericVector thetaUp(op_focei.ntheta);
   NumericVector thetaDown(op_focei.ntheta);
@@ -2323,6 +2325,8 @@ static inline bool thetaReset0(bool forceReset = false) {
 }
 
 void thetaReset(double size){
+  if (op_focei.isSaem) return;
+  if (op_focei.maxOuterIterations <= 0) return;
   if (std::isinf(size)) return;
   mat etaRes =  op_focei.eta1SD % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
   double res=0;
@@ -2341,12 +2345,15 @@ void thetaReset(double size){
 }
 
 void thetaResetZero() {
+  if (op_focei.isSaem) return;
+  if (op_focei.maxOuterIterations <= 0) return;
   thetaReset0(true);
   warning(_("thetas were reset during optimization because of a zero gradient"));
   stop("theta reset0");
 }
 
 void thetaResetObj(Environment e) {
+  if (op_focei.isSaem) return;
   // Check to see if the last objective function is the lowest, otherwise reset to the lowest thetaResetObj
   if (op_focei.maxOuterIterations > 0) {
     parHistData(e, true);
@@ -3955,6 +3962,11 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixIdxN = (unsigned int)mixIdx.size();
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
+  if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
+    op_focei.isSaem = (as<std::string>(foceiO["est"]) == "saem");
+  } else {
+    op_focei.isSaem = false;
+  }
 
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
@@ -4085,7 +4097,7 @@ NumericVector foceiSetup_(const RObject &obj,
       nsub++;
     }
   }
-  int expected_nsub = nsub;
+  int expected_nsub = nsub * (op_focei.mixIdxN + 1);
   if (op_focei.neta > 0) {
     if (!etaMat.isNull()){
       if (TYPEOF(wrap(etaMat)) != REALSXP) {
@@ -4094,8 +4106,8 @@ NumericVector foceiSetup_(const RObject &obj,
         stop("etaMat must be a numeric matrix");
       }
       NumericMatrix etaMat1 = NumericMatrix(etaMat);
-      if (etaMat1.nrow() == (int)(nsub * (op_focei.mixIdxN + 1))) {
-        expected_nsub = nsub * (op_focei.mixIdxN + 1);
+      if (etaMat1.nrow() == expected_nsub) {
+        // ok
       } else if (etaMat1.nrow() != (int)nsub){
         print(etaMat1);
         stop("The etaMat must have the same number of ETAs (rows) as subjects.");
@@ -4105,9 +4117,20 @@ NumericVector foceiSetup_(const RObject &obj,
         stop("The etaMat must have the same number of ETAs (cols) as the model.");
       }
       etaMat0 = NumericMatrix(expected_nsub, op_focei.neta);
-      std::copy(etaMat1.begin(),etaMat1.end(),etaMat0.begin());
+      if (etaMat1.nrow() == expected_nsub) {
+        std::copy(etaMat1.begin(),etaMat1.end(),etaMat0.begin());
+      } else {
+        int nMix = op_focei.mixIdxN + 1;
+        for (int m = 0; m < nMix; m++) {
+          for (int r = 0; r < (int)nsub; r++) {
+            for (int c = 0; c < (int)op_focei.neta; c++) {
+              etaMat0(m * nsub + r, c) = etaMat1(r, c);
+            }
+          }
+        }
+      }
     } else {
-      etaMat0 = NumericMatrix(nsub, op_focei.neta);
+      etaMat0 = NumericMatrix(expected_nsub, op_focei.neta);
       std::fill(etaMat0.begin(), etaMat0.end(), 0.0);
     }
   }

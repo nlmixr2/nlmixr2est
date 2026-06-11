@@ -1115,11 +1115,11 @@ attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID=1L, mixnum=1L)
 
 #' @rdname nmObjGet
 #' @export
-nmObjGet.eta <- function(x, ...) {
-  .obj <- x[[1]]
-  .ret <- .obj$ranef
+nmObjGet.ranef <- function(x, ...) {
+  .env <- x[[1]]
+  if (!exists("ranef", envir=.env)) return(NULL)
+  .ret <- get("ranef", envir=.env)
   if (is.null(.ret)) return(NULL)
-  .env <- .obj$env
   if (exists("mixNum", envir=.env)) {
     .mn <- get("mixNum", envir=.env)
     if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
@@ -1129,5 +1129,11 @@ nmObjGet.eta <- function(x, ...) {
   }
   .ret
 }
-attr(nmObjGet.eta, "desc") <- "Individual random effects (ETAs); includes mixnum column for mixture models"
+attr(nmObjGet.ranef, "desc") <- "Individual random effects (ETAs); includes mixnum column for mixture models"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.eta <- nmObjGet.ranef
+attr(nmObjGet.eta, "desc") <- attr(nmObjGet.ranef, "desc")
+
 attr(nmObjGet.rxControl, "desc") <- "rxode2 solving options"

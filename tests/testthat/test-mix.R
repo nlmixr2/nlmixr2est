@@ -1,6 +1,7 @@
 nmTest({
 
   test_that("test mixture models -- focei fit", {
+
     one.cmt <- function() {
       ini({
         tka <- 0.45

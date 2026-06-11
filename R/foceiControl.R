@@ -3,7 +3,7 @@
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl")
+                           "iterPrintControl", "est")
 
 #' Control Options for FOCEi
 #'
@@ -1453,6 +1453,9 @@ foceiControl <- function(sigdig = 4, #
     agqLow=as.double(agqLow),
     boundedTransform=boundedTransform
   )
+  if (!is.null(.xtra$est)) {
+    .ret$est <- .xtra$est
+  }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
