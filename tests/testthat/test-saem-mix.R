@@ -1,18 +1,18 @@
 nmTest({
   test_that("test SAEM mixture model estimation", {
     set.seed(42)
-    n_subj <- 30
-    sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
-    cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
+    nSubj <- 30
+    subPop <- rbinom(nSubj, 1, 0.6) + 1 # 1 or 2
+    clSim <- ifelse(subPop == 1, 1.2, 6.0)
 
-    sim_data <- do.call(rbind, lapply(1:n_subj, function(i) {
-      subj_cl <- cl_sim[i]
+    simData <- do.call(rbind, lapply(1:nSubj, function(i) {
+      subjCl <- clSim[i]
       times <- c(0.5, 1, 2, 4, 8, 12, 24)
-      ka_val <- 1.5
-      v_val <- 24.0
-      k_val <- subj_cl / v_val
-      cp <- 100 * ka_val / (v_val * (ka_val - k_val)) * (exp(-k_val * times) - exp(-ka_val * times)) + rnorm(length(times), 0, 0.05)
-      cp[cp < 0] <- 0
+      kaVal <- 1.5
+      vVal <- 24.0
+      kVal <- subjCl / vVal
+      cp <- 100 * kaVal / (vVal * (kaVal - kVal)) * (exp(-kVal * times) - exp(-kaVal * times)) + rnorm(length(times), 0, 0.05)
+      if (any(cp < 0)) cp[cp < 0] <- 0
       data.frame(
         ID = i,
         TIME = c(0, times),
@@ -23,7 +23,7 @@ nmTest({
       )
     }))
 
-    one.compartment.mix <- function() {
+    oneCompartmentMix <- function() {
       ini({
         tka <- log(1.5)
         tcl1 <- log(1.0)
@@ -47,17 +47,17 @@ nmTest({
     }
 
     # Run SAEM estimation with mixture
-    fit_saem <- expect_error(
-      .nlmixr(one.compartment.mix, sim_data, est="saem",
+    fitSaem <- expect_error(
+      .nlmixr(oneCompartmentMix, simData, est="saem",
               saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
                           calcTables = FALSE, covMethod = 0L)),
       NA
     )
     
     # Check that estimated mixture parameter p1 exists
-    expect_true("p1" %in% names(fit_saem$theta))
+    expect_true("p1" %in% names(fitSaem$theta))
     
     # Check that estimated parameters are accessible
-    expect_true(is.numeric(fit_saem$theta["p1"]))
+    expect_true(is.numeric(fitSaem$theta["p1"]))
   })
 })
