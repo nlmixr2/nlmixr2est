@@ -1547,6 +1547,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
            call.=FALSE)
     }
+    if (is.factor(.ret$etaObf$ID)) {
+      .ret$etaObf$ID <- as.integer(.ret$etaObf$ID)
+    }
     checkmate::assertInteger(.ret$etaObf$ID, any.missing=FALSE, min=1, .var.name="fitEnv$etaObj$ID")
   }
   this.env <- new.env(parent=emptyenv())

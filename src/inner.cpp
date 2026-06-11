@@ -57,8 +57,8 @@ void restoreFromEnvrionment(Environment e);
 
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
-#define innerOde(id) ind_solve(rx, id, rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
-#define predOde(id) ind_solve(rx, id, rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
+#define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
+#define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
 #define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
 #define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
@@ -883,19 +883,19 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
       if (predSolve) {
-        rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+        rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
       } else {
-        rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+        rxInner.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
       }
       continue;
     }
     fInd->nObs++;
     if (predSolve) {
-      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[0];
       retR(k) = lhs[1];
     } else {
-      rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      rxInner.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
       retF(k) = lhs[0];
       retR(k) = lhs[op_focei.neta + 1];
     }
@@ -941,10 +941,10 @@ arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
     curT = getTime(kk, ind);
     double *lhs = getIndLhs(ind);
     if (isDose(getIndEvid(ind, kk))) {
-      rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+      rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
       continue;
     }
-    rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+    rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
     ret(k) = lhs[w];
     k++;
     if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
@@ -1271,18 +1271,18 @@ double likInner0(double *eta, int id) {
           llikObs[kk] = NA_REAL;
           // Need to calculate for advan sensitivities
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+            rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
             lhs[op_focei.neta + 1] = lhs[1];
           }
           else {
-            rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+            rxInner.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
           }
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
-            rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+            rxPred.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
             lhs[op_focei.neta + 1] = lhs[1];
           } else {
-            rxInner.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
+            rxInner.calc_lhs(getRxId(id), curT, getOpIndSolve(op, ind, j), lhs);
           }
 
           f = lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
@@ -2521,7 +2521,9 @@ void innerOpt() {
       }
     }
   } else {
-    int nsub = getRxNsubAndMix(rx);
+    int nsub_orig = getRxNsub(rx);
+    int nMix = op_focei.mixIdxN + 1;
+    int nsub = nsub_orig * nMix;
     bool _doParallel = (cores > 1) && solveMethodThreadSafe(op);
     if (_doParallel) {
       sortIds(rx, 2); // only initialize if rx->ordId == NULL
@@ -2534,26 +2536,29 @@ void innerOpt() {
     // slot 0 and race -> heap corruption (Windows-only; Linux shares one
     // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
     // Resolved once on the main thread.
+    for (int jMix = 0; jMix < nMix; jMix++) {
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
-    for (int i = 0; i < nsub; i++){
-      int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
+      for (int i = 0; i < nsub_orig; i++) {
+        int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
+        _id += jMix * nsub_orig;
 #ifdef _OPENMP
-      if (_doParallel) {
-        setRxThreadId(omp_get_thread_num());
-        try {
+        if (_doParallel) {
+          setRxThreadId(omp_get_thread_num());
+          try {
+            innerOptId(_id);
+          } catch (...) {
+            inds_focei[_id].parErrorNoEta = 1;
+          }
+          setRxThreadId(-1);
+        } else {
+#endif
           innerOptId(_id);
-        } catch (...) {
-          inds_focei[_id].parErrorNoEta = 1;
-        }
-        setRxThreadId(-1);
-      } else {
-#endif
-        innerOptId(_id);
 #ifdef _OPENMP
-      }
+        }
 #endif
+      }
     }
     _innerParallel.store(0, std::memory_order_release);
     if (_doParallel) {
@@ -2841,7 +2846,7 @@ SEXP foceiEtas(Environment e, bool bestMixEst=false) {
     nm[j+1+mixest] = "ETA[" + std::to_string(j+1) + "]";
   }
   NumericVector tmp;
-  for (j=(bestMixEst ? bestMixEst : getRxNsubAndMix(rx)); j--;) {
+  for (j=(bestMixEst ? getRxNsub(rx) : getRxNsubAndMix(rx)); j--;) {
     ids[j] = getRxId(j)+1;
     focei_ind *fInd = &(inds_focei[j]);
     // Update based on the best mix estimate when requested
@@ -3564,7 +3569,7 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   op_focei.fixedTrans  = op_focei.thetaTrans + op_focei.ntheta + op_focei.omegan; // [ntheta + nomega]
   op_focei.etaFD       = op_focei.fixedTrans + op_focei.ntheta + op_focei.omegan; // [neta]
   if (op_focei.mixIdxN) {
-    op_focei.mixTrans    = op_focei.etaFD + op_focei.neta + op_focei.omegan; // [ntheta+omegan]
+    op_focei.mixTrans    = op_focei.etaFD + op_focei.neta; // [ntheta+omegan]
   } else {
     op_focei.mixTrans    = NULL;
   }
@@ -3864,7 +3869,12 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
     // Copy in etaMat0 to the inital eta stored (0 if unspecified)
     // std::copy(&etaMat0[i*op_focei.neta], &etaMat0[(i+1)*op_focei.neta], &fInd->saveEta[0]);
-    std::copy(&etaMat0d[i*op_focei.neta], &etaMat0d[(i+1)*op_focei.neta], &fInd->eta[0]);
+    if (etaMat0.nrow() == (int)getRxNsubAndMix(rx)) {
+      std::copy(&etaMat0d[i*op_focei.neta], &etaMat0d[(i+1)*op_focei.neta], &fInd->eta[0]);
+    } else {
+      int origId = getRxId(i);
+      std::copy(&etaMat0d[origId*op_focei.neta], &etaMat0d[(origId+1)*op_focei.neta], &fInd->eta[0]);
+    }
 
     fInd->eta[op_focei.neta] = i;
     fInd->saveEta[op_focei.neta] = i;
@@ -4016,6 +4026,12 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.ntheta = (unsigned int)as<int>(foceiO["ntheta"]);
   // op_focei.ntheta = op_focei.ntheta;
   op_focei.nfixed = as<int>(foceiO["nfixed"]);
+  int* tempMixIdx = NULL;
+  if (op_focei.mixIdxN > 0) {
+    tempMixIdx = R_Calloc(op_focei.mixIdxN, int);
+    std::copy(mixIdx.begin(), mixIdx.end(), tempMixIdx);
+    op_focei.mixIdx = tempMixIdx;
+  }
   if (op_focei.maxOuterIterations <= 0){
     // No scaling.
     foceiSetupTheta_(mvi, theta, thetaFixed, 0.0, !Rf_isNull(obj));
@@ -4028,6 +4044,10 @@ NumericVector foceiSetup_(const RObject &obj,
     } else {
       op_focei.scaleObjective=1;
     }
+  }
+  if (tempMixIdx != NULL) {
+    R_Free(tempMixIdx);
+    op_focei.mixIdx = NULL;
   }
   // First see if etaMat is null.
   NumericMatrix etaMat0;
@@ -4055,8 +4075,8 @@ NumericVector foceiSetup_(const RObject &obj,
       nsub++;
     }
   }
+  int expected_nsub = nsub;
   if (op_focei.neta > 0) {
-    etaMat0 = NumericMatrix(nsub, op_focei.neta);
     if (!etaMat.isNull()){
       if (TYPEOF(wrap(etaMat)) != REALSXP) {
         // Rcpp::print("etaMat is not a numeric matrix");
@@ -4064,7 +4084,9 @@ NumericVector foceiSetup_(const RObject &obj,
         stop("etaMat must be a numeric matrix");
       }
       NumericMatrix etaMat1 = NumericMatrix(etaMat);
-      if (etaMat1.nrow() != (int)nsub){
+      if (etaMat1.nrow() == (int)(nsub * (op_focei.mixIdxN + 1))) {
+        expected_nsub = nsub * (op_focei.mixIdxN + 1);
+      } else if (etaMat1.nrow() != (int)nsub){
         print(etaMat1);
         stop("The etaMat must have the same number of ETAs (rows) as subjects.");
       }
@@ -4072,8 +4094,10 @@ NumericVector foceiSetup_(const RObject &obj,
         print(etaMat1);
         stop("The etaMat must have the same number of ETAs (cols) as the model.");
       }
+      etaMat0 = NumericMatrix(expected_nsub, op_focei.neta);
       std::copy(etaMat1.begin(),etaMat1.end(),etaMat0.begin());
     } else {
+      etaMat0 = NumericMatrix(nsub, op_focei.neta);
       std::fill(etaMat0.begin(), etaMat0.end(), 0.0);
     }
   }
@@ -4081,7 +4105,7 @@ NumericVector foceiSetup_(const RObject &obj,
   CharacterVector paramsNames(theta.size()+op_focei.neta);
   unsigned int j;
   for (j = theta.size();j--;){
-    params[j] = NumericVector(nsub,theta[j]);
+    params[j] = NumericVector(expected_nsub,theta[j]);
     if (theta.hasAttribute("names")){
       paramsNames[j] = (as<CharacterVector>(theta.names()))[j];
     } else {
@@ -4110,7 +4134,7 @@ NumericVector foceiSetup_(const RObject &obj,
   }
   params.names() = paramsNames;
   params.attr("class") = "data.frame";
-  params.attr("row.names") = IntegerVector::create(NA_INTEGER,-nsub);
+  params.attr("row.names") = IntegerVector::create(NA_INTEGER,-expected_nsub);
   // Now pre-fill parameters.
   if (!Rf_isNull(obj)) {
     // Don't force cores=1. The user-requested core count must propagate
@@ -4212,6 +4236,15 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.lower = op_focei.aEpsC + totN;
   op_focei.upper = op_focei.lower +op_focei.npars;
   op_focei.likSav      = op_focei.upper + op_focei.npars;//[getRxNsub(rx)]
+
+  if (op_focei.mixIdxN > 0) {
+    for (unsigned int i = 0; i < getRxNsubAndMix(rx); i++) {
+      focei_ind *fInd = &(inds_focei[i]);
+      fInd->mixest = op_focei.mixIdx + op_focei.mixIdxN + getRxId(i);
+      fInd->mixProb = op_focei.mixProb + (getRxId(i) + 1)*(op_focei.mixIdxN + 1);
+      fInd->mixProbGrad = op_focei.mixProbGrad + (getRxId(i) + 1)*(op_focei.mixIdxN);
+    }
+  }
 
   if (op_focei.derivMethod){
     std::fill_n(&op_focei.rEps[0], totN, std::fabs(cEps[0])/2.0);
