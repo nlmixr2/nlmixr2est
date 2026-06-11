@@ -123,6 +123,93 @@
   invisible(NULL)
 }
 
+#' Process mixture model information after a SAEM fit
+#'
+#' SAEM-specific analogue of `.mixFix()`.  After the SAEM fit completes and
+#' `.getSaemOmega()` has populated `env$etaObf`, this function:
+#'  1. Builds `mixList` (one data frame per mixture component with ID, ETAs, and
+#'     posterior probability) from the `mixWeights` matrix returned by the C++
+#'     SAEM engine.
+#'  2. Builds `mixNum` (data frame with ID and most-likely mixture assignment).
+#'  3. Builds `mixIcov` (data frame with ID and `mixest` column used by rxode2
+#'     to fix the mixture component during ODE solving / table calculation).
+#'  4. Stores `mixProbabilities` (full nMix-length probability vector including
+#'     the implicit last component) so that `.mixFixTable()` can correct me/mn/mu.
+#'
+#' Unlike `.mixFix()`, this function does not require `etaObfFull` because the
+#' per-subject posterior mixture weights are already computed by the SAEM
+#' engine and returned in `env$saem$mixWeights`.
+#'
+#' @param env Fit environment (the SAEM output environment, before
+#'   `nlmixr2CreateOutputFromUi`)
+#' @param ui rxode2 UI object
+#' @return Nothing; modifies `env` in place for side effects
+#' @noRd
+#' @author Matthew L. Fidler
+.saemMixFix <- function(env, ui) {
+  if (length(ui$mixProbs) == 0L) return(invisible(NULL))
+  .saem <- env$saem
+  if (is.null(.saem)) return(invisible(NULL))
+  .mixWeights <- .saem$mixWeights  # N x nMix matrix of posterior weights
+  if (is.null(.mixWeights) || nrow(.mixWeights) == 0L) return(invisible(NULL))
+  .nMix <- ncol(.mixWeights)
+  if (.nMix < 2L) return(invisible(NULL))
+
+  # etaObf was populated by .getSaemOmega; columns: ID, eta names, OBJI
+  .etaObf <- env$etaObf
+  if (is.null(.etaObf) || nrow(.etaObf) == 0L) return(invisible(NULL))
+  .nSub <- nrow(.etaObf)
+
+  # eta column names (exclude ID and OBJI)
+  .etaNames <- names(.etaObf)[!(names(.etaObf) %in% c("ID", "OBJI"))]
+
+  # mixWeights rows correspond to subject order in etaObf
+  # Ensure the matrix has a row for every subject
+  if (nrow(.mixWeights) != .nSub) {
+    warning("mixWeights row count doesn't match number of subjects; skipping SAEM mixFix",
+            call.=FALSE)
+    return(invisible(NULL))
+  }
+
+  # Final mixture probabilities (full simplex, nMix elements)
+  .mixProb <- .saem$mixProb
+  if (length(.mixProb) == .nMix - 1L) {
+    .mixProbabilities <- c(.mixProb, 1.0 - sum(.mixProb))
+  } else if (length(.mixProb) == .nMix) {
+    .mixProbabilities <- .mixProb
+  } else {
+    .mixProbabilities <- rep(1.0 / .nMix, .nMix)
+  }
+  env$mixProbabilities <- .mixProbabilities
+
+  # Create mixList: one data frame per mixture component
+  .mixList <- lapply(seq_len(.nMix), function(k) {
+    .df <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
+    .prob <- .mixWeights[, k]
+    .ret <- cbind(data.frame(ID=.etaObf$ID), .df, data.frame(prob=.prob))
+    names(.ret) <- c("ID", .etaNames, "prob")
+    row.names(.ret) <- NULL
+    .ret
+  })
+  names(.mixList) <- paste0("mix", seq_len(.nMix))
+
+  # Create mixNum: best mixture assignment per subject (1-indexed)
+  .bestMix <- apply(.mixWeights, 1L, which.max)
+  .mixNum <- data.frame(ID=.etaObf$ID,
+                        mixnum=as.integer(.bestMix))
+  row.names(.mixNum) <- NULL
+
+  assign("mixList", .mixList, envir=env)
+  assign("mixNum", .mixNum, envir=env)
+
+  # Store iCov for the table/solve step: rxode2 reads 'mixest' from iCov to
+  # fix each individual's mixture component during ODE solving.
+  .iCov <- data.frame(ID=as.integer(.mixNum$ID), mixest=.mixNum$mixnum)
+  assign("mixIcov", .iCov, envir=env)
+
+  invisible(NULL)
+}
+
 #' Back-transform mixture probability columns in the "Back-Transformed" rows of parHistData
 #'
 #' Each FOCEI iteration records three row types in \code{parHistData}: "Scaled",

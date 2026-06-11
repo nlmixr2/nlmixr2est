@@ -1577,8 +1577,13 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
+  nResets <- 0L
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
+      nResets <- nResets + 1L
+      if (nResets > 10L) {
+        stop("Maximum number of theta resets (10) exceeded; fit is unstable.", call. = FALSE)
+      }
       assign("err", "", this.env)
       .ret0 <- tryCatch(
       {
@@ -1741,6 +1746,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (!inherits(.control, type)) {
     .control <- do.call(type, .control)
   }
+  if (exists("est", envir = env)) {
+    .control$est <- env$est
+  }
   if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
         is.null(.control[["etaMat"]])) {
     warning("Passed the initial etas from the last fit",
@@ -1885,10 +1893,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .control <- ui$control
+  .control$est <- est
+  ui$control <- .control
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
   .env$ui <- ui
+  .env$est <- est
+  if (!is.null(.env$control)) {
+    .env$control$est <- est
+  }
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   })
