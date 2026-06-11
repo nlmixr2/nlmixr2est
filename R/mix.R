@@ -11,7 +11,7 @@
 #'
 #' @author Matthew L. Fidler
 .getMixFromLog <- function(val, idx) {
-  v <- do.call("rxode2::mexpit", list(val[idx]))
+  v <- rxode2::mexpit(val[idx])
   c(v, 1-sum(v))
 }
 #' Get the mixture gradients of the estimated log-scale parameters
@@ -28,7 +28,7 @@
 #'
 #' @author Matthew L. Fidler
 .getMixJacFromLog <- function(val, idx) {
-  do.call("rxode2::dmexpit", list(val[idx]))
+  rxode2::dmexpit(val[idx])
 }
 
 #' @export
