@@ -1,2 +1,4 @@
 #! /bin/sh
 rm -f src/Makevars.win
+rm -f inst/tools/workaround.Rout
+
