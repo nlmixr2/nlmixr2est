@@ -25,7 +25,13 @@ if (rxode2hasLlik()) {
         })
       }
 
-      f <- .nlmixr(one.cmt, theo_sd, "focei")
+      # The assertions below only check that the ll() parameterization
+      # reproduces this fit's objective/etas (the ll fits are fed theta1/
+      # omega1/etaMat1 and evaluated at maxOuterIterations=0).  That
+      # equivalence holds at any reference point, so there is no need to
+      # optimize to convergence here -- cap the outer iterations for speed.
+      f <- .nlmixr(one.cmt, theo_sd, "focei",
+                   control=foceiControl(maxOuterIterations=0L))
       expect_true("CWRES" %in% names(f))
 
       of1     <- f$objf
@@ -34,7 +40,8 @@ if (rxode2hasLlik()) {
       omega1  <- f$omega
       etaO1   <- f$etaObf
 
-      f <- .nlmixr(one.cmt, theo_sd, "foce")
+      f <- .nlmixr(one.cmt, theo_sd, "foce",
+                   control=foceiControl(maxOuterIterations=0L))
       expect_true("CWRES" %in% names(f))
 
       of2 <- f$objf
@@ -122,7 +129,8 @@ if (rxode2hasLlik()) {
         })
       }
 
-      f <- .nlmixr(one.cmt.noeta, theo_sd, "focei")
+      f <- .nlmixr(one.cmt.noeta, theo_sd, "focei",
+                   control=foceiControl(maxOuterIterations=0L))
 
       of1 <-f$objf
       theta1 <- f$theta
