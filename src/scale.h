@@ -601,6 +601,7 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
       }
     }
     int i, finalize=0, n=scale->thetaNames.size();
+    int underlineUsed = 0;
     if (scale->showOfv) {
       RSprintf("\n|    #|  Function |");
     } else {
@@ -613,6 +614,7 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
       if ((i + 1) != n && (i + 1) % scale->ncol == 0){
         if (scale->useColor && scale->ncol + i  >= n){
           RSprintf("%s", scaleWrapMarker(scale, 1));
+          underlineUsed = 1;
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
         }
@@ -632,7 +634,12 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
     } else {
       RSprintf("\n");
     }
-    scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    // When the last header continuation row was emitted with the terminal
+    // underline character it already acts as a visual separator, so the
+    // explicit |---+---| line would be redundant.
+    if (!underlineUsed) {
+      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    }
   }
 }
 
@@ -872,8 +879,13 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % gradNcol == 0){
-        if (scale->useColor && gradNcol + i  >= scale->npars){
+      // First row wraps at gradNcol columns; continuation rows (which start
+      // with the 7-char |.....| marker, same width as regular rows) wrap at
+      // scale->ncol columns.  Wrap points: gradNcol, gradNcol+ncol, gradNcol+2*ncol, ...
+      if ((i + 1) != scale->npars &&
+          ((i + 1) == gradNcol ||
+           (i + 1 > gradNcol && (i + 1 - gradNcol) % scale->ncol == 0))){
+        if (scale->useColor && scale->ncol + i >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
@@ -883,19 +895,22 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     }
     if (finalize){
       while(true){
-        if ((i++) % gradNcol == 0){
+        // Pad the last continuation row to the next scale->ncol boundary,
+        // measured from the start of the first continuation row (gradNcol).
+        if ((i - gradNcol) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
         } else {
           RSprintf("...........|");
+          i++;
         }
       }
     } else {
       RSprintf("\n");
     }
     if (!scale->useColor){
-      scalePrintLine(scale, min2(scale->npars, gradNcol));
+      scalePrintLine(scale, finalize ? scale->ncol : min2(scale->npars, gradNcol));
     }
   }
   if (scale->save) {
