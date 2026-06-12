@@ -860,12 +860,12 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     // generic "Gradient" label.
     const char *label = NULL;
     switch (type) {
-    case 1:  label = "    G|    Gill Diff. |"; break;  // Gill
-    case 2:  label = "    M|   Mixed Diff. |"; break;  // Mixed
-    case 3:  label = "    F| Forward Diff. |"; break;  // Forward
-    case 4:  label = "    C| Central Diff. |"; break;  // Central
-    case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
-    default: label = "    G|    Gradient   |"; break;
+    case 1:  label = "    G|      Gill |"; break;  // Gill
+    case 2:  label = "    M|     Mixed |"; break;  // Mixed
+    case 3:  label = "    F|   Forward |"; break;  // Forward
+    case 4:  label = "    C|   Central |"; break;  // Central
+    case 5:  label = "    S|     Shi21 |"; break;  // Shi21
+    default: label = "    G|  Gradient |"; break;
     }
     if (scale->useColor && scale->ncol >= scale->npars){
       RSprintf("|\033[4m%s", label);
