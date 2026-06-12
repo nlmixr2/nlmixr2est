@@ -548,7 +548,7 @@ static inline const char *scaleWrapMarker(scaling *scale, int colored) {
 // blocks.  When `showOfv` is 0 (saem and similar — no per-iteration
 // objective function) the Function-Val segment is skipped so the
 // separator's column count matches the header above and the rows below.
-static inline void scalePrintLine(scaling *scale, int ncol){
+static inline void scalePrintLine(scaling *scale, int ncol) {
   if (scale->showOfv) {
     RSprintf("|-----+---------------+");
   } else {
@@ -592,7 +592,7 @@ static inline void scalePrintHeader(scaling *scale) {
     }
     int i, finalize=0, n=scale->thetaNames.size();
     if (scale->showOfv) {
-      RSprintf("\n|    #| Function Val. |");
+      RSprintf("\n|    #|  Function |");
     } else {
       RSprintf("\n|    #|");
     }
@@ -755,7 +755,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       RSprintf("\n");
     }
     if (!scale->simple && !skipU) {
-      if (scale->showOfv) RSprintf("|    U|               |");
+      if (scale->showOfv) RSprintf("|    U|           |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
@@ -782,7 +782,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
     if (!scale->simple && !skipX) {
-      if (scale->showOfv) RSprintf("|    X|               |");
+      if (scale->showOfv) RSprintf("|    X|           |");
       else                RSprintf("|    X|");
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
@@ -824,19 +824,6 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
 
 static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
-  // if (op_focei.derivMethod == 0){
-  //   if (op_focei.curGill == 1){
-  //     gradType.push_back(1);
-  //   } else if (op_focei.curGill == 2){
-  //     gradType.push_back(5);
-  //   } else if (op_focei.mixDeriv){
-  //     gradType.push_back(2);
-  //   } else{
-  //     gradType.push_back(3);
-  //   }
-  // } else {
-  //   gradType.push_back(4);
-  // }
   if (scale->save) {
     scale->niterGrad.push_back(scale->niter.back());
     scale->gradType.push_back(type);
