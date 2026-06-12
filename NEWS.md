@@ -10,6 +10,16 @@
   the real thread id via `setRxThreadId()` from rxode2 api (requires the
   matching rxode2).
 
+- Fixed `covMethod = "r"` and `covMethod = "s"` standard errors, which
+  were inflated by constant factors (`sqrt(2)` and `2`, respectively).
+  With the objective on the `-2*logLik` scale the R matrix is the
+  observed information and the S matrix is the score cross-product, so
+  the covariances are `R^-1` and `S^-1`; they were returned as `2*R^-1`
+  and `4*S^-1`.  The default sandwich method `"r,s"` (`R^-1 S R^-1`) was
+  already correct and is unchanged.  `covR`/`covS` are fixed at source so
+  the sandwich-selection heuristic also compares consistently-scaled
+  covariances (#666).
+
 - The iteration-time progress output emitted by every estimator
   (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
   newuoa, uobyqa) now flows through a single shared printer
