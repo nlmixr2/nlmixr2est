@@ -6118,7 +6118,13 @@ NumericMatrix foceiCalcCov(Environment e){
               op_focei.cur++;
               op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, getRxCores(rx), op_focei.t0, 0);
               if (!e.exists("covR")){
-                e["covR"] = wrap(2*Rinv);
+                // Issue #666: the R-matrix covariance is the inverse observed
+                // information Rinv = R^{-1} (R = 0.5*Hessian(-2LL) here).  This
+                // was 2*Rinv, which made every covMethod="r" SE sqrt(2) too
+                // large vs NONMEM $COV MATRIX=R and vs the (correct) sandwich
+                // "r,s".  covR feeds both the final "r" output and the
+                // sandwich-selection heuristic below, so it is fixed at source.
+                e["covR"] = wrap(Rinv);
               }
               if (op_focei.covMethod == 2){
                 e["cov"] = as<NumericMatrix>(e["covR"]);
@@ -6214,7 +6220,14 @@ NumericMatrix foceiCalcCov(Environment e){
                   Sinv = pinv(trimatu(cholS));
                 }
                 Sinv = Sinv * Sinv.t();
-                e["covS"]= 4 * Sinv;
+                // Issue #666: the S-matrix (OPG/cross-product) covariance is
+                // Sinv = S^{-1}.  This was 4*Sinv, which made every covMethod="s"
+                // SE 2x too large.  Confirmed against the empirical sampling
+                // covariance of a known data-generating model: r, the sandwich,
+                // and S^{-1} all match the true Cov(theta_hat), while 4*S^{-1}
+                // is ~2x.  covS also feeds the selection heuristic below, so it
+                // is fixed at source alongside covR.
+                e["covS"]= Sinv;
                 if (!checkSandwich) {
                   bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
                   if (covRSsmall) {
@@ -6279,7 +6292,7 @@ NumericMatrix foceiCalcCov(Environment e){
                 Sinv = Sinv * Sinv.t();
                 op_focei.cur++;
                 op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
-                e["cov"]= 4 * Sinv;
+                e["cov"]= Sinv;   // issue #666: S-matrix covariance is S^{-1}, not 4*S^{-1}
               }
             }
           } else {
