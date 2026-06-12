@@ -140,7 +140,7 @@ laplaceControl()
 #> [1] TRUE
 #> 
 #> $outerOpt
-#> [1] -1
+#> [1] 1
 #> 
 #> $ci
 #> [1] 0.95
@@ -212,21 +212,7 @@ laplaceControl()
 #> [1] 0
 #> 
 #> $outerOptFun
-#> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), 
-#>     ...) 
-#> {
-#>     .ctl <- control
-#>     .ctl <- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", 
-#>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
-#>         "step.max", "sing.tol", "scale.inti", "diff.g")]
-#>     .ctl$trace <- 0
-#>     .ret <- stats::nlminb(start = par, objective = fn, gradient = gr, 
-#>         hessian = NULL, control = .ctl, lower = lower, upper = upper)
-#>     .ret$x <- .ret$par
-#>     .ret
-#> }
-#> <bytecode: 0x5589536fa990>
-#> <environment: namespace:nlmixr2est>
+#> NULL
 #> 
 #> $rhobeg
 #> [1] 0.2
@@ -307,7 +293,7 @@ laplaceControl()
 #> [1] 1e+05
 #> 
 #> $outerOptTxt
-#> [1] "nlminb"
+#> [1] "lbfgsb3c"
 #> 
 #> $rmatNorm
 #> [1] 1

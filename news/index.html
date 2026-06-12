@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -33,18 +33,21 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>The iteration-time progress output emitted by every estimator (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1, newuoa, uobyqa) now flows through a single shared printer (<code>scaleApplyIterPrintControl</code>/<code>scalePrintFun</code> in <code>src/scale.h</code>). Each estimator’s iteration trace has the same <code>#</code>/<code>U</code>/<code>X</code> row layout, column wrapping, ANSI handling, periodic header re-emit cadence, and per-iteration user-interrupt check.</p></li>
+<ul><li><p>Fix Windows heap-corruption segfault building (<code>focei</code>, <code>foce</code>, <code>fo</code>, <code>laplace</code>, <code>agq</code>, <code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>) fits at more than one core. On Windows each package statically links its own OpenMP runtime, so when the parallel inner loop called rxode2’s solver across threads rxode2 saw every worker as thread 0 and collapsed its per-thread solve buffers onto a single slot, racing and corrupting the heap. The inner loop now hands rxode2 the real thread id via <code>setRxThreadId()</code> from rxode2 api (requires the matching rxode2).</p></li>
+<li><p>The iteration-time progress output emitted by every estimator (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1, newuoa, uobyqa) now flows through a single shared printer (<code>scaleApplyIterPrintControl</code>/<code>scalePrintFun</code> in <code>src/scale.h</code>). Each estimator’s iteration trace has the same <code>#</code>/<code>U</code>/<code>X</code> row layout, column wrapping, ANSI handling, periodic header re-emit cadence, and per-iteration user-interrupt check.</p></li>
 <li><p>New <code><a href="../reference/iterPrintControl.html">iterPrintControl()</a></code> function bundles every iteration-print option (<code>every</code>, <code>ncol</code>, <code>headerEvery</code>, <code>useColor</code>, <code>simple</code>) into one validated, classed list. Pass it via the existing <code>print</code> argument on any <code>*Control()</code> function: <code>foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))</code>. The historical scalar form <code>foceiControl(print = 5, printNcol = 8)</code> continues to work — internally the outer <code>*Control()</code> wraps the scalar arguments into an <code><a href="../reference/iterPrintControl.html">iterPrintControl()</a></code> call.</p></li>
 <li><p>saem now applies the same parameter back-transforms as focei. The <code>X</code> row shows <code>exp(theta)</code> for log-transformed thetas and <code>expit(theta, lower, upper)</code> for logit-transformed ones, derived from <code>ui$muRefCurEval</code> on the R side.</p></li>
 <li><p>Estimators with no per-iteration objective function (saem) now suppress the <code>Function Val.</code> column entirely instead of printing <code>nan</code> in every iteration row. The column header, separator, and per-row prefix all shrink accordingly.</p></li>
 <li><p>The shared iteration-printer auto-skips degenerate rows: when a method has no internal optimizer scaling (saem, group-C optimizers with <code>scaleType = "none"</code>) the <code>U</code> row is dropped because it would mirror <code>#</code>, and when there are also no log/logit-transformed parameters the <code>X</code> row is dropped too — so models with no transforms collapse to a single <code>#</code> row per iteration. Users who want to force-skip the U/X rows even with transforms present can pass <code>*Control(print = iterPrintControl(simple = TRUE))</code>.</p></li>
+<li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session affecting every pooled estimator except <code>nls</code> (<code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>);</p></li>
+<li><p>Guard against null pointer arithmetic in inner.cpp</p></li>
+<li><p>Use OpenMP threading for S matrix calculation</p></li>
+<li><p>Use OpenMP threading wile calculating NPDEs</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.0.1" id="nlmixr2est-601">nlmixr2est 6.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-601"></a></h2><p class="text-muted">CRAN release: 2026-06-03</p>
-<ul><li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session affecting every pooled estimator except <code>nls</code> (<code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>);</p></li>
-<li><p>Fix LTO violation as requested by CRAN by adding -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in</p></li>
+<ul><li><p>Fix LTO violation as requested by CRAN by adding -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in</p></li>
 <li><p>Require rxode2 5.1.2 which has the fixed M1-san issues observed here.</p></li>
-<li><p>Guard against null pointer arithmetic in inner.cpp</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.0.0" id="nlmixr2est-600">nlmixr2est 6.0.0<a class="anchor" aria-label="anchor" href="#nlmixr2est-600"></a></h2><p class="text-muted">CRAN release: 2026-05-31</p>
