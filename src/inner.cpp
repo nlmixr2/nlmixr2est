@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
 
 // scale.h uses `_("...")` for translatable strings; provide the trivial
 // passthrough macro before including it (matches saem.cpp's usage).
@@ -2526,6 +2527,13 @@ void innerOpt() {
       sortIds(rx, 2); // only initialize if rx->ordId == NULL
       _innerParallel.store(1, std::memory_order_release);
     }
+    // Cross-DLL OpenMP thread-id fix (Windows static libgomp).  rxode2 and
+    // nlmixr2est each statically link their own libgomp, so inside rxode2's
+    // ind_solve (called from THIS team) rxode2's omp_get_thread_num() returns 0
+    // for every worker -> rxode2's per-thread solve buffers all collapse onto
+    // slot 0 and race -> heap corruption (Windows-only; Linux shares one
+    // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
+    // Resolved once on the main thread.
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
@@ -2533,11 +2541,13 @@ void innerOpt() {
       int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (_doParallel) {
+        setRxThreadId(omp_get_thread_num());
         try {
           innerOptId(_id);
         } catch (...) {
           inds_focei[_id].parErrorNoEta = 1;
         }
+        setRxThreadId(-1);
       } else {
 #endif
         innerOptId(_id);
@@ -5714,41 +5724,81 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
-    for (gid = getRxNsub(rx); gid--;){
-      fInd = &(inds_focei[gid]);
-      fInd->thetaGrad[cpar] = NA_REAL;
-      if (!innerOpt1(gid,2)) {
-        if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
-        theta[cpar] = cur - delta;
-        updateTheta(theta);
-        if (!innerOpt1(gid,2)) {
-          hasZero = true;
-          sInfoPer -= 1.0;
-          fInd->thetaGrad[cpar] =  gfull[cpar];
+    {
+      int _nsub = (int)getRxNsub(rx);
+      rx_solving_options *_op = getSolvingOptions(rx);
+      int _cores = getOpCores(_op);
+      bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
+      std::vector<int> _opt1Res(_nsub, 0);
+      if (_doParallel) sortIds(rx, 2);
+      _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+      for (int _i = 0; _i < _nsub; _i++) {
+        int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+        focei_ind *fIndL = &(inds_focei[_gid]);
+        fIndL->thetaGrad[cpar] = NA_REAL;
+        // Set thread id for windows
+        setRxThreadId(omp_get_thread_num());
+        _opt1Res[_gid] = innerOpt1(_gid, 2);
+        setRxThreadId(-1);
+        if (_opt1Res[_gid] && doForward) {
+          fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
         }
-        theta[cpar] = cur + delta;
-        updateTheta(theta);
-        // backward instead of forward
-        fInd->thetaGrad[cpar] = (op_focei.likSav[gid] - fInd->lik[2])/delta;
-      } else if (doForward){
-        fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
+      }
+      _innerParallel.store(0, std::memory_order_release);
+      if (_doParallel) sortIds(rx, 0);
+      // Serial fallback for subjects where innerOpt1(gid, 2) failed
+      for (int _gid = 0; _gid < _nsub; _gid++) {
+        if (!_opt1Res[_gid]) {
+          fInd = &(inds_focei[_gid]);
+          if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+          theta[cpar] = cur - delta;
+          updateTheta(theta);
+          if (!innerOpt1(_gid, 2)) {
+            hasZero = true;
+            sInfoPer -= 1.0;
+            fInd->thetaGrad[cpar] = gfull[cpar];
+          }
+          theta[cpar] = cur + delta;
+          updateTheta(theta);
+          fInd->thetaGrad[cpar] = (op_focei.likSav[_gid] - fInd->lik[2]) / delta;
+        }
       }
     }
     if (!doForward){
       if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
       theta[cpar] = cur - delta;
       updateTheta(theta);
-      for (gid = getRxNsub(rx); gid--;){
-        fInd = &(inds_focei[gid]);
-        if (ISNA(fInd->thetaGrad[cpar])) {
-          if (!innerOpt1(gid,1)) {
-            // forward only
-            fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
-          } else {
-            // central
-            fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+      // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
+      {
+        int _nsub = (int)getRxNsub(rx);
+        rx_solving_options *_op = getSolvingOptions(rx);
+        int _cores = getOpCores(_op);
+        bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
+        if (_doParallel) sortIds(rx, 2);
+        _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+        for (int _i = 0; _i < _nsub; _i++) {
+          int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+          focei_ind *fIndL = &(inds_focei[_gid]);
+          if (ISNA(fIndL->thetaGrad[cpar])) {
+            setRxThreadId(omp_get_thread_num());
+            if (!innerOpt1(_gid, 1)) {
+              // forward only
+              fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
+            } else {
+              // central
+              fIndL->thetaGrad[cpar] = (fIndL->lik[2] - fIndL->lik[1]) / (2*delta);
+            }
+            setRxThreadId(-1);
           }
         }
+        _innerParallel.store(0, std::memory_order_release);
+        if (_doParallel) sortIds(rx, 0);
       }
     }
     theta[cpar] = cur;

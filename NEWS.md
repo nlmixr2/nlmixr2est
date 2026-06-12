@@ -1,5 +1,15 @@
 # nlmixr2est (development version)
 
+- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
+  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
+  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
+  statically links its own OpenMP runtime, so when the parallel inner
+  loop called rxode2's solver across threads rxode2 saw every worker as
+  thread 0 and collapsed its per-thread solve buffers onto a single
+  slot, racing and corrupting the heap.  The inner loop now hands rxode2
+  the real thread id via `setRxThreadId()` from rxode2 api (requires the
+  matching rxode2).
+
 - The iteration-time progress output emitted by every estimator
   (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
   newuoa, uobyqa) now flows through a single shared printer
@@ -37,12 +47,20 @@
   transforms present can pass
   `*Control(print = iterPrintControl(simple = TRUE))`.
 
-# nlmixr2est 6.0.1
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`
   (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`);
+
+- Guard against null pointer arithmetic in inner.cpp
+
+- Use OpenMP threading for S matrix calculation
+
+- Use OpenMP threading wile calculating NPDEs
+
+
+# nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
   -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
@@ -50,7 +68,6 @@
 - Require rxode2 5.1.2 which has the fixed M1-san issues observed
   here.
 
-- Guard against null pointer arithmetic in inner.cpp
 
 # nlmixr2est 6.0.0
 
