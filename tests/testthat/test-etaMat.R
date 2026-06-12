@@ -23,30 +23,33 @@ nmTest({
       })
     }
 
-    f <- .nlmixr(one.cmt, theo_sd, "focei")
+    # This test only inspects how etaMat is stored in foceiControl, not any
+    # numeric result, so cap the outer iterations to keep the fits fast.
+    f <- .nlmixr(one.cmt, theo_sd, "focei",
+                 foceiControl(maxOuterIterations=0L))
 
     expect_null(f$foceiControl$etaMat)
 
-    f2 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa"))
+    f2 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa", maxOuterIterations=0L))
     expect_true(inherits(f2$foceiControl$etaMat, "matrix"))
 
-    f2 <- .nlmixr(f, "focei", foceiControl(outerOpt="bobyqa"))
+    f2 <- .nlmixr(f, "focei", foceiControl(outerOpt="bobyqa", maxOuterIterations=0L))
     expect_true(inherits(f2$foceiControl$etaMat, "matrix"))
 
-    f3 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa", etaMat=f))
+    f3 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa", etaMat=f, maxOuterIterations=0L))
     expect_true(inherits(f3$foceiControl$etaMat, "matrix"))
 
     f4 <- .nlmixr(f, est="focei", control=foceiControl(outerOpt="bobyqa",
-                                                       etaMat=NA))
+                                                       etaMat=NA, maxOuterIterations=0L))
     expect_true(is.na(f4$foceiControl$etaMat))
 
     f4 <- .nlmixr(f, "focei", foceiControl(outerOpt="bobyqa",
-                                           etaMat=NA))
+                                           etaMat=NA, maxOuterIterations=0L))
 
     expect_true(is.na(f4$foceiControl$etaMat))
 
     f4 <- .nlmixr(f, foceiControl(outerOpt="bobyqa",
-                                  etaMat=NA))
+                                  etaMat=NA, maxOuterIterations=0L))
 
     expect_true(is.na(f4$foceiControl$etaMat))
 
