@@ -854,19 +854,26 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     case 5:  label = "    S|     Shi21 |"; break;  // Shi21
     default: label = "    G|  Gradient |"; break;
     }
-    if (scale->useColor && scale->ncol >= scale->npars){
+    // When showOfv == 0 the gradient label is 12 chars (one column width)
+    // wider than the regular-row prefix (19 vs 7 chars), so the gradient
+    // row must wrap one column earlier to stay the same total line width.
+    // When showOfv == 1 the gradient prefix (19) is shorter than the data
+    // rows (23), so no adjustment is needed.
+    int gradNcol = scale->showOfv ? scale->ncol
+                                  : (scale->ncol > 1 ? scale->ncol - 1 : 1);
+    if (scale->useColor && gradNcol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
-      if (scale->useColor && scale->ncol >= scale->npars && i == scale->npars-1){
+      if (scale->useColor && gradNcol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= scale->npars){
+      if ((i + 1) != scale->npars && (i + 1) % gradNcol == 0){
+        if (scale->useColor && gradNcol + i  >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
@@ -876,7 +883,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     }
     if (finalize){
       while(true){
-        if ((i++) % scale->ncol == 0){
+        if ((i++) % gradNcol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
@@ -888,7 +895,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
       RSprintf("\n");
     }
     if (!scale->useColor){
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale, min2(scale->npars, gradNcol));
     }
   }
   if (scale->save) {
