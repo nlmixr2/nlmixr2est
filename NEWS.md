@@ -6,6 +6,10 @@
   compiled models into one shared cache directory and raced, producing
   spurious "error building model" failures and the 6h CI timeouts.
 
+- `fit$time` now reports every estimation stage consistently; previously
+  stages under 5e-5 s were dropped, so the set of reported stages varied
+  with the platform's clock resolution.
+
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
   `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
   `foceiControl()` correctly omits `outerOpt` when it is left at this
