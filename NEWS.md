@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
+  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
+  `foceiControl()` correctly omits `outerOpt` when it is left at this
+  default.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
