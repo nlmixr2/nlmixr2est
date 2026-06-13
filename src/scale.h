@@ -2,6 +2,7 @@
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
+#define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
 
 #define scaleTypeNorm    1
 #define scaleTypeNlmixr2 2
@@ -63,6 +64,28 @@ struct scaling {
   int *xPar;
   double *logitThetaLow;
   double *logitThetaHi;
+  // Probit transform marker + bounds, parallel to logitThetaLow/Hi.
+  // probitIdx[i] is 0 when parameter i has no probit transform, else
+  // the 1-based index into probitThetaLow / probitThetaHi.  Stored
+  // separately from xPar because positive xPar values 2-5 are already
+  // reserved by scaleGetScaleC for omega scaling.  probitIdx may be
+  // NULL when no parameter uses probit; scaleBackTransform treats that
+  // as "no probit anywhere".
+  int *probitIdx;
+  double *probitThetaLow;
+  double *probitThetaHi;
+  // Backing storage for the six transform pointers above, populated
+  // by scaleAttachXform() from the R-side xform list returned by
+  // .iterPrintXParFromUi().  Estimators that own their own buffers
+  // (focei merges per-theta xPar with per-omega xType, so the npars-
+  // sized buffer lives on op_focei) leave these empty and assign the
+  // raw pointers to their own arrays directly.
+  std::vector<int>    xParStorage;
+  std::vector<int>    probitIdxStorage;
+  std::vector<double> logitLowStorage;
+  std::vector<double> logitHiStorage;
+  std::vector<double> probitLowStorage;
+  std::vector<double> probitHiStorage;
   CharacterVector thetaNames;
   std::vector<int> niter;
   std::vector<int> iterType;
@@ -88,12 +111,15 @@ static inline void scaleNone(scaling *scale) {
   scale->save = 0;
 }
 
+// Set the scale/print fields that don't come from the R-side xform
+// sub-list.  Transform pointers (xPar, logitThetaLow/Hi, probitIdx,
+// probitThetaLow/Hi) are wired by scaleAttachXform; callers that own
+// their own buffers (focei) assign the raw pointers directly.  Either
+// way, the six transform pointers are NULL-initialized here and the
+// caller's wiring runs after this returns.
 static inline void scaleSetup(scaling *scale,
                               double *initPar,
                               double *scaleC,
-                              int *xPar,
-                              double *logitThetaLow,
-                              double *logitThetaHi,
                               CharacterVector thetaNames,
                               int useColor,
                               int printNcol,
@@ -109,9 +135,12 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleC = scaleC;
   scale->normType = normType;
   scale->scaleType = scaleType;
-  scale->xPar = xPar;
-  scale->logitThetaLow =logitThetaLow;
-  scale->logitThetaHi =logitThetaHi;
+  scale->xPar = NULL;
+  scale->logitThetaLow = NULL;
+  scale->logitThetaHi = NULL;
+  scale->probitIdx = NULL;
+  scale->probitThetaLow = NULL;
+  scale->probitThetaHi = NULL;
   scale->thetaNames = thetaNames;
 
   scale->useColor = useColor;
@@ -449,6 +478,53 @@ static inline void scaleApplyIterPrintControl(scaling *scale,
   scale->simple      = Rcpp::as<int>(ipc["simple"]);
 }
 
+// Wire every per-parameter transform array onto a scaling struct from
+// a single R-side xform sub-list (output of .iterPrintXParFromUi()).
+// Required list elements:
+//
+//   xPar            integer (length scale->npars).  1=log, -m=m-th
+//                    logit, 0=no log/logit transform.
+//   probitIdx       integer (same length).  k=k-th probit transform,
+//                    0=no probit transform.
+//   logitThetaLow   numeric.  Bounds indexed by -xPar[i]-1 when xPar<0.
+//   logitThetaHi    numeric.  Same length as logitThetaLow.
+//   probitThetaLow  numeric.  Bounds indexed by probitIdx[i]-1 when >0.
+//   probitThetaHi   numeric.  Same length as probitThetaLow.
+//
+// The struct's own std::vector backing storage absorbs the data so
+// the pointers survive the caller's stack frame.  Empty arrays leave
+// the corresponding pointer NULL (scaleBackTransform treats that as
+// "no transform of that type anywhere").
+//
+// This is the single point of wiring for log/logit/probit back-
+// transforms — every estimator that calls it inherits identical
+// behavior across the iteration X row, parHistData, and the final-
+// fit-summary parFixed column.  Estimators with method-specific
+// per-parameter codes (focei mixes per-theta xPar with per-omega
+// xType in the same npars-sized array) skip this helper and assign
+// the raw pointers directly.
+static inline void scaleAttachXform(scaling *scale,
+                                    const Rcpp::List &xform) {
+  IntegerVector x  = Rcpp::as<IntegerVector>(xform["xPar"]);
+  IntegerVector pi = Rcpp::as<IntegerVector>(xform["probitIdx"]);
+  NumericVector ll = Rcpp::as<NumericVector>(xform["logitThetaLow"]);
+  NumericVector lh = Rcpp::as<NumericVector>(xform["logitThetaHi"]);
+  NumericVector pl = Rcpp::as<NumericVector>(xform["probitThetaLow"]);
+  NumericVector ph = Rcpp::as<NumericVector>(xform["probitThetaHi"]);
+  scale->xParStorage     .assign(x.begin(),  x.end());
+  scale->probitIdxStorage.assign(pi.begin(), pi.end());
+  scale->logitLowStorage .assign(ll.begin(), ll.end());
+  scale->logitHiStorage  .assign(lh.begin(), lh.end());
+  scale->probitLowStorage.assign(pl.begin(), pl.end());
+  scale->probitHiStorage .assign(ph.begin(), ph.end());
+  scale->xPar           = scale->xParStorage     .empty() ? NULL : scale->xParStorage     .data();
+  scale->probitIdx      = scale->probitIdxStorage.empty() ? NULL : scale->probitIdxStorage.data();
+  scale->logitThetaLow  = scale->logitLowStorage .empty() ? NULL : scale->logitLowStorage .data();
+  scale->logitThetaHi   = scale->logitHiStorage  .empty() ? NULL : scale->logitHiStorage  .data();
+  scale->probitThetaLow = scale->probitLowStorage.empty() ? NULL : scale->probitLowStorage.data();
+  scale->probitThetaHi  = scale->probitHiStorage .empty() ? NULL : scale->probitHiStorage .data();
+}
+
 // Wrap-continuation marker emitted at the start of a wrapped row when a
 // row has more parameter columns than fit in the chosen `ncol` width.
 // Width matches the left-hand "label" prefix on the data rows so the
@@ -472,7 +548,7 @@ static inline const char *scaleWrapMarker(scaling *scale, int colored) {
 // blocks.  When `showOfv` is 0 (saem and similar — no per-iteration
 // objective function) the Function-Val segment is skipped so the
 // separator's column count matches the header above and the rows below.
-static inline void scalePrintLine(scaling *scale, int ncol){
+static inline void scalePrintLine(scaling *scale, int ncol) {
   if (scale->showOfv) {
     RSprintf("|-----+---------------+");
   } else {
@@ -495,6 +571,7 @@ static inline void scalePrintHeader(scaling *scale) {
     int anyXform = 0;
     for (int k = 0; k < scale->npars; k++) {
       if (scale->xPar[k] != 0) { anyXform = 1; break; }
+      if (scale->probitIdx != NULL && scale->probitIdx[k] != 0) { anyXform = 1; break; }
     }
     int skipX = skipU && !anyXform;
     if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
@@ -514,8 +591,9 @@ static inline void scalePrintHeader(scaling *scale) {
       }
     }
     int i, finalize=0, n=scale->thetaNames.size();
+    int underlineUsed = 0;
     if (scale->showOfv) {
-      RSprintf("\n|    #| Function Val. |");
+      RSprintf("\n|    #|  Function |");
     } else {
       RSprintf("\n|    #|");
     }
@@ -526,6 +604,7 @@ static inline void scalePrintHeader(scaling *scale) {
       if ((i + 1) != n && (i + 1) % scale->ncol == 0){
         if (scale->useColor && scale->ncol + i  >= n){
           RSprintf("%s", scaleWrapMarker(scale, 1));
+          underlineUsed = 1;
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
         }
@@ -545,8 +624,46 @@ static inline void scalePrintHeader(scaling *scale) {
     } else {
       RSprintf("\n");
     }
-    scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    // When the last header continuation row was emitted with the terminal
+    // underline character it already acts as a visual separator, so the
+    // explicit |---+---| line would be redundant.
+    if (!underlineUsed) {
+      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    }
   }
+}
+
+// Apply the back-transform encoded by xParCode/probitCode to a single
+// (unscaled, model-scale) estimate.  Used by both the iteration-print
+// X row (scalePrintFun, below) and the final-fit-summary parFixed
+// loop in src/inner.cpp so the two paths stay in sync.
+//
+//   xParCode == 1              -> log:    exp(est)
+//   xParCode <= -1             -> logit:  expit(est, logitLow[m], logitHi[m])
+//                                          where m = -xParCode-1
+//   probitCode >= 1            -> probit: probitInv(est, probitLow[m], probitHi[m])
+//                                          where m = probitCode-1
+//   anything else              -> identity (no transform)
+//
+// Bounds pointers may be NULL when the corresponding code is never
+// triggered (xParCode never < 0, or probitCode always 0).  The caller
+// is responsible for ensuring the bounds arrays are large enough for
+// any encoded index that does appear.
+static inline double scaleBackTransform(double est, int xParCode, int probitCode,
+                                        const double *logitLow, const double *logitHi,
+                                        const double *probitLow, const double *probitHi) {
+  if (xParCode == 1) {
+    return exp(est);
+  }
+  if (xParCode <= -1) {
+    int m = -xParCode - 1;
+    return expit(est, logitLow[m], logitHi[m]);
+  }
+  if (probitCode >= 1) {
+    int m = probitCode - 1;
+    return probitInv(est, probitLow[m], probitHi[m]);
+  }
+  return est;
 }
 
 static inline void scalePrintFun(scaling *scale, double *x, double f) {
@@ -564,6 +681,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
   int anyXform = 0;
   for (i = 0; i < scale->npars; i++){
     if (scale->xPar[i] != 0) { anyXform = 1; break; }
+    if (scale->probitIdx != NULL && scale->probitIdx[i] != 0) { anyXform = 1; break; }
   }
   int skipX = skipU && !anyXform;
   if (scale->save) {
@@ -589,14 +707,11 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       scale->niter.push_back(scale->niter.back());
       scale->vPar.push_back(f);
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          scale->vPar.push_back(exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          scale->vPar.push_back(expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          scale->vPar.push_back(scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        scale->vPar.push_back(scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                                 scale->xPar[i], probitCode,
+                                                 scale->logitThetaLow, scale->logitThetaHi,
+                                                 scale->probitThetaLow, scale->probitThetaHi));
       }
     }
   }
@@ -647,7 +762,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       RSprintf("\n");
     }
     if (!scale->simple && !skipU) {
-      if (scale->showOfv) RSprintf("|    U|               |");
+      if (scale->showOfv) RSprintf("|    U|           |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
@@ -674,17 +789,15 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
     if (!scale->simple && !skipX) {
-      if (scale->showOfv) RSprintf("|    X|               |");
+      if (scale->showOfv) RSprintf("|    X|           |");
       else                RSprintf("|    X|");
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          RSprintf("%#10.4g |", expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        RSprintf("%#10.4g |",
+                 scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                    scale->xPar[i], probitCode,
+                                    scale->logitThetaLow, scale->logitThetaHi,
+                                    scale->probitThetaLow, scale->probitThetaHi));
         if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
           if (scale->useColor && scale->ncol + i >= scale->npars){
             RSprintf("%s", scaleWrapMarker(scale, 1));
@@ -718,19 +831,6 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
 
 static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
-  // if (op_focei.derivMethod == 0){
-  //   if (op_focei.curGill == 1){
-  //     gradType.push_back(1);
-  //   } else if (op_focei.curGill == 2){
-  //     gradType.push_back(5);
-  //   } else if (op_focei.mixDeriv){
-  //     gradType.push_back(2);
-  //   } else{
-  //     gradType.push_back(3);
-  //   }
-  // } else {
-  //   gradType.push_back(4);
-  // }
   if (scale->save) {
     scale->niterGrad.push_back(scale->niter.back());
     scale->gradType.push_back(type);
@@ -743,26 +843,38 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     // generic "Gradient" label.
     const char *label = NULL;
     switch (type) {
-    case 1:  label = "    G|    Gill Diff. |"; break;  // Gill
-    case 2:  label = "    M|   Mixed Diff. |"; break;  // Mixed
-    case 3:  label = "    F| Forward Diff. |"; break;  // Forward
-    case 4:  label = "    C| Central Diff. |"; break;  // Central
-    case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
-    default: label = "    G|    Gradient   |"; break;
+    case 1:  label = "    G|      Gill |"; break;  // Gill
+    case 2:  label = "    M|     Mixed |"; break;  // Mixed
+    case 3:  label = "    F|   Forward |"; break;  // Forward
+    case 4:  label = "    C|   Central |"; break;  // Central
+    case 5:  label = "    S|     Shi21 |"; break;  // Shi21
+    default: label = "    G|  Gradient |"; break;
     }
-    if (scale->useColor && scale->ncol >= scale->npars){
+    // When showOfv == 0 the gradient label is 12 chars (one column width)
+    // wider than the regular-row prefix (19 vs 7 chars), so the gradient
+    // row must wrap one column earlier to stay the same total line width.
+    // When showOfv == 1 the gradient prefix (19) is shorter than the data
+    // rows (23), so no adjustment is needed.
+    int gradNcol = scale->showOfv ? scale->ncol
+                                  : (scale->ncol > 1 ? scale->ncol - 1 : 1);
+    if (scale->useColor && gradNcol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
-      if (scale->useColor && scale->ncol >= scale->npars && i == scale->npars-1){
+      if (scale->useColor && gradNcol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= scale->npars){
+      // First row wraps at gradNcol columns; continuation rows (which start
+      // with the 7-char |.....| marker, same width as regular rows) wrap at
+      // scale->ncol columns.  Wrap points: gradNcol, gradNcol+ncol, gradNcol+2*ncol, ...
+      if ((i + 1) != scale->npars &&
+          ((i + 1) == gradNcol ||
+           (i + 1 > gradNcol && (i + 1 - gradNcol) % scale->ncol == 0))){
+        if (scale->useColor && scale->ncol + i >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
@@ -772,19 +884,22 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     }
     if (finalize){
       while(true){
-        if ((i++) % scale->ncol == 0){
+        // Pad the last continuation row to the next scale->ncol boundary,
+        // measured from the start of the first continuation row (gradNcol).
+        if ((i - gradNcol) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
         } else {
           RSprintf("...........|");
+          i++;
         }
       }
     } else {
       RSprintf("\n");
     }
     if (!scale->useColor){
-      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+      scalePrintLine(scale, finalize ? scale->ncol : min2(scale->npars, gradNcol));
     }
   }
   if (scale->save) {
