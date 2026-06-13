@@ -1,5 +1,11 @@
 # nlmixr2est (development version)
 
+- The parallel test suite (`Config/testthat/parallel`) now gives each
+  worker its own rxode2 model-compile directory and sizes the worker
+  pool to the host (capped at 2 on CRAN).  Previously all workers
+  compiled models into one shared cache directory and raced, producing
+  spurious "error building model" failures and the 6h CI timeouts.
+
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
   `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
   `foceiControl()` correctly omits `outerOpt` when it is left at this
