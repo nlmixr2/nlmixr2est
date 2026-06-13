@@ -26,11 +26,7 @@ nmTest({
     ))
 
     expect_identical(row.names(.fit$time), "elapsed")
-    # `compress` only appears when its stage exceeds the 5e-5s timing floor
-    # (.finalizeOverallTiming in R/timing.R).  With calcTables = FALSE it is ~0
-    # and dropped -- reliably so on Windows' coarser clock -- so require only
-    # the stages that always take measurable time.
-    expect_true(all(c("preprocess", "setup", "optimize", "covariance") %in% names(.fit$time)))
+    expect_true(all(c("preprocess", "setup", "optimize", "covariance", "compress") %in% names(.fit$time)))
 
     .bench <- .nlmixr2BenchmarkExtractFit(.fit, "fresh-focei")
     expect_true(all(c("case", "estimator", "stage", "raw_stage", "elapsed", "total_elapsed") %in% names(.bench)))
