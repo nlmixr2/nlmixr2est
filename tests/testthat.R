@@ -22,13 +22,21 @@ library(nlmixr2est)
 options(Ncpus = .cores)
 Sys.setenv(TESTTHAT_CPUS = .cores)
 
-# Keep within-solve threads small in the main process (each parallel worker does
-# the same via helper-aaa-threads.R, which also isolates the per-worker rxode2
-# model-compile directory so concurrent compiles don't race).
+# Hard-cap every thread pool BEFORE test_check() spawns the parallel workers, so
+# the workers inherit these in their environment.  Without this each worker
+# multiplies the host's cores: the CI runners link the threaded BLAS
+# (libopenblas-pthread), which by default busy-waits on one thread PER CORE for
+# every matrix op, so N workers x (cores) BLAS threads oversubscribe and hang the
+# runner -- it goes unresponsive and the job is killed (exit 143).  This is the
+# real cause of the ubuntu-devel/oldrel failures; the faster ubuntu-release and
+# reference-BLAS dev machines squeak through.  Parallelism comes from the workers,
+# so BLAS is single-threaded per worker.
 setRxThreads(2L)
 setDTthreads(2L)
-Sys.setenv(OMP_NUM_THREADS = "2")
-Sys.setenv(MKL_NUM_THREADS = "2")
+Sys.setenv(OMP_NUM_THREADS = "2")          # OpenMP (rxode2 inner loop)
+Sys.setenv(MKL_NUM_THREADS = "2")          # Intel MKL, if linked
+Sys.setenv(OPENBLAS_NUM_THREADS = "1")     # threaded OpenBLAS (Linux CI runners)
+Sys.setenv(VECLIB_MAXIMUM_THREADS = "1")   # Accelerate/vecLib (macOS)
 if (identical(Sys.info()[["sysname"]], "Darwin")) {
   rxode2::rxUnloadAll(set = FALSE)
 }
