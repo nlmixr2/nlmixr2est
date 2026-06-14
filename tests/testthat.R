@@ -32,23 +32,16 @@ library(nlmixr2est)
 options(Ncpus = .cores)
 Sys.setenv(TESTTHAT_CPUS = .cores)
 
-# Thread caps.  setRxThreads()/setDTthreads() are runtime APIs and take effect
-# immediately.  The BLAS/OpenMP *environment* variables below are read by their
-# libraries only at process startup (OpenBLAS is loaded via libRblas.so when R
-# itself starts), so Sys.setenv() here is TOO LATE for this (main) process -- it
-# only reaches the parallel workers, which are spawned after this point and
-# inherit the environment.  The main process's BLAS must therefore be capped in
-# the environment BEFORE R launches; CI does this in env: (see R-CMD-check.yaml).
-# Leaving OpenBLAS uncapped makes it spin one thread per core, pinning the runner
-# and triggering exit-143 ("the runner has received a shutdown signal").
+# Within-solve thread caps.  setRxThreads()/setDTthreads() are runtime APIs, so
+# they take effect immediately.  BLAS/OpenMP *environment* caps are deliberately
+# NOT set here: those libraries read their env vars only at process startup
+# (OpenBLAS is loaded via libRblas.so when R itself starts), so Sys.setenv()
+# would be too late to have any effect.  They are set in the environment before R
+# launches instead -- see env: in .github/workflows/R-CMD-check.yaml.  Without
+# that cap OpenBLAS spins one thread per core, which together with the solve
+# threads saturates the CI runner and the job is killed with exit 143.
 setRxThreads(.threads)
 setDTthreads(.threads)
-Sys.setenv(OMP_NUM_THREADS        = as.character(.threads))  # rxode2 OpenMP inner loop
-Sys.setenv(OMP_WAIT_POLICY        = "passive")               # idle OpenMP threads sleep, not spin
-Sys.setenv(GOMP_SPINCOUNT         = "0")                     # libgomp: no busy-wait before sleeping
-Sys.setenv(MKL_NUM_THREADS        = "1")                     # BLAS pools (inherited by workers)
-Sys.setenv(OPENBLAS_NUM_THREADS   = "1")                     # threaded OpenBLAS (inherited by workers)
-Sys.setenv(VECLIB_MAXIMUM_THREADS = "1")                     # Accelerate/vecLib (inherited by workers)
 if (identical(Sys.info()[["sysname"]], "Darwin")) {
   rxode2::rxUnloadAll(set = FALSE)
 }
