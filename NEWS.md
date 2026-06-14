@@ -29,6 +29,10 @@
 - Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
   (or falling back) when exactly one covariate-model parameter is estimated,
   due to a vector-collapse transpose bug in `calc.COV()`.
+- Defensively use `drop = FALSE` when subsetting the omega covariance
+  matrix for the correlation (`cov2cor`) calculation, so an omega with
+  exactly one nonzero diagonal element does not collapse to a scalar and
+  trigger a "'V' is not a square numeric matrix" error.
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
