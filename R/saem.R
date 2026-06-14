@@ -479,7 +479,7 @@
         .cov <- NULL
         env$covMethod <- "none"
       } else if (.calcCov) {
-        .covm <- .saem$Ha[1:.nth, 1:.nth]
+        .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
         .covm <- try(calc.COV(.saem))
         .doIt <- !inherits(.covm, "try-error")
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
@@ -492,12 +492,12 @@
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .calcCov <- FALSE
-              .covm <- .saem$Ha[1:.nth, 1:.nth]
+              .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               .tmp <- try(chol(.covm), silent = TRUE)
               .addCov <- TRUE
               .sqrtm <- FALSE
               if (inherits(.tmp, "try-error")) {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
                 .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
                 if (inherits(.tmp, "try-error")) {
                   .addCov <- FALSE
@@ -505,7 +505,7 @@
                   .sqrtm <- TRUE
                 }
               } else {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               }
             } else {
               .sqrtm <- TRUE
@@ -514,13 +514,13 @@
             .tmp <- .covm
           }
         } else {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .tmp <- try(chol(.covm), silent = TRUE)
           .calcCov <- FALSE
           .addCov <- TRUE
           .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .addCov <- FALSE
@@ -528,7 +528,7 @@
               .sqrtm <- TRUE
             }
           } else {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .calcCov <- FALSE
           }
         }
@@ -537,7 +537,7 @@
         .addCov <- TRUE
         .sqrtm <- FALSE
         if (inherits(.tmp, "try-error")) {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
           if (inherits(.tmp, "try-error")) {
             .addCov <- FALSE
@@ -545,7 +545,7 @@
             .sqrtm <- TRUE
           }
         } else {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .calcCov <- FALSE
         }
       }
