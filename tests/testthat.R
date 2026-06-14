@@ -3,31 +3,18 @@ library(data.table)
 library(rxode2)
 library(nlmixr2est)
 
-# Parallel-test resource policy.  testthat runs N worker processes, each doing
-# within-solve threading; if  N_workers x threads_per_worker  exceeds the CPUs,
-# the runner agent is starved of CPU and the job is killed ("the hosted runner
-# lost communication ... starves it for CPU/Memory" -> exit 143 / 6h-cancel).
-# Keep the product ~= nproc:
-#   * within-solve threads     = 2 (rxode2 OpenMP inner loop)
-#   * testthat workers (Ncpus) = 1 on CRAN, else floor(nproc / 2)
-.onCran  <- !identical(Sys.getenv("NOT_CRAN"), "true")
-.threads <- 2L
-.cores   <- if (.onCran) {
-  1L
-} else {
-  # An explicit override wins over detection.  parallel::detectCores() reports
-  # the *host* CPU count -- correct on GitHub's full-VM runners, but it
-  # over-reports inside CPU-limited containers/cgroups that cannot see the
-  # cpuset, so containerized reproductions of CI (and constrained runners) can
-  # pin the real core allotment instead of the host total.
-  .ov <- suppressWarnings(as.integer(Sys.getenv("NLMIXR2_TESTTHAT_CPUS", "")))
-  if (!is.na(.ov) && .ov >= 1L) {
-    .ov
-  } else {
-    .n <- suppressWarnings(parallel::detectCores())
-    if (is.na(.n) || .n < 1L) 1L else max(1L, as.integer(.n) %/% 2L)
-  }
-}
+# Test-suite resource policy.  Each test process does within-solve threading
+# (rxode2 OpenMP) plus BLAS; if (workers x within-solve threads) saturate every
+# CPU, the GitHub runner's heartbeat agent is starved and the job is killed ("the
+# runner has received a shutdown signal" -> exit 143).  Keep within-solve threads
+# at 2 but run a SINGLE testthat worker, so the suite uses ~2 cores and leaves the
+# rest for the runner agent.  (BLAS is capped to 1 thread/process in the
+# environment -- see env: in .github/workflows/R-CMD-check.yaml; OpenBLAS reads
+# that only at process startup, so it must be set there, not via Sys.setenv.)
+# Bump the worker count with NLMIXR2_TESTTHAT_CPUS on a machine with spare cores.
+.threads <- 2L                                            # within-solve threads
+.ov      <- suppressWarnings(as.integer(Sys.getenv("NLMIXR2_TESTTHAT_CPUS", "")))
+.cores   <- if (!is.na(.ov) && .ov >= 1L) .ov else 1L    # testthat workers (default 1)
 # testthat's worker count = getOption("Ncpus") %||% Sys.getenv("TESTTHAT_CPUS") %||% 2.
 options(Ncpus = .cores)
 Sys.setenv(TESTTHAT_CPUS = .cores)
