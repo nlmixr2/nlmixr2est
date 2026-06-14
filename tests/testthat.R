@@ -15,8 +15,12 @@ library(nlmixr2est)
   2L
 } else {
   .n <- suppressWarnings(parallel::detectCores())
-  if (is.na(.n) || .n < 1L) 2L else as.integer(.n)
+  # leave a core free for the runner agent: the parallel load was starving it
+  # ("the hosted runner lost communication ... starves it for CPU/Memory") and
+  # the job was killed (exit 143 on Linux, 6h-cancel on macOS/Windows).
+  if (is.na(.n) || .n < 2L) 1L else as.integer(.n) - 1L
 }
+.cores <- max(1L, .cores)
 # testthat's worker count = getOption("Ncpus") %||% Sys.getenv("TESTTHAT_CPUS") %||% 2.
 # Set both so the worker count is what we intend regardless of the CI image.
 options(Ncpus = .cores)
@@ -34,6 +38,8 @@ Sys.setenv(TESTTHAT_CPUS = .cores)
 setRxThreads(2L)
 setDTthreads(2L)
 Sys.setenv(OMP_NUM_THREADS = "2")          # OpenMP (rxode2 inner loop)
+Sys.setenv(OMP_WAIT_POLICY = "passive")    # idle OpenMP threads sleep, don't spin/pin cores
+Sys.setenv(GOMP_SPINCOUNT = "0")           # libgomp: don't busy-wait before sleeping
 Sys.setenv(MKL_NUM_THREADS = "2")          # Intel MKL, if linked
 Sys.setenv(OPENBLAS_NUM_THREADS = "1")     # threaded OpenBLAS (Linux CI runners)
 Sys.setenv(VECLIB_MAXIMUM_THREADS = "1")   # Accelerate/vecLib (macOS)
