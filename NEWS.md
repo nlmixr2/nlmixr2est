@@ -35,6 +35,12 @@
   trigger a "'V' is not a square numeric matrix" error.
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal by
   subsetting with `drop = FALSE`
+- SAEM covariance no longer errors with `Error in rxode2::rxInv(.tmp) : Not a
+  matrix.` for models with a single population parameter (which arises e.g. with
+  M2/M3/M4 censoring).  The covariance fallback inverts a subset of the FIM
+  (`.saem$Ha[1:.nth, 1:.nth]`); for a single parameter that subset dropped from a
+  1x1 matrix to a scalar, which `rxode2::rxInv()` rejects.  The subset now keeps
+  `drop = FALSE`.
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
