@@ -66,6 +66,16 @@ jobs:
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
 
+      # Diagnostic: the runner core count drives the test thread budget (1 worker
+      # x 2 within-solve threads must leave a core free for the runner agent).
+      - name: Report runner resources
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          echo "nproc=$(nproc)"
+          Rscript -e 'cat("detectCores=", parallel::detectCores(), "\n")'
+          free -h || true
+
       # Windows Defender scans every compiled object/DLL; rxode2 compiles a model
       # per fit, so under the parallel test suite the scanning dominates and the
       # job hits the 6h limit. Exclude the compilers and temp dirs from real-time

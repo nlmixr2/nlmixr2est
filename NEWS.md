@@ -55,13 +55,23 @@
     and can be pinned with the `NLMIXR2_TESTTHAT_CPUS` environment
     variable (needed inside containers, where `detectCores()` reports the
     host rather than the cpuset allotment).
+- The test suite is now robust on CI.  Three independent problems were
+  fixed:
+  - Each test process gets its own rxode2 model-compile directory; with
+    `Config/testthat/parallel` the workers previously raced on one shared
+    cache directory, producing spurious "error building model" failures
+    and 6h timeouts.
+  - The suite runs a single testthat worker by default (overridable with
+    the `NLMIXR2_TESTTHAT_CPUS` environment variable) with within-solve
+    threads kept at 2, so `workers x threads` no longer saturates every
+    CPU -- leaving a core for the CI runner's heartbeat agent.  Saturating
+    all cores was starving the agent and killing the devel/oldrel jobs
+    with exit 143 ("the runner has received a shutdown signal").
   - BLAS/OpenMP thread pools are now capped in the CI *environment*
     (`OPENBLAS_NUM_THREADS` etc. in the workflow) instead of via
-    `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS reads that variable
-    only at process startup, so the in-R setting was always too late and
-    OpenBLAS ran one thread per core; together with the within-solve
-    threads this saturated the runner and killed the devel/oldrel jobs
-    with exit 143 ("the runner has received a shutdown signal").
+    `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS is loaded at process
+    startup and reads that variable only then, so the in-R setting was
+    always too late and OpenBLAS ran one thread per core.
 
 - `fit$time` now reports every estimation stage consistently; previously
   stages under 5e-5 s were dropped, so the set of reported stages varied
