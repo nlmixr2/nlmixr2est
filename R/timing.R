@@ -48,12 +48,10 @@
   if (is.environment(nlmixr2global$currentTimingEnvironment) &
         inherits(nlmixr2global$nlmixr2Time, "proc_time")) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=nlmixr2global$currentTimingEnvironment))
-    # Keep non-zero times
-    .keep <- vapply(seq_along(names(.time)),
-                    function(i){
-                      !(.time[[i]] < 5e-5)
-                    }, logical(1), USE.NAMES=FALSE)
-    .time <- .time[, .keep]
+    # Report every recorded stage, including ~0-duration ones, so the set of
+    # reported columns is consistent across platforms regardless of clock
+    # resolution (a stage that rounds to 0 on a coarse clock must not vanish).
+    # Filter for display if desired rather than dropping the stage here.
     .sum <- sum(vapply(seq_along(names(.time)),
                        function(i) {
                          .time[[i]]

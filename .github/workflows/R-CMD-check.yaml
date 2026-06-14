@@ -9,6 +9,12 @@ name: R-CMD-check.yaml
 
 permissions: read-all
 
+# Auto-cancel superseded in-progress runs for the same ref so stale runs don't
+# pile up and starve the runner pool.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   R-CMD-check:
     runs-on: ${{ matrix.config.os }}
@@ -45,6 +51,24 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
+
+      # Windows Defender scans every compiled object/DLL; rxode2 compiles a model
+      # per fit, so under the parallel test suite the scanning dominates and the
+      # job hits the 6h limit. Exclude the compilers and temp dirs from real-time
+      # scanning (best-effort; never fail the job if it can't be set).
+      - name: Exclude R build/temp dirs from Windows Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          try {
+            Add-MpPreference -ExclusionProcess gcc.exe, g++.exe, gfortran.exe, R.exe, Rterm.exe, Rscript.exe, Rcmd.exe, make.exe, cc1.exe, cc1plus.exe, ld.exe, collect2.exe -ErrorAction Stop
+            foreach ($p in @($env:TEMP, $env:TMP, $env:RUNNER_TEMP, "$env:LOCALAPPDATA\Temp")) {
+              if ($p -and (Test-Path $p)) { Add-MpPreference -ExclusionPath $p -ErrorAction Stop }
+            }
+            Write-Host "Defender exclusions added."
+          } catch {
+            Write-Host "Could not set Defender exclusions (continuing): $_"
+          }
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:

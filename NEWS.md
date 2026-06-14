@@ -1,5 +1,20 @@
 # nlmixr2est (development version)
 
+- The parallel test suite (`Config/testthat/parallel`) now gives each
+  worker its own rxode2 model-compile directory and sizes the worker
+  pool to the host (capped at 2 on CRAN).  Previously all workers
+  compiled models into one shared cache directory and raced, producing
+  spurious "error building model" failures and the 6h CI timeouts.
+
+- `fit$time` now reports every estimation stage consistently; previously
+  stages under 5e-5 s were dropped, so the set of reported stages varied
+  with the platform's clock resolution.
+
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
+  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
+  `foceiControl()` correctly omits `outerOpt` when it is left at this
+  default.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
