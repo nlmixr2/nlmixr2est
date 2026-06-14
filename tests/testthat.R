@@ -3,46 +3,37 @@ library(data.table)
 library(rxode2)
 library(nlmixr2est)
 
-# Parallel-test resource policy.
-#  * On CRAN: deterministic and small -- at most 2 cores (CRAN's limit and the
-#    <10 min budget).  Most heavy fits live in nmTest({}) blocks that skip on
-#    CRAN anyway.
-#  * Otherwise (CI, local dev): use the whole machine.  detectCores() auto-
-#    adapts -- 4 on the GitHub windows/ubuntu runners today, 32 on a dev box --
-#    so we never have to hard-code the runner size.
-.onCran <- !identical(Sys.getenv("NOT_CRAN"), "true")
-.cores <- if (.onCran) {
-  2L
+# Parallel-test resource policy.  testthat runs N worker processes, each doing
+# within-solve threading; if  N_workers x threads_per_worker  exceeds the CPUs,
+# the runner agent is starved of CPU and the job is killed ("the hosted runner
+# lost communication ... starves it for CPU/Memory" -> exit 143 / 6h-cancel).
+# Keep the product ~= nproc:
+#   * within-solve threads     = 2 (rxode2 OpenMP inner loop)
+#   * testthat workers (Ncpus) = 1 on CRAN, else floor(nproc / 2)
+.onCran  <- !identical(Sys.getenv("NOT_CRAN"), "true")
+.threads <- 2L
+.cores   <- if (.onCran) {
+  1L
 } else {
   .n <- suppressWarnings(parallel::detectCores())
-  # leave a core free for the runner agent: the parallel load was starving it
-  # ("the hosted runner lost communication ... starves it for CPU/Memory") and
-  # the job was killed (exit 143 on Linux, 6h-cancel on macOS/Windows).
-  if (is.na(.n) || .n < 2L) 1L else as.integer(.n) - 1L
+  if (is.na(.n) || .n < 1L) 1L else max(1L, as.integer(.n) %/% 2L)
 }
-.cores <- max(1L, .cores)
 # testthat's worker count = getOption("Ncpus") %||% Sys.getenv("TESTTHAT_CPUS") %||% 2.
-# Set both so the worker count is what we intend regardless of the CI image.
 options(Ncpus = .cores)
 Sys.setenv(TESTTHAT_CPUS = .cores)
 
-# Hard-cap every thread pool BEFORE test_check() spawns the parallel workers, so
-# the workers inherit these in their environment.  Without this each worker
-# multiplies the host's cores: the CI runners link the threaded BLAS
-# (libopenblas-pthread), which by default busy-waits on one thread PER CORE for
-# every matrix op, so N workers x (cores) BLAS threads oversubscribe and hang the
-# runner -- it goes unresponsive and the job is killed (exit 143).  This is the
-# real cause of the ubuntu-devel/oldrel failures; the faster ubuntu-release and
-# reference-BLAS dev machines squeak through.  Parallelism comes from the workers,
-# so BLAS is single-threaded per worker.
-setRxThreads(2L)
-setDTthreads(2L)
-Sys.setenv(OMP_NUM_THREADS = "2")          # OpenMP (rxode2 inner loop)
-Sys.setenv(OMP_WAIT_POLICY = "passive")    # idle OpenMP threads sleep, don't spin/pin cores
-Sys.setenv(GOMP_SPINCOUNT = "0")           # libgomp: don't busy-wait before sleeping
-Sys.setenv(MKL_NUM_THREADS = "2")          # Intel MKL, if linked
-Sys.setenv(OPENBLAS_NUM_THREADS = "1")     # threaded OpenBLAS (Linux CI runners)
-Sys.setenv(VECLIB_MAXIMUM_THREADS = "1")   # Accelerate/vecLib (macOS)
+# Apply the caps BEFORE test_check() spawns the workers, so they inherit them.
+# Within-solve threads = 2; BLAS pools single-threaded per worker (parallelism is
+# workers x the 2 solve threads); idle OpenMP threads sleep instead of spinning
+# (spinning pins every core and starves the runner agent).
+setRxThreads(.threads)
+setDTthreads(.threads)
+Sys.setenv(OMP_NUM_THREADS        = as.character(.threads))  # rxode2 OpenMP inner loop
+Sys.setenv(OMP_WAIT_POLICY        = "passive")               # idle OpenMP threads sleep, not spin
+Sys.setenv(GOMP_SPINCOUNT         = "0")                     # libgomp: no busy-wait before sleeping
+Sys.setenv(MKL_NUM_THREADS        = "1")                     # BLAS pools: 1 thread per worker
+Sys.setenv(OPENBLAS_NUM_THREADS   = "1")                     # threaded OpenBLAS (Linux CI)
+Sys.setenv(VECLIB_MAXIMUM_THREADS = "1")                     # Accelerate/vecLib (macOS)
 if (identical(Sys.info()[["sysname"]], "Darwin")) {
   rxode2::rxUnloadAll(set = FALSE)
 }
