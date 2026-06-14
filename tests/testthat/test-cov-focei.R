@@ -51,6 +51,33 @@ nmTest({
 
   })
 
+  test_that("covMethod r and s SEs are not inflated vs the sandwich (issue #666)", {
+    one.cmt <- function() {
+      ini({
+        tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fit_r  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r",   print = 0))
+    fit_s  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s",   print = 0))
+    fit_rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r,s", print = 0))
+
+    p <- c("tka", "tcl", "tv")
+    se_r  <- fit_r$parFixedDf[p,  "SE"]
+    se_s  <- fit_s$parFixedDf[p,  "SE"]
+    se_rs <- fit_rs$parFixedDf[p, "SE"]
+
+    # Before the fix: SE_r was ~sqrt(2) * SE_rs and SE_s was ~2 * SE_rs.
+    # After the fix all three should agree within ~30%.
+    expect_true(all(se_r  / se_rs < 1.3), label = "covMethod='r' SE not inflated vs sandwich")
+    expect_true(all(se_s  / se_rs < 1.3), label = "covMethod='s' SE not inflated vs sandwich")
+  })
+
   test_that("covariance with many omegas fixed will not crash focei", {
     one.compartment <- function() {
       ini({
