@@ -46,6 +46,22 @@
   pool to the host (capped at 2 on CRAN).  Previously all workers
   compiled models into one shared cache directory and raced, producing
   spurious "error building model" failures and the 6h CI timeouts.
+- The parallel test suite (`Config/testthat/parallel`) is now robust on
+  CI.  Three independent problems were fixed:
+  - Each worker gets its own rxode2 model-compile directory; workers
+    previously raced on one shared cache directory, producing spurious
+    "error building model" failures and 6h timeouts.
+  - The worker pool is sized to the host (`detectCores()/2`, 1 on CRAN)
+    and can be pinned with the `NLMIXR2_TESTTHAT_CPUS` environment
+    variable (needed inside containers, where `detectCores()` reports the
+    host rather than the cpuset allotment).
+  - BLAS/OpenMP thread pools are now capped in the CI *environment*
+    (`OPENBLAS_NUM_THREADS` etc. in the workflow) instead of via
+    `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS reads that variable
+    only at process startup, so the in-R setting was always too late and
+    OpenBLAS ran one thread per core; together with the within-solve
+    threads this saturated the runner and killed the devel/oldrel jobs
+    with exit 143 ("the runner has received a shutdown signal").
 
 - `fit$time` now reports every estimation stage consistently; previously
   stages under 5e-5 s were dropped, so the set of reported stages varied

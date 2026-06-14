@@ -34,6 +34,20 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
+      # Thread-pool caps MUST live here, not in testthat.R: BLAS libraries
+      # (OpenBLAS on Linux, Accelerate/vecLib on macOS) read these only at
+      # process startup, so Sys.setenv() inside R is too late and OpenBLAS then
+      # spins one thread PER CORE.  Combined with the within-solve OpenMP threads
+      # that saturates the runner, the agent misses heartbeats and the job is
+      # killed with exit 143 ("the runner has received a shutdown signal").
+      # Capping here makes every R process (check, tests, parallel workers)
+      # single-threaded for BLAS and non-spinning for OpenMP.
+      OPENBLAS_NUM_THREADS: 1
+      OMP_NUM_THREADS: 2
+      OMP_WAIT_POLICY: passive
+      GOMP_SPINCOUNT: 0
+      MKL_NUM_THREADS: 1
+      VECLIB_MAXIMUM_THREADS: 1
 
     steps:
       - name: Install deps on MacOS
