@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- FOCEi no longer aborts R with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` is combined with a pure evaluation that runs with
+  `maxInnerIterations == 0` (the covariance step, or
+  `nlmixr2extra::linearize()`).  The Monte-Carlo ETA-sample cube is filled only
+  when `maxInnerIterations > 0`, so the inner-loop read indexed an empty cube and
+  the resulting exception, thrown inside the OpenMP parallel region, was uncaught
+  and aborted R.  The read is now guarded (`id < n_slices`) and skipped when the
+  cube holds no slice for the subject.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
