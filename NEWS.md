@@ -72,6 +72,10 @@
     `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS is loaded at process
     startup and reads that variable only then, so the in-R setting was
     always too late and OpenBLAS ran one thread per core.
+- The test suite runs a single testthat worker on CI and on CRAN (so it
+  does not oversubscribe a core-limited runner) and parallel
+  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
+  capped to 2 only on CRAN and left to rxode2's own management otherwise.
 
 - `fit$time` now reports every estimation stage consistently; previously
   stages under 5e-5 s were dropped, so the set of reported stages varied
