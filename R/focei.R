@@ -42,22 +42,6 @@ is.latex <- function() {
   .ret
 }
 
-.newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
-  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
-  .ctl$iprint <- 0L
-  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- minqa::newuoa(par, fn,
-                        control = .ctl,
-                        lower = lower,
-                        upper = upper)
-  .ret$x <- .ret$par
-  .ret$message <- .ret$msg
-  .ret$convergence <- .ret$ierr
-  .ret$value <- .ret$fval
-  .ret
-}
-
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
   .ctl <- control
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
