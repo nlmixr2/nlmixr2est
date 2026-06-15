@@ -1407,7 +1407,7 @@ public:
                 cres(b) = cres(b) + pas(kiter)*(toPow(ab12) - cres(b));    //force are & bres to be positive
               }
             } else {
-              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[1] - bres(b));    //force are & bres to be positive
+              bres(b) = bres(b) + pas(kiter)*(pxmin[0]*pxmin[0] - bres(b));    //force are & bres to be positive
               cres(b) = cres(b) + pas(kiter)*(toPow(pxmin[1]) - cres(b));      //force are & bres to be positive
             }
           }
@@ -1547,7 +1547,7 @@ public:
             buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
+            vec xmin(3);
             double *pxmin = xmin.memptr();
             int n=3;
             double start[3]={sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
@@ -1623,7 +1623,7 @@ public:
             buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
+            vec xmin(3);
             double *pxmin = xmin.memptr();
             int n=3;
             double start[3]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toLambdaEst(lres(b))};                  //force are & bres to be positive
@@ -1699,7 +1699,7 @@ public:
             buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
-            vec xmin(2);
+            vec xmin(4);
             double *pxmin = xmin.memptr();
             int n=4;
             double start[4]={sqrt(fabs(ares(b))), sqrt(fabs(bres(b))), toPowEst(cres(b)), toLambdaEst(lres(b))};                  //force are & bres to be positive
