@@ -133,6 +133,12 @@
   effectively pinned such parameters at their initial value (e.g.
   `tvemax <- -40` with no transform).
 
+- New function `formatMinWidth()` to make `$parFixed` show shorter text
+  and more often show non-scientific notation representations. The
+  `$parFixed` data.frame is now built directly with data.frame
+  operations rather than environment side-effects, and `FIXED` and
+  shrinkage suffixes are appended. (#346, #516)
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
