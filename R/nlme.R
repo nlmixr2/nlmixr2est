@@ -424,7 +424,8 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 interaction=1L,
                                 compress=.nlmeControl$compress,
                                 ci=.nlmeControl$ci,
-                                sigdigTable=.nlmeControl$sigdigTable)
+                                sigdigTable=.nlmeControl$sigdigTable,
+                                indTolRelax=TRUE)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

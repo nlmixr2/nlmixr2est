@@ -1,7 +1,7 @@
 Type: Package
 Package: nlmixr2est
 Title: Nonlinear Mixed Effects Models in Population PK/PD, Estimation Routines
-Version: 5.0.2.9000
+Version: 6.0.2
 Authors@R: c(
     person("Matthew", "Fidler", , "matthew.fidler@gmail.com", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-8538-6691")),
     person("Wenping", "Wang", , "wwang8198@gmail.com", role = "aut"),
@@ -56,12 +56,13 @@ Imports:
     nlme,
     Rcpp,
     rex,
-    rxode2 (> 5.0.0),
+    rxode2 (>= 5.1.2),
     stats,
     symengine,
     utils
 Suggests:
     broom.mixed,
+    callr,
     crayon,
     data.table,
     devtools,
@@ -78,7 +79,9 @@ Suggests:
     sfsmisc,
     minpack.lm,
     remotes,
-    fastGHQuad
+    fastGHQuad,
+    rmarkdown,
+    rlang
 LinkingTo:
     BH,
     n1qn1 (>= 6.0.1-12),
@@ -87,12 +90,12 @@ LinkingTo:
     Rcpp,
     RcppArmadillo (>= 0.11.2.3.1),
     RcppEigen,
-    rxode2 (> 5.0.0)
+    rxode2 (>= 5.1.1)
 Biarch: true
 Config/testthat/edition: 3
-Config/testthat/parallel: true
 Encoding: UTF-8
 Language: en-US
 NeedsCompilation: yes
-RoxygenNote: 7.3.3
 LazyData: true
+Config/roxygen2/version: 8.0.0
+Config/testthat/parallel: true

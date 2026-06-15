@@ -1,6 +1,7 @@
 #' nlmixr2 optim defaults
 #'
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::optim
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
@@ -152,13 +153,14 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          stickyRecalcN=4,
                          maxOdeRecalc=5,
                          odeRecalcFactor=10^(0.5),
+                         indTolRelax=TRUE,
                          eventType=c("central", "forward"),
                          shiErr=(.Machine$double.eps)^(1/3),
                          shi21maxFD=20L,
                          solveType=c("grad", "fun"),
 
-                         useColor = crayon::has_color(),
-                         printNcol = floor((getOption("width") - 23) / 12), #
+                         useColor = NULL,
+                         printNcol = NULL, #
                          print = 1L, #
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
                          scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
@@ -230,10 +232,11 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -268,9 +271,10 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -321,12 +325,11 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
                eventType=eventType,
                shiErr=shiErr,
                shi21maxFD=as.integer(shi21maxFD),
-               useColor=useColor,
-               print=print,
-               printNcol=printNcol,
+               iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
                scaleCmax=scaleCmax,
@@ -554,7 +557,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
                                 interaction=0L,
                                 compress=.optimControl$compress,
                                 ci=.optimControl$ci,
-                                sigdigTable=.optimControl$sigdigTable)
+                                sigdigTable=.optimControl$sigdigTable,
+                                indTolRelax=.optimControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

@@ -136,7 +136,11 @@ nmTest({
   skip_on_cran()
 
   for (f in c("focei", "foce")) {
-    fitF <- .nlmixr(one.compartment, theo_sd, est = f, control = foceiControlFast)
+    fitF <- switch(
+      f,
+      focei = one.compartment.fit.focei.fast,
+      foce = one.compartment.fit.foce
+    )
 
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
 
@@ -232,7 +236,11 @@ nmTest({
   }
 
   for (f in c("foi", "fo")) {
-    fitF <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = f, control=list(print=0))))
+    fitF <- switch(
+      f,
+      foi = one.compartment.fit.foi,
+      fo = one.compartment.fit.fo
+    )
     test_that(sprintf("tidy works on nlmixr fit %s fits", f), {
       td <- broom.mixed::tidy(fitF, exponentiate = NA)
       check_tidy(td, 7, 7, c("effect", "group", "term", "estimate", "std.error", "statistic", "p.value"))
@@ -324,9 +332,7 @@ nmTest({
     })
   }
 
-  fitP <- suppressMessages(suppressWarnings(nlmixr(one.compartment, theo_sd, est = "posthoc",
-                                                   control=posthocControl(covMethod=0,
-                                                                          calcTables=FALSE))))
+  fitP <- one.compartment.fit.posthoc
 
   test_that("tidy works on posthoc fit fits", {
 

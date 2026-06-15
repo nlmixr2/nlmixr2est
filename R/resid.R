@@ -118,6 +118,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   recalc <- TRUE
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
+  .tolFactor <- fit$env$tolFactor
   while (recalc & length(odeMethods) > 0) {
     # Iterate through ODE methods
     recalcN <- 0
@@ -136,6 +137,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                 hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
                                 maxordn = fit$maxordn, maxords = fit$maxords,
                                 method = rxode2::odeMethodToInt(currentOdeMethod),
+                                tolFactor = .tolFactor,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
       rxode2::rxSolveFree()
       recalc <- any(is.na(.res$rx_pred_))

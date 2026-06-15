@@ -1,5 +1,6 @@
 #' Control for newuoa estimation method in nlmixr2
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams bobyqaControl
@@ -51,9 +52,10 @@ newuoaControl <- function(npt=NULL,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
-                          useColor = crayon::has_color(),
-                          printNcol = floor((getOption("width") - 23) / 12), #
+                          useColor = NULL,
+                          printNcol = NULL, #
                           print = 1L, #
 
                           normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -91,7 +93,7 @@ newuoaControl <- function(npt=NULL,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -101,6 +103,7 @@ newuoaControl <- function(npt=NULL,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .genRxControl <- FALSE
   if (!is.null(.xtra$genRxControl)) {
@@ -130,9 +133,10 @@ newuoaControl <- function(npt=NULL,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -169,10 +173,9 @@ newuoaControl <- function(npt=NULL,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
-               useColor=useColor,
-               print=print,
-               printNcol=printNcol,
+               iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
 
@@ -271,7 +274,8 @@ getValidNlmixrCtl.newuoa <- function(control) {
                                 interaction=0L,
                                 compress=.newuoaControl$compress,
                                 ci=.newuoaControl$ci,
-                                sigdigTable=.newuoaControl$sigdigTable)
+                                sigdigTable=.newuoaControl$sigdigTable,
+                                indTolRelax=.newuoaControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

@@ -245,7 +245,6 @@ nlmixr2Est.agq <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'agq'",
                              .var.name=.ui$modelName)
   .control <- env$control
-  .uiApplyIov(env)
   .foceiFamilyControl(env, ..., type="agqControl")
   .agqControlToFoceiControl(env)
   on.exit({
@@ -256,8 +255,9 @@ nlmixr2Est.agq <- function(env, ...) {
   env$agqControl <- .control
   env$est <- "agq"
   .ui <- env$ui
-  .uiFinalizeIov(.foceiFamilyReturn(env, .ui, ..., est="agq"))
+  .foceiFamilyReturn(env, .ui, ..., est="agq")
 }
+attr(nlmixr2Est.agq, "iov") <- TRUE
 attr(nlmixr2Est.agq, "covPresent") <- TRUE
 attr(nlmixr2Est.agq, "unbounded") <- .foUnbounded
 

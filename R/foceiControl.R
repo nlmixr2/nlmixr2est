@@ -2,7 +2,8 @@
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
-                           "neta", "ntheta", "nF", "printTop", "needOptimHess")
+                           "neta", "ntheta", "nF", "printTop", "needOptimHess",
+                           "iterPrintControl")
 
 #' Control Options for FOCEi
 #'
@@ -27,10 +28,7 @@
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
-#' @param print Integer representing when the outer step is
-#'     printed. When this is 0 or do not print the iterations.  1 is
-#'     print every function evaluation (default), 5 is print every 5
-#'     evaluations.
+#' @inheritParams iterPrintParams
 #'
 #' @param scaleTo Scale the initial parameter estimate to this value.
 #'     By default this is 1.  When zero or below, no scaling is performed.
@@ -203,8 +201,6 @@
 #' @param ci Confidence level for some tables.  By default this is
 #'     0.95 or 95\% confidence.
 #'
-#' @param useColor Boolean indicating if focei can use ASCII color codes
-#'
 #' @param boundTol Tolerance for boundary issues.
 #'
 #' @param calcTables This boolean is to determine if the foceiFit
@@ -223,9 +219,6 @@
 #'
 #' @param eigen A boolean indicating if eigenvectors are calculated
 #'     to include a condition number calculation.
-#'
-#' @param printNcol Number of columns to printout before wrapping
-#'     parameter estimates/gradient
 #'
 #' @param noAbort Boolean to indicate if you should abort the FOCEi
 #'     evaluation if it runs into troubles.  (default TRUE)
@@ -597,6 +590,12 @@
 #' @param stickyRecalcN The number of bad ODE solves before reducing
 #'     the atol/rtol for the rest of the problem.
 #'
+#' @param indTolRelax When `TRUE` (default), only subjects whose ODE
+#'     solve produced NaN/Inf have their tolerances relaxed, and the
+#'     relaxed tolerance persists across optimizer calls (sticky).
+#'     When `FALSE`, all subjects have their tolerances relaxed on
+#'     each retry and tolerances are reset afterward.
+#'
 #' @param nRetries If FOCEi doesn't fit with the current parameter
 #'     estimates, randomly sample new parameter estimates and restart
 #'     the problem.  This is similar to 'PsN' resampling.
@@ -726,6 +725,16 @@
 #'   log-likelihood.  By default this is Inf; in the original nlmixr's
 #'   gnlmm was 400.
 #'
+#' @param boundedTransform boolean indicating if the bounded
+#'   parameters should by transformed when using a unbounded
+#'   optimization method to make sure they are in bounds.  By default
+#'   this is `TRUE`, which transforms during optimization and
+#'   back-transforms for the final estimates.  When `FALSE`, the
+#'   optimization is performed on the original scale and the bounds
+#'   are passed to the optimization method.  When `NA`, the bounded
+#'   parameters are transformed for the optimization, but the final
+#'   estimates are not back-transformed.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -765,14 +774,14 @@
 #'
 #' @family Estimation control
 #' @export
-foceiControl <- function(sigdig = 3, #
+foceiControl <- function(sigdig = 4, #
                          ...,
                          epsilon = NULL, # 1e-4,
                          maxInnerIterations = 1000, #
                          maxOuterIterations = 5000, #
                          n1qn1nsim = NULL, #
                          print = 1L, #
-                         printNcol = floor((getOption("width") - 23) / 12), #
+                         printNcol = NULL, #
                          scaleTo = 1.0, #
                          scaleObjective = 0, #
                          normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -806,7 +815,7 @@ foceiControl <- function(sigdig = 3, #
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          ci = 0.95, #
-                         useColor = crayon::has_color(), #
+                         useColor = NULL, #
                          boundTol = NULL, #
                          calcTables = TRUE,#
                          noAbort = TRUE, #
@@ -830,9 +839,9 @@ foceiControl <- function(sigdig = 3, #
                          ## mma: 20974.20 (Time: Opt: 3000.501 Cov: 467.287)
                          ## slsqp: 21023.89 (Time: Opt: 460.099; Cov: 488.921)
                          ## lbfgsbLG: 20974.74 (Time: Opt: 946.463; Cov:397.537)
-                         outerOpt = c("nlminb",
+                         outerOpt = c("lbfgsb3c",
+                                      "nlminb",
                                       "bobyqa",
-                                      "lbfgsb3c",
                                       "L-BFGS-B",
                                       "mma",
                                       "lbfgsbLG",
@@ -893,6 +902,7 @@ foceiControl <- function(sigdig = 3, #
                          etaMat = NULL, #
                          repeatGillMax = 1,#
                          stickyRecalcN = 4, #
+                         indTolRelax = TRUE, #
                          gradProgressOfvTime = 10, #
                          addProp = c("combined2", "combined1"),
                          badSolveObjfAdj=100, #
@@ -961,8 +971,17 @@ foceiControl <- function(sigdig = 3, #
     n1qn1nsim <- 10 * maxInnerIterations + 1
   }
   checkmate::assertIntegerish(n1qn1nsim, len=1, lower=1, any.missing=FALSE)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  # All print-related arguments are absorbed (and validated) by
+  # iterPrintControl() — pass either a scalar `print = N` plus the
+  # historical `printNcol` / `useColor` siblings, or a pre-built
+  # `print = iterPrintControl(...)` object.  `list(...)$iterPrintControl`
+  # picks up the round-trip case where the returned control list is
+  # passed back through do.call(foceiControl, .ctl) (the field arrives
+  # via `...` since iterPrintControl is not a formal foceiControl arg).
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = list(...)$iterPrintControl)
   checkmate::assertNumeric(scaleTo, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleObjective, len=1, lower=0, any.missing=FALSE)
   checkmate::assertNumeric(scaleCmax, lower=0, any.missing=FALSE, len=1)
@@ -1051,7 +1070,6 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertLogical(literalFixRes, any.missing=FALSE, len=1)
 
   checkmate::assertNumeric(ci, any.missing=FALSE, len=1, lower=0, upper=1)
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
   checkmate::assertNumeric(boundTol, lower=0, any.missing=FALSE, len=1)
 
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
@@ -1290,6 +1308,7 @@ foceiControl <- function(sigdig = 3, #
   checkmate::assertNumeric(resetThetaCheckPer, lower=0, upper=1, any.missing=FALSE, finite=TRUE)
   checkmate::assertIntegerish(repeatGillMax, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
   checkmate::assertNumeric(gradProgressOfvTime, any.missing=FALSE, lower=0, len=1)
   checkmate::assertNumeric(badSolveObjfAdj, any.missing=FALSE, len=1)
   checkmate::assertLogical(fallbackFD, any.missing=FALSE, len=1)
@@ -1312,7 +1331,7 @@ foceiControl <- function(sigdig = 3, #
     maxOuterIterations = as.integer(maxOuterIterations),
     maxInnerIterations = as.integer(maxInnerIterations),
     n1qn1nsim = as.integer(n1qn1nsim),
-    print = as.integer(print),
+    iterPrintControl = .iterPrintControl,
     lbfgsLmm = as.integer(lbfgsLmm),
     lbfgsPgtol = as.double(lbfgsPgtol),
     lbfgsFactr = as.double(lbfgsFactr),
@@ -1335,10 +1354,8 @@ foceiControl <- function(sigdig = 3, #
     sigdig = as.double(sigdig),
     sigdigTable=sigdigTable,
     scaleObjective = as.double(scaleObjective),
-    useColor = useColor,
     boundTol = as.double(boundTol),
     calcTables = calcTables,
-    printNcol = as.integer(printNcol),
     noAbort = noAbort,
     interaction = interaction,
     cholSEtol = as.double(cholSEtol),
@@ -1411,6 +1428,7 @@ foceiControl <- function(sigdig = 3, #
     etaMat = etaMat,
     repeatGillMax = as.integer(repeatGillMax),
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
+    indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,

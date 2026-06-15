@@ -7,7 +7,8 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
-
+#include "rxomp.h"
+#include <atomic>
 
 #define _(String) (String)
 
@@ -41,6 +42,15 @@ struct nlmOptions {
   int stickyTol=0;
   int stickyRecalcN=1;
   int stickyRecalcN2=0;
+  // Per-subject inner-retry counter, sized at setup() to nsub.  Replaces
+  // the formerly shared stickyRecalcN2 plain int that was racy under the
+  // parallel-for over subjects in nlmSolveF / nlmSolveGradId.  Each
+  // subject owns its own slot, so the retry decision (and therefore the
+  // per-subject solve outcome) is deterministic across runs at any cores
+  // setting.  The shared `stickyRecalcN2` member above is kept for
+  // backward compatibility with code that just records "did we ever
+  // bump tolerances at all".
+  std::vector<int> stickyRecalcN2Per;
   int stickyRecalcN1=0;
   int maxOdeRecalc;
   int reducedTol;
@@ -62,8 +72,8 @@ struct nlmOptions {
 #define save_pred 1
 #define save_grad 2
 #define save_hess 3
-  int naZero;
-  int naGrad;
+  std::atomic<int> naZero{0};
+  std::atomic<int> naGrad{0};
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
   scaling scale;
   bool loaded=false;
@@ -134,12 +144,15 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
+  // NB: per-subject sticky counter is sized below, AFTER rxSolve_ sets
+  // up `rx`.  Sizing it here would read getRxNsub(NULL) on the first
+  // nlmSetup call of a fresh R session and crash.
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
-  nlmOp.naZero=0;
+  nlmOp.naZero.store(0, std::memory_order_relaxed);
   nlmOp.saveType = 0;
-  nlmOp.naGrad=0;
+  nlmOp.naGrad.store(0, std::memory_order_relaxed);
   nlmOp.maxOdeRecalc = as<int>(control["maxOdeRecalc"]);
   nlmOp.odeRecalcFactor = as<double>(control["odeRecalcFactor"]);
 
@@ -160,6 +173,9 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
+  // Size the per-subject inner-retry counter now that `rx` is valid
+  // (see comment above where this used to live).
+  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
   nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta * 2u + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
@@ -237,6 +253,10 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
+  // Iteration-print fields come from the iterPrintControl sub-list built
+  // R-side; scaleApplyIterPrintControl populates them on the scaling
+  // struct.  The useColor/printNcol/print args to scaleSetup are passed
+  // as placeholders since they get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -244,15 +264,15 @@ RObject nlmSetup(Environment e) {
              nlmOp.logitThetaLow,
              nlmOp.logitThetaHi,
              as<CharacterVector>(e["thetaNames"]) ,
-             as<int>(control["useColor"]),
-             as<int>(control["printNcol"]),
-             as<int>(control["print"]),
+             /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
              as<int>(control["scaleType"]),
              as<double>(control["scaleCmin"]),
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  scaleApplyIterPrintControl(&(nlmOp.scale),
+                             as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -290,26 +310,42 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
+// Per-subject "did THIS solve fail" check — same idea as inner.cpp's
+// indHasBadSolve(): scan ind->solve for NaN/Inf rather than reading
+// the shared op->badSolve flag, which can be flipped by another
+// thread's failure mid-loop and induce a non-deterministic retry.
+static inline bool nlmIndHasBadSolve(rx_solving_options *op,
+                                     rx_solving_options_ind *ind) {
+  int neq = getOpNeq(op);
+  if (neq <= 0) return false;
+  double *solve = getIndSolve(ind);
+  int n = neq * getIndNallTimes(ind);
+  for (int i = 0; i < n; ++i) {
+    if (ISNA(solve[i]) || std::isnan(solve[i]) || std::isinf(solve[i])) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void nlmSolveNlm(int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   nlmOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol  = 1;
-    // Not thread safe
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     nlmOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -320,21 +356,19 @@ void nlmSolvePred(int &id) {
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   predOde(id);
   int j=0;
-  while (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN &&
-         hasOpBadSolve(op) && j < nlmOp.maxOdeRecalc) {
-    nlmOp.stickyRecalcN2++;
+  int &perN = nlmOp.stickyRecalcN2Per[(size_t)id];
+  while (perN <= nlmOp.stickyRecalcN &&
+         nlmIndHasBadSolve(op, ind) && j < nlmOp.maxOdeRecalc) {
+    perN++;
     nlmOp.reducedTol2 = 1;
-    // Not thread safe
-    rxode2::atolRtolFactor_(nlmOp.odeRecalcFactor);
+    atolRtolFactor_(nlmOp.odeRecalcFactor);
     setIndSolve(ind, -1);
     predOde(id);
     j++;
   }
   if (j != 0) {
-    if (nlmOp.stickyRecalcN2 <= nlmOp.stickyRecalcN){
-      // Not thread safe
-      rxode2::atolRtolFactor_(pow(nlmOp.odeRecalcFactor, -j));
-    } else {
+    // tolFactor persists on ind — stiff subjects retain loosened tolerance.
+    if (perN > nlmOp.stickyRecalcN) {
       nlmOp.stickyTol=1;
     }
   }
@@ -382,7 +416,7 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
     } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
       if (ISNA(lhs[0])) {
-        nlmOp.naZero=1;
+        nlmOp.naZero.store(1, std::memory_order_relaxed);
         lhs[0] = 0.0;
       }
       double val = lhs[0];
@@ -429,7 +463,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
@@ -485,7 +521,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         if (kk > nlmOp.ntheta) break; // skip rx_pred_f_ and rx_r_ lhs values
         if (ISNA(lhs[kk])) {
           lhs[kk] = 0.0;
-          nlmOp.naZero=1;
+          nlmOp.naZero.store(1, std::memory_order_relaxed);
         }
         if (kk == 0) {
           double val = lhs[0];
@@ -525,7 +561,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
       if (!ret.col(ii+1).has_nan()) {
         continue;
       }
-      nlmOp.naGrad=1;
+      nlmOp.naGrad.store(1, std::memory_order_relaxed);
     }
     if (thetahf[ii] == 0.0) {
       double h = 0;
@@ -586,7 +622,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
@@ -661,7 +699,7 @@ NumericVector solveGradNls(arma::vec &theta, int returnType) {
     arma::mat ret0(nlmOp.valSave, nlmOp.nobsTot, nlmOp.ntheta+1, false, true);
     ret0 = nlmSolveGrad(theta);
     if (ret0.has_nan()) {
-      nlmOp.naZero=1;
+      nlmOp.naZero.store(1, std::memory_order_relaxed);
       ret0.replace(datum::nan, 0);
     }
     double llik;
@@ -938,10 +976,10 @@ RObject nlmPrintHeader() {
 //[[Rcpp::export]]
 RObject nlmWarnings() {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");
-  if (nlmOp.naGrad) {
+  if (nlmOp.naGrad.load(std::memory_order_relaxed)) {
     warning(_("NaN symbolic gradients were resolved with finite differences"));
   }
-  if (nlmOp.naZero) {
+  if (nlmOp.naZero.load(std::memory_order_relaxed)) {
     warning(_("solved items that were NaN/NA were replaced with 0.0"));
   }
   if (nlmOp.reducedTol){
@@ -972,9 +1010,9 @@ SEXP nlmCensInfo() {
 //[[Rcpp::export]]
 RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
-  nlmOp.scale.print = 0;
+  nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.printNcol));
+    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }

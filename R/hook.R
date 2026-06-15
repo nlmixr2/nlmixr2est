@@ -2,13 +2,14 @@
 
 #' This adds a pre-final table processing hook to nlmixr2est
 #'
-#' This pre-processing hook is run before the estimation process begins.  It is
-#' useful for modifying the user interface, the estimation object, the data, or
-#' the control object before the estimation process begins.  The function must
-#' take four arguments: ui, est, data, and control.  The function must return a
-#' list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
-#' not returned, the original object is used.  If the element is returned, the
-#' original object is replaced with the new object.
+#' This pre-processing hook is run before the estimation process
+#' begins.  It is useful for modifying the user interface, the
+#' estimation object, the data, or the control object before the
+#' estimation process begins.  The function must take one argument:
+#' ret.  The function must return the finalized return object.  If the
+#' element is not returned, the original object is used.  If the
+#' element is returned, the original object is replaced with the new
+#' object.
 #'
 #' @param name Character vector representing the name of the hook
 #' @param fun The function to run
@@ -88,9 +89,14 @@ postFinalObjectHooks <- function(name=NULL) {
   # This is for updating the return object from the estimation process.
   # This is used for modifying the return object after the estimation process is complete, but
   # before it is returned to the user.
-    for (name in postFinalObjectHooks()) {
+  .ret <- ret
+  for (name in postFinalObjectHooks()) {
     .fun <- get(name, envir=.postFinalObjectHooks)
-    .ret <- .fun(ret)
+    .tmp <- .fun(.ret)
+    if (is.null(.tmp) || length(.tmp) == 0) {
+    } else {
+      .ret <- .tmp
+    }
   }
   .ret
 }
@@ -230,6 +236,15 @@ preFinalParTableHooks <- function(name=NULL) {
 
 .preProcessHooks <- new.env(parent=emptyenv())
 
+.orderPreProcessHookNames <- function(names) {
+  .last <- ".preProcessBoundedTransform"
+  if (.last %in% names) {
+    c(names[names != .last], .last)
+  } else {
+    names
+  }
+}
+
 #' This adds a pre-processing hook to nlmixr2est
 #'
 #' This pre-processing hook is run before the estimation process begins.  It is
@@ -297,7 +312,7 @@ preProcessHooksRm <- function(name) {
 #' @family preProcessHooks
 preProcessHooks <- function(name=NULL) {
   if (is.null(name)) {
-    ls(envir=.preProcessHooks, all.names=TRUE)
+    .orderPreProcessHookNames(ls(envir=.preProcessHooks, all.names=TRUE))
   } else {
     checkmate::assertCharacter(name, len=1,
                                pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",

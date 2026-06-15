@@ -1,5 +1,6 @@
 #define STRICT_R_HEADER
 #include "npde.h"
+#include "rxProtect.h"
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -181,7 +182,6 @@ static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned i
 static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned int &K, double &tolChol) {
   ret.ydsim = ret.matsim.rows(ret.obs);
   ret.varsim = cov(trans(ret.ydsim));
-  Rcpp::wrap(wrap(ret.varsim));
   ret.ymat = decorrelateNpdeMat(ret.varsim, ret.warn, id, tolChol); // pd= npd
   ret.ymat2 = varNpdMat(ret.varsim); // pd2 = pd
   arma::mat ymatt = trans(ret.ymat);
@@ -306,6 +306,7 @@ calcNpdeInfoId calcNpdeId(arma::Col<int>& idLoc, arma::vec &sim,
 
 extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP censIn, SEXP limitIn, SEXP npdeOpt) {
   BEGIN_RCPP
+  rxProtect rx_protect;
   if (TYPEOF(npdeSim) != VECSXP) {
     stop("npdeSim needs to be a data.frame");
   }
@@ -338,11 +339,9 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   int dvLen = Rf_length(dvIn);
   arma::vec dv  = arma::vec(REAL(dvIn), dvLen, false, true);
   //arma::vec npde(REAL(npdeSEXP), dv.size(), false, true);
-  int pro = 0;
-  SEXP s0 = PROTECT(VECTOR_ELT(npdeSim, 0)); pro++;
+  SEXP s0 = rx_protect.protect(VECTOR_ELT(npdeSim, 0));
   int simLen = Rf_length(s0);
   if (simLen == 0) {
-    UNPROTECT(pro);
     stop("npdeCalc: simulation input has zero rows");
   }
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
@@ -407,13 +406,13 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   arma::vec ru2 = randu(simLen);
   arma::vec ru3 = randu(simLen);
 
-  SEXP npdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP npdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP pdeSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP pdSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP epredSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP dvSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
-  SEXP eresSEXP = PROTECT(Rf_allocVector(REALSXP, dvLen)); pro++;
+  SEXP npdeSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP npdSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP pdeSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP pdSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP epredSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP dvSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
+  SEXP eresSEXP = rx_protect.protect(Rf_allocVector(REALSXP, dvLen));
   arma::vec npde(REAL(npdeSEXP), dvLen, false, true);
   arma::vec npd(REAL(npdSEXP), dvLen, false, true);
   arma::vec pde(REAL(pdeSEXP), dvLen, false, true);
@@ -432,17 +431,28 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   dvf.zeros();
   eres.zeros();
 
-  for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
-    calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-                                       lambda, yj, hi, low);
-    npde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.npde;
-    npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
-    pde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.pd;
-    pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
-    epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
-    dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
-    eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
-    warn[curid] = idInfo.warn;
+  {
+    int _nid = (int)(idLoc.size() - 1);
+#ifdef _OPENMP
+    // Get rxode2 thread count; called here in R context, before any OMP region
+    Rcpp::Function _rxGetThreads = Rcpp::Environment::namespace_env("rxode2")["getRxThreads"];
+    int _cores = Rcpp::as<int>(_rxGetThreads(false));
+    bool _doParallel = (_cores > 1);
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+    for (int _curid = 0; _curid < _nid; ++_curid) {
+      unsigned int curid = (unsigned int)_curid;
+      calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
+                                         lambda, yj, hi, low);
+      npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
+      npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
+      pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;
+      pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
+      epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
+      dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
+      eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
+      warn[curid] = idInfo.warn;
+    }
   }
   std::string sCholPinv = "";
   int nCholPinv = 0;
@@ -541,8 +551,7 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   ret[3] = List::create(_["NPD"]=npd);
   ret[4] = List::create(_["PDE"]=pde);
   ret[5] = List::create(_["PD"]=pd);
-  SEXP ret2 = PROTECT(dfCbindList(wrap(ret))); pro++;
-  UNPROTECT(pro);
+  SEXP ret2 = rx_protect.protect(dfCbindList(wrap(ret)));
   return List::create(dvf, ret2);
   END_RCPP
  }

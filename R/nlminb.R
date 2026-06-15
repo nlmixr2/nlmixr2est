@@ -1,5 +1,6 @@
 #' nlmixr2 nlminb defaults
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::nlminb
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
@@ -91,6 +92,7 @@ nlminbControl <- function(eval.max=200,
                           stickyRecalcN=4,
                           maxOdeRecalc=5,
                           odeRecalcFactor=10^(0.5),
+                          indTolRelax=TRUE,
 
                           eventType=c("central", "forward"),
                           shiErr=(.Machine$double.eps)^(1/3),
@@ -100,8 +102,8 @@ nlminbControl <- function(eval.max=200,
                           hessErr =(.Machine$double.eps)^(1/3),
                           shi21maxHess=20L,
 
-                          useColor = crayon::has_color(),
-                          printNcol = floor((getOption("width") - 23) / 12), #
+                          useColor = NULL,
+                          printNcol = NULL, #
                           print = 1L, #
                           normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
                           scaleType = c("nlmixr2", "norm", "mult", "multAdd"), #
@@ -174,10 +176,11 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertIntegerish(stickyRecalcN, any.missing=FALSE, lower=0, len=1)
   checkmate::assertIntegerish(maxOdeRecalc, any.missing=FALSE, len=1)
   checkmate::assertNumeric(odeRecalcFactor, len=1, lower=1, any.missing=FALSE)
+  checkmate::assertLogical(indTolRelax, any.missing=FALSE, len=1)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -213,9 +216,10 @@ nlminbControl <- function(eval.max=200,
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -254,6 +258,7 @@ nlminbControl <- function(eval.max=200,
                stickyRecalcN=as.integer(stickyRecalcN),
                maxOdeRecalc=as.integer(maxOdeRecalc),
                odeRecalcFactor=odeRecalcFactor,
+               indTolRelax=indTolRelax,
 
                eventType=eventType,
                shiErr=shiErr,
@@ -263,9 +268,7 @@ nlminbControl <- function(eval.max=200,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
 
-               useColor=useColor,
-               print=print,
-               printNcol=printNcol,
+               iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
 
@@ -486,7 +489,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 interaction=0L,
                                 compress=.nlminbControl$compress,
                                 ci=.nlminbControl$ci,
-                                sigdigTable=.nlminbControl$sigdigTable)
+                                sigdigTable=.nlminbControl$sigdigTable,
+                                indTolRelax=.nlminbControl$indTolRelax)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

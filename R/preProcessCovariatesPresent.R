@@ -13,15 +13,16 @@
         length(data) > 0L &&
          isTRUE(attr(utils::getS3method("nlmixr2Est", est), "covPresent"))) {
     .covNames <- ui$covariates
-    colnames(data) <- vapply(names(data), function(x) {
+    .newNames <- vapply(names(data), function(x) {
       if (any(x == .covNames)) {
         x
       } else {
         toupper(x)
       }
     }, character(1))
+    colnames(data) <- .newNames
     requiredCols <- c("TIME", .covNames)
-    checkmate::assert_names(names(data), must.include = requiredCols)
+    checkmate::assert_names(.newNames, must.include = requiredCols)
   }
   NULL
 }

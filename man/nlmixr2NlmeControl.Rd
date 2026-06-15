@@ -326,8 +326,8 @@ nlmeControl()
 nlmixr2NlmeControl()
 }
 \seealso{
-Other Estimation control: 
-\code{\link{foceiControl}()},
-\code{\link{saemControl}()}
+Other Estimation control:
+\code{\link[=foceiControl]{foceiControl()}},
+\code{\link[=saemControl]{saemControl()}}
 }
 \concept{Estimation control}

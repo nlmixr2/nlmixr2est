@@ -154,6 +154,7 @@ nlmixr2Est.rxSolve <- function(env, ...) {
 }
 attr(nlmixr2Est.rxSolve, "covPresent") <- TRUE
 attr(nlmixr2Est.rxSolve, "unbounded") <- FALSE
+attr(nlmixr2Est.rxSolve, "random") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -166,6 +167,7 @@ nlmixr2Est.simulate <- function(env, ...) {
 }
 attr(nlmixr2Est.simulate, "covPresent") <- TRUE
 attr(nlmixr2Est.simulate, "unbounded") <- FALSE
+attr(nlmixr2Est.simulate, "random") <- TRUE
 
 #'@rdname nlmixr2Est
 #'@export
@@ -185,6 +187,7 @@ nlmixr2Est.simulation <- function(env, ...) {
 }
 attr(nlmixr2Est.simulation, "covPresent") <- TRUE
 attr(nlmixr2Est.simulation, "unbounded") <- FALSE
+attr(nlmixr2Est.simulation, "random") <- TRUE
 
 
 #'@rdname nlmixr2Est
@@ -208,6 +211,7 @@ nlmixr2Est.predict <- function(env, ...) {
 }
 attr(nlmixr2Est.predict, "covPresent") <- TRUE
 attr(nlmixr2Est.predict, "unbounded") <- FALSE
+attr(nlmixr2Est.predict, "random") <- TRUE
 
 #' Get new data
 #'

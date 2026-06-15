@@ -1,3 +1,17 @@
+^.augment$
+^CLAUDE.md$
+^.antigravity$
+^.continue$
+^.kilocode$
+^.kiro$
+^.windsurf$
+^.zed$
+^AGENTS.md$
+^.claude$
+^.vexp
+^.vscode$
+^compile_commands.json$
+^vexp.toml$
 ^vgcore.*$
 ^Meta$
 ^doc$

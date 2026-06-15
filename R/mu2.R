@@ -260,39 +260,69 @@ mu2env$expit <- rxode2::expit
 #' transformation to a single value in the original dataset, and
 #' moving that around
 #'
-#' @param env Environment needed for nlmixr2 fits
+#' @param ui the ui for the model
+#'
+#' @param est the estimation method
+#'
+#' @param data the data provided
+#'
+#' @param control the control object
+#'
 #' @return Either the original model({}) block (if changed) or NULL if
 #'   not changed
+#'
 #' @export
+#'
 #' @author Matthew L. Fidler
 #' @keywords internal
+.uiApplyMu2 <- function(env) {
+  if (isTRUE(env$control$muRefCovAlg) &&
+        length(env$ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
+    .lst     <- .uiModifyForCovs(env$ui, env$data)
+    .model <- rxode2::as.model(env$ui)
+    env$ui   <- .lst$ui
+    env$data <- .lst$data
+    return(.model)
+  }
+  NULL
+}
 
-.uiApplyMu2 <- function(ui, est, data, control) {
+#' @rdname dot-uiApplyMu2
+#' @export
+.uiApplyMu2hook <- function(ui, est, data, control) {
   .muRefTrans$cur <- vector("list", 0L)
   if (!.isMuMethod(est, control)) {
     return(NULL)
   }
   if (length(ui$mu2RefCovariateReplaceDataFrame$covariate) > 0L) {
-    .lst     <- .uiModifyForCovs(ui, data)
-    .model <- rxode2::as.model(ui)
-    .lst
+    .uiModifyForCovs(ui, data)
+  } else {
+    NULL
   }
-  NULL
 }
+
 
 #' This is an internal function for replacing the ui with original
 #' model and dropping artificial data in output
 #'
 #' @param ret The object that would be returned, without modification
-#' @param model The original model to apply
 #' @return modified fit updated to show the original model and without
 #'   the internal transformations
 #' @export
 #' @author Matthew L. Fidler
 #' @keywords internal
-.uiFinalizeMu2 <- function(ret) {
+.uiFinalizeMu2 <- function(ret, model) {
+  if (!is.null(model)) {
+    return(.uiFinalizeMu2hook(ret))
+  }
+  # Reset symengine environments
+  .saemModelEnv$symengine <- NULL
+  .saemModelEnv$predSymengine <- NULL
+  ret
+}
+.uiFinalizeMu2hook <- function(ret) {
   if (length(.muRefTrans$cur) > 0L) {
-    if (is.null(model)) return(ret)
+    if (is.null(ret$ui)) return(ret)
     .model <- rxode2::as.model(ret$ui)
     for (.cur in .muRefTrans$cur) {
       .model <- .uiModifyForCovsRep(.model, .cur$new, .cur$old)
@@ -323,5 +353,5 @@ mu2env$expit <- rxode2::expit
 # -----------------------------------------------------------------------
 # Register hooks
 # -----------------------------------------------------------------------
-preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2)
-postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2)
+preProcessHooksAdd(".uiApplyMu2", .uiApplyMu2hook)
+postFinalObjectHooksAdd(".uiFinalizeMu2", .uiFinalizeMu2hook)

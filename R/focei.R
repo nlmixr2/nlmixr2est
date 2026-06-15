@@ -1306,34 +1306,6 @@ rxUiGet.scaleCnls <- function(x, ...) {
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
-#' This sets up the transformation bounds and indexes and bounds for inner.cpp
-#'
-#' Note that the C code assumes the index starts at 1
-#'
-#' @param ui rxode2 ui environment
-#' @param env focei environment used for solving
-#' @return Nothing called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.foceiOptEnvSetupTransformIndexs <- function(ui, env) {
-  .muRefCurEval <- ui$muRefCurEval
-  .ini <- ui$iniDf
-  .ini <- .ini[!is.na(.ini$ntheta), c("ntheta", "name")]
-  names(.ini)[2] <- "parameter"
-  .transform <- merge(.ini, .muRefCurEval)
-  .transform <- .transform[order(.transform$ntheta), ]
-
-  env$logThetasF <- .transform[which(.transform$curEval == "exp"), "ntheta"]
-
-  env$logitThetasF <- .transform[which(.transform$curEval == "expit"), "ntheta"]
-  env$logitThetasLowF <- .transform[which(.transform$curEval == "expit"), "low"]
-  env$logitThetasHiF <- .transform[which(.transform$curEval == "expit"), "hi"]
-
-  env$probitThetasF <- .transform[which(.transform$curEval == "probitInv"), "ntheta"]
-  env$probitThetasLowF <- .transform[which(.transform$curEval == "probitInv"), "low"]
-  env$probitThetasHiF <- .transform[which(.transform$curEval == "probitInv"), "hi"]
-}
-
 # focei.mu.ref
 # eta# and the corresponding theta number
 
@@ -1428,7 +1400,20 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  .foceiOptEnvSetupTransformIndexs(ui, env)
+  # Theta-side transform indexes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  The helper does not
+  # mutate env; we copy its ntheta-indexed outputs onto the focei env
+  # under the names the focei C-side reads via e["logThetasF"] etc.
+  # The C code assumes 1-based theta indices, which is exactly what
+  # iniDf$ntheta gives.
+  .xform <- .iterPrintXParFromUi(ui)
+  env$logThetasF       <- .xform$logNthetas
+  env$logitThetasF     <- .xform$logitNthetas
+  env$logitThetasLowF  <- .xform$logitNthetasLow
+  env$logitThetasHiF   <- .xform$logitNthetasHi
+  env$probitThetasF    <- .xform$probitNthetas
+  env$probitThetasLowF <- .xform$probitNthetasLow
+  env$probitThetasHiF  <- .xform$probitNthetasHi
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -1480,7 +1465,11 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     rxControl <- rxControl()
   }
-  env$origData <- as.data.frame(data)
+  if (inherits(data, "data.frame")) {
+    env$origData <- as.data.frame(data[, names(data), drop = FALSE])
+  } else {
+    env$origData <- as.data.frame(data)
+  }
   data <- env$origData
   .covNames <- ui$covariates
   colnames(data) <- vapply(names(data), function(x) {
@@ -1491,13 +1480,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }, character(1))
   if (is.null(data$ID)) data$ID <- 1L
-  colnames(data) <- vapply(names(data), function(x) {
-    if (any(x == .covNames)) {
-      x
-    } else {
-      toupper(x)
-    }
-  }, character(1))
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
   checkmate::assert_names(names(data), must.include = c("DV", "TIME"))
@@ -1505,10 +1487,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   for (.v in c("DV", "TIME")) {
     data[[.v]] <- as.double(data[[.v]])
   }
+  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
+  .strCmpP <- .mod$strCmpParams
+  .strCmpPNames <- tolower(names(.strCmpP))
   .lvls <- NULL
   for (.v in .covNames) {
     .d <- data[[.v]]
-    if (inherits(.d, "character")) {
+    .strCmpIdx <- match(tolower(.v), .strCmpPNames)
+    if (!is.na(.strCmpIdx)) {
+      .modelLvls <- levels(.strCmpP[[.strCmpIdx]])
+      .extraLvls <- sort(setdiff(unique(as.character(.d)), .modelLvls))
+      .fullLvls <- c(.modelLvls, .extraLvls)
+      if (inherits(.d, "character") || inherits(.d, "factor")) {
+        .l <- factor(as.character(.d), levels = .fullLvls)
+        data[[.v]] <- .l
+        .lvls <- c(.lvls, setNames(list(.fullLvls), .v))
+      }
+    } else if (inherits(.d, "character")) {
       .l <- factor(.d)
       data[[.v]] <- .l
       .lvls <- c(.lvls, setNames(list(levels(.l)), .v))
@@ -1518,7 +1513,6 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   data$nlmixrRowNums <- seq_len(nrow(data))
   .keep <- unique(c("nlmixrRowNums", env$table$keep))
-  .mod <- rxode2::rxModelVars(paste0(ui$mv0$model["normModel"], "\n", .foceiToCmtLinesAndDvid(ui)))
   .et <- rxode2::etTrans(inData=data, obj=.mod,
                          addCmt=TRUE, dropUnits=TRUE,
                          keep=unique(c("nlmixrRowNums", env$table$keep)),
@@ -1869,7 +1863,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .env$table <- env$table
   .data <- env$data
   .env$ui <- ui
-  .foceiPreProcessData(.data, .env, ui, .control$rxControl)
+  nlmixrWithTiming("setup", {
+    .foceiPreProcessData(.data, .env, ui, .control$rxControl)
+  })
   if (!is.null(.env$cov)) {
     if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
                                row.names="strict", col.names="strict")) {
@@ -1906,42 +1902,64 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (inherits(.ret0, "try-error")) {
     stop("Could not fit data\n  ", attr(.ret0, "condition")$message, call.=FALSE)
   }
-  .ret <- .ret0
-  if (!is.null(method))
-    .ret$method <- method
-  if (exists("ui", envir=.ret)) {
-    ui <- rxode2::rxUiDecompress(get("ui", envir=.ret))
-  } else {
-    ui <- rxode2::rxUiDecompress(ui)
-  }
-  if (exists(".predDfFocei", envir=ui)) {
-    rm(".predDfFocei", envir=ui)
-  }
-  ui <- rxode2::rxUiCompress(ui)
-  .ret$ui <- ui
-  .foceiSetupParHistData(.ret)
-  if (!all(is.na(ui$iniDf$neta1))) {
-    .etas <- .ret$ranef
-    .thetas <- .ret$fixef
-    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
-    .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
-  }
-  assign("est", est, envir=.ret)
-  .updateParFixed(.ret)
-  if (!exists("table", .ret)) {
-    .ret$table <- tableControl()
-  }
-  .nlmixr2FitUpdateParams(.ret)
-  .ret$IDlabel <- rxode2::.getLastIdLvl()
-  if (exists("skipTable", envir=.ret)) {
-    if (is.na(.ret$skipTable)) {
-    } else if (.ret$skipTable) {
-      .control$calcTables <- FALSE
+  .ret <- nlmixrWithTiming("postprocess", {
+    .ret <- .ret0
+    if (!is.null(method))
+      .ret$method <- method
+    .priorEnvTolFactor <- NULL
+    if (is.environment(ui) && exists("foceiEnv", envir=ui, inherits=FALSE)) {
+      .priorEnv <- ui$foceiEnv
+      if (is.environment(.priorEnv) && exists("tolFactor", envir=.priorEnv, inherits=FALSE)) {
+        .priorEnvTolFactor <- .priorEnv$tolFactor
+      }
     }
-  }
-  assign("skipCov", .env$skipCov, envir=.ret)
-  nmObjHandleModelObject(.ret$model, .ret)
-  nmObjHandleControlObject(get("control", envir=.ret), .ret)
+    if (exists("ui", envir=.ret)) {
+      ui <- rxode2::rxUiDecompress(get("ui", envir=.ret))
+    } else {
+      ui <- rxode2::rxUiDecompress(ui)
+    }
+    if (exists(".predDfFocei", envir=ui)) {
+      rm(".predDfFocei", envir=ui)
+    }
+    ui <- rxode2::rxUiCompress(ui)
+    .ret$ui <- ui
+    .foceiSetupParHistData(.ret)
+    if (!all(is.na(ui$iniDf$neta1))) {
+      .etas <- .ret$ranef
+      .thetas <- .ret$fixef
+      .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
+      .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
+    }
+    assign("est", est, envir=.ret)
+    .updateParFixed(.ret)
+    if (!exists("table", .ret)) {
+      .ret$table <- tableControl()
+    }
+    .nlmixr2FitUpdateParams(.ret)
+    .ret$IDlabel <- rxode2::.getLastIdLvl()
+    .idLvl <- if (exists("idLvl", envir=.ret)) .ret$idLvl else character(0)
+    if (exists("tolFactor", envir=.ret)) {
+      .tf <- .ret$tolFactor
+      if (length(.tf) == length(.idLvl)) {
+        .tf <- setNames(.tf, .idLvl)
+      }
+      .ret$tolFactor <- .tf
+    }
+    if (!is.null(.priorEnvTolFactor) && length(.priorEnvTolFactor) == length(.idLvl)) {
+      .foceiTf <- if (exists("tolFactor", envir=.ret)) unname(.ret$tolFactor) else rep(1.0, length(.priorEnvTolFactor))
+      .ret$tolFactor <- setNames(pmax(.foceiTf, .priorEnvTolFactor), .idLvl)
+    }
+    if (exists("skipTable", envir=.ret)) {
+      if (is.na(.ret$skipTable)) {
+      } else if (.ret$skipTable) {
+        .control$calcTables <- FALSE
+      }
+    }
+    assign("skipCov", .env$skipCov, envir=.ret)
+    nmObjHandleModelObject(.ret$model, .ret)
+    nmObjHandleControlObject(get("control", envir=.ret), .ret)
+    .ret
+  })
   nlmixr2global$currentTimingEnvironment <- .ret # add environment for updating timing info
   if (.control$calcTables) {
     .tmp <- try(addTable(.ret,
@@ -2035,20 +2053,19 @@ nlmixr2Est.focei <- function(env, ...) {
     rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'focei'",
                                       .var.name=.ui$modelName)
   }
-  .uiApplyIov(env)
   .foceiFamilyControl(env, ...)
   on.exit({
-    if (exists("control", envir=.ui)) {
+    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm("control", envir=.ui)
     }
   })
   .ui <- env$ui
   .ret <- .foceiFamilyReturn(env, .ui, ..., est="focei")
-  .ret <- .uiFinalizeIov(.ret)
   .ret
 }
 attr(nlmixr2Est.focei, "covPresent") <- TRUE
 attr(nlmixr2Est.focei, "unbounded") <- .foUnbounded
+attr(nlmixr2Est.focei, "iov") <- TRUE
 
 #' Add objective function line to the return object
 #'
@@ -2098,7 +2115,7 @@ nlmixr2Est.output <- function(env, ...) {
   rxode2::rxAssignControlValue(.ui, "maxOuterIterations", 0L)
   rxode2::rxAssignControlValue(.ui, "maxInnerIterations", 0L)
   on.exit({
-    if (exists("control", envir=.ui)) {
+    if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm("control", envir=.ui)
     }
   })

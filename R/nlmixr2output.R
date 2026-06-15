@@ -142,7 +142,7 @@
     .valCharPrep <- .valNumber
   } else {
     assign(".cvOnly", FALSE, envir=.env)
-    .valNumber <- .v
+    .valNumber <- sqrt(.v)
     .valCharPrep <- sqrt(.v)
   }
   if (.eta %in% names(.omegaFix) && .omegaFix[.eta]) {

@@ -90,6 +90,20 @@ one.compartment.fit.saem <- .getCachedFit(
   cacheFile = "fit-one-compartment-saem.rds"
 )
 
+#' One compartment SAEM fit with CWRES precomputed
+#' Used in: test-cwres.R
+one.compartment.fit.saem.cwres <- .getCachedFit(
+  name = "one.compartment.fit.saem.cwres",
+  fitFn = function() {
+    .nlmixr(
+      one.compartment, theo_sd, est = "saem",
+      control = saemControlFast,
+      table = tableControl(cwres = TRUE)
+    )
+  },
+  cacheFile = "fit-one-compartment-saem-cwres.rds"
+)
+
 #' One compartment FOCEI fit (second most common)
 #' Used in: test-broom.R, test-nmobj.R, test-predict.R, test-keep.R, etc.
 one.compartment.fit.focei <- .getCachedFit(
@@ -99,6 +113,59 @@ one.compartment.fit.focei <- .getCachedFit(
             control = foceiControl(print = 0, maxOuterIterations = 0L))
   },
   cacheFile = "fit-one-compartment-focei.rds"
+)
+
+#' One compartment FOCEI fit using the fast helper controls
+#' Used in: test-broom.R and any tests that only inspect object structure/output
+one.compartment.fit.focei.fast <- .getCachedFit(
+  name = "one.compartment.fit.focei.fast",
+  fitFn = function() {
+    .nlmixr(one.compartment, theo_sd, est = "focei", control = foceiControlFast)
+  },
+  cacheFile = "fit-one-compartment-focei-fast.rds"
+)
+
+#' One compartment FOCE fit
+#' Used in: test-broom.R
+one.compartment.fit.foce <- .getCachedFit(
+  name = "one.compartment.fit.foce",
+  fitFn = function() {
+    .nlmixr(one.compartment, theo_sd, est = "foce", control = foceiControlFast)
+  },
+  cacheFile = "fit-one-compartment-foce.rds"
+)
+
+#' One compartment FOI fit
+#' Used in: test-broom.R
+one.compartment.fit.foi <- .getCachedFit(
+  name = "one.compartment.fit.foi",
+  fitFn = function() {
+    .nlmixr(one.compartment, theo_sd, est = "foi", control = list(print = 0))
+  },
+  cacheFile = "fit-one-compartment-foi.rds"
+)
+
+#' One compartment FO fit
+#' Used in: test-broom.R
+one.compartment.fit.fo <- .getCachedFit(
+  name = "one.compartment.fit.fo",
+  fitFn = function() {
+    .nlmixr(one.compartment, theo_sd, est = "fo", control = list(print = 0))
+  },
+  cacheFile = "fit-one-compartment-fo.rds"
+)
+
+#' One compartment posthoc fit
+#' Used in: test-broom.R
+one.compartment.fit.posthoc <- .getCachedFit(
+  name = "one.compartment.fit.posthoc",
+  fitFn = function() {
+    suppressMessages(suppressWarnings(
+      nlmixr(one.compartment, theo_sd, est = "posthoc",
+             control = posthocControl(covMethod = 0, calcTables = FALSE))
+    ))
+  },
+  cacheFile = "fit-one-compartment-posthoc.rds"
 )
 
 # =============================================================================

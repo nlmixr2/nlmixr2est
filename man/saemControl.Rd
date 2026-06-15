@@ -10,7 +10,7 @@ saemControl(
   nEm = 300,
   nmc = 3,
   nu = c(2, 2, 2),
-  print = 1,
+  print = 1L,
   trace = 0,
   covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
   calcTables = TRUE,
@@ -29,6 +29,7 @@ saemControl(
   lambdaRange = 3,
   odeRecalcFactor = 10^(0.5),
   maxOdeRecalc = 5L,
+  indTolRelax = TRUE,
   perSa = 0.75,
   perNoCor = 0.75,
   perFixOmega = 0.1,
@@ -76,8 +77,14 @@ computation.  In Monolix this is equivalent to \code{L}.}
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
 
-\item{print}{The number it iterations that are completed before
-anything is printed to the console.  By default, this is 1.}
+\item{print}{Either a scalar print-frequency (`0` = suppress
+iteration output; `1` (default) = print every parameter
+evaluation; `N` = print every Nth evaluation), OR a pre-built
+[iterPrintControl()] object bundling all iteration-print options
+(column wrap, header cadence, color, simple/three-row mode).
+The scalar form is equivalent to
+`iterPrintControl(every = print, ncol = printNcol,
+useColor = useColor)`.}
 
 \item{trace}{An integer indicating if you want to trace(1) the
 SAEM algorithm process.  Useful for debugging, but not for
@@ -175,6 +182,12 @@ solving goes bad, this is the factor the rtol/atol is reduced}
 tolerances and try to resolve the system if there was a bad
 ODE solve.}
 
+\item{indTolRelax}{When `TRUE` (default), only subjects whose ODE
+solve produced NaN/Inf have their tolerances relaxed, and the
+relaxed tolerance persists across optimizer calls (sticky).
+When `FALSE`, all subjects have their tolerances relaxed on
+each retry and tolerances are reset afterward.}
+
 \item{perSa}{This is the percent of the time the `nBurn`
 iterations in phase runs runs a simulated annealing.}
 
@@ -257,6 +270,16 @@ is `TRUE`).}
 
 }}
 
+\item{boundedTransform}{boolean indicating if the bounded
+parameters should by transformed when using a unbounded
+optimization method to make sure they are in bounds.  By default
+this is `TRUE`, which transforms during optimization and
+back-transforms for the final estimates.  When `FALSE`, the
+optimization is performed on the original scale and the bounds
+are passed to the optimization method.  When `NA`, the bounded
+parameters are transformed for the optimization, but the final
+estimates are not back-transformed.}
+
 \item{...}{Other arguments to control SAEM.}
 }
 \value{
@@ -267,9 +290,9 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 Control Options for SAEM
 }
 \seealso{
-Other Estimation control: 
-\code{\link{foceiControl}()},
-\code{\link{nlmixr2NlmeControl}()}
+Other Estimation control:
+\code{\link[=foceiControl]{foceiControl()}},
+\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}}
 }
 \author{
 Wenping Wang & Matthew L. Fidler

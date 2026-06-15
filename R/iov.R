@@ -1,3 +1,34 @@
+#' Check if an estimation method supports iov
+#'
+#' Uses the \code{"iov"} attribute on the \code{nlmixr2Est.<method>}
+#' S3 method. This allows external packages (babelmixr2, etc.) to register
+#' whether their own methods support IOV without modifying this file.
+#'
+#' The attribute can be:
+#' \itemize{
+#'   \item \code{TRUE} - supports IOV
+#'   \item \code{FALSE} - does not support IOV
+#'   \item \code{function(control)} returning logical - conditional support
+#'     (e.g., optim method-dependent, FOCEI outer optimizer-dependent)
+#' }
+#'
+#' @param est estimation routine name
+#' @param control control object
+#' @return boolean
+#' @noRd
+#' @author Matthew Fidler
+.isIovMethod <- function(est, control = NULL) {
+  .v <- as.character(utils::methods("nlmixr2Est"))
+  .method <- paste0("nlmixr2Est.", est)
+  if (.method %in% .v) {
+    .iov <- attr(utils::getS3method("nlmixr2Est", est), "iov")
+    if (is.null(.iov)) return(FALSE)
+    if (is.function(.iov)) return(isTRUE(.iov(control)))
+    return(isTRUE(.iov))
+  }
+  FALSE
+}
+
 .nlmixr2iov <- function(val, type, transform) {
   # First get the standard deviation
   if (transform == "logvar") {
@@ -74,35 +105,43 @@ nlmixr2iovVarSd <- function(val) {
 .uiIovEnv$iovVars <- NULL
 #' This applies the IOV method to the model based on the data used
 #'
-#' @param env environment to apply the IOV model transformation.  This should contain:
-#'
-#' - `ui`: the model to apply the IOV transformation to
-#' - `data`: the data to use for the IOV transformation
-#' - `control`: the control object, which should contain `iovXform`
 #' @return nothing, called for side effects
 #' @noRd
 #' @author Matthew L. Fidler
-.uiApplyIov <- function(env) {
+.uiApplyIov <- function(ui, est, data, control) {
+  if (!.isIovMethod(est, control)) {
+    .uiIovEnv$ui <- NULL
+    .uiIovEnv$iovDrop <- NULL
+    .uiIovEnv$iovVars <- NULL
+    .uiIovEnv$iovRename <- NULL
+    .uiIovEnv$lines <- NULL
+    .uiIovEnv$muModel <- NULL
+    return(NULL)
+  }
   .uiIovEnv$iovVars <- NULL
   .uiIovEnv$muModel <- NULL
-  .xform <- env$control$iovXform
+  .xform <- control$iovXform
   if (length(.xform)  != 1) {
     .xform <- "sd"
   }
   if (!(.xform %in% c("sd", "var", "logsd", "logvar"))) {
     .xform <- "sd"
   }
-  .ui <- env$ui
+  .ui <- ui
   .iniDf <- .ui$iniDf
   .lvls <- .iniDf$condition[which(!is.na(.iniDf$condition) &
                                     .iniDf$condition != "id" &
                                      is.na(.iniDf$err))]
+
+  .uiIovEnv$iovRename <- NULL
   if (length(.lvls) > 0) {
     .n <- .iniDf[which(.iniDf$condition %in% .lvls), "name"]
     .ui <- suppressWarnings(eval(str2lang(paste0("rxode2::rxRename(.ui, ",
                                 paste(paste0("rx.", .n, "=", .n),
                                       collapse=", "), ")"))))
-
+    .uiIovEnv$iovRename <- str2lang(paste0("rxode2::rxRename(.ui, ",
+                                          paste(paste0(.n, "=", "rx.", .n),
+                                      collapse=", "), ")"))
     # For the new iniDf, we will take out all the level variables and
     # then renumber the etas
     .thetas <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
@@ -136,7 +175,7 @@ nlmixr2iovVarSd <- function(val) {
       .theta1 <- .etas[1,]
     }
 
-    .data <- env$data
+    .data <- data
     .lvls <- setNames(lapply(.lvls, function(l) {
       .v <- sort(unique(.data[[l]]))
       if (is.null(.v)) {
@@ -157,6 +196,8 @@ nlmixr2iovVarSd <- function(val) {
     .env$drop <- NULL
     # Now we have enough information to create the IOV variables
     # changed to etas on id
+    .env$extraThetas <- NULL
+    .env$extraEtas <- NULL
     .lines <- lapply(names(.lvls),
                      function(l1) {
                        .w <-which(.iniDf$condition == l1)
@@ -182,9 +223,9 @@ nlmixr2iovVarSd <- function(val) {
                          .uiIovEnv$iovVars <- c(.uiIovEnv$iovVars, v)
                          .curTheta$fix <- .fixed
 
-                         .w <- which(env$ui$muRefCurEval$parameter == v)
+                         .w <- which(ui$muRefCurEval$parameter == v)
                          if (length(.w) == 1L) {
-                           .curEval <- env$ui$muRefCurEval$curEval[.w]
+                           .curEval <- ui$muRefCurEval$curEval[.w]
                          } else {
                            .curEval <- ""
                          }
@@ -200,6 +241,8 @@ nlmixr2iovVarSd <- function(val) {
                          }
                          .env$maxtheta <- .curTheta$ntheta <- .env$maxtheta + 1L
                          .env$thetas <- rbind(.env$thetas, .curTheta)
+
+                         .env$extraThetas <- c(.env$extraThetas, .curTheta)
                          for (n in .lvls[[l1]]) {
                            .curEta <- .eta1
                            .curEta$name <- paste0("rx.", v, ".", n)
@@ -208,6 +251,7 @@ nlmixr2iovVarSd <- function(val) {
                            .env$maxeta <- .curEta$neta1 <-
                              .curEta$neta2 <- .env$maxeta + 1L
                            .env$etas <- rbind(.env$etas, .curEta)
+                           .env$extraEtas <- c(.env$extraEtas, .curEta)
                          }
                          if (.xform == "logsd") {
                            str2lang(paste0("rx.", v, " <- exp(", v, ")*(",
@@ -244,17 +288,19 @@ nlmixr2iovVarSd <- function(val) {
                        }))
                        .lst
                      })
-    .lines <- do.call(`c`, c(.lines, list(.ui$lstExpr)))
+    .uiIovEnv$lines <- do.call(`c`, .lines)
+    .lines <- c(.uiIovEnv$lines, .ui$lstExpr)
     .ui <- rxode2::rxUiDecompress(.ui)
     # Now the lines can be added to the model
     assign("iniDf", rbind(.env$thetas,.env$etas), envir = .ui)
     assign("lstExpr", .lines, envir = .ui)
-    .uiIovEnv$ui <- env$ui
+    .uiIovEnv$ui <- ui
     .uiIovEnv$iovDrop <- .env$drop # extra variables to drop
-    env$ui <- rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun())))
+    list(ui = rxode2::rxUiDecompress(suppressWarnings(suppressMessages(.ui$fun()))))
   } else {
     .uiIovEnv$ui <- NULL
     .uiIovEnv$iovDrop <- NULL
+    NULL
   }
 }
 #' Finalizes IOV model
@@ -268,35 +314,101 @@ nlmixr2iovVarSd <- function(val) {
     if (is.null(ret$ui)) return(ret)
 
     if (is.environment(ret$env)) {
-      .preFinalParTableHooksRun(.uiIovEnv)
-      .iniDf <- .uiIovEnv$ui$iniDf
-      .finalDf <- ret$ui$iniDf
+      #.preFinalParTableHooksRun(.uiIovEnv)
+      .ui <- ret$env$ui
+      .lstExpr <- .ui$lstExpr
+      .w <- which(vapply(seq_along(.lstExpr),
+             function(i) {
+               any(vapply(seq_along(.uiIovEnv$lines),
+                      function(j) {
+                        if (identical(.lstExpr[[i]], .uiIovEnv$lines[[j]])) {
+                          return(TRUE)
+                        }
+                        FALSE
+                      }, logical(1), USE.NAMES = FALSE))
+             }, logical(1), USE.NAMES = FALSE))
+      if (length(.w) > 0L) {
+        .lstExpr <- lapply(seq_along(.lstExpr)[-.w],
+                           function(i) {
+                             .lstExpr[[i]]
+                           })
+      }
+      # Get the IOV variables that are present as thetas in the model
       .iovName <- new.env(parent=emptyenv())
-      .iovName$var <- character(0)
-      .est <- vapply(seq_along(.iniDf$name), function(i) {
-        if (is.na(.iniDf$neta1[i])) {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .finalDf[.w, "est"]
-        } else if (.iniDf$condition[i] == "id") {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .finalDf[.w, "est"]
-        } else {
-          .w <- which(.finalDf$name == .iniDf$name[i])
-          .iovName$var <- c(.iovName$var, .iniDf$name[i])
-          .fun <- sub("Cv$", "Sd", .finalDf[.w, "backTransform"])
-          .fun <- get(.fun)
-          .fun(.finalDf[.w, "est"])^2
-        }
-      }, double(1), USE.NAMES = FALSE)
-      names(.est) <- .iniDf$name
+      .iovDf <- .uiIovEnv$ui$iniDf
+      .iovDf <- .iovDf[!is.na(.iovDf$neta1) & .iovDf$condition != "id",, drop=FALSE]
+      .iovName$var <- .iovDf$name
 
-      # Now we can update the finalDf
-      assign("iniDf0", .iniDf, envir = ret$env)
-      .finalDf <- .iniDf
-      .finalDf$est <- .est
-      .ui <- .uiIovEnv$ui
-      suppressMessages(rxode2::ini(.ui) <- .finalDf)
+      getEstimateDf <- function(iniDf) {
+        .iniDf <- iniDf
+        # Final thetaDf & etaDf
+        .thetaDf <- .iniDf[is.na(.iniDf$neta1),, drop=FALSE]
+        .etaDf <- .iniDf[!is.na(.iniDf$neta1),, drop=FALSE]
+
+        # Drop the dummy etas
+        .etaDf <- .etaDf[!(.etaDf$name %in% .uiIovEnv$iovDrop),, drop=FALSE]
+
+        # Renumber etas, just in case
+        .etaDf$neta1 <- factor(.etaDf$neta1)
+        .etaDf$neta2 <- factor(.etaDf$neta2, levels=levels(.etaDf$neta1))
+        .etaDf$neta1 <- as.integer(.etaDf$neta1)
+        .etaDf$neta2 <- as.integer(.etaDf$neta2)
+
+        .maxEta <- if (nrow(.etaDf) == 0L) 0L else max(.etaDf$neta1)
+
+
+        # Go through each IOV variable and calculate the variance from the back-transform
+        # Add it to the .etaDf afterward, and remove from .thetaDf
+        # Use a template row; fall back to .iniDf when .etaDf is empty (all ETAs
+        # were IOV dummy ETAs that got dropped above).
+        .etaTemplate <- if (nrow(.etaDf) > 0L) {
+          .etaDf[1, , drop = FALSE]
+        } else {
+          .tmp <- .iniDf[1, , drop = FALSE]
+          .tmp$ntheta <- NA_real_
+          .tmp
+        }
+        for (i in seq_along(.iovDf$name)) {
+          .w <- which(.thetaDf$name == .iovDf$name[i])
+          .fun <- sub("Cv$", "Sd", .thetaDf[.w, "backTransform"])
+          .fun <- get(.fun)
+          .est <- .fun(.thetaDf[.w, "est"])^2
+          .maxEta <- .maxEta + 1L
+          .cur <- .etaTemplate
+          .cur$neta1 <- .cur$neta2 <- .maxEta
+          .cur$est <- .est
+          .cur$fix <- .iovDf$fix[i]
+          .cur$upper <- .iovDf$upper[i]
+          .cur$lower <- .iovDf$lower[i]
+          .cur$label <- .iovDf$label[i]
+          .cur$backTransform <- .iovDf$backTransform[i]
+          .cur$err <- .iovDf$err[i]
+          .cur$name <- paste0("rx.", .iovDf$name[i]) # Matches replacement
+          .cur$condition <- .iovDf$condition[i]
+          .etaDf <- rbind(.etaDf, .cur)
+          .thetaDf <- .thetaDf[-.w, , drop=FALSE]
+        }
+
+        # Renumber
+        .thetaDf$ntheta <- as.integer(factor(.thetaDf$ntheta))
+        rbind(.thetaDf, .etaDf)
+      }
+
+      .finalDf <- getEstimateDf(.ui$iniDf)
+      .iniDf0 <- getEstimateDf(ret$env$iniDf0)
+      assign("iniDf0", .iniDf0, envir = ret$env)
+
+      # Save with final estimates
+      .ini <- as.expression(lotri::as.lotri(.finalDf))
+      .ini[[1]] <- quote(`ini`)
+      .model <- rxode2::as.model(.lstExpr)
+      .ui <- .getUiFunFromIniAndModel(.ui, .ini, .model)
+      # apply renames and evaluate new model
+      .ui <- eval(.uiIovEnv$iovRename)
       assign("ui", .ui, envir = ret$env)
+
+      .finalDf <- .ui$iniDf
+      .est <- setNames(.finalDf$est, .finalDf$name)
 
       # Adjust Matrices to remove dummy IOV components
       .omega <- ret$env$omega
@@ -458,11 +570,10 @@ nlmixr2iovVarSd <- function(val) {
     # but the data drops the iovDrop
     if (inherits(ret, "data.frame")) {
       .w <- which(names(ret) %in% .uiIovEnv$iovDrop)
+      .cls <- class(ret)
       if (length(.w) > 0L) {
-        .cls <- class(ret)
         class(ret) <- "data.frame"
         ret <- ret[,-.w]
-        class(ret) <- .cls
       }
       .rename <- paste0(.uiIovEnv$iovVars, ".rx")
       names(ret) <- vapply(names(ret), function(n) {
@@ -472,8 +583,12 @@ nlmixr2iovVarSd <- function(val) {
           n
         }
       }, character(1), USE.NAMES = FALSE)
+      class(ret) <- .cls
     }
     .stripFastmatchHash(ret$env)
   }
   ret
 }
+
+preProcessHooksAdd(".uiApplyIov", .uiApplyIov)
+postFinalObjectHooksAdd(".uiFinalizeIov", .uiFinalizeIov)

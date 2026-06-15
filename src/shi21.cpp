@@ -133,7 +133,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
     return -1.0;
   }
   fm1 = f(tm1, id);
-  finiteFm1 = fp1.is_finite();
+  finiteFm1 = fm1.is_finite();
   if (!finiteFm1) {
     finiteFp3 = true;
     finiteFm3 = true;
@@ -146,7 +146,7 @@ double shiRC(double &h, shi21fn_type f, double ef, arma::vec &t, int &id, int &i
     return -1.0;
   }
   arma::vec fm3 = f(tm3, id);
-  finiteFm3 = fp3.is_finite();
+  finiteFm3 = fm3.is_finite();
   if (!finiteFm3) {
     return -1.0;
   }
