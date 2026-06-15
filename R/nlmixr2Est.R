@@ -209,11 +209,13 @@ nlmixr2Est0 <- function(env, ...) {
     while (get("reset", envir=.envReset)) {
       assign("reset", FALSE, envir=.envReset)
       ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
-      if (!is.null(ret[[1]])) {
-        # Only assign the new result when the inner fit produced a
-        # model object.  Store the full list (model + warnings) so the
-        # downstream code that reads `.lst[[1]]`/`.lst[[2]]` after the
-        # while loop gets the same shape as the non-reset branch above.
+      if (!is.null(ret[[1]]) || !exists("ret", envir=.envReset, inherits=FALSE)) {
+        # Store the result on the first pass unconditionally, and on later
+        # cache-reset passes only when the inner fit produced a model object
+        # (so a retry that yields NULL does not clobber an earlier success).
+        # Estimation methods that legitimately return a NULL model (e.g.
+        # est="monolix" create-without-running, est="saemix") still need
+        # `.envReset$ret` set so the downstream `get("ret", ...)` succeeds.
         assign("ret", ret, envir=.envReset)
       }
       if (length(ret$error) > 0) {
