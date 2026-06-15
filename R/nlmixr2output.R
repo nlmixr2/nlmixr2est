@@ -357,7 +357,7 @@
     .updateParFixedApplyManualBacktransformations(
       popDf = popDf,
       iniDf = .ui$iniDf,
-      ci = .ret$control$ci,
+      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
@@ -375,8 +375,8 @@
   .ret$parFixed <-
     .updateParFixedApplySig(
       popDf,
-      digits = .ret$control$sigdig,
-      ci = .ret$control$ci,
+      digits = rxode2::rxGetControl(.ui, "sigdig", 3L),
+      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
       fixedNames = .fixedNames,
       bsvFixedNames = .bsv$bsvFixedNames
     )
