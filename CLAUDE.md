@@ -62,33 +62,20 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 
 `tests/testthat/helper-zzz-fits.R` pre-fits models and caches them so individual test files can reference fitted objects without re-running estimation. Fixture `.rds` files live in `tests/testthat/fixtures/`.
 
-### Parallel tests and CI thread policy
+### Test thread policy
 
-The suite runs in parallel (`Config/testthat/parallel: true`, `edition: 3` in
-`DESCRIPTION`). Getting this green on the small (4-core) CI runners depends on a
-few non-obvious rules — changing any of them has historically caused 6h timeouts
-or exit-143 ("the runner has received a shutdown signal"):
+`tests/testthat.R` keeps CI and CRAN from oversubscribing core-limited runners
+(which historically caused 6h timeouts / exit-143 "the runner has received a
+shutdown signal"):
 
-- **Worker count** is set in `tests/testthat.R` to `detectCores()/2` (1 on CRAN),
-  so `workers x within-solve-threads` stays near `nproc`. Override with the
-  `NLMIXR2_TESTTHAT_CPUS` env var where `detectCores()` can't see the real
-  allotment (containers/cgroups report the host count, not the cpuset).
-- **Per-worker compile dir** (`tests/testthat/helper-aaa-threads.R`): rxode2
-  caches one shared model-compile directory (`.rxTempDir0`); parallel workers
-  compiling into it race and corrupt each other ("error building model"). The
-  helper points `rxTempDir` at a per-PID directory in every worker.
-- **BLAS/OpenMP thread caps must be set in the environment BEFORE R starts** — see
-  `env:` in `.github/workflows/R-CMD-check.yaml`. OpenBLAS is loaded via
-  `libRblas.so` at R startup and reads `OPENBLAS_NUM_THREADS` only then, so
-  `Sys.setenv()` inside `tests/testthat.R` is too late and OpenBLAS spins one
-  thread per core; combined with the solve threads this saturates the runner and
-  the agent is killed. (`setRxThreads()`/`setDTthreads()` are runtime APIs and do
-  work from R.) To reproduce CI locally you must use threaded OpenBLAS, not the
-  default reference BLAS — see the `internals-ci-faithful-docker-repro` notes.
-- **Do not pass a non-parallel reporter** to `test_check()`. testthat silently
+- **testthat workers**: a single worker on CI (`CI=true`) or CRAN; everywhere
+  else testthat manages `Config/testthat/parallel` (`parallel: true`,
+  `edition: 3` in `DESCRIPTION`) normally.
+- **rxode2 / data.table within-solve threads**: capped to 2 on CRAN only; on CI
+  and locally rxode2 manages its own threads.
+- **Do not pass a non-parallel reporter** to `test_check()` — testthat silently
   falls back to serial when `reporter$capabilities$parallel_support` is FALSE
-  (e.g. `LocationReporter`), which defeats the parallel config and moves all work
-  into the BLAS-uncapped main process.
+  (e.g. `LocationReporter`), which defeats the parallel config.
 
 ## Key conventions
 
