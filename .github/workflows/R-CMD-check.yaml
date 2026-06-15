@@ -34,20 +34,6 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
-      # Thread-pool caps MUST live here, not in testthat.R: BLAS libraries
-      # (OpenBLAS on Linux, Accelerate/vecLib on macOS) read these only at
-      # process startup, so Sys.setenv() inside R is too late and OpenBLAS then
-      # spins one thread PER CORE.  Combined with the within-solve OpenMP threads
-      # that saturates the runner, the agent misses heartbeats and the job is
-      # killed with exit 143 ("the runner has received a shutdown signal").
-      # Capping here makes every R process (check, tests, parallel workers)
-      # single-threaded for BLAS and non-spinning for OpenMP.
-      OPENBLAS_NUM_THREADS: 1
-      OMP_NUM_THREADS: 2
-      OMP_WAIT_POLICY: passive
-      GOMP_SPINCOUNT: 0
-      MKL_NUM_THREADS: 1
-      VECLIB_MAXIMUM_THREADS: 1
 
     steps:
       - name: Install deps on MacOS
@@ -65,34 +51,6 @@ jobs:
           r-version: ${{ matrix.config.r }}
           http-user-agent: ${{ matrix.config.http-user-agent }}
           use-public-rspm: true
-
-      # Diagnostic: the runner core count drives the test thread budget (1 worker
-      # x 2 within-solve threads must leave a core free for the runner agent).
-      - name: Report runner resources
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          echo "nproc=$(nproc)"
-          Rscript -e 'cat("detectCores=", parallel::detectCores(), "\n")'
-          free -h || true
-
-      # Windows Defender scans every compiled object/DLL; rxode2 compiles a model
-      # per fit, so under the parallel test suite the scanning dominates and the
-      # job hits the 6h limit. Exclude the compilers and temp dirs from real-time
-      # scanning (best-effort; never fail the job if it can't be set).
-      - name: Exclude R build/temp dirs from Windows Defender
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          try {
-            Add-MpPreference -ExclusionProcess gcc.exe, g++.exe, gfortran.exe, R.exe, Rterm.exe, Rscript.exe, Rcmd.exe, make.exe, cc1.exe, cc1plus.exe, ld.exe, collect2.exe -ErrorAction Stop
-            foreach ($p in @($env:TEMP, $env:TMP, $env:RUNNER_TEMP, "$env:LOCALAPPDATA\Temp")) {
-              if ($p -and (Test-Path $p)) { Add-MpPreference -ExclusionPath $p -ErrorAction Stop }
-            }
-            Write-Host "Defender exclusions added."
-          } catch {
-            Write-Host "Could not set Defender exclusions (continuing): $_"
-          }
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:

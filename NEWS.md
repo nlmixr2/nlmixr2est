@@ -1,22 +1,9 @@
 # nlmixr2est (development version)
 
-- The test suite is now robust on CI.  Three independent problems were
-  fixed:
-  - Each test process gets its own rxode2 model-compile directory; with
-    `Config/testthat/parallel` the workers previously raced on one shared
-    cache directory, producing spurious "error building model" failures
-    and 6h timeouts.
-  - The suite runs a single testthat worker by default (overridable with
-    the `NLMIXR2_TESTTHAT_CPUS` environment variable) with within-solve
-    threads kept at 2, so `workers x threads` no longer saturates every
-    CPU -- leaving a core for the CI runner's heartbeat agent.  Saturating
-    all cores was starving the agent and killing the devel/oldrel jobs
-    with exit 143 ("the runner has received a shutdown signal").
-  - BLAS/OpenMP thread pools are now capped in the CI *environment*
-    (`OPENBLAS_NUM_THREADS` etc. in the workflow) instead of via
-    `Sys.setenv()` in `tests/testthat.R`.  OpenBLAS is loaded at process
-    startup and reads that variable only then, so the in-R setting was
-    always too late and OpenBLAS ran one thread per core.
+- The test suite runs a single testthat worker on CI and on CRAN (so it
+  does not oversubscribe a core-limited runner) and parallel
+  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
+  capped to 2 only on CRAN and left to rxode2's own management otherwise.
 
 - `fit$time` now reports every estimation stage consistently; previously
   stages under 5e-5 s were dropped, so the set of reported stages varied
