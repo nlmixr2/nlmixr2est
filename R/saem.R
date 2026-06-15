@@ -10,7 +10,10 @@
 }
 
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  # PR #655: wire maxOuterIterations through to the optimizer's native
+  # maxfun control.  This is the canonical .newuoa (the focei.R copy was a
+  # masked duplicate removed in PR #679), so the control wiring lives here.
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   if (is.null(.ctl$rhobeg)) .ctl$rhobeg <- 0.2
   if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
