@@ -272,7 +272,7 @@
   if (is.null(model$covars)) {
     covariables <- NULL
   } else {
-    covariables <- unlist(stats::aggregate(.as.data.frame(data$data[, model$covars, drop = FALSE]),
+    covariables <- unlist(stats::aggregate(as.data.frame(data$data[, model$covars, drop = FALSE]),
                                            list(id),
                                            unique)[, -1, drop = FALSE])
   }
@@ -296,14 +296,6 @@
   mlen <- max(nb_measures)
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
   indio <- grep(1, t(io)) - 1
-  ## mPars <- if (ninputpars == 0) NULL else unlist(stats::aggregate(.as.data.frame(data$data[, inPars]), list(id), unique)[, -1])
-  ## if (!is.null(mPars)) {
-  ##   dim(mPars) <- c(N, ninputpars)
-  ##   opt$mPars <- mPars
-  ##   ix <- rep(1:dim(mPars)[1], nmc)
-  ##   optM$mPars <- mPars[ix, ]
-  ##   dim(optM$mPars) <- c(nmc * N, ninputpars)
-  ## }
 
   if (is.null(data$nmdat$CMT)) data$nmdat$CMT <- 1 ## CHECKME
   if (any(is.na(data$nmdat$CMT))) {
@@ -334,7 +326,7 @@
     stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
          call. = FALSE)
   }
-  dat <- .as.data.frame(dat[, -.dvCol])
+  dat <- as.data.frame(dat[, -.dvCol])
   names(dat) <- vapply(names(dat), function(n) {
     if (n %in% inPars) return(n)
     return(toupper(n))

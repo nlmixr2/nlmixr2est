@@ -37,3 +37,4 @@ vignettes/ggpmx_GOF/
 docs
 revdep/
 tests/testthat/fixtures/*.rds
+/.claude/worktrees
