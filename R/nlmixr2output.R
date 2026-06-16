@@ -322,6 +322,49 @@
   ret
 }
 
+#' Apply the automatic back-transformation to fixed-parameter estimates
+#'
+#' Fixed population parameters are literal-fixed out of the model before the fit,
+#' so focei's C-side never computes their back-transformed value (it only sees
+#' the estimated parameters and re-adds the fixed ones afterwards with their raw
+#' estimate).  Run the back-transform detection on the unfixed original model so
+#' a fixed parameter is back-transformed exactly as it would be if it were
+#' estimated -- e.g. a fixed `tka` inside `exp(tka)` reports `exp(tka)` rather
+#' than the raw `tka`.  The transform for each parameter comes from
+#' `ui$muRefCurEval` (the same source the estimated-parameter back-transform
+#' uses): `exp` -> `exp()`, `expit` -> `expit(low, hi)`, `probitInv` ->
+#' `probitInv(low, hi)`; anything else is left untransformed.
+#'
+#' @param theta Named numeric vector of (fixed) parameter estimates to
+#'   back-transform.
+#' @param ui The rxode2 ui that still contains the fixed parameters (the unfixed
+#'   original model, `nlmixr2global$nlmixr2EstEnv$uiUnfix`).
+#' @return `theta` with the automatic log/logit/probit back-transformation applied
+#'   to the entries that have one; entries with no detected transform are returned
+#'   unchanged.
+#' @author Matthew L. Fidler and Bill Denney
+#' @noRd
+.updateParFixedAutoBackTransform <- function(theta, ui) {
+  if (length(theta) == 0L) {
+    return(theta)
+  }
+  .muRefCurEval <- ui$muRefCurEval
+  .ret <- theta
+  for (.n in names(theta)) {
+    .w <- which(.muRefCurEval$parameter == .n)
+    if (length(.w) != 1L) next
+    .curEval <- .muRefCurEval$curEval[.w]
+    if (isTRUE(.curEval == "exp")) {
+      .ret[.n] <- exp(theta[.n])
+    } else if (isTRUE(.curEval == "expit")) {
+      .ret[.n] <- rxode2::expit(theta[.n], .muRefCurEval$low[.w], .muRefCurEval$hi[.w])
+    } else if (isTRUE(.curEval == "probitInv")) {
+      .ret[.n] <- rxode2::probitInv(theta[.n], .muRefCurEval$low[.w], .muRefCurEval$hi[.w])
+    }
+  }
+  .ret
+}
+
 #' Create the parFixed dataset
 #'
 #' @param .ret focei style environment
@@ -354,6 +397,12 @@
       )
     # Combine estimated and fixed parameters, then order them by the theta names
     .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
+
+    # Back-transform the fixed parameters.  They are literal-fixed out of the
+    # model before the fit, so the C-side never computes their back-transform
+    # and they would otherwise show their raw (transformed-scale) estimate.
+    .popDf[.fixedNames, "Back-transformed"] <-
+      .updateParFixedAutoBackTransform(.theta[.fixedNames], .ui)
 
     # Show the fixed values in the model
     .ret$popDf <- .popDf
