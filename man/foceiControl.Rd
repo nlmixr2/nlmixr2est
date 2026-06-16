@@ -783,8 +783,7 @@ solve.}
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{fallbackFD}{Fallback to the finite differences if the
 sensitivity equations do not solve.}
