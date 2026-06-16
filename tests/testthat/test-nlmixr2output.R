@@ -321,6 +321,52 @@ test_that(".updateParFixedAddBsv keeps the BSV column numeric when a mu-referenc
   expect_equal(fmt[["BSV(CV%)"]], c("", "59.1", "32.4", ""))
 })
 
+test_that("FIXED parameters are back-transformed in $parFixed", {
+  # Fixed population parameters are literal-fixed out of the model before the
+  # fit, so focei's C-side never computes their back-transform and they used to
+  # show their raw estimate in the Back-transformed column.  They should be
+  # back-transformed exactly as they would be if estimated.
+
+  # exp() transform via a helper-set model with one theta fixed.  The
+  # back-transform of a fixed value is deterministic (exp(0.45)), independent of
+  # the fit.
+  fit <- .nlmixr(one.compartment |> ini(tka = fix(0.45)), theo_sd,
+                 est = "focei", control = foceiControlFast)
+  expect_equal(fit$parFixedDf["tka", "Estimate"], 0.45)
+  expect_equal(fit$parFixedDf["tka", "Back-transformed"], exp(0.45))
+  expect_true(is.na(fit$parFixedDf["tka", "SE"]))
+  # estimated parameters are still back-transformed (exp of the estimate)
+  expect_equal(
+    fit$parFixedDf["tcl", "Back-transformed"],
+    exp(fit$parFixedDf["tcl", "Estimate"])
+  )
+  # the formatted table reflects the back-transformed value, not the raw one
+  .btCol <- grep("^Back", names(fit$parFixed), value = TRUE)
+  expect_equal(fit$parFixed["tka", .btCol], formatMinWidth(exp(0.45), digits = fit$control$sigdigTable))
+
+  # expit() transform: a fixed logit-scale parameter must back-transform with
+  # expit() and its bounds (here back to 0.75).
+  expitMod <- function() {
+    ini({
+      temax <- fixed(logit(0.75))
+      tec50 <- log(2)
+      eta.ec50 ~ 0.1
+      add.sd <- 0.1
+    })
+    model({
+      emax <- expit(temax)
+      ec50 <- exp(tec50 + eta.ec50)
+      eff <- emax * time / (ec50 + time)
+      eff ~ add(add.sd)
+    })
+  }
+  d <- nlmixr2data::theo_sd
+  d$DV <- d$DV / max(d$DV)
+  fitExpit <- .nlmixr(expitMod, d, est = "focei", control = foceiControlFast)
+  expect_equal(fitExpit$parFixedDf["temax", "Estimate"], rxode2::logit(0.75))
+  expect_equal(fitExpit$parFixedDf["temax", "Back-transformed"], 0.75)
+})
+
 test_that("$parFixed honors sigdigTable and ci from the control for models with FIXED parameters", {
   # Regression test: .updateParFixed() read sigdig/ci via rxGetControl(.ui, ...),
   # but for models with fixed parameters .ui is the unfixed model, which carries

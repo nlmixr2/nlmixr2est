@@ -149,6 +149,15 @@
   effectively pinned such parameters at their initial value (e.g.
   `tvemax <- -40` with no transform).
 
+- FIXED population parameters are now back-transformed in the `$parFixed` /
+  `$parFixedDf` tables.  Fixed parameters are literal-fixed out of the model
+  before the fit, so the back-transform was never computed and the
+  `Back-transformed` column showed their raw (transformed-scale) estimate --
+  e.g. a fixed `tka` inside `exp(tka)` reported `tka` instead of `exp(tka)`.
+  The fixed parameters now reuse the model's transform detection
+  (`ui$muRefCurEval`), so `exp`, `expit`, and `probitInv` transforms are
+  reported on the same scale they would be if the parameter were estimated.
+
 - New function `formatMinWidth()` to make `$parFixed` show shorter text
   and more often show non-scientific notation representations. The
   `$parFixed` data.frame is now built directly with data.frame
