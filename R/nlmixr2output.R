@@ -112,12 +112,18 @@
 #' @author Matthew L. Fidler and Bill Denney
 #' @noRd
 .updateParFixedGetEtaRow <- function(.eta, .env, .ome, .omegaFix, .muRefCurEval, .sigdig) {
+  # Always return a one-row data.frame with the same `ch`/`v` shape (and a
+  # numeric `v`).  Returning a bare "" here used to corrupt the `do.call(rbind,
+  # .cvp)` in .updateParFixedAddBsv(): mixing a character scalar with the
+  # data.frame rows coerced the whole `v` column to character, so the numeric
+  # BSV values reached $parFixedDf as full-precision strings (e.g.
+  # "22.6896152419656") and the missing values printed as "<NA>" instead of "".
   if (is.null(.ome)) {
     # This can happen if there are no BSV parameters in a model
-    return("")
+    return(data.frame(ch = "", v = NA_real_))
   } else if (!(.eta %in% rownames(.ome))) {
     # This can happen if .eta is a fixed BSV parameter
-    return("")
+    return(data.frame(ch = "", v = NA_real_))
   }
   .v <- .ome[.eta, .eta]
   .w <- which(.muRefCurEval$parameter == .eta)
@@ -352,18 +358,31 @@
     # Show the fixed values in the model
     .ret$popDf <- .popDf
   }
+  # The significant digits and confidence interval for the *table* come from
+  # the fit's control object.  $ui carries no control once the fit is
+  # assembled, and for models with fixed parameters .ui is the (control-free)
+  # unfixed model -- so reading them via rxGetControl(.ui, ...) silently fell
+  # back to the defaults and ignored the user's sigdigTable/ci.  The display
+  # uses sigdigTable (the dedicated "final output table" digits, which defaults
+  # to sigdig), not the optimization sigdig.
+  .ctlNum <- function(.key, .default) {
+    .v <- .ret$control[[.key]]
+    if (length(.v) == 1L && !is.na(.v)) .v else .default
+  }
+  .tableSigdig <- .ctlNum("sigdigTable", .ctlNum("sigdig", 3L))
+  .tableCi <- .ctlNum("ci", 0.95)
   popDf <- .ret$popDf
   popDf <-
     .updateParFixedApplyManualBacktransformations(
       popDf = popDf,
       iniDf = .ui$iniDf,
-      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
+      ci = .tableCi,
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
   .bsv <- .updateParFixedAddBsv(
     popDf, iniDf = .ui$iniDf, omega = .ret$omega,
-    .sigdig = rxode2::rxGetControl(.ui, "sigdig", 3L),
+    .sigdig = .tableSigdig,
     .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
   )
   popDf <- .bsv$popDf
@@ -375,8 +394,8 @@
   .ret$parFixed <-
     .updateParFixedApplySig(
       popDf,
-      digits = rxode2::rxGetControl(.ui, "sigdig", 3L),
-      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
+      digits = .tableSigdig,
+      ci = .tableCi,
       fixedNames = .fixedNames,
       bsvFixedNames = .bsv$bsvFixedNames
     )
