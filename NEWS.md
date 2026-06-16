@@ -6,6 +6,23 @@
   operations rather than environment side-effects, and `FIXED` and
   shrinkage suffixes are appended. (#346, #516)
 
+- The `$parFixed` table now formats with `sigdigTable` and the requested
+  `ci` even for models that have FIXED parameters.  Those values were read
+  from the unfixed model (which carries no control), so a user's
+  `sigdigTable`/`ci` (e.g. via `control = list(ci = 0.9, sigdig = 4)`) was
+  silently dropped and the table fell back to 3 significant digits / a 95%
+  CI.  They are now read from the fit's control object, and the table uses
+  the dedicated `sigdigTable` digits rather than the optimization `sigdig`.
+
+- The `BSV` column of `$parFixed` again shows the between-subject
+  variability rounded to the requested significant digits, and shows `""`
+  (rather than `<NA>`) for parameters with no BSV.  When a mu-referenced eta
+  was absent from the omega matrix (e.g. a fixed/zero BSV the estimator
+  drops, or a model with no BSV), `.updateParFixedGetEtaRow()` returned a
+  bare `""` that coerced the numeric BSV column to character, so unformatted
+  full-precision values (e.g. `22.6896152419656`) and `<NA>` survived into
+  `$parFixedDf` / `$parFixed`.
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding

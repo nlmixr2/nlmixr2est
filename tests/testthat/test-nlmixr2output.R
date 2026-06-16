@@ -97,25 +97,29 @@ test_that("formatMinWidth in parFixed", {
 
   # Simple ----
   fit <- .nlmixr(one.compartment, theo_sd, est="focei", control = foceiControlFast)
+  # The table is formatted with sigdigTable (the dedicated "final output table"
+  # digits), which defaults to sigdig.  Deriving the expected digits from the
+  # control keeps the test robust to the foceiControl() sigdig default.
+  .digs <- fit$control$sigdigTable
   expect_equal(
     fit$parFixed,
     structure(
       list(
-        Est. = formatMinWidth(fit$parFixedDf$Estimate),
-        SE = formatMinWidth(fit$parFixedDf$SE, naValue = ""),
-        `%RSE` = formatMinWidth(fit$parFixedDf$`%RSE`, naValue = ""),
+        Est. = formatMinWidth(fit$parFixedDf$Estimate, digits = .digs),
+        SE = formatMinWidth(fit$parFixedDf$SE, digits = .digs, naValue = ""),
+        `%RSE` = formatMinWidth(fit$parFixedDf$`%RSE`, digits = .digs, naValue = ""),
         `Back-transformed(95%CI)` =
           c(
             sprintf(
               "%s (%s, %s)",
-              formatMinWidth(fit$parFixedDf$`Back-transformed`),
-              formatMinWidth(fit$parFixedDf$`CI Lower`),
-              formatMinWidth(fit$parFixedDf$`CI Upper`)
+              formatMinWidth(fit$parFixedDf$`Back-transformed`, digits = .digs),
+              formatMinWidth(fit$parFixedDf$`CI Lower`, digits = .digs),
+              formatMinWidth(fit$parFixedDf$`CI Upper`, digits = .digs)
             )[!is.na(fit$parFixedDf$`CI Upper`)],
-            formatMinWidth(fit$parFixedDf$`Back-transformed`[is.na(fit$parFixedDf$`CI Upper`)])
+            formatMinWidth(fit$parFixedDf$`Back-transformed`[is.na(fit$parFixedDf$`CI Upper`)], digits = .digs)
           ),
-        `BSV(CV%)` = formatMinWidth(fit$parFixedDf$`BSV(CV%)`, naValue = ""),
-        `Shrink(SD)%` = paste0(formatMinWidth(fit$parFixedDf$`Shrink(SD)%`, naValue = ""), c("", ">", "", ""))
+        `BSV(CV%)` = formatMinWidth(fit$parFixedDf$`BSV(CV%)`, digits = .digs, naValue = ""),
+        `Shrink(SD)%` = paste0(formatMinWidth(fit$parFixedDf$`Shrink(SD)%`, digits = .digs, naValue = ""), c("", ">", "", ""))
       ),
       class = c("nlmixr2ParFixed", "data.frame"),
       row.names = c("tka", "tcl", "tv", "add.sd")
@@ -142,22 +146,23 @@ test_that("formatMinWidth in parFixed", {
   }
 
   fitFixed <- .nlmixr(one.compartment.fixed, theo_sd, est="focei", control = foceiControlFast)
+  .digsF <- fitFixed$control$sigdigTable
   expect_equal(
     fitFixed$parFixed,
     structure(
       list(
-        Est. = formatMinWidth(fitFixed$parFixedDf$Estimate),
-        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:3]), ""),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:3]), ""),
+        Est. = formatMinWidth(fitFixed$parFixedDf$Estimate, digits = .digsF),
+        SE = c("FIXED", formatMinWidth(fitFixed$parFixedDf$SE[2:3], digits = .digsF), ""),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixed$parFixedDf$`%RSE`[2:3], digits = .digsF), ""),
         `Back-transformed(95%CI)` = c(
-          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1]),
+          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[1], digits = .digsF),
           sprintf(
             "%s (%s, %s)",
-            formatMinWidth(fitFixed$parFixedDf$`Back-transformed`),
-            formatMinWidth(fitFixed$parFixedDf$`CI Lower`),
-            formatMinWidth(fitFixed$parFixedDf$`CI Upper`)
+            formatMinWidth(fitFixed$parFixedDf$`Back-transformed`, digits = .digsF),
+            formatMinWidth(fitFixed$parFixedDf$`CI Lower`, digits = .digsF),
+            formatMinWidth(fitFixed$parFixedDf$`CI Upper`, digits = .digsF)
           )[2:3],
-          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[4])
+          formatMinWidth(fitFixed$parFixedDf$`Back-transformed`[4], digits = .digsF)
         ),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -187,23 +192,24 @@ test_that("formatMinWidth in parFixed", {
   }
 
   fitFixedLabel <- .nlmixr(one.compartment.labeled, theo_sd,  est="focei", control = list(print = 0))
+  .digsL <- fitFixedLabel$control$sigdigTable
   expect_equal(
     fitFixedLabel$parFixed,
     structure(
       list(
         Parameter = c("ka", "clearance", "", ""),
-        Est. = formatMinWidth(fitFixedLabel$parFixedDf$Estimate),
-        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:3]), ""),
-        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:3]), ""),
+        Est. = formatMinWidth(fitFixedLabel$parFixedDf$Estimate, digits = .digsL),
+        SE = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$SE[2:3], digits = .digsL), ""),
+        `%RSE` = c("FIXED", formatMinWidth(fitFixedLabel$parFixedDf$`%RSE`[2:3], digits = .digsL), ""),
         `Back-transformed(95%CI)` = c(
-          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[1]),
+          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[1], digits = .digsL),
           sprintf(
             "%s (%s, %s)",
-            formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`),
-            formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`),
-            formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`)
+            formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`, digits = .digsL),
+            formatMinWidth(fitFixedLabel$parFixedDf$`CI Lower`, digits = .digsL),
+            formatMinWidth(fitFixedLabel$parFixedDf$`CI Upper`, digits = .digsL)
           )[2:3],
-          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[4])
+          formatMinWidth(fitFixedLabel$parFixedDf$`Back-transformed`[4], digits = .digsL)
         ),
         `BSV(SD)` = c("", "", "", ""),
         `Shrink(SD)%` = c("", "", "", "")
@@ -240,4 +246,105 @@ test_that("formatMinWidth in parFixed", {
       row.names = c("tka", "tcl", "tv", "add.sd")
     )
   )
+})
+
+test_that(".updateParFixedGetEtaRow returns a numeric `v` when there is no BSV", {
+  # When the omega is NULL (no BSV in the model) or the eta is absent from the
+  # omega matrix (e.g. a fixed/zero BSV that the estimator drops), the row must
+  # still be a one-row data.frame with a *numeric* `v`.  Returning a bare ""
+  # coerced the `v` column to character in .updateParFixedAddBsv() (see the
+  # regression test below).
+  envPrep <- new.env()
+  expect_equal(
+    .updateParFixedGetEtaRow(
+      .eta = "eta.ka",
+      .env = envPrep,
+      .ome = NULL,
+      .omegaFix = c(eta.ka = FALSE),
+      .muRefCurEval = data.frame(parameter = "eta.ka", curEval = "exp", low = NA_real_, hi = NA_real_),
+      .sigdig = 3L
+    ),
+    data.frame(ch = "", v = NA_real_)
+  )
+
+  envPrep <- new.env()
+  .row <-
+    .updateParFixedGetEtaRow(
+      .eta = "eta.ka",
+      .env = envPrep,
+      .ome = matrix(0.1, nrow = 1, dimnames = list("eta.cl", "eta.cl")),
+      .omegaFix = c(eta.ka = FALSE, eta.cl = FALSE),
+      .muRefCurEval = data.frame(parameter = "eta.ka", curEval = "exp", low = NA_real_, hi = NA_real_),
+      .sigdig = 3L
+    )
+  expect_equal(.row, data.frame(ch = "", v = NA_real_))
+  expect_true(is.numeric(.row$v))
+})
+
+test_that(".updateParFixedAddBsv keeps the BSV column numeric when a mu-referenced eta is absent from omega", {
+  # Regression test: a mu-referenced eta that is missing from the omega matrix
+  # used to make .updateParFixedGetEtaRow() return a bare "", which coerced the
+  # whole BSV `v` column to character in do.call("rbind", .cvp).  That left the
+  # numeric BSV values as full-precision strings (e.g. "59.1488636895083") and
+  # printed the missing values as "<NA>" instead of "".
+  ui <- one.compartment
+
+  popDf <- data.frame(
+    Estimate = c(0.45, 1, 3.45, 0.7),
+    row.names = c("tka", "tcl", "tv", "add.sd"),
+    check.names = FALSE
+  )
+  # omega is missing eta.ka (tka is still mu-referenced to it)
+  omega <- diag(c(0.3, 0.1))
+  dimnames(omega) <- list(c("eta.cl", "eta.v"), c("eta.cl", "eta.v"))
+
+  res <-
+    .updateParFixedAddBsv(
+      popDf, iniDf = ui$iniDf, omega = omega, .sigdig = 3L,
+      .muRefDataFrame = ui$muRefDataFrame, .muRefCurEval = ui$muRefCurEval
+    )
+
+  # The BSV column must stay numeric (not coerced to character)
+  expect_true(is.numeric(res$popDf[["BSV(CV%)"]]))
+  expect_equal(
+    res$popDf[["BSV(CV%)"]],
+    c(NA_real_, sqrt(exp(0.3) - 1) * 100, sqrt(exp(0.1) - 1) * 100, NA_real_)
+  )
+
+  # And the formatted $parFixed shows 3 significant figures with "" (not "<NA>")
+  # for the parameters that have no BSV.
+  fmt <-
+    .updateParFixedApplySig(
+      res$popDf, digits = 3L, ci = 0.95,
+      fixedNames = character(), bsvFixedNames = res$bsvFixedNames
+    )
+  expect_equal(fmt[["BSV(CV%)"]], c("", "59.1", "32.4", ""))
+})
+
+test_that("$parFixed honors sigdigTable and ci from the control for models with FIXED parameters", {
+  # Regression test: .updateParFixed() read sigdig/ci via rxGetControl(.ui, ...),
+  # but for models with fixed parameters .ui is the unfixed model, which carries
+  # no control -- so the user's sigdigTable/ci were silently dropped and the
+  # table used the defaults (3 significant digits, 95% CI).  They must come from
+  # the fit's control object instead.
+  mod <- function() {
+    ini({
+      tka <- fixed(log(1.57))
+      tcl <- log(2.72)
+      tv <- log(31.5)
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl); v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  fit <- .nlmixr(mod, theo_sd, est = "focei", control = list(print = 0, ci = 0.9, sigdig = 4))
+  # ci propagates to the back-transformed column name
+  expect_true(any(grepl("90%CI", names(fit$parFixed), fixed = TRUE)))
+  # sigdigTable (= sigdig = 4 here) propagates to the formatted estimate
+  expect_equal(fit$parFixed["tcl", "Est."], formatMinWidth(fit$parFixedDf["tcl", "Estimate"], digits = 4))
 })
