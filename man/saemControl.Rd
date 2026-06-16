@@ -221,8 +221,7 @@ controls the \code{atol}/\code{rtol} of the steady state solutions. The
 this is unspecified (\code{NULL}) and uses the standard \code{atol}/\code{rtol}.}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}

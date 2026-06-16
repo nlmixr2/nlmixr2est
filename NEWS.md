@@ -171,6 +171,7 @@
   silently dropped and the table fell back to 3 significant digits / a 95%
   CI.  They are now read from the fit's control object, and the table uses
   the dedicated `sigdigTable` digits rather than the optimization `sigdig`.
+  When not supplied, `sigdigTable` now defaults to `sigdig`.
 
 - The `BSV` column of `$parFixed` again shows the between-subject
   variability rounded to the requested significant digits, and shows `""`

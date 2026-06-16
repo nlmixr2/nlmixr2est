@@ -23,8 +23,7 @@
 #' }
 #'
 #' @param sigdigTable Significant digits in the final output table.
-#'   If not specified, then it matches the significant digits in the
-#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
+#'   If not specified (`NULL`), it defaults to `sigdig`.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -950,11 +949,7 @@ foceiControl <- function(sigdig = 4, #
     }
   }
   if (is.null(sigdigTable)) {
-    if (is.null(sigdig)) {
-      sigdigTable <- 3L
-    } else {
-      sigdigTable <- sigdig
-    }
+    sigdigTable <- sigdig
   } else {
     checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
   }

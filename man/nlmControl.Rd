@@ -408,8 +408,7 @@ function.  By default this is \code{TRUE}}
 }}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{boundedTransform}{boolean indicating if the bounded
 parameters should by transformed when using a unbounded
