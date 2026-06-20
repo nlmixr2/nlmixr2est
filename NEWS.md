@@ -1,5 +1,18 @@
 # nlmixr2est (development version)
 
+- SAEM no longer errors with `No data with ID: <id>` for a subject that has
+  a dose but no usable observation (e.g. all of its `DV` values are missing,
+  which `rxode2::etTrans()` converts to `EVID==2` records).  The shared
+  preprocessor (`.foceiPreProcessData()`) now drops any subject without an
+  observation -- emitting the same `IDs without observations dropped` message
+  `rxode2` already uses for dose-only subjects -- and the shared table builder
+  re-inserts those subjects' rows with a population `PRED` (solved at `eta = 0`)
+  and `NA` individual columns (`IPRED`, etas, residuals).  Every estimation
+  method now handles observation-less subjects the same way: the subject is
+  reported in `$runInfo` and appears in the output with a population prediction
+  and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
+  removed (#687).
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
