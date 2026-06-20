@@ -423,18 +423,23 @@
 #'   `fitModel` via `warning()` (nlm does this; the others do not)
 #' @param extra `$extra` print string, or a `function(control)` returning it
 #' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
-#' @param preFinalize optional `function(ret, ui)` returning a modified `ret`,
-#'   run just before `nlmixr2CreateOutputFromUi()` for method-specific tweaks
+#' @param objective optional `function(fit)` returning the raw objective; when
+#'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
+#' @param postSetup optional `function(ret, ui, fitList)` returning a modified
+#'   `ret`, run right after the raw fit is stored and before
+#'   `.nlmFamilyAdjustOutput()` -- for methods that must set cov/covMethod/
+#'   objective with custom values that adjustOutput's `is.null` guards then keep
 #' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
 #' @author Matthew L. Fidler
 #' @noRd
-.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta, objective,
+.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta,
                                  controlToFocei, returnFlag,
+                                 objective = NULL,
                                  message = function(fit) fit$message,
                                  emitFitWarnings = FALSE,
                                  extra = "",
                                  adjustOutput = TRUE,
-                                 preFinalize = NULL) {
+                                 postSetup = NULL) {
   .ui <- env$ui
   .control <- .ui$control
   .data <- env$data
@@ -443,6 +448,9 @@
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .fit <- .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
   .ret[[method]] <- .fit[[1]]
+  if (!is.null(postSetup)) {
+    .ret <- postSetup(.ret, .ui, .fit)
+  }
   if (adjustOutput) {
     .ret <- .nlmFamilyAdjustOutput(.ret, method)
   }
@@ -465,14 +473,13 @@
     rm(list = "control", envir = .ui)
   }
   .ret$est <- method
-  .ret$objective <- objective(.ret[[method]])
+  if (!is.null(objective)) {
+    .ret$objective <- objective(.ret[[method]])
+  }
   .ret$model <- .ui$ebe
   .ret$ofvType <- method
   controlToFocei(.ret)
   .ret$theta <- .ret$ui$saemThetaDataFrame
-  if (!is.null(preFinalize)) {
-    .ret <- preFinalize(.ret, .ui)
-  }
   .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
                                     control = .ret$control, table = .ret$table,
                                     env = .ret, est = method)
