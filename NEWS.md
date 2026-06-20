@@ -13,6 +13,19 @@
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
 
+- Internal consolidation of data preparation across estimation methods (no
+  change to any fit result).  The shared preprocessor `.foceiPreProcessData()`
+  already fed every method; this removes the duplication layered on top of it:
+  two never-called data-setup functions (`.nlminbFitDataSetup`,
+  `.nlsFitDataSetup`) were deleted; the column-name normalization and the
+  time-varying-covariate detection were each extracted into a single shared
+  helper (`.nmUpcaseNonCov`, `.nlmixrTimeVaryingCovariates`); and the nine
+  nlm-family `*FamilyControl`/`*FamilyFit` functions (`nlm`, `nlminb`, `bobyqa`,
+  `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nls`) were collapsed onto
+  two generics (`.nlmFamilyControlGeneric`, `.nlmFamilyFitGeneric`).  SAEM's
+  internal event-table `dv` column drop in `.configsaem()` is now by-name with a
+  layout assertion instead of a positional index.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
