@@ -395,3 +395,88 @@
   }
   assign("control", .control, envir = .ui)
 }
+
+#' Generic family-fit driver for the nlm-family estimation methods
+#'
+#' Every nlm-family method shares the same fit spine: preprocess the data, run
+#' the method's optimizer (`fitModel`) collecting warnings, assemble the fit
+#' environment (objective, theta, control, message, ...), and hand it to
+#' `nlmixr2CreateOutputFromUi()`.  The per-method `.<m>FamilyFit` wrappers supply
+#' only what genuinely differs.  The fit environment built here needs (and this
+#' driver populates): table, origData/dataSav/idLvl/covLvl (via
+#' `.foceiPreProcessData`), ui, adjObf, fullTheta, control, extra, est,
+#' objective, model, ofvType, message, theta.
+#'
+#' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
+#' @param method estimation-method string; also the slot the raw fit is stored
+#'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
+#' @param fitModel `function(ui, dataSav)` running the optimizer
+#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param objective `function(fit)` returning the raw objective (driver does not
+#'   multiply; pass e.g. `function(f) 2 * as.numeric(f$minimum)`)
+#' @param controlToFocei `function(env)` translating the control to a
+#'   focei-style control for output assembly
+#' @param returnFlag rxode2 control flag name that short-circuits and returns the
+#'   raw optimizer result (e.g. `"returnNlm"`)
+#' @param message `function(fit)` returning the `$message` (default `fit$message`)
+#' @param emitFitWarnings when TRUE, re-emit the warnings collected from
+#'   `fitModel` via `warning()` (nlm does this; the others do not)
+#' @param extra `$extra` print string, or a `function(control)` returning it
+#' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
+#' @param preFinalize optional `function(ret, ui)` returning a modified `ret`,
+#'   run just before `nlmixr2CreateOutputFromUi()` for method-specific tweaks
+#' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta, objective,
+                                 controlToFocei, returnFlag,
+                                 message = function(fit) fit$message,
+                                 emitFitWarnings = FALSE,
+                                 extra = "",
+                                 adjustOutput = TRUE,
+                                 preFinalize = NULL) {
+  .ui <- env$ui
+  .control <- .ui$control
+  .data <- env$data
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .fit <- .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  .ret[[method]] <- .fit[[1]]
+  if (adjustOutput) {
+    .ret <- .nlmFamilyAdjustOutput(.ret, method)
+  }
+  .ret$message <- NULL
+  if (emitFitWarnings) {
+    lapply(.fit[[2]], function(.w) warning(.w, call. = FALSE))
+  }
+  if (rxode2::rxGetControl(.ui, returnFlag, FALSE)) {
+    return(.ret[[method]])
+  }
+  .ret$message <- message(.ret[[method]])
+  .ret$ui <- .ui
+  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
+  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$control <- .control
+  .ret$extra <- if (is.function(extra)) extra(.control) else extra
+  .nlmixr2FitUpdateParams(.ret)
+  nmObjHandleControlObject(.ret$control, .ret)
+  if (exists("control", .ui)) {
+    rm(list = "control", envir = .ui)
+  }
+  .ret$est <- method
+  .ret$objective <- objective(.ret[[method]])
+  .ret$model <- .ui$ebe
+  .ret$ofvType <- method
+  controlToFocei(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
+  if (!is.null(preFinalize)) {
+    .ret <- preFinalize(.ret, .ui)
+  }
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
+                                    control = .ret$control, table = .ret$table,
+                                    env = .ret, est = method)
+  .env <- .ret$env
+  .env$method <- method
+  .ret
+}
