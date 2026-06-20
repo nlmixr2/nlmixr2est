@@ -235,15 +235,7 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .bobyqaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::bobyqaControl()
-  }
-  if (!inherits(.control, "bobyqaControl")){
-    .control <- do.call(nlmixr2est::bobyqaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::bobyqaControl, "bobyqaControl")
 }
 
 #' @rdname nmObjHandleControlObject
