@@ -247,15 +247,7 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .lbfgsb3cFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::lbfgsb3cControl()
-  }
-  if (!inherits(.control, "lbfgsb3cControl")){
-    .control <- do.call(nlmixr2est::lbfgsb3cControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::lbfgsb3cControl, "lbfgsb3cControl")
 }
 
 #' @rdname nmObjHandleControlObject

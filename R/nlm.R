@@ -303,15 +303,7 @@ rxUiDeparse.nlmControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::nlmControl()
-  }
-  if (!inherits(.control, "nlmControl")){
-    .control <- do.call(nlmixr2est::nlmControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::nlmControl, "nlmControl")
 }
 
 

@@ -382,15 +382,11 @@ rxUiDeparse.optimControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .optimFamilyControl <- function(env, ...) {
+  .nlmFamilyControlGeneric(env, nlmixr2est::optimControl, "optimControl")
+  # optim additionally warns that bounds are ignored for methods that do not
+  # support them
   .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::optimControl()
-  }
-  if (!inherits(.control, "optimControl")) {
-    .control <- do.call(nlmixr2est::optimControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .control <- .ui$control
   if (.control$method %in% c("L-BFGS-B", "Brent")) {
   } else {
     .methodWarn <- paste0(" which are ignored in 'optim' with method='",

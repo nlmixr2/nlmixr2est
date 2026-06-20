@@ -368,3 +368,30 @@
   }
   names(.et)[-seq_len(6)]
 }
+
+#' Generic family-control setup for the nlm-family estimation methods
+#'
+#' Every nlm-family method (`nlm`, `nlminb`, `bobyqa`, `newuoa`, `uobyqa`,
+#' `n1qn1`, `lbfgsb3c`, `optim`, `nls`) sets up its control identically: take the
+#' control from the dispatch env, default it, coerce a plain list to the proper
+#' control object, and assign it onto the ui.  This is that shared body; the
+#' per-method `.<m>FamilyControl` wrappers pass their `*Control()` function and
+#' its class name.
+#'
+#' @param env dispatch environment (provides `ui` and `control`)
+#' @param controlFn the method's `*Control()` constructor (e.g. `nlmControl`)
+#' @param controlClass the control object's S3 class (e.g. `"nlmControl"`)
+#' @return Nothing; assigns the resolved control onto `env$ui`
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFamilyControlGeneric <- function(env, controlFn, controlClass) {
+  .ui <- env$ui
+  .control <- env$control
+  if (is.null(.control)) {
+    .control <- controlFn()
+  }
+  if (!inherits(.control, controlClass)) {
+    .control <- do.call(controlFn, .control)
+  }
+  assign("control", .control, envir = .ui)
+}

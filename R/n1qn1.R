@@ -216,15 +216,7 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .n1qn1FamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::n1qn1Control()
-  }
-  if (!inherits(.control, "n1qn1Control")) {
-    .control <- do.call(nlmixr2est::n1qn1Control, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::n1qn1Control, "n1qn1Control")
 }
 
 #' @rdname nmObjHandleControlObject

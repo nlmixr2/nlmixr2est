@@ -209,15 +209,7 @@ rxUiDeparse.uobyqaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .uobyqaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::uobyqaControl()
-  }
-  if (!inherits(.control, "uobyqaControl")) {
-    .control <- do.call(nlmixr2est::uobyqaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::uobyqaControl, "uobyqaControl")
 }
 
 #' @rdname nmObjHandleControlObject

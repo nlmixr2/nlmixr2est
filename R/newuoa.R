@@ -209,15 +209,7 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .newuoaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::newuoaControl()
-  }
-  if (!inherits(.control, "newuoaControl")){
-    .control <- do.call(nlmixr2est::newuoaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::newuoaControl, "newuoaControl")
 }
 
 #' @rdname nmObjHandleControlObject
