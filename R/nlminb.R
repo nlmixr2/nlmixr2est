@@ -379,17 +379,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
   .ctl
 }
 
-#' Setup the data for nlminb estimation
-#'
-#' @param dataSav Formatted Data
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.nlminbFitDataSetup <- function(dataSav) {
-  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
-}
-
 .nlminbFitModel <- function(ui, dataSav) {
   # Use nlmEnv and function for DRY principle
   .ctl <- ui$control

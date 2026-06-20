@@ -865,23 +865,6 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
 }
 attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(DV, ka, V, CL))
 
-#' Setup the data for nls estimation
-#'
-#' @param dataSav Formatted Data
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.nlsFitDataSetup <- function(dataSav) {
-  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nls' does not work with censored data", call. =FALSE)
-    }
-  }
-  nlmixr2global$nlsEnv$dataNls <- .dsAll[.dsAll$EVID == 0, ] # only observations are passed to nls
-  nlmixr2global$nlsEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlsEnv$model)
-}
-
 .nlsFitModel <- function(ui, dataSav) {
   .ctl <- ui$control
   if (.ctl$solveType != "fun") {
