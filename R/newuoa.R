@@ -209,15 +209,7 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .newuoaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::newuoaControl()
-  }
-  if (!inherits(.control, "newuoaControl")){
-    .control <- do.call(nlmixr2est::newuoaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::newuoaControl, "newuoaControl")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -327,65 +319,11 @@ getValidNlmixrCtl.newuoa <- function(control) {
 }
 
 .newuoaFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .newuoa <- .collectWarn(.newuoaFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$newuoa <- .newuoa[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "newuoa")
-  .ret$message <- .ret$newuoa$message
-  if (rxode2::rxGetControl(.ui, "returnNewuoa", FALSE)) {
-    return(.ret$newuoa)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .newuoaGetTheta(.ret$newuoa, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "newuoa"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$newuoa$fval)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "newuoa"
-  .newuoaControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="newuoa")
-  .env <- .ret$env
-  .env$method <- "newuoa"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "newuoa", .newuoaFitModel, .newuoaGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    controlToFocei = .newuoaControlToFoceiControl,
+    returnFlag = "returnNewuoa")
 }
 
 #' @rdname nlmixr2Est

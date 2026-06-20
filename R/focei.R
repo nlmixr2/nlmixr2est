@@ -1528,13 +1528,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   data <- env$origData
   .covNames <- ui$covariates
-  colnames(data) <- vapply(names(data), function(x) {
-    if (any(x == .covNames)) {
-      x
-    } else {
-      toupper(x)
-    }
-  }, character(1))
+  colnames(data) <- .nmUpcaseNonCov(names(data), .covNames)
   if (is.null(data$ID)) data$ID <- 1L
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
@@ -1580,6 +1574,29 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
+  # Drop subjects that have no usable observation (no EVID==0 rows).  rxode2's
+  # etTrans already removes dose-only subjects (emitting an "IDs without
+  # observations dropped" warning), but a subject whose only observations have
+  # DV=NA is converted by etTrans into EVID==2 rows and would otherwise be kept
+  # with zero observations.  Removing such subjects here -- in the shared
+  # preprocessor -- means every estimation method (FOCEi, SAEM, ...) receives
+  # data without observation-less subjects (e.g. saem's kernel cannot represent
+  # them; see .configsaem).  Their input rows stay in origData and are
+  # re-inserted into the output table (see addTable()): a population PRED is
+  # solved for them while individual columns stay NA, matching FOCEi.  Mirror
+  # etTrans exactly: same warning wording (so it de-duplicates in .collectWarn
+  # and reads identically in $runInfo) and renumber survivors to a contiguous
+  # 1..K sequence.
+  .obsId <- unique(.dat$ID[.dat$EVID == 0])
+  .noObsId <- setdiff(unique(.dat$ID), .obsId)
+  if (length(.noObsId) > 0L) {
+    warning("IDs without observations dropped: ",
+            paste(.idLvl[.noObsId], collapse = " "), call. = FALSE)
+    .dat <- .dat[!(.dat$ID %in% .noObsId), , drop = FALSE]
+    .keepLvl <- .idLvl[sort(.obsId)]
+    .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
+    .idLvl <- .keepLvl
+  }
   env$dataSav <- .dat
   env$idLvl <- .idLvl
   env$covLvl <- .lvls

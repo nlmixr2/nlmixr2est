@@ -46,6 +46,32 @@
   `foceiControl()` correctly omits `outerOpt` when it is left at this
   default.
 
+- SAEM no longer errors with `No data with ID: <id>` for a subject that has
+  a dose but no usable observation (e.g. all of its `DV` values are missing,
+  which `rxode2::etTrans()` converts to `EVID==2` records).  The shared
+  preprocessor (`.foceiPreProcessData()`) now drops any subject without an
+  observation -- emitting the same `IDs without observations dropped` message
+  `rxode2` already uses for dose-only subjects -- and the shared table builder
+  re-inserts those subjects' rows with a population `PRED` (solved at `eta = 0`)
+  and `NA` individual columns (`IPRED`, etas, residuals).  Every estimation
+  method now handles observation-less subjects the same way: the subject is
+  reported in `$runInfo` and appears in the output with a population prediction
+  and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
+  removed (#687).
+
+- Internal consolidation of data preparation across estimation methods (no
+  change to any fit result).  The shared preprocessor `.foceiPreProcessData()`
+  already fed every method; this removes the duplication layered on top of it:
+  two never-called data-setup functions (`.nlminbFitDataSetup`,
+  `.nlsFitDataSetup`) were deleted; the column-name normalization and the
+  time-varying-covariate detection were each extracted into a single shared
+  helper (`.nmUpcaseNonCov`, `.nlmixrTimeVaryingCovariates`); and the nine
+  nlm-family `*FamilyControl`/`*FamilyFit` functions (`nlm`, `nlminb`, `bobyqa`,
+  `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nls`) were collapsed onto
+  two generics (`.nlmFamilyControlGeneric`, `.nlmFamilyFitGeneric`).  SAEM's
+  internal event-table `dv` column drop in `.configsaem()` is now by-name with a
+  layout assertion instead of a positional index.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package

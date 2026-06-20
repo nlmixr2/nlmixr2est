@@ -211,12 +211,12 @@
   s <- subset(data$nmdat, EVID == 0)
   data$data <- as.matrix(s[, c("ID", "TIME", "DV", c(model$covars, inPars))])
 
-  ###  chk for no obs records
-  wh <- setdiff(unique(data$nmdat$ID), unique(data$data[, "ID"]))
-  if (length(wh)) {
-    msg <- paste0("No data with ID: ", paste(wh, collapse = ", "))
-    stop(msg)
-  }
+  # Subjects without an observation are dropped upstream by the shared
+  # preprocessor (.foceiPreProcessData()) -- which renumbers the survivors to a
+  # contiguous 1..K sequence -- and re-inserted into the output (see
+  # addTable()).  Every ID reaching the saem kernel therefore has at least one
+  # EVID==0 record, so the previous "No data with ID" guard here is unreachable
+  # and has been removed.
 
   nphi <- model$N.eta
   mcov <- model$cov.mod
@@ -326,7 +326,16 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  dat <- .as.data.frame(dat[, -6])
+  # The 6th etTrans column is the observation 'dv'; it is dropped here because
+  # the SAEM C kernel receives observations separately (as 'y').  Drop it by
+  # name and assert the expected layout so a future change to etTrans's column
+  # order cannot silently feed the kernel a misaligned event table.
+  .dvCol <- which(tolower(names(dat)) == "dv")
+  if (length(.dvCol) != 1L || .dvCol != 6L) {
+    stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
+         call. = FALSE)
+  }
+  dat <- .as.data.frame(dat[, -.dvCol])
   names(dat) <- vapply(names(dat), function(n) {
     if (n %in% inPars) return(n)
     return(toupper(n))

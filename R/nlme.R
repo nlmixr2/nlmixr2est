@@ -466,17 +466,8 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
   #  foceiControl object
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
-                         addlKeepsCov = .control$rxControl$addlKeepsCov,
-                         addlDropSs = .control$rxControl$addlDropSs,
-                         ssAtDoseTime = .control$rxControl$ssAtDoseTime)
   # Just like saem, nlme can use mu-referenced covariates
-  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
-  if (is.null(.nTv)) .nTv <- 0
-  .tv <- character(0)
-  if (.nTv != 0) {
-    .tv <- names(.et)[-seq(1, 6)]
-  }
+  .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   .nlme <- .collectWarn(.nlmeFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv), lst = TRUE)
   .ret$nlme <- .nlme[[1]]
   .ret$message <- NULL
