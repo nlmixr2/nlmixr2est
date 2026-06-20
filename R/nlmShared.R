@@ -321,3 +321,50 @@
 .nlmAdjustCov <- function(cov, parScaled) {
   .Call(`_nlmixr2est_nlmAdjustCov`, cov, parScaled)
 }
+
+#' Uppercase data column names except the model covariates
+#'
+#' nlmixr2 normalizes input/event-table column names to upper case, but leaves
+#' model covariate columns at their declared case.  This is the single shared
+#' implementation used by `.foceiPreProcessData()`, the covariate-present
+#' pre-process hook, and the output-table re-insertion helpers.
+#'
+#' @param nms character vector of column names
+#' @param covNames character vector of model covariate names (kept as-is)
+#' @return character vector of names, upper-cased except those in `covNames`
+#' @author Matthew L. Fidler
+#' @noRd
+.nmUpcaseNonCov <- function(nms, covNames) {
+  if (is.null(covNames)) covNames <- character(0)
+  vapply(nms, function(.x) {
+    if (.x %in% covNames) .x else toupper(.x)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+#' Detect the time-varying covariate columns for mu-referenced estimators
+#'
+#' SAEM and NLME both support mu-referenced covariates and must know which
+#' covariate columns vary within a subject.  This is the single shared
+#' implementation; it translates the (already preprocessed) data with the base
+#' model vars and returns the time-varying covariate column names.
+#'
+#' @param dataSav preprocessed event-table data (from `.foceiPreProcessData()`)
+#' @param ui rxode2 ui model (uses `ui$mv0`)
+#' @param rxControl rxode2 control (for `addlKeepsCov`/`addlDropSs`/`ssAtDoseTime`)
+#' @return character vector of time-varying covariate column names (possibly empty)
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmixrTimeVaryingCovariates <- function(dataSav, ui, rxControl) {
+  .et <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE,
+                         addlKeepsCov = rxControl$addlKeepsCov,
+                         addlDropSs = rxControl$addlDropSs,
+                         ssAtDoseTime = rxControl$ssAtDoseTime)
+  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+  # nTv == 0 -> no time-varying covariates; otherwise (or, defensively, when the
+  # attribute is absent) the time-varying covariate columns follow the first 6
+  # event-table columns.  This preserves the prior saem behavior exactly.
+  if (!is.null(.nTv) && .nTv == 0L) {
+    return(character(0))
+  }
+  names(.et)[-seq_len(6)]
+}

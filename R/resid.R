@@ -558,10 +558,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   # (uppercase everything except model covariates) so ID/TIME/DV/EVID match the
   # output table's column names regardless of the user's input column case
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
-  if (is.null(.cov)) .cov <- character(0)
-  names(.orig) <- vapply(names(.orig), function(.x) {
-    if (.x %in% .cov) .x else toupper(.x)
-  }, character(1))
+  names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .have <- levels(df$ID)
   if (is.null(.have)) .have <- unique(as.character(df$ID))
   .full <- unique(as.character(.orig$ID))
@@ -628,10 +625,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .orig <- object$origData
   if (is.null(.orig) || is.null(.orig$ID)) return(add)
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
-  if (is.null(.cov)) .cov <- character(0)
-  names(.orig) <- vapply(names(.orig), function(.x) {
-    if (.x %in% .cov) .x else toupper(.x)
-  }, character(1))
+  names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .dvCol <- which(names(.orig) == "DV")
   # Solve each dropped subject on its own.  A single-subject population solve
   # returns one row per observation request (no ID column), so we can align by
