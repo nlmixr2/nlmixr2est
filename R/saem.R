@@ -782,21 +782,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret$table <- env$table
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-    .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
-                           addlKeepsCov = .control$rxControl$addlKeepsCov,
-                           addlDropSs = .control$rxControl$addlDropSs,
-                           ssAtDoseTime = .control$rxControl$ssAtDoseTime)
+    .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
-  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
-  if (is.null(.nTv)) {
-    .tv <- names(.et)[-seq(1, 6)]
-    .nTv <- length(.tv)
-  } else {
-    .tv <- character(0)
-    if (.nTv != 0) {
-    .tv <- names(.et)[-seq(1, 6)]
-    }
-  }
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
   .ret$ui <- .ui
