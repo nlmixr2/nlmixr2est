@@ -38,3 +38,4 @@ docs
 revdep/
 tests/testthat/fixtures/*.rds
 .vexp/
+/.claude/worktrees
