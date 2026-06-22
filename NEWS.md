@@ -129,6 +129,22 @@
   transforms present can pass
   `*Control(print = iterPrintControl(simple = TRUE))`.
 
+- `focei` (and the `foce`/`fo`/`foi`/`posthoc` family) again shows the
+  `Function Val.` objective-function column in its iteration trace.
+  The column had silently disappeared when the shared printer gained
+  its `showOfv` flag, because `focei` sets up its scaling struct by
+  hand and the flag defaulted to off — dropping the objective from
+  every outer optimizer (including `foceiControl(outerOpt = "bobyqa")`)
+  and misaligning the gradient (`G`/`F`/`C`/`M`) rows, whose method
+  label lives in that same column slot.
+
+- The periodic header that the shared iteration-printer re-emits every
+  `headerEvery` prints no longer repeats the multi-line `Key:` legend
+  (the `U`/`X` row explanation and, for `focei`, the `G`/`F`/`C`/`M`
+  gradient-method note).  The legend is shown once at the start of the
+  fit; each refresh now repeats only the compact column labels and the
+  separator line, keeping long traces readable.
+
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
 
 - Fix `focei` mixture models with llik residual distributions (`dnorm`,
