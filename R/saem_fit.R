@@ -116,7 +116,8 @@
                        perFixOmega=0.5,
                        perFixResid=0.75,
                        resFixed,
-                       ue) {
+                       ue,
+                       mixProb = numeric(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -210,12 +211,12 @@
   s <- subset(data$nmdat, EVID == 0)
   data$data <- as.matrix(s[, c("ID", "TIME", "DV", c(model$covars, inPars))])
 
-  ###  chk for no obs records
-  wh <- setdiff(unique(data$nmdat$ID), unique(data$data[, "ID"]))
-  if (length(wh)) {
-    msg <- paste0("No data with ID: ", paste(wh, collapse = ", "))
-    stop(msg)
-  }
+  # Subjects without an observation are dropped upstream by the shared
+  # preprocessor (.foceiPreProcessData()) -- which renumbers the survivors to a
+  # contiguous 1..K sequence -- and re-inserted into the output (see
+  # addTable()).  Every ID reaching the saem kernel therefore has at least one
+  # EVID==0 record, so the previous "No data with ID" guard here is unreachable
+  # and has been removed.
 
   nphi <- model$N.eta
   mcov <- model$cov.mod
@@ -272,7 +273,7 @@
   if (is.null(model$covars)) {
     covariables <- NULL
   } else {
-    covariables <- unlist(stats::aggregate(.as.data.frame(data$data[, model$covars, drop = FALSE]),
+    covariables <- unlist(stats::aggregate(as.data.frame(data$data[, model$covars, drop = FALSE]),
                                            list(id),
                                            unique)[, -1, drop = FALSE])
   }
@@ -296,14 +297,6 @@
   mlen <- max(nb_measures)
   io <- t(sapply(nb_measures, function(x) rep(1:0, c(x, mlen - x))))
   indio <- grep(1, t(io)) - 1
-  ## mPars <- if (ninputpars == 0) NULL else unlist(stats::aggregate(.as.data.frame(data$data[, inPars]), list(id), unique)[, -1])
-  ## if (!is.null(mPars)) {
-  ##   dim(mPars) <- c(N, ninputpars)
-  ##   opt$mPars <- mPars
-  ##   ix <- rep(1:dim(mPars)[1], nmc)
-  ##   optM$mPars <- mPars[ix, ]
-  ##   dim(optM$mPars) <- c(nmc * N, ninputpars)
-  ## }
 
   if (is.null(data$nmdat$CMT)) data$nmdat$CMT <- 1 ## CHECKME
   if (any(is.na(data$nmdat$CMT))) {
@@ -325,7 +318,16 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  dat <- .as.data.frame(dat[, -6])
+  # The 6th etTrans column is the observation 'dv'; it is dropped here because
+  # the SAEM C kernel receives observations separately (as 'y').  Drop it by
+  # name and assert the expected layout so a future change to etTrans's column
+  # order cannot silently feed the kernel a misaligned event table.
+  .dvCol <- which(tolower(names(dat)) == "dv")
+  if (length(.dvCol) != 1L || .dvCol != 6L) {
+    stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
+         call. = FALSE)
+  }
+  dat <- as.data.frame(dat[, -.dvCol])
   names(dat) <- vapply(names(dat), function(n) {
     if (n %in% inPars) return(n)
     return(toupper(n))
@@ -485,6 +487,8 @@
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
+  minv[i0] <- 1.0
+
 
   # preserve par order when printing iter history
   mcov[mcov == 1] <- 1:nlambda
@@ -608,7 +612,10 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed))
+  nMix <- max(1L, length(mixProb))
+  cfg$nMix <- nMix
+  cfg$mixProb <- mixProb
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

@@ -145,11 +145,15 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, 
   // Now back-calculate the EPRED
   j = trunc(ret.pd[i]*K);
   j2 = trunc(ret.pd2[i]*K);
+  // pd can round to exactly 1.0 (e.g. right-censored with a tiny ru2) giving
+  // j == K; clamp into [0, K-1] so curRow[j]/curRow[j+1] stay in bounds.
+  if (j >= K) j = K - 1;
+  if (j2 >= K) j2 = K - 1;
   low = curRow[j];
   low2 = curRow[j2];
-  if (j+1 == K) hi = 2*low - curRow[j-1];
+  if (j+1 >= K) hi = (j > 0) ? (2*low - curRow[j-1]) : low;
   else hi = curRow[j+1];
-  if (j2+1 == K) hi2 = 2*low2 - curRow[j2-1];
+  if (j2+1 >= K) hi2 = (j2 > 0) ? (2*low2 - curRow[j2-1]) : low2;
   else hi2 = curRow[j2+1];
   // check if this makes sense
   // Use npd instead of npde as suggested by Nguyen2017
@@ -341,6 +345,9 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   //arma::vec npde(REAL(npdeSEXP), dv.size(), false, true);
   SEXP s0 = rx_protect.protect(VECTOR_ELT(npdeSim, 0));
   int simLen = Rf_length(s0);
+  if (simLen == 0) {
+    stop("npdeCalc: simulation input has zero rows");
+  }
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);
   arma::Col<int> aIdVec(INTEGER(VECTOR_ELT(npdeSim, 1)), simLen, false, true);
   unsigned int nid, K;

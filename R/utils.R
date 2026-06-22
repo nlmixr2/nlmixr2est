@@ -96,7 +96,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   if (is.null(.ret)) {
     .cls <- class(obj)
     .lst <- attr(.cls, ".nlmixr2Gill")
-    return(.lst[[arg]])
+    .ret <- .lst[[arg]]
   }
   .ret
 }
@@ -112,7 +112,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   .ret <- try(rbind(p1, p2), silent=TRUE)
   if (inherits(.ret, "try-error")) {
     warning("parameter history may be incomplete")
-    return(p2)
+    .ret <- p2
   }
   .ret
 }
@@ -136,44 +136,91 @@ nsis <- function() { ## build installer...
 #' @param expr R expression
 #'
 #' @param lst When \code{TRUE} return a list with
-#'     list(object,warnings) instead of issuing the warnings.
-#'     Otherwise, when \code{FALSE} issue the warnings and return the
-#'     object.
+#'     \code{list(object, warning = ws, error = es)} instead of issuing
+#'     the warnings.  Otherwise, when \code{FALSE} issue the warnings
+#'     and return the object.
 #'
-#' @return The value of the expression or a list with the value of
-#'     the expression and a list of warning messages
+#' @param collectErr When \code{TRUE}, errors raised during evaluation
+#'     of \code{expr} are recorded in addition to warnings.  A calling
+#'     handler captures every error message as it is signalled, then
+#'     lets the condition continue to propagate so that inner
+#'     \code{try()}/\code{tryCatch()} blocks in \code{expr} keep
+#'     working as usual.  An outer \code{tryCatch()} catches errors
+#'     that escape all inner handling, so the call always returns
+#'     instead of stopping.  If \code{expr} evaluated to a result
+#'     (i.e. no error escaped), the recorded errors were caught by
+#'     inner handlers and are discarded.  If an error did escape,
+#'     every message observed along the error chain (including
+#'     follow-up errors raised by \code{on.exit} handlers, see issue
+#'     607) is returned in the \code{error} element of the result list
+#'     (when \code{lst = TRUE}) or re-raised joined by newlines (when
+#'     \code{lst = FALSE}).  When \code{FALSE} (the default) errors
+#'     propagate normally and \code{es} is always \code{NULL}.  This
+#'     is used by \code{nlmixr2Est0()} so that all errors from a
+#'     failed estimation run are reported together rather than only
+#'     the last one.
+#'
+#' @return The value of the expression, or when \code{lst = TRUE} a
+#'     list of the form \code{list(object, warning = ws, error = es)}
+#'     where \code{ws} and \code{es} are character vectors of unique
+#'     warning and error messages (\code{es} is always \code{NULL}
+#'     when \code{collectErr = FALSE}, and is also \code{NULL} when
+#'     the expression evaluated successfully under \code{collectErr =
+#'     TRUE}).
 #'
 #' @author Matthew L. Fidler
 #'
 #' @export
 #'
 #' @keywords internal
-.collectWarn <- function(expr, lst = FALSE) {
+.collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
+  ws <- NULL
+  es <- NULL
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
-    ws <- c()
     this.env <- environment()
-    ret <-
-      suppressWarnings(withCallingHandlers(
-        expr,
-        warning = function(w) {
-          assign("ws", unique(c(w$message, ws)), this.env)
+    if (collectErr) {
+      errored <- FALSE
+      ret <- tryCatch(
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          },
+          error = function(e) {
+            assign("es", unique(c(e$message, es)), this.env)
+          }
+        )),
+        error = function(e) {
+          assign("errored", TRUE, this.env)
+          NULL
         }
-      ))
-    if (lst) {
-      list(ret, ws)
-    } else {
-      for (w in ws) {
-        warning(w)
+      )
+      if (!errored) {
+        es <- NULL
       }
-      ret
+    } else {
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          }
+        ))
     }
   } else {
     ret <- force(expr)
-    if (lst) {
-      return(list(ret, NULL))
-    }
-    ret
   }
+  if (lst) {
+    ret <- list(ret, warning = ws, error = es)
+  } else {
+    for (w in ws) {
+      warning(w)
+    }
+    if (length(es) > 0) {
+      stop(paste(es, collapse = "\n"))
+    }
+  }
+  ret
 }
 # #########################################################################
 
@@ -242,21 +289,6 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
 
 .setRoot <- function() {
   setwd("c:/")
-}
-
-#' Generate a data.frame using the R4.0 convention
-#'
-#' @param ... Passed to \code{base::data.frame()} or
-#'   \code{base::as.data.frame()}
-#' @param stringsAsFactors Captured so that it can be ignored and always set to
-#'   \code{FALSE}
-#' @return A data.frame with strings not converted to factors
-#' @noRd
-.data.frame <- function(..., stringsAsFactors = FALSE) {
-  base::data.frame(..., stringsAsFactors = FALSE)
-}
-.as.data.frame <- function(..., stringsAsFactors = FALSE) {
-  base::as.data.frame(..., stringsAsFactors = FALSE)
 }
 
 #' Nelder-Mead simplex search

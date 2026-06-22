@@ -26,8 +26,21 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
+#' Get the maxfun control for minqa optimizers
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxfun <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxfun <- control$maxOuterIterations
+  }
+  control
+}
+
 .uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -42,24 +55,8 @@ is.latex <- function() {
   .ret
 }
 
-.newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
-  if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
-  .ctl$iprint <- 0L
-  .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
-  .ret <- minqa::newuoa(par, fn,
-                        control = .ctl,
-                        lower = lower,
-                        upper = upper)
-  .ret$x <- .ret$par
-  .ret$message <- .ret$msg
-  .ret$convergence <- .ret$ierr
-  .ret$value <- .ret$fval
-  .ret
-}
-
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -75,7 +72,21 @@ is.latex <- function() {
   .ret
 }
 
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxit <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxit <- control$maxOuterIterations
+  }
+  control
+}
+
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
@@ -83,7 +94,9 @@ is.latex <- function() {
   .ret
 }
 
+
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
@@ -122,8 +135,22 @@ is.latex <- function() {
   .ret
 }
 
+
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with iter.max updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlIterMax <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$iter.max <- control$maxOuterIterations
+  }
+  control
+}
+
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlIterMax(control)
   .ctl <- .ctl[names(.ctl) %in% c(
     "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
     "scale.inti", "diff.g"
@@ -880,12 +907,30 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     ), collapse = "\n")
     pred.opt <- s$..pred.nolhs
   }
+  # For mixture models build predOnly from the pruned model (which preserves the
+  # mix() call and therefore gives nMix > 0 in the compiled model).  This lets
+  # rxode2 accept per-individual mixest from iCov so that me/mn/mu are correct
+  # and IPRED uses the right mixture branch for each subject.
+  # NOTE: the *inner* model intentionally keeps the mixest==k symengine form
+  # (nMix == 0) because inner.cpp manages mixture selection itself; using mix()
+  # there would trigger a double-optimisation conflict.
+  .mixProbs <- try(ui$mixProbs, silent=TRUE)
+  .hasMix <- !inherits(.mixProbs, "try-error") && length(.mixProbs) > 0L
+  .predOnly <- if (.hasMix) {
+    .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
+                        collapse="\n")
+    .toRx(.prunedStr, ifelse(.getRxPredLlikOption(),
+                             "compiling Llik EBE model (mixture)...",
+                             "compiling EBE model (mixture)..."))
+  } else {
+    .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
+                           "compiling Llik EBE model...",
+                           "compiling EBE model..."))
+  }
   .ret <- list(
     inner = inner,
     innerOeta = innerOeta,
-    predOnly = .toRx(s$..pred, ifelse(.getRxPredLlikOption(),
-                                      "compiling Llik EBE model...",
-                                      "compiling EBE model...")),
+    predOnly = .predOnly,
     extra.pars = s$..extraPars,
     outer = .toRx(s$..outer),
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
@@ -1278,6 +1323,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
               sqrt(qchisq(abs(y),1)/2) * sign(y)
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
+          } else if (is.na(.curEval) || .curEval == "") {
+            # Additive mu-reference (theta + eta).  Scale by the
+            # magnitude of the initial estimate so a unit step in the
+            # internal (scaled) parameter is proportional to the
+            # parameter's natural scale.  Falling through to the C++
+            # default of 1/|init| produced steps so small the optimizer
+            # could not move parameters with large-magnitude initials
+            # (issue 641).
+            .val <- abs(.ini$est[.j])
+            if (.val > 1) .scaleC[.j] <- .val
           }
         }
       }
@@ -1351,6 +1406,11 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
     }
+    # Mixture probability parameters are estimated on the mlogit scale; their
+    # covariance cannot be meaningfully interpreted, so skip them.
+    if (length(.ui$mixProbs) > 0) {
+      .skipCov[which(.theta$name %in% .ui$mixProbs)] <- TRUE
+    }
     .skipCov
   }
 }
@@ -1400,20 +1460,16 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  # Theta-side transform indexes (log/logit/probit) come from the
-  # shared pure inspector .iterPrintXParFromUi.  The helper does not
-  # mutate env; we copy its ntheta-indexed outputs onto the focei env
-  # under the names the focei C-side reads via e["logThetasF"] etc.
-  # The C code assumes 1-based theta indices, which is exactly what
-  # iniDf$ntheta gives.
-  .xform <- .iterPrintXParFromUi(ui)
-  env$logThetasF       <- .xform$logNthetas
-  env$logitThetasF     <- .xform$logitNthetas
-  env$logitThetasLowF  <- .xform$logitNthetasLow
-  env$logitThetasHiF   <- .xform$logitNthetasHi
-  env$probitThetasF    <- .xform$probitNthetas
-  env$probitThetasLowF <- .xform$probitNthetasLow
-  env$probitThetasHiF  <- .xform$probitNthetasHi
+  # Theta-side transform codes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  Default call gives
+  # vectors of length ntheta_total in ntheta order — exactly what
+  # focei's C-side consumes (both the iteration printer and the
+  # final-fit-summary back-transform read xform$xPar / xform$probitIdx
+  # by ntheta index, and xform$logitThetaLow/Hi / probitThetaLow/Hi
+  # by the codes those arrays encode).  Single transport sub-list,
+  # consistent with how saem (.cfg$xform) and nlm (.ctl$iterPrintXform)
+  # ship the same data.
+  env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -1472,13 +1528,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   data <- env$origData
   .covNames <- ui$covariates
-  colnames(data) <- vapply(names(data), function(x) {
-    if (any(x == .covNames)) {
-      x
-    } else {
-      toupper(x)
-    }
-  }, character(1))
+  colnames(data) <- .nmUpcaseNonCov(names(data), .covNames)
   if (is.null(data$ID)) data$ID <- 1L
   if (is.null(data$EVID) && is.null(data$AMT)) data$EVID <- 0
   if (is.null(data$AMT)) data$AMT <- 0
@@ -1524,6 +1574,29 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
+  # Drop subjects that have no usable observation (no EVID==0 rows).  rxode2's
+  # etTrans already removes dose-only subjects (emitting an "IDs without
+  # observations dropped" warning), but a subject whose only observations have
+  # DV=NA is converted by etTrans into EVID==2 rows and would otherwise be kept
+  # with zero observations.  Removing such subjects here -- in the shared
+  # preprocessor -- means every estimation method (FOCEi, SAEM, ...) receives
+  # data without observation-less subjects (e.g. saem's kernel cannot represent
+  # them; see .configsaem).  Their input rows stay in origData and are
+  # re-inserted into the output table (see addTable()): a population PRED is
+  # solved for them while individual columns stay NA, matching FOCEi.  Mirror
+  # etTrans exactly: same warning wording (so it de-duplicates in .collectWarn
+  # and reads identically in $runInfo) and renumber survivors to a contiguous
+  # 1..K sequence.
+  .obsId <- unique(.dat$ID[.dat$EVID == 0])
+  .noObsId <- setdiff(unique(.dat$ID), .obsId)
+  if (length(.noObsId) > 0L) {
+    warning("IDs without observations dropped: ",
+            paste(.idLvl[.noObsId], collapse = " "), call. = FALSE)
+    .dat <- .dat[!(.dat$ID %in% .noObsId), , drop = FALSE]
+    .keepLvl <- .idLvl[sort(.obsId)]
+    .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
+    .idLvl <- .keepLvl
+  }
   env$dataSav <- .dat
   env$idLvl <- .idLvl
   env$covLvl <- .lvls
@@ -1546,13 +1619,21 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       stop("the first column of fitEnv$etaObj needs to be an integer and named ID",
            call.=FALSE)
     }
+    if (is.factor(.ret$etaObf$ID)) {
+      .ret$etaObf$ID <- as.integer(.ret$etaObf$ID)
+    }
     checkmate::assertInteger(.ret$etaObf$ID, any.missing=FALSE, min=1, .var.name="fitEnv$etaObj$ID")
   }
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
   .thetaReset$thetaNames <- .ret$thetaNames
+  nResets <- 0L
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
+      nResets <- nResets + 1L
+      if (nResets > 10L) {
+        stop("Maximum number of theta resets (10) exceeded; fit is unstable.", call. = FALSE)
+      }
       assign("err", "", this.env)
       .ret0 <- tryCatch(
       {
@@ -1715,6 +1796,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (!inherits(.control, type)) {
     .control <- do.call(type, .control)
   }
+  if (exists("est", envir = env)) {
+    .control$est <- env$est
+  }
   if (inherits(nlmixr2global$etaMat, "nlmixr2FitCore") &&
         is.null(.control[["etaMat"]])) {
     warning("Passed the initial etas from the last fit",
@@ -1859,10 +1943,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 
 .foceiFamilyReturn <- function(env, ui, ..., method=NULL, est="none") {
   .control <- ui$control
+  .control$est <- est
+  ui$control <- .control
   .env <- ui$foceiOptEnv
   .env$table <- env$table
   .data <- env$data
   .env$ui <- ui
+  .env$est <- est
+  if (!is.null(.env$control)) {
+    .env$control$est <- est
+  }
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .env, ui, .control$rxControl)
   })
@@ -1924,6 +2014,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     ui <- rxode2::rxUiCompress(ui)
     .ret$ui <- ui
     .foceiSetupParHistData(.ret)
+    # For mixture models: fix ranef (remove MIXEST), build mixList and mixNum
+    .mixFix(.ret, ui)
     if (!all(is.na(ui$iniDf$neta1))) {
       .etas <- .ret$ranef
       .thetas <- .ret$fixef
@@ -1970,7 +2062,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (inherits(.tmp, "try-error")) {
       warning("error calculating tables, returning without table step", call.=FALSE)
     } else {
-      .ret <- .tmp
+      .ret <- .mixFixTable(.tmp, .env, ui)
     }
   }
   assign("sessioninfo", .sessionInfo(), envir=.env)
@@ -2022,8 +2114,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
-                    "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
-                    "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                    "xform",
+                    "lower", "noLik", "objf", "OBJF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                     "xType", "IDlabel", "ODEmodel", "model",
                     # times

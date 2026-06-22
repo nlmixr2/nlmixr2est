@@ -266,15 +266,7 @@ rxUiDeparse.nlsControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .nlsFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::nlsControl()
-  }
-  if (!inherits(.control, "nlsControl")){
-    .control <- do.call(nlmixr2est::nlsControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::nlsControl, "nlsControl")
 }
 
 
@@ -865,23 +857,6 @@ rxUiGet.nlsFormula <- function(x, ..., grad=FALSE) {
 }
 attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(DV, ka, V, CL))
 
-#' Setup the data for nls estimation
-#'
-#' @param dataSav Formatted Data
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.nlsFitDataSetup <- function(dataSav) {
-  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  if (any(names(.dsAll) == "CENS")) {
-    if (!all(.dsAll$CENS == 0)) {
-      stop("'nls' does not work with censored data", call. =FALSE)
-    }
-  }
-  nlmixr2global$nlsEnv$dataNls <- .dsAll[.dsAll$EVID == 0, ] # only observations are passed to nls
-  nlmixr2global$nlsEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlsEnv$model)
-}
-
 .nlsFitModel <- function(ui, dataSav) {
   .ctl <- ui$control
   if (.ctl$solveType != "fun") {
@@ -1019,76 +994,30 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
 }
 
 .nlsFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$nls <- .nls[[1]]
-
-  .ret$message <- NULL
-  if (rxode2::rxGetControl(.ui, "returnNls", FALSE)) {
-    return(.ret$nls)
-  }
-  .ret$cov <- .ret$nls$cov
-  if (inherits(.ret$nls, "nls.lm")) {
-    .ret$message <- .ret$nls$message
-    .ret$cov <- .ret$nls$cov
-    .ret$covMethod <- paste0(.ret$nls$covMethod, " (LM)")
-    .ret$objective <- -2 * .ret$nls$logLik
-  } else {
-    .ret$message <- .ret$nls$convInfo$stopMessage
-    .ret$covMethod <- "nls"
-    .ret$objective <- -2 * as.numeric(logLik(.ret$nls))
-  }
-  .ret <- .nlmFamilyAdjustOutput(.ret, "nls")
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .nlsGetTheta(.ret$nls, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- paste0(" with ", crayon::bold$yellow(.control$algorithm),  " algorithm")
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "nls"
-  # There is no parameter history for nlse
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "nls"
-  .nlsControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nls")
-  .env <- .ret$env
-  .env$method <- "nls"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "nls", .nlsFitModel, .nlsGetTheta,
+    controlToFocei = .nlsControlToFoceiControl,
+    returnFlag = "returnNls",
+    # objective + cov + covMethod are set per-branch in postSetup (before
+    # .nlmFamilyAdjustOutput, whose is.null guards then keep them)
+    objective = NULL,
+    message = function(.fit) {
+      if (inherits(.fit, "nls.lm")) .fit$message else .fit$convInfo$stopMessage
+    },
+    extra = function(.control) {
+      paste0(" with ", crayon::bold$yellow(.control$algorithm), " algorithm")
+    },
+    postSetup = function(.ret, .ui, .fit) {
+      .ret$cov <- .ret$nls$cov
+      if (inherits(.ret$nls, "nls.lm")) {
+        .ret$covMethod <- paste0(.ret$nls$covMethod, " (LM)")
+        .ret$objective <- -2 * .ret$nls$logLik
+      } else {
+        .ret$covMethod <- "nls"
+        .ret$objective <- -2 * as.numeric(stats::logLik(.ret$nls))
+      }
+      .ret
+    })
 }
 
 #' @rdname nlmixr2Est

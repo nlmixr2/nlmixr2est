@@ -10,7 +10,10 @@
 }
 
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  # PR #655: wire maxOuterIterations through to the optimizer's native
+  # maxfun control.  This is the canonical .newuoa (the focei.R copy was a
+  # masked duplicate removed in PR #679), so the control wiring lives here.
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   if (is.null(.ctl$rhobeg)) .ctl$rhobeg <- 0.2
   if (is.null(.ctl$rhoend)) .ctl$rhoend <- 1e-4
@@ -247,7 +250,8 @@
                         perFixOmega=rxode2::rxGetControl(ui, "perFixOmega", 0.1),
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
-                        ue=.ue)
+                        ue=.ue,
+                        mixProb=ui$saemMixProb)
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
@@ -260,15 +264,12 @@
     # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
     # uses the same default as every other method (full #/U/X output);
     # because Plambda lives on the model scale (no internal optimizer
-    # scaling), the U row will auto-skip — leaving # and X.  xPar comes
-    # from ui$muRefCurEval so X shows exp(theta) for log-transformed
-    # parameters and expit(theta, lo, hi) for logit-transformed ones,
-    # exactly like focei.
+    # scaling), the U row will auto-skip — leaving # and X.  The xform
+    # sub-list (xPar + probitIdx + bounds) flows through one helper —
+    # scaleAttachXform — so the saem X row back-transforms exp / expit /
+    # probitInv identically to every other estimator.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
-    .xform <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
-    .cfg$xPar          <- as.integer(.xform$xPar)
-    .cfg$logitThetaLow <- as.double(.xform$logitThetaLow)
-    .cfg$logitThetaHi  <- as.double(.xform$logitThetaHi)
+    .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",
                                                   iterPrintControl())
     .saemCheckCfg(.cfg)
@@ -378,6 +379,22 @@
       .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
     }
   }
+  if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
+    .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
+    if (length(.estMix) == 1L) {
+      .estMixClamped <- max(1e-6, min(1 - 1e-6, .estMix))
+      .theta[.ui$mixProbs] <- qlogis(.estMixClamped)
+    } else {
+      .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
+      .sumP <- sum(.estMixClamped)
+      if (.sumP >= 1.0) {
+        .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
+      }
+      .lastP <- 1.0 - sum(.estMixClamped)
+      .theta[.ui$mixProbs] <- log(.estMixClamped / .lastP)
+    }
+  }
+
   env$fullTheta <- .theta
   if (.varSpec) {
     .minfo("variance residual estimates transformed from standard deviation")
@@ -407,6 +424,7 @@
   .curOme <- .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
+  colnames(.mat2) <- .etaNames
   for (i in seq_along(.eta$name)) {
     .e1 <- .eta$neta1[i]
     .e2 <- .eta$neta2[i]
@@ -416,7 +434,15 @@
     .ome[.e2, .e1] <- .curOme[.o2, .o1]
   }
   env$omega <- .ome
-  env$.etaMat <- .mat2
+  # Always save the N-row (per-subject) etaMat so FOCEi post-processing
+  # gets the correct number of rows, even for mixture models.
+  env$.etaMatBase <- .mat2
+  if (length(.ui$mixProbs) > 0) {
+    .nMix <- length(.ui$mixProbs) + 1
+    env$.etaMat <- .mat2[rep(seq_len(nrow(.mat2)), .nMix), , drop = FALSE]
+  } else {
+    env$.etaMat <- .mat2
+  }
   env$etaObf <- data.frame(ID = seq_along(.mat2[, 1]),
                            setNames(as.data.frame(.mat2), .etaNames),
                            OBJI = NA)
@@ -470,6 +496,9 @@
       .ini <- .ini[!is.na(.ini$ntheta), ]
       .ini <- .ini[!.ini$fix, ]
       .ini <- paste(.ini$name)
+      if (length(.ui$mixProbs) > 0) {
+        .ini <- .ini[!(.ini %in% .ui$mixProbs)]
+      }
       if (.calcCov && .nth == 0) {
         warning("no population parameters in the model, no covariance matrix calculated",
                 call.=FALSE)
@@ -479,7 +508,7 @@
         .cov <- NULL
         env$covMethod <- "none"
       } else if (.calcCov) {
-        .covm <- .saem$Ha[1:.nth, 1:.nth]
+        .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
         .covm <- try(calc.COV(.saem))
         .doIt <- !inherits(.covm, "try-error")
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
@@ -492,12 +521,12 @@
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .calcCov <- FALSE
-              .covm <- .saem$Ha[1:.nth, 1:.nth]
+              .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               .tmp <- try(chol(.covm), silent = TRUE)
               .addCov <- TRUE
               .sqrtm <- FALSE
               if (inherits(.tmp, "try-error")) {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
                 .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
                 if (inherits(.tmp, "try-error")) {
                   .addCov <- FALSE
@@ -505,7 +534,7 @@
                   .sqrtm <- TRUE
                 }
               } else {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               }
             } else {
               .sqrtm <- TRUE
@@ -514,13 +543,13 @@
             .tmp <- .covm
           }
         } else {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .tmp <- try(chol(.covm), silent = TRUE)
           .calcCov <- FALSE
           .addCov <- TRUE
           .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .addCov <- FALSE
@@ -528,7 +557,7 @@
               .sqrtm <- TRUE
             }
           } else {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .calcCov <- FALSE
           }
         }
@@ -537,7 +566,7 @@
         .addCov <- TRUE
         .sqrtm <- FALSE
         if (inherits(.tmp, "try-error")) {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
           if (inherits(.tmp, "try-error")) {
             .addCov <- FALSE
@@ -545,7 +574,7 @@
             .sqrtm <- TRUE
           }
         } else {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .calcCov <- FALSE
         }
       }
@@ -696,10 +725,19 @@
   .saemControl <- env$saemControl
   .ui <- env$ui
   .rxControl <- env$saemControl$rxControl
+  # For mixture models the env$.etaMat is the replicated (N*nMix)-row matrix
+  # used internally during SAEM.  For the FOCEi post-processing step we need
+  # exactly N rows (one per subject).  env$.etaMatBase always holds the
+  # N-row version, falling back to env$.etaMat for non-mixture models.
+  .etaForFocei <- if (exists(".etaMatBase", envir=env, inherits=FALSE)) {
+    env$.etaMatBase
+  } else {
+    env$.etaMat
+  }
   .foceiControl <- foceiControl(maxOuterIterations=0L,
                                 maxInnerIterations=0L,
                                 covMethod=0L,
-                                etaMat=env$.etaMat,
+                                etaMat=.etaForFocei,
                                 sumProd=.saemControl$sumProd,
                                 optExpression=.saemControl$optExpression,
                                 scaleTo=0,
@@ -711,9 +749,15 @@
                                 ci=.saemControl$ci,
                                 sigdigTable=.saemControl$sigdigTable,
                                 indTolRelax=.saemControl$indTolRelax,
-                                rxControl=.rxControl)
-  if (exists(".etaMat", env)) {
+                                rxControl=.rxControl,
+                                resetThetaP = 0,
+                                resetThetaFinalP = 0,
+                                est = "saem")
+  if (exists(".etaMat", envir=env, inherits=FALSE)) {
     rm(list=".etaMat", envir=env)
+  }
+  if (exists(".etaMatBase", envir=env, inherits=FALSE)) {
+    rm(list=".etaMatBase", envir=env)
   }
   if (assign) env$control <- .foceiControl
   .foceiControl
@@ -782,21 +826,8 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   .ret$table <- env$table
   nlmixrWithTiming("setup", {
     .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-    .et <- rxode2::etTrans(.ret$dataSav, .ui$mv0, addCmt=TRUE,
-                           addlKeepsCov = .control$rxControl$addlKeepsCov,
-                           addlDropSs = .control$rxControl$addlDropSs,
-                           ssAtDoseTime = .control$rxControl$ssAtDoseTime)
+    .tv <- .nlmixrTimeVaryingCovariates(.ret$dataSav, .ui, .control$rxControl)
   })
-  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
-  if (is.null(.nTv)) {
-    .tv <- names(.et)[-seq(1, 6)]
-    .nTv <- length(.tv)
-  } else {
-    .tv <- character(0)
-    if (.nTv != 0) {
-    .tv <- names(.et)[-seq(1, 6)]
-    }
-  }
 
   .ret$saem <- .saemFitModel(.ui, .ret$dataSav, timeVaryingCovariates=.tv)
   .ret$ui <- .ui
@@ -809,6 +840,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    # For mixture models: build mixList/mixNum/mixIcov from SAEM's mixWeights
+    # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
+    # available to rxode2 during the table/solve step.
+    .saemMixFix(.ret, .ui)
     .nlmixr2FitUpdateParams(.ret)
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
@@ -821,6 +856,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
     .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+    # For mixture models: post-correct me/mn/mu in the assembled fit table
+    # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
+    if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
+      .retEnv <- attr(class(.ret), ".foceiEnv")
+      if (is.null(.retEnv)) .retEnv <- .ret$env
+      .ret <- .mixFixTable(.ret, .retEnv, .ui)
+    }
     .setSaemExtra(.ret, "FOCEi")
     .ret
   })
@@ -838,6 +880,9 @@ nlmixr2Est.saem <- function(env, ...) {
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
+  if (length(.ui$mixProbs) > 0) {
+    message("mixture SAEM computation scales with the number of sub-populations")
+  }
   .saemFamilyControl(env, ...)
   on.exit({
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {

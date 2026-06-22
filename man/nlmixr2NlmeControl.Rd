@@ -287,8 +287,7 @@ function.  By default this is \code{TRUE}}
 }}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{muRefCovAlg}{This controls if algebraic expressions that can
   be mu-referenced are treated as mu-referenced covariates by:

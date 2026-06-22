@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 3,
+  sigdig = 4,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -59,8 +59,8 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin", "uobyqa", "newuoa"),
+  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+    "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -793,8 +793,7 @@ solve.}
 \item{rxControl}{`rxode2` ODE solving options during fitting, created with `rxControl()`}
 
 \item{sigdigTable}{Significant digits in the final output table.
-If not specified, then it matches the significant digits in the
-`sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+If not specified (`NULL`), it defaults to `sigdig`.}
 
 \item{fallbackFD}{Fallback to the finite differences if the
 sensitivity equations do not solve.}

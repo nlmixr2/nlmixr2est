@@ -261,6 +261,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  if (length(.ui$mixProbs) > 0) {
+    .ret <- .ret[!(.ret %in% .ui$mixProbs)]
+  }
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret
@@ -489,13 +492,34 @@ rxUiGet.saemModelPred <- function(x, ...) {
     .ret2
   ), collapse = "\n")
   .interp <- rxUiGet.interpLinesStr(x, ...)
+  ## The mu-reference replacement block (paste(names(.replaceLst), ...))
+  ## and the THETA/ETA alias block (.uiGetThetaEta()) can emit the *exact*
+  ## same `lhs <- rhs` assignment, which is then duplicated into both dydt
+  ## and calc_lhs by codegen.  Drop the THETA/ETA alias lines that are exact
+  ## duplicates (same lhs AND same rhs) of the replacement block, keeping the
+  ## first occurrence.  Lines whose rhs differs (e.g. a mu-referenced combined
+  ## `lhs <- THETA[k] + ETA[j]` in the replacement block vs the split
+  ## `lhs <- THETA[k]` alias) are NOT exact duplicates and are preserved, so
+  ## the emitted model is numerically identical.
+  .replaceLines <- paste(names(.replaceLst), "<-", .replaceLst)
+  .thetaEtaLines <- vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE)
+  .normAssign <- function(.l) {
+    vapply(.l, function(.s) {
+      .p <- try(parse(text=.s)[[1]], silent=TRUE)
+      if (inherits(.p, "try-error")) return(.s)
+      deparse1(.p)
+    }, character(1), USE.NAMES=FALSE)
+  }
+  if (length(.thetaEtaLines) > 0L && length(.replaceLines) > 0L) {
+    .thetaEtaLines <- .thetaEtaLines[!(.normAssign(.thetaEtaLines) %in% .normAssign(.replaceLines))]
+  }
   .ret <- c(rxUiGet.foceiParams(x, ...),
             rxUiGet.foceiCmtPreModel(x, ...),
             .interp,
             "rx_pred_=NA\nrx_r_=NA\n",
-            paste(names(.replaceLst), "<-", .replaceLst),
+            .replaceLines,
             .ret,
-            vapply(.uiGetThetaEta(x[[1]]), deparse1, character(1), USE.NAMES=FALSE),
+            .thetaEtaLines,
             .foceiToCmtLinesAndDvid(x[[1]]))
   .ret <- .ret[.ret != ""]
   .ret <- list(predOnly=rxode2::rxode2(paste(.ret, collapse="\n")))

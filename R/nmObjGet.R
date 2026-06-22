@@ -299,7 +299,7 @@ attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
     .cor <- .cov
   } else {
     .w <- which(diag(.cov) != 0)
-    .cor2 <- stats::cov2cor(.cov[.w, .w])
+    .cor2 <- stats::cov2cor(.cov[.w, .w, drop = FALSE])
     .d <- dim(.cov)[1]
     .cor <- matrix(rep(NA, .d^2), .d, .d)
     .cor[.w, .w] <- .cor2
@@ -1090,4 +1090,50 @@ nmObjGet.simulationModel <- function(x, ...) {
 nmObjGet.rxControl <- function(x, ...) {
   nmObjGetRxSolve(.createEstObject(x[[1]]), NULL)
 }
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.mixList <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("mixList", envir=.env)) return(get("mixList", envir=.env))
+  NULL
+}
+attr(nmObjGet.mixList, "desc") <- "List of ETAs and posterior probabilities for each mixture component"
+attr(nmObjGet.mixList, "rstudio") <- list(mix1=data.frame(ID=1L, prob=0.8))
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.mixNum <- function(x, ...) {
+  .obj <- x[[1]]
+  .env <- .obj$env
+  if (exists("mixNum", envir=.env)) return(get("mixNum", envir=.env))
+  NULL
+}
+attr(nmObjGet.mixNum, "desc") <- "Data frame with ID and most likely mixture number per subject"
+attr(nmObjGet.mixNum, "rstudio") <- data.frame(ID=1L, mixnum=1L)
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.ranef <- function(x, ...) {
+  .env <- x[[1]]
+  if (!exists("ranef", envir=.env)) return(NULL)
+  .ret <- get("ranef", envir=.env)
+  if (is.null(.ret)) return(NULL)
+  if (exists("mixNum", envir=.env)) {
+    .mn <- get("mixNum", envir=.env)
+    if (!is.null(.mn) && "mixnum" %in% names(.mn)) {
+      .ret <- merge(.ret, .mn[, c("ID", "mixnum"), drop=FALSE],
+                    by="ID", all.x=TRUE, sort=FALSE)
+    }
+  }
+  .ret
+}
+attr(nmObjGet.ranef, "desc") <- "Individual random effects (ETAs); includes mixnum column for mixture models"
+
+#' @rdname nmObjGet
+#' @export
+nmObjGet.eta <- nmObjGet.ranef
+attr(nmObjGet.eta, "desc") <- attr(nmObjGet.ranef, "desc")
+
 attr(nmObjGet.rxControl, "desc") <- "rxode2 solving options"

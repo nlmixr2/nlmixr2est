@@ -54,7 +54,7 @@ nmTest({
     }
 
 
-    expect_error(nlmixr(one.cmt, nlmixr2data::theo_sd, "matt"))
+    expect_error(.nlmixr(one.cmt, nlmixr2data::theo_sd, "matt"))
   })
 
   test_that("rxSolve will warn when necessary", {
@@ -95,8 +95,11 @@ nmTest({
 
     mod <- mod()
 
-    expect_warning(nlmixr2(mod, eventTable, "rxSolve", control = rxControl(addDosing = TRUE)))
-
+    expect_warning(
+      suppressMessages(
+        nlmixr2(mod, eventTable, "rxSolve", control = rxControl(addDosing = TRUE))
+      )
+    )
   })
 
 })

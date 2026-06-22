@@ -3,7 +3,7 @@
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl")
+                           "iterPrintControl", "est")
 
 #' Control Options for FOCEi
 #'
@@ -23,8 +23,7 @@
 #' }
 #'
 #' @param sigdigTable Significant digits in the final output table.
-#'   If not specified, then it matches the significant digits in the
-#'   `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.
+#'   If not specified (`NULL`), it defaults to `sigdig`.
 #'
 #' @param epsilon Precision of estimate for n1qn1 optimization.
 #'
@@ -846,7 +845,6 @@ foceiControl <- function(sigdig = 4, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -951,11 +949,7 @@ foceiControl <- function(sigdig = 4, #
     }
   }
   if (is.null(sigdigTable)) {
-    if (is.null(sigdig)) {
-      sigdigTable <- 3L
-    } else {
-      sigdigTable <- sigdig
-    }
+    sigdigTable <- sigdig
   } else {
     checkmate::assertNumeric(sigdigTable, lower=1, finite=TRUE, any.missing=TRUE, len=1)
   }
@@ -1453,6 +1447,9 @@ foceiControl <- function(sigdig = 4, #
     agqLow=as.double(agqLow),
     boundedTransform=boundedTransform
   )
+  if (!is.null(.xtra$est)) {
+    .ret$est <- .xtra$est
+  }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
@@ -1477,7 +1474,7 @@ foceiControl <- function(sigdig = 4, #
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize"))) {
+  } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
     .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)

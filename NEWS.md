@@ -1,5 +1,77 @@
 # nlmixr2est (development version)
 
+- Defensively use `drop = FALSE` when subsetting the omega covariance
+  matrix for the correlation (`cov2cor`) calculation, so an omega with
+  exactly one nonzero diagonal element does not collapse to a scalar and
+  trigger a "'V' is not a square numeric matrix" error.
+
+- SAEM covariance no longer errors with `Error in rxode2::rxInv(.tmp) : Not a
+  matrix.` for models with a single population parameter (which arises e.g. with
+  M2/M3/M4 censoring).  The covariance fallback inverts a subset of the FIM
+  (`.saem$Ha[1:.nth, 1:.nth]`); for a single parameter that subset dropped from a
+  1x1 matrix to a scalar, which `rxode2::rxInv()` rejects.  The subset now keeps
+  `drop = FALSE`.
+
+- Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) when
+  exactly one covariate-model parameter is estimated.  The linearization
+  selected the estimated parameters with `Ai[cov.est.ix, ]`, which
+  collapsed to a vector for a single parameter so the subsequent
+  transpose produced a `1 x nphi` row instead of the intended `nphi x 1`
+  column.  For models with more than one random effect this made the
+  design multiply non-conformable; `calc.COV()` errored and the fit fell
+  back (and could fail outright with "Not a matrix").  The selection now
+  uses `drop = FALSE`, so the single-parameter covariance is computed
+  correctly and matches the multi-parameter result.
+
+- FOCEi no longer aborts R with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` is combined with a pure evaluation that runs with
+  `maxInnerIterations == 0` (the covariance step, or
+  `nlmixr2extra::linearize()`).  The Monte-Carlo ETA-sample cube is filled only
+  when `maxInnerIterations > 0`, so the inner-loop read indexed an empty cube and
+  the resulting exception, thrown inside the OpenMP parallel region, was uncaught
+  and aborted R.  The read is now guarded (`id < n_slices`) and skipped when the
+  cube holds no slice for the subject.
+
+- The test suite runs a single testthat worker on CI and on CRAN (so it
+  does not oversubscribe a core-limited runner) and parallel
+  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
+  capped to 2 only on CRAN and left to rxode2's own management otherwise.
+
+- `fit$time` now reports every estimation stage consistently; previously
+  stages under 5e-5 s were dropped, so the set of reported stages varied
+  with the platform's clock resolution.
+
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
+  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
+  `foceiControl()` correctly omits `outerOpt` when it is left at this
+  default.
+
+- SAEM no longer errors with `No data with ID: <id>` for a subject that has
+  a dose but no usable observation (e.g. all of its `DV` values are missing,
+  which `rxode2::etTrans()` converts to `EVID==2` records).  The shared
+  preprocessor (`.foceiPreProcessData()`) now drops any subject without an
+  observation -- emitting the same `IDs without observations dropped` message
+  `rxode2` already uses for dose-only subjects -- and the shared table builder
+  re-inserts those subjects' rows with a population `PRED` (solved at `eta = 0`)
+  and `NA` individual columns (`IPRED`, etas, residuals).  Every estimation
+  method now handles observation-less subjects the same way: the subject is
+  reported in `$runInfo` and appears in the output with a population prediction
+  and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
+  removed (#687).
+
+- Internal consolidation of data preparation across estimation methods (no
+  change to any fit result).  The shared preprocessor `.foceiPreProcessData()`
+  already fed every method; this removes the duplication layered on top of it:
+  two never-called data-setup functions (`.nlminbFitDataSetup`,
+  `.nlsFitDataSetup`) were deleted; the column-name normalization and the
+  time-varying-covariate detection were each extracted into a single shared
+  helper (`.nmUpcaseNonCov`, `.nlmixrTimeVaryingCovariates`); and the nine
+  nlm-family `*FamilyControl`/`*FamilyFit` functions (`nlm`, `nlminb`, `bobyqa`,
+  `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nls`) were collapsed onto
+  two generics (`.nlmFamilyControlGeneric`, `.nlmFamilyFitGeneric`).  SAEM's
+  internal event-table `dv` column drop in `.configsaem()` is now by-name with a
+  layout assertion instead of a positional index.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
@@ -9,6 +81,16 @@
   slot, racing and corrupting the heap.  The inner loop now hands rxode2
   the real thread id via `setRxThreadId()` from rxode2 api (requires the
   matching rxode2).
+
+- Fixed `covMethod = "r"` and `covMethod = "s"` standard errors, which
+  were inflated by constant factors (`sqrt(2)` and `2`, respectively).
+  With the objective on the `-2*logLik` scale the R matrix is the
+  observed information and the S matrix is the score cross-product, so
+  the covariances are `R^-1` and `S^-1`; they were returned as `2*R^-1`
+  and `4*S^-1`.  The default sandwich method `"r,s"` (`R^-1 S R^-1`) was
+  already correct and is unchanged.  `covR`/`covS` are fixed at source so
+  the sandwich-selection heuristic also compares consistently-scaled
+  covariances (#666).
 
 - The iteration-time progress output emitted by every estimator
   (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
@@ -47,6 +129,38 @@
   transforms present can pass
   `*Control(print = iterPrintControl(simple = TRUE))`.
 
+- `focei` (and the `foce`/`fo`/`foi`/`posthoc` family) again shows the
+  `Function Val.` objective-function column in its iteration trace.
+  The column had silently disappeared when the shared printer gained
+  its `showOfv` flag, because `focei` sets up its scaling struct by
+  hand and the flag defaulted to off — dropping the objective from
+  every outer optimizer (including `foceiControl(outerOpt = "bobyqa")`)
+  and misaligning the gradient (`G`/`F`/`C`/`M`) rows, whose method
+  label lives in that same column slot.
+
+- The periodic header that the shared iteration-printer re-emits every
+  `headerEvery` prints no longer repeats the multi-line `Key:` legend
+  (the `U`/`X` row explanation and, for `focei`, the `G`/`F`/`C`/`M`
+  gradient-method note).  The legend is shown once at the start of the
+  fit; each refresh now repeats only the compact column labels and the
+  separator line, keeping long traces readable.
+
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
+- Fix `focei` mixture models with llik residual distributions (`dnorm`,
+  `t`, `cauchy`): a matrix-orientation bug in `.backTransformParHistMix`
+  caused a "replacement has 1 row, data has N" error during
+  `foceiFinalizeTables` when a model had exactly one mixture probability
+  parameter.
+
+- Fix `fit$mixList` returning only the first mixture component: the
+  prior probability vector stored in `env$mixProbabilities` was missing
+  the implicit last component, so `nMix` was derived as 1 instead of
+  the true number of components.
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale (0, 1) instead of the
+  raw mlogit estimation scale.
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`
@@ -59,6 +173,56 @@
 
 - Use OpenMP threading wile calculating NPDEs
 
+- When model estimation fails, all errors raised during the run are now
+  collected and reported together, instead of only the last error. This
+  is supported by a new `collectErr` argument to the internal
+  `.collectWarn()` helper, which captures errors alongside warnings and
+  returns them in the `error` element of its result list. As a result,
+  errors hidden by `on.exit({rxode2::rxProgressAbort()})` handlers
+  (such as the "Aborted calculation" message reported in issue 607)
+  no longer mask the underlying cause; both the inner stop message and
+  any follow-up error from `on.exit` are now reported to the user.
+
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude.
+  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
+  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
+  unit steps in scaled space to negligible steps in unscaled space and
+  effectively pinned such parameters at their initial value (e.g.
+  `tvemax <- -40` with no transform).
+
+- FIXED population parameters are now back-transformed in the `$parFixed` /
+  `$parFixedDf` tables.  Fixed parameters are literal-fixed out of the model
+  before the fit, so the back-transform was never computed and the
+  `Back-transformed` column showed their raw (transformed-scale) estimate --
+  e.g. a fixed `tka` inside `exp(tka)` reported `tka` instead of `exp(tka)`.
+  The fixed parameters now reuse the model's transform detection
+  (`ui$muRefCurEval`), so `exp`, `expit`, and `probitInv` transforms are
+  reported on the same scale they would be if the parameter were estimated.
+
+- New function `formatMinWidth()` to make `$parFixed` show shorter text
+  and more often show non-scientific notation representations. The
+  `$parFixed` data.frame is now built directly with data.frame
+  operations rather than environment side-effects, and `FIXED` and
+  shrinkage suffixes are appended. (#346, #516)
+
+- The `$parFixed` table now formats with `sigdigTable` and the requested
+  `ci` even for models that have FIXED parameters.  Those values were read
+  from the unfixed model (which carries no control), so a user's
+  `sigdigTable`/`ci` (e.g. via `control = list(ci = 0.9, sigdig = 4)`) was
+  silently dropped and the table fell back to 3 significant digits / a 95%
+  CI.  They are now read from the fit's control object, and the table uses
+  the dedicated `sigdigTable` digits rather than the optimization `sigdig`.
+  When not supplied, `sigdigTable` now defaults to `sigdig`.
+
+- The `BSV` column of `$parFixed` again shows the between-subject
+  variability rounded to the requested significant digits, and shows `""`
+  (rather than `<NA>`) for parameters with no BSV.  When a mu-referenced eta
+  was absent from the omega matrix (e.g. a fixed/zero BSV the estimator
+  drops, or a model with no BSV), `.updateParFixedGetEtaRow()` returned a
+  bare `""` that coerced the numeric BSV column to character, so unformatted
+  full-precision values (e.g. `22.6896152419656`) and `<NA>` survived into
+  `$parFixedDf` / `$parFixed`.
 
 # nlmixr2est 6.0.1
 

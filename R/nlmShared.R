@@ -117,6 +117,13 @@
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
+  # Iteration-print transforms: ship a single xform sub-list so the C
+  # side wires log/logit/probit back-transforms through one helper
+  # (scaleAttachXform in src/scale.h), identical to every other method
+  # (focei: env$xform, saem: .cfg$xform, nlm-family: .ctl$xform).
+  # nlm-family fits are population-only, so the printed parameters are
+  # just thetas in `par` order.
+  .ctl$xform <- .iterPrintXParFromUi(ui, names(par))
   .env$control <- .ctl
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
@@ -320,4 +327,170 @@
 #' @author Matthew L. Fidler
 .nlmAdjustCov <- function(cov, parScaled) {
   .Call(`_nlmixr2est_nlmAdjustCov`, cov, parScaled)
+}
+
+#' Uppercase data column names except the model covariates
+#'
+#' nlmixr2 normalizes input/event-table column names to upper case, but leaves
+#' model covariate columns at their declared case.  This is the single shared
+#' implementation used by `.foceiPreProcessData()`, the covariate-present
+#' pre-process hook, and the output-table re-insertion helpers.
+#'
+#' @param nms character vector of column names
+#' @param covNames character vector of model covariate names (kept as-is)
+#' @return character vector of names, upper-cased except those in `covNames`
+#' @author Matthew L. Fidler
+#' @noRd
+.nmUpcaseNonCov <- function(nms, covNames) {
+  if (is.null(covNames)) covNames <- character(0)
+  vapply(nms, function(.x) {
+    if (.x %in% covNames) .x else toupper(.x)
+  }, character(1), USE.NAMES = FALSE)
+}
+
+#' Detect the time-varying covariate columns for mu-referenced estimators
+#'
+#' SAEM and NLME both support mu-referenced covariates and must know which
+#' covariate columns vary within a subject.  This is the single shared
+#' implementation; it translates the (already preprocessed) data with the base
+#' model vars and returns the time-varying covariate column names.
+#'
+#' @param dataSav preprocessed event-table data (from `.foceiPreProcessData()`)
+#' @param ui rxode2 ui model (uses `ui$mv0`)
+#' @param rxControl rxode2 control (for `addlKeepsCov`/`addlDropSs`/`ssAtDoseTime`)
+#' @return character vector of time-varying covariate column names (possibly empty)
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmixrTimeVaryingCovariates <- function(dataSav, ui, rxControl) {
+  .et <- rxode2::etTrans(dataSav, ui$mv0, addCmt = TRUE,
+                         addlKeepsCov = rxControl$addlKeepsCov,
+                         addlDropSs = rxControl$addlDropSs,
+                         ssAtDoseTime = rxControl$ssAtDoseTime)
+  .nTv <- attr(class(.et), ".rxode2.lst")$nTv
+  # nTv == 0 -> no time-varying covariates; otherwise (or, defensively, when the
+  # attribute is absent) the time-varying covariate columns follow the first 6
+  # event-table columns.  This preserves the prior saem behavior exactly.
+  if (!is.null(.nTv) && .nTv == 0L) {
+    return(character(0))
+  }
+  names(.et)[-seq_len(6)]
+}
+
+#' Generic family-control setup for the nlm-family estimation methods
+#'
+#' Every nlm-family method (`nlm`, `nlminb`, `bobyqa`, `newuoa`, `uobyqa`,
+#' `n1qn1`, `lbfgsb3c`, `optim`, `nls`) sets up its control identically: take the
+#' control from the dispatch env, default it, coerce a plain list to the proper
+#' control object, and assign it onto the ui.  This is that shared body; the
+#' per-method `.<m>FamilyControl` wrappers pass their `*Control()` function and
+#' its class name.
+#'
+#' @param env dispatch environment (provides `ui` and `control`)
+#' @param controlFn the method's `*Control()` constructor (e.g. `nlmControl`)
+#' @param controlClass the control object's S3 class (e.g. `"nlmControl"`)
+#' @return Nothing; assigns the resolved control onto `env$ui`
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFamilyControlGeneric <- function(env, controlFn, controlClass) {
+  .ui <- env$ui
+  .control <- env$control
+  if (is.null(.control)) {
+    .control <- controlFn()
+  }
+  if (!inherits(.control, controlClass)) {
+    .control <- do.call(controlFn, .control)
+  }
+  assign("control", .control, envir = .ui)
+}
+
+#' Generic family-fit driver for the nlm-family estimation methods
+#'
+#' Every nlm-family method shares the same fit spine: preprocess the data, run
+#' the method's optimizer (`fitModel`) collecting warnings, assemble the fit
+#' environment (objective, theta, control, message, ...), and hand it to
+#' `nlmixr2CreateOutputFromUi()`.  The per-method `.<m>FamilyFit` wrappers supply
+#' only what genuinely differs.  The fit environment built here needs (and this
+#' driver populates): table, origData/dataSav/idLvl/covLvl (via
+#' `.foceiPreProcessData`), ui, adjObf, fullTheta, control, extra, est,
+#' objective, model, ofvType, message, theta.
+#'
+#' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
+#' @param method estimation-method string; also the slot the raw fit is stored
+#'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
+#' @param fitModel `function(ui, dataSav)` running the optimizer
+#' @param getTheta `function(fit, ui)` returning the full theta vector
+#' @param objective `function(fit)` returning the raw objective (driver does not
+#'   multiply; pass e.g. `function(f) 2 * as.numeric(f$minimum)`)
+#' @param controlToFocei `function(env)` translating the control to a
+#'   focei-style control for output assembly
+#' @param returnFlag rxode2 control flag name that short-circuits and returns the
+#'   raw optimizer result (e.g. `"returnNlm"`)
+#' @param message `function(fit)` returning the `$message` (default `fit$message`)
+#' @param emitFitWarnings when TRUE, re-emit the warnings collected from
+#'   `fitModel` via `warning()` (nlm does this; the others do not)
+#' @param extra `$extra` print string, or a `function(control)` returning it
+#' @param adjustOutput when TRUE, run `.nlmFamilyAdjustOutput()`
+#' @param objective optional `function(fit)` returning the raw objective; when
+#'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
+#' @param postSetup optional `function(ret, ui, fitList)` returning a modified
+#'   `ret`, run right after the raw fit is stored and before
+#'   `.nlmFamilyAdjustOutput()` -- for methods that must set cov/covMethod/
+#'   objective with custom values that adjustOutput's `is.null` guards then keep
+#' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta,
+                                 controlToFocei, returnFlag,
+                                 objective = NULL,
+                                 message = function(fit) fit$message,
+                                 emitFitWarnings = FALSE,
+                                 extra = "",
+                                 adjustOutput = TRUE,
+                                 postSetup = NULL) {
+  .ui <- env$ui
+  .control <- .ui$control
+  .data <- env$data
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
+  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
+  .fit <- .collectWarn(fitModel(.ui, .ret$dataSav), lst = TRUE)
+  .ret[[method]] <- .fit[[1]]
+  if (!is.null(postSetup)) {
+    .ret <- postSetup(.ret, .ui, .fit)
+  }
+  if (adjustOutput) {
+    .ret <- .nlmFamilyAdjustOutput(.ret, method)
+  }
+  .ret$message <- NULL
+  if (emitFitWarnings) {
+    lapply(.fit[[2]], function(.w) warning(.w, call. = FALSE))
+  }
+  if (rxode2::rxGetControl(.ui, returnFlag, FALSE)) {
+    return(.ret[[method]])
+  }
+  .ret$message <- message(.ret[[method]])
+  .ret$ui <- .ui
+  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
+  .ret$fullTheta <- getTheta(.ret[[method]], .ui)
+  .ret$control <- .control
+  .ret$extra <- if (is.function(extra)) extra(.control) else extra
+  .nlmixr2FitUpdateParams(.ret)
+  nmObjHandleControlObject(.ret$control, .ret)
+  if (exists("control", .ui)) {
+    rm(list = "control", envir = .ui)
+  }
+  .ret$est <- method
+  if (!is.null(objective)) {
+    .ret$objective <- objective(.ret[[method]])
+  }
+  .ret$model <- .ui$ebe
+  .ret$ofvType <- method
+  controlToFocei(.ret)
+  .ret$theta <- .ret$ui$saemThetaDataFrame
+  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
+                                    control = .ret$control, table = .ret$table,
+                                    env = .ret, est = method)
+  .env <- .ret$env
+  .env$method <- method
+  .ret
 }
