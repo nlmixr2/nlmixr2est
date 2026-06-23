@@ -16,11 +16,12 @@ finite-difference path (slower).  Default \code{FALSE}.}
 the finite-difference path.  Default \code{FALSE}.}
 
 \item{fallback}{logical; if the analytic path is out of scope / fails, fall
-back to the finite-difference path.  Default \code{TRUE}.}
+back to the finite-difference path (and, if the sensitivities do not load at
+all, to the fit's built-in finite-difference covariance).  Default \code{TRUE}.}
 }
 \value{
-list with \code{cov}, \code{se}, \code{params}, and \code{method}
-(\code{"analytic"} / \code{"fd"} / \code{"fd-fallback"}), or \code{NULL}.
+list with \code{cov}, \code{se}, \code{params}, and \code{method} (\code{"analytic"} /
+\code{"fd"} / \code{"fd-fallback"} / \code{"fd-builtin"}), or \code{NULL}.
 }
 \description{
 By default returns the fast, exact, finite-difference-free analytic
