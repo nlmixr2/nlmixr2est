@@ -1,5 +1,24 @@
 # nlmixr2est (development version)
 
+- New analytic FOCEI/FOCE covariance for the structural (fixed-effect) thetas,
+  `foceiCov(fit)` / `foceiCovAnalytic(fit)`.  It assembles the exact
+  observed-information R-matrix in closed form from 1st/2nd/3rd-order model
+  sensitivities -- the exact-gradient construction continued by one
+  differentiation, splitting into a data term (reusing the gradient's 2nd-order
+  sensitivities) and a log-determinant term (which carries the 3rd-order
+  sensitivities).  Finite-difference-free, so no step to tune and none of the
+  catastrophic-cancellation blow-ups of the FD Hessian.  Matches
+  NONMEM `$COV MATRIX=R` and ferx to ~1%.  Runs on a released rxode2 (a pure-R
+  third-order sensitivity generator is used when `rxExpandSens3_` is absent).
+
+- New `foceiCovFD(fit)` (and `foceiCov(fit, omega = TRUE, residual = TRUE)`):
+  the FULL covariance (structural thetas + Omega + residual sigma) as the inverse
+  finite-difference Hessian of the FOCEI/FOCE objective, in the natural
+  variance-covariance (non-Cholesky) Omega parameterization -- producing the
+  Omega and residual SEs that `covMethod = "r"` does not.  Optional (off by
+  default) since it is slower; serves as the robust fallback when the analytic
+  path is out of scope.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
