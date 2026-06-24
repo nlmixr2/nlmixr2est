@@ -87,7 +87,7 @@
     idx <- match(key(pairs), key(d$elements))
     return(list(nom = nom, dOi = d$dOmegaInv[idx],
                 d2Oi = lapply(idx, function(a) d$d2OmegaInv[[a]][idx]),
-                dLD = d$dLogDet[idx], d2LD = d$d2LogDet[idx, idx, drop = FALSE]))
+                d2LD = d$d2LogDet[idx, idx, drop = FALSE]))
   }
   Oi <- solve(Om)
   Eb <- lapply(seq_len(nom), function(m) { E <- matrix(0, neta, neta)
@@ -97,7 +97,6 @@
        dOi = lapply(OiE, function(M) -(M %*% Oi)),
        d2Oi = lapply(seq_len(nom), function(a) lapply(seq_len(nom), function(b)
          Oi %*% (Eb[[a]] %*% OiE[[b]] + Eb[[b]] %*% OiE[[a]]) %*% Oi)),
-       dLD = vapply(OiE, function(M) sum(diag(M)), numeric(1)),
        d2LD = outer(seq_len(nom), seq_len(nom),
                     Vectorize(function(a, b) -sum(diag(OiE[[a]] %*% OiE[[b]])))))
 }
@@ -409,18 +408,18 @@
     if (ta=="om"||tb=="om") return(0)
     if (ta=="sg"&&tb=="sg") return(sum(PVpair(aa,bb)$rss))
     thp<-if(ta=="th")aa else bb; sg<-if(ta=="th")bb else aa; Mcol(sg)[thp] }
-  etaP <- sapply(1:np, function(p) -HiM %*% Mcol(p))
+  etaP <- matrix(vapply(1:np, function(p) as.numeric(-HiM %*% Mcol(p)), numeric(neta)), nrow = neta)  # neta x np (neta==1 safe)
   eta2 <- function(aa,bb) { b <- Svec(aa,bb) + Smat(aa)%*%etaP[,bb] + Smat(bb)%*%etaP[,aa]
     for (l in 1:neta) b[l] <- b[l] + as.numeric(t(etaP[,aa])%*%Tn[l,,]%*%etaP[,bb]); as.numeric(-HiM%*%b) }
   Cpe <- function(p,l) 0.5*(tr(Hti%*%d2HtEtaP(p,l)) - tr(Hti%*%dHt_p(p)%*%Hti%*%dHtEta[[l]]))
   Cpp <- function(aa,bb) 0.5*(tr(Hti%*%d2Ht_pp(aa,bb)) - tr(Hti%*%dHt_p(aa)%*%Hti%*%dHt_p(bb)))
   R <- matrix(0,np,np)
-  for (aa in 1:np) for (bb in 1:np) {
+  for (aa in 1:np) for (bb in aa:np) {                # R is symmetric -- fill upper, mirror
     dat <- d2Phi(aa,bb) - as.numeric(t(Mcol(aa))%*%HiM%*%Mcol(bb))
     ld <- Cpp(aa,bb) + sum(vapply(1:neta,function(l)Cpe(aa,l),numeric(1))*etaP[,bb]) +
           sum(vapply(1:neta,function(mm)Cpe(bb,mm),numeric(1))*etaP[,aa]) +
           as.numeric(t(etaP[,aa])%*%Cee%*%etaP[,bb]) + sum(Cen*eta2(aa,bb))
-    R[aa,bb] <- dat + ld
+    R[aa,bb] <- R[bb,aa] <- dat + ld
   }
   R
 }
@@ -463,13 +462,23 @@ foceiCovAnalytic <- function(fit, sens = c("exact3", "fd2")) {
   if (neta == 0L) return(NULL)
   thetaForEta <- muRef$theta[match(etaNames, muRef$eta)]
   if (anyNA(thetaForEta)) return(NULL)             # non-mu-ref eta -> out of scope
+  fx <- function(nm) { if (is.null(ini$fix)) return(rep(FALSE, length(nm)))
+    i <- match(nm, ini$name); !is.na(i) & !is.na(ini$fix[i]) & ini$fix[i] }
+  if (any(fx(thetaForEta))) return(NULL)           # fixed structural theta breaks eta indexing -> builtin
+  keep <- !fx(ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]  # drop fixed sigma
   Om <- fit$omega
   blocks <- .omegaBlocks(Om)                       # free Omega lower-triangle (diagonal or block)
   pairs <- do.call(rbind, lapply(blocks, function(b)
     do.call(rbind, lapply(seq_along(b), function(a) cbind(b[a], b[seq_len(a)])))))
+  pairs <- pairs[!.omegaFixed(ini, pairs), , drop = FALSE]   # drop fixed Omega elements
   omd <- .omegaVarCovDeriv(Om, pairs)
   thRows <- ini[!is.na(ini$ntheta), , drop = FALSE]
   thRows <- thRows[order(thRows$ntheta), , drop = FALSE]
+  # the analytic block only covers mu-ref structural thetas + the (free) residual sigma; if the
+  # model has any other ESTIMATED theta (e.g. a covariate coefficient) bow out so the builtin
+  # tier -- which handles all thetas -- gives a consistent full parameter set
+  freeTh <- thRows$name[!fx(thRows$name)]
+  if (length(setdiff(freeTh, c(thetaForEta, ef$sgName))) > 0L) return(NULL)
   th <- setNames(thRows$est, paste0("THETA_", seq_len(nrow(thRows)), "_"))
   etav <- paste0("ETA_", seq_len(neta), "_")
   ebes <- as.matrix(fit$eta[, etaNames, drop = FALSE])
@@ -482,15 +491,12 @@ foceiCovAnalytic <- function(fit, sens = c("exact3", "fd2")) {
   ids <- fit$eta$ID
   R <- matrix(0, np, np)
   for (i in seq_along(ids)) {
-    s <- ds[ds$ID == ids[i], , drop = FALSE]
-    dose <- s[s$EVID != 0, , drop = FALSE]; obs <- s[s$EVID == 0, , drop = FALSE]
-    ev <- rxode2::et()
-    for (k in seq_len(nrow(dose))) ev <- ev |> rxode2::et(amt = dose$AMT[k], cmt = "depot", time = dose$TIME[k])
-    ev <- ev |> rxode2::et(obs$TIME)
+    s <- ds[ds$ID == ids[i], , drop = FALSE]         # solve over the subject's ACTUAL events
+    obs <- s[s$EVID == 0, , drop = FALSE]             # (CMT/EVID/II/SS/ADDL/covariates preserved)
     E <- if (sens == "fd2")
-      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), ev, obs$TIME, etav, neta, am$P2, ebes[i, ])
+      .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, etav, neta, am$P2, ebes[i, ])
     else
-      .foceiAnalyticSolveSubject(am$augMod, c(th, setNames(ebes[i, ], etav)), ev, obs$TIME, etav, neta, am$P2, am$P3)
+      .foceiAnalyticSolveSubject(am$augMod, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, etav, neta, am$P2, am$P3)
     if (is.null(E)) return(NULL)                   # solve failure -> next tier (caller)
     E$y <- obs$DV
     Ri <- tryCatch(.foceiAnalyticSubjectR(E, ebes[i, ], Om, ef, neta, nth, nsg, ef$sgVar, omd),
@@ -504,6 +510,6 @@ foceiCovAnalytic <- function(fit, sens = c("exact3", "fd2")) {
                 else paste0("cov.", thetaForEta[p[1]], ".", thetaForEta[p[2]]))
   nm <- c(thetaForEta, ef$sgName, omNm)
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
-  list(cov = cov, se = setNames(sqrt(abs(diag(cov))), nm), R = R, params = nm)
+  list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm), R = R, params = nm)  # NaN flags non-PD
 }
 

@@ -76,4 +76,28 @@ test_that("block Omega is handled analytically, with off-diagonal covariance SEs
   expect_true(any(grepl("^cov\\.", r$params)))       # an off-diagonal Omega covariance SE
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
   expect_true(all(eigen(r$cov, symmetric = TRUE, only.values = TRUE)$values > 0))
+  # the off-diagonal covariance SE is value-checked: exact3 and fd2 must agree
+  r2 <- foceiCovAnalytic(fit, sens = "fd2")
+  expect_equal(unname(r$se), unname(r2$se[r$params]), tolerance = 1e-3)
+})
+
+test_that("single random-effect model is handled analytically (no sapply collapse)", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  one.eta <- function() {                            # exactly one eta, all thetas mu-referenced
+    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({
+      ka <- 1.5; cl <- exp(tcl + eta.cl); v <- 31.5
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd)
+    })
+  }
+  fit <- suppressMessages(nlmixr(one.eta, nlmixr2data::theo_sd, "focei",
+                                 foceiControl(print = 0L, covMethod = "")))
+  r <- foceiCovAnalytic(fit)
+  expect_false(is.null(r))
+  expect_setequal(r$params, c("tcl", "add.sd", "om.tcl"))
+  expect_true(all(is.finite(r$se)) && all(r$se > 0))
 })
