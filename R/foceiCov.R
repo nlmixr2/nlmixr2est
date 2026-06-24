@@ -1,78 +1,120 @@
-# Orchestrator for the analytic / finite-difference covariance paths.
+# Full FOCEI/FOCE covariance (structural theta + residual sigma + Omega, diagonal or block)
+# with a three-tier robustness ladder (Matthew's note that the augmented ODE is
+# more likely to fail solving the higher its order):
 #
-# By default returns the fast, exact, finite-difference-free analytic
-# structural-theta covariance (foceiCovAnalytic).  Omega and residual SEs are
-# OPTIONAL (they require the slower full finite-difference path in the
-# non-Cholesky variance-covariance parameterization, foceiCovFD).
+#   1. analytic, EXACT 3rd-order sensitivities      (foceiCovAnalytic sens="exact3")
+#   2. analytic, 2nd-order + Shi(2021) finite differences of the 2nd-order
+#      sensitivities for the 3rd-order term         (foceiCovAnalytic sens="fd2")
+#        -- a much lighter ODE (no O(neta^3) states) that solves where tier 1
+#           does not, and reproduces it to ~1e-5 (it differences EXACT
+#           derivatives, not the objective, so no catastrophic cancellation).
+#   3. builtin: finite differences of nlmixr2's OWN focei objective over the
+#      non-Cholesky parameters                       (.foceiCovBuiltinFD)
+#        -- uses no sensitivity model at all (just the fitted model), so it works
+#           when symengine / the augmented build is unavailable; tightened OFV
+#           (sigdig) keeps the FD Hessian stable.  Returns Omega/residual SEs too.
 #
-# Fallback ladder (mirrors ferx's all-or-nothing behaviour, and Matthew's note
-# that the augmented ODE is more likely to fail solving):
-#   1. analytic structural-theta block (needs 2nd/3rd-order sensitivities);
-#   2. if that is out of scope / fails -> foceiCovFD (needs only 1st-order
-#      sensitivities, so it survives where the big augmented solve does not);
-#   3. if the sensitivity machinery does not load at all (e.g. no symengine, or
-#      rxode2 cannot build the sensitivity model) -> the fit's own built-in
-#      finite-difference covariance (`fit$cov`, the Gill-Hessian covMethod result
-#      -- which the covMethod="r"/"s" scaling fix in this same change set leaves
-#      correctly scaled).
-# So a finite-difference covariance is always produced when the sensitivities are
-# unavailable; the analytic path is never partially applied.
+# Every tier returns the SAME full covariance (theta + sigma + Omega, diagonal or
+# block), so the fallback never silently drops the Omega/residual blocks.
 
-#' The fit's built-in finite-difference (Gill-Hessian) covariance, optionally
-#' restricted to a set of parameters.  Used as the final fallback when the
-#' sensitivity-based paths cannot run.
+#' Omega blocks (connected components of the random-effect covariance), so each
+#' block can be set with one `ini()` formula.  Returns a list of eta-index vectors.
 #' @noRd
-.foceiCovBuiltin <- function(fit, keep = NULL) {
-  cv <- fit$cov
-  if (is.null(cv) || !is.matrix(cv) || nrow(cv) == 0L) return(NULL)
-  if (!is.null(keep)) {
-    keep <- intersect(keep, rownames(cv))
-    if (length(keep) == 0L) return(NULL)
-    cv <- cv[keep, keep, drop = FALSE]
+.omegaBlocks <- function(Om, tol = 1e-10) {
+  n <- nrow(Om); adj <- abs(Om) > tol; diag(adj) <- TRUE
+  comp <- integer(n); k <- 0L
+  for (i in seq_len(n)) if (comp[i] == 0L) {
+    k <- k + 1L; q <- i
+    while (length(q)) { v <- q[1]; q <- q[-1]
+      if (comp[v] == 0L) { comp[v] <- k; q <- c(q, which(adj[v, ] & comp == 0L)) } }
   }
-  list(cov = cv, se = setNames(sqrt(abs(diag(cv))), rownames(cv)),
-       params = rownames(cv), method = "fd-builtin")
+  unname(split(seq_len(n), comp))
 }
 
-#' Covariance for a fitted nlmixr2 FOCEI/FOCE object (analytic + FD fallback)
+#' Set one Omega block on a UI by its `eta_i + eta_j + ... ~ c(...)` ini formula.
+#' @noRd
+.omBlockIni <- function(u, etas, vals) {
+  lhs <- Reduce(function(x, y) call("+", x, as.name(y)), etas[-1], as.name(etas[1]))
+  rhs <- if (length(vals) == 1L) vals[[1]] else as.call(c(quote(c), as.list(vals)))
+  eval(bquote(rxode2::ini(u, .(call("~", lhs, rhs)))))
+}
+
+#' Central finite-difference Hessian of `fn` at `x` (NULL if any evaluation fails).
+#' @noRd
+.fdHessian <- function(fn, x, h) {
+  np <- length(x); H <- matrix(0, np, np)
+  for (i in seq_len(np)) for (j in i:np) {
+    hi <- h * (abs(x[i]) + h); hj <- h * (abs(x[j]) + h)
+    pp <- x; pp[i] <- pp[i]+hi; pp[j] <- pp[j]+hj
+    pm <- x; pm[i] <- pm[i]+hi; pm[j] <- pm[j]-hj
+    mp <- x; mp[i] <- mp[i]-hi; mp[j] <- mp[j]+hj
+    mm <- x; mm[i] <- mm[i]-hi; mm[j] <- mm[j]-hj
+    H[i, j] <- H[j, i] <- (fn(pp) - fn(pm) - fn(mp) + fn(mm)) / (4 * hi * hj)
+  }
+  if (anyNA(H)) NULL else H
+}
+
+#' Builtin finite-difference covariance from nlmixr2's native objective.
+#'
+#' Last-resort tier: re-evaluates nlmixr2's own focei objective at perturbed
+#' parameters via a 0-outer-iteration fit (no sensitivity model needed) and
+#' finite-differences it over the thetas and the FULL Omega lower-triangle
+#' (variances AND covariances, non-Cholesky) -- so it covers block Omega.  Every
+#' parameter is set through the same `ini()` interface used for the point fit:
+#' thetas by named value, each Omega block by its `eta_i + eta_j ~ c(...)`
+#' formula.  `sigdig` tightens the inner-EBE / ODE tolerance so the OFV is smooth
+#' enough to difference.
+#' @noRd
+.foceiCovBuiltinFD <- function(fit, h = 1e-3, sigdig = 9) {
+  ui <- fit$finalUi; idf <- ui$iniDf; muRef <- ui$muRefDataFrame
+  Om <- fit$omega; neta <- nrow(Om)
+  data <- tryCatch(getData(fit), error = function(e) NULL); if (is.null(data)) return(NULL)
+  thRows <- which(!is.na(idf$ntheta)); thNames <- idf$name[thRows]
+  diagRows <- idf[!is.na(idf$neta1) & idf$neta1 == idf$neta2, , drop = FALSE]
+  etaName <- diagRows$name[order(diagRows$neta1)]               # etaName[i] = name of eta i
+  blocks <- .omegaBlocks(Om)
+  # within-block lower-triangle (i>=j) pairs, in block-then-row-major order
+  pairs <- do.call(rbind, lapply(blocks, function(b)
+    do.call(rbind, lapply(seq_along(b), function(a) cbind(b[a], b[seq_len(a)])))))
+  par0 <- unname(c(idf$est[thRows], Om[pairs])); nth <- length(thRows)
+  ctl <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 1000L,
+                      covMethod = "", print = 0L, sigdig = sigdig)
+  objAt <- function(pv) {
+    u <- tryCatch({
+      thv <- setNames(pv[seq_len(nth)], thNames)             # via a variable: ini() uses substitute()
+      u <- rxode2::ini(ui, thv)
+      M <- matrix(0, neta, neta); ov <- pv[-seq_len(nth)]
+      M[pairs] <- ov; M[pairs[, 2:1, drop = FALSE]] <- ov
+      for (b in blocks) u <- .omBlockIni(u, etaName[b], unlist(lapply(seq_along(b), function(a) M[b[a], b[seq_len(a)]])))
+      u
+    }, error = function(e) NULL)
+    if (is.null(u)) return(NA_real_)
+    f <- try(suppressMessages(suppressWarnings(nlmixr2(u, data, "focei", ctl))), silent = TRUE)
+    if (inherits(f, "try-error") || is.null(f$objf)) NA_real_ else f$objf
+  }
+  H <- .fdHessian(objAt, par0, h); if (is.null(H)) return(NULL)
+  cov <- tryCatch(solve(0.5 * H), error = function(e) NULL); if (is.null(cov)) return(NULL)
+  thOf <- function(e) { t <- muRef$theta[match(e, muRef$eta)]; if (is.na(t)) e else t }
+  omNm <- apply(pairs, 1, function(p) if (p[1] == p[2]) paste0("om.", thOf(etaName[p[1]]))
+                else paste0("cov.", thOf(etaName[p[1]]), ".", thOf(etaName[p[2]])))
+  nm <- c(thNames, omNm); dimnames(cov) <- list(nm, nm)
+  list(cov = cov, se = setNames(sqrt(abs(diag(cov))), nm), params = nm, method = "fd-builtin")
+}
+
+#' Full covariance for a fitted nlmixr2 FOCEI/FOCE object
+#'
+#' Returns the full observed-information covariance over the structural thetas,
+#' residual sigma, and Omega (diagonal or block) variances and covariances, via a
+#' three-tier ladder: analytic exact 3rd-order, then 2nd-order with Shi finite differences,
+#' then a finite difference of nlmixr2's native objective.  Each tier returns the
+#' same full set of parameters; the analytic path is never partially applied.
 #'
 #' @param fit a fitted nlmixr2 focei object.
-#' @param omega logical; also return random-effect (Omega) SEs.  Requires the
-#'   finite-difference path (slower).  Default `FALSE`.
-#' @param residual logical; also return residual-error (sigma) SEs.  Requires
-#'   the finite-difference path.  Default `FALSE`.
-#' @param fallback logical; if the analytic path is out of scope / fails, fall
-#'   back to the finite-difference path (and, if the sensitivities do not load at
-#'   all, to the fit's built-in finite-difference covariance).  Default `TRUE`.
-#' @return list with `cov`, `se`, `params`, and `method` (`"analytic"` / `"fd"` /
-#'   `"fd-fallback"` / `"fd-builtin"`), or `NULL`.
+#' @return list with `cov`, `se`, `params`, and `method` (`"analytic"` /
+#'   `"analytic-fd2"` / `"fd-builtin"`), or `NULL` if no tier succeeds.
 #' @export
-foceiCov <- function(fit, omega = FALSE, residual = FALSE, fallback = TRUE) {
-  # structural (mu-referenced) theta names, in eta order
-  muRef <- fit$finalUi$muRefDataFrame
-  ini <- fit$finalUi$iniDf
-  etaRows <- ini[!is.na(ini$neta1) & ini$neta1 == ini$neta2, , drop = FALSE]
-  etaRows <- etaRows[order(etaRows$neta1), , drop = FALSE]
-  thN <- muRef$theta[match(etaRows$name, muRef$eta)]
-
-  if (isTRUE(omega) || isTRUE(residual)) {
-    # full covariance (theta + Omega + residual), non-Cholesky variance scale
-    r <- foceiCovFD(fit)
-    if (!is.null(r)) { r$method <- "fd"; return(r) }
-    if (!isTRUE(fallback)) return(NULL)
-    return(.foceiCovBuiltin(fit))                 # sens unavailable -> built-in FD
-  }
-  # fast path: analytic structural-theta block
-  r <- foceiCovAnalytic(fit)
-  if (!is.null(r)) { r$method <- "analytic"; return(r) }
-  if (!isTRUE(fallback)) return(NULL)
-  # fallback 1: finite-difference (1st-order sensitivities), structural-theta block
-  rf <- foceiCovFD(fit)
-  if (!is.null(rf)) {
-    thNk <- intersect(thN, rf$params)
-    return(list(cov = rf$cov[thNk, thNk, drop = FALSE], se = rf$se[thNk],
-                params = thNk, method = "fd-fallback"))
-  }
-  # fallback 2: sensitivities did not load at all -> the fit's built-in FD covariance
-  .foceiCovBuiltin(fit, thN)
+foceiCov <- function(fit) {
+  r <- foceiCovAnalytic(fit, sens = "exact3"); if (!is.null(r)) { r$method <- "analytic"; return(r) }
+  r <- foceiCovAnalytic(fit, sens = "fd2");    if (!is.null(r)) { r$method <- "analytic-fd2"; return(r) }
+  .foceiCovBuiltinFD(fit)
 }

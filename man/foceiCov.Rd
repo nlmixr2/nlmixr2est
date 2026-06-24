@@ -2,32 +2,21 @@
 % Please edit documentation in R/foceiCov.R
 \name{foceiCov}
 \alias{foceiCov}
-\title{Covariance for a fitted nlmixr2 FOCEI/FOCE object (analytic + FD fallback)}
+\title{Full covariance for a fitted nlmixr2 FOCEI/FOCE object}
 \usage{
-foceiCov(fit, omega = FALSE, residual = FALSE, fallback = TRUE)
+foceiCov(fit)
 }
 \arguments{
 \item{fit}{a fitted nlmixr2 focei object.}
-
-\item{omega}{logical; also return random-effect (Omega) SEs.  Requires the
-finite-difference path (slower).  Default \code{FALSE}.}
-
-\item{residual}{logical; also return residual-error (sigma) SEs.  Requires
-the finite-difference path.  Default \code{FALSE}.}
-
-\item{fallback}{logical; if the analytic path is out of scope / fails, fall
-back to the finite-difference path (and, if the sensitivities do not load at
-all, to the fit's built-in finite-difference covariance).  Default \code{TRUE}.}
 }
 \value{
 list with \code{cov}, \code{se}, \code{params}, and \code{method} (\code{"analytic"} /
-\code{"fd"} / \code{"fd-fallback"} / \code{"fd-builtin"}), or \code{NULL}.
+\code{"analytic-fd2"} / \code{"fd-builtin"}), or \code{NULL} if no tier succeeds.
 }
 \description{
-By default returns the fast, exact, finite-difference-free analytic
-structural-theta covariance (\code{\link[=foceiCovAnalytic]{foceiCovAnalytic()}}).  Omega and residual SEs
-are optional (they require the slower full finite-difference path in the
-non-Cholesky variance-covariance parameterization, \code{\link[=foceiCovFD]{foceiCovFD()}}).  If the
-analytic path is out of scope or fails, falls back to the finite-difference
-path.
+Returns the full observed-information covariance over the structural thetas,
+residual sigma, and Omega (diagonal or block) variances and covariances, via a
+three-tier ladder: analytic exact 3rd-order, then 2nd-order with Shi finite differences,
+then a finite difference of nlmixr2's native objective.  Each tier returns the
+same full set of parameters; the analytic path is never partially applied.
 }

@@ -2,21 +2,32 @@
 % Please edit documentation in R/foceiCovAnalytic.R
 \name{foceiCovAnalytic}
 \alias{foceiCovAnalytic}
-\title{Analytic FOCEI covariance (structural-theta block) for a fitted nlmixr2 object}
+\title{Full analytic FOCEI/FOCE covariance for a fitted nlmixr2 object}
 \usage{
-foceiCovAnalytic(fit)
+foceiCovAnalytic(fit, sens = c("exact3", "fd2"))
 }
 \arguments{
 \item{fit}{a fitted nlmixr2 focei object}
+
+\item{sens}{sensitivity source for the log-determinant term: \code{"exact3"}
+(analytic 3rd-order, the default) or \code{"fd2"} (analytic 2nd-order with finite
+differences of the 2nd-order sensitivities for the 3rd-order tensor -- a
+lighter ODE that solves more reliably, the middle robustness tier).  Both
+feed the identical R-matrix assembly.}
 }
 \value{
-list(cov, se, R, params) labelled by structural theta name, or \code{NULL}
+list(cov, se, R, params), with \code{params} covering theta, sigma, the
+\code{om.<theta>} Omega variances and any \code{cov.<theta>.<theta>} covariances, or
+\code{NULL}
 }
 \description{
 Computes the exact observed-information R-matrix (data term + log-determinant
-term) for the structural (mu-referenced) fixed effects, finite-difference-free, and returns
-the covariance \code{solve(R)}.  Runs on a released rxode2 (uses the pure-R
-third-order sensitivity generator when \code{rxExpandSens3_} is absent).  Returns
-\code{NULL} (caller should fall back to the finite-difference covariance) if the
-model is out of scope or any per-subject augmented solve fails.
+term) over ALL population parameters -- the structural (mu-referenced) fixed
+effects, the residual sigma, and the \code{Omega} variances AND covariances
+(diagonal or block, via the non-Cholesky \code{rxOmegaVarCovDeriv} derivatives) --
+and returns the covariance \code{solve(R)}.  Finite-difference-free; runs on
+released rxode2 (pure-R fallbacks are used when \code{rxExpandSens3_} /
+\code{rxOmegaVarCovDeriv} are absent).  Returns \code{NULL} (caller should fall back) if
+the model is out of scope (non-mu-ref eta, unsupported error model) or any
+per-subject augmented solve fails.
 }
