@@ -106,56 +106,61 @@ testWang2007ErrorModel <- function(type, fun, val = rep(NA_real_, 10), addProp =
     .dode <- getWang2007LogDoseData()
   }
 
+  # Only the objective values (and that the fit prints) are checked below, so
+  # skip residual/table computation (calcTables = FALSE).  This leaves the
+  # objective identical to NONMEM while cutting each fit's time by ~10x.
+  .combined <- paste0("combined", addProp)
+
   fit1 <- .nlmixr(.fo, .dode, "focei",
                   control = foceiControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit2 <- .nlmixr(.f, .d, "focei",
                   control = foceiControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit3 <- .nlmixr(.fo, .dode, "foce",
                   control = foceiControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit4 <- .nlmixr(.f, .d, "foce",
                   control = foceiControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit5 <- .nlmixr(.fo, .dode, "fo",
                   control = foceiControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
   setOfv(fit5, "fo")
 
   fit6 <- .nlmixr(.f, .dode, "fo", control = foceiControl(
     maxOuterIterations = 0, covMethod = "",
-    addProp = paste0("combined", addProp)))
+    addProp = .combined, calcTables = FALSE))
   setOfv(fit6, "fo")
 
   fit7 <- .nlmixr(.fo, .dode, "agq",
                   control = agqControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit8 <- .nlmixr(.f, .d, "agq",
                   control = agqControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit9 <- .nlmixr(.fo, .dode, "laplace",
                   control = laplaceControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   fit10 <- .nlmixr(.f, .d, "laplace",
                   control = laplaceControl(
                     maxOuterIterations = 0, covMethod = "",
-                    addProp = paste0("combined", addProp)))
+                    addProp = .combined, calcTables = FALSE))
 
   .n <- paste(type, c("focei ode", "focei", "foce ode", "foce", "fo ode", "fo",
                       "agq ode", "agq", "laplace ode", "laplace"),
