@@ -149,8 +149,8 @@ Mixture models are declared with `mix(expr1, prob1, expr2, ...)`:
 twoPop <- function() {
   ini({
     tka   <- log(1.2)                   # log Ka
-    tcl1  <- log(0.8)      # log Cl, EM subpopulation
-    tcl2  <- log(0.8)      # log Cl, PM subpopulation
+    tcl1  <- logit(0.8, 0.1, 200)      # log Cl, EM subpopulation
+    tcl2  <- logit(0.8, 0.1, 200)      # log Cl, PM subpopulation
     tv    <- log(30)                     # log V
     p1    <- 0.67                        # prior prob of being an EM
     eta.cl ~ 0.09
@@ -159,7 +159,7 @@ twoPop <- function() {
   })
   model({
     ka <- exp(tka)
-    cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+    cl <- mix(expit(tcl1 + eta.cl, 0.1, 200), p1, expit(tcl2 + eta.cl, 0.1, 200))
     v  <- exp(tv + eta.v)
     linCmt() ~ add(add.sd)
   })
