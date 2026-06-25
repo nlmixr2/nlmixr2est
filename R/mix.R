@@ -251,7 +251,7 @@
       
       .w_group <- .mixProbabilities
       .mean_mu <- sum(.w_group * .mus)
-      .overall_var <- .sig02 + sum(.w_group * (.mus - .mean_mu)^2)
+      .overall_var <- .sig02
       
       .w_idx <- which(colnames(.omega) == .grp[1])
       if (length(.w_idx) == 1L) {
