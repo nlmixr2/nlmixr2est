@@ -42,4 +42,40 @@ static inline void nmFlushRxSolveWarn(int maxIds) {
   if (fn != NULL) fn(maxIds);
 }
 
+/* Push the real subject-id factor levels into rxode2's global solve state so
+   the aggregated solve warnings flushed by nmFlushRxSolveWarn() are labelled
+   with the user's ID instead of "Unknown".  FOCEi/SAEM pass a declassed
+   data.frame/matrix to rxSolve_, so rxode2 never populates its factor table
+   during estimation; we set it explicitly from the fit's idLvl right after
+   setup.  Resolved lazily under R_ToplevelExec (same version-skew-safety as
+   nmFlushRxSolveWarn): an rxode2 predating rxSetIdLvlFactors degrades to a
+   no-op and the flush falls back to printing "internal #N". */
+
+struct nmSetIdLvlLookup_ {
+  void *fn; /* really a rxSetIdLvlFactors_t but kept as void* in the struct */
+};
+
+static inline void nmSetIdLvlLookupBody_(void *data) {
+  struct nmSetIdLvlLookup_ *ctx = (struct nmSetIdLvlLookup_ *)data;
+  ctx->fn = (void *) R_GetCCallable("rxode2", "rxSetIdLvlFactors");
+}
+
+static inline void nmSetIdLvlFactors(SEXP idLvl) {
+  typedef void (*rxSetIdLvlFactors_t)(SEXP);
+  static rxSetIdLvlFactors_t fn = NULL;
+  static int triedLoad = 0;
+  /* rxSetIdLvlFactors indexes idLvl with STRING_ELT, so only forward a
+     character vector of subject-id levels; anything else is a no-op. */
+  if (idLvl == R_NilValue || TYPEOF(idLvl) != STRSXP) return;
+  if (!triedLoad) {
+    struct nmSetIdLvlLookup_ ctx;
+    ctx.fn = NULL;
+    if (R_ToplevelExec(nmSetIdLvlLookupBody_, &ctx) && ctx.fn != NULL) {
+      fn = (rxSetIdLvlFactors_t) ctx.fn;
+    }
+    triedLoad = 1;
+  }
+  if (fn != NULL) fn(idLvl);
+}
+
 #endif

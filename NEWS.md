@@ -85,6 +85,15 @@
   `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
   `foceiControl()` correctly omits `outerOpt` when it is left at this
   default.
+- Aggregated ODE-solve warnings flushed during `focei`/`saem`
+  estimation (e.g. `[lsoda -- internal t + h = t ...]: N warning(s) for
+  subject(s): ...`) now report the real subject id instead of
+  `Unknown`.  Estimation passes a declassed data frame to rxode2, so
+  rxode2's subject-id factor table was empty during the fit; the fit's
+  `idLvl` is now pushed into rxode2 via `rxSetIdLvlFactors()` right
+  after estimation setup.  Degrades gracefully (the warning falls back
+  to an `internal #N` index) when run against an rxode2 that predates
+  the `rxSetIdLvlFactors` symbol.
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,

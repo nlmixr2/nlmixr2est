@@ -7254,6 +7254,16 @@ Environment foceiFitCpp_(Environment e){
       stop(_("model$predOnly needs to be an rxode2 object"));
     }
   }
+  // Push the real subject-id levels into rxode2's global solve state so the
+  // aggregated solve warnings flushed each printed iteration (scale.h) are
+  // labelled with the user's ID instead of "Unknown".  foceiSetup_'s
+  // rxSolve_ runs on a declassed data.frame, so rxode2 never populates its
+  // factor table during the fit; do it explicitly here, after every
+  // foceiSetup_ path has run and before the optimization loop.
+  if (e.exists("idLvl")) {
+    RObject _idLvl = e["idLvl"];
+    nmSetIdLvlFactors(_idLvl);
+  }
   setupAq1_(e);
   if (e.exists("setupTime")){
     e["setupTime"] = as<double>(e["setupTime"]) + foceiElapsedSeconds(wallT0);
