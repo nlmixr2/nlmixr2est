@@ -176,6 +176,15 @@ iterPrintControl <- function(every = 1L,
     probitNthetasHi = numeric(0)
   )
   if (is.null(muRef) || nrow(muRef) == 0L) return(empty())
+  if (!is.null(ui$boundedTransforms)) {
+    for (.tr in ui$boundedTransforms) {
+      .w <- which(muRef$parameter == .tr$internalName)
+      if (length(.w) > 0L) {
+        muRef$low[.w] <- .tr$lower
+        muRef$hi[.w] <- .tr$upper
+      }
+    }
+  }
   # Per-printed-name xPar / logit bounds, in printNames order.
   for (i in seq_along(printNames)) {
     nm <- printNames[i]

@@ -299,6 +299,9 @@
     .funText <- paste(.funLines, collapse="\n")
     .funNew <- eval(parse(text=.funText))
     .uiNew <- rxode2::rxode2(.funNew)
+    if (exists("boundedTransforms", envir=ui$meta)) {
+      assign("boundedTransforms", get("boundedTransforms", envir=ui$meta), envir=.uiNew$meta)
+    }
     env$ui <- .uiNew
     env$omega <- .omega
     env$etaObf <- .etaObf
