@@ -1484,6 +1484,9 @@ public:
           double sum_weighted_var = 0.0;
           double sum_weights = 0.0;
           int count = 0;
+          std::vector<double> weights;
+          std::vector<double> means;
+          std::vector<unsigned int> indices;
           for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
             if (omegaShare(i) == g) {
               double w = 1.0;
@@ -1493,17 +1496,34 @@ public:
                   w = arma::sum(mixWeights.col(subpop - 1));
                 }
               }
+              weights.push_back(w);
+              double mu = 0.0;
+              if (mprior_phi1.n_rows > 0) {
+                mu = arma::mean(mprior_phi1.col(i));
+              }
+              means.push_back(mu);
+              indices.push_back(i);
               sum_weighted_var += w * Gamma2_phi1(i, i);
               sum_weights += w;
               count++;
             }
           }
           if (count > 1 && sum_weights > 0.0) {
-            double avg_var = sum_weighted_var / sum_weights;
-            for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
-              if (omegaShare(i) == g) {
-                Gamma2_phi1(i, i) = avg_var;
-              }
+            double mean_of_vars = sum_weighted_var / sum_weights;
+            double mu_total = 0.0;
+            for (size_t k = 0; k < weights.size(); ++k) {
+              mu_total += weights[k] * means[k];
+            }
+            mu_total /= sum_weights;
+            double var_of_means = 0.0;
+            for (size_t k = 0; k < weights.size(); ++k) {
+              double diff = means[k] - mu_total;
+              var_of_means += weights[k] * diff * diff;
+            }
+            var_of_means /= sum_weights;
+            double total_var = mean_of_vars + var_of_means;
+            for (unsigned int i : indices) {
+              Gamma2_phi1(i, i) = total_var;
             }
           }
         }
