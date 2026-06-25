@@ -71,7 +71,7 @@ struct saem_state_t {
   bool _saemIndTolRelax = true;
   mat _saemUE;
 };
-static thread_local saem_state_t* current_saem_state = nullptr;
+static saem_state_t* current_saem_state = nullptr;
 
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};

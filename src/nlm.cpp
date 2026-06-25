@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
 #include <atomic>
 
 #define _(String) (String)
@@ -450,7 +451,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
@@ -607,7 +610,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
