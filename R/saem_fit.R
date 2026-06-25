@@ -117,7 +117,9 @@
                        perFixResid=0.75,
                        resFixed,
                        ue,
-                       mixProb = numeric(0)) {
+                       mixProb = numeric(0),
+                       omegaShare = integer(0),
+                       omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -446,6 +448,7 @@
                           rep(1L, length(ue[, 1]))
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
+
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
@@ -552,6 +555,8 @@
     Gamma2_phi1fixed=Gamma2_phi1fixed,
     Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
     Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
+    omegaShare = omegaShare,
+    omegaShareSubpop = omegaShareSubpop,
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,

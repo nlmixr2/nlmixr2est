@@ -6681,7 +6681,13 @@ void foceiFinalizeTables(Environment e){
     // For mixture models the columns are: ID, MIXEST, ETA[1], ..., ETA[n]
     // so eta names start at offset 2; for non-mixture: offset 1 (ID only)
     {
-      int offset = (op_focei.mixIdxN != 0) ? 2 : 1;
+      int offset = 1;
+      for (int k = 0; k < tmpN2.size(); k++) {
+        if (tmpN2[k] == "MIXEST") {
+          offset = 2;
+          break;
+        }
+      }
       for (i = 0; i < etaNames.size(); i++){
         if (i + offset <  tmpN.size())  tmpN[i+offset] = etaNames[i];
         if (i + offset < tmpN2.size()) tmpN2[i+offset] = etaNames[i];

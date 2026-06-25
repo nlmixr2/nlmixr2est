@@ -248,7 +248,9 @@
                         perFixResid=rxode2::rxGetControl(ui, "perFixResid", 0.1),
                         resFixed=ui$saemResFixed,
                         ue=.ue,
-                        mixProb=ui$saemMixProb)
+                        mixProb=ui$saemMixProb,
+                        omegaShare=ui$saemOmegaShare,
+                        omegaShareSubpop=ui$saemOmegaShareSubpop)
     .cfg$cres <- ui$saemCres
     .cfg$yj <- ui$saemYj
     .cfg$lres <- ui$saemLres
@@ -382,16 +384,14 @@
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
     if (length(.estMix) == 1L) {
-      .estMixClamped <- max(1e-6, min(1 - 1e-6, .estMix))
-      .theta[.ui$mixProbs] <- qlogis(.estMixClamped)
+      .theta[.ui$mixProbs] <- max(1e-6, min(1 - 1e-6, .estMix))
     } else {
       .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
       .sumP <- sum(.estMixClamped)
       if (.sumP >= 1.0) {
         .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
       }
-      .lastP <- 1.0 - sum(.estMixClamped)
-      .theta[.ui$mixProbs] <- log(.estMixClamped / .lastP)
+      .theta[.ui$mixProbs] <- .estMixClamped
     }
   }
 
@@ -482,6 +482,7 @@
   nlmixrWithTiming("covariance", {
     .ui <- env$ui
     .saem <- env$saem
+    attr(.saem, "env") <- env
     .covMethod <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
     .calcCov <- .covMethod == "linFim"
     if (.covMethod == "") {
@@ -544,7 +545,7 @@
           }
         } else {
           .tmp <- .saem$Ha[1:.nth, 1:.nth]
-          .tmp <- try(chol(.covm), silent = TRUE)
+          .tmp <- try(chol(.tmp), silent = TRUE)
           .calcCov <- FALSE
           .addCov <- TRUE
           .sqrtm <- FALSE
@@ -857,6 +858,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
     # available to rxode2 during the table/solve step.
     .saemMixFix(.ret, .ui)
+    .ui <- .ret$ui
     .nlmixr2FitUpdateParams(.ret)
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)

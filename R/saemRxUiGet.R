@@ -221,6 +221,107 @@ attr(rxUiGet.saemOmegaTrans, "rstudio") <- c(1L, 3L)
 
 
 #' @export
+rxUiGet.saemOmegaShare <- function(x, ...) {
+  .ui <- x[[1]]
+  .etaNames <- rxUiGet.saemEtaNames(x, ...)
+  .ret <- rep(0L, length(.etaNames))
+  if (length(.ui$mixProbs) == 0L) return(.ret)
+  
+  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
+  
+  .findMixCalls <- function(expr) {
+    if (is.call(expr)) {
+      if (identical(expr[[1]], quote(mix))) {
+        return(list(expr))
+      }
+      return(do.call(c, lapply(expr, .findMixCalls)))
+    }
+    return(NULL)
+  }
+  
+  .extractEtas <- function(expr, etas) {
+    if (is.name(expr)) {
+      .n <- as.character(expr)
+      if (.n %in% etas) return(.n)
+    } else if (is.call(expr)) {
+      return(unique(unlist(lapply(expr[-1], .extractEtas, etas = etas))))
+    }
+    return(NULL)
+  }
+  
+  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
+  if (length(.mixCalls) == 0L) return(.ret)
+  
+  .groupId <- 1L
+  for (.mc in .mixCalls) {
+    .args <- as.list(.mc)[-1]
+    .comps <- .args[seq(1, length(.args), by = 2)]
+    .grpEtas <- unique(unlist(lapply(.comps, .extractEtas, etas = .allEtas)))
+    if (length(.grpEtas) > 1L) {
+      for (.eta in .grpEtas) {
+        .w <- which(.eta == .etaNames)
+        if (length(.w) == 1L) {
+          .ret[.w] <- .groupId
+        }
+      }
+      .groupId <- .groupId + 1L
+    }
+  }
+  .ret
+}
+
+#' @export
+rxUiGet.saemOmegaShareSubpop <- function(x, ...) {
+  .ui <- x[[1]]
+  .etaNames <- rxUiGet.saemEtaNames(x, ...)
+  .ret <- rep(0L, length(.etaNames))
+  if (length(.ui$mixProbs) == 0L) return(.ret)
+  
+  .allEtas <- .ui$iniDf[!is.na(.ui$iniDf$neta1), ]
+  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
+  
+  .findMixCalls <- function(expr) {
+    if (is.call(expr)) {
+      if (identical(expr[[1]], quote(mix))) {
+        return(list(expr))
+      }
+      return(do.call(c, lapply(expr, .findMixCalls)))
+    }
+    return(NULL)
+  }
+  
+  .extractEtas <- function(expr, etas) {
+    if (is.name(expr)) {
+      .n <- as.character(expr)
+      if (.n %in% etas) return(.n)
+    } else if (is.call(expr)) {
+      return(unique(unlist(lapply(expr[-1], .extractEtas, etas = etas))))
+    }
+    return(NULL)
+  }
+  
+  .mixCalls <- do.call(c, lapply(.ui$lstExpr, .findMixCalls))
+  if (length(.mixCalls) == 0L) return(.ret)
+  
+  for (.mc in .mixCalls) {
+    .args <- as.list(.mc)[-1]
+    .comps <- .args[seq(1, length(.args), by = 2)]
+    for (.j in seq_along(.comps)) {
+      .grpEtas <- .extractEtas(.comps[[.j]], etas = .allEtas)
+      for (.eta in .grpEtas) {
+        .w <- which(.eta == .etaNames)
+        if (length(.w) == 1L) {
+          .ret[.w] <- .j
+        }
+      }
+    }
+  }
+  .ret
+}
+
+
+#' @export
 rxUiGet.saemModelOmega <- function(x, ...) {
   .ui <- x[[1]]
   .thetas <- rxUiGet.saemParamsToEstimateCov(x, ...)

@@ -709,6 +709,8 @@ public:
     ind_cov1 = as<uvec>(x["ind_cov1"]);
     statphi11 = as<mat>(x["statphi11"]);
     statphi12 = as<mat>(x["statphi12"]);
+    omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
+    omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
 
     nphi0 = as<int>(x["nphi0"]);
     if (nphi0>0) {
@@ -1466,12 +1468,46 @@ public:
       }
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
+
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
       } else {
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
+      if (omegaShare.n_elem == (unsigned int)nphi1) {
+        unsigned int max_group = 0;
+        for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
+          if (omegaShare(i) > max_group) max_group = omegaShare(i);
+        }
+        for (unsigned int g = 1; g <= max_group; ++g) {
+          double sum_weighted_var = 0.0;
+          double sum_weights = 0.0;
+          int count = 0;
+          for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
+            if (omegaShare(i) == g) {
+              double w = 1.0;
+              if (nMix > 1 && omegaShareSubpop.n_elem == omegaShare.n_elem) {
+                unsigned int subpop = omegaShareSubpop(i);
+                if (subpop >= 1 && subpop <= (unsigned int)nMix) {
+                  w = arma::sum(mixWeights.col(subpop - 1));
+                }
+              }
+              sum_weighted_var += w * Gamma2_phi1(i, i);
+              sum_weights += w;
+              count++;
+            }
+          }
+          if (count > 1 && sum_weights > 0.0) {
+            double avg_var = sum_weighted_var / sum_weights;
+            for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
+              if (omegaShare(i) == g) {
+                Gamma2_phi1(i, i) = avg_var;
+              }
+            }
+          }
+        }
+      }
       vec Gmin=minv(i1);
       uvec jDmin=find(Gamma2_phi1.diag()<Gmin);
       for(unsigned int jm=0; jm<jDmin.n_elem; jm++) {
@@ -2316,6 +2352,8 @@ private:
   field<vec> fsave_mix;
   field<vec> limit_mix;
   field<vec> cens_mix;
+  uvec omegaShare;
+  uvec omegaShareSubpop;
 
   // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
   // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().
@@ -2524,12 +2562,26 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   SEXP paramUpdate = _opt["paramUpdate"];
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
+
+  int *indMixest = nullptr;
+  if (_opt.hasAttribute("names")) {
+    if (_opt.containsElementNamed("mixest")) {
+      SEXP indMixestR = _opt["mixest"];
+      if (indMixestR != R_NilValue) {
+        indMixest = INTEGER(indMixestR);
+      }
+    }
+  }
+
+
   // Fill in subject parameter information
   for (int _i = 0; _i < _Nnlmixr2; ++_i) {
     ind = getSolvingOptionsInd(_rx, _i);
     setIndSolve(ind, -1);
     if (current_saem_state != nullptr && current_saem_state->_saemMixest != 0) {
       setIndMixest(ind, current_saem_state->_saemMixest);
+    } else if (indMixest != nullptr) {
+      setIndMixest(ind, indMixest[_i]);
     }
     int k=0;
     for (int _j = 0; _j < nPar; _j++){
