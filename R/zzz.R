@@ -107,12 +107,34 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   .Call(`_rxode2version4`, as.integer(utils::packageVersion("rxode2") >= "4.0.0"))
 }
 
+.patchRxToSEMix <- function() {
+  .env_rxode2 <- asNamespace("rxode2")
+  if (exists(".rxToSEMix", envir = .env_rxode2)) {
+    .newRxToSEMix <- function (x, envir = NULL, progress = FALSE, isEnv = TRUE) {
+      .rxToSE <- get(".rxToSE", envir = asNamespace("rxode2"))
+      .expr <- vapply(seq_along(x), function(i) {
+        if (i%%2 == 0) {
+          paste0("rxEq(mixest, ", i/2, ")*(", .rxToSE(x[[i]], envir = envir, progress = progress),
+                 ")")
+        } else {
+          ""
+        }
+      }, character(1L), USE.NAMES = FALSE)
+      paste0("(", paste(.expr[nzchar(.expr)], collapse = "+"),
+             ")")
+    }
+    unlockBinding(".rxToSEMix", .env_rxode2)
+    assign(".rxToSEMix", .newRxToSEMix, envir = .env_rxode2)
+    lockBinding(".rxToSEMix", .env_rxode2)
+  }
+}
+
 .onLoad <- function(libname, pkgname) {
   .nlmixr2globalReset(TRUE)
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
-
+  .patchRxToSEMix()
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
@@ -123,6 +145,7 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   .nlmixr2globalReset(TRUE)
   .iniPtrs()
   .iniS3()
+  .patchRxToSEMix()
   if (utils::packageVersion("rxode2") < "4.0.0") {
     packageStartupMessage("nlmixr2est ", utils::packageVersion("nlmixr2est"), " works best with rxode2 >= 4.0.0, please update rxode2")
   }
@@ -130,3 +153,4 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   ## options(keep.source = TRUE)
   ## nocov end
 }
+
