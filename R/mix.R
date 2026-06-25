@@ -114,6 +114,20 @@
   assign("mixList", .mixList, envir=env)
   assign("mixNum", .mixNum, envir=env)
 
+  # Calculate Expected ETAs for shrinkage
+  .etaExpected <- .etaFull[.etaFull$MIXEST == 1, .etaCols, drop=FALSE]
+  names(.etaExpected) <- .etaNames
+  for (.n in names(.etaExpected)) .etaExpected[[.n]] <- 0
+  for (.m in .mixList) {
+    for (.n in names(.etaExpected)) {
+      if (.n %in% names(.m)) {
+        .etaExpected[[.n]] <- .etaExpected[[.n]] + .m[[.n]] * .m$prob
+      }
+    }
+  }
+  .etaExpected <- cbind(data.frame(ID=.etaFull$ID[.etaFull$MIXEST == 1]), .etaExpected)
+  assign("etaExpected", .etaExpected, envir=env)
+
   # Store iCov for the table/solve step: rxode2 reads 'mixest' from iCov to
   # fix each individual's mixture component during ODE solving.
   # ID must be integer to match the data's ID column type.
@@ -171,6 +185,8 @@
     return(invisible(NULL))
   }
 
+  .bestMix <- apply(.mixWeights, 1L, which.max)
+
   # Final mixture probabilities (full simplex, nMix elements)
   .mixProb <- .saem$mixProb
   if (length(.mixProb) == .nMix - 1L) {
@@ -181,6 +197,113 @@
     .mixProbabilities <- rep(1.0 / .nMix, .nMix)
   }
   env$mixProbabilities <- .mixProbabilities
+
+  .findMixCalls <- function(expr) {
+    if (is.call(expr)) {
+      if (identical(expr[[1]], quote(mix))) {
+        return(list(expr))
+      }
+      return(do.call(c, lapply(expr, .findMixCalls)))
+    }
+    return(NULL)
+  }
+  
+  .extractEtas <- function(expr, etas) {
+    if (is.name(expr)) {
+      .n <- as.character(expr)
+      if (.n %in% etas) return(.n)
+    } else if (is.call(expr)) {
+      return(unique(unlist(lapply(expr[-1], .extractEtas, etas = etas))))
+    }
+    return(NULL)
+  }
+
+  .allEtas <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
+  .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
+  .mixCalls <- do.call(c, lapply(ui$lstExpr, .findMixCalls))
+  
+  .etaGroups <- list()
+  for (.mc in .mixCalls) {
+    .args <- as.list(.mc)[-1]
+    .comps <- .args[seq(1, length(.args), by = 2)]
+    .grpEtas <- unique(unlist(lapply(.comps, .extractEtas, etas = .allEtas)))
+    if (length(.grpEtas) > 1L) {
+      .etaGroups <- c(.etaGroups, list(.grpEtas))
+    }
+  }
+
+  .omega <- env$omega
+  .fixef <- env$fixef
+  .muRef <- ui$muRefDataFrame
+  
+  if (length(.etaGroups) > 0L) {
+    for (.grp in .etaGroups) {
+      .rootName <- gsub("[0-9]+$", "", .grp[1])
+      
+      .sig02 <- .omega[.grp[1], .grp[1]]
+      .thetas <- vapply(.grp, function(e) {
+        .t <- .muRef$theta[.muRef$eta == e]
+        if (length(.t) == 1L) .t else NA_character_
+      }, character(1))
+      
+      .mus <- .fixef[.thetas]
+      .mus[is.na(.mus)] <- 0.0
+      
+      .w_group <- .mixProbabilities
+      .mean_mu <- sum(.w_group * .mus)
+      .overall_var <- .sig02 + sum(.w_group * (.mus - .mean_mu)^2)
+      
+      .w_idx <- which(colnames(.omega) == .grp[1])
+      if (length(.w_idx) == 1L) {
+        colnames(.omega)[.w_idx] <- rownames(.omega)[.w_idx] <- .rootName
+        .omega[.rootName, .rootName] <- .overall_var
+      }
+      
+      .to_remove <- .grp[-1]
+      .omega <- .omega[!(rownames(.omega) %in% .to_remove), !(colnames(.omega) %in% .to_remove), drop=FALSE]
+      
+      .etaObf[[.rootName]] <- vapply(seq_len(nrow(.etaObf)), function(i) {
+        .etaObf[i, .grp[.bestMix[i]]]
+      }, numeric(1))
+      .etaObf <- .etaObf[, !(names(.etaObf) %in% .grp), drop=FALSE]
+
+      .updateMat <- function(mat) {
+        .dfMat <- as.data.frame(mat)
+        .N <- nrow(.dfMat)
+        .newCol <- vapply(seq_len(.N), function(i) {
+          .subjIdx <- ((i - 1) %% .nSub) + 1
+          .dfMat[i, .grp[.bestMix[.subjIdx]]]
+        }, numeric(1))
+        .dfMat[[.rootName]] <- .newCol
+        .dfMat <- .dfMat[, !(names(.dfMat) %in% .grp), drop=FALSE]
+        as.matrix(.dfMat)
+      }
+      if (exists(".etaMatBase", envir=env, inherits=FALSE) && !is.null(env$.etaMatBase)) {
+        env$.etaMatBase <- .updateMat(env$.etaMatBase)
+      }
+      if (exists(".etaMat", envir=env, inherits=FALSE) && !is.null(env$.etaMat)) {
+        env$.etaMat <- .updateMat(env$.etaMat)
+      }
+    }
+    .funLines <- deparse(as.function(ui))
+    for (.grp in .etaGroups) {
+      .rootName <- gsub("[0-9]+$", "", .grp[1])
+      for (.comp in .grp) {
+        .funLines <- gsub(paste0("\\b", .comp, "\\b"), .rootName, .funLines)
+      }
+      .etaClLines <- grep(paste0("\\b", .rootName, "\\s*~"), .funLines)
+      if (length(.etaClLines) > 1) {
+        .funLines <- .funLines[-.etaClLines[-1]]
+      }
+    }
+    .funText <- paste(.funLines, collapse="\n")
+    .funNew <- eval(parse(text=.funText))
+    .uiNew <- rxode2::rxode2(.funNew)
+    env$ui <- .uiNew
+    env$omega <- .omega
+    env$etaObf <- .etaObf
+    .etaNames <- names(.etaObf)[!(names(.etaObf) %in% c("ID", "OBJI"))]
+  }
 
   # Create mixList: one data frame per mixture component
   .mixList <- lapply(seq_len(.nMix), function(k) {
@@ -194,13 +317,31 @@
   names(.mixList) <- paste0("mix", seq_len(.nMix))
 
   # Create mixNum: best mixture assignment per subject (1-indexed)
-  .bestMix <- apply(.mixWeights, 1L, which.max)
   .mixNum <- data.frame(ID=.etaObf$ID,
                         mixnum=as.integer(.bestMix))
   row.names(.mixNum) <- NULL
 
+  # Assign ranef:
+  .ranef <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
+  .ranef <- cbind(data.frame(ID=.etaObf$ID), .ranef)
+  .ranef$mixnum <- as.integer(.bestMix)
+  assign("ranef", .ranef, envir=env)
+
   assign("mixList", .mixList, envir=env)
   assign("mixNum", .mixNum, envir=env)
+
+  # Calculate Expected ETAs for shrinkage
+  .etaExpected <- as.data.frame(.etaObf[, .etaNames, drop=FALSE])
+  for (.n in names(.etaExpected)) .etaExpected[[.n]] <- 0
+  for (.m in .mixList) {
+    for (.n in names(.etaExpected)) {
+      if (.n %in% names(.m)) {
+        .etaExpected[[.n]] <- .etaExpected[[.n]] + .m[[.n]] * .m$prob
+      }
+    }
+  }
+  .etaExpected <- cbind(data.frame(ID=.etaObf$ID), .etaExpected)
+  assign("etaExpected", .etaExpected, envir=env)
 
   # Store iCov for the table/solve step: rxode2 reads 'mixest' from iCov to
   # fix each individual's mixture component during ODE solving.
@@ -333,7 +474,10 @@ rxUiGet.thetaIniMix <- function(x, ...) {
   .ui <- x[[1]]
   .theta <- .ui$theta
   if (length(.ui$mixProbs) > 0) {
-    .theta[.ui$mixProbs] <- rxode2::mlogit(.theta[.ui$mixProbs])
+    .p <- .theta[.ui$mixProbs]
+    if (all(.p >= 0 & .p <= 1) && sum(.p) <= 1.0) {
+      .theta[.ui$mixProbs] <- rxode2::mlogit(.p)
+    }
   }
   .theta
 }

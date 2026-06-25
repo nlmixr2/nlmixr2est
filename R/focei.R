@@ -1968,7 +1968,15 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     # For mixture models: fix ranef (remove MIXEST), build mixList and mixNum
     .mixFix(.ret, ui)
     if (!all(is.na(ui$iniDf$neta1))) {
-      .etas <- .ret$ranef
+      if (exists("etaExpected", envir=.ret)) {
+        .etas <- .ret$etaExpected
+      } else {
+        .etas <- .ret$ranef
+      }
+      .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
+      if (length(.w) > 0L) {
+        .etas <- .etas[, -.w, drop=FALSE]
+      }
       .thetas <- .ret$fixef
       .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))

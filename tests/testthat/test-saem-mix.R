@@ -60,5 +60,39 @@ nmTest({
 
     # Check that estimated parameters are accessible
     expect_true(is.numeric(fit_saem$theta["p1"]))
+
+    # Test SAEM mixture model with split ETAs and covariance calculation
+    twoPopSplit <- function() {
+      ini({
+        tka   <- log(1.5)
+        tcl1  <- log(1.0)
+        tcl2  <- log(5.0)
+        tv    <- log(20)
+        p1    <- 0.5
+        eta.cl1 ~ 0.01
+        eta.cl2 ~ 0.01
+        eta.v  ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit_saem_split <- expect_error(
+      .nlmixr(twoPopSplit, sim_data, est="saem",
+              saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                          calcTables = FALSE, covMethod = "linFim")),
+      NA
+    )
+    expect_true("p1" %in% names(fit_saem_split$theta))
+    expect_true(!is.null(fit_saem_split$cov))
+    expect_true("eta.cl" %in% rownames(fit_saem_split$omega))
+    expect_true(!"eta.cl1" %in% rownames(fit_saem_split$omega))
+    expect_true("eta.cl" %in% names(fit_saem_split$ranef))
+    expect_true(!"eta.cl1" %in% names(fit_saem_split$ranef))
   })
 })

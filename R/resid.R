@@ -23,6 +23,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .fit <- x[[1]]
   .etas <- .fit$ranef
   .thetas <- .fit$fixef
+  .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
+  if (length(.w) > 0L) {
+    .etas <- .etas[, -.w, drop=FALSE]
+  }
   .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
 }
 #attr(nmObjGet.foceiThetaEtaParameters, "desc") <- "nmObjGet.foceiThetaEtaParameters"
@@ -125,8 +129,12 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   # fit IS the underlying nlmixr2FitCore environment (passed via addTable ->
   # object$env), so we can access it directly with exists()/get().
   .iCov <- NULL
-  if (exists("mixIcov", envir=fit)) {
-    .iCov <- get("mixIcov", envir=fit)
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
+    .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
   }
   # Safety flag: if rxode2 rejects the iCov (e.g. older version before the
   # lName[i]/liName[i] typo fix), fall back gracefully to no-iCov and let
@@ -412,7 +420,17 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 .calcShrinkOnly <- function(fit, thetaEtaParameters=fit$foceiThetaEtaParameters) {
   .omega <- fit$omega
-  .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  if (exists("etaExpected", envir=fit$env)) {
+    .etas <- fit$env$etaExpected
+    .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
+    if (length(.w) > 0L) {
+      .etas <- .etas[, -.w, drop=FALSE]
+    }
+    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, fit$fixef, .etas)
+    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .pars$eta.lst, length(.etas[,1]))
+  } else {
+    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  }
   .ret[, -dim(.omega)[1] - 1]
 }
 

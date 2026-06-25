@@ -311,6 +311,10 @@ calc.COV <- function(fit0) {
   omega <- fit$Gamma2_phi1
   evt <- saem.cfg$evt
   id <- evt[evt[, "EVID"] == 0, "ID"] + 1
+  
+  if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
+    saem.cfg$opt$mixest <- as.integer(.env$mixIcov$mixest)
+  }
 
   dphi <- cutoff(abs(phi) * 1e-4, 1e-10)
   f1 <- sapply(1:nphi, function(j) {
