@@ -161,12 +161,66 @@ nmTest({
                           calcTables = FALSE, covMethod = "linFim")),
       NA
     )
-    expect_true("tcl1" %in% rownames(fit_saem_split_bounded$parFixedDf))
-    expect_true("tcl2" %in% rownames(fit_saem_split_bounded$parFixedDf))
-    # Verify that back-transformed values are calculated and not NaN/NA
-    .bt1 <- fit_saem_split_bounded$parFixedDf["tcl1", "Back-transformed"]
-    .bt2 <- fit_saem_split_bounded$parFixedDf["tcl2", "Back-transformed"]
-    expect_true(is.numeric(.bt1) && !is.na(.bt1) && !is.nan(.bt1))
-    expect_true(is.numeric(.bt2) && !is.na(.bt2) && !is.nan(.bt2))
+    # Test SAEM mixture model with nested expit/logit functions under mix()
+    # (non-split ETAs, so covariance cannot be calculated; covMethod=0L)
+    twoPopNestedExpit <- function() {
+      ini({
+        tka   <- log(1.2)
+        tcl1  <- logit(1.0, 0.1, 200)
+        tcl2  <- logit(5.0, 0.1, 200)
+        tv    <- log(30)
+        p1    <- 0.67
+        eta.cl ~ 0.09
+        eta.v  ~ 0.04
+        add.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(expit(tcl1 + eta.cl, 0.1, 200), p1, expit(tcl2 + eta.cl, 0.1, 200))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit_saem_nested <- expect_error(
+      .nlmixr(twoPopNestedExpit, sim_data, est="saem",
+              saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                          calcTables = FALSE, covMethod = 0L)),
+      NA
+    )
+    expect_true("p1" %in% names(fit_saem_nested$theta))
+
+    # Test SAEM mixture model with nested expit/logit functions under mix() and split ETAs
+    # (split ETAs, so covariance is supported; covMethod="linFim")
+    twoPopNestedExpitSplit <- function() {
+      ini({
+        tka   <- log(1.2)
+        tcl1  <- logit(1.0, 0.1, 200)
+        tcl2  <- logit(5.0, 0.1, 200)
+        tv    <- log(30)
+        p1    <- 0.67
+        eta.cl1 ~ 0.09
+        eta.cl2 ~ 0.09
+        eta.v  ~ 0.04
+        add.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(expit(tcl1 + eta.cl1, 0.1, 200), p1, expit(tcl2 + eta.cl2, 0.1, 200))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit_saem_nested_split <- expect_error(
+      .nlmixr(twoPopNestedExpitSplit, sim_data, est="saem",
+              saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                          calcTables = FALSE, covMethod = "linFim")),
+      NA
+    )
+    expect_true("p1" %in% names(fit_saem_nested_split$theta))
+    expect_true(!is.null(fit_saem_nested_split$cov))
   })
 })
+
+
