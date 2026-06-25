@@ -316,6 +316,12 @@
                          addlKeepsCov = rxControl$addlKeepsCov, addlDropSs = rxControl$addlDropSs,
                          ssAtDoseTime = rxControl$ssAtDoseTime)
   .nobs <- attr(class(dat), ".rxode2.lst")$nobs
+  # Capture the subject-id levels before as.data.frame() strips the
+  # "rxEtTran" class.  rxode2 only populates its global factor table from an
+  # rxEtTran event table, so without this the aggregated solve warnings are
+  # labelled "Unknown" during the fit; we hand idLvl to setupRx() which
+  # pushes it into rxode2 via rxSetIdLvlFactors (see src/solveWarnHelper.h).
+  .idLvl <- attr(class(dat), ".rxode2.lst")$idLvl
   dat <- as.data.frame(dat) # convert back evid=3 oddness...
   ## if(length(dat) !=7) stop("SAEM doesn't support time varying covariates yet.");
   .rx <- attr(model$saem_mod, "rx")
@@ -324,6 +330,7 @@
   .pars <- .pars[!(names(.pars) %in% inPars)]
   opt$.rx <- .rx
   opt$.pars <- .pars
+  opt$.idLvl <- .idLvl
   ## opt$.dat <- dat;
   dat <- .as.data.frame(dat[, -6])
   names(dat) <- vapply(names(dat), function(n) {
