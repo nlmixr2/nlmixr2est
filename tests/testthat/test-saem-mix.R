@@ -132,5 +132,41 @@ nmTest({
     expect_true(!"eta.cl1" %in% rownames(fit_saem_split3$omega))
     expect_true("eta.cl" %in% names(fit_saem_split3$ranef))
     expect_true(!"eta.cl1" %in% names(fit_saem_split3$ranef))
+
+    # Test SAEM mixture model with split ETAs and bounded parameters
+    # to verify that back-transformations are correctly applied (not NaN)
+    twoPopSplitBounded <- function() {
+      ini({
+        tka   <- log(1.5)
+        tcl1  <- log(c(0.01, 1.0, 100))  # Bounded!
+        tcl2  <- log(c(0.01, 5.0, 100))  # Bounded!
+        tv    <- log(20)
+        p1    <- 0.5
+        eta.cl1 ~ 0.01
+        eta.cl2 ~ 0.01
+        eta.v  ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fit_saem_split_bounded <- expect_error(
+      .nlmixr(twoPopSplitBounded, sim_data, est="saem",
+              saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                          calcTables = FALSE, covMethod = "linFim")),
+      NA
+    )
+    expect_true("tcl1" %in% rownames(fit_saem_split_bounded$parFixedDf))
+    expect_true("tcl2" %in% rownames(fit_saem_split_bounded$parFixedDf))
+    # Verify that back-transformed values are calculated and not NaN/NA
+    .bt1 <- fit_saem_split_bounded$parFixedDf["tcl1", "Back-transformed"]
+    .bt2 <- fit_saem_split_bounded$parFixedDf["tcl2", "Back-transformed"]
+    expect_true(is.numeric(.bt1) && !is.na(.bt1) && !is.nan(.bt1))
+    expect_true(is.numeric(.bt2) && !is.na(.bt2) && !is.nan(.bt2))
   })
 })

@@ -202,7 +202,7 @@ L/hr) both recover the true values within a few percent.
 
 A standard single-population FOCEI fit would instead produce a single clearance
 estimate somewhere between 0.8 and 8 L/hr together with an implausibly large
-BSV for CL (≫ 100%), because the model would try to explain the bimodal
+BSV for CL (> 100%), because the model would try to explain the bimodal
 exposure distribution through random effects alone.
 
 ## Accessing Mixture Results

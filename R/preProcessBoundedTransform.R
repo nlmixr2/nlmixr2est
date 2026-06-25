@@ -558,6 +558,16 @@
 
   .postEstimationBoundedTransformUi(env, .transforms, .ui)
 
+  .newUi <- env$ui
+  .xform <- .iterPrintXParFromUi(.newUi)
+  env$logThetasF       <- .xform$logNthetas
+  env$logitThetasF     <- .xform$logitNthetas
+  env$logitThetasLowF  <- .xform$logitNthetasLow
+  env$logitThetasHiF   <- .xform$logitNthetasHi
+  env$probitThetasF    <- .xform$probitNthetas
+  env$probitThetasLowF <- .xform$probitNthetasLow
+  env$probitThetasHiF  <- .xform$probitNthetasHi
+
   invisible(NULL)
 }
 #' Add internal ability to see if the bounded transform hooks ran (for testing purposes, so it isn't exported)
