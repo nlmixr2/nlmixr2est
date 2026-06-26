@@ -2,6 +2,17 @@
 
 ## nlmixr2est (development version)
 
+- When model estimation fails, all errors raised during the run are now
+  collected and reported together, instead of only the last error. This
+  is supported by a new `collectErr` argument to the internal
+  [`.collectWarn()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-collectWarn.md)
+  helper, which captures errors alongside warnings and returns them in
+  the `error` element of its result list. As a result, errors hidden by
+  `on.exit({rxode2::rxProgressAbort()})` handlers (such as the “Aborted
+  calculation” message reported in issue 607) no longer mask the
+  underlying cause; both the inner stop message and any follow-up error
+  from `on.exit` are now reported to the user.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`,
   `lbfgsb3c`, `n1qn1`, `newuoa`, `uobyqa`) fits at more than one core.

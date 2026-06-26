@@ -117,7 +117,7 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429424
+#> → compress phiM in nlmixr2 object, save 429416
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -128,16 +128,16 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup  covariance preprocess configure  saem postprocess compress
-#> elapsed 0.02249475 0.008002844      0.069     0.023 2.557       0.438    0.057
+#> elapsed 0.02036061 0.009003106      0.064     0.023 1.674       0.445    0.055
 #>             other
-#> elapsed 0.3215024
+#> elapsed 0.2896363
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)     70.3    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)     27.5      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)     13.3      10.2% 
+#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
+#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
+#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
 #> add.sd           0.699                               0.699                     
 #>  
 #>   Covariance Type ($covMethod): linFim
@@ -161,16 +161,16 @@ print(f)
 #> ── Time (sec $time): ──
 #> 
 #>              setup  covariance preprocess configure  saem postprocess compress
-#> elapsed 0.02249475 0.008002844      0.069     0.023 2.557       0.438    0.057
+#> elapsed 0.02036061 0.009003106      0.064     0.023 1.674       0.445    0.055
 #>             other
-#> elapsed 0.3215024
+#> elapsed 0.2896363
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)     70.3    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)     27.5      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)     13.3      10.2% 
+#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
+#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
+#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
 #> add.sd           0.699                               0.699                     
 #>  
 #>   Covariance Type ($covMethod): linFim

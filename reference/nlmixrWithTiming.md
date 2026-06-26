@@ -91,7 +91,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429424
+#> → compress phiM in nlmixr2 object, save 429416
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -110,16 +110,16 @@ print(fit)
 #> ── Time (sec $time): ──
 #> 
 #>              setup  covariance preprocess configure  saem postprocess table
-#> elapsed 0.02249548 0.008002605       0.07     0.022 2.619       0.455 0.069
-#>         compress     other time2 time1
-#> elapsed    0.056 0.2955019 1.002 1.002
+#> elapsed 0.01924594 0.008003085       0.06     0.015 1.666       0.444 0.062
+#>         compress    other time2 time1
+#> elapsed    0.053 0.277751 1.002 1.001
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)     70.3    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)     27.5      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)     13.3      10.2% 
+#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
+#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
+#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
 #> add.sd           0.699                               0.699                     
 #>  
 #>   Covariance Type ($covMethod): linFim

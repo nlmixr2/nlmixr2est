@@ -759,6 +759,9 @@ foceControl()
 #> $autoSwitchSwitchMax
 #> [1] 5
 #> 
+#> $useLinCmt
+#> [1] TRUE
+#> 
 #> $.zeros
 #> NULL
 #> 

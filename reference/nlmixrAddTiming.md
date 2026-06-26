@@ -89,7 +89,7 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8280
-#> → compress phiM in nlmixr2 object, save 429424
+#> → compress phiM in nlmixr2 object, save 429416
 
 # will add to the current setup
 nlmixrAddTiming(fit, "setup", 3)

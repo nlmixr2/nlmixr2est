@@ -38,7 +38,7 @@
 
     <div class="section level2">
     <h2 id="ref-usage">Usage<a class="anchor" aria-label="anchor" href="#ref-usage"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.collectWarn</span><span class="op">(</span><span class="va">expr</span>, lst <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">.collectWarn</span><span class="op">(</span><span class="va">expr</span>, lst <span class="op">=</span> <span class="cn">FALSE</span>, collectErr <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div>
     </div>
 
     <div class="section level2">
@@ -51,15 +51,42 @@
 
 <dt id="arg-lst">lst<a class="anchor" aria-label="anchor" href="#arg-lst"></a></dt>
 <dd><p>When <code>TRUE</code> return a list with
-list(object,warnings) instead of issuing the warnings.
-Otherwise, when <code>FALSE</code> issue the warnings and return the
-object.</p></dd>
+<code>list(object, warning = ws, error = es)</code> instead of issuing
+the warnings.  Otherwise, when <code>FALSE</code> issue the warnings
+and return the object.</p></dd>
+
+
+<dt id="arg-collecterr">collectErr<a class="anchor" aria-label="anchor" href="#arg-collecterr"></a></dt>
+<dd><p>When <code>TRUE</code>, errors raised during evaluation
+of <code>expr</code> are recorded in addition to warnings.  A calling
+handler captures every error message as it is signalled, then
+lets the condition continue to propagate so that inner
+<code><a href="https://rdrr.io/r/base/try.html" class="external-link">try()</a></code>/<code><a href="https://rdrr.io/r/base/conditions.html" class="external-link">tryCatch()</a></code> blocks in <code>expr</code> keep
+working as usual.  An outer <code><a href="https://rdrr.io/r/base/conditions.html" class="external-link">tryCatch()</a></code> catches errors
+that escape all inner handling, so the call always returns
+instead of stopping.  If <code>expr</code> evaluated to a result
+(i.e. no error escaped), the recorded errors were caught by
+inner handlers and are discarded.  If an error did escape,
+every message observed along the error chain (including
+follow-up errors raised by <code>on.exit</code> handlers, see issue
+607) is returned in the <code>error</code> element of the result list
+(when <code>lst = TRUE</code>) or re-raised joined by newlines (when
+<code>lst = FALSE</code>).  When <code>FALSE</code> (the default) errors
+propagate normally and <code>es</code> is always <code>NULL</code>.  This
+is used by <code>nlmixr2Est0()</code> so that all errors from a
+failed estimation run are reported together rather than only
+the last one.</p></dd>
 
 </dl></div>
     <div class="section level2">
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
-    <p>The value of the expression or a list with the value of
-    the expression and a list of warning messages</p>
+    <p>The value of the expression, or when <code>lst = TRUE</code> a
+    list of the form <code>list(object, warning = ws, error = es)</code>
+    where <code>ws</code> and <code>es</code> are character vectors of unique
+    warning and error messages (<code>es</code> is always <code>NULL</code>
+    when <code>collectErr = FALSE</code>, and is also <code>NULL</code> when
+    the expression evaluated successfully under <code>collectErr =
+    TRUE</code>).</p>
     </div>
     <div class="section level2">
     <h2 id="author">Author<a class="anchor" aria-label="anchor" href="#author"></a></h2>
