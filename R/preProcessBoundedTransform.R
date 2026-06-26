@@ -437,16 +437,21 @@
                            )
     }
     # Apply Jacobian: Cov_natural = J * Cov_internal * J'
-    # cov may be smaller than theta (fixed params are excluded via skipCov)
+    # cov excludes fixed params (skipCov) and, since #694, may extend past the
+    # thetas with the residual/Omega block -- those parameters are not
+    # bounded-transformed, so their Jacobian diagonal is 1 (identity).
     .nCov <- nrow(env$cov)
-    .nTheta <- length(.jdiag)
-    if (.nCov <= .nTheta && exists("skipCov", envir = env)) {
+    if (exists("skipCov", envir = env)) {
       .skipCov <- env$skipCov
       .jCov <- numeric(0)
       for (k in seq_along(.jdiag)) {
         if (k <= length(.skipCov) && !.skipCov[k]) {
           .jCov <- c(.jCov, .jdiag[k])
         }
+      }
+      # pad the trailing residual/Omega block (identity)
+      if (length(.jCov) < .nCov) {
+        .jCov <- c(.jCov, rep(1.0, .nCov - length(.jCov)))
       }
       if (length(.jCov) == .nCov) {
         .J <- diag(.jCov)

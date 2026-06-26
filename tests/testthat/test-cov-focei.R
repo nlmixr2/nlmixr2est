@@ -51,7 +51,20 @@ nmTest({
 
   })
 
-  test_that("covMethod r and s SEs are not inflated vs the sandwich (issue #666)", {
+  test_that("covMethod r/s/r,s SEs match NONMEM on theo_sd (issues #666, #694)", {
+    # Validated against NONMEM 7 (FOCEI, ADVAN2 TRANS2, additive error) on the
+    # identical theo_sd fit: $COV MATRIX=R ("r" = R^-1), MATRIX=S ("s" = S^-1),
+    # and the default sandwich R^-1 S R^-1 ("r,s").  Estimates and OFV land on the
+    # same optimum; the SEs below are the NONMEM reference on nlmixr2's native
+    # scale (theta log-scale; Omega on the variance scale; add.sd as an SD).
+    #
+    # This guards two things: (#666) the covariance SCALING -- a spurious 2x or
+    # sqrt(2) factor would miss NONMEM by ~40%; and (#694) the residual (sigma)
+    # and Omega SEs that the cov now reports.  Note the "s" (cross-product / OPG)
+    # theta SEs are LARGE (e.g. tcl ~0.43) -- this is the genuine inflation of the
+    # OPG estimator once variance components enter the score matrix, and NONMEM's
+    # MATRIX=S reproduces it to <1%.  So "s" must match the (inflated) reference,
+    # not be "small".  "r" and the sandwich are the robust methods.
     one.cmt <- function() {
       ini({
         tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
@@ -63,19 +76,24 @@ nmTest({
         linCmt() ~ add(add.sd)
       })
     }
-    fit_r  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r",   print = 0))
-    fit_s  <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "s",   print = 0))
-    fit_rs <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = "r,s", print = 0))
-
-    p <- c("tka", "tcl", "tv")
-    se_r  <- fit_r$parFixedDf[p,  "SE"]
-    se_s  <- fit_s$parFixedDf[p,  "SE"]
-    se_rs <- fit_rs$parFixedDf[p, "SE"]
-
-    # Before the fix: SE_r was ~sqrt(2) * SE_rs and SE_s was ~2 * SE_rs.
-    # After the fix all three should agree within ~30%.
-    expect_true(all(se_r  / se_rs < 1.3), label = "covMethod='r' SE not inflated vs sandwich")
-    expect_true(all(se_s  / se_rs < 1.3), label = "covMethod='s' SE not inflated vs sandwich")
+    .nm <- list(
+      "r"   = c(tka = 0.1886, tcl = 0.0836, tv = 0.0466, add.sd = 0.0504,
+                om.tka = 0.1881, om.tcl = 0.0346, om.tv = 0.0111),
+      "s"   = c(tka = 0.2962, tcl = 0.4270, tv = 0.2233, add.sd = 0.0404,
+                om.tka = 0.2732, om.tcl = 0.0985, om.tv = 0.0298),
+      "r,s" = c(tka = 0.1908, tcl = 0.0739, tv = 0.0428, add.sd = 0.0998,
+                om.tka = 0.2258, om.tcl = 0.0299, om.tv = 0.0084))
+    for (.m in names(.nm)) {
+      .f <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = .m, sigdig = 4, print = 0))
+      .se <- sqrt(abs(diag(.f$cov)))
+      .ref <- .nm[[.m]]
+      expect_true(all(names(.ref) %in% names(.se)),
+                  label = paste0("covMethod=", .m, ": cov has theta + sigma + Omega names"))
+      .rel <- abs(.se[names(.ref)] / .ref - 1)
+      expect_true(all(.rel < 0.15),
+                  label = paste0("covMethod=", .m, " SEs vs NONMEM (max rel err ",
+                                 round(max(.rel), 3), ")"))
+    }
   })
 
   test_that("covariance with many omegas fixed will not crash focei", {

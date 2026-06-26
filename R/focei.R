@@ -1375,9 +1375,11 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
     .maxTheta <- 0
   }
   if (length(env$skipCov) > .maxTheta) {
-    if (all(env$skipCov[-seq_len(.maxTheta)])) {
-      assign("skipCov",env$skipCov[seq_len(.maxTheta)], env)
-    }
+    # The covariance step writes a full theta+Omega skip mask back to the fit
+    # env (#694: the Omega tail is no longer all-TRUE); the R-side skipCov is
+    # theta-only, and foceiCalcCov rebuilds the full mask from thetaFixed, so
+    # drop the trailing Omega entries here unconditionally.
+    assign("skipCov", env$skipCov[seq_len(.maxTheta)], env)
   }
   assign("nEstOmega", length(which(!is.na(ui$iniDf$neta1) & !ui$iniDf$fix)),
          env)
@@ -1530,6 +1532,43 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 
 .thetaReset <- new.env(parent = emptyenv())
+#' Name the Omega/covariance block of the focei `$cov`.
+#'
+#' `foceiCalcCov` delta-transforms the Omega block of `$cov` to the natural
+#' variance-covariance scale and stashes the free eta pair indices (lower
+#' triangle, `a >= b`) as `.covOmegaPairs`; the C++ names only the theta+sigma
+#' block, so name the trailing Omega rows/cols here as `om.<theta>` (variance) /
+#' `cov.<theta>.<theta>` (covariance) via the mu-reference mapping (falling back
+#' to the eta name).  Leaves the printed parameter table untouched (it matches
+#' population thetas by name).
+#' @param .ret focei fit environment
+#' @return Nothing; mutates `.ret$cov` dimnames
+#' @noRd
+.foceiNameOmegaCov <- function(.ret) {
+  if (!exists(".covOmegaPairs", envir = .ret, inherits = FALSE)) return(invisible())
+  if (!exists("cov", envir = .ret, inherits = FALSE)) return(invisible())
+  .cov <- .ret$cov
+  if (!is.matrix(.cov)) return(invisible())
+  .prs <- get(".covOmegaPairs", envir = .ret)
+  .nom <- nrow(.prs)
+  if (is.null(.nom) || .nom == 0L || .nom > nrow(.cov)) return(invisible())
+  .ui <- rxode2::rxUiDecompress(get("ui", envir = .ret))
+  ini <- .ui$iniDf
+  muRef <- .ui$muRefDataFrame
+  etaRows <- ini[!is.na(ini$neta1) & ini$neta1 == ini$neta2, , drop = FALSE]
+  etaRows <- etaRows[order(etaRows$neta1), , drop = FALSE]
+  thetaForEta <- muRef$theta[match(etaRows$name, muRef$eta)]
+  .nm <- ifelse(is.na(thetaForEta), etaRows$name, thetaForEta)  # eta name if not mu-ref'd
+  omNm <- apply(.prs, 1, function(p)
+    if (p[1] == p[2]) paste0("om.", .nm[p[1]]) else paste0("cov.", .nm[p[1]], ".", .nm[p[2]]))
+  .cn <- colnames(.cov)
+  if (is.null(.cn)) .cn <- rep("", nrow(.cov))
+  .cn[seq.int(nrow(.cov) - .nom + 1L, nrow(.cov))] <- omNm
+  dimnames(.cov) <- list(.cn, .cn)
+  .ret$cov <- .cov
+  invisible()
+}
+
 #' Internal focei fit function in R
 #'
 #' @param .ret Internal focei environment
@@ -1931,6 +1970,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     }
     assign("est", est, envir=.ret)
+    .foceiNameOmegaCov(.ret)
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()

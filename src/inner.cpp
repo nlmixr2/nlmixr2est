@@ -3905,6 +3905,23 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex);
 extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 
 
+// #694: stash the rxSolve_ setup arguments (inner model, rxControl, params,
+// data) so foceiCalcCov can re-run the solve setup with a tighter ODE tolerance
+// for the covariance finite differences and then restore it.  Preserved across
+// GC; replaced on every foceiSetup_.
+static SEXP _covSolveArgs = R_NilValue;
+static void _storeCovSolveArgs(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
+  SEXP L = PROTECT(Rf_allocVector(VECSXP, 4));
+  SET_VECTOR_ELT(L, 0, obj);
+  SET_VECTOR_ELT(L, 1, rxControl);
+  SET_VECTOR_ELT(L, 2, params);
+  SET_VECTOR_ELT(L, 3, data);
+  if (_covSolveArgs != R_NilValue) R_ReleaseObject(_covSolveArgs);
+  R_PreserveObject(L);
+  _covSolveArgs = L;
+  UNPROTECT(1);
+}
+
 // [[Rcpp::export]]
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
@@ -4117,6 +4134,7 @@ NumericVector foceiSetup_(const RObject &obj,
     // to rxSolve_ so that per-thread buffers (llikSave, lhs, on,
     // solveSave, etc.) are allocated for the correct number of threads.
     // Parallelization of the inner loop is managed in innerOpt().
+    _storeCovSolveArgs(obj, rxControl, params, data);   // #694: for cov-step tol re-setup
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -5860,6 +5878,39 @@ void setupAq0_(Environment e) {
 }
 
 
+// #694: RAII tightening of the ODE solve tolerance for the covariance step.
+// Re-runs the inner-model solve setup (the only place atol2/rtol2 are derived
+// from the control) with covSigdig-tight atol/rtol, and restores the estimation
+// tolerance on exit.  Mid-run mutation of op->ATOL or the per-subject tolFactor
+// does not reach the lsoda solve, so the setup path is the only lever.
+struct CovSolveTolGuard {
+  bool active;
+  CovSolveTolGuard(double covSigdig) : active(false) {
+    if (_covSolveArgs == R_NilValue) return;
+    double tol = 0.5 * std::pow(10.0, -covSigdig - 2.0);
+    RObject obj    = VECTOR_ELT(_covSolveArgs, 0);
+    List rxControl = as<List>(VECTOR_ELT(_covSolveArgs, 1));
+    RObject params = VECTOR_ELT(_covSolveArgs, 2);
+    RObject data   = VECTOR_ELT(_covSolveArgs, 3);
+    List rxC = clone(rxControl);
+    rxC[Rxc_atol] = tol; rxC[Rxc_rtol] = tol;
+    rxC[Rxc_atolSens] = tol; rxC[Rxc_rtolSens] = tol;
+    rxode2::rxSolve_(obj, rxC, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+    rx = getRxSolve_();
+    active = true;
+  }
+  ~CovSolveTolGuard() {
+    if (!active) return;
+    try {
+      RObject obj    = VECTOR_ELT(_covSolveArgs, 0);
+      List rxControl = as<List>(VECTOR_ELT(_covSolveArgs, 1));
+      RObject params = VECTOR_ELT(_covSolveArgs, 2);
+      RObject data   = VECTOR_ELT(_covSolveArgs, 3);
+      rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+      rx = getRxSolve_();
+    } catch (...) {}
+  }
+};
 //[[Rcpp::export]]
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
@@ -5929,13 +5980,17 @@ NumericMatrix foceiCalcCov(Environment e){
       NumericVector fullT = e["fullTheta"];
       NumericVector fullT2(op_focei.ntheta);
       std::copy(fullT.begin(), fullT.begin()+fullT2.size(), fullT2.begin());
+      // #694: the covariance spans theta + sigma + Omega.  Skip only the
+      // literally-fixed parameters (thetaFixed = c(theta-fix, omega-fix)), so
+      // npars = thetan + omegan - fixedn spans the full set and the existing R/S
+      // finite-difference machinery covers structural thetas, the residual
+      // (sigma) thetas, and the non-fixed Omega.  (Previously Omega + residual
+      // were force-skipped, giving a theta-only $cov.)
       LogicalVector skipCov(op_focei.ntheta+op_focei.omegan);//skipCovN
-      if (op_focei.skipCovN == 0){
-        std::fill_n(skipCov.begin(), op_focei.ntheta, false);
-        std::fill_n(skipCov.begin()+op_focei.ntheta, skipCov.size() - op_focei.ntheta, true);
-      } else {
-        std::copy(&op_focei.skipCov[0],&op_focei.skipCov[0]+op_focei.skipCovN,skipCov.begin());
-        std::fill_n(skipCov.begin()+op_focei.skipCovN,skipCov.size()-op_focei.skipCovN,true);
+      {
+        LogicalVector thFix = as<LogicalVector>(e["thetaFixed"]);
+        for (int _i = 0; _i < skipCov.size(); ++_i)
+          skipCov[_i] = (_i < thFix.size()) ? (bool)thFix[_i] : false;
       }
       e["skipCov"] = skipCov;
       // Unscaled objective and parameters.
@@ -5948,6 +6003,26 @@ NumericMatrix foceiCalcCov(Environment e){
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
+        // #694: tighten the ODE tolerance for the whole covariance step
+        // (restored when this block exits).  The cov finite differences need a
+        // tighter solve than estimation; derive covSigdig as sigdig+5 but BOUND
+        // it: cap at 10 so atol (0.5*10^(-covSigdig-2)) stays >= ~5e-13 and does
+        // not fall below machine precision (rxode2 itself does not floor it),
+        // and never make it looser than the estimation sigdig.  Honour an
+        // explicit control `covSigdig` once it becomes a foceiControl argument.
+        double _covSigdig = 9.0;
+        {
+          List _ctl = as<List>(e["control"]);
+          if (_ctl.containsElementNamed("covSigdig")) {
+            _covSigdig = as<double>(_ctl["covSigdig"]);
+          } else if (_ctl.containsElementNamed("sigdig")) {
+            double _sigdig = as<double>(_ctl["sigdig"]);
+            _covSigdig = _sigdig + 5.0;
+            if (_covSigdig > 10.0) _covSigdig = 10.0;       // atol floor ~5e-13
+            if (_covSigdig < _sigdig) _covSigdig = _sigdig; // never looser than the fit
+          }
+        }
+        CovSolveTolGuard _covTolGuard(_covSigdig);
         rx = getRxSolve_();
         op_focei.t0 = clock();
         op_focei.totTick=0;
@@ -5975,6 +6050,10 @@ NumericMatrix foceiCalcCov(Environment e){
           theta[k] = op_focei.fullTheta[j];
         }
         std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
+        // #694: the central-difference Hessian uses op_focei.lastOfv as its
+        // centre; recompute it at the (tighter) cov tolerance so the stencil
+        // is consistent with the perturbed evaluations.
+        op_focei.lastOfv = foceiOfv0(&op_focei.theta[0]);
         arma::vec f0(1);
         f0(0) = op_focei.lastOfv;
         arma::vec grf(1);
@@ -6311,6 +6390,76 @@ NumericMatrix foceiCalcCov(Environment e){
         }
         op_focei.cur=op_focei.totTick;
         op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+        // #694: the cov's Omega block is on the estimation (Cholesky)
+        // parameterization; delta-transform it to the natural variance-
+        // covariance scale.  cov_natural = T cov T' with T = blockdiag(I_theta
+        // +sigma, J), J[k,c] = d(Omega_pair_k)/d(theta_c) = -[Om dOmInv_c Om],
+        // dOmInv from rxode2's d.omegaInv (the primitive the FOCEi gradient
+        // uses).  theta + sigma are unchanged.  The free Omega element pairs
+        // come from the cov's Omega params (non-fixed, via fixedTrans); a
+        // partially-fixed correlated block whose pair count doesn't line up is
+        // left on the estimation scale rather than mis-scaled.
+        if (e.exists("cov") && op_focei.neta > 0) {
+          arma::mat cov = as<arma::mat>(e["cov"]);
+          unsigned int np = op_focei.npars;
+          unsigned int nom = 0;
+          for (unsigned int k = 0; k < np; ++k)
+            if (op_focei.fixedTrans[k] >= (int)op_focei.ntheta) nom++;
+          unsigned int nth = np - nom;
+          // R/S left the solve at the last perturbed Omega; restore the estimate.
+          updateTheta(&op_focei.theta[0]);
+          arma::mat Om = getOmegaMat();
+          int neta = op_focei.neta;
+          double tol = 1e-10;
+          std::vector<int> comp(neta, -1);  // Omega connected components (blocks)
+          int ncc = 0;
+          for (int i = 0; i < neta; ++i) {
+            if (comp[i] >= 0) continue;
+            std::vector<int> st;
+            st.push_back(i);
+            comp[i] = ncc;
+            while (!st.empty()) {
+              int v = st.back();
+              st.pop_back();
+              for (int w = 0; w < neta; ++w) {
+                if (comp[w] < 0 && (w == v || std::fabs(Om(v, w)) > tol)) {
+                  comp[w] = ncc;
+                  st.push_back(w);
+                }
+              }
+            }
+            ++ncc;
+          }
+          std::vector<std::pair<int,int> > pairs;
+          if ((int)ncc == neta) {                 // diagonal Omega (incl. some fixed)
+            for (unsigned int c = 0; c < nom; ++c) {
+              int om = op_focei.fixedTrans[nth + c] - (int)op_focei.ntheta;
+              pairs.push_back(std::make_pair(om, om));
+            }
+          } else {                                // block Omega
+            for (int b = 0; b < neta; ++b)
+              for (int a = b; a < neta; ++a)
+                if (comp[a] == comp[b]) pairs.push_back(std::make_pair(a, b));
+          }
+          if (nom > 0 && (unsigned int)pairs.size() == nom && (int)cov.n_rows == (int)np) {
+            List dOi = as<List>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "d.omegaInv", R_NilValue));
+            arma::mat J(nom, nom, arma::fill::zeros);
+            for (unsigned int c = 0; c < nom; ++c) {
+              int omParam = op_focei.fixedTrans[nth + c] - (int)op_focei.ntheta;
+              arma::mat dOm = -Om * as<arma::mat>(dOi[omParam]) * Om;  // d(Omega)/d(theta_c)
+              for (unsigned int k = 0; k < nom; ++k) J(k, c) = dOm(pairs[k].first, pairs[k].second);
+            }
+            arma::mat T(np, np, arma::fill::eye);
+            T.submat(nth, nth, np - 1, np - 1) = J;
+            arma::mat covNat = T * cov * T.t();
+            if (covNat.is_finite()) {
+              e["cov"] = wrap(covNat);
+              IntegerMatrix prs(nom, 2);
+              for (unsigned int k = 0; k < nom; ++k) { prs(k, 0) = pairs[k].first + 1; prs(k, 1) = pairs[k].second + 1; }
+              e[".covOmegaPairs"] = prs;
+            }
+          }
+        }
         if (e.exists("cov")){
           arma::mat cov = as<arma::mat>(e["cov"]);
           if (all(cov.diag() < 1e-7)){

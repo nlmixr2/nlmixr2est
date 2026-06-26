@@ -1,5 +1,14 @@
 # nlmixr2est (development version)
 
+- The `focei`/`foce` covariance (`$cov`) now spans the full parameter
+  set — the population thetas, the residual (sigma) parameters, and the
+  natural-scale `Omega` variances/covariances — instead of the
+  structural thetas only (#694).  The added residual/`Omega` standard
+  errors are extractable from `fit$cov` (e.g. `sqrt(diag(fit$cov))`); the
+  printed parameter table is unchanged.  The covariance finite
+  differences also solve the ODE at a tighter tolerance than estimation,
+  so the second-difference Hessian is not dominated by solver noise.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
