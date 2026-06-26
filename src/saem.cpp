@@ -25,6 +25,10 @@ using namespace std;
 using namespace arma;
 using namespace Rcpp;
 
+// scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
+// — must be included AFTER the `using namespace Rcpp;` above.
+#include "scale.h"
+
 typedef void (*fn_ptr) (double *, double *);
 
 extern "C" void nelder_fn(fn_ptr func, int n, double *start, double *step,
@@ -67,7 +71,7 @@ struct saem_state_t {
   bool _saemIndTolRelax = true;
   mat _saemUE;
 };
-static thread_local saem_state_t* current_saem_state = nullptr;
+static saem_state_t* current_saem_state = nullptr;
 
 int _saemFixedIdx[4] = {0, 0, 0, 0};
 double _saemFixedValue[4] = {0.0, 0.0, 0.0, 0.0};
@@ -519,9 +523,9 @@ struct mcmcphi {
 
 struct mcmcaux {
   int nM;
-  uvec indioM;
+  uvec indio;
   //double sigma2;  //not needed?
-  vec yM;
+  vec y;
   mat evtM;
   List optM;
 };
@@ -656,13 +660,11 @@ public:
 
     N = as<int>(x["N"]);
     ntotal = as<int>(x["ntotal"]);
+    mlen = as<int>(x["mlen"]);
     y  = as<vec>(x["y"]);
-    yM = as<vec>(x["yM"]);
     evt  = as<mat>(x["evt"]);
-    evtM = as<mat>(x["evtM"]);
     phiM = as<mat>(x["phiM"]);
-    indioM = as<uvec>(x["indioM"]);
-    int mlen = as<int>(x["mlen"]);
+    indio = as<uvec>(x["indio"]);
     nM = N*nmc;
 
     opt = as<List>(x["opt"]);                                      //CHECKME
@@ -725,19 +727,14 @@ public:
     nendpnt=as<int>(x["nendpnt"]);
     ix_sorting=as<uvec>(x["ix_sorting"]);
     ys = y(ix_sorting);    //ys: obs sorted by endpnt
-    ysM=as<vec>(x["ysM"]);
     y_offset=as<uvec>(x["y_offset"]);
     res_mod = as<uvec>(x["res.mod"]);
-    // REprintf("res.mod\n");
-    // Rcpp::print(Rcpp::wrap(res_mod));
     ares = as<vec>(x["ares"]);
     bres = as<vec>(x["bres"]);
     cres = as<vec>(x["cres"]);
     lres = as<vec>(x["lres"]);
     yj = as<uvec>(x["yj"]);
     propT=as<uvec>(x["propT"]);
-    // REprintf("yj\n");
-    // Rcpp::print(Rcpp::wrap(yj));
     lambda = as<vec>(x["lambda"]);
     low = as<vec>(x["low"]);
     hi = as<vec>(x["hi"]);
@@ -754,10 +751,11 @@ public:
       }
     }
     if (hasFixedObsTransform) {
-      yMTrans = yM;
-      for (unsigned int i = 0; i < yMTrans.n_elem; ++i) {
+      // Compute yTrans for N subjects only (not repeated nmc times)
+      yTrans = y;
+      for (unsigned int i = 0; i < yTrans.n_elem; ++i) {
         int cur = ix_endpnt(i);
-        yMTrans[i] = _powerD(yM[i], lambda(cur), yj(cur), low(cur), hi(cur));
+        yTrans[i] = _powerD(y[i], lambda(cur), yj(cur), low(cur), hi(cur));
       }
       ysTrans = ys;
       for (int b = 0; b < nendpnt; ++b) {
@@ -772,6 +770,12 @@ public:
     vecbres = bres(ix_endpnt);
     veccres = cres(ix_endpnt);
     veclres = lres(ix_endpnt);
+    // Pre-allocate per-chain scratch buffers for the distribution==1 hot loops
+    _scratch_ft.set_size(ntotal);
+    _scratch_limitT.set_size(ntotal);
+    _scratch_ftT.set_size(ntotal);
+    _scratch_g.set_size(ntotal);
+    _scratch_indio = indio;  // same length as indio, initialise from it
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
       if (res_mod(b) == rmAdd) {
@@ -783,12 +787,59 @@ public:
       statrese[b] = 0.0;
     }
 
-    print = as<int>(x["print"]);
     par_hist = as<mat>(x["par.hist"]);
     parHistThetaKeep=as<uvec>(x["parHistThetaKeep"]);
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+
+    // Set up the shared scale.h iteration-print struct.  saem uses
+    // scaleTypeNone (no internal optimizer scaling — Plambda is on
+    // model scale) so scalePrintFun's auto-skip drops the redundant U
+    // row.  xPar / logitThetaLow / logitThetaHi come from the R side
+    // via .iterPrintXParFromUi(ui$muRefCurEval), so the X row shows
+    // exp(theta) for log-transformed thetas and expit(theta, lo, hi)
+    // for logit-transformed thetas — same back-transforms focei
+    // applies.  Omega and residual-error entries in the printed
+    // vector have xPar = 0 and so contribute no X-row delta.
+    scaleNames = as<CharacterVector>(x["parHistNames"]);
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
+    {
+      IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
+      NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
+      NumericVector logitHiIn  = as<NumericVector>(x["logitThetaHi"]);
+      scaleInitPar.assign(std::max(nprint, 1), 0.0);
+      scaleC.assign(std::max(nprint, 1), NA_REAL);
+      scaleXPar.assign(xParIn.begin(), xParIn.end());
+      if (scaleXPar.empty()) scaleXPar.assign(1, 0);
+      if (logitLowIn.size() > 0) {
+        scaleLogitLow.assign(logitLowIn.begin(), logitLowIn.end());
+        scaleLogitHi.assign(logitHiIn.begin(), logitHiIn.end());
+      } else {
+        // scalePrintFun's logit branch is only reached when xPar < 0;
+        // a one-element placeholder satisfies the data-pointer demand
+        // when no logit-transformed parameters are present.
+        scaleLogitLow.assign(1, 0.0);
+        scaleLogitHi.assign(1, 1.0);
+      }
+    }
+    scaleSetup(&scale,
+               scaleInitPar.data(),
+               scaleC.data(),
+               scaleXPar.data(),
+               scaleLogitLow.data(),
+               scaleLogitHi.data(),
+               scaleNames,
+               /*useColor*/0, /*printNcol*/1, /*print*/0,
+               normTypeConstant,
+               scaleTypeNone,
+               1e-7, 1e7, 0.0,
+               nprint);
+    scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
+    // saem has no per-iteration objective function; suppress the Function
+    // Val column entirely so users don't see "nan" in every iteration row.
+    scale.showOfv = 0;
+    scale.save = 0; // par_hist already records the iteration history
 
     L  = zeros<vec>(nb_param);
     Ha = zeros<mat>(nb_param,nb_param);
@@ -801,9 +852,9 @@ public:
     statphi01.set_size(N, nphi0);
 
     mx.nM     = nM;
-    mx.yM     = yM;
-    mx.indioM = indioM;
-    mx.evtM   = evtM;
+    mx.y      = y;
+    mx.indio  = indio;
+    mx.evtM   = evt;
     mx.optM   = optM;
 
     distribution=as<int>(x["distribution"]);
@@ -824,9 +875,12 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
-    fsaveMat = user_fn(phiM, evtM, optM);
+    // Emit the unified column header once at fit start.  Periodic re-emits
+    // (every scale.headerEvery parameter-print events) are handled inside
+    // scalePrintFun.
+    scalePrintHeader(&scale);
+    fsaveMat = user_fn(phiM, evt, optM);
     limit = fsaveMat.col(2);
-    limitT = fsaveMat.col(2);
     cens = fsaveMat.col(1);
     fsave = fsaveMat.col(0);
     if (DEBUG>0){
@@ -865,34 +919,51 @@ public:
       vec f = fsave;
       fsave = f;
       if (distribution == 1){
-        // REprintf("dist=1\n");
-        vec ft = f;
-        vec ftT(ft.size());
-        vec yt = hasFixedObsTransform ? yMTrans : yM;
-        for (int i = ft.size(); i--;) {
-          int cur = ix_endpnt(i);
-          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
-          ft(i)   = _powerD(f(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          if (!hasFixedObsTransform) {
-            yt(i) = _powerD(yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
+        // Build yt once — it does not depend on chain index k
+        vec yt = hasFixedObsTransform ? yTrans : y;
+        if (!hasFixedObsTransform) {
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
           }
-          ftT(i)  = handleF(propT(cur), ft(i), f(i), false, true);
         }
-        // focei: rx_r_ = eff^2 * prop.sd^2 + add_sd^2
-        // focei g = sqrt(eff^2*prop.sd^2 + add.sd^2)
-        // This does not match focei's definition of add+prop
-        vec g;
-        g = vecares + vecbres % abs(ftT); //make sure g > 0
-        g.elem( find( g == 0.0) ).fill(1.0); // like Uppusla IWRES allows prop when f=0
-        g.elem( find( g < double_xmin) ).fill(double_xmin);
-        g.elem( find(g > xmax)).fill(xmax);
-
-        DYF(indioM)=0.5*(((yt-ft)/g)%((yt-ft)/g)) + log(g);
-        doCens(DYF, cens, limitT, f, g, yM);
+        const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+        for (int k = 0; k < nmc; k++) {
+          int obs_start = k * ntotal;
+          vec fk = f.subvec(obs_start, obs_start + ntotal - 1);
+          const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+          const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+          _scratch_ft = fk;
+          _scratch_limitT = limitk;
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+          }
+          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+          _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+          _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+          _scratch_indio = indio + (arma::uword)k * stride;
+          DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+          for (int j = ntotal; j--;) {
+            DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                   DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+          }
+        }
       } else if (distribution == 2){
-        DYF(indioM)=-yM%log(f)+f;
+        for (int k = 0; k < nmc; k++) {
+          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYF(indio_k) = -y % log(fk) + fk;
+        }
       } else if (distribution == 3) {
-        DYF(indioM)=-yM%log(f)-(1-yM)%log(1-f);
+        for (int k = 0; k < nmc; k++) {
+          vec fk = f.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYF(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+        }
       }
       else {
         RSprintf("unknown distribution (id=%d)\n", distribution);
@@ -1133,8 +1204,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1205,8 +1275,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             // yptr = ysb.memptr();
             // fptr = fsb.memptr();
@@ -1286,8 +1355,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1350,8 +1418,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1414,8 +1481,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1478,8 +1544,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1555,8 +1620,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1632,8 +1696,7 @@ public:
             idx = find(ix_endpnt==b);
             vec ysb, fsb;
 
-            ysb = ysM(idx);
-            fsb = fsM(idx);
+            buildFsbYsb(idx, fsM, fsb, ysb);
 
             //len = ysb.n_elem;                                        //CHK: needed by nelder
             vec xmin(2);
@@ -1797,14 +1860,13 @@ public:
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       par_hist.row(kiter) = pl.t();
-      if (print != 0 && (kiter==0 || (kiter+1)%print==0)) {
-        RSprintf("%03d: ", kiter+1);
-        for (arma::uword j=0; j < pl.size(); ++j) {
-          RSprintf("%f\t", pl[j]);
-        }
-        RSprintf("\n");
-      }
-      Rcpp::checkUserInterrupt();
+      // saem has no per-iteration objective function; scale.showOfv was
+      // set to 0 in inits() so the Function Val column is suppressed and
+      // the `f` argument is ignored at print time (passing NA_REAL just
+      // to satisfy the signature).  scalePrintFun increments its own
+      // counter, gates printing on (cn % every == 0), and runs the
+      // user-interrupt check internally.
+      scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
   }
@@ -1829,11 +1891,11 @@ private:
   int nmc;
   int nM;
 
-  int ntotal, N;
-  vec y, yM, ys;    //ys is y sorted by endpnt
-  mat evt, evtM;
+  int ntotal, N, mlen;
+  vec y, ys;    //ys is y sorted by endpnt
+  mat evt;
   mat phiM;
-  uvec indioM;
+  uvec indio;
   mat Mcovariables;
   List opt, optM;
 
@@ -1868,7 +1930,7 @@ private:
   mat DYF;
   cube phi;
   bool hasFixedObsTransform = false;
-  vec yMTrans;
+  vec yTrans;
   vec ysTrans;
 
   vec L;
@@ -1881,7 +1943,17 @@ private:
 
   mcmcaux mx;
 
-  int print;
+  // Iteration-print formatting shared with focei/nlm via src/scale.h.
+  // saem uses scaleTypeNone with all-zero xPar (Plambda is already on
+  // the model scale), so scalePrintFun's U and X rows mirror the # row.
+  // Format matches the other estimators.
+  scaling scale;
+  std::vector<double> scaleInitPar;
+  std::vector<double> scaleC;
+  std::vector<int>    scaleXPar;
+  std::vector<double> scaleLogitLow;
+  std::vector<double> scaleLogitHi;
+  CharacterVector scaleNames;
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
@@ -1896,15 +1968,35 @@ private:
   vec vcsig2;
   int nres;
   uvec ix_sorting;
-  vec ysM;
   mat fsaveMat;
   vec cens;
   vec limit;
-  vec limitT;
   vec fsave;
+
+  // Per-chain scratch buffers pre-allocated in inits() to avoid repeated heap
+  // allocation in the hot distribution==1 loops in saem_fit() and do_mcmc().
+  vec _scratch_ft;      // transformed-f per chain (replaces ftk/fck)
+  vec _scratch_limitT;  // transformed-limit per chain (replaces limitTk)
+  vec _scratch_ftT;     // handleF output per chain (replaces ftTk/fcTk)
+  vec _scratch_g;       // residual SD per chain (replaces gk/gck)
+  uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
 
   int DEBUG;
   std::vector< std::string > phiMFile;
+
+  // Build fsb (predictions across all nmc chains) and ysb (observations
+  // replicated nmc times) for a single endpoint b, used by the residual
+  // parameter estimation switch cases.
+  void buildFsbYsb(const uvec &idx, const vec &fsM, vec &fsb, vec &ysb) const {
+    int nb_b = (int)idx.n_elem;
+    uvec fsb_idx((arma::uword)(nmc * nb_b));
+    for (int k = 0; k < nmc; k++) {
+      fsb_idx.subvec((arma::uword)(k * nb_b), (arma::uword)((k + 1) * nb_b - 1)) =
+        idx + (arma::uword)(k * ntotal);
+    }
+    fsb = fsM(fsb_idx);
+    ysb = arma::repmat(ys(idx), (arma::uword)nmc, 1);
+  }
 
   void set_mcmcphi(mcmcphi &mphi1,
 		   const uvec i1,
@@ -1938,7 +2030,6 @@ private:
     mat fcMat;
     vec fc, fs, Uc_y, Uc_phi, deltu;
     uvec ind;
-    vec gc;
 
     uvec i=mphi.i;
     double double_xmin = 1.0e-200;                               //FIXME hard-coded xmin, also in neldermean.hpp
@@ -1964,39 +2055,69 @@ private:
 
         fcMat = user_fn(phiMc, mx.evtM, mx.optM);
         limit = fcMat.col(2);
-        limitT = fcMat.col(2);
         cens = fcMat.col(1);
 
         fc = fcMat.col(0);
-        vec fcT(fc.size());
         fs = fc;
-        vec yt = hasFixedObsTransform ? yMTrans : mx.yM;
-        for (int i = fc.size(); i--;) {
-          int cur = ix_endpnt(i);
-          limitT[i] = _powerD(limit[i], lambda(cur), yj(cur), low(cur), hi(cur));
-          fc(i)     = _powerD(fc(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          if (!hasFixedObsTransform) {
-            yt(i) = _powerD(mx.yM(i), lambda(cur), yj(cur), low(cur), hi(cur));
-          }
-          fcT(i)    = handleF(propT(cur), fs(i), fc(i), false, true);
-        }
-        gc = vecares + vecbres % abs(fcT); //make sure gc > 0
-        gc.elem( find( gc == 0.0) ).fill(1);
-        gc.elem( find( gc < double_xmin) ).fill(double_xmin);
-        gc.elem( find( gc > xmax) ).fill(xmax);
-
         switch (distribution) {
         case 1:
-          DYF(mx.indioM)=0.5*(((yt-fc)/gc)%((yt-fc)/gc))+log(gc);
+          {
+            // Build yt once — it does not depend on chain index k
+            vec yt = hasFixedObsTransform ? yTrans : mx.y;
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                yt(i) = _powerD(mx.y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              }
+            }
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = limit.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = cens.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fsk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              for (int j = ntotal; j--;) {
+                DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
+                                                       DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
+            }
+          }
           break;
         case 2:
-          DYF(mx.indioM)=-mx.yM%log(fc)+fc;
+          {
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -mx.y % log(fck) + fck;
+            }
+          }
           break;
         case 3:
-          DYF(mx.indioM)=-mx.yM%log(fc)-(1-mx.yM)%log(1-fc);
+          {
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              _scratch_indio = mx.indio + (arma::uword)k * stride;
+              DYF(_scratch_indio) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+            }
+          }
           break;
         }
-        doCens(DYF, cens, limitT, fc, gc, mx.yM);
 
         Uc_y=sum(DYF,0).t();
         if (method==1) {
@@ -2049,8 +2170,8 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   // yp has all the observations in the dataset
   rx_solving_options_ind *ind;
   rx_solving_options *op = getSolvingOptions(_rx);
-  vec _id = _evt.col(0);
-  int _Nnlmixr2=(int)(_id.max()+1);
+  // _phi has N*nmc rows (all chains); _evt has only N subjects (chain 0 template)
+  int _Nnlmixr2 = (int)_phi.n_rows;
   SEXP paramUpdate = _opt["paramUpdate"];
   int *doParam = INTEGER(paramUpdate);
   int nPar = Rf_length(paramUpdate);
@@ -2105,7 +2226,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     }
   }
   // indTolRelax=TRUE: stiff subjects retain their loosened tolFactor across iterations.
-  mat g(getRxNobs2(_rx), 3); // nobs EXCLUDING EVID=2
+  mat g(getRxNsim(_rx) * getRxNobs2(_rx), 3); // nobs across all chains
   int elt=0;
   bool hasNan = false;
   for (int id = 0; id < _Nnlmixr2; ++id) {
@@ -2155,36 +2276,36 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
   return g;
 }
 
-void setupRx(List &opt, SEXP evt, SEXP evtM) {
+// Set up the rxode2 solve structure for N subjects across nmc chains.
+// Passing an N*nmc-row params matrix triggers rxode2's nsim mechanism:
+//   nsim = nPopPar / nsub = (N*nmc) / N = nmc
+// Chains 1..nmc-1 automatically share chain 0's event data pointers
+// (all_times, evid, dose, ii, idose, cov_ptr) while each subject retains
+// its own solve/ix/tolFactor buffers, reducing event-table memory by ~nmc×.
+void setupRx(List &opt, SEXP evt, int nmc, int N) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);
   rxUpdateFuns(mv["trans"], &rxInner);
   parNames = mv[RxMv_params];
 
   if (!Rf_isNull(obj)){
-    // Now need to get the largest item to setup the solving space
-    RObject pars = opt[".pars"];
+    RObject pars0 = opt[".pars"];
     List odeO = opt["rxControl"];
-    // SEXP evt = x["evt"];
-    // SEXP evtM = x["evtM"];
-    int nEvt = INTEGER(Rf_getAttrib(evt, R_DimSymbol))[0];
-    int nEvtM = INTEGER(Rf_getAttrib(evtM, R_DimSymbol))[0];
-    SEXP ev;
-    if (nEvt > nEvtM) {
-      ev = evt;
-    } else {
-      ev = evtM;
-    }
-    if (Rf_isNull(pars)) {
+    if (Rf_isNull(pars0)) {
       stop("params must be non-nil");
     }
+    NumericVector parsV = as<NumericVector>(pars0);
+    int npars = parsV.size();
+    int nrows = N * nmc;
+    NumericMatrix parsM(nrows, npars);
+    CharacterVector parsNames = parsV.names();
+    for (int k = 0; k < nrows; k++) {
+      for (int j = 0; j < npars; j++) parsM(k, j) = parsV[j];
+    }
+    parsM.attr("dimnames") = List::create(R_NilValue, parsNames);
     rxode2::rxSolve_(obj, odeO,
-     		    R_NilValue,//const Nullable<CharacterVector> &specParams =
-     		    R_NilValue,//const Nullable<List> &extraArgs =
-     		    pars,//const RObject &params =
-     		    ev,//const RObject &events =
-     		    R_NilValue, // inits
-     		    1);//const int setupOnly = 0
+                     R_NilValue, R_NilValue,
+                     parsM, evt, R_NilValue, 1);
   } else {
     stop("cannot find rxode2 model");
   }
@@ -2193,11 +2314,11 @@ void setupRx(List &opt, SEXP evt, SEXP evtM) {
 //[[Rcpp::export]]
 SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
   List opt = List(in_opt);
-  setupRx(opt, in_evt, in_evt);
+  mat phi = as<mat>(in_phi);
+  setupRx(opt, in_evt, 1, (int)phi.n_rows);
   saem_lhs = rxInner.calc_lhs;
   saem_inis = rxInner.update_inis;
   _rx=getRxSolve_();
-  mat phi = as<mat>(in_phi);
   mat evt = as<mat>(in_evt);
   saem_state_t dummy_st;
   if (opt.containsElementNamed("maxOdeRecalc")) dummy_st._saemMaxOdeRecalc = abs(as<int>(opt["maxOdeRecalc"]));
@@ -2216,7 +2337,7 @@ SEXP saem_do_pred(SEXP in_phi, SEXP in_evt, SEXP in_opt) {
 SEXP saem_fit(SEXP xSEXP) {
   List x(xSEXP);
   List opt = x["opt"];
-  setupRx(opt,x["evt"],x["evtM"]);
+  setupRx(opt, x["evt"], as<int>(x["nmc"]), as<int>(x["N"]));
 
   // if (rxSingleSolve == NULL) rxSingleSolve = (rxSingleSolve_t) R_GetCCallable("rxode2","rxSingleSolve");
   saem_lhs = rxInner.calc_lhs;
