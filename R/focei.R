@@ -1559,6 +1559,22 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
+  ## Event ("jump") sensitivities: when requested, point rxode2's event-
+  ## sensitivity globals at the inner (sensitivity) model right before the C++
+  ## fit, which solves the inner model through a direct ind_solve() loop (so it
+  ## never goes through rxSolve()/.rxSetEventSensDims()).  The handle_evid jump
+  ## injection is compartment-count guarded, so the smaller pred model solved in
+  ## the same loop skips it safely.  Reset on exit.
+  .eventSens <- tryCatch(.ret$control$eventSens, error=function(e) "fd")
+  if (identical(.eventSens, "jump") &&
+        exists("model", .ret) && !is.null(.ret$model$inner)) {
+    .esLoaded <- tryCatch(
+      rxode2::rxEventSensLoadModel(.ret$model$inner),
+      error=function(e) FALSE)
+    if (isTRUE(.esLoaded)) {
+      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+    }
+  }
   .thetaReset$thetaNames <- .ret$thetaNames
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {
