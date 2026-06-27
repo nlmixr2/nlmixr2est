@@ -744,13 +744,19 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg) {
+.toRx <- function(x, msg, eventSens = "fd") {
   if (is.null(x)) {
     return(NULL)
   }
   .malert(msg)
+  ## eventSens="jump" attaches rxode2's analytic event ("jump") sensitivity
+  ## information to the model so the dosing-parameter (alag/F/rate/dur/...)
+  ## sensitivities are computed analytically rather than by finite differences.
+  ## Passed only for models that carry the sensitivity equations (the inner
+  ## model); "fd" everywhere else preserves the legacy behavior.
   .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
-                               nlmixr2global$toRxDvidCmt))
+                               nlmixr2global$toRxDvidCmt),
+                         eventSens = eventSens)
   .msuccess("done")
   .ret
 }
@@ -886,7 +892,10 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     }
   }
   pred.opt <- NULL
-  inner <- .toRx(s$..inner, "compiling inner model...")
+  ## Build the inner (sensitivity) model with the requested event-sensitivity
+  ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
+  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "fd")
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .eventSens)
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
