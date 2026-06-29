@@ -91,6 +91,7 @@ nlsControl <- function(maxiter=10000,
                        literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
+                       eventSens = c("fd", "jump"),
                        calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
@@ -242,6 +243,7 @@ nlsControl <- function(maxiter=10000,
                rxControl=rxControl,
                returnNls=returnNls,
                addProp=match.arg(addProp),
+               eventSens=match.arg(eventSens),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -725,14 +727,21 @@ rxUiGet.nlsEnv <- function(x, ...) {
   } else {
     .eventTheta <- integer(0)
   }
-  for (.v in .s$..eventVars) {
-    .vars <- as.character(get(.v, envir = .s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## Under eventSens="jump" the dosing-parameter sensitivities are injected
+  ## analytically into the rx__sens states, so skip the finite-difference
+  ## override (nlmOp.thetaFD) for the event parameters; "fd" keeps it.  See the
+  ## matching gate in nlm's rxUiGet.nlmEnv.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  if (!identical(.eventSens, "jump")) {
+    for (.v in .s$..eventVars) {
+      .vars <- as.character(get(.v, envir = .s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
@@ -744,7 +753,11 @@ attr(rxUiGet.nlsEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
   .s <- rxUiGet.nlsEnv(x, ...)
-  list(thetaGrad=rxode2::rxode2(.s$..nlsS),
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
+  ## the residual-Jacobian (thetaGrad) model so the least-squares gradient picks
+  ## up the dosing jumps analytically instead of by finite differences.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  list(thetaGrad=rxode2::rxode2(.s$..nlsS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
 }
