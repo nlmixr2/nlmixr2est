@@ -875,26 +875,38 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   } else {
     .eventEta <- integer()
   }
-  for (.v in s$..eventVars) {
-    .vars <- as.character(get(.v, envir = s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventEta[.num] <- 1L
-      }
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## Event-sensitivity method.  "jump" enables rxode2's analytic dosing-parameter
+  ## (alag/F/rate/dur) sensitivities.
+  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "fd")
+  ## `eventEta`/`eventTheta` flag the parameters that enter a dosing expression
+  ## (alag/F/rate/dur).  In the legacy "fd" path inner.cpp computes their
+  ## sensitivity by finite differences (predOde) because the analytic `rx__sens`
+  ## states miss the event jump.  Under "jump" rxode2 injects the analytic jump
+  ## into those `rx__sens` states, so the analytic gradient is now correct and
+  ## the finite-difference fallback must be turned OFF -- otherwise the
+  ## jump-corrected sensitivity is computed but never used.  Leaving the flags at
+  ## zero routes every parameter through the analytic innerOde sensitivity.
+  if (!identical(.eventSens, "jump")) {
+    for (.v in s$..eventVars) {
+      .vars <- as.character(get(.v, envir = s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventEta[.num] <- 1L
+        }
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "fd")
   inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .eventSens)
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
@@ -1047,10 +1059,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(.ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(.ui, "optExpression", TRUE)
   .predMinusDv   <- rxode2::rxGetControl(.ui, "predMinusDv", TRUE)
+  ## eventSens changes the inner model codegen (analytic jump sensitivities) and
+  ## the eventEta/eventTheta finite-difference flags, so it must be part of the
+  ## cache key -- otherwise a "jump" build would reuse a cached "fd" model.
+  .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "fd")
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
+                   .eventSens,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
