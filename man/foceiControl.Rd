@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 3,
+  sigdig = 4,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -31,6 +31,7 @@ foceiControl(
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
   eventType = c("central", "forward"),
+  eventSens = c("fd", "jump"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
   lbfgsPgtol = 0,
@@ -59,7 +60,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -398,6 +399,14 @@ Shi21 method}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
+
+\item{eventSens}{How sensitivities of dosing/event parameters
+(absorption lag time, bioavailability, infusion rate and duration,
+etc.) are computed.  `"fd"` (the default) uses the legacy finite
+differences.  `"jump"` uses the analytic event ("jump")
+sensitivities provided by `rxode2`, which add accuracy and can speed
+up the gradient/Hessian by avoiding the extra finite-difference
+solves for these parameters.}
 
 \item{centralDerivEps}{Central difference tolerances.  This is a
   numeric vector of relative difference and absolute difference.

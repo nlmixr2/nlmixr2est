@@ -26,6 +26,7 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  eventSens = c("fd", "jump"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -155,6 +156,14 @@ Hessian step size using the Shi2021 method.}
 
 \item{shi21maxHess}{Maximum number of times to optimize the best
 step size for the hessian calculation}
+
+\item{eventSens}{How sensitivities of dosing/event parameters
+(absorption lag time, bioavailability, infusion rate and duration,
+etc.) are computed.  `"fd"` (the default) uses the legacy finite
+differences.  `"jump"` uses the analytic event ("jump")
+sensitivities provided by `rxode2`, which add accuracy and can speed
+up the gradient/Hessian by avoiding the extra finite-difference
+solves for these parameters.}
 
 \item{useColor}{Logical (or `NULL`) — whether to emit ANSI
 bold/color escapes in the iteration print.  `NULL` (the default)
