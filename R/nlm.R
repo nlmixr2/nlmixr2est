@@ -100,6 +100,8 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
+                       eventSens=c("fd", "jump"),
+
                        useColor = NULL,
                        printNcol = NULL, #
                        print = 1L, #
@@ -215,6 +217,12 @@ nlmControl <- function(typsize = NULL,
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
+  ## Event ("jump") sensitivity method for the analytic gradient (thetaGrad)
+  ## model.  "jump" routes the dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" keeps the legacy behavior where
+  ## the augmented sensitivity ODE misses the event jump.
+  eventSens <- match.arg(eventSens)
+
   .iterPrintControl <- .absorbIterPrintControl(print = print,
                                                printNcol = printNcol,
                                                useColor = useColor,
@@ -265,6 +273,8 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+
+               eventSens=eventSens,
 
                iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
@@ -713,7 +723,13 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
   .s <- rxUiGet.nlmEnv(x, ...)
-  list(thetaGrad=rxode2::rxode2(.s$..nlmS),
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
+  ## the thetaGrad model so the population-parameter gradient picks up the dosing
+  ## jumps analytically.  nlm reads the analytic rx__sens_*_BY_THETA_n___ values
+  ## as its only gradient source (it has no event finite-difference fallback), so
+  ## under "fd" the gradient simply misses the jump.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
 }
@@ -793,6 +809,26 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   }
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
   on.exit({.nlmFreeEnv()})
+  ## Event ("jump") sensitivities: when eventSens="jump" and the gradient
+  ## (thetaGrad) model carries the analytic jump info, point rxode2's runtime
+  ## globals at it and turn the jump injection on for the duration of the nlm
+  ## optimization.  The inner solves go through rxode2's ind_solve/handle_evid,
+  ## which reads these globals; the bounds checks make it a no-op for the
+  ## pred-only solves (no sensitivity compartments).  No-op for "fd".
+  if (identical(rxode2::rxGetControl(ui, "eventSens", "fd"), "jump") &&
+        !is.null(.mi$thetaGrad)) {
+    .esLoaded <- tryCatch(rxode2::rxEventSensLoadModel(.mi$thetaGrad),
+                          error=function(e) FALSE)
+    if (isTRUE(.esLoaded)) {
+      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+      ## Prime the solver once: the first solve after setup initializes solver
+      ## state (compartment count) that the handle_evid jump bounds-check needs,
+      ## so without a priming solve the jump would be skipped on the very first
+      ## nlm gradient evaluation.  One throwaway solve makes the activation take
+      ## effect for every subsequent evaluation.
+      tryCatch(.nlmixrNlmFunC(.env$par.ini), error=function(e) NULL)
+    }
+  }
   .ret <- eval(bquote(stats::nlm(
     f=.(.nlmixrNlmFunC),
     p=.(.env$par.ini),
