@@ -31,7 +31,7 @@ foceiControl(
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
   eventType = c("central", "forward"),
-  eventSens = c("fd", "jump"),
+  eventSens = c("jump", "fd"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
   lbfgsPgtol = 0,
@@ -402,8 +402,8 @@ Shi21 method}
 
 \item{eventSens}{How sensitivities of dosing/event parameters
 (absorption lag time, bioavailability, infusion rate and duration,
-etc.) are computed.  `"fd"` (the default) uses the legacy finite
-differences.  `"jump"` uses the analytic event ("jump")
+etc.) are computed.  `"fd"` uses the legacy finite
+differences.  `"jump"` (the default) uses the analytic event ("jump")
 sensitivities provided by `rxode2`, which add accuracy and can speed
 up the gradient/Hessian by avoiding the extra finite-difference
 solves for these parameters.}

@@ -100,7 +100,7 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
-                       eventSens=c("fd", "jump"),
+                       eventSens=c("jump", "fd"),
 
                        useColor = NULL,
                        printNcol = NULL, #
