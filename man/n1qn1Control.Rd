@@ -31,7 +31,7 @@ n1qn1Control(
   literalFix = TRUE,
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
-  eventSens = c("fd", "jump"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
@@ -294,8 +294,8 @@ The combined2 error model can be described by the following equation:
 
 \item{eventSens}{How sensitivities of dosing/event parameters
 (absorption lag time, bioavailability, infusion rate and duration,
-etc.) are computed.  `"fd"` (the default) uses the legacy finite
-differences.  `"jump"` uses the analytic event ("jump")
+etc.) are computed.  `"fd"` uses the legacy finite
+differences.  `"jump"` (the default) uses the analytic event ("jump")
 sensitivities provided by `rxode2`, which add accuracy and can speed
 up the gradient/Hessian by avoiding the extra finite-difference
 solves for these parameters.}
