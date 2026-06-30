@@ -484,17 +484,28 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlm(x, ...)
+  # For matExp() models materialize the implied d/dt() from the k_from_to rate
+  # constants.  When this fires we must also emit the model LHS (which defines
+  # the k_from_to constants and other assignments) ahead of the d/dt() lines so
+  # the derivative expressions can resolve them.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .lhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .lhs,
     .ddt,
     .prd,
     .fr$f_line,
@@ -608,6 +619,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' @noRd
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
                            optExpression = TRUE) {
+  .rxInjectMatExpDdt(.s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -620,6 +632,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- character(0)
+  .lhs <- .s$..lhs
+  if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
   # Extract rx_pred_f_ and rx_r_ for censoring support
@@ -627,6 +641,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    .lhs,
     .ddt,
     .sens,
     .yj,
@@ -647,6 +662,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$params,
     .s$..stateInfo["state"],
     .lhs0,
+    .lhs,
     .ddt,
     .yj,
     .lambda,
