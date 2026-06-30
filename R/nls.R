@@ -535,6 +535,9 @@ attr(rxUiGet.loadPruneNls, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNls(x, ...)
+  # See rxUiGet.nlmRxModel: matExp() models need the LHS (k_from_to definitions)
+  # emitted before the materialized d/dt() lines that reference them.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .var <- get("rx_r_", envir = .s)
@@ -546,9 +549,15 @@ rxUiGet.nlsRxModel <- function(x, ...) {
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .lhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+  }
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .lhs,
     .ddt,
     .prd,
     #.s$..stateInfo["statef"],
