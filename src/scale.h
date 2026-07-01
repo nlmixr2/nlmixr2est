@@ -1,4 +1,5 @@
 #include <math.h>
+#include "solveWarnHelper.h"
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
@@ -820,6 +821,20 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
         RSprintf("\n");
       }
     }
+  }
+  // Flush any rxode2 solve warnings (intdy window-misses, lsoda nhnil,
+  // dop853 stiff/step-too-small) that accumulated since the last print
+  // event.  Doing this here means every estimator routed through
+  // scalePrintFun — focei, saem, nlm, optim, lbfgsb3c, n1qn1, newuoa,
+  // nlminb, nls, uobyqa — collapses a per-iteration flood into one
+  // summary line aligned with the iteration that produced it.  The
+  // lookup of rxode2's rxSolveWarnFlush degrades gracefully to a no-op
+  // when the host rxode2 predates the symbol (see solveWarnHelper.h).
+  // Only fires when this iteration is actually being printed, so the
+  // summary lines up with the row above; on suppressed iterations the
+  // warnings just accumulate to the next printed one.
+  if (scale->every != 0 && scale->cn % scale->every == 0) {
+    nmFlushRxSolveWarn(5);
   }
   // Universal user-interrupt check at each per-iteration print event.  Doing
   // this here (rather than in each estimator's outer loop) ensures every

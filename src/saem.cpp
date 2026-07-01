@@ -1848,7 +1848,8 @@ public:
       // the `f` argument is ignored at print time (passing NA_REAL just
       // to satisfy the signature).  scalePrintFun increments its own
       // counter, gates printing on (cn % every == 0), and runs the
-      // user-interrupt check internally.
+      // user-interrupt check internally, and flushes any aggregated
+      // rxode2 solve warnings after each printed iteration.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
@@ -2287,6 +2288,16 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     rxode2::rxSolve_(obj, odeO,
                      R_NilValue, R_NilValue,
                      parsM, evt, R_NilValue, 1);
+    // rxSolve_ above runs on a declassed event matrix, so rxode2 leaves its
+    // ID factor table empty; push the real subject-id levels (captured in
+    // saem_fit.R before as.data.frame() stripped the rxEtTran class) so the
+    // aggregated solve warnings flushed per iteration are labelled with the
+    // user's ID instead of "Unknown".  Version-skew-safe no-op on an rxode2
+    // without rxSetIdLvlFactors (see src/solveWarnHelper.h).
+    if (opt.containsElementNamed(".idLvl")) {
+      RObject idLvl = opt[".idLvl"];
+      nmSetIdLvlFactors(idLvl);
+    }
   } else {
     stop("cannot find rxode2 model");
   }
