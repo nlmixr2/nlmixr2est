@@ -1,8 +1,8 @@
 #' Classify theta/eta pairs for the mu-referenced FOCEI family
 #'
 #' The mu-referenced FOCEI family (`mufocei`/`irlsfocei`/etc.) only applies
-#' its restart-loop/linear-model machinery to thetas and etas that
-#' participate in a **mu-ref covariate** relationship
+#' its in-C++ regression machinery (`updateMuGroups()`, `src/inner.cpp`) to
+#' thetas and etas that participate in a **mu-ref covariate** relationship
 #' (`ui$muRefCovariateDataFrame`). A theta+eta pair with no covariate ("eta
 #' by itself") and a theta with no covariate and no eta ("theta by itself")
 #' are left completely alone, handled by standard FOCEI inner/outer
@@ -81,7 +81,8 @@
   )
 }
 
-#' Build per-group theta/eta/covariate structures for the restart-loop engine
+#' Build per-group theta/eta/covariate structures for the in-C++ regression
+#' (`updateMuGroups()`, `src/inner.cpp`)
 #'
 #' Each group is one mu-ref-covariate population theta that also has an
 #' associated eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)` is one
@@ -92,11 +93,10 @@
 #' Mu-ref-covariate thetas with **no** associated eta (a pure fixed-effect
 #' covariate relationship, e.g. bioavailability with no random effect) are
 #' intentionally **not** included here -- there is no per-subject residual
-#' to regress against, so the restart-loop's linear-model step has nothing
-#' to update them with. They are left out of the "fixed for the outer
-#' optimizer" set entirely and behave as ordinary, outer-optimized thetas.
-#' This is a deliberate scoping decision for the initial engine, not an
-#' oversight.
+#' to regress against, so the regression step has nothing to update them
+#' with. They are left out of the "fixed for the outer optimizer" set
+#' entirely and behave as ordinary, outer-optimized thetas. This is a
+#' deliberate scoping decision, not an oversight.
 #'
 #' A group's *population* theta having a finite bound
 #' (`ini(...~c(lower, est, upper))`) excludes the **whole group** (with a
