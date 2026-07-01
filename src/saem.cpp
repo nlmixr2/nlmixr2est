@@ -1468,7 +1468,7 @@ public:
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
-      if (omegaShare.n_elem == (unsigned int)nphi1) {
+      if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
         unsigned int max_group = 0;
         for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
           if (omegaShare(i) > max_group) max_group = omegaShare(i);
