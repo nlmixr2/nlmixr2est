@@ -12,6 +12,13 @@
 \alias{nmObjHandleControlObject.laplaceControl}
 \alias{nmObjHandleControlObject.lbfgsb3cControl}
 \alias{nmObjHandleControlObject.mufoceiControl}
+\alias{nmObjHandleControlObject.irlsfoceiControl}
+\alias{nmObjHandleControlObject.mufoceControl}
+\alias{nmObjHandleControlObject.irlsfoceControl}
+\alias{nmObjHandleControlObject.muagqControl}
+\alias{nmObjHandleControlObject.irlsagqControl}
+\alias{nmObjHandleControlObject.mulaplaceControl}
+\alias{nmObjHandleControlObject.irlslaplaceControl}
 \alias{nmObjHandleControlObject.n1qn1Control}
 \alias{nmObjHandleControlObject.newuoaControl}
 \alias{nmObjHandleControlObject.nlmControl}
@@ -42,6 +49,20 @@
 \method{nmObjHandleControlObject}{lbfgsb3cControl}(control, env)
 
 \method{nmObjHandleControlObject}{mufoceiControl}(control, env)
+
+\method{nmObjHandleControlObject}{irlsfoceiControl}(control, env)
+
+\method{nmObjHandleControlObject}{mufoceControl}(control, env)
+
+\method{nmObjHandleControlObject}{irlsfoceControl}(control, env)
+
+\method{nmObjHandleControlObject}{muagqControl}(control, env)
+
+\method{nmObjHandleControlObject}{irlsagqControl}(control, env)
+
+\method{nmObjHandleControlObject}{mulaplaceControl}(control, env)
+
+\method{nmObjHandleControlObject}{irlslaplaceControl}(control, env)
 
 \method{nmObjHandleControlObject}{n1qn1Control}(control, env)
 

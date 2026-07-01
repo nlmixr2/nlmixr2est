@@ -12,6 +12,13 @@
 \alias{getValidNlmixrCtl.laplace}
 \alias{getValidNlmixrCtl.lbfgsb3c}
 \alias{getValidNlmixrCtl.mufocei}
+\alias{getValidNlmixrCtl.irlsfocei}
+\alias{getValidNlmixrCtl.mufoce}
+\alias{getValidNlmixrCtl.irlsfoce}
+\alias{getValidNlmixrCtl.muagq}
+\alias{getValidNlmixrCtl.irlsagq}
+\alias{getValidNlmixrCtl.mulaplace}
+\alias{getValidNlmixrCtl.irlslaplace}
 \alias{getValidNlmixrCtl.n1qn1}
 \alias{getValidNlmixrCtl.newuoa}
 \alias{getValidNlmixrCtl.nlm}
@@ -48,6 +55,20 @@
 \method{getValidNlmixrCtl}{lbfgsb3c}(control)
 
 \method{getValidNlmixrCtl}{mufocei}(control)
+
+\method{getValidNlmixrCtl}{irlsfocei}(control)
+
+\method{getValidNlmixrCtl}{mufoce}(control)
+
+\method{getValidNlmixrCtl}{irlsfoce}(control)
+
+\method{getValidNlmixrCtl}{muagq}(control)
+
+\method{getValidNlmixrCtl}{irlsagq}(control)
+
+\method{getValidNlmixrCtl}{mulaplace}(control)
+
+\method{getValidNlmixrCtl}{irlslaplace}(control)
 
 \method{getValidNlmixrCtl}{n1qn1}(control)
 
