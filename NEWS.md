@@ -235,6 +235,35 @@
   no longer mask the underlying cause; both the inner stop message and
   any follow-up error from `on.exit` are now reported to the user.
 
+- Hardened mixture-model (`mix()`) estimation:
+  - `est="nlme"` now errors clearly on `mix()` models instead of
+    silently freezing the mixture probability at its initial value
+    (nlme has no mixture support yet).
+  - Invalid initial mixture probabilities (out of `[0, 1]` or summing
+    to more than 1) now raise a clear error instead of silently
+    corrupting the SAEM/FOCEI fit.
+  - SAEM/FOCEI now warn (instead of silently continuing) when a
+    subject's posterior mixture-component likelihoods all underflow,
+    or when a final estimated mixture probability collapses toward
+    0/1 or requires rescaling — both signs the mixture components may
+    not be well identified.
+  - Fixed an unrelated regression where the SAEM omega-diagonal floor
+    for non-mu-referenced parameters was raised from `1e-20` to `1.0`
+    for every SAEM fit, not just mixture fits; the higher floor is now
+    scoped to mixture fits only, where it is needed for covariance
+    stability.
+
+- Fix segfault in `nlmSetup` on the first estimator call of a fresh R
+  session affecting every pooled estimator except `nls`
+  (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
+  `newuoa`, `uobyqa`);
+
+- Guard against null pointer arithmetic in inner.cpp
+
+- Use OpenMP threading for S matrix calculation
+
+- Use OpenMP threading wile calculating NPDEs
+
 # nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
