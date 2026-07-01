@@ -2015,10 +2015,24 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     .env$aqLow <- -Inf
     .env$aqHi <- Inf
   }
-  if (getOption("nlmixr2.retryFocei", TRUE)) {
-    .ret0 <- try(.foceiFitInternal(.env))
+  # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): route through the
+  # restart-loop engine instead of the ordinary single-call
+  # .foceiFitInternal(). This is the only seam .foceiFamilyReturn() needs
+  # to branch on -- everything else (data/AGQ setup above, post-processing
+  # below) is shared unmodified across the whole family.
+  .isMuRefFamily <- !identical(.control$muModel, "none") && !is.null(.control$muModel)
+  if (.isMuRefFamily) {
+    if (getOption("nlmixr2.retryFocei", TRUE)) {
+      .ret0 <- try(.muRefFitInternal(.env))
+    } else {
+      .ret0 <- .muRefFitInternal(.env)
+    }
   } else {
-    .ret0 <- .foceiFitInternal(.env)
+    if (getOption("nlmixr2.retryFocei", TRUE)) {
+      .ret0 <- try(.foceiFitInternal(.env))
+    } else {
+      .ret0 <- .foceiFitInternal(.env)
+    }
   }
   .ret0 <- .nlmixrFoceiRestartIfNeeded(.ret0, .env, .control)
   if (inherits(.ret0, "try-error")) {

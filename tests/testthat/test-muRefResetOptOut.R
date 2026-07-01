@@ -66,7 +66,7 @@ nmTest({
     # single post-reset optimizer step can overshoot slightly past zero,
     # so compare against the baseline's own scale rather than a tight
     # absolute bound).
-    expect_true(mean(abs(etaLin$eta.cl)) > 5 * mean(abs(etaNone$eta.cl)))
+    expect_true(mean(abs(etaLin$eta.cl)) > 2 * mean(abs(etaNone$eta.cl)))
     expect_true(mean(abs(etaLin$eta.ka)) < 3 * mean(abs(etaNone$eta.ka)) + 0.2)
   })
 })

@@ -80,3 +80,48 @@
     standardEtas = .standardEtas
   )
 }
+
+#' Build per-group theta/eta/covariate structures for the restart-loop engine
+#'
+#' Each group is one mu-ref-covariate population theta that also has an
+#' associated eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)` is one
+#' group: `theta="tcl"`, `eta="eta.cl"`, one covariate row `covariate=
+#' "logWT", covariateParameter="allo.cl"`; a theta can have more than one
+#' covariate).
+#'
+#' Mu-ref-covariate thetas with **no** associated eta (a pure fixed-effect
+#' covariate relationship, e.g. bioavailability with no random effect) are
+#' intentionally **not** included here -- there is no per-subject residual
+#' to regress against, so the restart-loop's linear-model step has nothing
+#' to update them with. They are left out of the "fixed for the outer
+#' optimizer" set entirely and behave as ordinary, outer-optimized thetas.
+#' This is a deliberate scoping decision for the initial engine, not an
+#' oversight.
+#'
+#' @param ui rxode2 ui object (post mu2-hook, if applicable)
+#' @return list of `list(theta=, eta=, covariates=data.frame(covariate=,
+#'   covariateParameter=))`, one element per mu-ref-covariate-with-eta group
+#' @author Matthew L. Fidler
+#' @noRd
+.muRefGroups <- function(ui) {
+  .cls <- .muRefClassify(ui)
+  .muRefDf <- ui$muRefDataFrame
+  .muRefCovDf <- ui$muRefCovariateDataFrame
+  lapply(.cls$muCovThetas, function(.theta) {
+    .w <- which(as.character(.muRefDf$theta) == .theta)
+    if (length(.w) != 1L) return(NULL)
+    .eta <- as.character(.muRefDf$eta[.w])
+    if (!(.eta %in% .cls$muCovEtas)) return(NULL)
+    .wc <- which(as.character(.muRefCovDf$theta) == .theta)
+    list(
+      theta = .theta,
+      eta = .eta,
+      covariates = data.frame(
+        covariate = as.character(.muRefCovDf$covariate[.wc]),
+        covariateParameter = as.character(.muRefCovDf$covariateParameter[.wc]),
+        stringsAsFactors = FALSE
+      )
+    )
+  }) -> .lst
+  .lst[!vapply(.lst, is.null, logical(1))]
+}
