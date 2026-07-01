@@ -291,22 +291,27 @@ If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 
 \item{muRefCovAlg}{This controls if algebraic expressions that can
-  be mu-referenced are treated as mu-referenced covariates by:
+    be mu-referenced are treated as mu-referenced covariates by:
 
-  1. Creating a internal data-variable `nlmixrMuDerCov#` for each
-     algebraic mu-referenced expression
+    1. Creating a internal data-variable `nlmixrMuDerCov#` for each
+       algebraic mu-referenced expression
 
-  2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
+    2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
 
-  3. Use the internal mu-referenced covariate for saem
+    3. Use the internal mu-referenced covariate for the estimation method
 
-  4. After optimization is completed, replace `model({})` with old
-  `model({})` expression
+    4. After optimization is completed, replace `model({})` with old
+    `model({})` expression
 
-  5. Remove `nlmixrMuDerCov#` from nlmix2 output
+    5. Remove `nlmixrMuDerCov#` from nlmix2 output
 
-In general, these covariates should be more accurate since it
-changes the system to a linear compartment model.  Therefore, by default this is `TRUE`.}
+    In general, these covariates should be more accurate since it
+    changes the system to a linear compartment model.  Therefore, by
+    default this is `TRUE`.  For \code{foceiControl()} this only has an
+    effect for the mu-referenced-FOCEI-family methods
+    (\code{muModel != "none"}); it mirrors
+    \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
+    reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

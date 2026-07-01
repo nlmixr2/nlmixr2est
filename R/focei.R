@@ -1392,6 +1392,37 @@ rxUiGet.foceiMuRefVector <- function(x, ...) {
 #attr(rxUiGet.foceiMuRefVector, "desc") <- "focei mu ref vector"
 attr(rxUiGet.foceiMuRefVector, "rstudio") <- c(0L, -1L)
 
+# focei.mu.cov.eta
+# For the mu-referenced FOCEI family (mufocei/irlsfocei/...): a 0/1 flag per
+# eta, same length/ordering as foceiMuRefVector, marking which etas are
+# mu-ref-covariate-eligible (see .muRefClassify()) and therefore must be
+# protected from FOCEI's internal eta-drift reset mechanisms in src/inner.cpp
+# (they are only ever updated by the restart-loop's linear-model step).
+
+#' @export
+rxUiGet.foceiMuCovEtaVector <- function(x, ...) {
+  .ui <- x[[1]]
+  .iniDf <- .ui$iniDf
+  .w <- which(!is.na(.iniDf$ntheta))
+  .i2 <- .iniDf[-.w, ]
+  # Only mu-referenced-FOCEI-family methods (muModel != "none") protect
+  # mu-ref-covariate etas from the drift-reset mechanisms; every other
+  # method (focei/foce/fo/foi/agq/laplace/etc, muModel="none" default) must
+  # see the same all-zero vector it always has, so behavior is unchanged.
+  .muModel <- rxode2::rxGetControl(.ui, "muModel", "none")
+  if (length(.i2$name) > 0 && !identical(.muModel, "none")) {
+    .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
+    .i2 <- .i2[order(.i2$neta1), ]
+    .muCovEtas <- .muRefClassify(.ui)$muCovEtas
+    vapply(seq_along(.i2$neta1), function(i) {
+      if (.i2$name[i] %in% .muCovEtas) 1L else 0L
+    }, integer(1))
+  } else {
+    integer(0)
+  }
+}
+attr(rxUiGet.foceiMuCovEtaVector, "rstudio") <- c(0L, 1L)
+
 #' @export
 rxUiGet.foceiSkipCov <- function(x, ...) {
   .ui <- x[[1]]
@@ -1489,6 +1520,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
+  rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .x$foceiMuCovEtaVector)
   .env$adjLik <- rxode2::rxGetControl(.x, "adjLik", TRUE)
   .env$diagXformInv <- c("sqrt" = ".square", "log" = "exp", "identity" = "identity")[rxode2::rxGetControl(.x, "diagXform", "sqrt")]
   .env$thetaNames <- .x$iniDf[!is.na(.x$iniDf$ntheta), "name"]

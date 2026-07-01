@@ -282,6 +282,12 @@ struct focei_options {
   int checkTheta;
   int *muRef = NULL;
   unsigned int muRefN;
+  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) per-eta opt-out from
+  // both the plain eta-drift zero-reset (below) and the mu-ref theta
+  // soft-shift (thetaReset0()/thetaReset()); indexed identically to muRef
+  // (one entry per eta, muRefN long). NULL (default, muModel="none") means
+  // no etas are protected -- behavior is unchanged from today.
+  int *muRefEtaCovSkipReset = NULL;
   int resetHessianAndEta;
   std::atomic<int> didHessianReset{0};
   int cholSEOpt=0;
@@ -382,6 +388,18 @@ static inline int getRxId(int id) {
   return id % getRxNsub(rx);
 }
 
+// Mu-referenced-FOCEI-family support: is eta index j (0-based, same
+// ordering as op_focei.muRef) excluded from both the plain eta-drift
+// zero-reset and the mu-ref theta soft-shift because it is being driven by
+// the mufocei/irlsfocei-family restart-loop's linear-model step instead?
+// Bounds-checked against muRefN defensively (muRefEtaCovSkipReset is
+// allocated to be muRefN long); when NULL/unset (muModel="none", the
+// default) this always returns false, so behavior is unchanged from today.
+static inline bool isMuRefCovProtected(unsigned int j) {
+  return op_focei.muRefEtaCovSkipReset != NULL && j < op_focei.muRefN &&
+    op_focei.muRefEtaCovSkipReset[j] != 0;
+}
+
 static inline int getRxMixFromId(int id) {
   return std::floor(id / getRxNsub(rx)) + 1;
 }
@@ -452,6 +470,22 @@ struct focei_ind {
   double *mixProb;
   double *mixProbGrad;
 };
+
+// Zero every eta for this subject except protected (mu-ref-covariate) ones,
+// see isMuRefCovProtected() above. With no protected etas (the default,
+// muModel="none") this is identical to
+// std::fill(&fInd->eta[0], &fInd->eta[0]+neta, 0.0).
+static inline void resetEtaSelective(focei_ind *fInd, int neta) {
+  if (op_focei.muRefEtaCovSkipReset == NULL) {
+    std::fill(&fInd->eta[0], &fInd->eta[0] + neta, 0.0);
+    return;
+  }
+  for (int j = 0; j < neta; ++j) {
+    if (!isMuRefCovProtected((unsigned int)j)) {
+      fInd->eta[j] = 0.0;
+    }
+  }
+}
 
 focei_ind *inds_focei = NULL;
 
@@ -1929,7 +1963,7 @@ static inline int innerOpt1(int id, int likId) {
         fInd->uzm = 1;
         if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
       }
-      std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+      resetEtaSelective(fInd, op_focei.neta);
       op_focei.didEtaReset.store(1, std::memory_order_relaxed);
     } else if (R_FINITE(op_focei.resetEtaSize)) {
       std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, etaMat.begin());
@@ -1938,13 +1972,14 @@ static inline int innerOpt1(int id, int likId) {
       mat etaRes = op_focei.cholOmegaInv * etaMat;
       bool doBreak = false;
       for (unsigned int j = etaRes.n_rows; j--;){
+        if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a reset
         if (std::fabs(etaRes(j, 0)) >= op_focei.resetEtaSize){
           if (op_focei.resetHessianAndEta){
             fInd->mode = 1;
             fInd->uzm = 1;
             if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
           }
-          std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+          resetEtaSelective(fInd, op_focei.neta);
           op_focei.didEtaReset.store(1, std::memory_order_relaxed);
           doBreak=true;
           break;
@@ -1953,13 +1988,14 @@ static inline int innerOpt1(int id, int likId) {
       if (!doBreak){
         etaRes = op_focei.eta1SD % etaMat;
         for (unsigned int j = etaRes.n_rows; j--;){
+          if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a reset
           if (std::fabs(etaRes(j, 0)) >= op_focei.resetEtaSize){
             if (op_focei.resetHessianAndEta){
               fInd->mode = 1;
               fInd->uzm = 1;
               if (n1qn1Inner) op_focei.didHessianReset.store(1, std::memory_order_relaxed);
             }
-            std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+            resetEtaSelective(fInd, op_focei.neta);
             op_focei.didEtaReset.store(1, std::memory_order_relaxed);
             break;
           }
@@ -2314,7 +2350,10 @@ static inline bool thetaReset0(bool forceReset = false) {
   for (unsigned int ii = op_focei.muRefN; ii--;){
     if (op_focei.muRef[ii] != -1 && op_focei.muRef[ii] < (int)op_focei.ntheta) {
       ij = op_focei.muRef[ii];
-      if (isFixedTheta(ij)) {
+      if (isFixedTheta(ij) || isMuRefCovProtected(ii)) {
+        // mu-ref-covariate thetas are only ever updated by the
+        // mufocei/irlsfocei-family restart-loop's linear-model step, never
+        // by this soft mu-shift.
         adjustEta[ii] = false;
       }  else {
         ref = thetaIni[ij] + op_focei.etaM(ii,0);
@@ -2364,6 +2403,7 @@ void thetaReset(double size){
   mat etaRes =  op_focei.eta1SD % op_focei.etaM; //op_focei.cholOmegaInv * etaMat;
   double res=0;
   for (unsigned int j = etaRes.n_rows; j--;) {
+    if (isMuRefCovProtected(j)) continue; // mu-ref-covariate etas never trigger a theta reset
     res = etaRes(j, 0);
     res = res < 0 ? -res : res;
     if (res >= size) { // Says reset;
@@ -4288,6 +4328,20 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.muRefN=(unsigned int)muRef.size();
   }
 
+  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) per-eta opt-out from
+  // both the plain eta-drift zero-reset and the mu-ref theta soft-shift;
+  // same length/ordering as foceiMuRef. Absent for every other estimation
+  // method (muModel="none"), in which case the allocated block below stays
+  // R_Calloc-zeroed and behavior is unchanged from today.
+  IntegerVector muCovEta;
+  bool haveMuCovEta = false;
+  if (foceiO.containsElementNamed("foceiMuCovEta")){
+    if (rxode2::rxIs(foceiO["foceiMuCovEta"], "integer")) {
+      muCovEta = as<IntegerVector>(foceiO["foceiMuCovEta"]);
+      haveMuCovEta = ((unsigned int)muCovEta.size() == op_focei.muRefN);
+    }
+  }
+
   IntegerVector skipCov1;
   if (skipCov.isNull()){
     op_focei.skipCovN = 0;
@@ -4298,7 +4352,7 @@ NumericVector foceiSetup_(const RObject &obj,
 
   if (op_focei.gillRet != NULL) R_Free(op_focei.gillRet);
   op_focei.gillRet = R_Calloc(2*totN + op_focei.npars +
-                              op_focei.muRefN + op_focei.skipCovN +
+                              op_focei.muRefN + op_focei.muRefN + op_focei.skipCovN +
                               op_focei.mixIdxN +
                               (size_t)getRxNsub(rx),
                               int);
@@ -4310,7 +4364,12 @@ NumericVector foceiSetup_(const RObject &obj,
     std::copy(&op_focei.muRef[0], &op_focei.muRef[0]+op_focei.muRefN, muRef.begin());
   }
 
-  op_focei.mixIdx = op_focei.muRef + op_focei.muRefN; // [op_focei.mixIdxN  + getRxNsub(rx)]
+  op_focei.muRefEtaCovSkipReset = op_focei.muRef + op_focei.muRefN; //[op_focei.muRefN]
+  if (op_focei.muRefN && haveMuCovEta) {
+    std::copy(muCovEta.begin(), muCovEta.end(), &op_focei.muRefEtaCovSkipReset[0]);
+  }
+
+  op_focei.mixIdx = op_focei.muRefEtaCovSkipReset + op_focei.muRefN; // [op_focei.mixIdxN  + getRxNsub(rx)]
   if (op_focei.mixIdxN) {
     std::copy(mixIdx.begin(), mixIdx.end(), op_focei.mixIdx);
     // Re-run mixTrans setup now that op_focei.mixIdx is filled.
