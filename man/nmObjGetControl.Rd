@@ -12,6 +12,13 @@
 \alias{nmObjGetControl.laplace}
 \alias{nmObjGetControl.lbfgsb3c}
 \alias{nmObjGetControl.mufocei}
+\alias{nmObjGetControl.irlsfocei}
+\alias{nmObjGetControl.mufoce}
+\alias{nmObjGetControl.irlsfoce}
+\alias{nmObjGetControl.muagq}
+\alias{nmObjGetControl.irlsagq}
+\alias{nmObjGetControl.mulaplace}
+\alias{nmObjGetControl.irlslaplace}
 \alias{nmObjGetControl.n1qn1}
 \alias{nmObjGetControl.newuoa}
 \alias{nmObjGetControl.nlm}
@@ -42,6 +49,20 @@
 \method{nmObjGetControl}{lbfgsb3c}(x, ...)
 
 \method{nmObjGetControl}{mufocei}(x, ...)
+
+\method{nmObjGetControl}{irlsfocei}(x, ...)
+
+\method{nmObjGetControl}{mufoce}(x, ...)
+
+\method{nmObjGetControl}{irlsfoce}(x, ...)
+
+\method{nmObjGetControl}{muagq}(x, ...)
+
+\method{nmObjGetControl}{irlsagq}(x, ...)
+
+\method{nmObjGetControl}{mulaplace}(x, ...)
+
+\method{nmObjGetControl}{irlslaplace}(x, ...)
 
 \method{nmObjGetControl}{n1qn1}(x, ...)
 

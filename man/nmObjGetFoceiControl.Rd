@@ -6,6 +6,13 @@
 \alias{nmObjGetFoceiControl.foce}
 \alias{nmObjGetFoceiControl.laplace}
 \alias{nmObjGetFoceiControl.mufocei}
+\alias{nmObjGetFoceiControl.irlsfocei}
+\alias{nmObjGetFoceiControl.mufoce}
+\alias{nmObjGetFoceiControl.irlsfoce}
+\alias{nmObjGetFoceiControl.muagq}
+\alias{nmObjGetFoceiControl.irlsagq}
+\alias{nmObjGetFoceiControl.mulaplace}
+\alias{nmObjGetFoceiControl.irlslaplace}
 \alias{nmObjGetFoceiControl.nlme}
 \alias{nmObjGetFoceiControl}
 \alias{nmObjGetFoceiControl.default}
@@ -20,6 +27,20 @@
 \method{nmObjGetFoceiControl}{laplace}(x, ...)
 
 \method{nmObjGetFoceiControl}{mufocei}(x, ...)
+
+\method{nmObjGetFoceiControl}{irlsfocei}(x, ...)
+
+\method{nmObjGetFoceiControl}{mufoce}(x, ...)
+
+\method{nmObjGetFoceiControl}{irlsfoce}(x, ...)
+
+\method{nmObjGetFoceiControl}{muagq}(x, ...)
+
+\method{nmObjGetFoceiControl}{irlsagq}(x, ...)
+
+\method{nmObjGetFoceiControl}{mulaplace}(x, ...)
+
+\method{nmObjGetFoceiControl}{irlslaplace}(x, ...)
 
 \method{nmObjGetFoceiControl}{nlme}(x, ...)
 
