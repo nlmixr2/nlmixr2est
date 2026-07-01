@@ -101,6 +101,50 @@
   unit steps in scaled space to negligible steps in unscaled space and
   effectively pinned such parameters at their initial value (e.g.
   `tvemax <- -40` with no transform).
+- Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
+  `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`
+  (adaptive Gauss-Hermite quadrature); `mulaplace`, `irlslaplace`
+  (Laplace).  For any theta/eta that participates in a mu-ref covariate
+  relationship (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
+  covariate-coefficient theta(s) are excluded from the outer gradient
+  optimizer entirely and instead re-derived directly by a closed-form
+  OLS (`mu*` methods) or curvature-reweighted IRLS (`irls*` methods)
+  regression of each subject's back-calculated conditional value on the
+  covariate(s); the regression residual becomes that subject's eta.
+  This runs natively in C++ inside the same inner-optimization pass
+  every outer iteration already uses -- no restart loop, no repeated
+  model setup/compilation, no R-level round trip -- and converges to
+  comparable objective function values and parameter estimates as the
+  corresponding standard method, typically in less time. New
+  `foceiControl()` options control the mechanism: `muModel`
+  (`"none"`/`"lin"`/`"irls"`, default `"none"`), `muRefCovAlg`,
+  `muModelTol`, `muModelMaxCycles`. Ordinary `focei`/`foce`/`agq`/
+  `laplace`/`fo`/`foi` default to `muModel="none"` and are completely
+  unaffected; `fo`/`foi` are intentionally not given `mu*`/`irls*`
+  counterparts (their first-order approximation has no per-subject
+  conditional estimate to regress against).
+
+- A mu-referenced theta with a finite boundary
+  (`ini(...~c(lower, est, upper))`) cannot use the mu-referenced
+  FOCEI-family regression above (it is an unconstrained solve with no
+  way to respect a box constraint), so it now automatically falls back
+  to ordinary, bounded outer-optimizer handling instead, with a warning
+  explaining why -- captured in the fit's `runInfo` the same way as any
+  other pre-fit warning. A bound on the group's population theta
+  excludes the whole theta/eta/covariate group; a bound on just one
+  covariate coefficient excludes only that covariate (treated as if it
+  were a time-varying covariate) while the population theta and any
+  other, unbounded covariates in the same group keep the speed-up. This
+  exclusion only ever applies to the new mu-referenced FOCEI family --
+  SAEM's own, unrelated mu-referencing and every other estimation method
+  are unaffected by theta boundaries.
+
+- The live iteration-print table for the mu-referenced FOCEI family
+  (`muModel != "none"`) now shows an extra row with each mu-group
+  theta's current value (the latest in-C++ regression result) after
+  every real per-iteration print, and a blank/NA placeholder on
+  gradient-print rows, since these thetas are never part of the outer
+  optimizer's gradient finite-difference.
 
 - When model estimation fails, all errors raised during the run are now
   collected and reported together, instead of only the last error. This
