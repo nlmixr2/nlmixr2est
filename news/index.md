@@ -2,6 +2,15 @@
 
 ## nlmixr2est (development version)
 
+- Aggregated ODE-solve warnings flushed during `focei`/`saem` estimation
+  (e.g. `[lsoda -- internal t + h = t ...]: N warning(s) for subject(s): ...`)
+  now report the real subject id instead of `Unknown`. Estimation passes
+  a declassed data frame to rxode2, so rxode2’s subject-id factor table
+  was empty during the fit; the fit’s `idLvl` is now pushed into rxode2
+  via `rxSetIdLvlFactors()` right after estimation setup. Degrades
+  gracefully (the warning falls back to an `internal #N` index) when run
+  against an rxode2 that predates the `rxSetIdLvlFactors` symbol.
+
 - Fix issue 641: FOCEI now updates additive mu-referenced population
   parameters whose initial estimates are large in magnitude. Previously
   a missing branch in `.foceiOptEnvSetupScaleC()` let `scaleC` fall
