@@ -58,3 +58,5 @@ tests/testthat/fixtures/*.rds
 vexp.toml
 /vexp.toml
 /.cache/
+.vexp
+^.vexp$
