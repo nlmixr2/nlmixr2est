@@ -385,7 +385,14 @@
     if (.sumP >= 1.0) {
       .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
     }
-    if (any(abs(.estMixClamped - .estMix) > 1e-4)) {
+    # Check collapse against the raw (pre-clamp) estimate, not the
+    # clamp/raw difference: a component collapsed near 0 (e.g. 1e-8)
+    # changes by only ~1e-6 in absolute terms when clamped to 1e-6, so
+    # comparing the clamp delta against a tolerance misses the most
+    # common collapse case. Rescaling (sum >= 1) is checked separately.
+    .collapsed <- any(.estMix < 1e-3 | .estMix > 1 - 1e-3)
+    .rescaled <- .sumP >= 1.0
+    if (.collapsed || .rescaled) {
       warning("one or more estimated mixture probabilities collapsed toward 0/1 or required ",
               "rescaling; this may indicate the mixture components are not well identified",
               call. = FALSE)
