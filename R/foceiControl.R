@@ -704,6 +704,14 @@
 #' @param eventType Event gradient type for dosing events; Can be
 #'   "central" or "forward"
 #'
+#' @param eventSens How sensitivities of dosing/event parameters
+#'   (absorption lag time, bioavailability, infusion rate and duration,
+#'   etc.) are computed.  `"fd"` uses the legacy finite
+#'   differences.  `"jump"` (the default) uses the analytic event ("jump")
+#'   sensitivities provided by `rxode2`, which add accuracy and can speed
+#'   up the gradient/Hessian by avoiding the extra finite-difference
+#'   solves for these parameters.
+#'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
 #'
@@ -904,6 +912,7 @@ foceiControl <- function(sigdig = 4, #
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
                          eventType = c("central", "forward"), #
+                         eventSens = c("jump", "fd"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -947,7 +956,6 @@ foceiControl <- function(sigdig = 4, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -1219,6 +1227,10 @@ foceiControl <- function(sigdig = 4, #
     .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
+  ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
+  ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
+  ## sensitivities from rxode2).  "fd" is the backward-compatible default.
+  eventSens <- match.arg(eventSens)
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -1546,6 +1558,7 @@ foceiControl <- function(sigdig = 4, #
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
     indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
+    eventSens = eventSens,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
     badSolveObjfAdj=badSolveObjfAdj,
