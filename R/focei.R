@@ -1321,6 +1321,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
               sqrt(qchisq(abs(y),1)/2) * sign(y)
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
+          } else if (is.na(.curEval) || .curEval == "") {
+            # Additive mu-reference (theta + eta).  Scale by the
+            # magnitude of the initial estimate so a unit step in the
+            # internal (scaled) parameter is proportional to the
+            # parameter's natural scale.  Falling through to the C++
+            # default of 1/|init| produced steps so small the optimizer
+            # could not move parameters with large-magnitude initials
+            # (issue 641).
+            .val <- abs(.ini$est[.j])
+            if (.val > 1) .scaleC[.j] <- .val
           }
         }
       }
@@ -1348,34 +1358,6 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
-
-#' This sets up the transformation bounds and indexes and bounds for inner.cpp
-#'
-#' Note that the C code assumes the index starts at 1
-#'
-#' @param ui rxode2 ui environment
-#' @param env focei environment used for solving
-#' @return Nothing called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.foceiOptEnvSetupTransformIndexs <- function(ui, env) {
-  .muRefCurEval <- ui$muRefCurEval
-  .ini <- ui$iniDf
-  .ini <- .ini[!is.na(.ini$ntheta), c("ntheta", "name")]
-  names(.ini)[2] <- "parameter"
-  .transform <- merge(.ini, .muRefCurEval)
-  .transform <- .transform[order(.transform$ntheta), ]
-
-  env$logThetasF <- .transform[which(.transform$curEval == "exp"), "ntheta"]
-
-  env$logitThetasF <- .transform[which(.transform$curEval == "expit"), "ntheta"]
-  env$logitThetasLowF <- .transform[which(.transform$curEval == "expit"), "low"]
-  env$logitThetasHiF <- .transform[which(.transform$curEval == "expit"), "hi"]
-
-  env$probitThetasF <- .transform[which(.transform$curEval == "probitInv"), "ntheta"]
-  env$probitThetasLowF <- .transform[which(.transform$curEval == "probitInv"), "low"]
-  env$probitThetasHiF <- .transform[which(.transform$curEval == "probitInv"), "hi"]
-}
 
 # focei.mu.ref
 # eta# and the corresponding theta number
@@ -1471,7 +1453,16 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  .foceiOptEnvSetupTransformIndexs(ui, env)
+  # Theta-side transform codes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  Default call gives
+  # vectors of length ntheta_total in ntheta order — exactly what
+  # focei's C-side consumes (both the iteration printer and the
+  # final-fit-summary back-transform read xform$xPar / xform$probitIdx
+  # by ntheta index, and xform$logitThetaLow/Hi / probitThetaLow/Hi
+  # by the codes those arrays encode).  Single transport sub-list,
+  # consistent with how saem (.cfg$xform) and nlm (.ctl$iterPrintXform)
+  # ship the same data.
+  env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -2080,8 +2071,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
-                    "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
-                    "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                    "xform",
+                    "lower", "noLik", "objf", "OBJF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                     "xType", "IDlabel", "ODEmodel", "model",
                     # times

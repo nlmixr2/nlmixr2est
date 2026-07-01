@@ -5,14 +5,14 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 3,
+  sigdig = 4,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
   maxOuterIterations = 5000,
   n1qn1nsim = NULL,
   print = 1L,
-  printNcol = floor((getOption("width") - 23)/12),
+  printNcol = NULL,
   scaleTo = 1,
   scaleObjective = 0,
   normType = c("rescale2", "mean", "rescale", "std", "len", "constant"),
@@ -43,7 +43,7 @@ foceiControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   ci = 0.95,
-  useColor = crayon::has_color(),
+  useColor = NULL,
   boundTol = NULL,
   calcTables = TRUE,
   noAbort = TRUE,
@@ -59,7 +59,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -157,13 +157,20 @@ for outer problem.}
 \item{n1qn1nsim}{Number of function evaluations for n1qn1
 optimization.}
 
-\item{print}{Integer representing when the outer step is
-printed. When this is 0 or do not print the iterations.  1 is
-print every function evaluation (default), 5 is print every 5
-evaluations.}
+\item{print}{Either a scalar print-frequency (`0` = suppress
+iteration output; `1` (default) = print every parameter
+evaluation; `N` = print every Nth evaluation), OR a pre-built
+[iterPrintControl()] object bundling all iteration-print options
+(column wrap, header cadence, color, simple/three-row mode).
+The scalar form is equivalent to
+`iterPrintControl(every = print, ncol = printNcol,
+useColor = useColor)`.}
 
-\item{printNcol}{Number of columns to printout before wrapping
-parameter estimates/gradient}
+\item{printNcol}{Integer (or `NULL`) — number of parameter columns
+emitted per row before wrapping to a continuation row.  `NULL`
+(the default) defers to [iterPrintControl()]'s default
+(`floor((getOption("width") - 23) / 12)`, which fits an 80-column
+terminal).  Equivalent to `print = iterPrintControl(ncol = ...)`.}
 
 \item{scaleTo}{Scale the initial parameter estimate to this value.
 By default this is 1.  When zero or below, no scaling is performed.}
@@ -470,7 +477,10 @@ optimization; Default is `TRUE`.}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{useColor}{Boolean indicating if focei can use ASCII color codes}
+\item{useColor}{Logical (or `NULL`) — whether to emit ANSI
+bold/color escapes in the iteration print.  `NULL` (the default)
+defers to [iterPrintControl()]'s default ([crayon::has_color()]).
+Equivalent to `print = iterPrintControl(useColor = ...)`.}
 
 \item{boundTol}{Tolerance for boundary issues.}
 

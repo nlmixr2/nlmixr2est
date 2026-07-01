@@ -9,6 +9,14 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
+
+// scale.h uses `_("...")` for translatable strings; provide the trivial
+// passthrough macro before including it (matches saem.cpp's usage).
+#ifndef _
+#define _(String) (String)
+#endif
+#include "scale.h"
 #include <n1qn1c.h>
 #include <Rinternals.h>
 #ifdef _OPENMP
@@ -168,6 +176,13 @@ struct focei_options {
   bool aqfirst = false;
   double scaleC0;
   int *xPar = NULL;
+  // probitIdxArr is the per-printed-parameter (op_focei.npars-sized)
+  // probit index: 0 means "no probit transform", k>=1 means "k-th
+  // probit transform; bounds at probitThetaLow[k-1], probitThetaHi[k-1]".
+  // Mirrors logit's encoding in xPar (-m-1 = m-th logit) but kept as
+  // a separate array so positive xPar values 2-5 (omega scaling codes
+  // consumed by scaleGetScaleC) cannot collide.
+  int *probitIdxArr = NULL;
   NumericVector lowerIn;
   double *lower = NULL;
   NumericVector upperIn;
@@ -203,7 +218,6 @@ struct focei_options {
 
   int imp;
   // int printInner;
-  int printOuter;
 
 
   mat omega;
@@ -248,9 +262,7 @@ struct focei_options {
   int cur = 0;
   int curTick = 0;
   int totTick = 100;
-  int useColor;
   double boundTol;
-  int printNcol;
   int noabort;
   int interaction;
   double cholSEtol;
@@ -316,6 +328,8 @@ struct focei_options {
   int nfixed=0;
   NumericVector logitThetaHi;
   NumericVector logitThetaLow;
+  NumericVector probitThetaHi;
+  NumericVector probitThetaLow;
   double badSolveObjfAdj = 100;
   std::atomic<bool> didPredSolve{false};
   bool canDoFD  = false;
@@ -343,6 +357,13 @@ struct focei_options {
   int *mixIdx = NULL;
   double *mixProb = NULL;
   double *mixProbGrad = NULL;
+
+  // Iteration-print formatting shared with saem/nlm via src/scale.h.
+  // Populated by foceiSetupScale() after the other op_focei fields
+  // (xPar, scaleC, initPar, logitThetaLow/Hi, etc.) are filled in.
+  // scale.save=0 because focei already records iteration history into the
+  // module-level vPar/niter/iterType/vGrad/niterGrad/gradType globals.
+  scaling scale;
 };
 
 focei_options op_focei;
@@ -1108,6 +1129,10 @@ double likInner0(double *eta, int id) {
                   op_focei.neta, false, true);
       arma::mat Vid(fInd->Vid, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                     getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), false, true);
+      // a.zeros(); already reset
+      // B.zeros(); already reset
+      // c.zeros(); already reset
+      // Vid.zeros(); // already reset when needed
       // Check to see if finite difference step size needs to be optimized
       bool finiteDiffNeeded = predSolve;
       for (int ii = 0; ii < op_focei.neta; ++ii) {
@@ -1118,8 +1143,10 @@ double likInner0(double *eta, int id) {
       }
       arma::mat etaGradF(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                          op_focei.neta, false, true);
+      etaGradF.zeros();
       arma::mat etaGradR(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind),
                          op_focei.neta, false, true);
+      etaGradR.zeros();
       if (finiteDiffNeeded) {
         // need to optimize finite difference
         // First get the f0 for F and R based on current solve
@@ -1518,14 +1545,13 @@ bool calcEtaHessian(double *eta, int likId, int id,
                     mat &H, mat &H0) {
   H.zeros();
   int k, l;
-  mat tmp;
   // This is actually -H
   if (op_focei.needOptimHess) {
-    arma::vec gr0(op_focei.neta);
+    arma::vec gr0(op_focei.neta, fill::zeros);
     std::copy(&fInd->lp[0], &fInd->lp[0] + op_focei.neta, &gr0[0]);
 
-    arma::vec grPH(op_focei.neta);
-    arma::vec grMH(op_focei.neta);
+    arma::vec grPH(op_focei.neta, fill::zeros);
+    arma::vec grMH(op_focei.neta, fill::zeros);
 
     double h = 0;
 
@@ -1669,8 +1695,8 @@ double LikInner2(double *eta, int likId, int id) {
     }
     // Calculate lik first to calculate components for Hessian
     // Hessian
-    mat H(op_focei.neta, op_focei.neta);
-    mat H0(op_focei.neta, op_focei.neta);
+    mat H(op_focei.neta, op_focei.neta, fill::zeros);
+    mat H0(op_focei.neta, op_focei.neta, fill::zeros);
 
     if (!calcEtaHessian(eta, likId, id, fInd, ind, H, H0)) {
       return NA_REAL;
@@ -1721,7 +1747,7 @@ double LikInner2(double *eta, int likId, int id) {
         lik = min2(lik, op_focei.aqHi);
         slik = exp(lik);
       }
-      arma::mat Ginv_5(op_focei.neta, op_focei.neta);
+      arma::mat Ginv_5(op_focei.neta, op_focei.neta, fill::zeros);
       if (_aqn > 1) {
         // The Ginv_5 only needs to be calculated for the
         // non-Laplace case
@@ -1841,10 +1867,28 @@ static inline int innerOpt1(int id, int likId) {
   }
   fInd->nInnerF=0;
   fInd->nInnerG=0;
+  // Zero when eta has changed from the last computed value.
+  if (fInd->setup) {
+    bool _etaChanged = false;
+    for (int _j = 0; _j < op_focei.neta; _j++) {
+      if (fInd->eta[_j] != fInd->oldEta[_j]) { _etaChanged = true; break; }
+    }
+    if (_etaChanged) {
+      rx = getRxSolve_();
+      rx_solving_options_ind *_zInd = getSolvingOptionsInd(rx, getRxId(id));
+      int _nobs = getIndNallTimes(_zInd) - getIndNdoses(_zInd) - getIndNevid2(_zInd);
+      std::fill_n(fInd->lp, op_focei.neta, 0.0);
+      std::fill_n(fInd->a,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->B,   _nobs, 0.0);
+      std::fill_n(fInd->c,   (size_t)_nobs * op_focei.neta, 0.0);
+      std::fill_n(fInd->Vid, (size_t)_nobs * _nobs, 0.0);
+      fInd->setup = 0;
+    }
+  }
   bool n1qn1Inner = true;
   // Use eta
   // Convert Zm to Hessian, if applicable.
-  mat etaMat(fop->neta, 1) ;
+  mat etaMat(fop->neta, 1, fill::zeros);
   if (op_focei.mceta == -1) {
   } else if (op_focei.mceta == 0) {
     // always reset to zero
@@ -1923,12 +1967,12 @@ static inline int innerOpt1(int id, int likId) {
   }
   int npar = fop->neta;
   std::copy(&fInd->eta[0], &fInd->eta[0]+fop->neta, fInd->x);
-  double f, epsilon = max2(fop->epsilon, sqrt(DBL_EPSILON));
+  double f = 0.0, epsilon = max2(fop->epsilon, sqrt(DBL_EPSILON));
 
   // Since these are pointers, without reassignment they are modified.
   int mode = fInd->mode, maxInnerIterations=fop->maxInnerIterations,
     nsim=fop->nsim, imp=fop->imp;
-  int izs; float rzs; double dzs;
+  int izs = 0; float rzs = 0.0f; double dzs = 0.0;
 
   int nF = fInd->nInnerF;
   if (n1qn1Inner) {
@@ -2515,6 +2559,13 @@ void innerOpt() {
       sortIds(rx, 2); // only initialize if rx->ordId == NULL
       _innerParallel.store(1, std::memory_order_release);
     }
+    // Cross-DLL OpenMP thread-id fix (Windows static libgomp).  rxode2 and
+    // nlmixr2est each statically link their own libgomp, so inside rxode2's
+    // ind_solve (called from THIS team) rxode2's omp_get_thread_num() returns 0
+    // for every worker -> rxode2's per-thread solve buffers all collapse onto
+    // slot 0 and race -> heap corruption (Windows-only; Linux shares one
+    // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
+    // Resolved once on the main thread.
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
@@ -2522,11 +2573,13 @@ void innerOpt() {
       int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
 #ifdef _OPENMP
       if (_doParallel) {
+        setRxThreadId(omp_get_thread_num());
         try {
           innerOptId(_id);
         } catch (...) {
           inds_focei[_id].parErrorNoEta = 1;
         }
+        setRxThreadId(-1);
       } else {
 #endif
         innerOptId(_id);
@@ -3240,11 +3293,11 @@ void numericGrad(double *theta, double *g){
   op_focei.curGill=0;
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
-    int finalSlow = (op_focei.printOuter == 1) &&
+    int finalSlow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
     int maxiter = op_focei.shi21maxOuter;
     op_focei.totTick = op_focei.npars * maxiter * 2;
-    op_focei.slow = (op_focei.printOuter == 1) &&
+    op_focei.slow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC*op_focei.totTick >= op_focei.gradProgressOfvTime;
     // Use Shi Difference
     if (op_focei.slow) {
@@ -3284,13 +3337,13 @@ void numericGrad(double *theta, double *g){
     op_focei.slow = finalSlow;
   } else if ((op_focei.repeatGill == 1 || op_focei.nF == 1) && op_focei.gillK > 0) {
     clock_t t = clock() - op_focei.t0;
-    int finalSlow = (op_focei.printOuter == 1) &&
+    int finalSlow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC >= op_focei.gradProgressOfvTime;
 
     op_focei.repeatGill=0;
     op_focei.reducedTol2=0;
     double hf, hphif, err;
-    op_focei.slow = (op_focei.printOuter == 1) &&
+    op_focei.slow = (op_focei.scale.every == 1) &&
       ((double)t)/CLOCKS_PER_SEC*op_focei.npars * op_focei.gillK >= op_focei.gradProgressOfvTime;
     if (op_focei.slow){
       op_focei.cur = 0;
@@ -3535,11 +3588,18 @@ static inline void foceiSetupTrans_(CharacterVector pars){
   if (op_focei.etaTrans != NULL) {
     R_Free(op_focei.etaTrans);
   }
+  // One contiguous int buffer for the per-parameter index arrays.
+  // Layout: etaTrans(neta) | nbdInner(neta) | xPar(N) | probitIdxArr(N)
+  //         | thetaTrans(N) | fixedTrans(N) | etaFD(neta)
+  //         | (gap of omegan when mixIdxN) | mixTrans(N)
+  // where N = ntheta+omegan.  The (mixIdxN ? 4 : 3) ntheta+omegan
+  // slots become (mixIdxN ? 5 : 4) once probitIdxArr is included.
   op_focei.etaTrans    = R_Calloc(op_focei.neta*3 +
-                                  (3+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan), int); //[neta]
+                                  (4+(op_focei.mixIdxN != 0))*(op_focei.ntheta + op_focei.omegan), int); //[neta]
   op_focei.nbdInner    = op_focei.etaTrans + op_focei.neta;
   op_focei.xPar        = op_focei.nbdInner + op_focei.neta; // [ntheta+nomega]
-  op_focei.thetaTrans  = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
+  op_focei.probitIdxArr = op_focei.xPar + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
+  op_focei.thetaTrans  = op_focei.probitIdxArr + op_focei.ntheta + op_focei.omegan; // [ntheta+nomega]
   op_focei.fixedTrans  = op_focei.thetaTrans + op_focei.ntheta + op_focei.omegan; // [ntheta + nomega]
   op_focei.etaFD       = op_focei.fixedTrans + op_focei.ntheta + op_focei.omegan; // [neta]
   if (op_focei.mixIdxN) {
@@ -4113,8 +4173,6 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.resetThetaSize = std::numeric_limits<double>::infinity();
   // op_focei.printInner=as<int>(foceiO["printInner"]);
   // if (op_focei.printInner < 0) op_focei.printInner = -op_focei.printInner;
-  op_focei.printOuter=as<int>(foceiO["print"]);
-  if (op_focei.printOuter < 0) op_focei.printOuter = -op_focei.printOuter;
   unsigned int totN=op_focei.ntheta + op_focei.omegan;
   NumericVector cEps=foceiO["derivEps"];
   if (cEps.size() != 2){
@@ -4263,9 +4321,9 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.eigen = as<int>(foceiO["eigen"]);
   op_focei.ci=as<double>(foceiO["ci"]);
   op_focei.sigdig=as<double>(foceiO["sigdigTable"]);
-  op_focei.useColor=as<int>(foceiO["useColor"]);
   op_focei.boundTol=as<double>(foceiO["boundTol"]);
-  op_focei.printNcol=as<int>(foceiO["printNcol"]);
+  scaleApplyIterPrintControl(&op_focei.scale,
+                             as<List>(foceiO["iterPrintControl"]));
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
@@ -4626,117 +4684,26 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     vPar.push_back(ret);
   }
   for (i = 0; i < n; i++){
-    if (op_focei.xPar[i] == 1){
-      vPar.push_back(exp(unscalePar(x, i)));
-    } else if (op_focei.xPar[i] < 0){
-      int m = -op_focei.xPar[i]-1;
-      vPar.push_back(expit(unscalePar(x, i), op_focei.logitThetaLow[m], op_focei.logitThetaHi[m]));
-    } else {
-      vPar.push_back(unscalePar(x, i));
-    }
+    int probitCode = (op_focei.scale.probitIdx != NULL) ? op_focei.scale.probitIdx[i] : 0;
+    vPar.push_back(scaleBackTransform(unscalePar(x, i),
+                                      op_focei.xPar[i], probitCode,
+                                      op_focei.scale.logitThetaLow,
+                                      op_focei.scale.logitThetaHi,
+                                      op_focei.scale.probitThetaLow,
+                                      op_focei.scale.probitThetaHi));
   }
-  if (op_focei.printOuter != 0 && op_focei.nF % op_focei.printOuter == 0){
-    if (op_focei.useColor && !isRstudio())
-      RSprintf("|\033[1m%5d\033[0m|%#14.8g |", op_focei.nF+op_focei.nF2, ret);
-    else
-      RSprintf("|%5d|%#14.8g |", op_focei.nF+op_focei.nF2, ret);
-    for (i = 0; i < n; i++){
-      RSprintf("%#10.4g |", x[i]);
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  > n){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (op_focei.scaleObjective){
-      RSprintf("|    U|%14.8g |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-    } else {
-      RSprintf("|    U|%14.8g |", ret);
-    }
-    for (i = 0; i < n; i++){
-      // new  = (theta[k] - op_focei.scaleTo)*op_focei.scaleC[k] +  op_focei.initPar[k]
-      // (new-ini)/c+scaleTo = theta[]
-      RSprintf("%#10.4g |", unscalePar(x, i));
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  > op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (op_focei.scaleObjective){
-      if (op_focei.useColor && !isRstudio()){
-        RSprintf("|    X|\033[1m%14.8g\033[0m |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-      } else {
-        RSprintf("|    X|%14.8g |", op_focei.initObjective * ret / op_focei.scaleObjectiveTo);
-      }
-    } else {
-      if (op_focei.useColor && !isRstudio())
-        RSprintf("|    X|\033[1m%14.8g\033[0m |", ret);
-      else
-        RSprintf("|    X|%14.8g |", ret);
-    }
-    for (i = 0; i < n; i++){
-      if (op_focei.xPar[i] == 1){
-        RSprintf("%#10.4g |", exp(unscalePar(x, i)));
-      } else if (op_focei.xPar[i] < 0){
-        int m = -op_focei.xPar[i]-1;
-        RSprintf("%#10.4g |", expit(unscalePar(x, i), op_focei.logitThetaLow[m], op_focei.logitThetaHi[m]));
-      } else {
-        RSprintf("%#10.4g |", unscalePar(x, i));
-      }
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-  }
+  // Emit the per-iteration #/U/X rows via the shared scale.h helper.
+  // Gating (every `scale.every` calls) and column wrapping happen inside
+  // scalePrintFun.  When scaleObjective is on, op_focei.scaleObjectiveTo
+  // is the optimizer's working OFV magnitude; pass the unscaled (model-
+  // level) OFV so all three rows show the same number the user expects.
+  // The counter shown in the # column is scale.cn (incremented inside
+  // scalePrintFun); it differs from op_focei.nF+nF2 only across theta-
+  // resets.
+  double displayedOfv = op_focei.scaleObjective
+    ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
+    : ret;
+  scalePrintFun(&op_focei.scale, x, displayedOfv);
   return ret;
 }
 
@@ -4765,76 +4732,10 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  if (op_focei.printOuter != 0 && op_focei.nG % op_focei.printOuter == 0){
-    if (op_focei.useColor && op_focei.printNcol >= n){
-      switch(gradType.back()){
-      case 1:
-        RSprintf("|\033[4m    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|\033[4m    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|\033[4m    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|\033[4m    C| Central Diff. |");
-        break;
-      case 5:
-        RSprintf("|\033[4m    S|   Shi21 Diff. |");
-        break;
-      }
-    } else {
-      switch(gradType.back()){
-      case 1:
-        RSprintf("|    G|    Gill Diff. |");
-        break;
-      case 2:
-        RSprintf("|    M|   Mixed Diff. |");
-        break;
-      case 3:
-        RSprintf("|    F| Forward Diff. |");
-        break;
-      case 4:
-        RSprintf("|    C| Central Diff. |");
-        break;
-      case 5:
-        RSprintf("|    S|   Shi21 Diff. |");
-        break;
-      }
-    }
-    for (i = 0; i < n; i++){
-      RSprintf("%#10.4g ", gr[i]);
-      if (op_focei.useColor && op_focei.printNcol >= n && i == n-1){
-        RSprintf("\033[0m");
-      }
-      RSprintf("|");
-      if ((i + 1) != n && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
-      }
-    }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (!op_focei.useColor){
-      foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    }
-  }
+  // Gradient row via the shared scale.h helper.  The type code passed
+  // here uses focei's gradType convention: 1=Gill, 2=Mixed, 3=Forward,
+  // 4=Central, 5=Shi21.  scalePrintGrad maps these to G/M/F/C/S labels.
+  scalePrintGrad(&op_focei.scale, gr, gradType.back());
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
@@ -5861,41 +5762,81 @@ int foceiS(double *theta, Environment e, bool &hasZero){
     cur = theta[cpar];
     theta[cpar] = cur + delta;
     updateTheta(theta);
-    for (gid = getRxNsub(rx); gid--;){
-      fInd = &(inds_focei[gid]);
-      fInd->thetaGrad[cpar] = NA_REAL;
-      if (!innerOpt1(gid,2)) {
-        if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
-        theta[cpar] = cur - delta;
-        updateTheta(theta);
-        if (!innerOpt1(gid,2)) {
-          hasZero = true;
-          sInfoPer -= 1.0;
-          fInd->thetaGrad[cpar] =  gfull[cpar];
+    {
+      int _nsub = (int)getRxNsub(rx);
+      rx_solving_options *_op = getSolvingOptions(rx);
+      int _cores = getOpCores(_op);
+      bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
+      std::vector<int> _opt1Res(_nsub, 0);
+      if (_doParallel) sortIds(rx, 2);
+      _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+      for (int _i = 0; _i < _nsub; _i++) {
+        int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+        focei_ind *fIndL = &(inds_focei[_gid]);
+        fIndL->thetaGrad[cpar] = NA_REAL;
+        // Set thread id for windows
+        setRxThreadId(omp_get_thread_num());
+        _opt1Res[_gid] = innerOpt1(_gid, 2);
+        setRxThreadId(-1);
+        if (_opt1Res[_gid] && doForward) {
+          fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
         }
-        theta[cpar] = cur + delta;
-        updateTheta(theta);
-        // backward instead of forward
-        fInd->thetaGrad[cpar] = (op_focei.likSav[gid] - fInd->lik[2])/delta;
-      } else if (doForward){
-        fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
+      }
+      _innerParallel.store(0, std::memory_order_release);
+      if (_doParallel) sortIds(rx, 0);
+      // Serial fallback for subjects where innerOpt1(gid, 2) failed
+      for (int _gid = 0; _gid < _nsub; _gid++) {
+        if (!_opt1Res[_gid]) {
+          fInd = &(inds_focei[_gid]);
+          if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
+          theta[cpar] = cur - delta;
+          updateTheta(theta);
+          if (!innerOpt1(_gid, 2)) {
+            hasZero = true;
+            sInfoPer -= 1.0;
+            fInd->thetaGrad[cpar] = gfull[cpar];
+          }
+          theta[cpar] = cur + delta;
+          updateTheta(theta);
+          fInd->thetaGrad[cpar] = (op_focei.likSav[_gid] - fInd->lik[2]) / delta;
+        }
       }
     }
     if (!doForward){
       if (op_focei.neta != 0) std::fill_n(&op_focei.goldEta[0], op_focei.gEtaGTransN, -42.0);
       theta[cpar] = cur - delta;
       updateTheta(theta);
-      for (gid = getRxNsub(rx); gid--;){
-        fInd = &(inds_focei[gid]);
-        if (ISNA(fInd->thetaGrad[cpar])) {
-          if (!innerOpt1(gid,1)) {
-            // forward only
-            fInd->thetaGrad[cpar] = (fInd->lik[2] - op_focei.likSav[gid])/delta;
-          } else {
-            // central
-            fInd->thetaGrad[cpar] = (fInd->lik[2] - fInd->lik[1])/(2*delta);
+      // Second inner loop: run innerOpt1(gid, 1) over subjects in parallel.
+      {
+        int _nsub = (int)getRxNsub(rx);
+        rx_solving_options *_op = getSolvingOptions(rx);
+        int _cores = getOpCores(_op);
+        bool _doParallel = (_cores > 1) && solveMethodThreadSafe(_op);
+        if (_doParallel) sortIds(rx, 2);
+        _innerParallel.store(1, std::memory_order_release);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+        for (int _i = 0; _i < _nsub; _i++) {
+          int _gid = _doParallel ? (getOrdId(rx, _i) - 1) : _i;
+          focei_ind *fIndL = &(inds_focei[_gid]);
+          if (ISNA(fIndL->thetaGrad[cpar])) {
+            setRxThreadId(omp_get_thread_num());
+            if (!innerOpt1(_gid, 1)) {
+              // forward only
+              fIndL->thetaGrad[cpar] = (fIndL->lik[2] - op_focei.likSav[_gid]) / delta;
+            } else {
+              // central
+              fIndL->thetaGrad[cpar] = (fIndL->lik[2] - fIndL->lik[1]) / (2*delta);
+            }
+            setRxThreadId(-1);
           }
         }
+        _innerParallel.store(0, std::memory_order_release);
+        if (_doParallel) sortIds(rx, 0);
       }
     }
     theta[cpar] = cur;
@@ -6772,155 +6713,59 @@ void foceiFinalizeTables(Environment e){
   CharacterVector btCi(Estimate.size());
   // LogicalVector EstBT(Estimate.size());
   // Rf_pt(stat[7],(double)n1,1,0)
-  // FIXME figure out log thetas outside of foceisetup.
-  IntegerVector logTheta;
-  IntegerVector logitTheta;
-  NumericVector logitThetaHi;
-  NumericVector logitThetaLow;
-  IntegerVector probitTheta;
-  NumericVector probitThetaHi;
-  NumericVector probitThetaLow;
-  if (e.exists("logThetasF")){
-    logTheta =  as<IntegerVector>(e["logThetasF"]);
-  }
-  if (e.exists("logitThetasF")) {
-    logitTheta = as<IntegerVector>(e["logitThetasF"]);
-    if (logitTheta.size() != 0) {
-      logitThetaHi = as<NumericVector>(e["logitThetasHiF"]);
-      logitThetaLow = as<NumericVector>(e["logitThetasLowF"]);
-    }
-  }
-  if (e.exists("probitThetasF")) {
-    probitTheta = as<IntegerVector>(e["probitThetasF"]);
-    if (probitTheta.size() != 0) {
-      probitThetaHi = as<NumericVector>(e["probitThetasHiF"]);
-      probitThetaLow = as<NumericVector>(e["probitThetasLowF"]);
-    }
-  }
-  j = logTheta.size()-1;
-  k = logitTheta.size()-1;
-  l = probitTheta.size()-1;
-  double qn= Rf_qnorm5(1.0-(1-op_focei.ci)/2, 0.0, 1.0, 1, 0);
+  // Per-theta transform codes shipped from R by .iterPrintXParFromUi
+  // (see R/focei.R::.foceiOptEnvLik).  xform$xPar[i] / xform$probitIdx[i]
+  // hold the i-th theta's log/logit/probit code; the bounds vectors
+  // are indexed by the absolute value of the relevant code minus one.
+  List xform = as<List>(e["xform"]);
+  IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
+  IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
+  NumericVector logitThetaLow  = as<NumericVector>(xform["logitThetaLow"]);
+  NumericVector logitThetaHi   = as<NumericVector>(xform["logitThetaHi"]);
+  NumericVector probitThetaLow = as<NumericVector>(xform["probitThetaLow"]);
+  NumericVector probitThetaHi  = as<NumericVector>(xform["probitThetaHi"]);
+  const double *logitLowP  = logitThetaLow.size()  ? &logitThetaLow[0]  : NULL;
+  const double *logitHiP   = logitThetaHi.size()   ? &logitThetaHi[0]   : NULL;
+  const double *probitLowP = probitThetaLow.size() ? &probitThetaLow[0] : NULL;
+  const double *probitHiP  = probitThetaHi.size()  ? &probitThetaHi[0]  : NULL;
+  double qn = Rf_qnorm5(1.0-(1-op_focei.ci)/2, 0.0, 1.0, 1, 0);
   std::string cur;
   char buff[100];
-  LogicalVector thetaFixed =thetaDf["fixed"];
-  for (i = Estimate.size(); i--;){
+  LogicalVector thetaFixed = thetaDf["fixed"];
+  for (i = Estimate.size(); i--;) {
+    int xpc = (i < thetaXPar.size())       ? thetaXPar[i]      : 0;
+    int ppc = (i < thetaProbitIdx.size())  ? thetaProbitIdx[i] : 0;
     snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, Estimate[i]);
-    EstS[i]=buff;
-    if (logTheta.size() > 0 && j >= 0 && logTheta[j]-1==i) {
-      EstBT[i] = exp(Estimate[i]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
+    EstS[i] = buff;
+    EstBT[i] = scaleBackTransform(Estimate[i], xpc, ppc,
+                                  logitLowP, logitHiP, probitLowP, probitHiP);
+    snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
+    cur = buff;
+    if (ISNA(SE[i])) {
+      EstLower[i] = NA_REAL;
+      EstUpper[i] = NA_REAL;
+      if (thetaFixed[i]) {
+        SeS[i]  = "FIXED";
+        rseS[i] = "FIXED";
       } else {
-        EstLower[i] = exp(Estimate[i]-SE[i]*qn);
-        EstUpper[i] = exp(Estimate[i]+SE[i]*qn);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
+        SeS[i]  = "";
+        rseS[i] = "";
       }
-      btCi[i] = cur;
-      j--;
-    } else if (logitTheta.size() > 0 && k >= 0 && logitTheta[k]-1==i) {
-      EstBT[i] = expit(Estimate[i], logitThetaLow[k], logitThetaHi[k]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = expit(Estimate[i]-SE[i]*qn, logitThetaLow[k], logitThetaHi[k]);
-        EstUpper[i] = expit(Estimate[i]+SE[i]*qn, logitThetaLow[k], logitThetaHi[k]);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
-      k--;
-    } else if (probitTheta.size() > 0 && l >= 0 && probitTheta[l]-1==i) {
-      EstBT[i] = probitInv(Estimate[i], probitThetaLow[l], probitThetaHi[l]);
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = probitInv(Estimate[i]-SE[i]*qn, probitThetaLow[l], probitThetaHi[l]);
-        EstUpper[i] = probitInv(Estimate[i]+SE[i]*qn, probitThetaLow[l], probitThetaHi[l]);
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
-      l--;
     } else {
-      EstBT[i]= Estimate[i];
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, Estimate[i]);
-      EstS[i]=buff;
-      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstBT[i]);
-      cur = buff;
-      if (ISNA(SE[i])){
-        EstLower[i] = NA_REAL;
-        EstUpper[i] = NA_REAL;
-        if (thetaFixed[i]){
-          SeS[i]  = "FIXED";
-          rseS[i] = "FIXED";
-        } else {
-          SeS[i] = "";
-          rseS[i]="";
-        }
-      } else {
-        EstLower[i] = Estimate[i]-SE[i]*qn;
-        EstUpper[i] = Estimate[i]+SE[i]*qn;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
-        SeS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
-        rseS[i]=buff;
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
-        cur = cur + " (" + buff + ", ";
-        snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
-        cur = cur + buff + ")";
-      }
-      btCi[i] = cur;
+      EstLower[i] = scaleBackTransform(Estimate[i] - SE[i]*qn, xpc, ppc,
+                                       logitLowP, logitHiP, probitLowP, probitHiP);
+      EstUpper[i] = scaleBackTransform(Estimate[i] + SE[i]*qn, xpc, ppc,
+                                       logitLowP, logitHiP, probitLowP, probitHiP);
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, SE[i]);
+      SeS[i] = buff;
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, RSE[i]);
+      rseS[i] = buff;
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstLower[i]);
+      cur = cur + " (" + buff + ", ";
+      snprintf(buff, sizeof(buff), "%.*g", (int)op_focei.sigdig, EstUpper[i]);
+      cur = cur + buff + ")";
     }
+    btCi[i] = cur;
   }
   tmpL["Back-transformed"] = EstBT;
   tmpL["CI Lower"] = EstLower;
@@ -7098,7 +6943,7 @@ void foceiFinalizeTables(Environment e){
       e["extra"] = "";
       e["skipTable"] = LogicalVector::create(true);
     } else if (op_focei.interaction || op_focei.needOptimHess){
-      if(op_focei.useColor){
+      if(op_focei.scale.useColor){
         e["extra"] = "\033[31;1mi\033[0m";
       } else {
         e["extra"] = "i";
@@ -7322,51 +7167,38 @@ Environment foceiFitCpp_(Environment e){
   }
   wallT0 = focei_wall_clock::now();
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
-  IntegerVector logTheta;
-  IntegerVector logitTheta;
   IntegerVector xType = e["xType"];
   std::fill_n(&op_focei.scaleC[0], op_focei.ntheta+op_focei.omegan, NA_REAL);
   if (e.exists("scaleC")){
     arma::vec scaleC = as<arma::vec>(e["scaleC"]);
     std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
   }
-  if (e.exists("logThetasF")){
-    logTheta =  as<IntegerVector>(e["logThetasF"]);
-  }
-  if (e.exists("logitThetas") && e.exists("logitThetasLow") &&
-      e.exists("logitThetasHi")) {
-    logitTheta = as<IntegerVector>(e["logitThetas"]);
-    if (logitTheta.size() != 0) {
-      op_focei.logitThetaLow = as<NumericVector>(e["logitThetasLow"]);
-      op_focei.logitThetaHi = as<NumericVector>(e["logitThetasHi"]);
-    } else {
-      op_focei.logitThetaLow=NumericVector(0);
-      op_focei.logitThetaHi=NumericVector(0);
-    }
-  } else {
-    op_focei.logitThetaLow=NumericVector(0);
-    op_focei.logitThetaHi=NumericVector(0);
-  }
-  int j;
-  // Setup which parameters are transformed
+  // Theta transforms — ntheta-indexed.  Shipped from R by
+  // .iterPrintXParFromUi via .foceiOptEnvLik (see R/focei.R) as a single
+  // env$xform sub-list.  Length == ntheta_total (fixed + unfixed); we
+  // re-index by op_focei.fixedTrans below to map them into the npars-
+  // sized op_focei.xPar / probitIdxArr.
+  List xform = as<List>(e["xform"]);
+  IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
+  IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
+  op_focei.logitThetaLow  = as<NumericVector>(xform["logitThetaLow"]);
+  op_focei.logitThetaHi   = as<NumericVector>(xform["logitThetaHi"]);
+  op_focei.probitThetaLow = as<NumericVector>(xform["probitThetaLow"]);
+  op_focei.probitThetaHi  = as<NumericVector>(xform["probitThetaHi"]);
+  // Setup which parameters are transformed.  For theta slots (j < ntheta)
+  // the per-printed-parameter code comes from thetaXPar[j] / probitIdx[j];
+  // for omega slots (j >= ntheta) the existing omega scaling code from
+  // xType applies (xPar values 2-5 consumed by scaleGetScaleC).  Omegas
+  // never get probit; probitIdxArr stays 0 for those slots.
   for (unsigned int k = op_focei.npars; k--;){
-    j=op_focei.fixedTrans[k];
+    int j = op_focei.fixedTrans[k];
     op_focei.xPar[k] = 0;
+    op_focei.probitIdxArr[k] = 0;
     if ((int)op_focei.ntheta < j){
       op_focei.xPar[k] = xType[j-op_focei.ntheta];
     } else {
-      for (unsigned int m=logTheta.size(); m--;){
-        if (logTheta[m]-1 == j){
-          op_focei.xPar[k] = 1;
-          break;
-        }
-      }
-      for (int m = logitTheta.size(); m--;) {
-        if (logitTheta[m]-1 == j){
-          op_focei.xPar[k] = -m-1;
-          break;
-        }
-      }
+      if (j < thetaXPar.size())       op_focei.xPar[k]         = thetaXPar[j];
+      if (j < thetaProbitIdx.size())  op_focei.probitIdxArr[k] = thetaProbitIdx[j];
     }
   }
   std::string tmpS;
@@ -7376,58 +7208,61 @@ Environment foceiFitCpp_(Environment e){
     Environment thetaReset = nlmixr2[".thetaReset"];
     restoreFromEnvrionment(thetaReset);
   }
-  if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1 && op_focei.printOuter != 0){
-    if (op_focei.useColor)
-      RSprintf("\033[1mKey:\033[0m ");
-    else
-      RSprintf("Key: ");
-
-    RSprintf("U: Unscaled Parameters; ");
-    RSprintf("X: Back-transformed parameters; ");
-    RSprintf("G: Gill difference gradient approximation\n");
-    RSprintf("F: Forward difference gradient approximation\n");
-    RSprintf("C: Central difference gradient approximation\n");
-    RSprintf("M: Mixed forward and central difference gradient approximation\n");
-    RSprintf("Unscaled parameters for Omegas=chol(solve(omega));\nDiagonals are transformed, as specified by foceiControl(diagXform=)\n");
-    op_focei.t0 = clock();
-    foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    RSprintf("|    #| Objective Fun |");
-    int j,  i=0, finalize=0, k=1;
-
-    for (i = 0; i < op_focei.npars; i++){
-      j=op_focei.fixedTrans[i];
-      if (j < thetaNames.size()){
-        tmpS = thetaNames[j];
-        RSprintf("%#10s |", tmpS.c_str());
+  // Populate the shared scale.h struct from op_focei's already-filled fields.
+  // We do this unconditionally (even when print is off) so that scalePrintFun
+  // calls below can no-op cleanly via scale.every==0.  scale.save=0 because
+  // focei keeps its own iteration history in the module-level globals
+  // (vPar/niter/iterType/vGrad/niterGrad/gradType).  scale.keyExtra holds the
+  // focei-specific suffix appended to the standard "Key:" line (gradient
+  // method labels and the diagXform omega note).
+  {
+    // Build a CharacterVector with the printed column names in the same
+    // order scalePrintFun emits them (fixedTrans-indexed).
+    CharacterVector scaleNames(op_focei.npars);
+    int k = 1;
+    for (unsigned int i = 0; i < op_focei.npars; i++) {
+      int jj = op_focei.fixedTrans[i];
+      if (jj < thetaNames.size()) {
+        scaleNames[i] = thetaNames[jj];
       } else {
-        tmpS = "o" +std::to_string(k++);
-        RSprintf("%#10s |", tmpS.c_str());
-      }
-      if ((i + 1) != op_focei.npars && (i + 1) % op_focei.printNcol == 0){
-        if (op_focei.useColor && op_focei.printNcol + i  >= op_focei.npars){
-          RSprintf("\n\033[4m|.....................|");
-        } else {
-          RSprintf("\n|.....................|");
-        }
-        finalize=1;
+        scaleNames[i] = "o" + std::to_string(k++);
       }
     }
-    if (finalize){
-      while(true){
-        if ((i++) % op_focei.printNcol == 0){
-          if (op_focei.useColor) RSprintf("\033[0m");
-          RSprintf("\n");
-          break;
-        } else {
-          RSprintf("...........|");
-        }
-      }
-    } else {
-      RSprintf("\n");
-    }
-    if (!op_focei.useColor){
-      foceiPrintLine(min2(op_focei.npars, op_focei.printNcol));
-    }
+    op_focei.scale.npars         = op_focei.npars;
+    op_focei.scale.initPar       = op_focei.initPar;
+    op_focei.scale.scaleC        = op_focei.scaleC;
+    op_focei.scale.xPar          = op_focei.xPar;
+    op_focei.scale.logitThetaLow = op_focei.logitThetaLow.size() ? &op_focei.logitThetaLow[0] : NULL;
+    op_focei.scale.logitThetaHi  = op_focei.logitThetaHi.size()  ? &op_focei.logitThetaHi[0]  : NULL;
+    op_focei.scale.probitIdx       = op_focei.probitIdxArr;
+    op_focei.scale.probitThetaLow  = op_focei.probitThetaLow.size() ? &op_focei.probitThetaLow[0] : NULL;
+    op_focei.scale.probitThetaHi   = op_focei.probitThetaHi.size()  ? &op_focei.probitThetaHi[0]  : NULL;
+    op_focei.scale.thetaNames    = scaleNames;
+    op_focei.scale.normType      = op_focei.normType;
+    op_focei.scale.scaleType     = op_focei.scaleType;
+    op_focei.scale.scaleCmin     = op_focei.scaleCmin;
+    op_focei.scale.scaleCmax     = op_focei.scaleCmax;
+    op_focei.scale.scaleTo       = op_focei.scaleTo;
+    op_focei.scale.c1            = op_focei.c1;
+    op_focei.scale.c2            = op_focei.c2;
+    op_focei.scale.simple        = 0;
+    // focei's richer Key suffix — gradient-method legend and omega note.
+    // Appended after "X: Back-transformed parameters; " by scalePrintHeader.
+    op_focei.scale.keyExtra =
+      "G: Gill difference gradient approximation\n"
+      "F: Forward difference gradient approximation\n"
+      "C: Central difference gradient approximation\n"
+      "M: Mixed forward and central difference gradient approximation\n"
+      "Unscaled parameters for Omegas=chol(solve(omega));\n"
+      "Diagonals are transformed, as specified by foceiControl(diagXform=)\n";
+    op_focei.scale.printCount    = 0;
+    op_focei.scale.save          = 0;  // focei records into module-level globals
+    op_focei.scale.cn            = 0;
+    op_focei.scale.showOfv       = 1;
+  }
+  if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
+    op_focei.t0 = clock();
+    scalePrintHeader(&op_focei.scale);
   }
   if (doPredOnly){
     if (e.exists("objective")){
@@ -7488,7 +7323,7 @@ Environment foceiFitCpp_(Environment e){
   NumericVector gillCAEpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   NumericVector gillCREpsC(op_focei.ntheta+op_focei.omegan,NA_REAL);
   bool warnGill = false;
-  j = op_focei.npars;
+  int j = op_focei.npars;
   for (int i = op_focei.ntheta+op_focei.omegan; i--;){
     gillRet[i] = op_focei.gillRet[i]+1;
     if (gillRet[i] != 1) {

@@ -1,5 +1,6 @@
 #' nlmixr2 defaults controls for nls
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams stats::nls
 #' @inheritParams stats::nls.control
 #' @inheritParams foceiControl
@@ -71,8 +72,8 @@ nlsControl <- function(maxiter=10000,
                        shiErr=(.Machine$double.eps)^(1/3),
                        shi21maxFD=20L,
 
-                       useColor = crayon::has_color(),
-                       printNcol = floor((getOption("width") - 23) / 12), #
+                       useColor = NULL,
+                       printNcol = NULL, #
                        print = 1L, #
 
                        normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -140,7 +141,7 @@ nlsControl <- function(maxiter=10000,
   checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -175,9 +176,10 @@ nlsControl <- function(maxiter=10000,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -224,9 +226,7 @@ nlsControl <- function(maxiter=10000,
                factor = factor,
                maxfev = maxfev,
                nprint = nprint,
-               useColor=useColor,
-               print=print,
-               printNcol=printNcol,
+               iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
                normType=normType,
 
