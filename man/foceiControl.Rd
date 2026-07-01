@@ -590,30 +590,61 @@ individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
 
 \item{muModel}{Selects the mu-referenced-FOCEI-family regression
-variant used for any theta/eta that participates in a mu-ref
-covariate relationship (see \code{muRefCovAlg}). One of:
-\itemize{
-  \item{\code{"none"}} (default) -- the ordinary FOCEI family
-    behavior; every theta (including covariate coefficients)
-    is estimated by the outer optimizer and every eta by the
-    standard inner optimization, exactly as today.
-  \item{\code{"lin"}} -- used by the \code{mufocei}/
-    \code{mufoce}/\code{muagq}/\code{mulaplace} methods.
-    Covariate-coefficient thetas are excluded from the outer
-    optimizer entirely and are instead re-estimated each
-    restart cycle by a closed-form (OLS) regression of the
-    back-calculated individual value on the covariate(s); the
-    regression residual becomes that subject's eta.
-  \item{\code{"irls"}} -- used by the \code{irlsfocei}/
-    \code{irlsfoce}/\code{irlsagq}/\code{irlslaplace} methods.
-    Same idea as \code{"lin"} but reweighted by each subject's
-    inner-optimization curvature/precision.
-}
-This is a genuine \code{foceiControl()} option -- plain
-\code{foceiControl()}/\code{foceControl()}/\code{agqControl()}/
-\code{laplaceControl()} default it to \code{"none"} and are
-unaffected; the eight mu-referenced-FOCEI-family method
-constructors simply default it to \code{"lin"}/\code{"irls"}.}
+    variant used for any theta/eta that participates in a mu-ref
+    covariate relationship (see \code{muRefCovAlg}). One of:
+    \itemize{
+      \item{\code{"none"}} (default) -- the ordinary FOCEI family
+        behavior; every theta (including covariate coefficients)
+        is estimated by the outer optimizer and every eta by the
+        standard inner optimization, exactly as today.
+      \item{\code{"lin"}} -- used by the \code{mufocei}/
+        \code{mufoce}/\code{muagq}/\code{mulaplace} methods. For
+        each mu-ref-covariate theta/eta group, the population theta
+        and its covariate coefficient(s) are excluded from the outer
+        optimizer's gradient search entirely; instead, a closed-form
+        (OLS) regression of each subject's back-calculated individual
+        value on the covariate(s) re-derives them directly, and the
+        regression residual becomes that subject's eta. This runs
+        natively in C++ inside the same inner-optimization pass that
+        already updates every other eta each outer iteration -- there
+        is no separate restart loop, no repeated model
+        setup/compilation, and no R-level round trip. Because a
+        single regression pass does not by itself guarantee the etas
+        it started from are still each subject's true conditional
+        mode once the regression moves the population/covariate
+        thetas, the "re-optimize every eta, then regress" step is
+        repeated in place (still entirely in C++, still within the
+        same outer iteration) until the mu-group thetas stop moving
+        by more than \code{muModelTol}, or \code{muModelMaxCycles} is
+        reached -- see those two arguments.
+      \item{\code{"irls"}} -- used by the \code{irlsfocei}/
+        \code{irlsfoce}/\code{irlsagq}/\code{irlslaplace} methods.
+        Same mechanism as \code{"lin"} but the regression is
+        reweighted by each subject's inner-optimization curvature/
+        precision instead of being unweighted OLS.
+    }
+    This is a genuine \code{foceiControl()} option -- plain
+    \code{foceiControl()}/\code{foceControl()}/\code{agqControl()}/
+    \code{laplaceControl()} default it to \code{"none"} and are
+    unaffected; the eight mu-referenced-FOCEI-family method
+    constructors simply default it to \code{"lin"}/\code{"irls"}.
+
+    A mu-ref-covariate theta with a finite bound
+    (\code{ini(...~c(lower, est, upper))}) cannot use this mechanism
+    -- the regression above is an unconstrained solve with no way to
+    respect a box constraint -- so it is automatically excluded and
+    falls back to ordinary, bounded outer-optimizer handling instead,
+    with a warning explaining why (captured in the fit's
+    \code{runInfo}). A bound on the group's population theta (the
+    regression's intercept) excludes the whole theta/eta/covariate
+    group; a bound on just one covariate coefficient (a "slope")
+    excludes only that covariate (treated as if it were a
+    time-varying covariate) while the population theta and any other,
+    unbounded covariates in the same group keep the speed-up. This
+    exclusion only ever applies to this mu-referenced-FOCEI-family
+    mechanism -- SAEM's own, unrelated mu-referencing
+    (\code{est="saem"}) and every other estimation method are
+    unaffected regardless of bounds.}
 
 \item{muRefCovAlg}{This controls if algebraic expressions that can
     be mu-referenced are treated as mu-referenced covariates by:
@@ -639,14 +670,21 @@ constructors simply default it to \code{"lin"}/\code{"irls"}.}
     reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
 
 \item{muModelTol}{Convergence tolerance for the mu-referenced-FOCEI-family
-restart loop (\code{muModel != "none"}). A cycle is considered
-converged when the relative change in the objective function value
-between cycles is less than \code{muModelTol}.}
+in-C++ regression cycle (\code{muModel != "none"}, see
+\code{muModel}). Within a single real outer iteration, the
+"re-optimize every eta, then regress the mu-group thetas" step is
+repeated until the maximum absolute change in any mu-group
+population/covariate theta drops below \code{muModelTol}, or
+\code{muModelMaxCycles} is reached. This is not a restart of the
+fit and does not repeat any model setup/compilation -- it is a
+tight, in-memory loop inside the same inner-optimization pass that
+runs every outer iteration regardless of \code{muModel}.}
 
-\item{muModelMaxCycles}{Maximum number of restart cycles for the
-mu-referenced-FOCEI-family restart loop (\code{muModel != "none"})
-before giving up on convergence and finalizing with whatever the
-last cycle produced.}
+\item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
+cycles per real outer iteration for the mu-referenced-FOCEI-family
+mechanism (\code{muModel != "none"}, see \code{muModel} and
+\code{muModelTol}) before moving on with whatever the last cycle
+produced.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 
