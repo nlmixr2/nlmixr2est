@@ -308,6 +308,15 @@ struct focei_options {
   // matching .muRefLin()'s fixedCoef contract; a merely mu-group-excluded
   // one is estimated by the regression as normal).
   int *muGroupCovUserFixed = NULL; // [muGroupCovN]
+  // Display names for the mu-group population/covariate-coefficient
+  // thetas (e.g. "tcl", "allo.cl"), captured once at setup from the full
+  // ntheta-sized thetaNames vector -- used only by printMuGroupThetaRow()
+  // (Phase 5) to label the extra print row shown for a live mufocei/
+  // irlsfocei/... fit; these thetas are excluded from op_focei.scale's
+  // own (npars-sized) column names since they're excluded from npars
+  // itself (see foceiSetupTheta_()'s isMuGroupSkip).
+  CharacterVector muGroupThetaNames;    // [muGroupN]
+  CharacterVector muGroupCovThetaNames; // [muGroupCovN]
   // updateMuGroups() alone (one regress step per real outer iteration) is
   // not sufficient when a mu-group's population/covariate thetas are
   // strongly coupled with the etas they were just regressed from -- the
@@ -4964,6 +4973,50 @@ static inline void foceiPrintLine(int ncol){
   RSprintf("\n");
 }
 
+// Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) extra print row
+// (Phase 5): the mu-group population/covariate thetas are excluded from
+// the outer optimizer's parameter vector (op_focei.scale's own npars/
+// thetaNames), so scalePrintFun()/scalePrintGrad()'s existing table never
+// shows them at all. This adds one extra, self-labeled row right after
+// each of those calls: the *current* value (updateMuGroups()'s latest
+// regression result) when called from the real-objective print
+// (isGrad=false), or a blank "NA" placeholder when called from the
+// gradient print (isGrad=true) -- these thetas are never part of the
+// gradient FD, so there is no gradient to show, only the restart-free
+// regression update. Implemented entirely here (not in the shared
+// scale.h, which every other estimator also uses) to avoid touching that
+// mechanism's column layout; gated on the exact same scale->every/cn
+// throttle scalePrintFun/scalePrintGrad already use, so it silently
+// no-ops whenever printing is off (e.g. print=0) or muModel="none".
+static inline void printMuGroupThetaRow(bool isGrad) {
+  if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return;
+  scaling *scale = &op_focei.scale;
+  if (scale->every == 0 || scale->cn % scale->every != 0) return;
+  RSprintf(isGrad ? "|   mu|   (no gradient - regression update)  |" :
+                     "|   mu|                                     |");
+  for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
+    std::string nm = (g < (unsigned int)op_focei.muGroupThetaNames.size() &&
+                       op_focei.muGroupThetaNames[g] != NA_STRING) ?
+      as<std::string>(op_focei.muGroupThetaNames[g]) : "?";
+    if (isGrad) {
+      RSprintf(" %8s:         NA |", nm.c_str());
+    } else {
+      RSprintf(" %8s: %#10.4g |", nm.c_str(), op_focei.fullTheta[op_focei.muGroupTheta[g]]);
+    }
+  }
+  for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
+    std::string nm = (c < (unsigned int)op_focei.muGroupCovThetaNames.size() &&
+                       op_focei.muGroupCovThetaNames[c] != NA_STRING) ?
+      as<std::string>(op_focei.muGroupCovThetaNames[c]) : "?";
+    if (isGrad) {
+      RSprintf(" %8s:         NA |", nm.c_str());
+    } else {
+      RSprintf(" %8s: %#10.4g |", nm.c_str(), op_focei.fullTheta[op_focei.muGroupCovTheta[c]]);
+    }
+  }
+  RSprintf("\n");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Outer l-BFGS-b from R
 extern "C" double foceiOfvOptim(int n, double *x, void *ex){
@@ -5017,6 +5070,7 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
   scalePrintFun(&op_focei.scale, x, displayedOfv);
+  printMuGroupThetaRow(false);
   return ret;
 }
 
@@ -5049,6 +5103,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   // here uses focei's gradType convention: 1=Gill, 2=Mixed, 3=Forward,
   // 4=Central, 5=Shi21.  scalePrintGrad maps these to G/M/F/C/S labels.
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
+  printMuGroupThetaRow(true);
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
   for (i = 0; i < n; i++){
     if (gr[i] == 0){
@@ -7600,6 +7655,28 @@ Environment foceiFitCpp_(Environment e){
   }
   wallT0 = focei_wall_clock::now();
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
+  // Mu-referenced-FOCEI-family (Phase 5): capture display names for the
+  // mu-group thetas once here, while the full (ntheta-sized) thetaNames
+  // is available -- op_focei.scale's own thetaNames is npars-sized and
+  // never includes these (they're excluded from npars by
+  // foceiSetupTheta_()'s isMuGroupSkip). Used only by
+  // printMuGroupThetaRow() below.
+  if (op_focei.muModel != 0 && op_focei.muGroupN > 0) {
+    CharacterVector muThetaNm(op_focei.muGroupN);
+    for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
+      int jj = op_focei.muGroupTheta[g];
+      muThetaNm[g] = (jj < thetaNames.size()) ? thetaNames[jj] : NA_STRING;
+    }
+    op_focei.muGroupThetaNames = muThetaNm;
+    if (op_focei.muGroupCovN > 0) {
+      CharacterVector muCovNm(op_focei.muGroupCovN);
+      for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
+        int jj = op_focei.muGroupCovTheta[c];
+        muCovNm[c] = (jj < thetaNames.size()) ? thetaNames[jj] : NA_STRING;
+      }
+      op_focei.muGroupCovThetaNames = muCovNm;
+    }
+  }
   IntegerVector logTheta;
   IntegerVector logitTheta;
   IntegerVector xType = e["xType"];
