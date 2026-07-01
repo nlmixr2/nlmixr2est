@@ -316,6 +316,19 @@ struct focei_options {
   // matching .muRefLin()'s fixedCoef contract; a merely mu-group-excluded
   // one is estimated by the regression as normal).
   int *muGroupCovUserFixed = NULL; // [muGroupCovN]
+  // Which of the flattened covariate-coefficient thetas has a finite
+  // bound (ini(...~c(lower, est, upper))), computed once in R
+  // (.muRefGroups(), R/muRefClassify.R) from the theta's own lower/upper.
+  // A bounded covariate is handled like a user-fixed one for the
+  // regression (excluded from the design matrix, its *current* --
+  // gradient-updated, not held constant -- contribution subtracted as a
+  // live offset in updateMuGroups()) but, unlike muGroupCovUserFixed,
+  // must NOT be added to muGroupThetaSkip: it needs to stay in
+  // fixedTrans/npars so the outer optimizer keeps optimizing it subject
+  // to its bound (see foceiSetupTheta_()'s isMuGroupSkip). The
+  // population theta and any other, unbounded covariates in the same
+  // group are unaffected and still get the full mu-ref treatment.
+  int *muGroupCovBounded = NULL; // [muGroupCovN]
   // Display names for the mu-group population/covariate-coefficient
   // thetas (e.g. "tcl", "allo.cl"), captured once at setup from the full
   // ntheta-sized thetaNames vector -- used only by printMuGroupThetaRow()
@@ -573,6 +586,7 @@ extern "C" void rxOptionsFreeFocei() {
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
   op_focei.muGroupCovStart = NULL; op_focei.muGroupCovCount = NULL;
   op_focei.muGroupCovTheta = NULL; op_focei.muGroupCovUserFixed = NULL;
+  op_focei.muGroupCovBounded = NULL;
   op_focei.muGroupThetaSkip = NULL;
 
   if (inds_focei != NULL) R_Free(inds_focei);
@@ -2645,8 +2659,16 @@ static inline double updateMuGroups() {
     unsigned int covStart = (unsigned int)op_focei.muGroupCovStart[g];
     unsigned int covCount = (unsigned int)op_focei.muGroupCovCount[g];
 
-    // Split this group's covariates into user-fixed (known offset, not
-    // estimated) vs free (estimated by the regression).
+    // Split this group's covariates into "known offset, not estimated by
+    // the regression" (user-fixed OR bounded) vs free (estimated by the
+    // regression). Both user-fixed and bounded covariates read
+    // fullTheta[covTheta] fresh every call -- for user-fixed it's a
+    // constant (fix=TRUE means nothing else can change it either), for
+    // bounded it's whatever the outer optimizer's *latest* gradient step
+    // set it to (its own bounded free parameter, updated by
+    // updateTheta() before this runs) -- so this one code path already
+    // gives the bounded case the "recomputed every iteration, not held
+    // constant" behavior it needs with no extra logic.
     std::vector<unsigned int> freeCovCols;
     std::vector<int> freeCovTheta;
     arma::vec offset(nsubAll, arma::fill::zeros);
@@ -2655,7 +2677,9 @@ static inline double updateMuGroups() {
       int covTheta = op_focei.muGroupCovTheta[flatIdx];
       bool userFixed = op_focei.muGroupCovUserFixed != NULL &&
         op_focei.muGroupCovUserFixed[flatIdx] != 0;
-      if (userFixed) {
+      bool bounded = op_focei.muGroupCovBounded != NULL &&
+        op_focei.muGroupCovBounded[flatIdx] != 0;
+      if (userFixed || bounded) {
         double coefVal = op_focei.fullTheta[covTheta];
         for (int id = 0; id < nsubAll; id++) {
           int rid = getRxId(id);
@@ -4413,11 +4437,12 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
   op_focei.muGroupCovStart = NULL; op_focei.muGroupCovCount = NULL;
   op_focei.muGroupCovTheta = NULL; op_focei.muGroupCovUserFixed = NULL;
+  op_focei.muGroupCovBounded = NULL;
   op_focei.muGroupThetaSkip = NULL;
   op_focei.muModel = foceiO.containsElementNamed("foceiMuModel") ?
     as<int>(foceiO["foceiMuModel"]) : 0;
   IntegerVector muGroupTheta, muGroupEta, muGroupCovStart, muGroupCovCount,
-    muGroupCovTheta, muGroupCovUserFixed;
+    muGroupCovTheta, muGroupCovUserFixed, muGroupCovBounded;
   if (op_focei.muModel != 0 && foceiO.containsElementNamed("foceiMuGroupTheta")) {
     muGroupTheta = as<IntegerVector>(foceiO["foceiMuGroupTheta"]);
     muGroupEta = as<IntegerVector>(foceiO["foceiMuGroupEta"]);
@@ -4425,11 +4450,13 @@ NumericVector foceiSetup_(const RObject &obj,
     muGroupCovCount = as<IntegerVector>(foceiO["foceiMuGroupCovCount"]);
     muGroupCovTheta = as<IntegerVector>(foceiO["foceiMuGroupCovTheta"]);
     muGroupCovUserFixed = as<IntegerVector>(foceiO["foceiMuGroupCovUserFixed"]);
+    muGroupCovBounded = foceiO.containsElementNamed("foceiMuGroupCovBounded") ?
+      as<IntegerVector>(foceiO["foceiMuGroupCovBounded"]) : IntegerVector(muGroupCovTheta.size());
   }
   op_focei.muGroupN = (unsigned int)muGroupTheta.size();
   op_focei.muGroupCovN = (unsigned int)muGroupCovTheta.size();
   if (op_focei.muGroupN > 0) {
-    size_t totalInt = 4*(size_t)op_focei.muGroupN + 2*(size_t)op_focei.muGroupCovN +
+    size_t totalInt = 4*(size_t)op_focei.muGroupN + 3*(size_t)op_focei.muGroupCovN +
       (size_t)op_focei.ntheta;
     int *buf = R_Calloc(totalInt, int);
     op_focei.muGroupTheta = buf;
@@ -4438,7 +4465,8 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.muGroupCovCount = op_focei.muGroupCovStart + op_focei.muGroupN;
     op_focei.muGroupCovTheta = op_focei.muGroupCovCount + op_focei.muGroupN;
     op_focei.muGroupCovUserFixed = op_focei.muGroupCovTheta + op_focei.muGroupCovN;
-    op_focei.muGroupThetaSkip = op_focei.muGroupCovUserFixed + op_focei.muGroupCovN;
+    op_focei.muGroupCovBounded = op_focei.muGroupCovUserFixed + op_focei.muGroupCovN;
+    op_focei.muGroupThetaSkip = op_focei.muGroupCovBounded + op_focei.muGroupCovN;
     std::copy(muGroupTheta.begin(), muGroupTheta.end(), op_focei.muGroupTheta);
     std::copy(muGroupEta.begin(), muGroupEta.end(), op_focei.muGroupEta);
     std::copy(muGroupCovStart.begin(), muGroupCovStart.end(), op_focei.muGroupCovStart);
@@ -4446,12 +4474,21 @@ NumericVector foceiSetup_(const RObject &obj,
     if (op_focei.muGroupCovN > 0) {
       std::copy(muGroupCovTheta.begin(), muGroupCovTheta.end(), op_focei.muGroupCovTheta);
       std::copy(muGroupCovUserFixed.begin(), muGroupCovUserFixed.end(), op_focei.muGroupCovUserFixed);
+      std::copy(muGroupCovBounded.begin(), muGroupCovBounded.end(), op_focei.muGroupCovBounded);
     }
     for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
       op_focei.muGroupThetaSkip[op_focei.muGroupTheta[g]] = 1;
     }
     for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
-      op_focei.muGroupThetaSkip[op_focei.muGroupCovTheta[c]] = 1;
+      // Bounded covariates stay OUT of muGroupThetaSkip: they must
+      // remain ordinary, outer-optimized (bounded) free parameters, not
+      // excluded from fixedTrans/npars. updateMuGroups() still excludes
+      // them from the regression design matrix (see the userFixed ||
+      // bounded check there) -- they just aren't estimated by anyone
+      // *else* either besides the outer optimizer.
+      if (op_focei.muGroupCovBounded[c] == 0) {
+        op_focei.muGroupThetaSkip[op_focei.muGroupCovTheta[c]] = 1;
+      }
     }
     if (foceiO.containsElementNamed("foceiMuGroupCovData")) {
       NumericMatrix covData = as<NumericMatrix>(foceiO["foceiMuGroupCovData"]);

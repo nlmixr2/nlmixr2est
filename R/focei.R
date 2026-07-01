@@ -1535,7 +1535,7 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
     .muGroupSetup <- list(muGroupTheta = integer(0), muGroupEta = integer(0),
                           muGroupCovStart = integer(0), muGroupCovCount = integer(0),
                           muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
-                          muGroupCovNames = character(0))
+                          muGroupCovBounded = integer(0), muGroupCovNames = character(0))
   }
   rxode2::rxAssignControlValue(.x, "foceiMuGroupTheta", .muGroupSetup$muGroupTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupEta", .muGroupSetup$muGroupEta)
@@ -1543,6 +1543,12 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovCount", .muGroupSetup$muGroupCovCount)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovTheta", .muGroupSetup$muGroupCovTheta)
   rxode2::rxAssignControlValue(.x, "foceiMuGroupCovUserFixed", .muGroupSetup$muGroupCovUserFixed)
+  # Bounded covariate coefficients (Phase 8): excluded from the design
+  # matrix like a user-fixed one, but NOT excluded from the outer
+  # optimizer's free-parameter set (foceiSetupTheta_()'s
+  # isMuGroupSkip skips this array specifically) -- see
+  # .muRefGroups()'s docs (R/muRefClassify.R) for the full rationale.
+  rxode2::rxAssignControlValue(.x, "foceiMuGroupCovBounded", .muGroupSetup$muGroupCovBounded)
   # Reuse the existing, documented muModelTol/muModelMaxCycles foceiControl()
   # fields (originally written for the superseded R-level restart loop) to
   # bound the in-C++ inner regress/re-optimize cycle (updateMuGroups(),

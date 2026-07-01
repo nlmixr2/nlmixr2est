@@ -98,27 +98,88 @@
 #' This is a deliberate scoping decision for the initial engine, not an
 #' oversight.
 #'
+#' A group's *population* theta having a finite bound
+#' (`ini(...~c(lower, est, upper))`) excludes the **whole group** (with a
+#' `warning()`, captured into the fit's `runInfo` the same way every
+#' other pre-fit warning is) -- the population theta is the regression's
+#' intercept, and an unconstrained OLS/IRLS solve has no way to respect a
+#' box constraint on it.
+#'
+#' A bound on one of the group's *covariate-coefficient* thetas (the
+#' "slopes") is handled more narrowly: only that one covariate is
+#' excluded from the regression (marked `bounded=TRUE` in the returned
+#' `covariates` data frame) -- it is treated exactly like a time-varying
+#' covariate would be (see `.muRefClassify()`'s docs: a plain covariate
+#' relationship with no eta is never mu-ref-eligible to begin with), i.e.
+#' left to ordinary, bounded outer-optimizer handling while its *current*
+#' (not fixed -- gradient-updated every real outer iteration) contribution
+#' is still subtracted from the regression's target as a live offset,
+#' exactly like `.muRefLin()`'s `fixedCoef` contract but recomputed each
+#' iteration instead of held constant (`src/inner.cpp`'s
+#' `updateMuGroups()`). The population theta and any of the group's
+#' *other*, unbounded covariates still get the full mu-ref speed-up.
+#'
+#' Both cases warn. Both only ever apply to this function (and therefore
+#' only to the `mufocei`/`irlsfocei`/`mufoce`/`irlsfoce`/`muagq`/
+#' `irlsagq`/`mulaplace`/`irlslaplace` family) -- `.muRefGroups()` has
+#' exactly one caller (`.muRefCppGroupSetup()`, itself only reached from
+#' `rxUiGet.foceiOptEnv` when `muModel != "none"`), so SAEM's own,
+#' unrelated mu-referencing mechanism and every other estimator are
+#' untouched.
+#'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list of `list(theta=, eta=, covariates=data.frame(covariate=,
-#'   covariateParameter=))`, one element per mu-ref-covariate-with-eta group
+#'   covariateParameter=, bounded=))`, one element per mu-ref-covariate-
+#'   with-eta group whose population theta is unbounded
 #' @author Matthew L. Fidler
 #' @noRd
 .muRefGroups <- function(ui) {
   .cls <- .muRefClassify(ui)
   .muRefDf <- ui$muRefDataFrame
   .muRefCovDf <- ui$muRefCovariateDataFrame
+  .iniDf <- ui$iniDf
+  .thetaRows <- .iniDf[!is.na(.iniDf$ntheta), , drop = FALSE]
+  .boundedThetas <- .thetaRows$name[.thetaRows$lower > -Inf | .thetaRows$upper < Inf]
   lapply(.cls$muCovThetas, function(.theta) {
     .w <- which(as.character(.muRefDf$theta) == .theta)
     if (length(.w) != 1L) return(NULL)
     .eta <- as.character(.muRefDf$eta[.w])
     if (!(.eta %in% .cls$muCovEtas)) return(NULL)
+    if (.theta %in% .boundedThetas) {
+      warning(
+        "mu-referenced theta '", .theta, "' has boundaries and cannot ",
+        "benefit from the mu-referenced FOCEI-family speed gains (the ",
+        "closed-form/IRLS regression cannot respect a boundary on its ",
+        "population theta); estimated as an ordinary (bounded) ",
+        "parameter by the outer optimizer instead",
+        call. = FALSE
+      )
+      return(NULL)
+    }
     .wc <- which(as.character(.muRefCovDf$theta) == .theta)
+    .covParams <- as.character(.muRefCovDf$covariateParameter[.wc])
+    .covNames <- as.character(.muRefCovDf$covariate[.wc])
+    .boundedCov <- .covParams %in% .boundedThetas
+    if (any(.boundedCov)) {
+      warning(
+        "mu-referenced covariate coefficient(s) ",
+        paste0("'", .covParams[.boundedCov], "'", collapse = ", "),
+        " have boundaries and cannot benefit from the mu-referenced ",
+        "FOCEI-family speed gains (the closed-form/IRLS regression ",
+        "cannot respect a boundary); treated as if time-varying and ",
+        "excluded from the mu-referencing -- estimated as ordinary ",
+        "(bounded) parameters by the outer optimizer instead, while '",
+        .theta, "' and any other covariate(s) on it still benefit",
+        call. = FALSE
+      )
+    }
     list(
       theta = .theta,
       eta = .eta,
       covariates = data.frame(
-        covariate = as.character(.muRefCovDf$covariate[.wc]),
-        covariateParameter = as.character(.muRefCovDf$covariateParameter[.wc]),
+        covariate = .covNames,
+        covariateParameter = .covParams,
+        bounded = .boundedCov,
         stringsAsFactors = FALSE
       )
     )
@@ -136,10 +197,10 @@
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list with `muGroupTheta`, `muGroupEta`, `muGroupCovStart`,
-#'   `muGroupCovCount`, `muGroupCovTheta`, `muGroupCovUserFixed` (all
-#'   integer vectors) and `muGroupCovNames` (character vector, parallel to
-#'   `muGroupCovTheta`, used by `.muRefCppCovData()` to pull the right
-#'   dataset columns)
+#'   `muGroupCovCount`, `muGroupCovTheta`, `muGroupCovUserFixed`,
+#'   `muGroupCovBounded` (all integer vectors) and `muGroupCovNames`
+#'   (character vector, parallel to `muGroupCovTheta`, used by
+#'   `.muRefCppCovData()` to pull the right dataset columns)
 #' @author Matthew L. Fidler
 #' @noRd
 .muRefCppGroupSetup <- function(ui) {
@@ -149,7 +210,7 @@
       muGroupTheta = integer(0), muGroupEta = integer(0),
       muGroupCovStart = integer(0), muGroupCovCount = integer(0),
       muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
-      muGroupCovNames = character(0)
+      muGroupCovBounded = integer(0), muGroupCovNames = character(0)
     ))
   }
   .iniDf <- ui$iniDf
@@ -171,6 +232,7 @@
   .muGroupCovCount <- integer(0)
   .muGroupCovTheta <- integer(0)
   .muGroupCovUserFixed <- integer(0)
+  .muGroupCovBounded <- integer(0)
   .muGroupCovNames <- character(0)
 
   for (g in .groups) {
@@ -183,6 +245,8 @@
       .muGroupCovTheta <- c(.muGroupCovTheta, .thetaIdxOf(.cp))
       .muGroupCovUserFixed <- c(.muGroupCovUserFixed,
                                  as.integer(isTRUE(.userFixed[[.cp]])))
+      .muGroupCovBounded <- c(.muGroupCovBounded,
+                               as.integer(isTRUE(g$covariates$bounded[.k])))
       .muGroupCovNames <- c(.muGroupCovNames, g$covariates$covariate[.k])
     }
   }
@@ -194,6 +258,7 @@
     muGroupCovCount = as.integer(.muGroupCovCount),
     muGroupCovTheta = as.integer(.muGroupCovTheta),
     muGroupCovUserFixed = as.integer(.muGroupCovUserFixed),
+    muGroupCovBounded = as.integer(.muGroupCovBounded),
     muGroupCovNames = .muGroupCovNames
   )
 }
