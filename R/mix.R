@@ -31,6 +31,39 @@
   rxode2::dmexpit(val[idx])
 }
 
+#' Find all mix() calls in a parsed model expression list
+#'
+#' @param expr A single parsed expression (or sub-expression) from `ui$lstExpr`
+#' @return A list of `mix()` call expressions found anywhere in `expr`
+#' @noRd
+#' @author Matthew L. Fidler
+.findMixCalls <- function(expr) {
+  if (is.call(expr)) {
+    if (identical(expr[[1]], quote(mix))) {
+      return(list(expr))
+    }
+    return(do.call(c, lapply(expr, .findMixCalls)))
+  }
+  return(NULL)
+}
+
+#' Extract ETA names referenced inside a mix() call's component expressions
+#'
+#' @param expr A parsed expression (or sub-expression) from inside a `mix()` call
+#' @param etas Character vector of all known ETA names to match against
+#' @return Character vector of ETA names found in `expr` (deduplicated)
+#' @noRd
+#' @author Matthew L. Fidler
+.extractEtas <- function(expr, etas) {
+  if (is.name(expr)) {
+    .n <- as.character(expr)
+    if (.n %in% etas) return(.n)
+  } else if (is.call(expr)) {
+    return(unique(unlist(lapply(expr[-1], .extractEtas, etas = etas))))
+  }
+  return(NULL)
+}
+
 #' Process mixture model information after a focei fit
 #'
 #' After the C++ focei fit completes, this function:
@@ -205,26 +238,6 @@
     .mixProbabilities <- rep(1.0 / .nMix, .nMix)
   }
   env$mixProbabilities <- .mixProbabilities
-
-  .findMixCalls <- function(expr) {
-    if (is.call(expr)) {
-      if (identical(expr[[1]], quote(mix))) {
-        return(list(expr))
-      }
-      return(do.call(c, lapply(expr, .findMixCalls)))
-    }
-    return(NULL)
-  }
-  
-  .extractEtas <- function(expr, etas) {
-    if (is.name(expr)) {
-      .n <- as.character(expr)
-      if (.n %in% etas) return(.n)
-    } else if (is.call(expr)) {
-      return(unique(unlist(lapply(expr[-1], .extractEtas, etas = etas))))
-    }
-    return(NULL)
-  }
 
   .allEtas <- ui$iniDf[!is.na(ui$iniDf$neta1), ]
   .allEtas <- .allEtas[.allEtas$neta1 == .allEtas$neta2, "name"]
