@@ -846,7 +846,6 @@ foceiControl <- function(sigdig = 4, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
