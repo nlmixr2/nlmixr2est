@@ -1,7 +1,7 @@
 .foceiControlInternal <- c("genRxControl", "resetEtaSize",
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
-                           "foceiMuRef", "predNeq", "nfixed", "nomega",
+                           "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
                            "iterPrintControl")
 
@@ -274,6 +274,55 @@
 #' @param resetHessianAndEta is a boolean representing if the
 #'     individual Hessian is reset when ETAs are reset using the
 #'     option \code{resetEtaP}.
+#'
+#' @param muModel Selects the mu-referenced-FOCEI-family regression
+#'     variant used for any theta/eta that participates in a mu-ref
+#'     covariate relationship (see \code{muRefCovAlg}). One of:
+#'     \itemize{
+#'       \item{\code{"none"}} (default) -- the ordinary FOCEI family
+#'         behavior; every theta (including covariate coefficients)
+#'         is estimated by the outer optimizer and every eta by the
+#'         standard inner optimization, exactly as today.
+#'       \item{\code{"lin"}} -- used by the \code{mufocei}/
+#'         \code{mufoce}/\code{muagq}/\code{mulaplace} methods.
+#'         Covariate-coefficient thetas are excluded from the outer
+#'         optimizer entirely and are instead re-estimated each
+#'         restart cycle by a closed-form (OLS) regression of the
+#'         back-calculated individual value on the covariate(s); the
+#'         regression residual becomes that subject's eta.
+#'       \item{\code{"irls"}} -- used by the \code{irlsfocei}/
+#'         \code{irlsfoce}/\code{irlsagq}/\code{irlslaplace} methods.
+#'         Same idea as \code{"lin"} but reweighted by each subject's
+#'         inner-optimization curvature/precision.
+#'     }
+#'     This is a genuine \code{foceiControl()} option -- plain
+#'     \code{foceiControl()}/\code{foceControl()}/\code{agqControl()}/
+#'     \code{laplaceControl()} default it to \code{"none"} and are
+#'     unaffected; the eight mu-referenced-FOCEI-family method
+#'     constructors simply default it to \code{"lin"}/\code{"irls"}.
+#'
+#' @param muRefCovAlg This controls if algebraic expressions that can
+#'     be mu-referenced are treated as mu-referenced covariates by:
+#'
+#'     1. Creating a internal data-variable `nlmixrMuDerCov#` for each
+#'        algebraic mu-referenced expression
+#'
+#'     2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
+#'
+#'     3. Use the internal mu-referenced covariate for the estimation method
+#'
+#'     4. After optimization is completed, replace `model({})` with old
+#'     `model({})` expression
+#'
+#'     5. Remove `nlmixrMuDerCov#` from nlmix2 output
+#'
+#'     In general, these covariates should be more accurate since it
+#'     changes the system to a linear compartment model.  Therefore, by
+#'     default this is `TRUE`.  For \code{foceiControl()} this only has an
+#'     effect for the mu-referenced-FOCEI-family methods
+#'     (\code{muModel != "none"}); it mirrors
+#'     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
+#'     reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.
 #'
 #' @param diagOmegaBoundUpper This represents the upper bound of the
 #'     diagonal omega matrix.  The upper bound is given by
@@ -862,6 +911,8 @@ foceiControl <- function(sigdig = 4, #
                          abstol = NULL, #
                          reltol = NULL, #
                          resetHessianAndEta = FALSE, #
+                         muModel = c("none", "irls", "lin"), #
+                         muRefCovAlg = TRUE, #
                          stateTrim = Inf, #
                          shi21maxOuter = 0L,
                          shi21maxInner = 20L,
@@ -1291,6 +1342,10 @@ foceiControl <- function(sigdig = 4, #
     checkmate::assertLogical(resetHessianAndEta, any.missing=FALSE, len=1)
   }
   resetHessianAndEta <- as.integer(resetHessianAndEta)
+
+  muModel <- match.arg(muModel)
+  checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
+
   checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
   checkmate::assertLogical(adjLik, any.missing=FALSE, len=1)
@@ -1389,6 +1444,8 @@ foceiControl <- function(sigdig = 4, #
     reltol = reltol,
     derivSwitchTol = derivSwitchTol,
     resetHessianAndEta = resetHessianAndEta,
+    muModel = muModel,
+    muRefCovAlg = muRefCovAlg,
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),

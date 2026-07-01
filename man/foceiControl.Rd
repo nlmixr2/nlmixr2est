@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 3,
+  sigdig = 4,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -59,7 +59,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -72,6 +72,8 @@ foceiControl(
   abstol = NULL,
   reltol = NULL,
   resetHessianAndEta = FALSE,
+  muModel = c("none", "irls", "lin"),
+  muRefCovAlg = TRUE,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -584,6 +586,55 @@ not recommended. If not defined, it will be set to 2*n + 1. (bobyqa)}
 \item{resetHessianAndEta}{is a boolean representing if the
 individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
+
+\item{muModel}{Selects the mu-referenced-FOCEI-family regression
+variant used for any theta/eta that participates in a mu-ref
+covariate relationship (see \code{muRefCovAlg}). One of:
+\itemize{
+  \item{\code{"none"}} (default) -- the ordinary FOCEI family
+    behavior; every theta (including covariate coefficients)
+    is estimated by the outer optimizer and every eta by the
+    standard inner optimization, exactly as today.
+  \item{\code{"lin"}} -- used by the \code{mufocei}/
+    \code{mufoce}/\code{muagq}/\code{mulaplace} methods.
+    Covariate-coefficient thetas are excluded from the outer
+    optimizer entirely and are instead re-estimated each
+    restart cycle by a closed-form (OLS) regression of the
+    back-calculated individual value on the covariate(s); the
+    regression residual becomes that subject's eta.
+  \item{\code{"irls"}} -- used by the \code{irlsfocei}/
+    \code{irlsfoce}/\code{irlsagq}/\code{irlslaplace} methods.
+    Same idea as \code{"lin"} but reweighted by each subject's
+    inner-optimization curvature/precision.
+}
+This is a genuine \code{foceiControl()} option -- plain
+\code{foceiControl()}/\code{foceControl()}/\code{agqControl()}/
+\code{laplaceControl()} default it to \code{"none"} and are
+unaffected; the eight mu-referenced-FOCEI-family method
+constructors simply default it to \code{"lin"}/\code{"irls"}.}
+
+\item{muRefCovAlg}{This controls if algebraic expressions that can
+    be mu-referenced are treated as mu-referenced covariates by:
+
+    1. Creating a internal data-variable `nlmixrMuDerCov#` for each
+       algebraic mu-referenced expression
+
+    2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
+
+    3. Use the internal mu-referenced covariate for the estimation method
+
+    4. After optimization is completed, replace `model({})` with old
+    `model({})` expression
+
+    5. Remove `nlmixrMuDerCov#` from nlmix2 output
+
+    In general, these covariates should be more accurate since it
+    changes the system to a linear compartment model.  Therefore, by
+    default this is `TRUE`.  For \code{foceiControl()} this only has an
+    effect for the mu-referenced-FOCEI-family methods
+    (\code{muModel != "none"}); it mirrors
+    \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
+    reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 
