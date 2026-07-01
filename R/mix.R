@@ -488,6 +488,20 @@ rxUiGet.thetaIniMix <- function(x, ...) {
     .p <- .theta[.ui$mixProbs]
     if (all(.p >= 0 & .p <= 1) && sum(.p) <= 1.0) {
       .theta[.ui$mixProbs] <- rxode2::mlogit(.p)
+    } else {
+      # A plain warning() here is not enough: this value feeds directly into
+      # focei's initial parameter vector (env$thetaIni, R/focei.R), and
+      # leaving it untransformed and on the wrong scale reliably crashes the
+      # fit downstream with a confusing, unrelated error (e.g. "infinite
+      # while evaluating initial objective function") rather than a clear
+      # diagnostic -- confirmed empirically. Also, warnings raised during
+      # estimation are collected by .collectWarn() (R/nlmixr2Est.R) and are
+      # silently dropped whenever the fit ultimately errors out, so a
+      # warning() would never even reach the user in exactly this failure
+      # case. stop() early, before any of that, with a clear message.
+      stop("initial mixture probabilities are invalid (must each be in [0, 1] ",
+           "and sum to no more than 1): ", paste(signif(.p, 3), collapse = ", "),
+           call. = FALSE)
     }
   }
   .theta
