@@ -639,6 +639,10 @@ rxUiGet.saemMixProb <- function(x, ...) {
   .ui <- x[[1]]
   if (length(.ui$mixProbs) > 0) {
     .probs <- .ui$theta[.ui$mixProbs]
+    if (any(.probs < 0) || any(.probs > 1) || sum(.probs) > 1) {
+      stop("initial mixture probabilities must each be in [0, 1] and sum to no more than 1 (got: ",
+           paste(signif(.probs, 3), collapse = ", "), ")", call. = FALSE)
+    }
     # To get the full simplex, we append 1 - sum(probs)
     return(c(.probs, 1.0 - sum(.probs)))
   } else {

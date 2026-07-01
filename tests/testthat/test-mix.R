@@ -213,4 +213,69 @@ nmTest({
     )
   })
 
+  test_that("saemMixProb validates initial mixture probabilities", {
+    # Test that valid mixture probabilities work (should fit without error)
+    valid.mix <- function() {
+      ini({
+        tka <- 0.45
+        tcl1 <- log(c(0, 2.7, 100))
+        tcl2 <- log(c(0, 0.1, 120))
+        tv <- 3.45
+        p1 <- 0.3  # Valid: in [0, 1] and sum <= 1
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # This should complete without error (valid probabilities pass validation)
+    withr::with_seed(42, {
+      fit <- .nlmixr(valid.mix, nlmixr2data::theo_sd, est = "saem",
+                     saemControl(print = 0, nBurn = 1, nEm = 1))
+    })
+    expect_true(!is.null(fit))
+    # Verify the mixture probability is in valid range
+    expect_true(fit$fixef["p1"] > 0 & fit$fixef["p1"] < 1)
+  })
+
+  test_that("rxUiGet.saemMixProb rejects invalid mixture probabilities directly", {
+    # Create a mock UI object with invalid probabilities to test validation
+    # Test case: probability > 1
+    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = 1.5)))
+    expect_error(
+      rxUiGet.saemMixProb(ui.obj),
+      "mixture probabilities must each be in \\[0, 1\\]"
+    )
+
+    # Test case: probability < 0
+    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = -0.1)))
+    expect_error(
+      rxUiGet.saemMixProb(ui.obj),
+      "mixture probabilities must each be in \\[0, 1\\]"
+    )
+
+    # Test case: sum > 1
+    ui.obj <- list(list(mixProbs = c(1, 2), theta = c(p1 = 0.7, p2 = 0.6)))
+    expect_error(
+      rxUiGet.saemMixProb(ui.obj),
+      "mixture probabilities must each be in \\[0, 1\\]"
+    )
+
+    # Test case: valid probabilities should not error
+    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = 0.5)))
+    result <- rxUiGet.saemMixProb(ui.obj)
+    expect_equal(result, c(p1 = 0.5, 0.5))
+
+    # Test case: valid with multiple probabilities
+    ui.obj <- list(list(mixProbs = c(1, 2), theta = c(p1 = 0.3, p2 = 0.2)))
+    result <- rxUiGet.saemMixProb(ui.obj)
+    expect_equal(result, c(p1 = 0.3, p2 = 0.2, 0.5))
+  })
+
 })
