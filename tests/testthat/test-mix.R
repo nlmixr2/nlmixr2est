@@ -182,4 +182,35 @@ nmTest({
 
   })
 
+  test_that("nlme estimation of a mix() model errors instead of silently dropping the mixture probability", {
+    one.compartment.mix.nlme <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- log(1.0)
+        tcl2 <- log(5.0)
+        tv <- log(20)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        eta.ka ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    d <- data.frame(ID = 1, TIME = c(0, 1), AMT = c(100, 0), EVID = c(1, 0),
+                     DV = c(0, 1), CMT = c(1, 2))
+    expect_error(
+      .nlmixr(one.compartment.mix.nlme, d, est = "nlme", control = list(verbose = FALSE)),
+      "mix\\(\\) models are not supported"
+    )
+  })
+
 })
