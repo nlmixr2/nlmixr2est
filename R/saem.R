@@ -380,16 +380,17 @@
   }
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
-    if (length(.estMix) == 1L) {
-      .theta[.ui$mixProbs] <- max(1e-6, min(1 - 1e-6, .estMix))
-    } else {
-      .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
-      .sumP <- sum(.estMixClamped)
-      if (.sumP >= 1.0) {
-        .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
-      }
-      .theta[.ui$mixProbs] <- .estMixClamped
+    .estMixClamped <- pmax(1e-6, pmin(1 - 1e-6, .estMix))
+    .sumP <- sum(.estMixClamped)
+    if (.sumP >= 1.0) {
+      .estMixClamped <- .estMixClamped / (.sumP + 1e-6)
     }
+    if (any(abs(.estMixClamped - .estMix) > 1e-4)) {
+      warning("one or more estimated mixture probabilities collapsed toward 0/1 or required ",
+              "rescaling; this may indicate the mixture components are not well identified",
+              call. = FALSE)
+    }
+    .theta[.ui$mixProbs] <- .estMixClamped
   }
 
   env$fullTheta <- .theta

@@ -93,6 +93,125 @@ nmTest({
                  rep(1.0, length(.sddCfgCapture$i0)))
   })
 
+  test_that("SAEM warns when a mixture probability estimate collapses/needs rescaling", {
+    withr::local_options(list(warn = 0))
+    # Directly exercise the clamp/warn logic via the internal helper that
+    # runs at the end of every SAEM mixture fit (.getSaemTheta), rather than
+    # forcing a real SAEM fit to a collapsed solution (slow/flaky). The `ui`
+    # objects below are real rxode2 UI objects (not hand-rolled stand-ins),
+    # so this exercises the actual production code path; only the raw SAEM
+    # optimizer output (`env$saem`) is mocked.
+    #
+    # Internally, mixProb components each individually stay in [0, 1] (they
+    # are updated by a convex-combination stochastic-approximation step), so
+    # a single component near 0/1 (e.g. 1e-8) is only ~1e-6 away from the
+    # clamp boundary -- too small to cross the "real change" threshold below.
+    # The scenario that plausibly produces a large, warning-worthy change is
+    # multiple *independently* estimated probabilities whose sum drifts to
+    # >= 1 (non-identifiability across >2 components), which is what the
+    # nMix=3 case below reproduces.
+    threePopSplit <- function() {
+      ini({
+        tka   <- log(1.5)
+        tcl1  <- log(1.0)
+        tcl2  <- log(3.0)
+        tcl3  <- log(6.0)
+        tv    <- log(20)
+        p1    <- 0.3
+        p2    <- 0.4
+        eta.cl1 ~ 0.01
+        eta.cl2 ~ 0.01
+        eta.cl3 ~ 0.01
+        eta.v  ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2), p2, exp(tcl3 + eta.cl3))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    .ui3 <- rxode2::rxode2(threePopSplit)
+    .mkSaem3 <- function(mixProb) {
+      .fixef <- setNames(rep(0.1, length(.ui3$saemParamsToEstimate)), .ui3$saemParamsToEstimate)
+      .obj <- list(Plambda = .fixef,
+                   resMat = matrix(rep(0.05, 4), nrow = 1),
+                   mixProb = mixProb)
+      class(.obj) <- "saemFit"
+      .obj
+    }
+
+    # Two components each estimated near 0.7: individually valid probabilities,
+    # but their sum (1.4) is >= 1 -- inconsistent/non-identifiable, requires
+    # rescaling, and should warn.
+    envCollapsed <- new.env()
+    envCollapsed$ui <- .ui3
+    envCollapsed$saem <- .mkSaem3(c(0.7, 0.7))
+    expect_warning(
+      nlmixr2est:::.getSaemTheta(envCollapsed),
+      "collaps|mixture probabilit"
+    )
+    expect_equal(unname(envCollapsed$fullTheta[c("p1", "p2")]),
+                 rep(0.7 / (1.4 + 1e-6), 2), tolerance = 1e-8)
+
+    # Well-identified components: should stay silent, and values pass through
+    # unchanged.
+    envOk <- new.env()
+    envOk$ui <- .ui3
+    envOk$saem <- .mkSaem3(c(0.3, 0.4))
+    expect_silent(nlmixr2est:::.getSaemTheta(envOk))
+    expect_equal(unname(envOk$fullTheta[c("p1", "p2")]), c(0.3, 0.4))
+
+    # Single component very near 0 (e.g. 1e-8): clamped to 1e-6, but the
+    # change is tiny in absolute terms, so this does NOT cross the warning
+    # threshold on its own -- documenting the boundary behavior explicitly.
+    one.compartment.mix <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- log(1.0)
+        tcl2 <- log(5.0)
+        tv <- log(20)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        eta.ka ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .ui2 <- rxode2::rxode2(one.compartment.mix)
+    .mkSaem2 <- function(mixProb) {
+      .fixef <- setNames(c(log(1.5), log(1.0), log(5.0), log(20), 0.1),
+                         .ui2$saemParamsToEstimate)
+      .obj <- list(Plambda = .fixef,
+                   resMat = matrix(rep(0.05, 4), nrow = 1),
+                   mixProb = mixProb)
+      class(.obj) <- "saemFit"
+      .obj
+    }
+    envTinyBoundary <- new.env()
+    envTinyBoundary$ui <- .ui2
+    envTinyBoundary$saem <- .mkSaem2(1e-8)
+    expect_silent(nlmixr2est:::.getSaemTheta(envTinyBoundary))
+    expect_equal(unname(envTinyBoundary$fullTheta["p1"]), 1e-6, tolerance = 1e-8)
+
+    # Well-identified two-component case (0.5): should stay silent.
+    envOk2 <- new.env()
+    envOk2$ui <- .ui2
+    envOk2$saem <- .mkSaem2(0.5)
+    expect_silent(nlmixr2est:::.getSaemTheta(envOk2))
+    expect_equal(unname(envOk2$fullTheta["p1"]), 0.5)
+  })
+
   test_that("test SAEM mixture model estimation", {
 
     set.seed(42)
