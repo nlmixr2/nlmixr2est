@@ -163,9 +163,10 @@ nmTest({
     expect_silent(nlmixr2est:::.getSaemTheta(envOk))
     expect_equal(unname(envOk$fullTheta[c("p1", "p2")]), c(0.3, 0.4))
 
-    # Single component very near 0 (e.g. 1e-8): clamped to 1e-6, but the
-    # change is tiny in absolute terms, so this does NOT cross the warning
-    # threshold on its own -- documenting the boundary behavior explicitly.
+    # Single component very near 0 (e.g. 1e-8): the raw estimate itself is
+    # collapsed against the boundary, so this must warn even though the
+    # clamp delta (1e-6 - 1e-8) is tiny in absolute terms -- collapse is
+    # detected against the raw estimate, not the clamp/raw difference.
     one.compartment.mix <- function() {
       ini({
         tka <- log(1.5)
@@ -201,7 +202,10 @@ nmTest({
     envTinyBoundary <- new.env()
     envTinyBoundary$ui <- .ui2
     envTinyBoundary$saem <- .mkSaem2(1e-8)
-    expect_silent(nlmixr2est:::.getSaemTheta(envTinyBoundary))
+    expect_warning(
+      nlmixr2est:::.getSaemTheta(envTinyBoundary),
+      "collaps|mixture probabilit"
+    )
     expect_equal(unname(envTinyBoundary$fullTheta["p1"]), 1e-6, tolerance = 1e-8)
 
     # Well-identified two-component case (0.5): should stay silent.
