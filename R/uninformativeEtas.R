@@ -210,32 +210,32 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
       }
 
       replaced <- lapply(parsed, .replaceMix)
-      model_code <- paste(vapply(replaced, deparse1, character(1)), collapse="\n")
-      model_code <- gsub("~", "=", model_code)
+      modelCode <- paste(vapply(replaced, deparse1, character(1)), collapse="\n")
+      modelCode <- gsub("~", "=", modelCode)
 
-      model_pruned <- rxode2::rxode2(model_code)
+      modelPruned <- rxode2::rxode2(modelCode)
 
       # Rename .pars$param columns to THETA/ETA
-      p_renamed <- .pars$param
+      pRenamed <- .pars$param
       .iniDf <- ui$iniDf
       .thetaNames <- .iniDf$name[is.na(.iniDf$neta1)]
       .etaNames <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
 
       for (i in seq_along(.thetaNames)) {
-        names(p_renamed)[names(p_renamed) == .thetaNames[i]] <- paste0("THETA[", i, "]")
+        names(pRenamed)[names(pRenamed) == .thetaNames[i]] <- paste0("THETA[", i, "]")
       }
       for (i in seq_along(.etaNames)) {
-        names(p_renamed)[names(p_renamed) == .etaNames[i]] <- paste0("ETA[", i, "]")
+        names(pRenamed)[names(pRenamed) == .etaNames[i]] <- paste0("ETA[", i, "]")
       }
       for (i in seq_along(.etaNames)) {
         .etaCol <- paste0("ETA[", i, "]")
-        if (!(.etaCol %in% names(p_renamed))) {
-          p_renamed[[.etaCol]] <- 0
+        if (!(.etaCol %in% names(pRenamed))) {
+          pRenamed[[.etaCol]] <- 0
         }
       }
 
       # Solve with pruned model
-      .val <- do.call(rxode2::rxSolve, c(list(model_pruned, p_renamed, data), .rxControl))
+      .val <- do.call(rxode2::rxSolve, c(list(modelPruned, pRenamed, data), .rxControl))
       .val <- as.data.frame(.val)
       .val$id <- as.integer(.val$id)
       .ind <- .pars$param[, c("id", "sim.id", "rxW", "rxPmz")]
