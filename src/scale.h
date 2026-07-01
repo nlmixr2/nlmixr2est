@@ -549,7 +549,7 @@ static inline const char *scaleWrapMarker(scaling *scale, int colored) {
 // blocks.  When `showOfv` is 0 (saem and similar — no per-iteration
 // objective function) the Function-Val segment is skipped so the
 // separator's column count matches the header above and the rows below.
-static inline void scalePrintLine(scaling *scale, int ncol){
+static inline void scalePrintLine(scaling *scale, int ncol) {
   if (scale->showOfv) {
     RSprintf("|-----+---------------+");
   } else {
@@ -592,6 +592,7 @@ static inline void scalePrintHeader(scaling *scale) {
       }
     }
     int i, finalize=0, n=scale->thetaNames.size();
+    int underlineUsed = 0;
     if (scale->showOfv) {
       RSprintf("\n|    #| Function Val. |");
     } else {
@@ -604,6 +605,7 @@ static inline void scalePrintHeader(scaling *scale) {
       if ((i + 1) != n && (i + 1) % scale->ncol == 0){
         if (scale->useColor && scale->ncol + i  >= n){
           RSprintf("%s", scaleWrapMarker(scale, 1));
+          underlineUsed = 1;
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
         }
@@ -623,7 +625,12 @@ static inline void scalePrintHeader(scaling *scale) {
     } else {
       RSprintf("\n");
     }
-    scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    // When the last header continuation row was emitted with the terminal
+    // underline character it already acts as a visual separator, so the
+    // explicit |---+---| line would be redundant.
+    if (!underlineUsed) {
+      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    }
   }
 }
 
@@ -839,19 +846,6 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
 
 static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
-  // if (op_focei.derivMethod == 0){
-  //   if (op_focei.curGill == 1){
-  //     gradType.push_back(1);
-  //   } else if (op_focei.curGill == 2){
-  //     gradType.push_back(5);
-  //   } else if (op_focei.mixDeriv){
-  //     gradType.push_back(2);
-  //   } else{
-  //     gradType.push_back(3);
-  //   }
-  // } else {
-  //   gradType.push_back(4);
-  // }
   if (scale->save) {
     scale->niterGrad.push_back(scale->niter.back());
     scale->gradType.push_back(type);
@@ -863,27 +857,39 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
     // generic "Gradient" label.
     const char *label = NULL;
-    switch (type) {
-    case 1:  label = "    G|    Gill Diff. |"; break;  // Gill
-    case 2:  label = "    M|   Mixed Diff. |"; break;  // Mixed
-    case 3:  label = "    F| Forward Diff. |"; break;  // Forward
-    case 4:  label = "    C| Central Diff. |"; break;  // Central
-    case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
-    default: label = "    G|    Gradient   |"; break;
+    if (scale->showOfv) {
+      switch (type) {
+      case 1:  label = "    G|      Gill     |"; break;  // Gill
+      case 2:  label = "    M|     Mixed     |"; break;  // Mixed
+      case 3:  label = "    F|    Forward    |"; break;  // Forward
+      case 4:  label = "    C|    Central    |"; break;  // Central
+      case 5:  label = "    S|     Shi21     |"; break;  // Shi21
+      default: label = "    G|    Gradient   |"; break;
+      }
+    } else {
+      switch (type) {
+      case 1:  label = "    G|"; break;  // Gill
+      case 2:  label = "    M|"; break;  // Mixed
+      case 3:  label = "    F|"; break;  // Forward
+      case 4:  label = "    C|"; break;  // Central
+      case 5:  label = "    S|"; break;  // Shi21
+      default: label = "    G|"; break;
+      }
     }
-    if (scale->useColor && scale->ncol >= scale->npars){
+    int gradNcol = scale->ncol;
+    if (scale->useColor && gradNcol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
-      if (scale->useColor && scale->ncol >= scale->npars && i == scale->npars-1){
+      if (scale->useColor && gradNcol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
       RSprintf("|");
       if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= scale->npars){
+        if (scale->useColor && scale->ncol + i >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));

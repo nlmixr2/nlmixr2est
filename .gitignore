@@ -50,3 +50,4 @@ tests/testthat/fixtures/*.rds
 /.zed/
 /compile_commands.json
 /vexp.toml
+/.cache/
