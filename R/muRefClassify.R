@@ -125,3 +125,99 @@
   }) -> .lst
   .lst[!vapply(.lst, is.null, logical(1))]
 }
+
+#' Flatten `.muRefGroups()` into the 0-based index arrays the C++
+#' mu-referenced-FOCEI-family regression (`updateMuGroups()`,
+#' `src/inner.cpp`) expects
+#'
+#' Purely UI-derived (no dataset needed) -- the covariate *values* matrix
+#' is built separately by `.muRefCppCovData()` once the dataset is
+#' available (see `R/focei.R`'s `.foceiFamilyReturn()`).
+#'
+#' @param ui rxode2 ui object (post mu2-hook, if applicable)
+#' @return list with `muGroupTheta`, `muGroupEta`, `muGroupCovStart`,
+#'   `muGroupCovCount`, `muGroupCovTheta`, `muGroupCovUserFixed` (all
+#'   integer vectors) and `muGroupCovNames` (character vector, parallel to
+#'   `muGroupCovTheta`, used by `.muRefCppCovData()` to pull the right
+#'   dataset columns)
+#' @author Matthew L. Fidler
+#' @noRd
+.muRefCppGroupSetup <- function(ui) {
+  .groups <- .muRefGroups(ui)
+  if (length(.groups) == 0L) {
+    return(list(
+      muGroupTheta = integer(0), muGroupEta = integer(0),
+      muGroupCovStart = integer(0), muGroupCovCount = integer(0),
+      muGroupCovTheta = integer(0), muGroupCovUserFixed = integer(0),
+      muGroupCovNames = character(0)
+    ))
+  }
+  .iniDf <- ui$iniDf
+  .thetaNames <- .iniDf$name[!is.na(.iniDf$ntheta)]
+  .thetaIdxOf <- function(nm) match(nm, .thetaNames) - 1L
+
+  .w <- which(!is.na(.iniDf$ntheta))
+  .i2 <- .iniDf[-.w, ]
+  .i2 <- .i2[.i2$neta1 == .i2$neta2, ]
+  .i2 <- .i2[order(.i2$neta1), ]
+  .etaNames <- .i2$name
+  .etaIdxOf <- function(nm) match(nm, .etaNames) - 1L
+
+  .userFixed <- setNames(.iniDf$fix[!is.na(.iniDf$ntheta)], .thetaNames)
+
+  .muGroupTheta <- integer(0)
+  .muGroupEta <- integer(0)
+  .muGroupCovStart <- integer(0)
+  .muGroupCovCount <- integer(0)
+  .muGroupCovTheta <- integer(0)
+  .muGroupCovUserFixed <- integer(0)
+  .muGroupCovNames <- character(0)
+
+  for (g in .groups) {
+    .muGroupTheta <- c(.muGroupTheta, .thetaIdxOf(g$theta))
+    .muGroupEta <- c(.muGroupEta, .etaIdxOf(g$eta))
+    .muGroupCovStart <- c(.muGroupCovStart, length(.muGroupCovTheta))
+    .muGroupCovCount <- c(.muGroupCovCount, nrow(g$covariates))
+    for (.k in seq_len(nrow(g$covariates))) {
+      .cp <- g$covariates$covariateParameter[.k]
+      .muGroupCovTheta <- c(.muGroupCovTheta, .thetaIdxOf(.cp))
+      .muGroupCovUserFixed <- c(.muGroupCovUserFixed,
+                                 as.integer(isTRUE(.userFixed[[.cp]])))
+      .muGroupCovNames <- c(.muGroupCovNames, g$covariates$covariate[.k])
+    }
+  }
+
+  list(
+    muGroupTheta = as.integer(.muGroupTheta),
+    muGroupEta = as.integer(.muGroupEta),
+    muGroupCovStart = as.integer(.muGroupCovStart),
+    muGroupCovCount = as.integer(.muGroupCovCount),
+    muGroupCovTheta = as.integer(.muGroupCovTheta),
+    muGroupCovUserFixed = as.integer(.muGroupCovUserFixed),
+    muGroupCovNames = .muGroupCovNames
+  )
+}
+
+#' Build the baseline (first-observation) covariate-value matrix for the
+#' mu-referenced-FOCEI-family C++ regression
+#'
+#' One row per subject, sorted by ID (matching the subject ordering
+#' `foceiSetup_()` already uses for `etaMat`), one column per flattened
+#' covariate entry from `.muRefCppGroupSetup()` (in the same order --
+#' duplicate covariate names across groups get their own column, which is
+#' fine, `src/inner.cpp`'s `updateMuGroups()` slices by flattened index,
+#' not by name).
+#'
+#' @param covNames character vector, `muGroupCovNames` from
+#'   `.muRefCppGroupSetup()`
+#' @param dataSav processed dataset with an `ID` column and the needed
+#'   covariate columns (`env$dataSav` inside `.foceiFamilyReturn()`)
+#' @return numeric matrix, `nsub x length(covNames)`
+#' @author Matthew L. Fidler
+#' @noRd
+.muRefCppCovData <- function(covNames, dataSav) {
+  if (length(covNames) == 0L) return(matrix(numeric(0), nrow = 0, ncol = 0))
+  .byId <- dataSav[!duplicated(dataSav$ID), , drop = FALSE]
+  .byId <- .byId[order(.byId$ID), , drop = FALSE]
+  as.matrix(.byId[, covNames, drop = FALSE])
+}
