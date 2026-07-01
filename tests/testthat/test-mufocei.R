@@ -99,4 +99,61 @@ nmTest({
 
     expect_equal(unname(fitFixed$theta["allo.cl"]), 0.75, tolerance = 1e-6)
   })
+
+  test_that("mufocei's live iteration print shows mu-group theta values, blank on gradient rows", {
+    # Phase 5: the mu-group population/covariate thetas are excluded from
+    # the outer optimizer's own parameter vector, so the shared
+    # scale.h-based per-iteration table never shows them. printMuGroupThetaRow()
+    # (src/inner.cpp) adds one extra "|   mu|..." row after each real
+    # parameter print (current regression-updated value) and after each
+    # gradient print (blank/NA, since these thetas are never part of the
+    # gradient finite-difference -- there is no restart-loop involved,
+    # the value comes from updateMuGroups() running inside innerOpt()).
+    #
+    # capture.output() must wrap the *un-suppressed* nlmixr() call directly
+    # (not the .nlmixr()/suppressMessages() test helper) -- this console
+    # output is otherwise swallowed by suppressMessages() in this R
+    # session, unrelated to whether printMuGroupThetaRow() itself ran.
+    theo_sd2 <- nlmixr2data::theo_sd
+    theo_sd2$logWT <- log(theo_sd2$WT / 70)
+
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        allo.cl <- 0.75
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    out <- capture.output({
+      nlmixr2est::nlmixr(mod, theo_sd2, "mufocei",
+                          mufoceiControl(print = 1, maxOuterIterations = 2))
+    })
+
+    muValueRows <- grep("^\\|   mu\\|.*tcl:\\s*[-0-9]", out, value = TRUE)
+    muNaRows <- grep("^\\|   mu\\|.*tcl:\\s*NA", out, value = TRUE)
+    gradRows <- grep("^\\|    [GFCMS]\\|", out, value = TRUE)
+
+    expect_true(length(muValueRows) > 0)
+    expect_true(length(muNaRows) > 0)
+    # every mu-group value row also shows allo.cl (the covariate
+    # coefficient), and every blank row shows NA for it too
+    expect_true(all(grepl("allo\\.cl:\\s*[-0-9]", muValueRows)))
+    expect_true(all(grepl("allo\\.cl:\\s*NA", muNaRows)))
+    # a standard (non-mu-group) theta still shows a real numeric gradient
+    # on the same gradient-print events
+    expect_true(length(gradRows) > 0)
+    expect_true(any(grepl("[-0-9]\\.[0-9]", gradRows)))
+  })
 })
