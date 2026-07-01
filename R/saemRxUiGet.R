@@ -639,6 +639,15 @@ rxUiGet.saemMixProb <- function(x, ...) {
   .ui <- x[[1]]
   if (length(.ui$mixProbs) > 0) {
     .probs <- .ui$theta[.ui$mixProbs]
+    # Defense-in-depth: rxode2::mix()'s own UDF check only validates that
+    # the probabilities sum to a number in [0,1] at model-parse time, and
+    # rxUiGet.thetaIniMix (R/mix.R) silently skips its mlogit transform
+    # (rather than erroring) on the same invalid input. Neither of those
+    # catches an individually out-of-range probability whose sum still
+    # looks valid (e.g. p1=-0.1, p2=0.5). Validate again here, right
+    # before deriving the implicit last component, so a negative
+    # probability never reaches src/saem.cpp's Statphi12/Statphi02
+    # sufficient-statistic accumulators.
     if (any(.probs < 0) || any(.probs > 1) || sum(.probs) > 1) {
       stop("initial mixture probabilities must each be in [0, 1] and sum to no more than 1 (got: ",
            paste(signif(.probs, 3), collapse = ", "), ")", call. = FALSE)

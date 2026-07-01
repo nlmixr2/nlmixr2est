@@ -245,35 +245,37 @@ nmTest({
   })
 
   test_that("rxUiGet.saemMixProb rejects invalid mixture probabilities directly", {
-    # Create a mock UI object with invalid probabilities to test validation
+    # Mock UI objects use mixProbs as a character vector of theta names,
+    # matching the real UI (ui$mixProbs is character, e.g. c("p1","p2"),
+    # not integer positions -- see R/focei.R's %in% .theta$name usage).
     # Test case: probability > 1
-    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = 1.5)))
+    ui.obj <- list(list(mixProbs = "p1", theta = c(p1 = 1.5)))
     expect_error(
       rxUiGet.saemMixProb(ui.obj),
       "mixture probabilities must each be in \\[0, 1\\]"
     )
 
     # Test case: probability < 0
-    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = -0.1)))
+    ui.obj <- list(list(mixProbs = "p1", theta = c(p1 = -0.1)))
     expect_error(
       rxUiGet.saemMixProb(ui.obj),
       "mixture probabilities must each be in \\[0, 1\\]"
     )
 
     # Test case: sum > 1
-    ui.obj <- list(list(mixProbs = c(1, 2), theta = c(p1 = 0.7, p2 = 0.6)))
+    ui.obj <- list(list(mixProbs = c("p1", "p2"), theta = c(p1 = 0.7, p2 = 0.6)))
     expect_error(
       rxUiGet.saemMixProb(ui.obj),
       "mixture probabilities must each be in \\[0, 1\\]"
     )
 
     # Test case: valid probabilities should not error
-    ui.obj <- list(list(mixProbs = 1, theta = c(p1 = 0.5)))
+    ui.obj <- list(list(mixProbs = "p1", theta = c(p1 = 0.5)))
     result <- rxUiGet.saemMixProb(ui.obj)
     expect_equal(result, c(p1 = 0.5, 0.5))
 
     # Test case: valid with multiple probabilities
-    ui.obj <- list(list(mixProbs = c(1, 2), theta = c(p1 = 0.3, p2 = 0.2)))
+    ui.obj <- list(list(mixProbs = c("p1", "p2"), theta = c(p1 = 0.3, p2 = 0.2)))
     result <- rxUiGet.saemMixProb(ui.obj)
     expect_equal(result, c(p1 = 0.3, p2 = 0.2, 0.5))
   })
