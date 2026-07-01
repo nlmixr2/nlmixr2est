@@ -6,6 +6,7 @@
                            "iterPrintControl", "foceiMuModel", "foceiMuGroupTheta",
                            "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
+                           "foceiMuGroupCovBounded",
                            "foceiMuGroupCovData", "foceiMuGroupTol", "foceiMuGroupMaxCycles")
 
 #' Control Options for FOCEi

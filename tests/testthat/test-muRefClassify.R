@@ -120,3 +120,117 @@ test_that(".muRefClassify handles a model that is entirely mu-ref covariate", {
   expect_setequal(.cls$muCovCovariateParams, "allo.cl")
   expect_length(.cls$standardEtas, 0L)
 })
+
+test_that(".muRefGroups keeps the group but marks a bounded covariate coefficient, with a warning", {
+  # The closed-form/IRLS regression is an unconstrained solve -- it has no
+  # way to respect a box constraint on a covariate coefficient -- so a
+  # bounded covariate is treated as if it were time-varying and excluded
+  # from the regression (marked bounded=TRUE, handled by the ordinary,
+  # bounded outer optimizer instead), while the population theta (the
+  # group's intercept) still benefits from the mu-ref speed-up. This is
+  # narrower than a bounded *population* theta, which drops the whole
+  # group (see the next test) -- a bound on a slope doesn't prevent
+  # solving for the intercept.
+  mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      allo.cl <- c(0, 0.75, 2) # bounded covariate coefficient
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + allo.cl * logWT)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(mod)
+  expect_warning(.groups <- .muRefGroups(ui), "allo\\.cl.*boundar")
+  expect_length(.groups, 1L)
+  expect_equal(.groups[[1]]$theta, "tcl")
+  expect_true(.groups[[1]]$covariates$bounded[.groups[[1]]$covariates$covariateParameter == "allo.cl"])
+})
+
+test_that(".muRefGroups excludes a group and warns when its population theta has boundaries", {
+  mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- c(0, 1, 5) # bounded population theta
+      tv <- 3.45
+      allo.cl <- 0.75
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + allo.cl * logWT)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(mod)
+  expect_warning(.groups <- .muRefGroups(ui), "tcl.*boundar")
+  expect_length(.groups, 0L)
+})
+
+test_that(".muRefGroups does not warn or exclude anything when there are no boundaries", {
+  mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      allo.cl <- 0.75
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + allo.cl * logWT)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(mod)
+  expect_warning(.groups <- .muRefGroups(ui), NA)
+  expect_length(.groups, 1L)
+  expect_equal(.groups[[1]]$theta, "tcl")
+})
+
+test_that(".muRefGroups only marks the bounded covariate when a group has several, mixed covariates", {
+  mod <- function() {
+    ini({
+      tka <- 0.45
+      tcl <- 1
+      tv <- 3.45
+      allo.cl <- 0.75 # unbounded
+      allo.cl2 <- c(0, 0.1, 1) # bounded
+      eta.ka ~ 0.6
+      eta.cl ~ 0.3
+      eta.v ~ 0.1
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl + allo.cl * logWT + allo.cl2 * sexf)
+      v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(mod)
+  expect_warning(.groups <- .muRefGroups(ui), "allo\\.cl2.*boundar")
+  # the group (population theta + the *unbounded* covariate) stays
+  # mu-ref eligible; only the bounded covariate is carved out
+  expect_length(.groups, 1L)
+  .cv <- .groups[[1]]$covariates
+  expect_false(.cv$bounded[.cv$covariateParameter == "allo.cl"])
+  expect_true(.cv$bounded[.cv$covariateParameter == "allo.cl2"])
+})

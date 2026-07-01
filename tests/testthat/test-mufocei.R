@@ -100,6 +100,95 @@ nmTest({
     expect_equal(unname(fitFixed$theta["allo.cl"]), 0.75, tolerance = 1e-6)
   })
 
+  test_that("mufocei excludes a bounded mu-ref covariate coefficient, warns, and still respects the bound", {
+    # The closed-form/IRLS regression cannot respect a box constraint on
+    # a covariate coefficient, so it is treated as if it were
+    # time-varying and carved out of the regression -- estimated as an
+    # ordinary bounded theta by the outer optimizer instead
+    # (.muRefGroups(), R/muRefClassify.R) -- with a warning explaining why,
+    # captured into the fit's runInfo the same way every other pre-fit
+    # warning is (R/nlmixr2Est.R's .collectWarn() wraps the whole
+    # nlmixr2Est() dispatch). The group's population theta still benefits
+    # from the mu-ref speed-up (only the bounded slope is excluded).
+    theo_sd2 <- nlmixr2data::theo_sd
+    theo_sd2$logWT <- log(theo_sd2$WT / 70)
+
+    modBounded <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        allo.cl <- c(0, 0.75, 2)
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fitBounded <- .getCachedFit(
+      name = "mufocei-bounded-coef",
+      fitFn = function() .nlmixr(modBounded, theo_sd2, "mufocei", mufoceiControl(print = 0)),
+      cacheFile = "fit-mufocei-bounded-coef.rds"
+    )
+
+    expect_true(any(grepl("allo\\.cl.*boundar", fitBounded$runInfo)))
+    # the bound is still respected (ordinary bounded-optimizer handling),
+    # not silently ignored
+    expect_true(unname(fitBounded$theta["allo.cl"]) >= 0)
+    expect_true(unname(fitBounded$theta["allo.cl"]) <= 2)
+  })
+
+  test_that("mufocei keeps mu-referencing a group's unbounded covariate/population theta when only a sibling covariate is bounded", {
+    theo_sd2 <- nlmixr2data::theo_sd
+    theo_sd2$logWT <- log(theo_sd2$WT / 70)
+    theo_sd2$sexf <- as.numeric(theo_sd2$ID) %% 2
+
+    modMixed <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- 1
+        tv <- 3.45
+        allo.cl <- 0.75 # unbounded
+        allo.cl2 <- c(-1, 0.1, 1) # bounded
+        eta.ka ~ 0.6
+        eta.cl ~ 0.3
+        eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl + allo.cl * logWT + allo.cl2 * sexf)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fitMixed <- .getCachedFit(
+      name = "mufocei-mixed-bounded-coef",
+      fitFn = function() .nlmixr(modMixed, theo_sd2, "mufocei", mufoceiControl(print = 0)),
+      cacheFile = "fit-mufocei-mixed-bounded-coef.rds"
+    )
+
+    expect_true(any(grepl("allo\\.cl2.*boundar", fitMixed$runInfo)))
+    expect_true(unname(fitMixed$theta["allo.cl2"]) >= -1)
+    expect_true(unname(fitMixed$theta["allo.cl2"]) <= 1)
+    # the unbounded covariate and the group's population theta still get
+    # a real (mu-ref-derived) standard error, unaffected by the sibling
+    # covariate's exclusion
+    .pf <- fitMixed$parFixed
+    expect_false(is.na(suppressWarnings(as.numeric(.pf["allo.cl", "SE"]))))
+    expect_false(is.na(suppressWarnings(as.numeric(.pf["tcl", "SE"]))))
+    # the bounded covariate is an ordinary theta -- it gets a ordinary SE too
+    expect_false(is.na(suppressWarnings(as.numeric(.pf["allo.cl2", "SE"]))))
+  })
+
   test_that("mufocei's live iteration print shows mu-group theta values, blank on gradient rows", {
     # Phase 5: the mu-group population/covariate thetas are excluded from
     # the outer optimizer's own parameter vector, so the shared
