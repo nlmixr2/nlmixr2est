@@ -489,7 +489,6 @@
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
-  minv[i0] <- 1.0
 
 
   # preserve par order when printing iter history
