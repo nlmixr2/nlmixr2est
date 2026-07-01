@@ -776,7 +776,6 @@ nmObjGet.saem <- function(x, ...) {
   if (!exists("saem0", .obj)) return(NULL)
   .saem <- .obj$saem0
   .saemCfg <- attr(.saem, "saem.cfg")
-  .saemCfg$evtM <- .obj$saemEvtM
   .saemCfg$evt <- .obj$saemEvt
   attr(.saem, "saem.cfg") <- .saemCfg
   .saem

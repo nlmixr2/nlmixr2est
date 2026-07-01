@@ -7,6 +7,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "rxomp.h"
 #include <atomic>
 
 #define _(String) (String)
@@ -143,7 +144,9 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
-  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
+  // NB: per-subject sticky counter is sized below, AFTER rxSolve_ sets
+  // up `rx`.  Sizing it here would read getRxNsub(NULL) on the first
+  // nlmSetup call of a fresh R session and crash.
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
@@ -170,6 +173,9 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
+  // Size the per-subject inner-retry counter now that `rx` is valid
+  // (see comment above where this used to live).
+  nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
   nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta * 2u + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
@@ -247,6 +253,10 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
+  // Iteration-print fields come from the iterPrintControl sub-list built
+  // R-side; scaleApplyIterPrintControl populates them on the scaling
+  // struct.  The useColor/printNcol/print args to scaleSetup are passed
+  // as placeholders since they get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -254,15 +264,15 @@ RObject nlmSetup(Environment e) {
              nlmOp.logitThetaLow,
              nlmOp.logitThetaHi,
              as<CharacterVector>(e["thetaNames"]) ,
-             as<int>(control["useColor"]),
-             as<int>(control["printNcol"]),
-             as<int>(control["print"]),
+             /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
              as<int>(control["scaleType"]),
              as<double>(control["scaleCmin"]),
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  scaleApplyIterPrintControl(&(nlmOp.scale),
+                             as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
   for (int i = 0; i < nlmOp.ntheta; ++i) {
     nlmOp.thetaFD[i] = needFD[i];
@@ -453,7 +463,9 @@ arma::vec nlmSolveF(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     nlmSolveFid(retD + nlmOp.idS[id], nlmOp.nobs[id], theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
@@ -610,7 +622,9 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
 #pragma omp parallel for num_threads(cores)
 #endif
   for (int id = 0; id < getRxNsub(rx); ++id) {
+    setRxThreadId(omp_get_thread_num());
     ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(theta, id);
+    setRxThreadId(-1);
   }
   return ret;
 }
@@ -996,9 +1010,9 @@ SEXP nlmCensInfo() {
 //[[Rcpp::export]]
 RObject nlmGetParHist(bool p=true) {
   nlmOp.scale.save = 0;
-  nlmOp.scale.print = 0;
+  nlmOp.scale.every = 0;
   if (p) {
-    scalePrintLine(min2(nlmOp.scale.npars, nlmOp.scale.printNcol));
+    scalePrintLine(&(nlmOp.scale), min2(nlmOp.scale.npars, nlmOp.scale.ncol));
   }
   return scaleParHisDf(&(nlmOp.scale));
 }

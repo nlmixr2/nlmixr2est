@@ -1,5 +1,6 @@
 #' Control for lbfgsb3c estimation method in nlmixr2
 #'
+#' @inheritParams iterPrintParams
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
 #' @inheritParams lbfgsb3c::lbfgsb3c
@@ -86,8 +87,8 @@ lbfgsb3cControl <- function(trace=0,
                             odeRecalcFactor=10^(0.5),
                             indTolRelax=TRUE,
 
-                            useColor = crayon::has_color(),
-                            printNcol = floor((getOption("width") - 23) / 12), #
+                            useColor = NULL,
+                            printNcol = NULL, #
                             print = 1L, #
 
                             normType = c("rescale2", "mean", "rescale", "std", "len", "constant"), #
@@ -125,7 +126,7 @@ lbfgsb3cControl <- function(trace=0,
 
   .xtra <- list(...)
   .bad <- names(.xtra)
-  .bad <- .bad[!(.bad %in% "genRxControl")]
+  .bad <- .bad[!(.bad %in% c("genRxControl", "iterPrintControl"))]
   if (length(.bad) > 0) {
     stop("unused argument: ", paste
     (paste0("'", .bad, "'", sep=""), collapse=", "),
@@ -166,9 +167,10 @@ lbfgsb3cControl <- function(trace=0,
   }
   checkmate::assertIntegerish(sigdigTable, lower=1, len=1, any.missing=FALSE)
 
-  checkmate::assertLogical(useColor, any.missing=FALSE, len=1)
-  checkmate::assertIntegerish(print, len=1, lower=0, any.missing=FALSE)
-  checkmate::assertIntegerish(printNcol, len=1, lower=1, any.missing=FALSE)
+  .iterPrintControl <- .absorbIterPrintControl(print = print,
+                                               printNcol = printNcol,
+                                               useColor = useColor,
+                                               iterPrintControl = .xtra$iterPrintControl)
   if (checkmate::testIntegerish(scaleType, len=1, lower=1, upper=4, any.missing=FALSE)) {
     scaleType <- as.integer(scaleType)
   } else {
@@ -212,9 +214,7 @@ lbfgsb3cControl <- function(trace=0,
     odeRecalcFactor=odeRecalcFactor,
     indTolRelax=indTolRelax,
 
-    useColor=useColor,
-    print=print,
-    printNcol=printNcol,
+    iterPrintControl = .iterPrintControl,
     scaleType=scaleType,
     normType=normType,
 

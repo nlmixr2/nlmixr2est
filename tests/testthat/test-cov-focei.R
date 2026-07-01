@@ -71,7 +71,8 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
-    fit <- .nlmixr(one.compartment, theo_sd, est = "focei", control=list(print=0))
+    fit <- .nlmixr(one.compartment, theo_sd, est = "focei",
+                   control=foceiControl(print=0, maxOuterIterations=0L))
     expect_s3_class(fit, "nlmixr2FitCore")
   })
 })

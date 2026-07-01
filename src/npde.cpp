@@ -182,7 +182,6 @@ static inline void handleNpdeNAandCalculateEpred(calcNpdeInfoId& ret, unsigned i
 static inline void calculatePD(calcNpdeInfoId& ret, unsigned int& id, unsigned int &K, double &tolChol) {
   ret.ydsim = ret.matsim.rows(ret.obs);
   ret.varsim = cov(trans(ret.ydsim));
-  Rcpp::wrap(wrap(ret.varsim));
   ret.ymat = decorrelateNpdeMat(ret.varsim, ret.warn, id, tolChol); // pd= npd
   ret.ymat2 = varNpdMat(ret.varsim); // pd2 = pd
   arma::mat ymatt = trans(ret.ymat);
@@ -429,17 +428,28 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   dvf.zeros();
   eres.zeros();
 
-  for (unsigned int curid = 0; curid < idLoc.size()-1; ++curid) {
-    calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-                                       lambda, yj, hi, low);
-    npde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.npde;
-    npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
-    pde(span(idLoc[curid],idLoc[curid+1]-1)) = idInfo.pd;
-    pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
-    epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
-    dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
-    eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
-    warn[curid] = idInfo.warn;
+  {
+    int _nid = (int)(idLoc.size() - 1);
+#ifdef _OPENMP
+    // Get rxode2 thread count; called here in R context, before any OMP region
+    Rcpp::Function _rxGetThreads = Rcpp::Environment::namespace_env("rxode2")["getRxThreads"];
+    int _cores = Rcpp::as<int>(_rxGetThreads(false));
+    bool _doParallel = (_cores > 1);
+#pragma omp parallel for num_threads(_cores) schedule(dynamic) if(_doParallel)
+#endif
+    for (int _curid = 0; _curid < _nid; ++_curid) {
+      unsigned int curid = (unsigned int)_curid;
+      calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
+                                         lambda, yj, hi, low);
+      npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
+      npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
+      pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;
+      pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
+      epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
+      dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
+      eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
+      warn[curid] = idInfo.warn;
+    }
   }
   std::string sCholPinv = "";
   int nCholPinv = 0;
