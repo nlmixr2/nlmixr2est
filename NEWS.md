@@ -6,6 +6,12 @@
   operations rather than environment side-effects, and `FIXED` and
   shrinkage suffixes are appended. (#346, #516)
 
+  - The table's significant digits (`sigdigTable`) and confidence
+    interval (`ci`) are now read from the estimation control for fits
+    that contain literally-fixed parameters.  Previously these fits
+    silently fell back to the defaults, ignoring a user-specified
+    `sigdig`/`ci`.
+
 - Fix issue 641: FOCEI now updates additive mu-referenced population
   parameters whose initial estimates are large in magnitude.
   Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
@@ -82,7 +88,6 @@
 - Use OpenMP threading for S matrix calculation
 
 - Use OpenMP threading wile calculating NPDEs
->>>>>>> origin/main
 
 # nlmixr2est 6.0.1
 

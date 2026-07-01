@@ -32,9 +32,6 @@ nmTest({
     expect_equal(setNames(fit$parFixedDf["tka", "Estimate"] * 100, NULL),
                  setNames(fit$parFixedDf["tka", "Back-transformed"], NULL))
 
-    expect_equal(fit$parFixed["tka", "Back-transformed(95%CI)"],
-                 sprintf("%3g", fit$parFixedDf["tka", "Estimate"] * 100))
-
   expect_equal(fit$parFixed["tka", "Back-transformed(95%CI)"],
                formatMinWidth(fit$parFixedDf["tka", "Estimate"] * 100))
 

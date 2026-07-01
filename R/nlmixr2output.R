@@ -352,18 +352,35 @@
     # Show the fixed values in the model
     .ret$popDf <- .popDf
   }
+  # The `sigdig`/`ci` for the $parFixed table come from the estimation control
+  # (`.ret$control`).  For fits with literally-fixed parameters `.ui` was
+  # reassigned above to the pre-fix `uiUnfix` model, which does not carry the
+  # estimation control, so reading via `rxGetControl(.ui, ...)` would silently
+  # fall back to the defaults and drop a user-specified `ci`/`sigdig`.  Read
+  # `.ret$control` first (uses `sigdigTable` for the table, matching the C++
+  # side), then fall back to the ui/default for `est="foi"` and Monolix/NONMEM
+  # imported fits whose `$control` is empty.
+  .parFixedNum <- function(.nm, .default) {
+    .v <- .ret$control[[.nm]]
+    if (length(.v) == 1L && is.finite(.v)) return(.v)
+    .v <- rxode2::rxGetControl(.ret$ui, .nm, .default)
+    if (length(.v) == 1L && is.finite(.v)) return(.v)
+    .default
+  }
+  .parFixedCi <- .parFixedNum("ci", 0.95)
+  .parFixedDigits <- .parFixedNum("sigdigTable", 3L)
   popDf <- .ret$popDf
   popDf <-
     .updateParFixedApplyManualBacktransformations(
       popDf = popDf,
       iniDf = .ui$iniDf,
-      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
+      ci = .parFixedCi,
       btEnv = nlmixr2global$nlmixrEvalEnv$envir
     )
   popDf <- .updateParFixedAddParameterLabel(popDf, iniDf = .ui$iniDf)
   .bsv <- .updateParFixedAddBsv(
     popDf, iniDf = .ui$iniDf, omega = .ret$omega,
-    .sigdig = rxode2::rxGetControl(.ui, "sigdig", 3L),
+    .sigdig = .parFixedDigits,
     .muRefDataFrame = .ui$muRefDataFrame, .muRefCurEval = .ui$muRefCurEval
   )
   popDf <- .bsv$popDf
@@ -375,8 +392,8 @@
   .ret$parFixed <-
     .updateParFixedApplySig(
       popDf,
-      digits = rxode2::rxGetControl(.ui, "sigdig", 3L),
-      ci = rxode2::rxGetControl(.ui, "ci", 0.95),
+      digits = .parFixedDigits,
+      ci = .parFixedCi,
       fixedNames = .fixedNames,
       bsvFixedNames = .bsv$bsvFixedNames
     )
