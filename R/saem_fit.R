@@ -490,10 +490,14 @@
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
   if (length(mixProb) > 1L) {
-    # Mixture fits (nMix > 1): the mixture-weighted Gamma2_phi0 computation
-    # can become near-singular for non-mu-referenced phi elements under
-    # some covariance methods (e.g. linFim); floor them higher to keep the
-    # covariance step stable. Non-mixture fits keep the tight 1e-20 floor.
+    # Mixture fits (nMix > 1): i0 indexes phi positions with no associated
+    # eta at all (ordinary fixed-effect/population-only thetas, e.g. tka in
+    # a model with no eta.ka) -- not "non-mu-referenced etas". Their
+    # mixture-weighted Gamma2_phi0 computation can become near-singular
+    # under some covariance methods (e.g. linFim); floor them higher to
+    # keep the covariance step stable. Non-mixture fits keep the tight
+    # 1e-20 floor, since inflating it there wrongly biases these
+    # population-only parameters (see git history for 38bb062e).
     minv[i0] <- 1.0
   }
 
