@@ -2580,13 +2580,41 @@ void innerOpt() {
     // slot 0 and race -> heap corruption (Windows-only; Linux shares one
     // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
     // Resolved once on the main thread.
-    for (int jMix = 0; jMix < nMix; jMix++) {
+    //
+    // NOTE on parallelization granularity for mixture models (nMix > 1):
+    // this loop is parallelized over PHYSICAL subjects `i` (0..nsub_orig-1),
+    // with the `jMix` mixture-component loop kept SERIAL *inside* each
+    // thread's work item, rather than flattening across the full
+    // nsub_orig*nMix index space. This is required for correctness, not
+    // just style: rxode2 only allocates nsub_orig physical `rx_solving_options_ind`
+    // structs (rx->subjects[]), keyed by the physical id returned by
+    // getRxId(_id) = _id % nsub_orig. ALL mixture components of a given
+    // physical subject share that SAME struct -- its solve buffer
+    // (mutated in-place by ind_solve/innerOde), parameter pointers
+    // (setIndParPtr), tolFactor, and ind->mixest (setIndMixest) are all
+    // shared, non-atomic state. If two mixture components of the SAME
+    // physical subject were solved concurrently (as they would be if the
+    // parallel-for ranged over the combined nsub_orig*nMix index space
+    // with dynamic scheduling), two threads would race on that shared
+    // struct -- e.g. one thread's setIndMixest() clobbering another's
+    // right before/during innerOde(), corrupting results silently. The
+    // previous code's outer sequential `for (jMix...)` loop (with an
+    // OpenMP barrier at the end of each jMix's parallel region) is what
+    // prevented that race; simply flattening to `ii = jMix*nsub_orig + i`
+    // would remove that barrier and reintroduce it. Parallelizing over
+    // physical subjects instead (each thread owns one physical subject's
+    // struct and walks all of its jMix components sequentially) still
+    // collapses the fork/join to a single parallel region -- the actual
+    // performance goal -- while preserving the "only one thread touches
+    // a given physical subject's struct at a time" invariant. For
+    // nMix == 1 (non-mixture fits) this is exactly the prior loop.
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
-      for (int i = 0; i < nsub_orig; i++) {
-        int _id = _doParallel ? (getOrdId(rx, i) - 1) : i;
-        _id += jMix * nsub_orig;
+    for (int i = 0; i < nsub_orig; i++) {
+      int _id0 = _doParallel ? (getOrdId(rx, i) - 1) : i;
+      for (int jMix = 0; jMix < nMix; jMix++) {
+        int _id = _id0 + jMix * nsub_orig;
 #ifdef _OPENMP
         if (_doParallel) {
           setRxThreadId(omp_get_thread_num());
