@@ -2,6 +2,7 @@
 #echo --------[begin Workaround]--------
 ${R_HOME}/bin/R CMD BATCH  inst/tools/workaround.R
 rm workaround.Rout
+rm -f .RData # if exists, seems to on some platforms
 #echo --------[end Workaround]--------
 
 echo --------[begin src/Makevars]--------

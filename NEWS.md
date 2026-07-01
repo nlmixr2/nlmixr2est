@@ -1,5 +1,33 @@
 # nlmixr2est (development version)
 
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude.
+  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
+  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
+  unit steps in scaled space to negligible steps in unscaled space and
+  effectively pinned such parameters at their initial value (e.g.
+  `tvemax <- -40` with no transform).
+
+- When model estimation fails, all errors raised during the run are now
+  collected and reported together, instead of only the last error. This
+  is supported by a new `collectErr` argument to the internal
+  `.collectWarn()` helper, which captures errors alongside warnings and
+  returns them in the `error` element of its result list. As a result,
+  errors hidden by `on.exit({rxode2::rxProgressAbort()})` handlers
+  (such as the "Aborted calculation" message reported in issue 607)
+  no longer mask the underlying cause; both the inner stop message and
+  any follow-up error from `on.exit` are now reported to the user.
+
+- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
+  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
+  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
+  statically links its own OpenMP runtime, so when the parallel inner
+  loop called rxode2's solver across threads rxode2 saw every worker as
+  thread 0 and collapsed its per-thread solve buffers onto a single
+  slot, racing and corrupting the heap.  The inner loop now hands rxode2
+  the real thread id via `setRxThreadId()` from rxode2 api (requires the
+  matching rxode2).
+
 - The iteration-time progress output emitted by every estimator
   (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
   newuoa, uobyqa) now flows through a single shared printer
@@ -54,12 +82,18 @@
   parameters on the natural probability scale (0, 1) instead of the
   raw mlogit estimation scale.
 
-# nlmixr2est 6.0.1
-
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`
   (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`);
+
+- Guard against null pointer arithmetic in inner.cpp
+
+- Use OpenMP threading for S matrix calculation
+
+- Use OpenMP threading wile calculating NPDEs
+
+# nlmixr2est 6.0.1
 
 - Fix LTO violation as requested by CRAN by adding
   -DARMA_DONT_USE_OPENMP to PKG_CXXFLAGS in src/Makevars.in
@@ -67,7 +101,6 @@
 - Require rxode2 5.1.2 which has the fixed M1-san issues observed
   here.
 
-- Guard against null pointer arithmetic in inner.cpp
 
 # nlmixr2est 6.0.0
 

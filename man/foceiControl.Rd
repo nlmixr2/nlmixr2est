@@ -5,7 +5,7 @@
 \title{Control Options for FOCEi}
 \usage{
 foceiControl(
-  sigdig = 3,
+  sigdig = 4,
   ...,
   epsilon = NULL,
   maxInnerIterations = 1000,
@@ -59,8 +59,8 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("nlminb", "bobyqa", "lbfgsb3c", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin", "uobyqa", "newuoa"),
+  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+    "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,

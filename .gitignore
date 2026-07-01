@@ -39,5 +39,17 @@ revdep/
 tests/testthat/fixtures/*.rds
 
 # Local code-index tooling (vexp MCP) — never commit
-.vexp/
-vexp.toml
+/.vexp/
+/.antigravity/
+/.augment/
+/.claude/
+/.continue/
+/.cursor/
+/.kilocode/
+/.kiro/
+/.vscode/
+/.windsurf/
+/.zed/
+/compile_commands.json
+/vexp.toml
+/.cache/
