@@ -257,18 +257,18 @@
       .mus <- .fixef[.thetas]
       .mus[is.na(.mus)] <- 0.0
       
-      .w_group <- .mixProbabilities
-      .mean_mu <- sum(.w_group * .mus)
-      .overall_var <- .sig02
+      .wGroup <- .mixProbabilities
+      .meanMu <- sum(.wGroup * .mus)
+      .overallVar <- .sig02
       
-      .w_idx <- which(colnames(.omega) == .grp[1])
-      if (length(.w_idx) == 1L) {
-        colnames(.omega)[.w_idx] <- rownames(.omega)[.w_idx] <- .rootName
-        .omega[.rootName, .rootName] <- .overall_var
+      .wIdx <- which(colnames(.omega) == .grp[1])
+      if (length(.wIdx) == 1L) {
+        colnames(.omega)[.wIdx] <- rownames(.omega)[.wIdx] <- .rootName
+        .omega[.rootName, .rootName] <- .overallVar
       }
       
-      .to_remove <- .grp[-1]
-      .omega <- .omega[!(rownames(.omega) %in% .to_remove), !(colnames(.omega) %in% .to_remove), drop=FALSE]
+      .toRemove <- .grp[-1]
+      .omega <- .omega[!(rownames(.omega) %in% .toRemove), !(colnames(.omega) %in% .toRemove), drop=FALSE]
       
       .etaObf[[.rootName]] <- vapply(seq_len(nrow(.etaObf)), function(i) {
         .etaObf[i, .grp[.bestMix[i]]]
