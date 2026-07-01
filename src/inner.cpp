@@ -7258,6 +7258,7 @@ Environment foceiFitCpp_(Environment e){
     op_focei.scale.printCount    = 0;
     op_focei.scale.save          = 0;  // focei records into module-level globals
     op_focei.scale.cn            = 0;
+    op_focei.scale.showOfv       = 1;
   }
   if (op_focei.maxOuterIterations > 0 && op_focei.printTop == 1){
     op_focei.t0 = clock();
