@@ -796,45 +796,28 @@ public:
     // Set up the shared scale.h iteration-print struct.  saem uses
     // scaleTypeNone (no internal optimizer scaling — Plambda is on
     // model scale) so scalePrintFun's auto-skip drops the redundant U
-    // row.  xPar / logitThetaLow / logitThetaHi come from the R side
-    // via .iterPrintXParFromUi(ui$muRefCurEval), so the X row shows
-    // exp(theta) for log-transformed thetas and expit(theta, lo, hi)
-    // for logit-transformed thetas — same back-transforms focei
-    // applies.  Omega and residual-error entries in the printed
-    // vector have xPar = 0 and so contribute no X-row delta.
+    // row.  The xform sub-list (xPar / probitIdx / logitThetaLow /
+    // logitThetaHi / probitThetaLow / probitThetaHi) is shipped from
+    // R by .iterPrintXParFromUi() and wired in one call through
+    // scaleAttachXform — the same path every other estimator uses,
+    // so the X row back-transforms exp / expit / probitInv identically
+    // to focei and the final-fit-summary block.  Omega and residual-
+    // error entries in the printed vector have xPar=0 / probitIdx=0
+    // and so contribute no X-row delta.
     scaleNames = as<CharacterVector>(x["parHistNames"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem;
-    {
-      IntegerVector xParIn = as<IntegerVector>(x["xPar"]);
-      NumericVector logitLowIn = as<NumericVector>(x["logitThetaLow"]);
-      NumericVector logitHiIn  = as<NumericVector>(x["logitThetaHi"]);
-      scaleInitPar.assign(std::max(nprint, 1), 0.0);
-      scaleC.assign(std::max(nprint, 1), NA_REAL);
-      scaleXPar.assign(xParIn.begin(), xParIn.end());
-      if (scaleXPar.empty()) scaleXPar.assign(1, 0);
-      if (logitLowIn.size() > 0) {
-        scaleLogitLow.assign(logitLowIn.begin(), logitLowIn.end());
-        scaleLogitHi.assign(logitHiIn.begin(), logitHiIn.end());
-      } else {
-        // scalePrintFun's logit branch is only reached when xPar < 0;
-        // a one-element placeholder satisfies the data-pointer demand
-        // when no logit-transformed parameters are present.
-        scaleLogitLow.assign(1, 0.0);
-        scaleLogitHi.assign(1, 1.0);
-      }
-    }
+    scaleInitPar.assign(std::max(nprint, 1), 0.0);
+    scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleSetup(&scale,
                scaleInitPar.data(),
                scaleC.data(),
-               scaleXPar.data(),
-               scaleLogitLow.data(),
-               scaleLogitHi.data(),
                scaleNames,
                /*useColor*/0, /*printNcol*/1, /*print*/0,
                normTypeConstant,
                scaleTypeNone,
                1e-7, 1e7, 0.0,
                nprint);
+    scaleAttachXform(&scale, as<List>(x["xform"]));
     scaleApplyIterPrintControl(&scale, as<List>(x["iterPrintControl"]));
     // saem has no per-iteration objective function; suppress the Function
     // Val column entirely so users don't see "nan" in every iteration row.
@@ -1865,7 +1848,8 @@ public:
       // the `f` argument is ignored at print time (passing NA_REAL just
       // to satisfy the signature).  scalePrintFun increments its own
       // counter, gates printing on (cn % every == 0), and runs the
-      // user-interrupt check internally.
+      // user-interrupt check internally, and flushes any aggregated
+      // rxode2 solve warnings after each printed iteration.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
@@ -1944,15 +1928,13 @@ private:
   mcmcaux mx;
 
   // Iteration-print formatting shared with focei/nlm via src/scale.h.
-  // saem uses scaleTypeNone with all-zero xPar (Plambda is already on
-  // the model scale), so scalePrintFun's U and X rows mirror the # row.
-  // Format matches the other estimators.
+  // saem uses scaleTypeNone (Plambda is already on the model scale).
+  // The transform fields (xPar / probitIdx / bounds) are populated
+  // by scaleAttachXform from the R-side xform sub-list at setup time;
+  // backing storage lives on the scaling struct itself.
   scaling scale;
   std::vector<double> scaleInitPar;
   std::vector<double> scaleC;
-  std::vector<int>    scaleXPar;
-  std::vector<double> scaleLogitLow;
-  std::vector<double> scaleLogitHi;
   CharacterVector scaleNames;
   mat par_hist;
   uvec parHistThetaKeep;
@@ -2306,6 +2288,16 @@ void setupRx(List &opt, SEXP evt, int nmc, int N) {
     rxode2::rxSolve_(obj, odeO,
                      R_NilValue, R_NilValue,
                      parsM, evt, R_NilValue, 1);
+    // rxSolve_ above runs on a declassed event matrix, so rxode2 leaves its
+    // ID factor table empty; push the real subject-id levels (captured in
+    // saem_fit.R before as.data.frame() stripped the rxEtTran class) so the
+    // aggregated solve warnings flushed per iteration are labelled with the
+    // user's ID instead of "Unknown".  Version-skew-safe no-op on an rxode2
+    // without rxSetIdLvlFactors (see src/solveWarnHelper.h).
+    if (opt.containsElementNamed(".idLvl")) {
+      RObject idLvl = opt[".idLvl"];
+      nmSetIdLvlFactors(idLvl);
+    }
   } else {
     stop("cannot find rxode2 model");
   }
