@@ -61,7 +61,7 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin", "uobyqa", "newuoa"),
+    "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,

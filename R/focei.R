@@ -26,8 +26,21 @@ is.latex <- function() {
   get("is_latex_output", asNamespace("knitr"))()
 }
 
+#' Get the maxfun control for minqa optimizers
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxfun <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxfun <- control$maxOuterIterations
+  }
+  control
+}
+
 .uobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -43,7 +56,7 @@ is.latex <- function() {
 }
 
 .newuoa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -59,7 +72,7 @@ is.latex <- function() {
 }
 
 .bobyqa <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlMaxfun(control)
   if (is.null(.ctl$npt)) .ctl$npt <- length(par) * 2 + 1
   .ctl$iprint <- 0L
   .ctl <- .ctl[names(.ctl) %in% c("npt", "rhobeg", "rhoend", "iprint", "maxfun")]
@@ -75,7 +88,21 @@ is.latex <- function() {
   .ret
 }
 
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with maxfun updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlMaxit <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$maxit <- control$maxOuterIterations
+  }
+  control
+}
+
 .lbfgsb3c <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .w <- which(names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint"))
   .control <- control[.w]
   .ret <- lbfgsb3c::lbfgsb3c(par = as.vector(par), fn = fn, gr = gr, lower = lower, upper = upper, control = .control)
@@ -83,7 +110,9 @@ is.latex <- function() {
   .ret
 }
 
+
 .lbfgsbO <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
+  control <- .controlMaxit(control)
   .control <- control[names(control) %in% c("trace", "factr", "pgtol", "abstol", "reltol", "lmm", "maxit", "iprint")]
   .w <- which(sapply(.control, is.null))
   .control <- .control[-.w]
@@ -122,8 +151,22 @@ is.latex <- function() {
   .ret
 }
 
+
+#' Get the maxit control
+#'
+#' @param control control to update based on foceiControl()
+#' @return control with iter.max updated based on maxOuterIterations
+#' @noRd
+#' @author Matthew L. Fidler
+.controlIterMax <- function(control) {
+  if (!is.null(control$maxOuterIterations)) {
+    control$iter.max <- control$maxOuterIterations
+  }
+  control
+}
+
 .nlminb <- function(par, fn, gr, lower = -Inf, upper = Inf, control = list(), ...) {
-  .ctl <- control
+  .ctl <- .controlIterMax(control)
   .ctl <- .ctl[names(.ctl) %in% c(
     "eval.max", "iter.max", "trace", "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", "step.max", "sing.tol",
     "scale.inti", "diff.g"
@@ -1375,6 +1418,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
               sqrt(qchisq(abs(y),1)/2) * sign(y)
             }
             .scaleC[.j] <- sqrt(2)*(-.a+.b)*erfinvF(-1+2*(-.a+.x)/(-.a+.b))/sqrt(pi)/2*exp(((erfinvF(-1+2*(-.a+.x)/(-.a+.b))) ^ 2))
+          } else if (is.na(.curEval) || .curEval == "") {
+            # Additive mu-reference (theta + eta).  Scale by the
+            # magnitude of the initial estimate so a unit step in the
+            # internal (scaled) parameter is proportional to the
+            # parameter's natural scale.  Falling through to the C++
+            # default of 1/|init| produced steps so small the optimizer
+            # could not move parameters with large-magnitude initials
+            # (issue 641).
+            .val <- abs(.ini$est[.j])
+            if (.val > 1) .scaleC[.j] <- .val
           }
         }
       }
@@ -1497,20 +1550,16 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  # Theta-side transform indexes (log/logit/probit) come from the
-  # shared pure inspector .iterPrintXParFromUi.  The helper does not
-  # mutate env; we copy its ntheta-indexed outputs onto the focei env
-  # under the names the focei C-side reads via e["logThetasF"] etc.
-  # The C code assumes 1-based theta indices, which is exactly what
-  # iniDf$ntheta gives.
-  .xform <- .iterPrintXParFromUi(ui)
-  env$logThetasF       <- .xform$logNthetas
-  env$logitThetasF     <- .xform$logitNthetas
-  env$logitThetasLowF  <- .xform$logitNthetasLow
-  env$logitThetasHiF   <- .xform$logitNthetasHi
-  env$probitThetasF    <- .xform$probitNthetas
-  env$probitThetasLowF <- .xform$probitNthetasLow
-  env$probitThetasHiF  <- .xform$probitNthetasHi
+  # Theta-side transform codes (log/logit/probit) come from the
+  # shared pure inspector .iterPrintXParFromUi.  Default call gives
+  # vectors of length ntheta_total in ntheta order — exactly what
+  # focei's C-side consumes (both the iteration printer and the
+  # final-fit-summary back-transform read xform$xPar / xform$probitIdx
+  # by ntheta index, and xform$logitThetaLow/Hi / probitThetaLow/Hi
+  # by the codes those arrays encode).  Single transport sub-list,
+  # consistent with how saem (.cfg$xform) and nlm (.ctl$iterPrintXform)
+  # ship the same data.
+  env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)
   env$control$nF <- 0
@@ -2135,8 +2184,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     for (.item in c("adj", "adjLik", "diagXformInv", "etaMat", "etaNames",
                     "fullTheta", "scaleC", "gillRet", "gillRetC",
-                    "logitThetasF", "logitThetasHiF", "logitThetasLowF", "logThetasF",
-                    "lower", "noLik", "objf", "OBJF", "probitThetasF", "probitThetasHiF", "probitThetasLowF",
+                    "xform",
+                    "lower", "noLik", "objf", "OBJF",
                     "rxInv", "scaleC", "se", "skipCov", "thetaFixed", "thetaIni", "thetaNames", "upper",
                     "xType", "IDlabel", "ODEmodel", "model",
                     # times

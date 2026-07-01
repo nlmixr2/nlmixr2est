@@ -1,5 +1,23 @@
 # nlmixr2est (development version)
 
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude.
+  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
+  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
+  unit steps in scaled space to negligible steps in unscaled space and
+  effectively pinned such parameters at their initial value (e.g.
+  `tvemax <- -40` with no transform).
+
+- When model estimation fails, all errors raised during the run are now
+  collected and reported together, instead of only the last error. This
+  is supported by a new `collectErr` argument to the internal
+  `.collectWarn()` helper, which captures errors alongside warnings and
+  returns them in the `error` element of its result list. As a result,
+  errors hidden by `on.exit({rxode2::rxProgressAbort()})` handlers
+  (such as the "Aborted calculation" message reported in issue 607)
+  no longer mask the underlying cause; both the inner stop message and
+  any follow-up error from `on.exit` are now reported to the user.
+
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
@@ -58,7 +76,6 @@
 - Use OpenMP threading for S matrix calculation
 
 - Use OpenMP threading wile calculating NPDEs
-
 
 # nlmixr2est 6.0.1
 

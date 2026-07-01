@@ -855,7 +855,6 @@ foceiControl <- function(sigdig = 4, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -1491,8 +1490,8 @@ foceiControl <- function(sigdig = 4, #
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize"))) {
-    .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
+  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize")) && object$outerOptTxt != .ret$outerOptTxt) {
+    .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
@@ -1507,28 +1506,28 @@ foceiControl <- function(sigdig = 4, #
     }
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-      paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {
       if (object[[x]] == 0L) {
         paste0(x, " = \"\"")
       } else {
         .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        paste0(x, " =", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
+        paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
       }
     } else {
-      paste0(x, "=", deparse1(object[[x]]))
+      paste0(x, " = ", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=","),")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=", "), ")"))
 }
 
 #' @export
