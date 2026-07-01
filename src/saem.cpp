@@ -1062,22 +1062,30 @@ public:
                 }
               }
               // Prior penalty for this MCMC sample.
-              // NB: mprior_phiM is N*nmc x nphi (repmat of the per-subject
-              //     prior mean over nmc MCMC samples); we use the k-th block.
-              //     subview (rows result) does not accept uvec for cols(); we
-              //     must first materialise the block as a mat.
+              // NB: cur_phiM is N*nmc x nphi (all phi columns); mprior_phiM
+              //     is N*nmc x nphi1 (or nphi0) -- it is repmat()'d from a
+              //     per-subject prior mean that is already restricted to the
+              //     i1/i0 columns (see set_mcmcphi()/mphi1.mprior_phiM), so
+              //     it must NOT be column-indexed again with i1/i0.
+              //     Slice the k-th row-block of cur_phiM/mprior_phiM directly
+              //     via .rows() -- this only materialises the N-row block
+              //     needed (not the full N*nmc-row matrix), unlike the old
+              //     mat(cur_phiM).rows(...) pattern which forced a full deep
+              //     copy of cur_phiM up front. Armadillo's row-subview does
+              //     not support uvec column indexing directly, so .cols(i1)
+              //     is applied after materialising the (small) row block.
               if (nphi1 > 0) {
-                mat block1     = mat(cur_phiM).rows(k * N, (k + 1) * N - 1);
+                mat block1     = cur_phiM.rows(k * N, (k + 1) * N - 1);
                 mat phi1_k     = block1.cols(i1);
-                mat prior1_k   = mat(mphi1.mprior_phiM).rows(k * N, (k + 1) * N - 1);
+                mat prior1_k   = mphi1.mprior_phiM.rows(k * N, (k + 1) * N - 1);
                 mat dphi1_k    = phi1_k - prior1_k;
                 vec uphi1_k    = 0.5 * sum(dphi1_k % (dphi1_k * IGamma2_phi1), 1);
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi1_k(i);
               }
               if (nphi0 > 0) {
-                mat block0     = mat(cur_phiM).rows(k * N, (k + 1) * N - 1);
+                mat block0     = cur_phiM.rows(k * N, (k + 1) * N - 1);
                 mat phi0_k     = block0.cols(i0);
-                mat prior0_k   = mat(mphi0.mprior_phiM).rows(k * N, (k + 1) * N - 1);
+                mat prior0_k   = mphi0.mprior_phiM.rows(k * N, (k + 1) * N - 1);
                 mat dphi0_k    = phi0_k - prior0_k;
                 vec uphi0_k    = 0.5 * sum(dphi0_k % (dphi0_k * IGamma2_phi0), 1);
                 for (int i = 0; i < N; i++) joint_nll(i + k * N) += uphi0_k(i);
