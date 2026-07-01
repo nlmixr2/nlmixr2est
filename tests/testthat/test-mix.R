@@ -280,6 +280,83 @@ nmTest({
     expect_equal(result, c(p1 = 0.3, p2 = 0.2, 0.5))
   })
 
+  test_that("rxUiGet.thetaIniMix errors on invalid initial mixture probabilities", {
+    # Mock UI objects use mixProbs as a character vector of theta names,
+    # matching the real UI (ui$mixProbs is character, e.g. c("p1","p2")).
+    # Same mocking pattern as the rxUiGet.saemMixProb tests above -- this
+    # bypasses rxode2::mix()'s own UDF check (which only rejects at UI-build
+    # time when the *sum* of probabilities is outside (0, 1); a real UI whose
+    # probabilities are individually invalid but sum to something plausible,
+    # e.g. p1 = 1.5, p2 = -0.6 summing to 0.9, builds successfully and only
+    # rxUiGet.thetaIniMix can catch it before theta is left on the wrong
+    # scale).
+
+    # Single probability > 1
+    ui.obj <- list(list(mixProbs = "p1", theta = c(tka = 0.45, p1 = 1.2)))
+    expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
+
+    # Single probability < 0
+    ui.obj <- list(list(mixProbs = "p1", theta = c(tka = 0.45, p1 = -0.1)))
+    expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
+
+    # Two probabilities, each individually invalid, but summing to a
+    # plausible-looking value (0.9) -- the real-world gap this guards against.
+    ui.obj <- list(list(mixProbs = c("p1", "p2"),
+                        theta = c(tka = 0.45, p1 = 1.5, p2 = -0.6)))
+    expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
+
+    # Two valid-individually probabilities whose sum exceeds 1
+    ui.obj <- list(list(mixProbs = c("p1", "p2"),
+                        theta = c(tka = 0.45, p1 = 0.7, p2 = 0.6)))
+    expect_error(rxUiGet.thetaIniMix(ui.obj), "invalid")
+
+    # Valid probabilities should not error, and should be mlogit-transformed
+    ui.obj <- list(list(mixProbs = "p1", theta = c(tka = 0.45, p1 = 0.5)))
+    result <- expect_no_error(rxUiGet.thetaIniMix(ui.obj))
+    expect_equal(unname(result["p1"]), rxode2::mlogit(0.5))
+    expect_equal(unname(result["tka"]), 0.45)
+  })
+
+  test_that("rxUiGet.thetaIniMix errors (not just warns) on a real UI with individually invalid mixture probabilities", {
+    # This mirrors a real 3-population mixture model (two explicit
+    # probabilities) where rxode2::mix()'s own parse-time check only looks at
+    # the sum (0.9, which passes) and so does not catch that p1 and p2 are
+    # each individually out of [0, 1]. If rxUiGet.thetaIniMix silently left
+    # these untransformed, the raw, wrong-scale values would flow into focei's
+    # initial parameter vector and crash later with a confusing, unrelated
+    # error (e.g. "infinite while evaluating initial objective function")
+    # instead of a clear diagnostic -- verified empirically while implementing
+    # this fix.
+    threePop <- function() {
+      ini({
+        tka   <- log(1.5)
+        tcl1  <- log(1.0)
+        tcl2  <- log(3.0)
+        tcl3  <- log(6.0)
+        tv    <- log(20)
+        p1    <- 1.5   # invalid: > 1
+        p2    <- -0.6  # invalid: < 0 (sum = 0.9, looks plausible)
+        eta.cl1 ~ 0.01
+        eta.cl2 ~ 0.01
+        eta.cl3 ~ 0.01
+        eta.v  ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl1), p1, exp(tcl2 + eta.cl2), p2, exp(tcl3 + eta.cl3))
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    # UI construction succeeds -- rxode2's own check only validates the sum
+    ui <- expect_no_error(rxode2::rxode2(threePop))
+    expect_error(
+      rxUiGet.thetaIniMix(list(ui)),
+      "invalid"
+    )
+  })
+
   test_that(".mixFix guards against a zero row total (all components underflow for a subject)", {
     .mixFix <- nlmixr2est:::.mixFix
     env <- new.env()
