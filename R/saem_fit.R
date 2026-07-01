@@ -489,7 +489,13 @@
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
-
+  if (length(mixProb) > 1L) {
+    # Mixture fits (nMix > 1): the mixture-weighted Gamma2_phi0 computation
+    # can become near-singular for non-mu-referenced phi elements under
+    # some covariance methods (e.g. linFim); floor them higher to keep the
+    # covariance step stable. Non-mixture fits keep the tight 1e-20 floor.
+    minv[i0] <- 1.0
+  }
 
   # preserve par order when printing iter history
   mcov[mcov == 1] <- 1:nlambda
