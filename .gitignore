@@ -40,6 +40,9 @@ tests/testthat/fixtures/*.rds
 /.antigravity/
 /.augment/
 /.cache/
+/.vexp/
+/.antigravity/
+/.augment/
 /.claude/
 /.continue/
 /.cursor/
@@ -53,3 +56,4 @@ tests/testthat/fixtures/*.rds
 # Local code-index tooling (vexp MCP) -- never commit
 .vexp/
 vexp.toml
+/vexp.toml
