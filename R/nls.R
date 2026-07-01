@@ -91,7 +91,7 @@ nlsControl <- function(maxiter=10000,
                        literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
-                       eventSens = c("fd", "jump"),
+                       eventSens = c("jump", "fd"),
                        calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {

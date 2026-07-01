@@ -114,7 +114,7 @@ nlminbControl <- function(eval.max=200,
                           gradTo=1.0,
 
                           addProp = c("combined2", "combined1"),
-                          eventSens = c("fd", "jump"),
+                          eventSens = c("jump", "fd"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
