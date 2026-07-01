@@ -2580,7 +2580,6 @@ void innerOpt() {
     // slot 0 and race -> heap corruption (Windows-only; Linux shares one
     // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
     // Resolved once on the main thread.
->>>>>>> origin/main
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
