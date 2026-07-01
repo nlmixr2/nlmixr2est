@@ -280,4 +280,28 @@ nmTest({
     expect_equal(result, c(p1 = 0.3, p2 = 0.2, 0.5))
   })
 
+  test_that(".mixFix guards against a zero row total (all components underflow for a subject)", {
+    .mixFix <- nlmixr2est:::.mixFix
+    env <- new.env()
+    assign("mixIdx", 1L, envir = env)  # non-empty so the early-return guards pass
+    assign("etaObfFull", data.frame(
+      ID = c(1L, 2L, 1L, 2L),
+      MIXEST = c(1L, 1L, 2L, 2L),
+      `ETA[1]` = c(0.1, 0.2, 0.1, 0.2),
+      OBJI = c(1e6, 1e6, 1e6, 1e6),  # underflows exp(-0.5*OBJI) to exactly 0 for BOTH components
+      check.names = FALSE
+    ), envir = env)
+    assign("etaObf", data.frame(ID = c(1L, 2L), MIXEST = c(1L, 1L),
+                                 `ETA[1]` = c(0.1, 0.2), check.names = FALSE), envir = env)
+    assign("ranef", data.frame(ID = c(1L, 2L), `ETA[1]` = c(0.1, 0.2), check.names = FALSE), envir = env)
+    assign("fixef", c(p1 = 0), envir = env)  # mlogit(0.5) prior when back-transformed
+
+    expect_warning(
+      nlmixr2est:::.mixFix(env, ui = NULL),
+      "underflow|zero.*likelihood|posterior"
+    )
+    .mixList <- get("mixList", envir = env)
+    expect_false(any(vapply(.mixList, function(m) any(is.nan(m$prob)), logical(1))))
+  })
+
 })

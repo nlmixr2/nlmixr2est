@@ -90,6 +90,14 @@
     .llikMat[, k] <- exp(-0.5 * .etaFull$OBJI[.wk]) * .priorProbs[k]
   }
   .rowTotals <- rowSums(.llikMat)
+  .zeroRows <- which(.rowTotals <= 0 | !is.finite(.rowTotals))
+  if (length(.zeroRows) > 0L) {
+    warning(sprintf(
+      "%d subject(s) had zero/underflowed mixture likelihood in all components; falling back to prior probabilities for those subjects",
+      length(.zeroRows)), call. = FALSE)
+    .rowTotals[.zeroRows] <- 1
+    .llikMat[.zeroRows, ] <- matrix(.priorProbs, nrow = length(.zeroRows), ncol = .nMix, byrow = TRUE)
+  }
 
   # Create mixList: one data frame per mixture component
   .mixList <- lapply(seq_len(.nMix), function(k) {
