@@ -243,4 +243,17 @@ test_that("formatMinWidth in parFixed", {
       row.names = c("tka", "tcl", "tv", "add.sd")
     )
   )
+
+  # The FIXED marker must appear even when the fixed parameter is not
+  # literally fixed out of the model (literalFix = FALSE), where the fixed
+  # theta remains in $popDf with an NA standard error.
+  fitNoLiteralFix <-
+    .nlmixr(one.compartment.fixed, theo_sd, est = "focei",
+            control = foceiControl(print = 0, maxInnerIterations = 1,
+                                   maxOuterIterations = 1, eval.max = 1,
+                                   literalFix = FALSE))
+  expect_equal(unname(fitNoLiteralFix$parFixed["tka", "SE"]), "FIXED")
+  expect_equal(unname(fitNoLiteralFix$parFixed["tka", "%RSE"]), "FIXED")
+  expect_equal(unname(fitNoLiteralFix$parFixed["tcl", "SE"]),
+               formatMinWidth(fitNoLiteralFix$parFixedDf["tcl", "SE"], digits = 4))
 })

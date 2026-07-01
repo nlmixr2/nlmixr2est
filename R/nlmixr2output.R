@@ -351,6 +351,14 @@
 
     # Show the fixed values in the model
     .ret$popDf <- .popDf
+  } else {
+    # Without literal fixing (e.g. `literalFix=FALSE`) the fixed population
+    # parameters are still present in `$popDf` with NA standard errors; recover
+    # their names from the model so their SE/%RSE cells are marked `FIXED`
+    # (matches the `literalFix=TRUE` path and the prior C++ behavior).
+    .iniDf <- as.data.frame(.ui$iniDf)
+    .fixedNames <- .iniDf$name[!is.na(.iniDf$ntheta) & .iniDf$fix]
+    .fixedNames <- intersect(.fixedNames, rownames(.ret$popDf))
   }
   # The `sigdig`/`ci` for the $parFixed table come from the estimation control
   # (`.ret$control`).  For fits with literally-fixed parameters `.ui` was
