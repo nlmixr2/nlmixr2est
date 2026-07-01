@@ -855,12 +855,12 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     const char *label = NULL;
     if (scale->showOfv) {
       switch (type) {
-      case 1:  label = "    G|      Gill      |"; break;  // Gill
-      case 2:  label = "    M|     Mixed      |"; break;  // Mixed
-      case 3:  label = "    F|    Forward     |"; break;  // Forward
-      case 4:  label = "    C|    Central     |"; break;  // Central
-      case 5:  label = "    S|     Shi21      |"; break;  // Shi21
-      default: label = "    G|    Gradient    |"; break;
+      case 1:  label = "    G|      Gill     |"; break;  // Gill
+      case 2:  label = "    M|     Mixed     |"; break;  // Mixed
+      case 3:  label = "    F|    Forward    |"; break;  // Forward
+      case 4:  label = "    C|    Central    |"; break;  // Central
+      case 5:  label = "    S|     Shi21     |"; break;  // Shi21
+      default: label = "    G|    Gradient   |"; break;
       }
     } else {
       switch (type) {
