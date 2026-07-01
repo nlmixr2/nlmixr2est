@@ -1,4 +1,52 @@
 nmTest({
+  test_that("SAEM does not clamp non-mu-referenced omega below 1.0 (regression for accidental 1.0 floor)", {
+    set.seed(100)
+    n_subj <- 20
+    d <- do.call(rbind, lapply(1:n_subj, function(i) {
+      times <- c(0.5, 1, 2, 4, 8, 12, 24)
+      data.frame(
+        ID = i,
+        TIME = c(0, times),
+        AMT = c(100, rep(0, length(times))),
+        EVID = c(1, rep(0, length(times))),
+        DV = c(0, rep(1, length(times))),
+        CMT = c(1, rep(2, length(times)))
+      )
+    }))
+
+    one.compartment.i0 <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl <- log(2.0)
+        tv <- log(20)
+        eta.cl ~ 0.01
+        # non-mu-referenced ETA (add.err on tka, not linear in the parameter):
+        eta.ka2 ~ 0.09
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka) + eta.ka2
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+
+    fit <- suppressWarnings(.nlmixr(
+      one.compartment.i0, d, est = "saem",
+      saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
+                  calcTables = FALSE, covMethod = 0L)
+    ))
+    # eta.ka2 is not mu-referenced (added, not multiplied); its estimated
+    # omega must not be silently floored up to 1.0 by the mixture-branch
+    # omega-floor regression.
+    .om <- fit$omega
+    expect_true(.om["eta.ka2", "eta.ka2"] < 0.99)
+  })
+
   test_that("test SAEM mixture model estimation", {
 
     set.seed(42)
