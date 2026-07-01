@@ -603,7 +603,7 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
     int i, finalize=0, n=scale->thetaNames.size();
     int underlineUsed = 0;
     if (scale->showOfv) {
-      RSprintf("\n|    #|  Function |");
+      RSprintf("\n|    #| Function Val. |");
     } else {
       RSprintf("\n|    #|");
     }
@@ -773,7 +773,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       RSprintf("\n");
     }
     if (!scale->simple && !skipU) {
-      if (scale->showOfv) RSprintf("|    U|           |");
+      if (scale->showOfv) RSprintf("|    U|               |");
       else                RSprintf("|    U|");
       for (i = 0; i < scale->npars; i++){
         RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
@@ -800,7 +800,7 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
     if (!scale->simple && !skipX) {
-      if (scale->showOfv) RSprintf("|    X|           |");
+      if (scale->showOfv) RSprintf("|    X|               |");
       else                RSprintf("|    X|");
       for (i = 0; i < scale->npars; i++){
         int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
@@ -853,21 +853,26 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
     // generic "Gradient" label.
     const char *label = NULL;
-    switch (type) {
-    case 1:  label = "    G|      Gill |"; break;  // Gill
-    case 2:  label = "    M|     Mixed |"; break;  // Mixed
-    case 3:  label = "    F|   Forward |"; break;  // Forward
-    case 4:  label = "    C|   Central |"; break;  // Central
-    case 5:  label = "    S|     Shi21 |"; break;  // Shi21
-    default: label = "    G|  Gradient |"; break;
+    if (scale->showOfv) {
+      switch (type) {
+      case 1:  label = "    G|      Gill      |"; break;  // Gill
+      case 2:  label = "    M|     Mixed      |"; break;  // Mixed
+      case 3:  label = "    F|    Forward     |"; break;  // Forward
+      case 4:  label = "    C|    Central     |"; break;  // Central
+      case 5:  label = "    S|     Shi21      |"; break;  // Shi21
+      default: label = "    G|    Gradient    |"; break;
+      }
+    } else {
+      switch (type) {
+      case 1:  label = "    G|"; break;  // Gill
+      case 2:  label = "    M|"; break;  // Mixed
+      case 3:  label = "    F|"; break;  // Forward
+      case 4:  label = "    C|"; break;  // Central
+      case 5:  label = "    S|"; break;  // Shi21
+      default: label = "    G|"; break;
+      }
     }
-    // When showOfv == 0 the gradient label is 12 chars (one column width)
-    // wider than the regular-row prefix (19 vs 7 chars), so the gradient
-    // row must wrap one column earlier to stay the same total line width.
-    // When showOfv == 1 the gradient prefix (19) is shorter than the data
-    // rows (23), so no adjustment is needed.
-    int gradNcol = scale->showOfv ? scale->ncol
-                                  : (scale->ncol > 1 ? scale->ncol - 1 : 1);
+    int gradNcol = scale->ncol;
     if (scale->useColor && gradNcol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
@@ -879,12 +884,7 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
         RSprintf("\033[0m");
       }
       RSprintf("|");
-      // First row wraps at gradNcol columns; continuation rows (which start
-      // with the 7-char |.....| marker, same width as regular rows) wrap at
-      // scale->ncol columns.  Wrap points: gradNcol, gradNcol+ncol, gradNcol+2*ncol, ...
-      if ((i + 1) != scale->npars &&
-          ((i + 1) == gradNcol ||
-           (i + 1 > gradNcol && (i + 1 - gradNcol) % scale->ncol == 0))){
+      if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
         if (scale->useColor && scale->ncol + i >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
@@ -895,22 +895,19 @@ static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
     }
     if (finalize){
       while(true){
-        // Pad the last continuation row to the next scale->ncol boundary,
-        // measured from the start of the first continuation row (gradNcol).
-        if ((i - gradNcol) % scale->ncol == 0){
+        if ((i++) % scale->ncol == 0){
           if (scale->useColor) RSprintf("\033[0m");
           RSprintf("\n");
           break;
         } else {
           RSprintf("...........|");
-          i++;
         }
       }
     } else {
       RSprintf("\n");
     }
     if (!scale->useColor){
-      scalePrintLine(scale, finalize ? scale->ncol : min2(scale->npars, gradNcol));
+      scalePrintLine(scale, min2(scale->npars, scale->ncol));
     }
   }
   if (scale->save) {
