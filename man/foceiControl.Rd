@@ -74,6 +74,8 @@ foceiControl(
   resetHessianAndEta = FALSE,
   muModel = c("none", "irls", "lin"),
   muRefCovAlg = TRUE,
+  muModelTol = 0.001,
+  muModelMaxCycles = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -635,6 +637,16 @@ constructors simply default it to \code{"lin"}/\code{"irls"}.}
     (\code{muModel != "none"}); it mirrors
     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
     reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
+
+\item{muModelTol}{Convergence tolerance for the mu-referenced-FOCEI-family
+restart loop (\code{muModel != "none"}). A cycle is considered
+converged when the relative change in the objective function value
+between cycles is less than \code{muModelTol}.}
+
+\item{muModelMaxCycles}{Maximum number of restart cycles for the
+mu-referenced-FOCEI-family restart loop (\code{muModel != "none"})
+before giving up on convergence and finalizing with whatever the
+last cycle produced.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 

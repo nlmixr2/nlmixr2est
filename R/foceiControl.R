@@ -324,6 +324,16 @@
 #'     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
 #'     reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.
 #'
+#' @param muModelTol Convergence tolerance for the mu-referenced-FOCEI-family
+#'     restart loop (\code{muModel != "none"}). A cycle is considered
+#'     converged when the relative change in the objective function value
+#'     between cycles is less than \code{muModelTol}.
+#'
+#' @param muModelMaxCycles Maximum number of restart cycles for the
+#'     mu-referenced-FOCEI-family restart loop (\code{muModel != "none"})
+#'     before giving up on convergence and finalizing with whatever the
+#'     last cycle produced.
+#'
 #' @param diagOmegaBoundUpper This represents the upper bound of the
 #'     diagonal omega matrix.  The upper bound is given by
 #'     diag(omega)*diagOmegaBoundUpper.  If
@@ -913,6 +923,8 @@ foceiControl <- function(sigdig = 4, #
                          resetHessianAndEta = FALSE, #
                          muModel = c("none", "irls", "lin"), #
                          muRefCovAlg = TRUE, #
+                         muModelTol = 1e-3, #
+                         muModelMaxCycles = 10L, #
                          stateTrim = Inf, #
                          shi21maxOuter = 0L,
                          shi21maxInner = 20L,
@@ -1345,6 +1357,9 @@ foceiControl <- function(sigdig = 4, #
 
   muModel <- match.arg(muModel)
   checkmate::assertLogical(muRefCovAlg, any.missing=FALSE, len=1)
+  checkmate::assertNumeric(muModelTol, lower=0, len=1, any.missing=FALSE)
+  checkmate::assertIntegerish(muModelMaxCycles, lower=1, len=1, any.missing=FALSE)
+  muModelMaxCycles <- as.integer(muModelMaxCycles)
 
   checkmate::assertNumeric(stateTrim, lower=0, len=1, any.missing=FALSE)
   checkmate::assertNumeric(covSmall, lower=0, any.missing=FALSE, finite=TRUE)
@@ -1446,6 +1461,8 @@ foceiControl <- function(sigdig = 4, #
     resetHessianAndEta = resetHessianAndEta,
     muModel = muModel,
     muRefCovAlg = muRefCovAlg,
+    muModelTol = as.double(muModelTol),
+    muModelMaxCycles = muModelMaxCycles,
     stateTrim = as.double(stateTrim),
     gillK = as.integer(gillK),
     gillKcov = as.integer(gillKcov),
