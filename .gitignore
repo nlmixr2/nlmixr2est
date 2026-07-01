@@ -38,3 +38,15 @@ docs
 revdep/
 tests/testthat/fixtures/*.rds
 /.vexp/
+/.antigravity/
+/.augment/
+/.claude/
+/.continue/
+/.cursor/
+/.kilocode/
+/.kiro/
+/.vscode/
+/.windsurf/
+/.zed/
+/compile_commands.json
+/vexp.toml
