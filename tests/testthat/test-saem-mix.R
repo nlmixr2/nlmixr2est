@@ -1,26 +1,41 @@
 nmTest({
-  test_that("SAEM does not clamp non-mu-referenced omega below 1.0 (regression for accidental 1.0 floor)", {
-    set.seed(100)
-    n_subj <- 20
-    d <- do.call(rbind, lapply(1:n_subj, function(i) {
-      times <- c(0.5, 1, 2, 4, 8, 12, 24)
-      data.frame(
-        ID = i,
-        TIME = c(0, times),
-        AMT = c(100, rep(0, length(times))),
-        EVID = c(1, rep(0, length(times))),
-        DV = c(0, rep(1, length(times))),
-        CMT = c(1, rep(2, length(times)))
-      )
+  test_that(".configsaem only floors the i0 (no-eta) phi variance at 1.0 for mixture fits (nMix>1)", {
+    # i0 indexes phi positions with NO associated eta at all (ordinary
+    # fixed-effect/population-only thetas, e.g. tka below) -- not
+    # "non-mu-referenced etas". Capture .configsaem()'s returned cfg (which
+    # includes minv and i0 directly) via trace()'s exit hook, aborting right
+    # after .configsaem returns so this test doesn't pay for a full
+    # stochastic SAEM fit. The tracer runs inside .configsaem's own call
+    # frame, so it writes to .GlobalEnv (always lexically reachable)
+    # rather than a test-local environment.
+    withr::defer(if (exists(".sddCfgCapture", envir = .GlobalEnv)) {
+      rm(".sddCfgCapture", envir = .GlobalEnv)
+    })
+    .captureCfg <- function() {
+      trace(".configsaem",
+            exit = quote({
+              assign(".sddCfgCapture", returnValue(), envir = .GlobalEnv)
+              stop("test-capture-exit")
+            }),
+            print = FALSE, where = asNamespace("nlmixr2est"))
+      withr::defer(suppressMessages(untrace(".configsaem", where = asNamespace("nlmixr2est"))),
+                   envir = parent.frame())
+    }
+
+    d <- do.call(rbind, lapply(1:8, function(i) {
+      times <- c(0.5, 1, 2, 4, 8)
+      data.frame(ID = i, TIME = c(0, times), AMT = c(100, rep(0, length(times))),
+                 EVID = c(1, rep(0, length(times))), DV = c(0, rep(1, length(times))),
+                 CMT = c(1, rep(2, length(times))))
     }))
 
+    # Non-mixture model: tka has no eta at all (i0 element).
     one.compartment.i0 <- function() {
       ini({
         tka <- log(1.5)
         tcl <- log(2.0)
         tv <- log(20)
         eta.cl ~ 0.01
-        # non-mu-referenced ETA (add.err on tka, not linear in the parameter):
         eta.ka2 ~ 0.09
         add.sd <- 0.05
       })
@@ -34,17 +49,48 @@ nmTest({
         cp ~ add(add.sd)
       })
     }
+    .captureCfg()
+    suppressWarnings(suppressMessages(try(
+      .nlmixr(one.compartment.i0, d, est = "saem",
+              saemControl(print = 0, nBurn = 1, nEm = 1, calcTables = FALSE)),
+      silent = TRUE
+    )))
+    expect_true(length(.sddCfgCapture$i0) >= 1)
+    expect_equal(unname(.sddCfgCapture$minv[.sddCfgCapture$i0 + 1L]),
+                 rep(1e-20, length(.sddCfgCapture$i0)))
+    rm(".sddCfgCapture", envir = .GlobalEnv)
 
-    fit <- suppressWarnings(.nlmixr(
-      one.compartment.i0, d, est = "saem",
-      saemControl(print = 0, seed = 1234, nBurn = 5, nEm = 5,
-                  calcTables = FALSE, covMethod = 0L)
-    ))
-    # eta.ka2 is not mu-referenced (added, not multiplied); its estimated
-    # omega must not be silently floored up to 1.0 by the mixture-branch
-    # omega-floor regression.
-    .om <- fit$omega
-    expect_true(.om["eta.ka2", "eta.ka2"] < 0.99)
+    # Mixture model (nMix=2): same no-eta tka, but mixProb has length > 1.
+    one.compartment.mix.i0 <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- log(1.0)
+        tcl2 <- log(5.0)
+        tv <- log(20)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    .captureCfg()
+    suppressWarnings(suppressMessages(try(
+      .nlmixr(one.compartment.mix.i0, d, est = "saem",
+              saemControl(print = 0, nBurn = 1, nEm = 1, calcTables = FALSE)),
+      silent = TRUE
+    )))
+    expect_true(length(.sddCfgCapture$i0) >= 1)
+    expect_equal(unname(.sddCfgCapture$minv[.sddCfgCapture$i0 + 1L]),
+                 rep(1.0, length(.sddCfgCapture$i0)))
   })
 
   test_that("test SAEM mixture model estimation", {
