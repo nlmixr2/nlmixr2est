@@ -4315,16 +4315,10 @@ NumericVector foceiSetup_(const RObject &obj,
     std::copy(mixIdx.begin(), mixIdx.end(), op_focei.mixIdx);
     // Re-run mixTrans setup now that op_focei.mixIdx is filled.
     // foceiSetupMixTrans was called earlier (when mixIdx was NULL) and only
-    // set all entries to -1; now fill in the real mixture-parameter indices.
+    // set all entries to -1; now fill in the real mixture-parameter indices
+    // by calling the same function again for every parameter.
     for (unsigned int _k = op_focei.npars; _k--;) {
-      int _j = op_focei.fixedTrans[_k];
-      op_focei.mixTrans[_k] = -1;
-      for (unsigned int _m = 0; _m < op_focei.mixIdxN; ++_m) {
-        if (op_focei.mixIdx[_m] - 1 == _j) {
-          op_focei.mixTrans[_k] = (int)_m;
-          break;
-        }
-      }
+      foceiSetupMixTrans((int)_k, op_focei.fixedTrans[_k]);
     }
   }
 
