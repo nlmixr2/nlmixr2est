@@ -462,18 +462,18 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -705.7412 1138.136 1152.859      -566.0679        535.8155        57.39475
+#> lPop -705.7412 1138.136 1152.859      -566.0679        535.8212         57.3951
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup    optimize preprocess postprocess table    other
-#> elapsed 0.02008074 0.001976458      0.043       0.016 0.029 1.538943
+#>              setup    optimize preprocess postprocess table compress    other
+#> elapsed 0.01910153 0.001942267      0.041       0.016 0.029    0.001 1.497956
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
 #> E0  -0.5294 0.2242 42.35 -0.5294 (-0.9689, -0.08994)                    
-#> Em    6.175  2.876 46.59       6.175 (0.5367, 11.81)                    
+#> Em    6.175  2.877 46.59       6.175 (0.5367, 11.81)                    
 #> E50   3.204  1.307 40.77       3.204 (0.6436, 5.765)                    
 #> g         2  FIXED FIXED                           2                    
 #>  
@@ -492,9 +492,9 @@ print(fit2)
 # you can also get the nlm output with
 
 fit2$bobyqa
-#> parameter estimates: -0.529410192581332, 6.17452980894056, 3.20433256185686 
-#> objective: 566.067911160649 
-#> number of function evaluations: 407 
+#> parameter estimates: -0.529410062523091, 6.17454286590706, 3.20433769295219 
+#> objective: 566.067911160651 
+#> number of function evaluations: 224 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

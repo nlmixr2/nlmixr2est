@@ -2,6 +2,14 @@
 
 ## nlmixr2est (development version)
 
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude. Previously
+  a missing branch in `.foceiOptEnvSetupScaleC()` let `scaleC` fall
+  through to the C++ default of `1/|init|`, which mapped unit steps in
+  scaled space to negligible steps in unscaled space and effectively
+  pinned such parameters at their initial value (e.g. `tvemax <- -40`
+  with no transform).
+
 - When model estimation fails, all errors raised during the run are now
   collected and reported together, instead of only the last error. This
   is supported by a new `collectErr` argument to the internal
