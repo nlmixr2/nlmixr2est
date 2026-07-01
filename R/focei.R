@@ -269,6 +269,50 @@ is.latex <- function() {
   .ret
 }
 
+.rxode2stateOdeNoOutput <- function(x) {
+  setdiff(rxode2stateOde(x), "output")
+}
+
+.rxInjectMatExpDdt <- function(s) {
+  .mv <- rxode2::rxModelVars(s)
+  if (!is.list(.mv$indLin) || length(.mv$indLin) != 4L) {
+    return(invisible(FALSE))
+  }
+  .states <- .rxode2stateOdeNoOutput(s)
+  if (length(.states) == 0L) {
+    return(invisible(FALSE))
+  }
+  rxode2::.rxInjectMatExpOdes(s)
+  .ddt <- stats::setNames(rep("0", length(.states)), .states)
+  for (.p in ls(envir = s, all.names = TRUE)) {
+    .m <- regexec("^k[_.]([^_.]+)[_.]([^_.]+)$", .p)[[1L]]
+    if (length(.m) == 1L) {
+      next
+    }
+    .from <- substring(.p, .m[2L], .m[2L] + attr(.m, "match.length")[2L] - 1L)
+    .to <- substring(.p, .m[3L], .m[3L] + attr(.m, "match.length")[3L] - 1L)
+    if (.from %in% .states) {
+      .ddt[[.from]] <- base::paste0(.ddt[[.from]], "-(", .p, ")*", .from)
+    }
+    if (.to %in% .states) {
+      .ddt[[.to]] <- base::paste0(.ddt[[.to]], "+(", .p, ")*", .from)
+    }
+  }
+  # Append any indLin() forcing functions (e.g. Michaelis-Menten elimination)
+  # captured by rxode2::rxS() (stored as per-state rx__indLinForce_<state>__
+  # symengine variables) so the emitted d/dt() includes the nonlinear term.
+  for (.st in .states) {
+    .forceName <- base::paste0("rx__indLinForce_", .st, "__")
+    if (base::exists(.forceName, envir = s, inherits = FALSE)) {
+      .force <- base::get(.forceName, envir = s, inherits = FALSE)
+      .ddt[[.st]] <- base::paste0(.ddt[[.st]], "+(",
+                                  rxode2::rxFromSE(.force), ")")
+    }
+  }
+  s$..ddt <- base::paste0("d/dt(", .states, ")=", .ddt)
+  invisible(TRUE)
+}
+
 #' Get the THETA/ETA lines from rxode2 UI
 #'
 #' @param rxui This is the rxode2 ui object
@@ -341,7 +385,7 @@ attr(rxUiGet.foceiParams, "rstudio") <- "params(THETA[1], ETA[1])"
 #' @export
 rxUiGet.foceiCmtPreModel <- function(x, ...) {
   .ui <- x[[1]]
-  .state <- rxode2stateOde(.ui$mv0)
+  .state <- .rxode2stateOdeNoOutput(.ui$mv0)
   if (length(.state) == 0) return("")
   paste(paste0("cmt(", .state, ")"), collapse="\n")
 }
@@ -551,7 +595,12 @@ attr(rxUiGet.loadPrune, "rstudio") <- emptyenv()
   if (length(.etaVars) == 0L) {
     stop("cannot identify parameters for sensitivity analysis\n   with nlmixr2 an 'eta' initial estimate must use '~'", call. = FALSE)
   }
-  .stateVars <- rxode2stateOde(s)
+  .stateVars <- .rxode2stateOdeNoOutput(s)
+  # matExp() models are handled transparently here: rxode2::.rxJacobian calls
+  # .rxInjectMatExpOdes(), which materializes the implied d/dt() from the
+  # k_from_to rate constants so the standard ODE Jacobian/sensitivity machinery
+  # applies.  The original-state d/dt() lines are emitted later by
+  # .rxInjectMatExpDdt() in the .rxFinalize* functions.
   rxode2::.rxJacobian(s, c(.stateVars, .etaVars))
   rxode2::.rxSens(s, .etaVars)
   s
@@ -577,7 +626,7 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
-  .stateVars <- rxode2stateOde(.s)
+  .stateVars <- .rxode2stateOdeNoOutput(.s)
   # FIXME: take out pred.minus.dv
   .predMinusDv <- rxode2::rxGetControl(x[[1]], "predMinusDv", TRUE)
   .grd <- rxode2::rxExpandFEta_(
@@ -631,6 +680,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 #' @noRd
 .rxFinalizeInner <- function(.s, sum.prod = FALSE,
                              optExpression = TRUE) {
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
@@ -645,9 +695,19 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- character(0)
+  .lhs <- .s$..lhs
+  if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
+  # Only matExp() models need the model LHS here: it defines the k_from_to rate
+  # constants that the materialized d/dt() lines reference.  For ordinary models
+  # the d/dt()/sensitivity equations are self-contained, so the LHS is omitted.
+  # The LHS is emitted as suppressed assignments ('~' not '=') so it does not add
+  # output columns -- extra output columns shift the column layout the FOCEi C++
+  # reads and corrupt the inner objective.
+  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
   .s$..inner <- paste(c(
+    .preLhs,
     .ddt,
     .sens,
     .yj,
@@ -663,6 +723,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     ""
   ), collapse = "\n")
   .s$..innerOeta <- paste(c(
+    .preLhs,
     .ddt,
     .sens,
     .yj,
@@ -698,7 +759,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.foceiEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
-  .stateVars <- rxode2stateOde(.s)
+  .stateVars <- .rxode2stateOdeNoOutput(.s)
   .grd <- rxode2::rxExpandFEta_(.stateVars, .s$..maxEta, FALSE)
   if (rxode2::.useUtf()) {
     .malert("calculate \u2202(R\u00B2)/\u2202(\u03B7)")
@@ -760,13 +821,19 @@ rxUiGet.getEBEEnv <- function(x, ...) {
 #attr(rxUiGet.getEBEEnv, "desc") <- "Get the EBE environment"
 attr(rxUiGet.getEBEEnv, "rstudio") <- emptyenv()
 
-.toRx <- function(x, msg) {
+.toRx <- function(x, msg, eventSens = "fd") {
   if (is.null(x)) {
     return(NULL)
   }
   .malert(msg)
+  ## eventSens="jump" attaches rxode2's analytic event ("jump") sensitivity
+  ## information to the model so the dosing-parameter (alag/F/rate/dur/...)
+  ## sensitivities are computed analytically rather than by finite differences.
+  ## Passed only for models that carry the sensitivity equations (the inner
+  ## model); "fd" everywhere else preserves the legacy behavior.
   .ret <- rxode2::rxode2(paste(nlmixr2global$toRxParam, x,
-                               nlmixr2global$toRxDvidCmt))
+                               nlmixr2global$toRxDvidCmt),
+                         eventSens = eventSens)
   .msuccess("done")
   .ret
 }
@@ -805,6 +872,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
 
 .rxFinalizePred <- function(.s, sum.prod = FALSE,
                             optExpression = TRUE) {
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .r <- get("rx_r_", envir = .s)
@@ -823,9 +891,17 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   if (is.null(.lhs)) .lhs <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  # For matExp() models the model LHS defines the k_from_to rate constants that
+  # the materialized d/dt() lines reference, so the LHS must precede the d/dt().
+  # It is emitted suppressed ('~' not '=') so it does not add output columns.
+  # Other models keep the LHS after the prediction (some error-model LHS depend
+  # on rx_pred_).
+  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
+  .postLhs <- if (.isMatExp) character(0) else .lhs
   .s$..pred <- paste(c(
     .s$..stateInfo["state"],
     .lhs0,
+    .preLhs,
     .ddt,
     .yj,
     .lambda,
@@ -833,7 +909,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .low,
     .prd,
     .r,
-    .lhs,
+    .postLhs,
     .s$..stateInfo["statef"],
     .s$..stateInfo["dvid"],
     "tad=tad()",
@@ -843,6 +919,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   .s$..pred.nolhs <- paste(c(
     .s$..stateInfo["state"],
     .lhs0,
+    .preLhs,
     .ddt,
     .yj,
     .lambda,
@@ -885,24 +962,39 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   } else {
     .eventEta <- integer()
   }
-  for (.v in s$..eventVars) {
-    .vars <- as.character(get(.v, envir = s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventEta[.num] <- 1L
-      }
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## Event-sensitivity method.  "jump" enables rxode2's analytic dosing-parameter
+  ## (alag/F/rate/dur) sensitivities.
+  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "fd")
+  ## `eventEta`/`eventTheta` flag the parameters that enter a dosing expression
+  ## (alag/F/rate/dur).  In the legacy "fd" path inner.cpp computes their
+  ## sensitivity by finite differences (predOde) because the analytic `rx__sens`
+  ## states miss the event jump.  Under "jump" rxode2 injects the analytic jump
+  ## into those `rx__sens` states, so the analytic gradient is now correct and
+  ## the finite-difference fallback must be turned OFF -- otherwise the
+  ## jump-corrected sensitivity is computed but never used.  Leaving the flags at
+  ## zero routes every parameter through the analytic innerOde sensitivity.
+  if (!identical(.eventSens, "jump")) {
+    for (.v in s$..eventVars) {
+      .vars <- as.character(get(.v, envir = s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "ETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventEta[.num] <- 1L
+        }
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
   pred.opt <- NULL
-  inner <- .toRx(s$..inner, "compiling inner model...")
+  ## Build the inner (sensitivity) model with the requested event-sensitivity
+  ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .eventSens)
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
@@ -1036,10 +1128,15 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   .sumProd <- rxode2::rxGetControl(.ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(.ui, "optExpression", TRUE)
   .predMinusDv   <- rxode2::rxGetControl(.ui, "predMinusDv", TRUE)
+  ## eventSens changes the inner model codegen (analytic jump sensitivities) and
+  ## the eventEta/eventTheta finite-difference flags, so it must be part of the
+  ## cache key -- otherwise a "jump" build would reuse a cached "fd" model.
+  .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "fd")
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
+                   .eventSens,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
@@ -1599,6 +1696,22 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   }
   this.env <- new.env(parent=emptyenv())
   assign("err", "theta reset", this.env)
+  ## Event ("jump") sensitivities: when requested, point rxode2's event-
+  ## sensitivity globals at the inner (sensitivity) model right before the C++
+  ## fit, which solves the inner model through a direct ind_solve() loop (so it
+  ## never goes through rxSolve()/.rxSetEventSensDims()).  The handle_evid jump
+  ## injection is compartment-count guarded, so the smaller pred model solved in
+  ## the same loop skips it safely.  Reset on exit.
+  .eventSens <- tryCatch(.ret$control$eventSens, error=function(e) "fd")
+  if (identical(.eventSens, "jump") &&
+        exists("model", .ret) && !is.null(.ret$model$inner)) {
+    .esLoaded <- tryCatch(
+      rxode2::rxEventSensLoadModel(.ret$model$inner),
+      error=function(e) FALSE)
+    if (isTRUE(.esLoaded)) {
+      on.exit(rxode2::rxEventSensDeactivate(), add=TRUE)
+    }
+  }
   .thetaReset$thetaNames <- .ret$thetaNames
   if (getOption("nlmixr2.retryFocei", TRUE)) {
     while (this.env$err == "theta reset") {

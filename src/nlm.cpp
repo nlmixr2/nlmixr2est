@@ -617,6 +617,58 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
   return ret;
 }
 
+//' Per-subject prediction and Jacobian for mixed-effects engines
+//'
+//' Unlike the population gradient solver, which applies a single
+//' \code{theta} to every subject, this takes an \code{nsub x ntheta}
+//' matrix whose row \code{id} holds that subject's parameter vector
+//' (\code{phi = beta + b}, as supplied by \code{lme4::nlmer}).  Each
+//' subject is solved reusing the loaded \code{thetaGrad} model,
+//' sticky-tolerance recalculation, event finite differences, and jump
+//' sensitivities.  The nonlinear problem must already be loaded with
+//' \code{.nlmSetupEnv()}.
+//'
+//' @param thetaMat A \code{nsub x ntheta} matrix of per-subject
+//'   parameter values.  Row \code{id} is solved against subject
+//'   \code{id} (in the loaded \code{etTrans} order).
+//'
+//' @return A \code{nobsTot x (ntheta+1)} matrix in the loaded
+//'   (\code{etTrans}) observation order: column 1 is the prediction
+//'   (\code{rx_pred_}) and columns 2..(ntheta+1) are
+//'   \code{d(pred)/d(THETA[i])}.
+//'
+//' @details This is an internal function and should not be called
+//'   directly.
+//'
+//' @author Matthew L. Fidler
+//' @keywords internal
+//' @export
+//[[Rcpp::export]]
+RObject nlmerSolveGrad(arma::mat &thetaMat) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
+  int nsub = getRxNsub(rx);
+  if ((int)thetaMat.n_rows != nsub) {
+    stop("'thetaMat' must have one row per subject");
+  }
+  if ((int)thetaMat.n_cols != (int)nlmOp.ntheta) {
+    stop("'thetaMat' must have one column per estimated parameter");
+  }
+  arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores)
+#endif
+  for (int id = 0; id < nsub; ++id) {
+    setRxThreadId(omp_get_thread_num());
+    arma::vec th = thetaMat.row(id).t();
+    ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(th, id);
+    setRxThreadId(-1);
+  }
+  return wrap(ret);
+}
+
 //[[Rcpp::export]]
 RObject nlmSetScaleC(NumericVector scaleC) {
   if (!nlmOp.loaded) stop("'nlm' problem not loaded");

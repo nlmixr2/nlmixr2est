@@ -156,6 +156,36 @@ nlmSolveR <- function(theta) {
     .Call(`_nlmixr2est_nlmSolveR`, theta)
 }
 
+#' Per-subject prediction and Jacobian for mixed-effects engines
+#'
+#' Unlike the population gradient solver, which applies a single
+#' \code{theta} to every subject, this takes an \code{nsub x ntheta}
+#' matrix whose row \code{id} holds that subject's parameter vector
+#' (\code{phi = beta + b}, as supplied by \code{lme4::nlmer}).  Each
+#' subject is solved reusing the loaded \code{thetaGrad} model,
+#' sticky-tolerance recalculation, event finite differences, and jump
+#' sensitivities.  The nonlinear problem must already be loaded with
+#' \code{.nlmSetupEnv()}.
+#'
+#' @param thetaMat A \code{nsub x ntheta} matrix of per-subject
+#'   parameter values.  Row \code{id} is solved against subject
+#'   \code{id} (in the loaded \code{etTrans} order).
+#'
+#' @return A \code{nobsTot x (ntheta+1)} matrix in the loaded
+#'   (\code{etTrans}) observation order: column 1 is the prediction
+#'   (\code{rx_pred_}) and columns 2..(ntheta+1) are
+#'   \code{d(pred)/d(THETA[i])}.
+#'
+#' @details This is an internal function and should not be called
+#'   directly.
+#'
+#' @author Matthew L. Fidler
+#' @keywords internal
+#' @export
+nlmerSolveGrad <- function(thetaMat) {
+    .Call(`_nlmixr2est_nlmerSolveGrad`, thetaMat)
+}
+
 nlmSetScaleC <- function(scaleC) {
     .Call(`_nlmixr2est_nlmSetScaleC`, scaleC)
 }
