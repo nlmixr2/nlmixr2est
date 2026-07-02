@@ -3,7 +3,7 @@
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl")
+                           "iterPrintControl", "est")
 
 #' Control Options for FOCEi
 #'
