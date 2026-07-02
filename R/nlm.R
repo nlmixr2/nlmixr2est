@@ -712,7 +712,7 @@ rxUiGet.nlmEnv <- function(x, ...) {
   ## OFF (otherwise the jump-corrected column is computed but discarded for FD).
   ## Leaving the flags at zero routes every parameter through the analytic
   ## sensitivity.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   if (!identical(.eventSens, "jump")) {
     for (.v in .s$..eventVars) {
       .vars <- as.character(get(.v, envir = .s))
@@ -756,7 +756,7 @@ rxUiGet.nlmSensModel <- function(x, ...) {
   ## jumps analytically.  nlm reads the analytic rx__sens_*_BY_THETA_n___ values
   ## as its only gradient source (it has no event finite-difference fallback), so
   ## under "fd" the gradient simply misses the jump.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)

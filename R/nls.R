@@ -740,7 +740,7 @@ rxUiGet.nlsEnv <- function(x, ...) {
   ## analytically into the rx__sens states, so skip the finite-difference
   ## override (nlmOp.thetaFD) for the event parameters; "fd" keeps it.  See the
   ## matching gate in nlm's rxUiGet.nlmEnv.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   if (!identical(.eventSens, "jump")) {
     for (.v in .s$..eventVars) {
       .vars <- as.character(get(.v, envir = .s))
@@ -765,7 +765,7 @@ rxUiGet.nlsSensModel <- function(x, ...) {
   ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
   ## the residual-Jacobian (thetaGrad) model so the least-squares gradient picks
   ## up the dosing jumps analytically instead of by finite differences.
-  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   list(thetaGrad=rxode2::rxode2(.s$..nlsS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)

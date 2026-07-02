@@ -1032,7 +1032,9 @@ foceiControl <- function(sigdig = 4, #
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
+                         eventSens = c("jump", "fd"),
                          boundedTransform=TRUE) { #
+  eventSens <- match.arg(eventSens)
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1580,6 +1582,7 @@ foceiControl <- function(sigdig = 4, #
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
+    eventSens=eventSens,
     boundedTransform=boundedTransform
   )
   if (!is.null(.xtra$est)) {
