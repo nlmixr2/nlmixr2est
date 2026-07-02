@@ -31,6 +31,7 @@ n1qn1Control(
   literalFix = TRUE,
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),

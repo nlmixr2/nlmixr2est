@@ -33,6 +33,7 @@ lbfgsb3cControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", ""),

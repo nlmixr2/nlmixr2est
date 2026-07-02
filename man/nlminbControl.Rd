@@ -46,6 +46,7 @@ nlminbControl(
   scaleTo = 1,
   gradTo = 1,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),

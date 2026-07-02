@@ -26,6 +26,7 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  eventSens = c("jump", "fd"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,

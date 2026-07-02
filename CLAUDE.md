@@ -83,3 +83,8 @@ shutdown signal"):
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
 - `R/nlmixr2Est.R` contains the central S3 dispatch table — look here to understand what methods exist
+
+## Coding Conventions
+
+- **R Style**: All variable and function names in R must be in `camelCase` (e.g., `simData`, `fitSaem`, `oneCompartmentMix`). Do not use `snake_case` or `dot.case` for R objects.
+- **C++ Style**: Follow Rcpp/Armadillo conventions. Use `snake_case` or `camelCase` as appropriate.

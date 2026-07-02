@@ -49,6 +49,7 @@ optimControl(
   literalFixRes = TRUE,
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "optim", ""),

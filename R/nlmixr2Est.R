@@ -208,13 +208,21 @@ nlmixr2Est0 <- function(env, ...) {
     if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, envir=.envReset)
     while (get("reset", envir=.envReset)) {
       assign("reset", FALSE, envir=.envReset)
-      assign("ret", try(.collectWarn(nlmixr2Est(env, ...), lst = TRUE)), envir=.envReset)
-      if (inherits(get("ret", envir=.envReset), "try-error")) {
-        .msg <- attr(get("ret", envir=.envReset), "condition")$message
-        if (regexpr("not provided by package", .msg) != -1) {
+      ret <- .collectWarn(nlmixr2Est(env, ...), lst = TRUE, collectErr = TRUE)
+      if (!is.null(ret[[1]]) || !exists("ret", envir=.envReset, inherits=FALSE)) {
+        # Store the result on the first pass unconditionally, and on later
+        # cache-reset passes only when the inner fit produced a model object
+        # (so a retry that yields NULL does not clobber an earlier success).
+        # Estimation methods that legitimately return a NULL model (e.g.
+        # est="monolix" create-without-running, est="saemix") still need
+        # `.envReset$ret` set so the downstream `get("ret", ...)` succeeds.
+        assign("ret", ret, envir=.envReset)
+      }
+      if (length(ret$error) > 0) {
+        if (any(regexpr(pattern = "not provided by package", text = ret$error) != -1)) {
           if (get("cacheReset", envir=.envReset)) {
             .malert("unsuccessful cache reset; try manual reset with 'rxode2::rxClean()'")
-            stop(.msg, call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
@@ -236,10 +244,10 @@ nlmixr2Est0 <- function(env, ...) {
             assign("reset", TRUE, envir=.envReset)
             .msuccess("done")
           }
-        } else if (regexpr("maximal number of DLLs reached", .msg) != -1) {
+        } else if (any(regexpr("maximal number of DLLs reached", ret$error) != -1)) {
           if (.envReset$unload) {
             .malert("Could not unload rxode2 models, try restarting R")
-            stop(.msg, call.=FALSE)
+            stop(paste(ret$error, collapse = "\n"), call.=FALSE)
           } else {
             # reset
             if (is.environment(.envReset)) {
@@ -263,7 +271,7 @@ nlmixr2Est0 <- function(env, ...) {
             .msuccess("done")
           }
         } else {
-          stop(.msg, call.=FALSE)
+          stop(paste(ret$error, collapse = "\n"), call.=FALSE)
         }
       }
       if (length(get("reset", envir=.envReset)) != 1) assign("reset", TRUE, .envReset)

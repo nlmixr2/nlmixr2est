@@ -46,6 +46,7 @@ nlsControl(
   literalFix = TRUE,
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
