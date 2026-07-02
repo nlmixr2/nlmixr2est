@@ -60,7 +60,7 @@ foceiControl(
   fo = FALSE,
   covTryHarder = FALSE,
   outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "uobyqa", "newuoa"),
+    "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -72,6 +72,10 @@ foceiControl(
   abstol = NULL,
   reltol = NULL,
   resetHessianAndEta = FALSE,
+  muModel = c("none", "irls", "lin"),
+  muRefCovAlg = TRUE,
+  muModelTol = 0.001,
+  muModelMaxCycles = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -584,6 +588,103 @@ not recommended. If not defined, it will be set to 2*n + 1. (bobyqa)}
 \item{resetHessianAndEta}{is a boolean representing if the
 individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
+
+\item{muModel}{Selects the mu-referenced-FOCEI-family regression
+    variant used for any theta/eta that participates in a mu-ref
+    covariate relationship (see \code{muRefCovAlg}). One of:
+    \itemize{
+      \item{\code{"none"}} (default) -- the ordinary FOCEI family
+        behavior; every theta (including covariate coefficients)
+        is estimated by the outer optimizer and every eta by the
+        standard inner optimization, exactly as today.
+      \item{\code{"lin"}} -- used by the \code{mufocei}/
+        \code{mufoce}/\code{muagq}/\code{mulaplace} methods. For
+        each mu-ref-covariate theta/eta group, the population theta
+        and its covariate coefficient(s) are excluded from the outer
+        optimizer's gradient search entirely; instead, a closed-form
+        (OLS) regression of each subject's back-calculated individual
+        value on the covariate(s) re-derives them directly, and the
+        regression residual becomes that subject's eta. This runs
+        natively in C++ inside the same inner-optimization pass that
+        already updates every other eta each outer iteration -- there
+        is no separate restart loop, no repeated model
+        setup/compilation, and no R-level round trip. Because a
+        single regression pass does not by itself guarantee the etas
+        it started from are still each subject's true conditional
+        mode once the regression moves the population/covariate
+        thetas, the "re-optimize every eta, then regress" step is
+        repeated in place (still entirely in C++, still within the
+        same outer iteration) until the mu-group thetas stop moving
+        by more than \code{muModelTol}, or \code{muModelMaxCycles} is
+        reached -- see those two arguments.
+      \item{\code{"irls"}} -- used by the \code{irlsfocei}/
+        \code{irlsfoce}/\code{irlsagq}/\code{irlslaplace} methods.
+        Same mechanism as \code{"lin"} but the regression is
+        reweighted by each subject's inner-optimization curvature/
+        precision instead of being unweighted OLS.
+    }
+    This is a genuine \code{foceiControl()} option -- plain
+    \code{foceiControl()}/\code{foceControl()}/\code{agqControl()}/
+    \code{laplaceControl()} default it to \code{"none"} and are
+    unaffected; the eight mu-referenced-FOCEI-family method
+    constructors simply default it to \code{"lin"}/\code{"irls"}.
+
+    A mu-ref-covariate theta with a finite bound
+    (\code{ini(...~c(lower, est, upper))}) cannot use this mechanism
+    -- the regression above is an unconstrained solve with no way to
+    respect a box constraint -- so it is automatically excluded and
+    falls back to ordinary, bounded outer-optimizer handling instead,
+    with a warning explaining why (captured in the fit's
+    \code{runInfo}). A bound on the group's population theta (the
+    regression's intercept) excludes the whole theta/eta/covariate
+    group; a bound on just one covariate coefficient (a "slope")
+    excludes only that covariate (treated as if it were a
+    time-varying covariate) while the population theta and any other,
+    unbounded covariates in the same group keep the speed-up. This
+    exclusion only ever applies to this mu-referenced-FOCEI-family
+    mechanism -- SAEM's own, unrelated mu-referencing
+    (\code{est="saem"}) and every other estimation method are
+    unaffected regardless of bounds.}
+
+\item{muRefCovAlg}{This controls if algebraic expressions that can
+    be mu-referenced are treated as mu-referenced covariates by:
+
+    1. Creating a internal data-variable `nlmixrMuDerCov#` for each
+       algebraic mu-referenced expression
+
+    2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
+
+    3. Use the internal mu-referenced covariate for the estimation method
+
+    4. After optimization is completed, replace `model({})` with old
+    `model({})` expression
+
+    5. Remove `nlmixrMuDerCov#` from nlmix2 output
+
+    In general, these covariates should be more accurate since it
+    changes the system to a linear compartment model.  Therefore, by
+    default this is `TRUE`.  For \code{foceiControl()} this only has an
+    effect for the mu-referenced-FOCEI-family methods
+    (\code{muModel != "none"}); it mirrors
+    \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
+    reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
+
+\item{muModelTol}{Convergence tolerance for the mu-referenced-FOCEI-family
+in-C++ regression cycle (\code{muModel != "none"}, see
+\code{muModel}). Within a single real outer iteration, the
+"re-optimize every eta, then regress the mu-group thetas" step is
+repeated until the maximum absolute change in any mu-group
+population/covariate theta drops below \code{muModelTol}, or
+\code{muModelMaxCycles} is reached. This is not a restart of the
+fit and does not repeat any model setup/compilation -- it is a
+tight, in-memory loop inside the same inner-optimization pass that
+runs every outer iteration regardless of \code{muModel}.}
+
+\item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
+cycles per real outer iteration for the mu-referenced-FOCEI-family
+mechanism (\code{muModel != "none"}, see \code{muModel} and
+\code{muModelTol}) before moving on with whatever the last cycle
+produced.}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 

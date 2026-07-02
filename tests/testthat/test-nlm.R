@@ -151,6 +151,74 @@ nmTest({
     expect_s3_class(fit1, "nlmixr2.nlm")
   })
 
+  test_that("matExp uses the nlm theta sensitivity path", {
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        matExp()
+        k_depot_central = exp(tka)
+        k_central_output = exp(tcl) / exp(tv)
+        cp = central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+
+    s <- rxUiGet.nlmThetaS(list(rxode2::rxode2(mod)))
+    expect_true(exists("..jacobian", envir = s, inherits = FALSE))
+    expect_true(exists("..sens", envir = s, inherits = FALSE))
+  })
+
+  test_that("matExp event sensitivities build HdTheta", {
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tf <- 0
+        add.sd <- 0.7
+      })
+      model({
+        matExp()
+        k_depot_central = exp(tka)
+        k_central_output = 0.2
+        f(depot) <- expit(tf)
+        cp = central / 10
+        cp ~ add(add.sd)
+      })
+    }
+
+    ui <- rxode2::rxode2(mod)
+
+    s <- rxUiGet.nlmHdTheta(list(ui))
+    expect_true(exists("..HdTheta", envir = s, inherits = FALSE))
+    expect_true(any(grepl("rx__sens_central_BY_THETA_2__", get("..HdTheta", envir = s))))
+  })
+
+  test_that("matExp nlm model assembly runs", {
+    mod <- function() {
+      ini({
+        tka <- 0.45
+        tcl <- log(c(0, 2.7, 100))
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        matExp()
+        k_depot_central = exp(tka)
+        k_central_output = exp(tcl) / exp(tv)
+        cp = central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+
+    env <- rxUiGet.nlmEnv(list(rxode2::rxode2(mod)))
+    expect_true(exists("..nlmS", envir = env, inherits = FALSE))
+    expect_true(any(grepl("k_depot_central", get("..nlmS", envir = env))))
+  })
+
   test_that("nlm multi-subject parallel solving works", {
 
     one.cmt <- function() {
@@ -175,5 +243,69 @@ nmTest({
     expect_s3_class(fit, "nlmixr2.nlm")
     expect_true(.nSubjects > 1)
     expect_equal(length(unique(fit$ID)), .nSubjects)
+  })
+
+  test_that("matExp + indLin() Michaelis-Menten nlm fit matches the ODE fit", {
+    # ODE Michaelis-Menten one-compartment oral model
+    odeMM <- function() {
+      ini({
+        tka <- 0.45
+        tvmax <- log(60)
+        tkm <- log(40)
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka)
+        vmax <- exp(tvmax)
+        km <- exp(tkm)
+        v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - vmax * central / (km + central)
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    # Equivalent matrix-exponential / inductive-linearization formulation: the
+    # nonlinear Michaelis-Menten elimination is supplied via indLin().
+    matMM <- function() {
+      ini({
+        tka <- 0.45
+        tvmax <- log(60)
+        tkm <- log(40)
+        tv <- 3.45
+        add.sd <- 0.7
+      })
+      model({
+        matExp()
+        k_depot_central <- exp(tka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+
+    set.seed(123)
+    .ev <- et(amt = 320, cmt = "depot", id = 1:6) |> et(seq(0.5, 24, by = 1.5))
+    .sim <- rxode2::rxSolve(odeMM, .ev,
+                            params = c(tka = 0.5, tvmax = log(60),
+                                       tkm = log(40), tv = 3.45))
+    .dat <- as.data.frame(.sim)[, c("id", "time", "cp")]
+    .dat$cp <- .dat$cp + stats::rnorm(nrow(.dat), 0, 0.3)
+    names(.dat) <- c("ID", "TIME", "DV")
+    .dat$AMT <- 0
+    .dat$EVID <- 0
+    .dose <- data.frame(ID = 1:6, TIME = 0, DV = NA, AMT = 320, EVID = 1)
+    .dat <- rbind(.dose, .dat)
+    .dat <- .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
+
+    .fOde <- .nlmixr(odeMM, .dat, est = "nlm", list(print = 0))
+    .fMat <- .nlmixr(matMM, .dat, est = "nlm", list(print = 0))
+
+    expect_s3_class(.fMat, "nlmixr2.nlm")
+    # The matExp + indLin() model and the ODE model are mathematically identical,
+    # so the objective function and fixed effects must agree.
+    expect_equal(.fMat$objf, .fOde$objf, tolerance = 1e-3)
+    expect_equal(unname(fixef(.fMat)), unname(fixef(.fOde)), tolerance = 1e-3)
   })
 })

@@ -100,6 +100,8 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
+                       eventSens=c("jump", "fd"),
+
                        useColor = NULL,
                        printNcol = NULL, #
                        print = 1L, #
@@ -215,6 +217,12 @@ nlmControl <- function(typsize = NULL,
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
+  ## Event ("jump") sensitivity method for the analytic gradient (thetaGrad)
+  ## model.  "jump" routes the dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" keeps the legacy behavior where
+  ## the augmented sensitivity ODE misses the event jump.
+  eventSens <- match.arg(eventSens)
+
   .iterPrintControl <- .absorbIterPrintControl(print = print,
                                                printNcol = printNcol,
                                                useColor = useColor,
@@ -265,6 +273,8 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+
+               eventSens=eventSens,
 
                iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
@@ -482,17 +492,28 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlm(x, ...)
+  # For matExp() models materialize the implied d/dt() from the k_from_to rate
+  # constants.  When this fires we must also emit the model LHS (which defines
+  # the k_from_to constants and other assignments) ahead of the d/dt() lines so
+  # the derivative expressions can resolve them.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .lhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .lhs,
     .ddt,
     .prd,
     .fr$f_line,
@@ -606,6 +627,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' @noRd
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
                            optExpression = TRUE) {
+  .rxInjectMatExpDdt(.s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -618,6 +640,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- character(0)
+  .lhs <- .s$..lhs
+  if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
   # Extract rx_pred_f_ and rx_r_ for censoring support
@@ -625,6 +649,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    .lhs,
     .ddt,
     .sens,
     .yj,
@@ -645,6 +670,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$params,
     .s$..stateInfo["state"],
     .lhs0,
+    .lhs,
     .ddt,
     .yj,
     .lambda,
@@ -685,14 +711,26 @@ rxUiGet.nlmEnv <- function(x, ...) {
   } else {
     .eventTheta <- integer(0)
   }
-  for (.v in .s$..eventVars) {
-    .vars <- as.character(get(.v, envir = .s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## `eventTheta` flags the population parameters that enter a dosing expression
+  ## (alag/F/rate/dur).  In the "fd" path nlm overrides their analytic gradient
+  ## column with a shi21 finite difference (nlmOp.thetaFD) because the augmented
+  ## sensitivity ODE misses the event jump.  Under "jump" rxode2 injects the
+  ## analytic jump into those rx__sens_*_BY_THETA_n___ states, so the analytic
+  ## gradient is now correct and the finite-difference override must be turned
+  ## OFF (otherwise the jump-corrected column is computed but discarded for FD).
+  ## Leaving the flags at zero routes every parameter through the analytic
+  ## sensitivity.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  if (!identical(.eventSens, "jump")) {
+    for (.v in .s$..eventVars) {
+      .vars <- as.character(get(.v, envir = .s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
@@ -721,7 +759,13 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
   .s <- rxUiGet.nlmEnv(x, ...)
-  list(thetaGrad=rxode2::rxode2(.s$..nlmS),
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
+  ## the thetaGrad model so the population-parameter gradient picks up the dosing
+  ## jumps analytically.  nlm reads the analytic rx__sens_*_BY_THETA_n___ values
+  ## as its only gradient source (it has no event finite-difference fallback), so
+  ## under "fd" the gradient simply misses the jump.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "fd")
+  list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
 }
@@ -799,6 +843,9 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   } else {
     .mi <- ui$nlmSensModel
   }
+  ## Event ("jump") sensitivities are activated inside .nlmSetupEnv (before the
+  ## scaleC solve) and deactivated in .nlmFreeEnv, so nothing extra is needed
+  ## here for eventSens="jump".
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
   on.exit({.nlmFreeEnv()})
   .ret <- eval(bquote(stats::nlm(
