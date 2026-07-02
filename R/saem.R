@@ -757,8 +757,7 @@
                                 indTolRelax=.saemControl$indTolRelax,
                                 rxControl=.rxControl,
                                 resetThetaP = 0,
-                                resetThetaFinalP = 0,
-                                est = "saem")
+                                resetThetaFinalP = 0)
   if (exists(".etaMat", envir=env, inherits=FALSE)) {
     rm(list=".etaMat", envir=env)
   }
