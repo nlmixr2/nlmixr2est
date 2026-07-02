@@ -77,6 +77,21 @@
 #'  \item "" Does not calculate the covariance step.
 #' }
 #'
+#' @param covType covariance engine, one of \code{"fd"} (default) or
+#'     \code{"analytic"}.  \code{"fd"} is the finite-difference observed
+#'     information.  \code{"analytic"} is the exact, finite-difference-free
+#'     observed-information covariance (mu-referenced thetas, covariate
+#'     coefficients, and eta-less structural thetas are each handled by their
+#'     own exact sensitivity direction); when a model is outside the analytic
+#'     scope it announces this and falls back to the finite-difference engine.
+#'
+#' @param covFull logical (default \code{FALSE}).  When \code{FALSE} the
+#'     covariance \code{$cov} covers the structural thetas only (the original
+#'     nlmixr2est behavior).  When \code{TRUE} it spans the full parameter set:
+#'     the population thetas, the residual (sigma) parameters, and the
+#'     natural-scale \code{Omega} variances/covariances.  The printed parameter
+#'     table is unchanged either way.
+#'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating
 #'     the Hessian on the unscaled parameter space.
@@ -795,6 +810,8 @@ foceiControl <- function(sigdig = 4, #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
+                         covType = c("fd", "analytic"), #
+                         covFull = FALSE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          hessEps =(.Machine$double.eps)^(1/3),
@@ -1145,6 +1162,8 @@ foceiControl <- function(sigdig = 4, #
       covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
     }
   }
+  covType <- match.arg(covType)                        # "fd" (default) | "analytic"
+  checkmate::assertLogical(covFull, any.missing = FALSE, len = 1)  # FALSE=theta-only (default), TRUE=theta+sigma+Omega
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
@@ -1341,6 +1360,8 @@ foceiControl <- function(sigdig = 4, #
     derivMethod = derivMethod,
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
+    covType = covType,
+    covFull = covFull,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),

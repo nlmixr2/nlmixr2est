@@ -1,13 +1,24 @@
 # nlmixr2est (development version)
 
-- The `focei`/`foce` covariance (`$cov`) now spans the full parameter
-  set — the population thetas, the residual (sigma) parameters, and the
-  natural-scale `Omega` variances/covariances — instead of the
-  structural thetas only (#694).  The added residual/`Omega` standard
-  errors are extractable from `fit$cov` (e.g. `sqrt(diag(fit$cov))`); the
-  printed parameter table is unchanged.  The covariance finite
-  differences also solve the ODE at a tighter tolerance than estimation,
-  so the second-difference Hessian is not dominated by solver noise.
+- The `focei`/`foce` covariance gains two new `foceiControl()` options.
+  `covFull` (default `FALSE`) keeps the original structural-theta-only
+  `$cov`; set `covFull = TRUE` to span the full parameter set — the
+  population thetas, the residual (sigma) parameters, and the
+  natural-scale `Omega` variances/covariances (#694) — with the added
+  residual/`Omega` standard errors extractable from `fit$cov` (e.g.
+  `sqrt(diag(fit$cov))`).  The printed parameter table is unchanged in
+  either case.  `covType` (default `"fd"`) selects the covariance
+  engine: `"fd"` is the finite-difference observed information (now
+  solving the cov-step ODE at a tighter tolerance than estimation, so the
+  second-difference Hessian is not dominated by solver noise), and
+  `"analytic"` is an exact, finite-difference-free observed-information
+  covariance.  The analytic engine handles mu-referenced thetas,
+  covariate coefficients, and eta-less structural thetas uniformly (each
+  non-mu-ref theta contributes its own exact sensitivity direction); when
+  a model is outside its scope (unsupported error model, non-mu-referenced
+  eta, ...) it announces this and falls back to the finite-difference
+  covariance.  Also fixes the `covMethod = "r"`/`"s"` standard-error
+  scaling (#666).
 
 - When model estimation fails, all errors raised during the run are now
   collected and reported together, instead of only the last error. This

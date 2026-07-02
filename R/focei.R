@@ -1569,6 +1569,43 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   invisible()
 }
 
+#' When `covType = "analytic"`, replace the finite-difference `$cov` with the exact
+#' analytic observed-information covariance ([foceiCov]).  The analytic engine is a
+#' post-fit oracle over a fit object; `.ret` exposes the same pieces it needs
+#' (`finalUi`/`omega`/`eta`/`dataSav`), so a light shim is passed.  If the model is
+#' out of the analytic scope (unsupported error model, non-mu-ref eta with no theta,
+#' failed augmented solve, ...) the analytic returns `NULL`: we announce it and keep
+#' the finite-difference `$cov` (the default engine).  `covFull` controls the scope.
+#' @param .ret focei fit environment (already has the FD `$cov`)
+#' @return Nothing; may replace `.ret$cov`
+#' @noRd
+.foceiAnalyticCovOverride <- function(.ret) {
+  if (!exists("cov", envir = .ret, inherits = FALSE)) return(invisible())  # no cov step ran
+  if (!exists("ui", envir = .ret, inherits = FALSE)) return(invisible())
+  .ui <- rxode2::rxUiDecompress(get("ui", envir = .ret))
+  if (!identical(rxode2::rxGetControl(.ui, "covType", "fd"), "analytic")) return(invisible())
+  .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", FALSE))
+  # the analytic reads the population thetas from ui$iniDf$est and solves the augmented
+  # model at them, so the UI must carry the FITTED estimates (at this point .ret$ui may
+  # still hold the initial values); inject the fitted fixed effects.
+  .fx <- tryCatch(.ret$fixef, error = function(e) NULL)
+  if (!is.null(.fx) && length(.fx)) {
+    .idf <- .ui$iniDf
+    .mi <- match(names(.fx), .idf$name); .ok <- !is.na(.mi)
+    .idf$est[.mi[.ok]] <- as.numeric(.fx)[.ok]
+    .ui <- tryCatch({ .ui$iniDf <- .idf; .ui }, error = function(e) .ui)
+  }
+  .shim <- list(finalUi = .ui, omega = .ret$omega, eta = .ret$ranef, dataSav = .ret$dataSav)
+  .ac <- tryCatch(foceiCov(.shim, covFull = .covFull), error = function(e) NULL)
+  if (is.null(.ac)) {
+    message("nlmixr2: analytic covariance is out of scope for this model; using the finite-difference covariance")
+    return(invisible())
+  }
+  .ret$cov <- .ac$cov
+  assign(".covMethodEngine", paste0("analytic (", .ac$method, ")"), envir = .ret)  # record which engine produced $cov
+  invisible()
+}
+
 #' Internal focei fit function in R
 #'
 #' @param .ret Internal focei environment
@@ -1971,6 +2008,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     assign("est", est, envir=.ret)
     .foceiNameOmegaCov(.ret)
+    .foceiAnalyticCovOverride(.ret)   # covType="analytic": replace FD $cov with the exact analytic cov
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()

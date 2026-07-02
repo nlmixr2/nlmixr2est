@@ -240,6 +240,7 @@ struct focei_options {
   int lmm;
   int *skipCov = NULL;
   unsigned int skipCovN;
+  int covFull;   // #covFull: FALSE (default) theta-only cov; TRUE spans theta+sigma+Omega
 
   int outerOpt;
   int eigen;
@@ -3956,6 +3957,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
   op_focei.printTop = as<int>(foceiO["printTop"]);
+  op_focei.covFull = foceiO.containsElementNamed("covFull") ? as<int>(foceiO["covFull"]) : 0;
   op_focei.nF2 = as<int>(foceiO["nF"]);
   if (op_focei.nF2 == 0){
     vGrad.clear();
@@ -5987,10 +5989,22 @@ NumericMatrix foceiCalcCov(Environment e){
       // (sigma) thetas, and the non-fixed Omega.  (Previously Omega + residual
       // were force-skipped, giving a theta-only $cov.)
       LogicalVector skipCov(op_focei.ntheta+op_focei.omegan);//skipCovN
-      {
+      if (op_focei.covFull) {
+        // covFull=TRUE: cov spans theta + sigma + Omega -- skip only the
+        // literally-fixed parameters (thetaFixed = c(theta-fix, omega-fix)).
         LogicalVector thFix = as<LogicalVector>(e["thetaFixed"]);
         for (int _i = 0; _i < skipCov.size(); ++_i)
           skipCov[_i] = (_i < thFix.size()) ? (bool)thFix[_i] : false;
+      } else {
+        // covFull=FALSE (default): the original nlmixr2est theta-only cov --
+        // force-skip the residual (sigma) thetas and all Omega.
+        if (op_focei.skipCovN == 0){
+          std::fill_n(skipCov.begin(), op_focei.ntheta, false);
+          std::fill_n(skipCov.begin()+op_focei.ntheta, skipCov.size() - op_focei.ntheta, true);
+        } else {
+          std::copy(&op_focei.skipCov[0],&op_focei.skipCov[0]+op_focei.skipCovN,skipCov.begin());
+          std::fill_n(skipCov.begin()+op_focei.skipCovN,skipCov.size()-op_focei.skipCovN,true);
+        }
       }
       e["skipCov"] = skipCov;
       // Unscaled objective and parameters.
@@ -6399,7 +6413,7 @@ NumericMatrix foceiCalcCov(Environment e){
         // come from the cov's Omega params (non-fixed, via fixedTrans); a
         // partially-fixed correlated block whose pair count doesn't line up is
         // left on the estimation scale rather than mis-scaled.
-        if (e.exists("cov") && op_focei.neta > 0) {
+        if (op_focei.covFull && e.exists("cov") && op_focei.neta > 0) {
           arma::mat cov = as<arma::mat>(e["cov"]);
           unsigned int np = op_focei.npars;
           unsigned int nom = 0;

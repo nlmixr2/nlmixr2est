@@ -26,6 +26,8 @@ foceiControl(
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "r", "s", ""),
+  covType = c("fd", "analytic"),
+  covFull = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -369,6 +371,21 @@ derivatives while calculating the covariance components
 
  \item "" Does not calculate the covariance step.
 }}
+
+\item{covType}{covariance engine, one of \code{"fd"} (default) or
+\code{"analytic"}.  \code{"fd"} is the finite-difference observed
+information.  \code{"analytic"} is the exact, finite-difference-free
+observed-information covariance (mu-referenced thetas, covariate
+coefficients, and eta-less structural thetas are each handled by their
+own exact sensitivity direction); when a model is outside the analytic
+scope it announces this and falls back to the finite-difference engine.}
+
+\item{covFull}{logical (default \code{FALSE}).  When \code{FALSE} the
+covariance \code{$cov} covers the structural thetas only (the original
+nlmixr2est behavior).  When \code{TRUE} it spans the full parameter set:
+the population thetas, the residual (sigma) parameters, and the
+natural-scale \code{Omega} variances/covariances.  The printed parameter
+table is unchanged either way.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -915,9 +932,9 @@ Optimization.
 
 \code{\link[rxode2]{rxSolve}}
 
-Other Estimation control:
-\code{\link[=nlmixr2NlmeControl]{nlmixr2NlmeControl()}},
-\code{\link[=saemControl]{saemControl()}}
+Other Estimation control: 
+\code{\link{nlmixr2NlmeControl}()},
+\code{\link{saemControl}()}
 }
 \author{
 Matthew L. Fidler
