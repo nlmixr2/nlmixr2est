@@ -771,7 +771,7 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
 #> → compress parHistData in nlmixr2 object, save 8936
-#> → compress phiM in nlmixr2 object, save 438168
+#> → compress phiM in nlmixr2 object, save 437984
 
 # }
 ```

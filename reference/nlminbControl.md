@@ -47,6 +47,7 @@ nlminbControl(
   scaleTo = 1,
   gradTo = 1,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),
@@ -428,6 +429,15 @@ nlminbControl(
 
   \- c is the power exponent (in the proportional case c=1)
 
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -526,7 +536,6 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
 #> → optimizing duplicate expressions in nlm llik gradient...
@@ -547,91 +556,87 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #>  
 #>  
 #> ✔ done
+#> ℹ covariance not in proper form, can access value in $covDebug
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 8352
-#> → compress parHistData in nlmixr2 object, save 2904
+#> → compress parHistData in nlmixr2 object, save 5888
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -634.9123 1208.965 1223.688      -601.4824          120009        935.5517
+#>           OBJF      AIC      BIC Log-likelihood
+#> lPop -1104.336 739.5406 754.2639      -366.7703
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup    optimize preprocess postprocess table compress     other
-#> elapsed 0.0159779 0.002783741      0.046       0.013 0.025    0.012 0.8802384
+#>              setup    optimize preprocess postprocess table compress     other
+#> elapsed 0.01679477 0.002097952      0.043       0.011 0.024    0.012 0.9461073
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.3711 0.1918  51.7 -0.3711 (-0.7471, 0.004905)                    
-#> Em    17.26  45.73   265       17.26 (-72.38, 106.9)                    
-#> E50   7.909  12.21 154.3       7.909 (-16.01, 31.83)                    
-#> g         2  FIXED FIXED                           2                    
+#>          Est. Back-transformed BSV(SD) Shrink(SD)%
+#> E0     0.3668           0.3668                    
+#> Em  1.071e-05        1.071e-05                    
+#> E50     1.832            1.832                    
+#> g           2                2                    
 #>  
-#>   Covariance Type ($covMethod): r (nlminb)
+#>   Covariance Type ($covMethod): failed
+#>   Information about run found ($runInfo):
+#>    • covariance not in proper form, can access value in $covDebug 
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
-#>     relative convergence (4) 
+#>     false convergence (8) 
+#>   In an ODE system, false convergence may mean "useless" evaluations were performed.
+#>   See https://tinyurl.com/yyrrwkce
+#>   It could also mean the convergence is poor, check results before accepting fit
+#>   You may also try a good derivative free optimization:
+#>     nlmixr2(...,control=list(outerOpt="bobyqa"))
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0261     0 -0.525 -0.371
-#> 2 1     0.0476     0 -0.525 -0.370
-#> 3 1     0.0505     0 -0.525 -0.370
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0261     0 -0.893 0.367
+#> 2 1     0.0476     0 -0.893 0.367
+#> 3 1     0.0505     0 -0.893 0.367
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlminb
 
 fit2$nlminb
 #> $par
-#>         E0         Em        E50 
-#> -0.3710903 17.2550218  7.9093700 
+#>           E0           Em          E50 
+#> 3.667703e-01 1.070985e-05 1.831987e+00 
 #> 
 #> $objective
-#> [1] 601.4824
+#> [1] 366.7703
 #> 
 #> $convergence
-#> [1] 0
+#> [1] 1
 #> 
 #> $iterations
-#> [1] 14
+#> [1] 18
 #> 
 #> $evaluations
 #> function gradient 
-#>       21       15 
+#>       59       18 
 #> 
 #> $message
-#> [1] "relative convergence (4)"
+#> [1] "false convergence (8)"
 #> 
 #> $scaleC
-#> [1] 0.002863784 0.030813757 0.029116520
+#> [1] 0.0005000000 0.0003333333 0.0004184103
 #> 
 #> $par.scaled
-#>        E0        Em       E50 
-#> -305.1746  542.7513  203.9559 
+#>         E0         Em        E50 
+#>  -267.4594 -1500.9679  -400.5498 
 #> 
 #> $hessian
-#>                E0            Em          E50
-#> E0   0.0017400253  0.0004542875 -0.001736241
-#> Em   0.0004542875  0.0003568154 -0.001293392
-#> E50 -0.0017362413 -0.0012933920  0.004717977
-#> 
-#> $cov.scaled
-#>            E0         Em       E50
-#> E0   4487.334   43384.11  13544.74
-#> Em  43384.107 2202580.85 619783.89
-#> E50 13544.738  619783.89 175740.70
-#> 
-#> $r
-#>                E0            Em           E50
-#> E0   0.0008700127  0.0002271437 -0.0008681206
-#> Em   0.0002271437  0.0001784077 -0.0006466960
-#> E50 -0.0008681206 -0.0006466960  0.0023589883
+#>      E0  Em E50
+#> E0  NaN NaN NaN
+#> Em  NaN   0   0
+#> E50 NaN   0   0
 #> 
 # }
 ```

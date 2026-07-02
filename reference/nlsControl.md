@@ -47,6 +47,7 @@ nlsControl(
   literalFix = TRUE,
   returnNls = FALSE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = TRUE,
   adjObf = TRUE,
@@ -474,6 +475,15 @@ nlsControl(
 
   \- c is the power exponent (in the proportional case c=1)
 
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -568,7 +578,6 @@ fit1 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="L
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of nls model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nls gradient...
 #> → optimizing duplicate expressions in nls gradient...
@@ -604,7 +613,6 @@ fit2 <- nlmixr(one.cmt, nlmixr2data::theo_sd, est="nls", nlsControl(algorithm="p
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of nls model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nls gradient...
 #> → optimizing duplicate expressions in nls gradient...

@@ -50,6 +50,7 @@ optimControl(
   literalFixRes = TRUE,
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "optim", ""),
@@ -460,6 +461,15 @@ optimControl(
 
   \- c is the power exponent (in the proportional case c=1)
 
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -561,7 +571,6 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
 #> → optimizing duplicate expressions in nlm llik gradient...
@@ -587,21 +596,23 @@ fit2 <- nlmixr(mod, dsn, est="optim", optimControl(method="BFGS"))
 fit2
 #> ── nlmixr² log-likelihood optim with BFGS method ──
 #> 
-#>          OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -694.437 1149.44 1164.163        -571.72        620.9496        76.79813
+#>           OBJF       AIC      BIC Log-likelihood Condition#(Cov)
+#> lPop -2815.513 -971.6363 -956.913       488.8181        5.515847
+#>      Condition#(Cor)
+#> lPop        3.759997
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>             setup    optimize preprocess postprocess table compress     other
-#> elapsed 0.0149529 0.002521646      0.062       0.012 0.033    0.001 0.7705255
+#>              setup    optimize preprocess postprocess table compress     other
+#> elapsed 0.01671454 0.002717086      0.045       0.012 0.034    0.001 0.7605684
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.6182 0.2345 37.93 -0.6182 (-1.078, -0.1586)                    
-#> Em    5.914  3.031 51.24   5.914 (-0.02573, 11.85)                    
-#> E50   3.145  1.501 47.74     3.145 (0.2021, 6.088)                    
-#> g         2  FIXED FIXED                         2                    
+#>        Est.      SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.4888  0.0871 17.82 -0.4888 (-0.6595, -0.3181)                    
+#> Em   -1.259 0.05765  4.58    -1.259 (-1.372, -1.146)                    
+#> E50   1.115 0.06424 5.762       1.115 (0.989, 1.241)                    
+#> g         2   FIXED FIXED                          2                    
 #>  
 #>   Covariance Type (value$covMethod): r (optim)
 #>   Censoring (value$censInformation): No censoring
@@ -610,9 +621,9 @@ fit2
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0429     0 -0.431 -0.617
-#> 2 1     0.0693     1 -1.05  -0.615
-#> 3 1     0.0743     0 -0.432 -0.615
+#> 1 1     0.0429     0 -0.478 -0.491
+#> 2 1     0.0693     1 -0.970 -0.494
+#> 3 1     0.0743     0 -0.476 -0.494
 #> # ℹ 997 more rows
 # }
 ```

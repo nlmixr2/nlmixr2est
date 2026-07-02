@@ -27,6 +27,7 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  eventSens = c("jump", "fd"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -192,6 +193,15 @@ nlmControl(
 
   Maximum number of times to optimize the best step size for the hessian
   calculation
+
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
 
 - useColor:
 
@@ -526,7 +536,6 @@ fit2 <- nlmixr(mod, dsn, est="nlm")
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
 #> → optimizing duplicate expressions in nlm llik gradient...
@@ -553,79 +562,80 @@ fit2 <- nlmixr(mod, dsn, est="nlm")
 print(fit2)
 #> ── nlmixr² log-likelihood nlm ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -659.8511 1184.026 1198.749       -589.013         2023540        236931.2
+#>           OBJF  AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -837.8771 1006 1020.723           -500            2.25               1
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup    optimize preprocess postprocess table compress    other
-#> elapsed 0.01604353 0.001849437      0.054       0.012 0.025    0.001 0.803107
+#>              setup    optimize preprocess postprocess table compress     other
+#> elapsed 0.01570188 0.002169824      0.044       0.012 0.023    0.001 0.8691283
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>       Est.    SE  %RSE Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.443 6.926  1563  -0.443 (-14.02, 13.13)                    
-#> Em   5.966 165.8  2779       5.966 (-319, 331)                    
-#> E50   3.67 96.41  2627    3.67 (-185.3, 192.6)                    
-#> g        2 FIXED FIXED                       2                    
+#>     Est.        SE      %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0   0.5 4.745e+04 9.491e+06 0.5 (-9.301e+04, 9.301e+04)                    
+#> Em   0.5 3.164e+04 6.327e+06     0.5 (-6.2e+04, 6.2e+04)                    
+#> E50    2 3.925e+04 1.963e+06   2 (-7.693e+04, 7.693e+04)                    
+#> g      2     FIXED     FIXED                           2                    
 #>  
 #>   Covariance Type ($covMethod): r (nlm)
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
-#>     relative gradient is close to zero, current iterate is probably solution 
+#>     last global step failed to locate a point lower than 'estimate'
+#>     either 'estimate' is an approximate local minimum of the function or 'steptol' is too small 
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0646     1 -0.938 -0.441
-#> 2 1     0.0661     1 -0.938 -0.441
-#> 3 1     0.0811     1 -0.937 -0.440
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0646     1 -0.474 0.501
+#> 2 1     0.0661     1 -0.474 0.501
+#> 3 1     0.0811     1 -0.474 0.501
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$nlm
 #> $minimum
-#> [1] 589.013
+#> [1] 500
 #> 
 #> $estimate
-#>         E0         Em        E50 
-#> -0.4429779  5.9664580  3.6697220 
+#>  E0  Em E50 
+#> 0.5 0.5 2.0 
 #> 
 #> $gradient
-#> [1] -9.698108e-09 -1.203613e-07 -1.373070e-06
+#> [1] 0.2500000 0.6666667 0.2703484
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001891660  0.001931320 -0.004538376
-#> Em   0.001931320  0.004743359 -0.009682365
-#> E50 -0.004538376 -0.009682365  0.018783901
+#>     E0 Em E50
+#> E0   0  0   0
+#> Em   0  0   0
+#> E50  0  0   0
 #> 
 #> $code
-#> [1] 1
+#> [1] 3
 #> 
 #> $iterations
-#> [1] 9
+#> [1] 1
 #> 
 #> $scaleC
-#> [1] 0.00303103 0.03281210 0.03107269
+#> [1] 0.0005000000 0.0003333333 0.0004135785
 #> 
 #> $estimate.scaled
-#>        E0        Em       E50 
-#> -312.1081  165.5989   54.7360 
+#>  E0  Em E50 
+#>  -1  -1   1 
 #> 
 #> $cov.scaled
-#>           E0       Em      E50
-#> E0   5221263 11542357  7087303
-#> Em  11542357 25540086 15679686
-#> E50  7087303 15679686  9626630
+#>               E0           Em          E50
+#> E0  9.007199e+15 0.000000e+00 0.000000e+00
+#> Em  0.000000e+00 9.007199e+15 0.000000e+00
+#> E50 0.000000e+00 0.000000e+00 9.007199e+15
 #> 
 #> $r
-#>                E0            Em          E50
-#> E0   0.0009458300  0.0009656602 -0.002269188
-#> Em   0.0009656602  0.0023716795 -0.004841182
-#> E50 -0.0022691878 -0.0048411824  0.009391950
+#>     E0 Em E50
+#> E0   0  0   0
+#> Em   0  0   0
+#> E50  0  0   0
 #> 
 
 # The nlm control has been modified slightly to include

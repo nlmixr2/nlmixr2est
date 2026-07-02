@@ -72,7 +72,6 @@ fit <- nlmixr2(one.compartment, theo_sd, est = "focei",
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate sensitivities
 #> → calculate ∂(f)/∂(η)
 #> → calculate ∂(R²)/∂(η)

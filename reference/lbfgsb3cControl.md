@@ -34,6 +34,7 @@ lbfgsb3cControl(
   literalFix = TRUE,
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", ""),
@@ -343,6 +344,15 @@ lbfgsb3cControl(
 
   \- c is the power exponent (in the proportional case c=1)
 
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -446,7 +456,6 @@ fit2 <- nlmixr(mod, dsn, est="lbfgsb3c")
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
 #> → optimizing duplicate expressions in nlm llik gradient...
@@ -474,33 +483,38 @@ print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -700.5228 1143.354 1158.077      -568.6771        40110.25        706.2739
+#> lPop -1529.377 314.5005 329.2238      -154.2503    1.921362e+19               1
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize preprocess postprocess table compress    other
-#> elapsed 0.01826674 0.002878033      0.041       0.015 0.046    0.001 1.703855
+#> elapsed 0.01620575 0.002775227      0.042       0.014 0.025    0.001 1.738019
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.5584 0.2153 38.55 -0.5584 (-0.9803, -0.1365)                    
-#> Em    14.57  27.15 186.3      14.57 (-38.64, 67.78)                    
-#> E50   5.908  6.769 114.6      5.908 (-7.359, 19.18)                    
-#> g         2  FIXED FIXED                          2                    
+#>       Est.        SE      %RSE        Back-transformed(95%CI) BSV(SD)
+#> E0  0.1543 4.745e+04 3.076e+07 0.1543 (-9.301e+04, 9.301e+04)        
+#> Em  -2.616 1.083e-05 0.0004139        -2.616 (-2.616, -2.616)        
+#> E50  1.196 1.348e-05  0.001128           1.196 (1.196, 1.196)        
+#> g        2     FIXED     FIXED                              2        
+#>     Shrink(SD)%
+#> E0             
+#> Em             
+#> E50            
+#> g              
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
-#>     CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH 
+#>     ABNORMAL_TERMINATION_IN_LNSRCH 
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0399     1 -1.01  -0.558
-#> 2 1     0.0448     0 -0.453 -0.558
-#> 3 1     0.0681     0 -0.453 -0.556
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0399     1 -0.620 0.151
+#> 2 1     0.0448     0 -0.771 0.151
+#> 3 1     0.0681     0 -0.769 0.146
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
@@ -508,47 +522,47 @@ print(fit2)
 fit2$lbfgsb3c
 #> $par
 #>         E0         Em        E50 
-#> -0.5584245 14.5713983  5.9083423 
+#>  0.1542503 -2.6155545  1.1955657 
 #> 
 #> $grad
-#> [1] -9.450562e-08 -1.646714e-07  5.618707e-07
+#> [1] -1.3077772  0.3985219 -0.4258109
 #> 
 #> $value
-#> [1] 568.6771
+#> [1] 154.2503
 #> 
 #> $counts
-#> [1] 25 25
+#> [1] 48 48
 #> 
 #> $convergence
-#> [1] 0
+#> [1] NA
 #> 
 #> $message
-#> [1] "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH"
+#> [1] "ABNORMAL_TERMINATION_IN_LNSRCH"
 #> 
 #> $scaleC
-#> [1] 0.002911054 0.035848377 0.032093329
+#> [1] 0.0005000000 0.0003333333 0.0004151442
 #> 
 #> $par.scaled
-#>        E0        Em       E50 
-#> -364.5881  391.5254  122.7805 
+#>         E0         Em        E50 
+#>  -692.4995 -9347.6634 -1936.7227 
 #> 
 #> $hessian
-#>                E0            Em          E50
-#> E0   0.0016837811  0.0008000479 -0.003177108
-#> Em   0.0008000479  0.0009921098 -0.003694294
-#> E50 -0.0031771079 -0.0036942936  0.013883997
+#>           E0 Em E50
+#> E0  -3792.25  0   0
+#> Em      0.00  0   0
+#> E50     0.00  0   0
 #> 
 #> $cov.scaled
-#>            E0        Em        E50
-#> E0   5468.024  27171.21   8481.054
-#> Em  27171.210 573537.70 158826.203
-#> E50  8481.054 158826.20  44489.771
+#>               E0          Em         E50
+#> E0  9.007199e+15 0.000000000 0.000000000
+#> Em  0.000000e+00 0.001054783 0.000000000
+#> E50 0.000000e+00 0.000000000 0.001054783
 #> 
 #> $r
-#>                E0            Em          E50
-#> E0   0.0008418905  0.0004000239 -0.001588554
-#> Em   0.0004000239  0.0004960549 -0.001847147
-#> E50 -0.0015885539 -0.0018471468  0.006941999
+#>            E0 Em E50
+#> E0  -1896.125  0   0
+#> Em      0.000  0   0
+#> E50     0.000  0   0
 #> 
 
 # The nlm control has been modified slightly to include

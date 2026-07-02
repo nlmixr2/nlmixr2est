@@ -102,7 +102,7 @@ f <- try(nlmixr2(one.cmt, theo_sd, "saem"))
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8280
+#> → compress parHistData in nlmixr2 object, save 8272
 #> → compress phiM in nlmixr2 object, save 429416
 
 print(f)
@@ -113,10 +113,10 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup covariance preprocess configure saem postprocess table
-#> elapsed 0.02488754 0.01500933      0.265     0.025 1.83       1.839 0.059
+#>              setup  covariance preprocess configure  saem postprocess table
+#> elapsed 0.02268024 0.009003369      0.207      0.02 1.775       1.641 0.056
 #>         compress    other
-#> elapsed    0.057 1.289103
+#> elapsed     0.06 1.119316
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
@@ -154,7 +154,6 @@ if (!inherits(f, "try-error")) {
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of full model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(η)
 #> → calculate ∂(R²)/∂(η)
 #> → finding duplicate expressions in inner model...
@@ -183,10 +182,10 @@ if (!inherits(f, "try-error")) {
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup covariance preprocess configure saem postprocess table
-#> elapsed 0.02488754 0.01500933      0.265     0.025 1.83       1.839 0.059
+#>              setup  covariance preprocess configure  saem postprocess table
+#> elapsed 0.02268024 0.009003369      0.207      0.02 1.775       1.641 0.056
 #>         compress    other
-#> elapsed    0.057 1.289103
+#> elapsed     0.06 1.119316
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 

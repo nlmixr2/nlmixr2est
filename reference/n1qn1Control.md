@@ -32,6 +32,7 @@ n1qn1Control(
   literalFix = TRUE,
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
+  eventSens = c("jump", "fd"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
@@ -322,6 +323,15 @@ n1qn1Control(
 
   \- c is the power exponent (in the proportional case c=1)
 
+- eventSens:
+
+  How sensitivities of dosing/event parameters (absorption lag time,
+  bioavailability, infusion rate and duration, etc.) are computed.
+  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
+  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
+  which add accuracy and can speed up the gradient/Hessian by avoiding
+  the extra finite-difference solves for these parameters.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -436,7 +446,6 @@ fit2 <- nlmixr(mod, dsn, est="n1qn1")
 #> → loading into symengine environment...
 #> → pruning branches (`if`/`else`) of population log-likelihood model...
 #> ✔ done
-#> → calculate jacobian
 #> → calculate ∂(f)/∂(θ)
 #> → finding duplicate expressions in nlm llik gradient...
 #> → optimizing duplicate expressions in nlm llik gradient...
@@ -457,93 +466,84 @@ fit2 <- nlmixr(mod, dsn, est="n1qn1")
 #>  
 #>  
 #> ✔ done
+#> ℹ covariance not in proper form, can access value in $covDebug
 #> → Calculating residuals/tables
 #> ✔ done
 
 print(fit2)
 #> ── nlmixr² log-likelihood n1qn1 ──
 #> 
-#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -712.2272 1131.65 1146.373      -562.8249        337.5072        49.63512
+#>           OBJF   AIC       BIC Log-likelihood
+#> lPop -4587.877 -2744 -2729.277           1375
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>            setup    optimize preprocess postprocess table compress     other
-#> elapsed 0.014879 0.002468397      0.053       0.012 0.023    0.001 0.7706526
+#>              setup    optimize preprocess postprocess table     other
+#> elapsed 0.01574587 0.002400877      0.045       0.011 0.024 0.8378533
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.8044 0.2264 28.14 -0.8044 (-1.248, -0.3608)                    
-#> Em    5.798  2.235 38.55      5.798 (1.417, 10.18)                    
-#> E50   3.081  1.121  36.4     3.081 (0.8829, 5.278)                    
-#> g         2  FIXED FIXED                         2                    
+#>       Est. Back-transformed BSV(SD) Shrink(SD)%
+#> E0  -1.375           -1.375                    
+#> Em  -2.833           -2.833                    
+#> E50  0.336            0.336                    
+#> g        2                2                    
 #>  
-#>   Covariance Type ($covMethod): r
+#>   Covariance Type ($covMethod): failed
+#>   Information about run found ($runInfo):
+#>    • covariance not in proper form, can access value in $covDebug 
 #>   Censoring ($censInformation): No censoring
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED      v
-#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0525     0 -0.370 -0.803
-#> 2 1     0.0535     0 -0.370 -0.803
-#> 3 1     0.0630     1 -1.17  -0.802
+#>   ID      TIME    DV  IPRED     v
+#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
+#> 1 1     0.0525     0 -0.212 -1.44
+#> 2 1     0.0535     0 -0.212 -1.44
+#> 3 1     0.0630     1 -1.68  -1.47
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$n1qn1
 
 fit2$n1qn1
 #> $value
-#> [1] 562.8249
+#> [1] -1375
 #> 
 #> $par
 #>         E0         Em        E50 
-#> -0.8044479  5.7976969  3.0807029 
+#> -1.3750000 -2.8333333  0.3359651 
 #> 
 #> $H
-#>              [,1]         [,2]         [,3]
-#> [1,]  0.001452449  0.002225716 -0.005562943
-#> [2,]  0.002225716  0.007863088 -0.016134369
-#> [3,] -0.005562943 -0.016134369  0.037279428
+#>              [,1]        [,2]         [,3]
+#> [1,]  0.059628221 -0.01911184 -0.007607658
+#> [2,] -0.019111836  0.01558773 -0.020648576
+#> [3,] -0.007607658 -0.02064858  0.058443860
 #> 
 #> $c.hess
-#>  [1]  0.001452449  0.002225716 -0.005562943  0.007863088 -0.016134369
-#>  [6]  0.037279428  0.000000000  0.000000000  0.000000000  0.000000000
+#>  [1]  0.059628221 -0.019111836 -0.007607658  0.015587735 -0.020648576
+#>  [6]  0.058443860  0.000000000  0.000000000  0.000000000  0.000000000
 #> [11]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000
 #> [16]  0.000000000  0.000000000  0.000000000  0.000000000  0.000000000
 #> [21]  0.000000000  0.000000000  0.000000000  0.000000000
 #> 
 #> $n.fn
-#> [1] 37
+#> [1] 20
 #> 
 #> $n.gr
-#> [1] 37
+#> [1] 20
 #> 
 #> $scaleC
-#> [1] 0.00273388 0.03205376 0.03042234
+#> [1] 0.0005000000 0.0003333333 0.0004107424
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#> -478.14163  164.27539   36.52333 
+#>  -3751.000 -10001.000  -4050.286 
 #> 
 #> $hessian
-#>               E0           Em          E50
-#> E0   0.001447454  0.002218672 -0.005535643
-#> Em   0.002218672  0.007844672 -0.016074403
-#> E50 -0.005535643 -0.016074403  0.037075888
-#> 
-#> $cov.scaled
-#>           E0       Em      E50
-#> E0  6856.390 1419.977 1639.335
-#> Em  1419.977 4862.643 2320.230
-#> E50 1639.335 2320.230 1358.594
-#> 
-#> $r
-#>                E0           Em          E50
-#> E0   0.0007237272  0.001109336 -0.002767822
-#> Em   0.0011093361  0.003922336 -0.008037201
-#> E50 -0.0027678216 -0.008037201  0.018537944
+#>      E0  Em E50
+#> E0  NaN NaN NaN
+#> Em  NaN   0   0
+#> E50 NaN   0   0
 #> 
 
 # The nlm control has been modified slightly to include

@@ -359,6 +359,9 @@ foceControl()
 #> $eventType
 #> [1] 2
 #> 
+#> $eventSens
+#> [1] "jump"
+#> 
 #> $gradProgressOfvTime
 #> [1] 10
 #> 

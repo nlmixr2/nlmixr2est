@@ -65,6 +65,7 @@
 <span>  optimHessType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  optimHessCovType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  centralDerivEps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">20</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  lbfgsLmm <span class="op">=</span> <span class="fl">7L</span>,</span>
 <span>  lbfgsPgtol <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -421,6 +422,16 @@ Shi21 method</p></dd>
 <dt id="arg-eventtype">eventType<a class="anchor" aria-label="anchor" href="#arg-eventtype"></a></dt>
 <dd><p>Event gradient type for dosing events; Can be
 "central" or "forward"</p></dd>
+
+
+<dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
+<dd><p>How sensitivities of dosing/event parameters
+(absorption lag time, bioavailability, infusion rate and duration,
+etc.) are computed.  `"fd"` uses the legacy finite
+differences.  `"jump"` (the default) uses the analytic event ("jump")
+sensitivities provided by `rxode2`, which add accuracy and can speed
+up the gradient/Hessian by avoiding the extra finite-difference
+solves for these parameters.</p></dd>
 
 
 <dt id="arg-centralderiveps">centralDerivEps<a class="anchor" aria-label="anchor" href="#arg-centralderiveps"></a></dt>
