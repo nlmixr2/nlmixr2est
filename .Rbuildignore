@@ -8,6 +8,7 @@
 ^.zed$
 ^AGENTS.md$
 ^.claude$
+^\.clauderules$
 ^.vexp
 ^.vscode$
 ^compile_commands.json$

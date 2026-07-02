@@ -232,8 +232,9 @@
     .vals <- .ret$popDf[[nm]]
     .fmtVals <- vapply(seq_along(.vals), function(i) {
       v <- .vals[i]
-      if (is.na(v)) return(.ret$popDfSig[[nm]][i])
-      sprintf("%.2f", round(v, 2))
+      vNum <- suppressWarnings(as.numeric(v))
+      if (is.na(vNum)) return(.ret$popDfSig[[nm]][i])
+      sprintf("%.2f", round(vNum, 2))
     }, character(1))
     .ret$popDfSig[[nm]] <- .fmtVals
   }
