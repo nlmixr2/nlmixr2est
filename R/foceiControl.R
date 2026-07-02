@@ -3,7 +3,13 @@
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "est")
+                           "iterPrintControl", "est",
+                           "foceiMuCovEta", "foceiMuModel",
+                           "foceiMuGroupTheta", "foceiMuGroupEta",
+                           "foceiMuGroupCovStart", "foceiMuGroupCovCount",
+                           "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
+                           "foceiMuGroupCovBounded", "foceiMuGroupTol",
+                           "foceiMuGroupMaxCycles")
 
 #' Control Options for FOCEi
 #'
