@@ -5,8 +5,6 @@
 \title{This adds a pre-final table processing hook to nlmixr2est}
 \usage{
 preFinalParTableHooksAdd(name, fun)
-
-preFinalParTableHooksAdd(name, fun)
 }
 \arguments{
 \item{name}{Character vector representing the name of the hook}
@@ -15,18 +13,8 @@ preFinalParTableHooksAdd(name, fun)
 }
 \value{
 The function that was added (invisibly)
-
-The function that was added (invisibly)
 }
 \description{
-This pre-processing hook is run before the estimation process begins.  It is
-useful for modifying the user interface, the estimation object, the data, or
-the control object before the estimation process begins.  The function must
-take four arguments: ui, est, data, and control.  The function must return a
-list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
-not returned, the original object is used.  If the element is returned, the
-original object is replaced with the new object.
-
 This pre-processing hook is run before the estimation process begins.  It is
 useful for modifying the user interface, the estimation object, the data, or
 the control object before the estimation process begins.  The function must

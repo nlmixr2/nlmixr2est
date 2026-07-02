@@ -147,6 +147,16 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
   if (is.null(rxControl)) .rxControl <- rxode2::rxControl()
   if (saem) {
     ui <- rxode2::assertRxUi(ui)
+    if (length(ui$mixProbs) > 0) {
+      .nMix <- length(ui$mixProbs) + 1L
+      if ("ID" %in% names(data)) {
+        .ids <- unique(data$ID)
+        .meMap <- setNames((seq_along(.ids) - 1L) %% .nMix + 1L, .ids)
+        data$mixest <- .meMap[as.character(data$ID)]
+      } else {
+        data$mixest <- 1L
+      }
+    }
     .trans <- rxUiGet.transUE(list(ui))
     .pars <- .uninformativeEtasExpand(ui, data, trans=.trans, alpha=alpha, saem=TRUE, q=q)
     if (!handleUninformativeEtas) {
@@ -163,10 +173,80 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
     # Get the predictions at +- etas
     .lst <- attr(class(.trans), ".rxode2.lst")
 
-    .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, data), .rxControl))
-    .val$id <- as.integer(.val$id)
-    .ind <- .pars$param[,c("id", "sim.id", "rxW", "rxPmz")]
-    .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)
+    if (length(ui$mixProbs) > 0) {
+      data$mymixest <- data$mixest
+
+      # Build pruned model and replace mix() with mymixest expression
+      .prunedStr <- paste(c(.foceiPrune(list(ui)), "tad=tad()", "dosenum=dosenum()", ""),
+                          collapse="\n")
+      parsed <- as.list(parse(text = .prunedStr))
+
+      .replaceMix <- function(expr) {
+        if (is.call(expr)) {
+          if (expr[[1]] == quote(mix)) {
+            .nargs <- length(expr) - 1L
+            .nops <- (.nargs + 1L) / 2L
+            .sumExpr <- NULL
+            for (i in seq_len(.nops)) {
+              .val <- .replaceMix(expr[[2 * i]])
+              .mixestTerm <- bquote(.(.val) * (mymixest == .(as.double(i))))
+              if (is.null(.sumExpr)) {
+                .sumExpr <- .mixestTerm
+              } else {
+                .sumExpr <- bquote(.(.sumExpr) + .( .mixestTerm))
+              }
+            }
+            return(.sumExpr)
+          } else {
+            for (i in seq_len(length(expr))) {
+              if (i == 1) next
+              expr[[i]] <- .replaceMix(expr[[i]])
+            }
+            return(expr)
+          }
+        } else {
+          return(expr)
+        }
+      }
+
+      replaced <- lapply(parsed, .replaceMix)
+      modelCode <- paste(vapply(replaced, deparse1, character(1)), collapse="\n")
+      modelCode <- gsub("~", "=", modelCode)
+
+      modelPruned <- rxode2::rxode2(modelCode)
+
+      # Rename .pars$param columns to THETA/ETA
+      pRenamed <- .pars$param
+      .iniDf <- ui$iniDf
+      .thetaNames <- .iniDf$name[is.na(.iniDf$neta1)]
+      .etaNames <- .iniDf$name[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2]
+
+      for (i in seq_along(.thetaNames)) {
+        names(pRenamed)[names(pRenamed) == .thetaNames[i]] <- paste0("THETA[", i, "]")
+      }
+      for (i in seq_along(.etaNames)) {
+        names(pRenamed)[names(pRenamed) == .etaNames[i]] <- paste0("ETA[", i, "]")
+      }
+      for (i in seq_along(.etaNames)) {
+        .etaCol <- paste0("ETA[", i, "]")
+        if (!(.etaCol %in% names(pRenamed))) {
+          pRenamed[[.etaCol]] <- 0
+        }
+      }
+
+      # Solve with pruned model
+      .val <- do.call(rxode2::rxSolve, c(list(modelPruned, pRenamed, data), .rxControl))
+      .val <- as.data.frame(.val)
+      .val$id <- as.integer(.val$id)
+      .ind <- .pars$param[, c("id", "sim.id", "rxW", "rxPmz")]
+      .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)
+    } else {
+      .val <- do.call(rxode2::rxSolve, c(list(model, .pars$param, data), .rxControl))
+      .val$id <- as.integer(.val$id)
+      .ind <- .pars$param[, c("id", "sim.id", "rxW", "rxPmz")]
+      .val <- merge(.val[, c("id", "sim.id", "rx_pred_")], .ind)
+    }
+
     .env <- new.env(parent=emptyenv())
     .env$nid <- .pars$n
     .env$neta <- .pars$neta

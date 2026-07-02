@@ -111,6 +111,40 @@
   transforms present can pass
   `*Control(print = iterPrintControl(simple = TRUE))`.
 
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
+- Fix `focei` mixture models with llik residual distributions (`dnorm`,
+  `t`, `cauchy`): a matrix-orientation bug in `.backTransformParHistMix`
+  caused a "replacement has 1 row, data has N" error during
+  `foceiFinalizeTables` when a model had exactly one mixture probability
+  parameter.
+
+- Fix `fit$mixList` returning only the first mixture component: the
+  prior probability vector stored in `env$mixProbabilities` was missing
+  the implicit last component, so `nMix` was derived as 1 instead of
+  the true number of components.
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale (0, 1) instead of the
+  raw mlogit estimation scale.
+
+- Hardened mixture-model (`mix()`) estimation:
+  - `est="nlme"` now errors clearly on `mix()` models instead of
+    silently freezing the mixture probability at its initial value
+    (nlme has no mixture support yet).
+  - Invalid initial mixture probabilities (out of `[0, 1]` or summing
+    to more than 1) now raise a clear error instead of silently
+    corrupting the SAEM/FOCEI fit.
+  - SAEM/FOCEI now warn (instead of silently continuing) when a
+    subject's posterior mixture-component likelihoods all underflow,
+    or when a final estimated mixture probability collapses toward
+    0/1 or requires rescaling — both signs the mixture components may
+    not be well identified.
+  - Fixed an unrelated regression where the SAEM omega-diagonal floor
+    for non-mu-referenced parameters was raised from `1e-20` to `1.0`
+    for every SAEM fit, not just mixture fits; the higher floor is now
+    scoped to mixture fits only, where it is needed for covariance
+    stability.
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`

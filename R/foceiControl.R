@@ -3,7 +3,7 @@
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "foceiMuModel", "foceiMuGroupTheta",
+                           "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
                            "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
                            "foceiMuGroupCovBounded",
@@ -1582,6 +1582,9 @@ foceiControl <- function(sigdig = 4, #
     agqLow=as.double(agqLow),
     boundedTransform=boundedTransform
   )
+  if (!is.null(.xtra$est)) {
+    .ret$est <- .xtra$est
+  }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {

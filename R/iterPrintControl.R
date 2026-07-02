@@ -113,10 +113,12 @@ iterPrintControl <- function(every = 1L,
 #' Derive every iteration-print transform vector from a ui object
 #'
 #' Pure inspection helper.  Walks `ui$muRefCurEval` against
-#' `ui$iniDf` and emits, in one pass, every per-printed-parameter
-#' transform vector any estimator's iteration printer or C-side
-#' setup needs.  All output vectors are aligned to `printNames` —
-#' index `i` describes the i-th printed parameter.
+#' `ui$iniDf` and emits, in one pass, every transform vector any
+#' estimator's iteration printer or C-side setup needs.
+#'
+#' Print-vector-ordered (length == length(printNames), or all
+#' thetas in `ntheta` order when `printNames` is NULL) — index `i`
+#' describes the i-th printed parameter:
 #'
 #'   `xPar`              integer log/logit code per printed param:
 #'                       `1`  = log-transformed; X shows `exp(value)`
@@ -139,6 +141,17 @@ iterPrintControl <- function(every = 1L,
 #'   `logitThetaHi`      upper bounds, same ordering as logitThetaLow.
 #'   `probitThetaLow`    lower bounds for probit, in occurrence order.
 #'   `probitThetaHi`     upper bounds for probit, same ordering.
+#'
+#' ntheta-indexed (always populated from iniDf$ntheta, independent
+#' of `printNames`):
+#'
+#'   `logNthetas`        ntheta values for log-transformed thetas.
+#'   `logitNthetas`      ntheta values for logit-transformed thetas.
+#'   `logitNthetasLow`   matching lower bounds.
+#'   `logitNthetasHi`    matching upper bounds.
+#'   `probitNthetas`     ntheta values for probit-transformed thetas.
+#'   `probitNthetasLow`  matching lower bounds.
+#'   `probitNthetasHi`   matching upper bounds.
 #'
 #' Function is pure — never mutates the ui or any environment.
 #' Callers do their own assignments.
@@ -167,14 +180,30 @@ iterPrintControl <- function(every = 1L,
   probitThetaLow <- numeric(0)
   probitThetaHi <- numeric(0)
   empty <- function() list(
-    xPar           = xPar,
-    probitIdx      = probitIdx,
-    logitThetaLow  = logitThetaLow,
-    logitThetaHi   = logitThetaHi,
-    probitThetaLow = probitThetaLow,
-    probitThetaHi  = probitThetaHi
+    xPar             = xPar,
+    probitIdx        = probitIdx,
+    logitThetaLow    = logitThetaLow,
+    logitThetaHi     = logitThetaHi,
+    probitThetaLow   = probitThetaLow,
+    probitThetaHi    = probitThetaHi,
+    logNthetas       = integer(0),
+    logitNthetas     = integer(0),
+    logitNthetasLow  = numeric(0),
+    logitNthetasHi   = numeric(0),
+    probitNthetas    = integer(0),
+    probitNthetasLow = numeric(0),
+    probitNthetasHi  = numeric(0)
   )
   if (is.null(muRef) || nrow(muRef) == 0L) return(empty())
+  if (!is.null(ui$boundedTransforms)) {
+    for (.tr in ui$boundedTransforms) {
+      .w <- which(muRef$parameter == .tr$internalName)
+      if (length(.w) > 0L) {
+        muRef$low[.w] <- .tr$lower
+        muRef$hi[.w] <- .tr$upper
+      }
+    }
+  }
   # Per-printed-name xPar / probitIdx / bounds, in printNames order.
   for (i in seq_along(printNames)) {
     nm <- printNames[i]
@@ -194,13 +223,26 @@ iterPrintControl <- function(every = 1L,
       probitIdx[i] <- as.integer(length(probitThetaLow))
     }
   }
+  # ntheta-indexed views over the unfixed-theta order.  These are
+  # always emitted regardless of `printNames` because
+  # .postEstimationBoundedTransform consumes them on the env under
+  # logThetasF/logitThetasF/probitThetasF names.
+  tr <- merge(iniThetas, muRef, by.x = "name", by.y = "parameter")
+  tr <- tr[order(tr$ntheta), ]
   list(
-    xPar           = xPar,
-    probitIdx      = probitIdx,
-    logitThetaLow  = logitThetaLow,
-    logitThetaHi   = logitThetaHi,
-    probitThetaLow = probitThetaLow,
-    probitThetaHi  = probitThetaHi
+    xPar             = xPar,
+    probitIdx        = probitIdx,
+    logitThetaLow    = logitThetaLow,
+    logitThetaHi     = logitThetaHi,
+    probitThetaLow   = probitThetaLow,
+    probitThetaHi    = probitThetaHi,
+    logNthetas       = as.integer(tr[which(tr$curEval == "exp"),       "ntheta"]),
+    logitNthetas     = as.integer(tr[which(tr$curEval == "expit"),     "ntheta"]),
+    logitNthetasLow  = as.double( tr[which(tr$curEval == "expit"),     "low"]),
+    logitNthetasHi   = as.double( tr[which(tr$curEval == "expit"),     "hi"]),
+    probitNthetas    = as.integer(tr[which(tr$curEval == "probitInv"), "ntheta"]),
+    probitNthetasLow = as.double( tr[which(tr$curEval == "probitInv"), "low"]),
+    probitNthetasHi  = as.double( tr[which(tr$curEval == "probitInv"), "hi"])
   )
 }
 
