@@ -6579,11 +6579,19 @@ NumericMatrix foceiCalcCov(Environment e){
       // were force-skipped, giving a theta-only $cov.)
       LogicalVector skipCov(op_focei.ntheta+op_focei.omegan);//skipCovN
       if (op_focei.covFull) {
-        // covFull=TRUE: cov spans theta + sigma + Omega -- skip only the
-        // literally-fixed parameters (thetaFixed = c(theta-fix, omega-fix)).
+        // covFull=TRUE: cov spans theta + sigma + Omega -- skip the literally-fixed
+        // parameters (thetaFixed = c(theta-fix, omega-fix)) and, additionally, the
+        // IOV / mixture-probability thetas whose covariance is not interpretable
+        // (skipCovFull, a theta-length mask built in rxUiGet.foceiOptEnv; residual
+        // sigma thetas are NOT in it, so they stay in the cov) (#697 finding 7).
         LogicalVector thFix = as<LogicalVector>(e["thetaFixed"]);
-        for (int _i = 0; _i < skipCov.size(); ++_i)
-          skipCov[_i] = (_i < thFix.size()) ? (bool)thFix[_i] : false;
+        LogicalVector scFull;
+        if (e.exists("skipCovFull")) scFull = as<LogicalVector>(e["skipCovFull"]);
+        for (int _i = 0; _i < skipCov.size(); ++_i) {
+          bool _fix    = (_i < thFix.size())  ? (bool)thFix[_i]  : false;
+          bool _iovmix = (_i < scFull.size()) ? (bool)scFull[_i] : false;
+          skipCov[_i] = _fix || _iovmix;
+        }
       } else {
         // covFull=FALSE (default): the original nlmixr2est theta-only cov --
         // force-skip the residual (sigma) thetas and all Omega.
@@ -7071,6 +7079,18 @@ NumericMatrix foceiCalcCov(Environment e){
             for (int b = 0; b < neta; ++b)
               for (int a = b; a < neta; ++a)
                 if (comp[a] == comp[b]) pairs.push_back(std::make_pair(a, b));
+          }
+          // Prefer R's free-element pairs when available: they drop fixed Omega
+          // elements, so a partially-fixed correlated block has pairs.size() == nom
+          // and is transformed instead of skipped (#697 finding 11).  Only override
+          // when the count matches the free omega parameters, else keep the enumeration.
+          if (e.exists("covOmegaPairsR") && !Rf_isNull(e["covOmegaPairsR"])) {
+            IntegerMatrix rp = as<IntegerMatrix>(e["covOmegaPairsR"]);
+            if ((unsigned int)rp.nrow() == nom) {
+              pairs.clear();
+              for (int k = 0; k < rp.nrow(); ++k)
+                pairs.push_back(std::make_pair(rp(k, 0) - 1, rp(k, 1) - 1));
+            }
           }
           // every pair index must be a valid eta index, else skip the transform (do not throw)
           bool _pairsOk = true;

@@ -1634,6 +1634,41 @@ rxUiGet.foceiOptEnv <- function(x, ...) {
   }
   .env$etaNames <- rxUiGet.foceiEtaNames(x, ...)
   .env$thetaFixed <- rxUiGet.foceiFixed(x, ...)
+  # covFull covariance skips the literally-fixed params (thetaFixed) but must also
+  # skip the IOV and mixture-probability thetas (their cov is not interpretable) --
+  # residual/sigma thetas are kept, since covFull spans sigma.  foceiCalcCov reads
+  # this theta-length mask from the env and ORs it into the covFull skip (#697
+  # finding 7); it is empty for models without IOV/mixture, so it is inert otherwise.
+  .env$skipCovFull <- tryCatch(local({
+    .iniT <- .x$iniDf[!is.na(.x$iniDf$ntheta), ]
+    .m <- rep(FALSE, nrow(.iniT))
+    if (length(.uiIovEnv$iovVars) > 0L) .m[.iniT$name %in% .uiIovEnv$iovVars] <- TRUE
+    if (length(.x$mixProbs) > 0L) .m[.iniT$name %in% .x$mixProbs] <- TRUE
+    .m
+  }), error = function(e) logical(0))
+  # Free Omega element (i,j) pairs for the covFull natural-scale transform: the
+  # declared block lower-triangle with the fixed elements dropped, so the count
+  # matches the free Omega parameters even for a partially-fixed correlated block
+  # (foceiCalcCov's own enumeration keeps fixed elements and would skip the
+  # transform).  Built structurally from the UI (block topology + fix flags),
+  # reusing the analytic path's .omegaBlocks / .omegaFixed (#697 finding 11).
+  .env$covOmegaPairsR <- tryCatch(local({
+    .ini <- .x$iniDf
+    .omRows <- .ini[!is.na(.ini$neta1), , drop = FALSE]
+    if (nrow(.omRows) == 0L) return(NULL)
+    .neta <- max(c(.omRows$neta1, .omRows$neta2))
+    .Om <- diag(1, .neta)
+    for (.r in seq_len(nrow(.omRows))) {
+      .Om[.omRows$neta1[.r], .omRows$neta2[.r]] <- 1
+      .Om[.omRows$neta2[.r], .omRows$neta1[.r]] <- 1
+    }
+    .pairs <- do.call(rbind, lapply(.omegaBlocks(.Om), function(.b) {
+      do.call(rbind, lapply(seq_along(.b), function(.a) cbind(.b[.a], .b[seq_len(.a)])))
+    }))
+    .pairs <- .pairs[!.omegaFixed(.ini, .pairs), , drop = FALSE]
+    if (nrow(.pairs) == 0L) return(NULL)
+    matrix(as.integer(.pairs), ncol = 2L)              # nom x 2, 1-based, row >= col
+  }), error = function(e) NULL)
   rxode2::rxAssignControlValue(.x, "foceiMuRef", .x$foceiMuRefVector)
   rxode2::rxAssignControlValue(.x, "foceiMuCovEta", .x$foceiMuCovEtaVector)
   # Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): the theta/eta index
