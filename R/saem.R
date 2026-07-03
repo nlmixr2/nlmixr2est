@@ -249,6 +249,9 @@
                         resFixed=ui$saemResFixed,
                         ue=.ue,
                         mixProb=ui$saemMixProb,
+                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
+                        mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
+                        mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
                         omegaShare=ui$saemOmegaShare,
                         omegaShareSubpop=ui$saemOmegaShareSubpop)
     .cfg$cres <- ui$saemCres

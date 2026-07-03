@@ -680,7 +680,11 @@ public:
     nMix = x.containsElementNamed("nMix") ? as<int>(x["nMix"]) : 1;
     if (nMix > 1) {
       mixProb = as<vec>(x["mixProb"]);
+      mixProbInit = mixProb;
       mixWeights.zeros(N, nMix);
+      mixProbMethod = x.containsElementNamed("mixProbMethod") ? as<int>(x["mixProbMethod"]) : 0;
+      pasMix = x.containsElementNamed("pasMix") ? as<vec>(x["pasMix"]) : pas;
+      mixProbPriorN = x.containsElementNamed("mixProbPriorN") ? as<double>(x["mixProbPriorN"]) : 0.0;
     } else {
       mixProb.clear();
     }
@@ -2232,7 +2236,25 @@ public:
       Plambda(ilambda0) = Plambda0;
       if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
-        mixProb = mixProb + pas(kiter) * (mean_aji - mixProb);
+        if (mixProbMethod == 1) {
+          // Dirichlet-style regularization: blend in mixProbPriorN
+          // pseudo-subjects distributed according to the initial mixing
+          // distribution before taking the stochastic-approximation step.
+          // This directly dampens the responsibility average itself, so it
+          // keeps working even during burn-in's flat pas(kiter)==1 step
+          // size, unlike a step-size-only fix.
+          vec mean_aji_reg = (mean_aji * N + mixProbPriorN * mixProbInit) / (N + mixProbPriorN);
+          mixProb = mixProb + pas(kiter) * (mean_aji_reg - mixProb);
+        } else {
+          // Annealed step-size: give mixProb its own decaying schedule from
+          // iteration 1 instead of the shared burn-in pas(kiter)==1, which
+          // has no memory and lets one noisy iteration's responsibility
+          // average fully replace the mixing probability -- a runaway
+          // positive feedback loop, since a smaller mixProb(k) directly
+          // shrinks every subject's responsibility for component k on the
+          // next iteration.
+          mixProb = mixProb + pasMix(kiter) * (mean_aji - mixProb);
+        }
       }
       vec pl = Plambda.elem(parHistThetaKeep);
       vec g2 = Gamma2_phi1.diag();
@@ -2361,6 +2383,10 @@ private:
 
   int nMix;
   vec mixProb;
+  vec mixProbInit;
+  int mixProbMethod; // 0 = annealed step-size, 1 = Dirichlet-style regularization
+  vec pasMix;
+  double mixProbPriorN;
   mat mixWeights;
   field<mat> phiM_mix;
   field<vec> fsave_mix;
