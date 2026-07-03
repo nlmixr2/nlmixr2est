@@ -859,12 +859,21 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
+    # .nlmixr2FitUpdateParams() rebuilds ui$iniDf (and therefore ui$theta)
+    # from env$omega -- it must run against the *un-pooled* omega (still one
+    # row per split ETA, e.g. eta.cl1/eta.cl2 separately) so the model's mu-
+    # referencing structure survives the rebuild. .saemMixFix() pools split
+    # ETAs into a single reported eta.cl column (env$omega gets fewer rows
+    # than the model actually has), so it must run *after* this, purely for
+    # display -- pooling first previously corrupted ui$theta for every
+    # parameter (not just the mixture-owned ones), silently falling back to
+    # each theta's ini() value instead of its fitted estimate.
+    .nlmixr2FitUpdateParams(.ret)
     # For mixture models: build mixList/mixNum/mixIcov from SAEM's mixWeights
     # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
     # available to rxode2 during the table/solve step.
     .saemMixFix(.ret, .ui)
     .ui <- .ret$ui
-    .nlmixr2FitUpdateParams(.ret)
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
