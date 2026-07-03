@@ -21,8 +21,28 @@
 # - When you need to modify the fit object (create a copy first: fitLocal <- fit)
 
 # Version identifier for cache invalidation
-# Increment this when models, data, or nlmixr2est version changes significantly
-.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"))
+#
+# Keyed off both the package version AND a hash of the package's R/ and
+# src/ sources, so a `devtools::load_all()` picking up local code changes
+# (without a DESCRIPTION version bump, the common case while iterating on
+# a branch) automatically invalidates every cached fit instead of silently
+# reusing fits computed under the old code -- see the mufocei muModel/
+# muRefCovAlg regression this masked.
+.fitCacheSrcHash <- local({
+  .pkgRoot <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  .srcFiles <- sort(list.files(file.path(.pkgRoot, c("R", "src")),
+                                pattern = "\\.(R|cpp|h|hpp)$",
+                                full.names = TRUE, recursive = TRUE))
+  if (length(.srcFiles) == 0 || !requireNamespace("digest", quietly = TRUE)) {
+    ""
+  } else {
+    .fileHashes <- vapply(.srcFiles, digest::digest, character(1),
+                           file = TRUE, algo = "xxhash32")
+    digest::digest(.fileHashes, algo = "xxhash32")
+  }
+})
+.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"),
+                           "-", .fitCacheSrcHash)
 
 # Cache directory for fit objects
 .fitCacheDir <- file.path(testthat::test_path(), "fixtures")

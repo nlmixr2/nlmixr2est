@@ -19,43 +19,90 @@
   the real thread id via `setRxThreadId()` from rxode2 api (requires the
   matching rxode2).
 
-- The iteration-time progress output emitted by every estimator
-  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
-  newuoa, uobyqa) now flows through a single shared printer
-  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
-  Each estimator's iteration trace has the same `#`/`U`/`X` row
-  layout, column wrapping, ANSI handling, periodic header re-emit
-  cadence, and per-iteration user-interrupt check.
+- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
+  with a single population parameter.
 
-- New `iterPrintControl()` function bundles every iteration-print
-  option (`every`, `ncol`, `headerEvery`, `useColor`, `simple`) into
-  one validated, classed list.  Pass it via the existing `print`
-  argument on any `*Control()` function:
-  `foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))`.
-  The historical scalar form `foceiControl(print = 5, printNcol = 8)`
-  continues to work — internally the outer `*Control()` wraps the
-  scalar arguments into an `iterPrintControl()` call.
+- Test suite uses a single testthat worker on CI/CRAN and parallel
+  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN.
 
-- saem now applies the same parameter back-transforms as focei.
-  The `X` row shows `exp(theta)` for log-transformed thetas and
-  `expit(theta, lower, upper)` for logit-transformed ones, derived
-  from `ui$muRefCurEval` on the R side.
+- `fit$time` now reports every estimation stage consistently (previously
+  stages under 5e-5 s were dropped).
+
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
+  `sigdig = 4`.
+
+- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
+  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
+  `mulaplace`/`irlslaplace`. Mu-ref covariate-coefficient thetas are
+  solved by closed-form OLS (`mu*`) or IRLS (`irls*`) regression instead
+  of the outer gradient optimizer, converging to comparable estimates
+  typically faster. New `foceiControl()` options: `muModel`
+  (`"none"`/`"lin"`/`"irls"`), `muRefCovAlg`, `muModelTol`,
+  `muModelMaxCycles`. `fo`/`foi` do not get `mu*`/`irls*` counterparts
+  (no per-subject conditional estimate to regress against).
+
+- A mu-referenced theta with a finite boundary now falls back to
+  ordinary bounded outer-optimizer handling (with a warning) instead of
+  using the mu-ref regression above, since that solve is unconstrained.
+
+- The mu-referenced FOCEI family's live iteration-print table now shows
+  each mu-group theta's current value as an extra row.
+
+- Errors during estimation are now collected and reported together
+  instead of only the last one (new `collectErr` argument to
+  `.collectWarn()`).
+
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters with large-magnitude initial estimates (previously pinned
+  at their initial value due to a missing `scaleC` branch).
+
+- Fix Windows heap-corruption segfault for parallel multi-core pooled
+  fits (`focei`, `foce`, `fo`, `laplace`, `agq`, and related pooled
+  optimizers) by passing the real thread id to rxode2's solver.
+
+- Iteration-time progress output for all estimators now flows through a
+  single shared printer (`scaleApplyIterPrintControl`/`scalePrintFun`
+  in `src/scale.h`) with consistent layout and behavior.
+
+- New `iterPrintControl()` bundles iteration-print options (`every`,
+  `ncol`, `headerEvery`, `useColor`, `simple`); pass via `print` on any
+  `*Control()`. The historical scalar form still works.
+
+- `saem` now applies the same parameter back-transforms as `focei` in
+  its iteration-print `X` row.
 
 - Estimators with no per-iteration objective function (saem) now
-  suppress the `Function Val.` column entirely instead of printing
-  `nan` in every iteration row.  The column header, separator, and
-  per-row prefix all shrink accordingly.
+  suppress the `Function Val.` column instead of printing `nan`.
 
-- The shared iteration-printer auto-skips degenerate rows: when a
-  method has no internal optimizer scaling (saem, group-C
-  optimizers with `scaleType = "none"`) the `U` row is dropped
-  because it would mirror `#`, and when there are also no
-  log/logit-transformed parameters the `X` row is dropped too —
-  so models with no transforms collapse to a single `#` row per
-  iteration.  Users who want to force-skip the U/X rows even with
-  transforms present can pass
-  `*Control(print = iterPrintControl(simple = TRUE))`.
+- The shared iteration-printer auto-skips the `U`/`X` rows when they'd
+  be redundant (no optimizer scaling / no transformed parameters); force
+  skip with `*Control(print = iterPrintControl(simple = TRUE))`.
 
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
+- Fix `focei` mixture models with llik residual distributions: a
+  matrix-orientation bug in `.backTransformParHistMix` caused an error
+  when a model had exactly one mixture probability parameter.
+
+- Fix `fit$mixList` returning only the first mixture component (the
+  stored prior-probability vector was missing the implicit last
+  component).
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale instead of the raw
+  mlogit scale.
+
+- Hardened mixture-model (`mix()`) estimation:
+  - `est="nlme"` now errors clearly on `mix()` models (unsupported)
+    instead of silently freezing the mixture probability.
+  - Invalid initial mixture probabilities now raise a clear error
+    instead of silently corrupting the fit.
+  - SAEM/FOCEI now warn when posterior mixture-component likelihoods
+    underflow, or when an estimated mixture probability collapses
+    toward 0/1 or needs rescaling.
+  - Fixed a regression where the SAEM omega-diagonal floor for
+    non-mu-referenced parameters was raised for every SAEM fit instead
+    of mixture fits only.
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`
@@ -67,7 +114,6 @@
 - Use OpenMP threading for S matrix calculation
 
 - Use OpenMP threading wile calculating NPDEs
-
 
 # nlmixr2est 6.0.1
 

@@ -62,9 +62,29 @@ Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit acces
 
 `tests/testthat/helper-zzz-fits.R` pre-fits models and caches them so individual test files can reference fitted objects without re-running estimation. Fixture `.rds` files live in `tests/testthat/fixtures/`.
 
+### Test thread policy
+
+`tests/testthat.R` keeps CI and CRAN from oversubscribing core-limited runners
+(which historically caused 6h timeouts / exit-143 "the runner has received a
+shutdown signal"):
+
+- **testthat workers**: a single worker on CI (`CI=true`) or CRAN; everywhere
+  else testthat manages `Config/testthat/parallel` (`parallel: true`,
+  `edition: 3` in `DESCRIPTION`) normally.
+- **rxode2 / data.table within-solve threads**: capped to 2 on CRAN only; on CI
+  and locally rxode2 manages its own threads.
+- **Do not pass a non-parallel reporter** to `test_check()` — testthat silently
+  falls back to serial when `reporter$capabilities$parallel_support` is FALSE
+  (e.g. `LocationReporter`), which defeats the parallel config.
+
 ## Key conventions
 
 - `mu2` referencing (`R/mu2.R`) detects and validates mu-referenced parameters; violations produce warnings, not errors, for SAEM
 - IOV (inter-occasion variability) support is in `R/iov.R` with special handling in the mu-referencing hooks
 - The `sharedControl()` function (`R/sharedControl.R`) defines options common across all estimation methods
 - `R/nlmixr2Est.R` contains the central S3 dispatch table — look here to understand what methods exist
+
+## Coding Conventions
+
+- **R Style**: All variable and function names in R must be in `camelCase` (e.g., `simData`, `fitSaem`, `oneCompartmentMix`). Do not use `snake_case` or `dot.case` for R objects.
+- **C++ Style**: Follow Rcpp/Armadillo conventions. Use `snake_case` or `camelCase` as appropriate.

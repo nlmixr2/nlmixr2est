@@ -91,6 +91,7 @@ nlsControl <- function(maxiter=10000,
                        literalFix=TRUE,
                        returnNls=FALSE,
                        addProp = c("combined2", "combined1"),
+                       eventSens = c("jump", "fd"),
                        calcTables=TRUE, compress=TRUE,
                        adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
                        boundedTransform=TRUE, ...) {
@@ -242,6 +243,7 @@ nlsControl <- function(maxiter=10000,
                rxControl=rxControl,
                returnNls=returnNls,
                addProp=match.arg(addProp),
+               eventSens=match.arg(eventSens),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -395,9 +397,7 @@ rxGetDistributionNlsLines.norm <- function(line) {
   }
   .lineExtra <- list(.lineExtra)
   if (pred1$dvid == 1) {
-    # First estimated residual error is divided out, since it will be
-    # estimated as the residual error by nls
-    # add+prop and add+pow are not supported
+    # First residual error is divided out (nls estimates it directly); add+prop/add+pow unsupported.
     .errType <- as.character(pred1$errType)
     if (.errType == "add") {
       # In these cases you are simply dividing out the additive error
@@ -533,6 +533,9 @@ attr(rxUiGet.loadPruneNls, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNls(x, ...)
+  # See rxUiGet.nlmRxModel: matExp() models need the LHS (k_from_to definitions)
+  # emitted before the materialized d/dt() lines that reference them.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .var <- get("rx_r_", envir = .s)
@@ -544,9 +547,15 @@ rxUiGet.nlsRxModel <- function(x, ...) {
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .lhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+  }
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .lhs,
     .ddt,
     .prd,
     #.s$..stateInfo["statef"],
@@ -733,14 +742,19 @@ rxUiGet.nlsEnv <- function(x, ...) {
   } else {
     .eventTheta <- integer(0)
   }
-  for (.v in .s$..eventVars) {
-    .vars <- as.character(get(.v, envir = .s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## Under eventSens="jump" dosing-parameter sensitivities are injected
+  ## analytically, so skip the FD override for event params ("fd" keeps it); see nlm's rxUiGet.nlmEnv.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
+  if (!identical(.eventSens, "jump")) {
+    for (.v in .s$..eventVars) {
+      .vars <- as.character(get(.v, envir = .s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
@@ -752,7 +766,9 @@ attr(rxUiGet.nlsEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlsSensModel <- function(x, ...) {
   .s <- rxUiGet.nlsEnv(x, ...)
-  list(thetaGrad=rxode2::rxode2(.s$..nlsS),
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to the residual-Jacobian model instead of using finite differences.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
+  list(thetaGrad=rxode2::rxode2(.s$..nlsS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
 }
@@ -1013,7 +1029,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
                                 compress=.nlsControl$compress,
                                 ci=.nlsControl$ci,
                                 sigdigTable=.nlsControl$sigdigTable,
-                                indTolRelax=.nlsControl$indTolRelax)
+                                indTolRelax=.nlsControl$indTolRelax,
+                                eventSens=.nlsControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -1023,28 +1040,9 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
+  # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
+  # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
+  # est, ofvType (a foceiControl object is also needed downstream)
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .nls <- .collectWarn(.nlsFitModel(.ui, .ret$dataSav), lst = TRUE)

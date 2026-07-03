@@ -1,7 +1,9 @@
 #include <math.h>
+#include "solveWarnHelper.h"
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
+#define probitInv(alpha, low, high) _powerDi(alpha, 1.0, 6, low, high)
 
 #define scaleTypeNorm    1
 #define scaleTypeNlmixr2 2
@@ -27,42 +29,46 @@ struct scaling {
   double c2; // internal scaling constant
   double scaleCmin; // Cmin scaling constant
   double scaleCmax; // Cmax scaling constant
-  // Iteration-print formatting, populated from the user's iterPrintControl()
-  // sub-list via scaleApplyIterPrintControl().  Field names mirror the R
-  // argument names of iterPrintControl() for code-search consistency.
+  // Iteration-print formatting, populated via scaleApplyIterPrintControl();
+  // field names mirror iterPrintControl()'s R argument names.
   int useColor;
   int ncol;        // iterPrintControl$ncol         — columns per row
   int every;       // iterPrintControl$every        — print row every N evals (0=silent)
   int simple;      // iterPrintControl$simple       — single-row mode (skip U/X)
   int headerEvery; // iterPrintControl$headerEvery  — re-emit header every N prints (0=once)
-  // showOfv: 1 = emit the "Function Val." column (the OFV column shown
-  //              after the iteration counter).  Default.
-  //          0 = skip that column entirely.  Used by estimators (like
-  //              saem) that have no per-iteration objective function, so
-  //              that NaN doesn't appear in the OFV slot.  The header,
-  //              separator, and per-row prefix all shrink accordingly.
+  // showOfv: 1 = show "Function Val." column (default); 0 = skip it (used by
+  // estimators like saem with no per-iteration OFV, avoiding a NaN column).
   int showOfv;
-  // keyExtra: estimator-specific text appended to the "Key:" legend line
-  // (between "X: Back-transformed parameters; " and the trailing newline).
-  // NULL emits just the standard Key.  Used by focei to inject its
-  // G/F/C/M gradient-method legend and omega note.  Setting it is the
-  // estimator's responsibility; iterPrintControl() does not expose it.
+  // keyExtra: estimator-specific text appended to the "Key:" legend line;
+  // NULL for the standard Key. focei uses this for its gradient-method legend.
   const char *keyExtra;
-  // printCount: internal — count of parameter-print events emitted so far
-  // (not iterations).  Gates periodic header re-prints when headerEvery > 0.
+  // printCount: count of parameter-print events so far; gates header re-prints
+  // when headerEvery > 0.
   int printCount;
   int save;
   int cn;
   double *initPar; // initial parameter estimates before scaling
   double *scaleC; // scaling C vector
-  // xPar is an indicator for transformation type:
-  // - xPar = -m-1 is logit transformation, ie logit(a, lower, upper); m
-  //          matches the lower/upper bounds index
-  // - xPar = 1 is a log transformation ie log(a)
-  // - xPar = 0  exponential indicator.  Is the variable exp(x) (=1) or something else (=0)
+  // xPar transformation indicator: -m-1 = logit(a, lower, upper) with m the
+  // bounds index; 1 = log(a); 0 = exponential indicator (exp(x) vs other).
   int *xPar;
   double *logitThetaLow;
   double *logitThetaHi;
+  // Probit marker + bounds, parallel to logitThetaLow/Hi. probitIdx[i] is 0
+  // (no probit) or the 1-based index into probitThetaLow/Hi; kept separate
+  // from xPar since positive xPar values 2-5 are reserved for omega scaling.
+  int *probitIdx;
+  double *probitThetaLow;
+  double *probitThetaHi;
+  // Backing storage for the six transform pointers, populated by
+  // scaleAttachXform(); estimators owning their own buffers (e.g. focei)
+  // leave these empty and assign raw pointers directly.
+  std::vector<int>    xParStorage;
+  std::vector<int>    probitIdxStorage;
+  std::vector<double> logitLowStorage;
+  std::vector<double> logitHiStorage;
+  std::vector<double> probitLowStorage;
+  std::vector<double> probitHiStorage;
   CharacterVector thetaNames;
   std::vector<int> niter;
   std::vector<int> iterType;
@@ -88,12 +94,12 @@ static inline void scaleNone(scaling *scale) {
   scale->save = 0;
 }
 
+// Sets scale/print fields not coming from the R-side xform sub-list; the six
+// transform pointers are NULL-initialized here and wired by scaleAttachXform
+// (or directly by callers with their own buffers, e.g. focei) after return.
 static inline void scaleSetup(scaling *scale,
                               double *initPar,
                               double *scaleC,
-                              int *xPar,
-                              double *logitThetaLow,
-                              double *logitThetaHi,
                               CharacterVector thetaNames,
                               int useColor,
                               int printNcol,
@@ -109,9 +115,12 @@ static inline void scaleSetup(scaling *scale,
   scale->scaleC = scaleC;
   scale->normType = normType;
   scale->scaleType = scaleType;
-  scale->xPar = xPar;
-  scale->logitThetaLow =logitThetaLow;
-  scale->logitThetaHi =logitThetaHi;
+  scale->xPar = NULL;
+  scale->logitThetaLow = NULL;
+  scale->logitThetaHi = NULL;
+  scale->probitIdx = NULL;
+  scale->probitThetaLow = NULL;
+  scale->probitThetaHi = NULL;
   scale->thetaNames = thetaNames;
 
   scale->useColor = useColor;
@@ -434,12 +443,9 @@ static inline double scaleScalePar(scaling *scale, double *x, int i){
   return 0;
 }
 
-// Read the user-facing iterPrintControl() sub-list and populate the
-// matching iteration-print fields on a scaling struct (every, ncol,
-// headerEvery, useColor, simple).  Each estimator's setup code calls
-// this exactly once to wire its R-side configuration into the shared
-// printer.  The keyExtra pointer is estimator-internal and remains
-// the caller's responsibility to set.
+// Populates the iteration-print fields (every, ncol, headerEvery, useColor,
+// simple) from the user-facing iterPrintControl() list. keyExtra is set
+// separately by the caller.
 static inline void scaleApplyIterPrintControl(scaling *scale,
                                               const Rcpp::List &ipc) {
   scale->every       = Rcpp::as<int>(ipc["every"]);
@@ -449,17 +455,41 @@ static inline void scaleApplyIterPrintControl(scaling *scale,
   scale->simple      = Rcpp::as<int>(ipc["simple"]);
 }
 
-// Wrap-continuation marker emitted at the start of a wrapped row when a
-// row has more parameter columns than fit in the chosen `ncol` width.
-// Width matches the left-hand "label" prefix on the data rows so the
-// wrapped parameter columns line up under the leading params:
-//
-//   showOfv = 1 → "|.....................|"  (23 chars; covers
-//                  "|    #| Function Val. |" or "|    U|               |")
-//   showOfv = 0 → "|.....|"                  (7 chars; covers "|    #|")
-//
-// `colored` chooses the ANSI-bracketed variant used when the row is
-// emitted with `useColor` and the wrap reaches the final visible column.
+// Wires per-parameter transform arrays onto a scaling struct from the R-side
+// xform sub-list (output of .iterPrintXParFromUi()). Required elements:
+//   xPar            length scale->npars; 1=log, -m=m-th logit, 0=none.
+//   probitIdx       same length; k=k-th probit transform, 0=none.
+//   logitThetaLow/Hi   bounds indexed by -xPar[i]-1 when xPar<0.
+//   probitThetaLow/Hi  bounds indexed by probitIdx[i]-1 when >0.
+// Data is copied into the struct's own std::vector storage so the pointers
+// survive the caller's stack frame; empty arrays leave the pointer NULL.
+// Estimators with method-specific per-parameter codes (e.g. focei) skip this
+// and assign raw pointers directly instead.
+static inline void scaleAttachXform(scaling *scale,
+                                    const Rcpp::List &xform) {
+  IntegerVector x  = Rcpp::as<IntegerVector>(xform["xPar"]);
+  IntegerVector pi = Rcpp::as<IntegerVector>(xform["probitIdx"]);
+  NumericVector ll = Rcpp::as<NumericVector>(xform["logitThetaLow"]);
+  NumericVector lh = Rcpp::as<NumericVector>(xform["logitThetaHi"]);
+  NumericVector pl = Rcpp::as<NumericVector>(xform["probitThetaLow"]);
+  NumericVector ph = Rcpp::as<NumericVector>(xform["probitThetaHi"]);
+  scale->xParStorage     .assign(x.begin(),  x.end());
+  scale->probitIdxStorage.assign(pi.begin(), pi.end());
+  scale->logitLowStorage .assign(ll.begin(), ll.end());
+  scale->logitHiStorage  .assign(lh.begin(), lh.end());
+  scale->probitLowStorage.assign(pl.begin(), pl.end());
+  scale->probitHiStorage .assign(ph.begin(), ph.end());
+  scale->xPar           = scale->xParStorage     .empty() ? NULL : scale->xParStorage     .data();
+  scale->probitIdx      = scale->probitIdxStorage.empty() ? NULL : scale->probitIdxStorage.data();
+  scale->logitThetaLow  = scale->logitLowStorage .empty() ? NULL : scale->logitLowStorage .data();
+  scale->logitThetaHi   = scale->logitHiStorage  .empty() ? NULL : scale->logitHiStorage  .data();
+  scale->probitThetaLow = scale->probitLowStorage.empty() ? NULL : scale->probitLowStorage.data();
+  scale->probitThetaHi  = scale->probitHiStorage .empty() ? NULL : scale->probitHiStorage .data();
+}
+
+// Wrap-continuation marker for rows with more parameter columns than fit in
+// `ncol`; its width matches the label prefix so wrapped columns line up.
+// `colored` selects the ANSI-underlined variant used with `useColor`.
 static inline const char *scaleWrapMarker(scaling *scale, int colored) {
   if (colored) {
     return scale->showOfv ? "\n\033[4m|.....................|"
@@ -468,11 +498,9 @@ static inline const char *scaleWrapMarker(scaling *scale, int colored) {
   return scale->showOfv ? "\n|.....................|" : "\n|.....|";
 }
 
-// Emit the separator line under the column header / between iteration
-// blocks.  When `showOfv` is 0 (saem and similar — no per-iteration
-// objective function) the Function-Val segment is skipped so the
-// separator's column count matches the header above and the rows below.
-static inline void scalePrintLine(scaling *scale, int ncol){
+// Separator line under the column header / between iteration blocks; skips
+// the Function-Val segment when showOfv is 0 to match the header/rows.
+static inline void scalePrintLine(scaling *scale, int ncol) {
   if (scale->showOfv) {
     RSprintf("|-----+---------------+");
   } else {
@@ -489,12 +517,12 @@ static inline void scalePrintLine(scaling *scale, int ncol){
 
 static inline void scalePrintHeader(scaling *scale) {
   if (scale->every != 0) {
-    // Match scalePrintFun's auto-skip rules so the Key text only
-    // mentions rows that will actually appear in iteration output.
+    // Match scalePrintFun's auto-skip rules so Key only lists rows that appear.
     int skipU = (scale->scaleType == scaleTypeNone);
     int anyXform = 0;
     for (int k = 0; k < scale->npars; k++) {
       if (scale->xPar[k] != 0) { anyXform = 1; break; }
+      if (scale->probitIdx != NULL && scale->probitIdx[k] != 0) { anyXform = 1; break; }
     }
     int skipX = skipU && !anyXform;
     if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
@@ -504,9 +532,8 @@ static inline void scalePrintHeader(scaling *scale) {
         RSprintf("Key: ");
       if (!skipU) RSprintf("U: Unscaled Parameters; ");
       if (!skipX) RSprintf("X: Back-transformed parameters; ");
-      // Estimator-specific Key suffix (e.g. focei's G/F/C/M gradient
-      // legend and omega note).  When NULL the standard "Key:" line is
-      // closed with a newline so the column header follows on a fresh row.
+      // Estimator-specific Key suffix (e.g. focei's gradient legend); NULL closes
+      // the line with a newline so the header follows on a fresh row.
       if (scale->keyExtra != NULL) {
         RSprintf("%s", scale->keyExtra);
       } else {
@@ -514,6 +541,7 @@ static inline void scalePrintHeader(scaling *scale) {
       }
     }
     int i, finalize=0, n=scale->thetaNames.size();
+    int underlineUsed = 0;
     if (scale->showOfv) {
       RSprintf("\n|    #| Function Val. |");
     } else {
@@ -526,6 +554,7 @@ static inline void scalePrintHeader(scaling *scale) {
       if ((i + 1) != n && (i + 1) % scale->ncol == 0){
         if (scale->useColor && scale->ncol + i  >= n){
           RSprintf("%s", scaleWrapMarker(scale, 1));
+          underlineUsed = 1;
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
         }
@@ -545,25 +574,49 @@ static inline void scalePrintHeader(scaling *scale) {
     } else {
       RSprintf("\n");
     }
-    scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    // Skip the separator if the last continuation row's underline already acts as one.
+    if (!underlineUsed) {
+      scalePrintLine(scale, min2(scale->npars, scale->ncol));
+    }
   }
+}
+
+// Back-transforms a single unscaled estimate; shared by scalePrintFun's X row
+// and the parFixed loop in src/inner.cpp so both paths stay in sync.
+//   xParCode == 1   -> log:    exp(est)
+//   xParCode <= -1  -> logit:  expit(est, logitLow[m], logitHi[m]), m = -xParCode-1
+//   probitCode >= 1 -> probit: probitInv(est, probitLow[m], probitHi[m]), m = probitCode-1
+//   otherwise       -> identity
+// Bounds pointers may be NULL when their code is never triggered.
+static inline double scaleBackTransform(double est, int xParCode, int probitCode,
+                                        const double *logitLow, const double *logitHi,
+                                        const double *probitLow, const double *probitHi) {
+  if (xParCode == 1) {
+    return exp(est);
+  }
+  if (xParCode <= -1) {
+    int m = -xParCode - 1;
+    return expit(est, logitLow[m], logitHi[m]);
+  }
+  if (probitCode >= 1) {
+    int m = probitCode - 1;
+    return probitInv(est, probitLow[m], probitHi[m]);
+  }
+  return est;
 }
 
 static inline void scalePrintFun(scaling *scale, double *x, double f) {
   // Scaled
   int finalize = 0, i = 0;
   scale->cn = scale->cn+1;
-  // Auto-skip degenerate rows.  When scaleType == None, scaleUnscalePar
-  // returns x[i] unchanged so the U row is identical to # and is skipped.
-  // When U is skipped AND no xPar entry asks for a back-transform, the
-  // X row is also identical to # and is skipped too — methods with no
-  // scaling and no log/logit-transformed parameters collapse to a single
-  // # row.  The user's iterPrintControl(simple=TRUE) override still
-  // forces both rows off regardless of auto-detection.
+  // Auto-skip degenerate rows: U is skipped when scaleType==None (identical to #);
+  // X is also skipped if U was skipped and no xPar entry needs a back-transform.
+  // iterPrintControl(simple=TRUE) forces both off regardless.
   int skipU = (scale->scaleType == scaleTypeNone);
   int anyXform = 0;
   for (i = 0; i < scale->npars; i++){
     if (scale->xPar[i] != 0) { anyXform = 1; break; }
+    if (scale->probitIdx != NULL && scale->probitIdx[i] != 0) { anyXform = 1; break; }
   }
   int skipX = skipU && !anyXform;
   if (scale->save) {
@@ -589,22 +642,17 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       scale->niter.push_back(scale->niter.back());
       scale->vPar.push_back(f);
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          scale->vPar.push_back(exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          scale->vPar.push_back(expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          scale->vPar.push_back(scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        scale->vPar.push_back(scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                                 scale->xPar[i], probitCode,
+                                                 scale->logitThetaLow, scale->logitThetaHi,
+                                                 scale->probitThetaLow, scale->probitThetaHi));
       }
     }
   }
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
-    // Count this parameter-print event and, when configured, re-emit the
-    // column header every `headerEvery` events (event 1 already has the
-    // startup header printed elsewhere, so re-prints happen at 1+N, 1+2N, ...).
+    // Re-emit header every `headerEvery` prints (event 1's header is printed elsewhere).
     scale->printCount++;
     if (scale->headerEvery > 0 &&
         scale->printCount > 1 &&
@@ -677,14 +725,12 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       if (scale->showOfv) RSprintf("|    X|               |");
       else                RSprintf("|    X|");
       for (i = 0; i < scale->npars; i++){
-        if (scale->xPar[i] == 1){
-          RSprintf("%#10.4g |", exp(scaleUnscalePar(scale, x, i)));
-        } else if (scale->xPar[i] < 0){
-          int m = -scale->xPar[i]-1;
-          RSprintf("%#10.4g |", expit(scaleUnscalePar(scale, x, i), scale->logitThetaLow[m], scale->logitThetaHi[m]));
-        } else {
-          RSprintf("%#10.4g |", scaleUnscalePar(scale, x, i));
-        }
+        int probitCode = (scale->probitIdx != NULL) ? scale->probitIdx[i] : 0;
+        RSprintf("%#10.4g |",
+                 scaleBackTransform(scaleUnscalePar(scale, x, i),
+                                    scale->xPar[i], probitCode,
+                                    scale->logitThetaLow, scale->logitThetaHi,
+                                    scale->probitThetaLow, scale->probitThetaHi));
         if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
           if (scale->useColor && scale->ncol + i >= scale->npars){
             RSprintf("%s", scaleWrapMarker(scale, 1));
@@ -708,61 +754,59 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
   }
-  // Universal user-interrupt check at each per-iteration print event.  Doing
-  // this here (rather than in each estimator's outer loop) ensures every
-  // method routed through scalePrintFun — saem, nlm, optim, nls, nlminb — is
-  // interruptible without each one needing its own Rcpp::checkUserInterrupt()
-  // call site.
+  // Flush accumulated rxode2 solve warnings here so every estimator routed through
+  // scalePrintFun gets one summary line per printed iteration (see solveWarnHelper.h).
+  if (scale->every != 0 && scale->cn % scale->every == 0) {
+    nmFlushRxSolveWarn(5);
+  }
+  // Centralized user-interrupt check so no estimator needs its own call site.
   Rcpp::checkUserInterrupt();
 }
 
 static inline void scalePrintGrad(scaling *scale, double *gr, int type) {
   int finalize = 0, i = 0;
-  // if (op_focei.derivMethod == 0){
-  //   if (op_focei.curGill == 1){
-  //     gradType.push_back(1);
-  //   } else if (op_focei.curGill == 2){
-  //     gradType.push_back(5);
-  //   } else if (op_focei.mixDeriv){
-  //     gradType.push_back(2);
-  //   } else{
-  //     gradType.push_back(3);
-  //   }
-  // } else {
-  //   gradType.push_back(4);
-  // }
   if (scale->save) {
     scale->niterGrad.push_back(scale->niter.back());
     scale->gradType.push_back(type);
   }
   if (scale->every != 0 &&
       scale->cn % scale->every == 0){
-    // Method-specific label for the gradient row, keyed by `type`:
-    //   1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
-    // Any other code (e.g. iterTypeSens=8 from nlm/optim) falls through to a
-    // generic "Gradient" label.
+    // Gradient row label by `type` (1=Gill,2=Mixed,3=Forward,4=Central,5=Shi21);
+    // other codes (e.g. iterTypeSens=8) fall through to generic "Gradient".
     const char *label = NULL;
-    switch (type) {
-    case 1:  label = "    G|    Gill Diff. |"; break;  // Gill
-    case 2:  label = "    M|   Mixed Diff. |"; break;  // Mixed
-    case 3:  label = "    F| Forward Diff. |"; break;  // Forward
-    case 4:  label = "    C| Central Diff. |"; break;  // Central
-    case 5:  label = "    S|   Shi21 Diff. |"; break;  // Shi21
-    default: label = "    G|    Gradient   |"; break;
+    if (scale->showOfv) {
+      switch (type) {
+      case 1:  label = "    G|      Gill     |"; break;  // Gill
+      case 2:  label = "    M|     Mixed     |"; break;  // Mixed
+      case 3:  label = "    F|    Forward    |"; break;  // Forward
+      case 4:  label = "    C|    Central    |"; break;  // Central
+      case 5:  label = "    S|     Shi21     |"; break;  // Shi21
+      default: label = "    G|    Gradient   |"; break;
+      }
+    } else {
+      switch (type) {
+      case 1:  label = "    G|"; break;  // Gill
+      case 2:  label = "    M|"; break;  // Mixed
+      case 3:  label = "    F|"; break;  // Forward
+      case 4:  label = "    C|"; break;  // Central
+      case 5:  label = "    S|"; break;  // Shi21
+      default: label = "    G|"; break;
+      }
     }
-    if (scale->useColor && scale->ncol >= scale->npars){
+    int gradNcol = scale->ncol;
+    if (scale->useColor && gradNcol >= scale->npars){
       RSprintf("|\033[4m%s", label);
     } else {
       RSprintf("|%s", label);
     }
     for (i = 0; i < scale->npars; i++){
       RSprintf("%#10.4g ", gr[i]);
-      if (scale->useColor && scale->ncol >= scale->npars && i == scale->npars-1){
+      if (scale->useColor && gradNcol >= scale->npars && i == scale->npars-1){
         RSprintf("\033[0m");
       }
       RSprintf("|");
       if ((i + 1) != scale->npars && (i + 1) % scale->ncol == 0){
-        if (scale->useColor && scale->ncol + i  >= scale->npars){
+        if (scale->useColor && scale->ncol + i >= scale->npars){
           RSprintf("%s", scaleWrapMarker(scale, 1));
         } else {
           RSprintf("%s", scaleWrapMarker(scale, 0));
