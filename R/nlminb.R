@@ -25,9 +25,9 @@
 #'
 #' @param xf.tol false convergence tolerance.  Defaults to `2.2e-14`.
 #'
-#' @param step.min  Minimum step size.  Default to ‘1.’.
+#' @param step.min  Minimum step size.  Default to `1.`.
 #'
-#' @param step.max Maximum step size.  Default to ‘1.’.
+#' @param step.max Maximum step size.  Default to `1.`.
 #'
 #' @param sing.tol singular convergence tolerance; defaults to `rel.tol;.
 #'

@@ -155,13 +155,11 @@ optimization.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
-[iterPrintControl()] object. The scalar form is equivalent to
+[iterPrintControl()] object. Equivalent to
 `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
-\item{printNcol}{Integer (or `NULL`) — parameter columns per row before
-wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`
-(fits an 80-column terminal). Equivalent to `print =
-iterPrintControl(ncol = ...)`.}
+\item{printNcol}{Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{scaleTo}{Scale the initial parameter estimate to this value.
 By default this is 1.  When zero or below, no scaling is performed.}
@@ -289,9 +287,8 @@ optimization; Default is `TRUE`.}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{useColor}{Logical (or `NULL`) — emit ANSI bold/color escapes in the
-iteration print. `NULL` (default) defers to [crayon::has_color()].
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
 \item{boundTol}{Tolerance for boundary issues.}
 
@@ -375,46 +372,36 @@ option \code{resetEtaP}.}
 
 \item{muModel}{Selects the mu-referenced-FOCEI-family regression variant
     for theta/eta in a mu-ref covariate relationship (see
-    \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI, every
-    theta/eta estimated by the outer/inner optimizer as usual);
-    \code{"lin"} (used by \code{mufocei}/\code{mufoce}/\code{muagq}/
-    \code{mulaplace}: for each mu-ref-covariate group, the population
-    theta and covariate coefficient(s) are excluded from the outer
-    optimizer and instead re-derived in C++ by closed-form OLS
-    regression of each subject's back-calculated value on the
-    covariate(s), with the residual becoming that subject's eta; this
-    "re-optimize etas, then regress" step repeats in-place until the
-    mu-group thetas stop moving by more than \code{muModelTol} or
-    \code{muModelMaxCycles} is reached); or \code{"irls"} (used by
-    \code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
-    same mechanism, reweighted by inner-optimization curvature instead
-    of unweighted OLS).
+    \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
+    \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
+    \code{mulaplace}: population theta and covariate coefficient(s) per
+    mu-ref-covariate group are excluded from the outer optimizer and
+    re-derived in C++ by closed-form OLS regression of each subject's
+    back-calculated value on the covariate(s), residual becomes that
+    subject's eta; repeats until convergence, see \code{muModelTol}/
+    \code{muModelMaxCycles}); or \code{"irls"}
+    (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+    same mechanism, reweighted by inner-optimization curvature).
 
-    A mu-ref-covariate theta with a finite bound cannot use this
-    mechanism (the regression is an unconstrained solve) and falls back
-    to ordinary bounded outer-optimizer handling with a warning; a bound
-    on the group's population theta excludes the whole group, a bound on
-    just one covariate coefficient excludes only that covariate. This
-    only affects the mu-referenced-FOCEI-family mechanism -- SAEM's own
-    mu-referencing and other estimation methods are unaffected.}
+    A mu-ref-covariate theta with a finite bound falls back to ordinary
+    bounded outer-optimizer handling with a warning (a bound on the
+    group's population theta excludes the whole group; a bound on one
+    covariate coefficient excludes only that covariate).}
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
-covariates (more accurate, since it linearizes the system) and
-restored in the model after optimization. Mirrors
+covariates and restored after optimization. Mirrors
 \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 for \code{foceiControl()} only takes effect when
 \code{muModel != "none"}.}
 
 \item{muModelTol}{Convergence tolerance for the mu-referenced-FOCEI-family
-in-C++ "re-optimize etas, then regress" cycle (\code{muModel !=
-"none"}): repeats within a single outer iteration until the max
-mu-group theta change drops below this value or
-\code{muModelMaxCycles} is reached.}
+"re-optimize etas, then regress" cycle (\code{muModel != "none"}):
+repeats until the max mu-group theta change drops below this value
+or \code{muModelMaxCycles} is reached.}
 
 \item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
-cycles per outer iteration for the mu-referenced-FOCEI-family
-mechanism (see \code{muModel}, \code{muModelTol}).}
+cycles per outer iteration (see \code{muModel}, \code{muModelTol}).}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 

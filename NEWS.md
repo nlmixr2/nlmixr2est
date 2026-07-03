@@ -1,23 +1,13 @@
 # nlmixr2est (development version)
 
-- FOCEi no longer aborts R with `Cube::slice(): index out of bounds` when
-  `mceta >= 1` is combined with a pure evaluation that runs with
-  `maxInnerIterations == 0` (the covariance step, or
-  `nlmixr2extra::linearize()`).  The Monte-Carlo ETA-sample cube is filled only
-  when `maxInnerIterations > 0`, so the inner-loop read indexed an empty cube and
-  the resulting exception, thrown inside the OpenMP parallel region, was uncaught
-  and aborted R.  The read is now guarded (`id < n_slices`) and skipped when the
-  cube holds no slice for the subject.
+- Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` and `maxInnerIterations == 0` (covariance step,
+  `nlmixr2extra::linearize()`).
 
-- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
-  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
-  statically links its own OpenMP runtime, so when the parallel inner
-  loop called rxode2's solver across threads rxode2 saw every worker as
-  thread 0 and collapsed its per-thread solve buffers onto a single
-  slot, racing and corrupting the heap.  The inner loop now hands rxode2
-  the real thread id via `setRxThreadId()` from rxode2 api (requires the
-  matching rxode2).
+- Fix Windows heap-corruption segfault for `focei`/`foce`/`fo`/`laplace`/
+  `agq`/`bobyqa`/`nlm`/`optim`/`nls`/`nlminb`/`lbfgsb3c`/`n1qn1`/`newuoa`/
+  `uobyqa` fits at more than one core (requires matching rxode2 with
+  `setRxThreadId()`).
 
 - Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
   with a single population parameter.
@@ -35,18 +25,12 @@
   `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
   `mulaplace`/`irlslaplace`. Mu-ref covariate-coefficient thetas are
   solved by closed-form OLS (`mu*`) or IRLS (`irls*`) regression instead
-  of the outer gradient optimizer, converging to comparable estimates
-  typically faster. New `foceiControl()` options: `muModel`
-  (`"none"`/`"lin"`/`"irls"`), `muRefCovAlg`, `muModelTol`,
-  `muModelMaxCycles`. `fo`/`foi` do not get `mu*`/`irls*` counterparts
-  (no per-subject conditional estimate to regress against).
-
-- A mu-referenced theta with a finite boundary now falls back to
-  ordinary bounded outer-optimizer handling (with a warning) instead of
-  using the mu-ref regression above, since that solve is unconstrained.
-
-- The mu-referenced FOCEI family's live iteration-print table now shows
-  each mu-group theta's current value as an extra row.
+  of the outer gradient optimizer. New `foceiControl()` options:
+  `muModel` (`"none"`/`"lin"`/`"irls"`), `muRefCovAlg`, `muModelTol`,
+  `muModelMaxCycles`. `fo`/`foi` have no `mu*`/`irls*` counterparts.
+  A mu-referenced theta with a finite boundary falls back to ordinary
+  bounded outer-optimizer handling (with a warning). The live
+  iteration-print table shows each mu-group theta as an extra row.
 
 - Errors during estimation are now collected and reported together
   instead of only the last one (new `collectErr` argument to
@@ -56,27 +40,15 @@
   parameters with large-magnitude initial estimates (previously pinned
   at their initial value due to a missing `scaleC` branch).
 
-- Fix Windows heap-corruption segfault for parallel multi-core pooled
-  fits (`focei`, `foce`, `fo`, `laplace`, `agq`, and related pooled
-  optimizers) by passing the real thread id to rxode2's solver.
-
 - Iteration-time progress output for all estimators now flows through a
-  single shared printer (`scaleApplyIterPrintControl`/`scalePrintFun`
-  in `src/scale.h`) with consistent layout and behavior.
-
-- New `iterPrintControl()` bundles iteration-print options (`every`,
+  single shared printer (`scaleApplyIterPrintControl`/`scalePrintFun` in
+  `src/scale.h`). New `iterPrintControl()` bundles the options (`every`,
   `ncol`, `headerEvery`, `useColor`, `simple`); pass via `print` on any
-  `*Control()`. The historical scalar form still works.
-
-- `saem` now applies the same parameter back-transforms as `focei` in
-  its iteration-print `X` row.
-
-- Estimators with no per-iteration objective function (saem) now
-  suppress the `Function Val.` column instead of printing `nan`.
-
-- The shared iteration-printer auto-skips the `U`/`X` rows when they'd
-  be redundant (no optimizer scaling / no transformed parameters); force
-  skip with `*Control(print = iterPrintControl(simple = TRUE))`.
+  `*Control()` (the historical scalar form still works). `saem` now
+  back-transforms its iteration-print `X` row like `focei`. Estimators
+  with no per-iteration objective (saem) suppress `Function Val.`
+  instead of printing `nan`. The `U`/`X` rows auto-skip when redundant;
+  force skip with `*Control(print = iterPrintControl(simple = TRUE))`.
 
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
 

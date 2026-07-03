@@ -2,7 +2,7 @@
 #'
 #' The values supplied in the function call replace the defaults and
 #' a list with all possible arguments is returned.  The returned list
-#' is used as the ‘control’ argument to the ‘nlme’ function.
+#' is used as the `control` argument to the `nlme` function.
 #'
 #' @inheritParams nlme::nlmeControl
 #' @inheritParams nlme::nlme

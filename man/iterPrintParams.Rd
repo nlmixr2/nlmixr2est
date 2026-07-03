@@ -6,44 +6,34 @@
 \arguments{
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
-[iterPrintControl()] object. The scalar form is equivalent to
+[iterPrintControl()] object. Equivalent to
 `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
-\item{printNcol}{Integer (or `NULL`) — parameter columns per row before
-wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`
-(fits an 80-column terminal). Equivalent to `print =
-iterPrintControl(ncol = ...)`.}
+\item{printNcol}{Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{every}{Integer. Print one iteration row every `every` parameter
-evaluations; `0` suppresses output. Defaults to `1L`. This is
-[iterPrintControl()]'s name for what `*Control()` calls `print`.}
+evaluations; `0` suppresses output. Defaults to `1L`.}
 
 \item{ncol}{Integer or `NULL`. Parameter columns per row before wrapping.
-`NULL` (default) uses `floor((getOption("width") - 23) / 12)`. This is
-[iterPrintControl()]'s name for what `*Control()` calls `printNcol`.}
+`NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{headerEvery}{Integer or `NULL`. Re-emit the column header every
-`headerEvery` parameter-print events (not raw iterations); `0` prints
-it once at fit start. `NULL` (default) uses `10L`.}
+`headerEvery` parameter-print events; `0` prints it once at fit start.
+`NULL` (default) uses `10L`.}
 
-\item{useColor}{Logical (or `NULL`) — emit ANSI bold/color escapes in the
-iteration print. `NULL` (default) defers to [crayon::has_color()].
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
-\item{simple}{Logical. When `TRUE`, print a single row per iteration
-(optimizer-scale parameters only), suppressing the unscaled (`U`) /
-back-transformed (`X`) rows — used by estimators like saem with no
-internal optimizer scaling. Defaults to `FALSE`.}
+\item{simple}{Logical. When `TRUE`, print a single row per iteration,
+suppressing the unscaled (`U`) / back-transformed (`X`) rows. Defaults
+to `FALSE`.}
 }
 \value{
 Nothing; this is a documentation-only helper.
 }
 \description{
-Documentation-only stub holding every argument that controls
-iteration-time print formatting in `nlmixr2est`: both the scalar
-`*Control()` arguments (`print`, `printNcol`, `useColor`) and the
-[iterPrintControl()] arguments (`every`, `ncol`, `headerEvery`,
-`useColor`, `simple`); downstream functions pull entries via
-`@inheritParams iterPrintParams`.
+Shared `@param` docs for iteration-print formatting, used by both the
+scalar `*Control()` arguments and [iterPrintControl()] via `@inheritParams`.
 }
 \keyword{internal}

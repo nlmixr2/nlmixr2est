@@ -202,46 +202,36 @@
 #'
 #' @param muModel Selects the mu-referenced-FOCEI-family regression variant
 #'     for theta/eta in a mu-ref covariate relationship (see
-#'     \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI, every
-#'     theta/eta estimated by the outer/inner optimizer as usual);
-#'     \code{"lin"} (used by \code{mufocei}/\code{mufoce}/\code{muagq}/
-#'     \code{mulaplace}: for each mu-ref-covariate group, the population
-#'     theta and covariate coefficient(s) are excluded from the outer
-#'     optimizer and instead re-derived in C++ by closed-form OLS
-#'     regression of each subject's back-calculated value on the
-#'     covariate(s), with the residual becoming that subject's eta; this
-#'     "re-optimize etas, then regress" step repeats in-place until the
-#'     mu-group thetas stop moving by more than \code{muModelTol} or
-#'     \code{muModelMaxCycles} is reached); or \code{"irls"} (used by
-#'     \code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
-#'     same mechanism, reweighted by inner-optimization curvature instead
-#'     of unweighted OLS).
+#'     \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
+#'     \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
+#'     \code{mulaplace}: population theta and covariate coefficient(s) per
+#'     mu-ref-covariate group are excluded from the outer optimizer and
+#'     re-derived in C++ by closed-form OLS regression of each subject's
+#'     back-calculated value on the covariate(s), residual becomes that
+#'     subject's eta; repeats until convergence, see \code{muModelTol}/
+#'     \code{muModelMaxCycles}); or \code{"irls"}
+#'     (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+#'     same mechanism, reweighted by inner-optimization curvature).
 #'
-#'     A mu-ref-covariate theta with a finite bound cannot use this
-#'     mechanism (the regression is an unconstrained solve) and falls back
-#'     to ordinary bounded outer-optimizer handling with a warning; a bound
-#'     on the group's population theta excludes the whole group, a bound on
-#'     just one covariate coefficient excludes only that covariate. This
-#'     only affects the mu-referenced-FOCEI-family mechanism -- SAEM's own
-#'     mu-referencing and other estimation methods are unaffected.
+#'     A mu-ref-covariate theta with a finite bound falls back to ordinary
+#'     bounded outer-optimizer handling with a warning (a bound on the
+#'     group's population theta excludes the whole group; a bound on one
+#'     covariate coefficient excludes only that covariate).
 #'
 #' @param muRefCovAlg When `TRUE` (default), algebraic expressions that can
 #'     be mu-referenced are internally rewritten as mu-referenced
-#'     covariates (more accurate, since it linearizes the system) and
-#'     restored in the model after optimization. Mirrors
+#'     covariates and restored after optimization. Mirrors
 #'     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 #'     for \code{foceiControl()} only takes effect when
 #'     \code{muModel != "none"}.
 #'
 #' @param muModelTol Convergence tolerance for the mu-referenced-FOCEI-family
-#'     in-C++ "re-optimize etas, then regress" cycle (\code{muModel !=
-#'     "none"}): repeats within a single outer iteration until the max
-#'     mu-group theta change drops below this value or
-#'     \code{muModelMaxCycles} is reached.
+#'     "re-optimize etas, then regress" cycle (\code{muModel != "none"}):
+#'     repeats until the max mu-group theta change drops below this value
+#'     or \code{muModelMaxCycles} is reached.
 #'
 #' @param muModelMaxCycles Maximum number of "re-optimize etas, regress"
-#'     cycles per outer iteration for the mu-referenced-FOCEI-family
-#'     mechanism (see \code{muModel}, \code{muModelTol}).
+#'     cycles per outer iteration (see \code{muModel}, \code{muModelTol}).
 #'
 #' @param diagOmegaBoundUpper Upper bound of the diagonal omega matrix, as
 #'     \code{diag(omega)*diagOmegaBoundUpper}. `1` = no upper bound.
