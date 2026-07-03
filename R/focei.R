@@ -1881,6 +1881,17 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (!identical(.mode, "compute")) {
     return(invisible())                                 # covType="fd", or no cov requested
   }
+  # Bounded-parameter transforms (preProcessBoundedTransform) reparametrize thetas
+  # onto an unconstrained scale; the FD cov applies the natural-scale Jacobian
+  # (.postEstimationBoundedTransformJacobian) but the analytic path does not, so its
+  # SEs would be on the wrong (transformed) scale -- bow out to FD (#697 review,
+  # finding 9).
+  if (length(.ui$boundedTransforms)) {
+    warning(paste0("nlmixr2: covType=\"analytic\" does not support bounded-parameter ",
+                   "transforms; re-run with covType=\"fd\" for the finite-difference ",
+                   "covariance."), call. = FALSE)
+    return(invisible())
+  }
   .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", FALSE))
   # the analytic engine reads the population thetas from ui$iniDf$est and solves
   # the augmented model at them, so the UI must carry the fitted estimates (at this
