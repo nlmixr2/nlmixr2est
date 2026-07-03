@@ -513,6 +513,113 @@ nmTest({
     agree <- mean(fit$mixNum$mixnum[order(fit$mixNum$ID)] == sub_pop)
     expect_true(agree > 0.6 || (1 - agree) > 0.6) # allow for label swap
   })
+
+  test_that("SAEM split-ETA fixed effects actually separate (not just 'no error')", {
+    # Regression test for a second, independent collapse mode: split-ETA
+    # SAEM fits (separate eta.cl1/eta.cl2, one per mixture component) could
+    # converge with tcl1 and tcl2 landing on nearly the same value even
+    # though the mixing probability (p1) and per-subject responsibilities
+    # were fine -- i.e. NOT the mixProb collapse tested above. Root cause
+    # was two independent bugs in src/saem.cpp/R/saem.R: (1) the theta
+    # M-step regressed a cross-component-blended sufficient statistic even
+    # for phi1 columns owned by a single component, diluting/coupling
+    # tcl1/tcl2; (2) .nlmixr2FitUpdateParams() rebuilt ui$iniDf from the
+    # *pooled* (display-only) omega, corrupting ui$theta for every
+    # parameter. Both matter: check the actual back-transformed estimates
+    # are near their simulated truth and clearly separated from each other,
+    # not just "not identical".
+    #
+    # NB: label order (which true subpopulation ends up as component 1 vs
+    # 2) is not guaranteed and can vary by seed -- there is no way to pin a
+    # bound/order on tcl1 vs tcl2 without breaking mu-referencing (adding a
+    # bounding transform, e.g. logit(), makes the parameter no longer a
+    # direct linear combination of theta+eta). So this test checks the
+    # *set* of recovered clearances against the true set, not tcl1
+    # specifically against the EM truth.
+    set.seed(2024)
+    tclEm <- log(8); tclPm <- log(0.8); tv0 <- log(30); tka0 <- log(1.2)
+    sigma <- 0.20; omegaCl <- 0.09; omegaV <- 0.04
+    nEm <- 20; nPm <- 10; n <- nEm + nPm
+    clTrue <- c(exp(tclEm + rnorm(nEm, 0, sqrt(omegaCl))),
+                exp(tclPm + rnorm(nPm, 0, sqrt(omegaCl))))
+    vTrue <- exp(tv0 + rnorm(n, 0, sqrt(omegaV)))
+    kaTrue <- rep(exp(tka0), n)
+    times <- c(0.5, 1, 2, 4, 6, 8, 12, 18, 24, 36, 48)
+    modSim <- rxode2::rxode2({
+      d/dt(depot)   <- -ka * depot
+      d/dt(central) <- ka * depot - (cl / v) * central
+      cp <- central / v
+    })
+    simRows <- vector("list", n)
+    for (i in seq_len(n)) {
+      ev <- rxode2::et(amt = 100, time = 0) |> rxode2::et(time = times)
+      out <- rxode2::rxSolve(modSim, params = c(ka = kaTrue[i], cl = clTrue[i], v = vTrue[i]), events = ev)
+      dv <- out$cp * exp(rnorm(length(times), 0, sigma))
+      simRows[[i]] <- data.frame(ID = i, time = times, DV = pmax(dv, 1e-6), AMT = 0, EVID = 0)
+    }
+    doseRows <- data.frame(ID = seq_len(n), time = 0, DV = NA_real_, AMT = 100, EVID = 1)
+    simData <- rbind(doseRows, do.call(rbind, simRows))
+    simData <- simData[order(simData$ID, simData$time), ]
+
+    # Nonlinear-wrapped (bounded) mu-referencing: cl <- mix(expit(tcl+eta,...))
+    twoPopBounded <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl1 <- logit(0.8, 0.1, 200)
+        tcl2 <- logit(0.8, 0.1, 200)
+        tv <- log(30)
+        p1 <- 0.67
+        eta.cl1 ~ 0.09
+        eta.cl2 ~ 0.09
+        eta.v ~ 0.04
+        add.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(expit(tcl1 + eta.cl1, 0.1, 200), p1, expit(tcl2 + eta.cl2, 0.1, 200))
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fitBounded <- .nlmixr(twoPopBounded, simData, est="saem",
+                          saemControl(print = 0, seed = 99, nBurn = 200, nEm = 300,
+                                      calcTables = FALSE, covMethod = 0L))
+    clBounded <- sort(c(fitBounded$theta[["tcl1"]], fitBounded$theta[["tcl2"]]))
+    clBounded <- rxode2::expit(clBounded, 0.1, 200)
+    # Recovered clearances should be near the true 0.8/8 and clearly
+    # separated, not both near one of the true values.
+    expect_true(clBounded[1] < 2)
+    expect_true(clBounded[2] > 4)
+
+    # Truly mu-referenced (linear, unbounded): cl <- mix(tcl+eta, p1, tcl+eta)
+    twoPopMuLinear <- function() {
+      ini({
+        tka <- log(1.2)
+        tcl1 <- 8
+        tcl2 <- 0.8
+        tv <- log(30)
+        p1 <- 0.67
+        eta.cl1 ~ 0.09
+        eta.cl2 ~ 0.09
+        eta.v ~ 0.04
+        add.sd <- 0.2
+      })
+      model({
+        ka <- exp(tka)
+        cl <- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)
+        v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    fitMuLinear <- .nlmixr(twoPopMuLinear, simData, est="saem",
+                           saemControl(print = 0, seed = 99, nBurn = 200, nEm = 300,
+                                       calcTables = FALSE, covMethod = 0L))
+    clMuLinear <- sort(c(fitMuLinear$theta[["tcl1"]], fitMuLinear$theta[["tcl2"]]))
+    expect_true(clMuLinear[1] < 2)
+    expect_true(clMuLinear[2] > 4)
+  })
 })
 
 
