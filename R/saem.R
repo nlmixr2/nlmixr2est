@@ -522,7 +522,11 @@
         .doIt <- !inherits(.covm, "try-error")
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
         if (.doIt) {
-          .tmp <- try(chol(.covm), silent = TRUE)
+          # .covm may have NA rows/columns for specific ill-identified
+          # parameters (see .nlmixr2RobustCov()); validate only the
+          # well-identified submatrix so those don't force a fallback to a
+          # cruder covariance estimator for every parameter.
+          .tmp <- .nlmixr2CholPartial(.covm)
           .addCov <- TRUE
           .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
