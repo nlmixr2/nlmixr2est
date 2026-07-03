@@ -356,10 +356,8 @@ calc.COV <- function(fit0) {
     rxode2::rxTick()
     return(ret)
   })
-  npar <- sum(cov.est.ix)
   X <- do.call("rbind", Xi)
-  Ri <- backsolve(qr.R(qr(X)), diag(npar))
-  ret <- crossprod(t(Ri))
+  ret <- .nlmixr2RobustCov(X)
   rxode2::rxProgressStop()
   return(ret)
 }

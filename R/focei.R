@@ -2155,8 +2155,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   if (!is.null(.env$cov)) {
-    if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
-                               row.names="strict", col.names="strict")) {
+    # A covariance matrix may legitimately have NA for specific
+    # ill-identified parameters (see .nlmixr2RobustCov(), R/cov.R):
+    # their whole row/column is NA, while every other (well-identified)
+    # parameter's row/column has no NA at all. That clean pattern is
+    # accepted; any other missingness (scattered NA, a partially-NA "good"
+    # parameter, etc.) still indicates a malformed matrix.
+    .validCov <- checkmate::testMatrix(.env$cov, min.rows=1, #.var.name="env$cov",
+                                       row.names="strict", col.names="strict")
+    if (.validCov && anyNA(.env$cov)) {
+      .bad <- which(is.na(diag(.env$cov)))
+      .good <- setdiff(seq_len(nrow(.env$cov)), .bad)
+      .validCov <- length(.bad) > 0 &&
+        all(is.na(.env$cov[.bad, , drop = FALSE])) &&
+        all(is.na(.env$cov[, .bad, drop = FALSE])) &&
+        !anyNA(.env$cov[.good, .good, drop = FALSE])
+    }
+    if (!.validCov) {
       .env$covDebug <- .env$cov
       .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
       warning(paste0("covariance not in proper form, can access value in $covDebug"))
