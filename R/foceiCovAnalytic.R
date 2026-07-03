@@ -255,12 +255,13 @@
 #'   failure or non-finite result
 #' @author Hidde van de Beek
 #' @noRd
-.foceiAnalyticSolveDir <- function(aug, params, ev, times) {
+.foceiAnalyticSolveDir <- function(aug, params, ev, times, solveOpts = NULL) {
+  .args <- c(list(aug$augMod, params = params, ev, returnType = "data.frame",
+                  atol = 1e-10, rtol = 1e-10),           # tight tol for the sensitivity states
+             solveOpts)                                  # + the fit's covsInterpolation / method (#697 finding 15)
   .d <- tryCatch(
     withCallingHandlers(
-      as.data.frame(rxode2::rxSolve(aug$augMod, params = params, ev,
-                                    returnType = "data.frame",
-                                    atol = 1e-10, rtol = 1e-10)),
+      as.data.frame(do.call(rxode2::rxSolve, .args)),
       warning = function(w) invokeRestart("muffleWarning")),  # muffle benign warnings, don't abort the tier
     error = function(e) NULL)
   if (is.null(.d)) {
@@ -316,15 +317,16 @@
 #' @return list(f, a, A, Ath), or NULL on any failure
 #' @author Hidde van de Beek
 #' @noRd
-.foceiAnalyticSolveDirFD3 <- function(aug, params, ev, times, ef = 7e-7) {
+.foceiAnalyticSolveDirFD3 <- function(aug, params, ev, times, ef = 7e-7, solveOpts = NULL) {
   .dirs <- aug$dirs
   .nd <- length(.dirs)
   .solveA <- function(.p) {
+    .args <- c(list(aug$augMod, params = .p, ev, returnType = "data.frame",
+                    atol = 1e-10, rtol = 1e-10),         # tight tol for the sensitivity states
+               solveOpts)                                # + the fit's covsInterpolation / method (#697 finding 15)
     .d <- tryCatch(
       withCallingHandlers(
-        as.data.frame(rxode2::rxSolve(aug$augMod, params = .p, ev,
-                                      returnType = "data.frame",
-                                      atol = 1e-10, rtol = 1e-10)),
+        as.data.frame(do.call(rxode2::rxSolve, .args)),
         warning = function(w) invokeRestart("muffleWarning")),  # muffle benign warnings, don't abort the tier
       error = function(e) NULL)
     if (is.null(.d)) {
@@ -856,6 +858,19 @@
   if (!.hasRxExpandSens2()) {
     return(NULL)                                        # need rxExpandSens2_ + symengine
   }
+  # reuse the fit's own covariate-interpolation and integration method for the
+  # augmented solves (the tolerance stays tight, 1e-10, for the sensitivity states);
+  # only these scalar, model-agnostic options are forwarded -- the per-compartment
+  # tolerance vectors in rxControl are sized to the original model, not the augmented
+  # one (#697 finding 15).
+  .rxc <- tryCatch(rxode2::rxGetControl(.ui, "rxControl", NULL), error = function(e) NULL)
+  .solveOpts <- list()
+  if (is.list(.rxc)) {
+    for (.n in c("covsInterpolation", "method")) {
+      if (!is.null(.rxc[[.n]])) .solveOpts[[.n]] <- .rxc[[.n]]
+    }
+  }
+  if (length(.solveOpts) == 0L) .solveOpts <- NULL
   if (isTRUE(as.logical(rxode2::rxGetControl(.ui, "fo", FALSE)))) {
     return(NULL)                                        # FO/FOI: first-order marginal, not conditional
   }
@@ -955,9 +970,9 @@
     .obs <- .s[.s$EVID == 0, , drop = FALSE]            # (CMT/EVID/II/SS/ADDL/covariates preserved)
     .p <- c(.th, setNames(.ebes[.i, ], .etaDirs))
     .E <- if (sens == "fd2") {
-      .foceiAnalyticSolveDirFD3(.am, .p, .s, .obs$TIME)
+      .foceiAnalyticSolveDirFD3(.am, .p, .s, .obs$TIME, solveOpts = .solveOpts)
     } else {
-      .foceiAnalyticSolveDir(.am, .p, .s, .obs$TIME)
+      .foceiAnalyticSolveDir(.am, .p, .s, .obs$TIME, solveOpts = .solveOpts)
     }
     if (is.null(.E)) {
       return(NULL)                                      # solve failure -> next tier (caller)
