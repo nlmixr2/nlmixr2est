@@ -45,6 +45,9 @@ saemControl(
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
   eventSens = c("jump", "fd"),
+  mixProbMethod = c("regularized", "annealed"),
+  mixProbStepExp = 1,
+  mixProbPriorN = 20,
   ...
 )
 }
@@ -288,6 +291,78 @@ or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
 ("jump") sensitivities into the sensitivity states at each dosing
 event; `"fd"` keeps the legacy finite-difference behavior instead
 (the backward-compatible opt-out).}
+
+\item{mixProbMethod}{For mixture models (`mix()` in the model block,
+  more than one component), this controls how the mixing-probability
+  estimate is stabilized against collapsing onto a single component.
+  Ordinary theta/omega parameters use a step size of 1 (full
+  replacement, no memory) during the `nBurn` phase, which is
+  appropriate for them but is unstable for a mixing probability: the
+  per-subject responsibility used to update it is itself weighted by
+  the *current* mixing probability, so a small, noisy drift away from
+  the truth shrinks the responsibilities of the shrinking component
+  for every subject (not just the ones that truly belong to the other
+  component), which shrinks the next iteration's estimate further --
+  a runaway positive-feedback loop that can drive the mixing
+  probability to exactly 0/1 well before the fixed effects have had a
+  chance to separate the components. Two independent fixes are
+  available:
+
+  * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+    distributed according to the model's *initial* mixing probability
+    (from `ini()`), into the responsibility average used at every
+    iteration -- equivalent to a Dirichlet-prior/MAP-EM correction on
+    the mixing proportions. This changes what the estimate converges
+    toward (it is pulled toward the initial guess, with the pull's
+    relative strength shrinking as the number of subjects `N` grows),
+    at the cost of some bias toward the user-supplied initial mixing
+    probability. Empirically this is the fix that actually prevents
+    collapse in difficult (small `N`, weakly-separated, or
+    symmetric-start) cases -- it changes *where the update settles*,
+    not just how fast it gets there, which is what a runaway feedback
+    loop needs. It typically also needs somewhat more `nBurn`/`nEm`
+    than a well-separated non-mixture fit to fully resolve the
+    components, especially at larger `mixProbPriorN`; if separation is
+    still incomplete, increase `mixProbPriorN`, `nBurn`, and `nEm`
+    together.
+
+  * `"annealed"`: give the mixing-probability update its own step-size
+    schedule that decays from iteration 1 (see `mixProbStepExp`),
+    instead of holding it at a full-replacement step of 1 throughout
+    `nBurn`. This slows *how fast* the estimate can move on a single,
+    possibly noisy, iteration without changing what it converges to.
+    That makes it the lower-bias option, but also means it does not,
+    by itself, fix a collapse caused by a systematically unfavorable
+    feedback loop (as opposed to one triggered by transient noise) --
+    slowing the walk to the wrong answer does not stop it from getting
+    there over enough iterations. Prefer this only when you have
+    reason to believe the collapse risk is mild/noise-driven (e.g.
+    already well-separated components, or moderate-to-large `N`) and
+    you want to avoid any bias toward the initial mixing probability.}
+
+\item{mixProbStepExp}{Only used when `mixProbMethod="annealed"`. The
+decay exponent for the mixing-probability step size, applied from
+iteration 1 across the entire fit (`1/iteration^mixProbStepExp`).
+The default of 1 matches the decay rate `saemControl()` already uses
+for ordinary parameters once the `nEm` (post-burn-in) phase begins;
+applying it from iteration 1 for the mixing probability is what
+prevents the burn-in-phase runaway. Smaller values (e.g. 0.5) decay
+more slowly, allowing the mixing probability to still move fairly
+quickly if the true separation is strong, at some cost in
+robustness to noise.}
+
+\item{mixProbPriorN}{Only used when `mixProbMethod="regularized"`.
+The number of pseudo-subjects (weighted according to the initial
+mixing probability) blended into the responsibility average at
+every iteration. Larger values pull harder toward the initial
+mixing probability and are more robust to collapse, but bias the
+final estimate more when the true mixing probability differs a lot
+from the initial guess or when the number of subjects is small
+relative to `mixProbPriorN`, and typically need more `nBurn`/`nEm`
+iterations to fully separate components. The default of 20 is
+strong enough to prevent outright collapse on small (~30-subject)
+datasets; if components are still not cleanly separating, try
+increasing this together with `nBurn`/`nEm` before reducing it.}
 
 \item{...}{Other arguments to control SAEM.}
 }

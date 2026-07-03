@@ -118,6 +118,9 @@
                        resFixed,
                        ue,
                        mixProb = numeric(0),
+                       mixProbMethod = c("regularized", "annealed"),
+                       mixProbStepExp = 1,
+                       mixProbPriorN = 20,
                        omegaShare = integer(0),
                        omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
@@ -488,6 +491,14 @@
     pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
+  # Independent, damped step-size schedule for the mixture-probability
+  # update ("annealed" mixProbMethod): decays from iteration 1 instead of
+  # being held at a full-replacement step of 1 throughout nBurn like `pas`
+  # is for ordinary parameters. See saemControl()'s mixProbMethod docs for
+  # why the mixing probability specifically needs this (it feeds back
+  # multiplicatively into its own next update, unlike theta/omega).
+  mixProbMethod <- match.arg(mixProbMethod)
+  pasMix <- 1 / (1:niter)^mixProbStepExp
   minv <- rep(1e-20, nphi)
   if (length(mixProb) > 1L) {
     # Mixture fits (nMix > 1): i0 indexes phi positions with no associated
@@ -532,6 +543,9 @@
     coef_sa = .95,
     pas = pas,
     pash = pash,
+    pasMix = pasMix,
+    mixProbMethod = if (identical(mixProbMethod, "regularized")) 1L else 0L,
+    mixProbPriorN = mixProbPriorN,
     minv = minv,
     N = N,
     ntotal = ntotal,
