@@ -1,13 +1,6 @@
-# Full FOCEI covariance (structural theta + residual sigma + Omega, diagonal or block).
-# One analytic tier (fd2): analytic 2nd-order sensitivities plus Shi(2021) adaptive
-# finite differences of those EXACT 2nd-order sensitivities for the 3rd-order term.  It
-# differences exact derivatives (not the objective, so no catastrophic cancellation)
-# and only ever builds the 2nd-order augmented model.  There is deliberately no exact
-# 3rd-order tier: it would build an even larger augmented model (for a covariate model
-# the 3rd-order C source is ~80 KB / ~40 s to compile vs ~4 s for the 2nd-order one),
-# and it could never rescue fd2 -- whenever the 2nd-order model cannot build or solve,
-# a 3rd-order model cannot either.  So fd2 either succeeds or the caller falls back to
-# the finite-difference covariance.
+# Full FOCEI covariance (theta + residual sigma + Omega): analytic 2nd-order
+# sensitivities with Shi(2021) finite differences for the 3rd-order term, else the
+# caller falls back to the finite-difference covariance.
 
 #' Omega blocks (connected components of the random-effect covariance)
 #'
@@ -114,10 +107,9 @@
 #' Full covariance for a fitted nlmixr2 FOCEI object
 #'
 #' Returns the full observed-information covariance over the structural thetas,
-#' residual sigma, and Omega (diagonal or block) variances and covariances, from the
-#' analytic 2nd-order sensitivities with Shi finite differences for the 3rd-order term
-#' (the fd2 tier).  The analytic path is never partially applied: it returns the full
-#' set of parameters or NULL.
+#' residual sigma, and Omega variances and covariances, from the analytic 2nd-order
+#' sensitivities with Shi finite differences for the 3rd-order term.  The analytic
+#' path is never partially applied: it returns the full parameter set or NULL.
 #' @param fit a fitted nlmixr2 focei object
 #' @param covFull FALSE for the structural-theta block only, TRUE for theta +
 #'   sigma + Omega
@@ -125,13 +117,9 @@
 #' @author Hidde van de Beek
 #' @noRd
 .foceiCov <- function(fit, covFull = FALSE) {
-  # Single analytic tier (fd2): the analytic 2nd-order sensitivities with Shi(2021)
-  # finite differences for the 3rd-order term.  The builder bails cheaply if the
-  # 1st-order sensitivities are unavailable, and any other failure (a model that will
-  # not build/solve) returns NULL -- in every case the caller falls back to the
-  # finite-difference covariance.  (There is no exact-3rd-order tier: it builds an even
-  # larger augmented model, so whenever fd2 cannot solve, an exact-3 model cannot
-  # either -- it could never rescue fd2, only cost time.)
+  # Single analytic tier (fd2): 2nd-order sensitivities with Shi(2021) finite
+  # differences for the 3rd-order term.  Any failure returns NULL and the caller
+  # falls back to the finite-difference covariance.
   .r <- tryCatch(.foceiCovAnalytic(fit, covFull = covFull), error = function(e) NULL)
   if (!is.null(.r)) {
     .r$method <- "analytic-fd2"

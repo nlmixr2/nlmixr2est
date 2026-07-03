@@ -6591,11 +6591,8 @@ NumericMatrix foceiCalcCov(Environment e){
       // were force-skipped, giving a theta-only $cov.)
       LogicalVector skipCov(op_focei.ntheta+op_focei.omegan);//skipCovN
       if (op_focei.covFull) {
-        // covFull=TRUE: cov spans theta + sigma + Omega -- skip the literally-fixed
-        // parameters (thetaFixed = c(theta-fix, omega-fix)) and, additionally, the
-        // IOV / mixture-probability thetas whose covariance is not interpretable
-        // (skipCovFull, a theta-length mask built in rxUiGet.foceiOptEnv; residual
-        // sigma thetas are NOT in it, so they stay in the cov) (#697 finding 7).
+        // covFull spans theta + sigma + Omega: skip the fixed params (thetaFixed) and
+        // the IOV / mixture-probability thetas (skipCovFull); residual sigma is kept.
         LogicalVector thFix = as<LogicalVector>(e["thetaFixed"]);
         LogicalVector scFull;
         if (e.exists("skipCovFull")) scFull = as<LogicalVector>(e["skipCovFull"]);
@@ -6666,7 +6663,7 @@ NumericMatrix foceiCalcCov(Environment e){
             double _sigdig = as<double>(_ctl["sigdig"]);
             _covSigdig = _sigdig + 5.0;
             if (_covSigdig < _sigdig) _covSigdig = _sigdig; // never looser than the fit ...
-            if (_covSigdig > 10.0) _covSigdig = 10.0;       // ... but the atol floor ~5e-13 wins (#697 finding 14)
+            if (_covSigdig > 10.0) _covSigdig = 10.0;       // ... but the atol floor ~5e-13 wins
           }
         }
         CovSolveTolGuard _covTolGuard(_covSigdig);
@@ -7078,10 +7075,9 @@ NumericMatrix foceiCalcCov(Environment e){
             ++ncc;
           }
           std::vector<std::pair<int,int> > pairs;
-          // Pure-diagonal Omega only when there is exactly one (variance) parameter per
-          // eta; a declared block whose off-diagonal converged <= tol still has nom > neta
-          // parameters, so it must NOT take the diagonal branch (which would use an omega
-          // parameter index as an eta index and read out of bounds) (#697 finding 8).
+          // Diagonal branch only with one variance parameter per eta; a block whose
+          // off-diagonal converged <= tol still has nom > neta, and taking the diagonal
+          // branch would read an omega parameter index as an eta index (out of bounds).
           if ((int)ncc == neta && nom == (unsigned int)neta) {  // diagonal Omega
             for (unsigned int c = 0; c < nom; ++c) {
               int om = op_focei.fixedTrans[nth + c] - (int)op_focei.ntheta;
@@ -7092,10 +7088,9 @@ NumericMatrix foceiCalcCov(Environment e){
               for (int a = b; a < neta; ++a)
                 if (comp[a] == comp[b]) pairs.push_back(std::make_pair(a, b));
           }
-          // Prefer R's free-element pairs when available: they drop fixed Omega
-          // elements, so a partially-fixed correlated block has pairs.size() == nom
-          // and is transformed instead of skipped (#697 finding 11).  Only override
-          // when the count matches the free omega parameters, else keep the enumeration.
+          // Prefer R's free-element pairs when their count matches the free omega
+          // parameters: they drop fixed Omega elements, so a partially-fixed block is
+          // transformed instead of skipped.  Otherwise keep the enumeration above.
           if (e.exists("covOmegaPairsR") && !Rf_isNull(e["covOmegaPairsR"])) {
             IntegerMatrix rp = as<IntegerMatrix>(e["covOmegaPairsR"]);
             if ((unsigned int)rp.nrow() == nom) {

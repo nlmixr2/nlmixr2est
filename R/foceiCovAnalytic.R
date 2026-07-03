@@ -1,18 +1,10 @@
 # Analytic FOCEI observed-information covariance R-matrix for nlmixr2est.
 #
 # Replaces the finite-difference covariance Hessian with the exact analytic
-# observed information: the population Hessian splits into a data term (the
-# 2nd-order sensitivities already needed for the gradient) and a log-determinant
-# term (the 3rd-order sensitivities).  The state sensitivities come from rxode2's
-# .rxSens (rxExpandSens_/2_); the higher-order prediction chain is built here.
-# .foceiCovAnalytic builds one direction-set model: the analytic 2nd-order
-# sensitivities plus Shi(2021) finite differences of those exact 2nd-order
-# sensitivities for the 3rd-order term (the fd2 tier).  It first checks that the
-# 1st-order sensitivities are available (free -- they are already expanded for the
-# gradient) and bails otherwise, so a non-differentiable model never pays for the
-# 2nd-order build.  Every per-subject solve is guarded; any failure returns NULL
-# and the caller ([.foceiCov]) falls back to the finite-difference covariance, so
-# the analytic path is never partially applied.
+# observed information: a data term (2nd-order sensitivities) plus a
+# log-determinant term (3rd-order sensitivities, via Shi(2021) finite differences
+# of the 2nd-order sensitivities).  Any per-subject solve failure returns NULL and
+# the caller falls back to the finite-difference covariance.
 
 #' Are the rxode2 sensitivity primitives available for the analytic covariance
 #'
@@ -29,9 +21,7 @@
 #' Omega variance-covariance derivatives for the analytic Omega block
 #'
 #' First and second derivatives of Omega^{-1} and log|Omega| with respect to the
-#' free variance-covariance elements, via rxode2's C++ rxOmegaVarCovDeriv
-#' (nlmixr2/rxode2#1092), a hard dependency (rxode2 >= 5.1.3), so no R
-#' reimplementation.
+#' free variance-covariance elements, via rxode2's C++ rxOmegaVarCovDeriv.
 #' @param Om the estimated Omega matrix
 #' @param pairs matrix of free lower-triangle element indices, each row c(a, b)
 #'   with a >= b
@@ -52,22 +42,17 @@
 
 #' Residual error machinery for the theta + sigma + Omega R-matrix
 #'
-#' Builds the f-derivatives of rho and p (for the eta/theta blocks and the
-#' auxiliary Hessian), plus the residual-parameter (sigma) partials for the sigma
-#' block, symbolically in (f, y, sa, sp) where sa is the additive SD and sp the
-#' proportional SD.
-#' Supports add / prop / combined1 / combined2 residual error; returns NULL for
-#' lnorm / propT / propF.  Built for FOCEI (the residual variance depends on eta
-#' through the prediction, so its f-derivatives carry the interaction term).
+#' Builds the symbolic f-derivatives of rho and p plus the sigma partials, in
+#' (f, y, sa, sp) with sa the additive SD and sp the proportional SD.  Supports
+#' add / prop / combined1 / combined2; returns NULL for lnorm / propT / propF.
 #' @param ui the rxode2 UI object
 #' @return list of symbolic derivative expressions and an evaluator, or NULL for
 #'   out-of-scope error models (lnorm / propT / propF)
 #' @author Hidde van de Beek
 #' @noRd
 .foceiAnalyticErrFull <- function(ui) {
-  # Single endpoint only: a multi-endpoint model pools error rows across endpoints
-  # into one R against one rx_pred_, which is the wrong likelihood -- bow out so the
-  # pre-fit gate keeps the finite-difference cov (#697 review, finding 3).
+  # Single endpoint only: a multi-endpoint model pools error rows into one R against
+  # one rx_pred_, the wrong likelihood -- bow out to the finite-difference cov.
   if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L) {
     return(NULL)
   }
@@ -144,20 +129,11 @@
 
 #' Augmented sensitivity model over an arbitrary direction set
 #'
-#' Builds an rxode2 model carrying prediction sensitivities to `order` (2 or 3)
-#' over a mixed set of ETA_i_ and THETA_j_ directions.  Every structural theta
-#' differentiates in one direction: a mu-referenced theta reuses its eta's
-#' direction, any other structural theta (covariate coefficient or eta-less) gets
-#' its own THETA_j_ direction carrying its true sensitivity, so no covariate is
-#' detected or scaled.  State sensitivities use rxode2's .rxSens (the nlmixr2est
-#' convention, as in .sensEtaOrTheta / rxUiGet.foceiEtaS): it runs the
-#' rxExpandSens_/2_ grid and applies .rxDelaySensAugment for lag/delay terms,
-#' and it accepts a mixed direction set.  The higher-order prediction chain
-#' f1/f2 is built here because rxode2's prediction expander rxExpandFEta_ only
-#' does 1st order over a homogeneous set (there is no rxExpandFEta2_); it uses
-#' the same machinery .rxSens uses, symengine (C++) differentiation orchestrated
-#' in R and emitted via rxFromSE.  Bails (returns NULL) if the 1st-order
-#' sensitivities are unavailable, before paying for the 2nd-order build.
+#' Builds an rxode2 model carrying prediction sensitivities over a mixed set of
+#' ETA_i_ and THETA_j_ directions (a mu-referenced theta reuses its eta's
+#' direction; any other structural theta gets its own THETA_j_ direction).  State
+#' sensitivities use rxode2's .rxSens; the higher-order prediction chain f1/f2 is
+#' built here.  Returns NULL if the 1st-order sensitivities are unavailable.
 #' @param ui the rxode2 UI object
 #' @param dirs character vector of direction names (ETA_i_ / THETA_j_)
 #' @return list(augMod, dirs, ndir, st, P2), or NULL on any build failure
@@ -168,10 +144,8 @@
     .s <- ui$loadPruneSens
     .st <- rxode2::rxStateOde(.s)
     rxode2::.rxJacobian(.s, c(.st, dirs))
-    # 1st-order sensitivities are already expanded for the FOCEi gradient, so this is
-    # essentially free; if they are unavailable the model is not analytically
-    # differentiable and there is no point building the (expensive) 2nd-order model --
-    # bail so the caller falls back to finite differences.
+    # 1st-order sensitivities are already expanded for the gradient (free); if
+    # unavailable the model is not differentiable, so bail before the 2nd-order build.
     .s1 <- rxode2::.rxSens(.s, dirs)
     if (length(.s1) == 0L) {
       return(NULL)
@@ -227,16 +201,9 @@
 
 #' Solve the direction-set augmented model (order 2) with a finite-difference 3rd order
 #'
-#' Solves the 2nd-order model and recovers the 3rd-order tensor Ath = d3f/ddir3 by
-#' Shi (2021) adaptive central differences of the exact 2nd-order sensitivities
-#' A = d2f/ddir2 (the fd2 tier).  The step is chosen per direction with the
-#' harmonic-mean gate over all components of A, mirroring nlmixr2's inner-problem
-#' differences (shi21Central in inner.cpp).  Each direction is a named coordinate
-#' of `params` (an ETA_i_ or a THETA_j_), so covariate / eta-less thetas are
-#' differenced by their own theta exactly like the etas.  The result is
-#' symmetrized (the 3rd derivative is fully symmetric) and returned as
-#' list(f, a, A, Ath) -- the per-observation prediction and the direction-indexed
-#' 1st/2nd/3rd-order sensitivity arrays -- for the downstream R-matrix assembly.
+#' Solves the 2nd-order model and recovers the 3rd-order tensor Ath by Shi (2021)
+#' adaptive central differences of the exact 2nd-order sensitivities.  The result
+#' is symmetrized and returned as list(f, a, A, Ath) for the R-matrix assembly.
 #' @param aug the augmented model list (order 2) from .foceiAnalyticAugModelDirs
 #' @param params named parameter vector (thetas and eta directions)
 #' @param ev the subject's event data frame
@@ -251,7 +218,7 @@
   .solveA <- function(.p) {
     .args <- c(list(aug$augMod, params = .p, ev, returnType = "data.frame",
                     atol = 1e-10, rtol = 1e-10),         # tight tol for the sensitivity states
-               solveOpts)                                # + the fit's covsInterpolation / method (#697 finding 15)
+               solveOpts)                                # + the fit's covsInterpolation / method
     .d <- tryCatch(
       withCallingHandlers(
         as.data.frame(do.call(rxode2::rxSolve, .args)),
@@ -321,15 +288,10 @@
 
 #' Harmonic-mean gate for the Shi (2021) adaptive step
 #'
-#' The Shi adaptive central-difference step (.shiHarmonicMean / .shiRC /
-#' .shi21CentralR) is a faithful R port of nlmixr2's shi21Central (src/shi21.cpp).
-#' The C++ shi21Central takes a C++ function-pointer (shi21fn_type) and is not
-#' exported to R, so it cannot difference the R closure used here (the
-#' per-direction augmented-model re-solve); the port is the only convention-
-#' faithful way to reuse the same adaptive-step algorithm.  This piece collapses
-#' the per-component third-difference ratios to one value by their harmonic mean,
-#' with a correction for components that are locally linear (zero third
-#' difference).
+#' R port of nlmixr2's shi21Central (src/shi21.cpp), which is not exported to R and
+#' so cannot difference the R closure used here.  Collapses the per-component
+#' third-difference ratios to one value by their harmonic mean, with a correction
+#' for locally linear (zero third difference) components.
 #' @param allv vector of per-component third-difference ratios
 #' @return the corrected harmonic mean
 #' @author Hidde van de Beek
@@ -457,21 +419,12 @@
 
 #' Per-subject observed-information R-matrix over all population parameters
 #'
-#' Pure assembly (no ODE solve) from already-evaluated sensitivities (E$a/A/Ath
-#' and the residual partials in `ef`) plus the Omega derivatives `omd`.  Each
-#' entry is the data term (envelope/Schur) plus the log-determinant term (the
-#' 3rd-order sensitivities), dispatched over the parameter types (structural
-#' theta, sigma, Omega) by the typ()/Mcol()/Smat()/... family.  The inner Hessian
-#' H is over the etas ("eta-slots", 1:neta); each structural theta differentiates
-#' in its own direction-slot (1:ndir): a mu-ref theta reuses its eta direction, a
-#' non-mu-ref theta gets its own added direction (dirTh maps theta index ->
-#' direction).  For a fully mu-referenced model ndir == neta and dirTh == 1:nth.
-#' The math-notation locals (a/A/Ath = 1st/2nd/3rd-order sensitivities, H/Ht =
-#' inner and auxiliary Hessians, Oi = Omega^{-1}, N/Tn/Cen/Cee = log-det tensors)
-#' follow the derivation.  Kept in R rather than C++/Armadillo (unlike the
-#' estimation-loop math in cwres.cpp / res.cpp): it is post-fit, run once per
-#' subject, sub-second, and is thin glue around C++ primitives (rxOmegaVarCovDeriv,
-#' LAPACK solve) tied to R symbolic closures.
+#' Pure assembly (no ODE solve) from already-evaluated sensitivities (E$a/A/Ath,
+#' the residual partials in `ef`, the Omega derivatives `omd`).  Each entry is the
+#' data term plus the log-determinant term, dispatched over the parameter types
+#' (structural theta, sigma, Omega).  The inner Hessian H is over the etas; each
+#' structural theta differentiates in its own direction-slot (dirTh maps theta
+#' index -> direction), so a fully mu-referenced model has ndir == neta.
 #' @param E per-observation sensitivities from the solve (f, a, A, Ath) plus y
 #' @param ehat the subject's EBEs
 #' @param Om the estimated Omega matrix
@@ -599,9 +552,8 @@
     .k <- if (paste0(.s1, .s2) %in% names(ef$pair)) paste0(.s1, .s2) else paste0(.s2, .s1)
     lapply(ef$pair[[.k]], evf)
   }
-  # Omega enters only the prior (1/2 eta' Omega^-1 eta + 1/2 ln|Omega|) and Ht's
-  # +Omega^-1 term, so every Omega-block quantity is an E-basis contraction from
-  # `omd` (the variance-covariance derivatives), diagonal or block.
+  # Omega enters only the prior and Ht's +Omega^-1 term, so every Omega-block
+  # quantity is an E-basis contraction from `omd`.
   Mcol <- function(p) {
     .pt <- typ(p)
     if (.pt == "th") {
@@ -721,9 +673,8 @@
     .sg <- if (.ta == "th") bb else aa
     as.numeric(crossprod(a[, .dirOf(.thp)], PVper(.sg)$rf))
   }
-  # covFull=FALSE (theta-only, the default scope): the theta-theta block still
-  # needs Tn / d2HtDD (the 3rd-order sensitivities), so the augmented ODE solve is
-  # unchanged; only the sigma/Omega columns of the assembly are skipped (np -> nth).
+  # covFull=FALSE (theta-only): the theta-theta block still needs the 3rd-order
+  # sensitivities, so only the sigma/Omega columns of the assembly are skipped.
   npE <- if (covFull) np else nth
   etaP <- matrix(vapply(1:npE, function(p) as.numeric(-HiM %*% Mcol(p)), numeric(neta)),
                  nrow = neta)                           # neta x npE (neta == 1 safe)
@@ -758,15 +709,10 @@
 
 #' Full analytic FOCEI covariance for a fitted nlmixr2 object
 #'
-#' Computes the exact observed-information R-matrix (data term plus
-#' log-determinant term) over the structural (mu-referenced) fixed effects, the
-#' residual sigma, and the Omega variances and covariances (diagonal or block, via
-#' the non-Cholesky rxOmegaVarCovDeriv derivatives), and returns the covariance
-#' solve(R).  Returns NULL (the caller should fall back to finite differences) when
-#' the model is out of scope (unsupported error model, fixed structural theta) or any
-#' per-subject augmented solve fails.
-#' Mu-referenced thetas, covariate coefficients, eta-less thetas, and
-#' non-mu-referenced etas are all in scope.
+#' Computes the exact observed-information R-matrix over the structural fixed
+#' effects, residual sigma, and Omega variances and covariances, and returns the
+#' covariance solve(R).  Returns NULL (caller falls back to finite differences)
+#' when the model is out of scope or any per-subject augmented solve fails.
 #' @param fit a fitted nlmixr2 focei object
 #' @param covFull FALSE (default) returns the structural-theta block only; TRUE
 #'   returns the full theta + sigma + Omega covariance
@@ -780,11 +726,9 @@
   if (!.hasRxExpandSens2()) {
     return(NULL)                                        # need rxExpandSens2_ + symengine
   }
-  # reuse the fit's own covariate-interpolation and integration method for the
-  # augmented solves (the tolerance stays tight, 1e-10, for the sensitivity states);
-  # only these scalar, model-agnostic options are forwarded -- the per-compartment
-  # tolerance vectors in rxControl are sized to the original model, not the augmented
-  # one (#697 finding 15).
+  # reuse the fit's covariate-interpolation and integration method for the augmented
+  # solves; only these scalar options are forwarded, since rxControl's per-compartment
+  # tolerance vectors are sized to the original model, not the augmented one.
   .rxc <- tryCatch(rxode2::rxGetControl(.ui, "rxControl", NULL), error = function(e) NULL)
   .solveOpts <- list()
   if (is.list(.rxc)) {
@@ -796,16 +740,14 @@
   if (isTRUE(as.logical(rxode2::rxGetControl(.ui, "fo", FALSE)))) {
     return(NULL)                                        # FO/FOI: first-order marginal, not conditional
   }
-  # Analytic scope is FOCEI only.  FOCE (no interaction) has a genuinely non-smooth
-  # objective (its inner EBE solve is fed an inconsistent value/gradient pair), so it
-  # is left to its own finite-difference cov path -- tracked separately in #694.
+  # Analytic scope is FOCEI only.  FOCE (no interaction) has a non-smooth objective,
+  # so it is left to its own finite-difference cov path.
   .interaction <- !identical(as.integer(rxode2::rxGetControl(.ui, "interaction", 1L)), 0L)
   if (!.interaction) {
     return(NULL)                                        # FOCE -> finite-difference fallback
   }
   # Censored (BLOQ, M2/M3/M4) data: the engine scores every DV as an exact Gaussian
-  # observation, so it would silently disagree with the FD censored likelihood -- bow
-  # out to FD (#697 review, finding 4).  (Data-dependent, so only checkable here.)
+  # observation, disagreeing with the FD censored likelihood -- bow out to FD.
   .cens <- fit$dataSav$CENS
   if (!is.null(.cens) && any(.cens != 0, na.rm = TRUE)) {
     return(NULL)
@@ -822,11 +764,8 @@
     return(NULL)
   }
   .thetaForEta <- .map$thetaForEta
-  # A non-mu-ref eta (thetaForEta NA: no paired structural theta, e.g. an eta on a
-  # fixed population value) is still a valid random effect: it keeps its own ETA_i_
-  # sensitivity direction and its Omega variance, and no structural theta reuses
-  # that direction.  It needs no special handling beyond naming its Omega by the
-  # eta rather than a theta (see .onm below).
+  # A non-mu-ref eta (thetaForEta NA) is still a valid random effect: it keeps its
+  # own ETA_i_ direction and Omega variance, named by the eta rather than a theta.
   if (any(.iniIsFixed(.ini, .thetaForEta))) {
     return(NULL)                                        # fixed structural theta breaks eta indexing
   }
@@ -843,11 +782,8 @@
   .thRows <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
   .thRows <- .thRows[order(.thRows$ntheta), , drop = FALSE]
   # Uniform direction assembly: every estimated structural theta is one direction.
-  # A mu-ref theta reuses its eta's direction (free, d/dtheta == d/deta); any other
-  # structural theta (a covariate coefficient or an eta-less theta such as a `tv`
-  # with no eta, a transit `mtt`, ...) gets its own THETA_j_ direction carrying its
-  # true sensitivity.  Nothing is detected or scaled, so there is no covariate
-  # heuristic to be fragile.  (sigma and Omega as before.)
+  # A mu-ref theta reuses its eta's direction; any other structural theta gets its
+  # own THETA_j_ direction carrying its true sensitivity (nothing is scaled).
   .thStructRows <- .thRows[!.iniIsFixed(.ini, .thRows$name) & !(.thRows$name %in% .ef$sgName), , drop = FALSE]
   .thStruct <- .thStructRows$name
   .nth <- length(.thStruct)
@@ -879,10 +815,8 @@
     return(NULL)
   }
   .ds <- fit$dataSav
-  # dataSav$ID is the integer 1..N renumbering etTrans applied; fit$eta$ID is a
-  # factor whose *labels* are the original subject IDs, so join on the integer code
-  # (its factor codes are the same 1..N renumbering) -- not the label, which would
-  # match zero rows for any IDs that are not literally 1..N (#697 review, finding 1).
+  # dataSav$ID is etTrans's integer 1..N renumbering; fit$eta$ID is a factor whose
+  # labels are the original IDs, so join on the integer factor code, not the label.
   .dsId <- if (is.factor(.ds$ID)) as.integer(.ds$ID) else .ds$ID
   .ids <- as.integer(fit$eta$ID)
   .npOut <- if (covFull) .np else .nth                  # covFull=FALSE: structural thetas only
