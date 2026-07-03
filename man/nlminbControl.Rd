@@ -372,13 +372,13 @@ The combined2 error model can be described by the following equation:
 
  - c is the power exponent (in the proportional case c=1)}
 
-\item{eventSens}{How sensitivities of dosing/event parameters
-(absorption lag time, bioavailability, infusion rate and duration,
-etc.) are computed.  `"fd"` uses the legacy finite
-differences.  `"jump"` (the default) uses the analytic event ("jump")
-sensitivities provided by `rxode2`, which add accuracy and can speed
-up the gradient/Hessian by avoiding the extra finite-difference
-solves for these parameters.}
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

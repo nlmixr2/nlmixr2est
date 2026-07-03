@@ -292,8 +292,8 @@ test_that("analytic covariance is FOCEI only; FOCE falls back to finite differen
   }
   fpi <- suppressMessages(nlmixr(prp, nlmixr2data::theo_sd, "focei", foceiControl(print = 0L, covMethod = "", sigdig = 6)))
   fpe <- suppressMessages(nlmixr(prp, nlmixr2data::theo_sd, "foce",  foceiControl(print = 0L, covMethod = "", sigdig = 6)))
-  expect_true(nlmixr2est:::.foceiAnalyticInScope(fpi$finalUi))    # FOCEI in scope
-  expect_false(nlmixr2est:::.foceiAnalyticInScope(fpe$finalUi))   # FOCE out of scope -> FD fallback
+  expect_true(.foceiAnalyticInScope(fpi$finalUi))    # FOCEI in scope
+  expect_false(.foceiAnalyticInScope(fpe$finalUi))   # FOCE out of scope -> FD fallback
   rpi <- .foceiCovAnalytic(fpi, covFull = TRUE)
   expect_false(is.null(rpi))                                      # FOCEI: analytic cov
   expect_null(.foceiCovAnalytic(fpe, covFull = TRUE))             # FOCE: bows out

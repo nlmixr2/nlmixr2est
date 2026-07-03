@@ -131,6 +131,7 @@ foceiControl(
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
+  eventSens = c("jump", "fd"),
   boundedTransform = TRUE
 )
 }
@@ -989,6 +990,14 @@ gnlmm it was -700.}
 \item{agqHi}{The upper bound for adaptive quadrature
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
+
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
 
 \item{boundedTransform}{boolean indicating if the bounded
 parameters should by transformed when using a unbounded
