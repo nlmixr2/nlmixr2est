@@ -1773,77 +1773,252 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 }
 
 .thetaReset <- new.env(parent = emptyenv())
-#' Name the Omega/covariance block of the focei `$cov`.
+#' Name the Omega/covariance block of the focei `$cov`
 #'
 #' `foceiCalcCov` delta-transforms the Omega block of `$cov` to the natural
 #' variance-covariance scale and stashes the free eta pair indices (lower
-#' triangle, `a >= b`) as `.covOmegaPairs`; the C++ names only the theta+sigma
-#' block, so name the trailing Omega rows/cols here as `om.<theta>` (variance) /
-#' `cov.<theta>.<theta>` (covariance) via the mu-reference mapping (falling back
-#' to the eta name).  Leaves the printed parameter table untouched (it matches
+#' triangle, a >= b) as `.covOmegaPairs`; the C++ names only the theta + sigma
+#' block, so name the trailing Omega rows/cols here as `om.<theta>` (variance) or
+#' `cov.<theta>.<theta>` (covariance) via the mu-reference mapping, falling back to
+#' the eta name.  Leaves the printed parameter table untouched (it matches
 #' population thetas by name).
 #' @param .ret focei fit environment
-#' @return Nothing; mutates `.ret$cov` dimnames
+#' @return nothing; mutates the dimnames of `.ret$cov`
+#' @author Hidde van de Beek
 #' @noRd
 .foceiNameOmegaCov <- function(.ret) {
-  if (!exists(".covOmegaPairs", envir = .ret, inherits = FALSE)) return(invisible())
-  if (!exists("cov", envir = .ret, inherits = FALSE)) return(invisible())
+  if (!exists(".covOmegaPairs", envir = .ret, inherits = FALSE)) {
+    return(invisible())
+  }
+  if (!exists("cov", envir = .ret, inherits = FALSE)) {
+    return(invisible())
+  }
   .cov <- .ret$cov
-  if (!is.matrix(.cov)) return(invisible())
+  if (!is.matrix(.cov)) {
+    return(invisible())
+  }
   .prs <- get(".covOmegaPairs", envir = .ret)
   .nom <- nrow(.prs)
-  if (is.null(.nom) || .nom == 0L || .nom > nrow(.cov)) return(invisible())
+  if (is.null(.nom) || .nom == 0L || .nom > nrow(.cov)) {
+    return(invisible())
+  }
   .ui <- rxode2::rxUiDecompress(get("ui", envir = .ret))
-  ini <- .ui$iniDf
-  muRef <- .ui$muRefDataFrame
-  etaRows <- ini[!is.na(ini$neta1) & ini$neta1 == ini$neta2, , drop = FALSE]
-  etaRows <- etaRows[order(etaRows$neta1), , drop = FALSE]
-  thetaForEta <- muRef$theta[match(etaRows$name, muRef$eta)]
-  .nm <- ifelse(is.na(thetaForEta), etaRows$name, thetaForEta)  # eta name if not mu-ref'd
-  omNm <- apply(.prs, 1, function(p)
-    if (p[1] == p[2]) paste0("om.", .nm[p[1]]) else paste0("cov.", .nm[p[1]], ".", .nm[p[2]]))
+  .map <- .foceiEtaThetaMap(.ui)
+  .nm <- ifelse(is.na(.map$thetaForEta), .map$etaNames, .map$thetaForEta)   # eta name if not mu-ref'd
+  .omNm <- .foceiOmegaCovNames(.prs, .nm)
   .cn <- colnames(.cov)
-  if (is.null(.cn)) .cn <- rep("", nrow(.cov))
-  .cn[seq.int(nrow(.cov) - .nom + 1L, nrow(.cov))] <- omNm
+  if (is.null(.cn)) {
+    .cn <- rep("", nrow(.cov))
+  }
+  .cn[seq.int(nrow(.cov) - .nom + 1L, nrow(.cov))] <- .omNm
   dimnames(.cov) <- list(.cn, .cn)
   .ret$cov <- .cov
   invisible()
 }
 
-#' When `covType = "analytic"`, replace the finite-difference `$cov` with the exact
-#' analytic observed-information covariance ([foceiCov]).  The analytic engine is a
-#' post-fit oracle over a fit object; `.ret` exposes the same pieces it needs
-#' (`finalUi`/`omega`/`eta`/`dataSav`), so a light shim is passed.  If the model is
-#' out of the analytic scope (unsupported error model, non-mu-ref eta with no theta,
-#' failed augmented solve, ...) the analytic returns `NULL`: we announce it and keep
-#' the finite-difference `$cov` (the default engine).  `covFull` controls the scope.
-#' @param .ret focei fit environment (already has the FD `$cov`)
-#' @return Nothing; may replace `.ret$cov`
+#' Is a model structurally within the analytic-covariance scope
+#'
+#' Checks only the UI-derivable (pre-fit) conditions: rxode2 sensitivity support,
+#' a supported residual error model, at least one eta, and no fixed structural
+#' theta that would break eta indexing.  A non-mu-referenced eta is not
+#' disqualifying: the uniform direction engine keeps its ETA_i_ sensitivity
+#' direction and names its Omega by the eta.  The remaining condition (the
+#' augmented ODE actually integrating) is only knowable post-fit.  Used to decide
+#' up front whether to run the analytic engine and skip the finite-difference cov
+#' step, or leave FD as the fallback.
+#' @param ui an rxode2 UI object
+#' @return TRUE if the model is structurally in analytic scope
+#' @author Hidde van de Beek
+#' @noRd
+.foceiAnalyticInScope <- function(ui) {
+  tryCatch({
+    if (!.hasRxExpandSens2()) {
+      return(FALSE)
+    }
+    if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) {
+      return(FALSE)                                    # FO/FOI: first-order marginal, not conditional
+    }
+    if (identical(as.integer(rxode2::rxGetControl(ui, "interaction", 1L)), 0L)) {
+      return(FALSE)                                    # FOCE -> finite-difference fallback (analytic is FOCEI only)
+    }
+    if (is.null(.foceiAnalyticErrFull(ui))) {
+      return(FALSE)
+    }
+    .map <- .foceiEtaThetaMap(ui)
+    if (nrow(.map$etaRows) == 0L) {
+      return(FALSE)
+    }
+    if (any(.iniIsFixed(ui$iniDf, .map$thetaForEta))) {
+      return(FALSE)                                     # fixed (mu-ref) structural theta
+    }
+    TRUE
+  }, error = function(e) FALSE)
+}
+
+#' Post-fit half of the `covType="analytic"` engine
+#'
+#' The pre-fit half is in [.foceiFamilyControl], which sets `.covAnalyticMode` and
+#' skips the FD cov step when in scope.  Driven by that mode: `"compute"` (in
+#' scope, FD was skipped) computes the analytic cov and installs it as `$cov`, or,
+#' if the augmented ODE solve fails, warns and produces no covariance; `"fd"` (out
+#' of scope) means the FD cov already ran as the fallback, so this just announces
+#' it.  The analytic engine [.foceiCov] is a post-fit oracle over a fit object, so a
+#' light shim exposes the pieces it needs (finalUi/omega/eta/dataSav).
+#' @param .ret focei fit environment
+#' @return nothing; may set `.ret$cov`
+#' @author Hidde van de Beek
 #' @noRd
 .foceiAnalyticCovOverride <- function(.ret) {
-  if (!exists("cov", envir = .ret, inherits = FALSE)) return(invisible())  # no cov step ran
-  if (!exists("ui", envir = .ret, inherits = FALSE)) return(invisible())
+  if (!exists("ui", envir = .ret, inherits = FALSE)) {
+    return(invisible())
+  }
   .ui <- rxode2::rxUiDecompress(get("ui", envir = .ret))
-  if (!identical(rxode2::rxGetControl(.ui, "covType", "fd"), "analytic")) return(invisible())
+  .mode <- rxode2::rxGetControl(.ui, ".covAnalyticMode", "")
+  if (identical(.mode, "fd")) {                         # out of scope: FD ran as the fallback
+    .minfo("analytic covariance out of scope for this model; using finite differences")
+    return(invisible())
+  }
+  if (!identical(.mode, "compute")) {
+    return(invisible())                                 # covType="fd", or no cov requested
+  }
   .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", FALSE))
-  # the analytic reads the population thetas from ui$iniDf$est and solves the augmented
-  # model at them, so the UI must carry the FITTED estimates (at this point .ret$ui may
-  # still hold the initial values); inject the fitted fixed effects.
+  # the analytic engine reads the population thetas from ui$iniDf$est and solves
+  # the augmented model at them, so the UI must carry the fitted estimates (at this
+  # point .ret$ui may still hold the initial values); inject the fitted fixed
+  # effects.
   .fx <- tryCatch(.ret$fixef, error = function(e) NULL)
   if (!is.null(.fx) && length(.fx)) {
     .idf <- .ui$iniDf
-    .mi <- match(names(.fx), .idf$name); .ok <- !is.na(.mi)
+    .mi <- match(names(.fx), .idf$name)
+    .ok <- !is.na(.mi)
     .idf$est[.mi[.ok]] <- as.numeric(.fx)[.ok]
-    .ui <- tryCatch({ .ui$iniDf <- .idf; .ui }, error = function(e) .ui)
+    .ui <- tryCatch({
+      .ui$iniDf <- .idf
+      .ui
+    }, error = function(e) .ui)
   }
-  .shim <- list(finalUi = .ui, omega = .ret$omega, eta = .ret$ranef, dataSav = .ret$dataSav)
-  .ac <- tryCatch(foceiCov(.shim, covFull = .covFull), error = function(e) NULL)
+  .shim <- list(finalUi = .ui, omega = .ret$omega, eta = .ret$ranef,
+                dataSav = .ret$dataSav)
+  .ac <- tryCatch(.foceiCov(.shim, covFull = .covFull), error = function(e) NULL)
   if (is.null(.ac)) {
-    message("nlmixr2: analytic covariance is out of scope for this model; using the finite-difference covariance")
+    warning(paste0("nlmixr2: covType=\"analytic\" was in scope but its augmented ODE ",
+                   "solve failed; no covariance was produced. Re-run with ",
+                   "covType=\"fd\" for the finite-difference covariance."),
+            call. = FALSE)
     return(invisible())
   }
   .ret$cov <- .ac$cov
-  assign(".covMethodEngine", paste0("analytic (", .ac$method, ")"), envir = .ret)  # record which engine produced $cov
+  .ret$covMethod <- .ac$method                          # "analytic-fd2" / "analytic"
+  assign(".covMethodEngine", paste0("analytic (", .ac$method, ")"), envir = .ret)
+  # the C++ cov step was skipped, so popDf came back with NA SEs; fill the
+  # SE/%RSE/CI columns from the analytic cov so the printed table matches an FD fit.
+  .foceiAnalyticFillParFixed(.ret, .ac$se)
+  invisible()
+}
+
+#' Back-transform a theta from the estimation scale to the natural scale
+#'
+#' Mirrors the C++ `scaleBackTransform` (src/scale.h): `exp` for a log theta,
+#' `expit` for a logit theta, probit-inverse for a probit theta, identity
+#' otherwise, using rxode2's `expit` / `probitInv`.
+#' @param i the 1-based theta index
+#' @param x the value on the estimation scale
+#' @param xf the fit env's `xform` list (log/logit/probit theta indices + bounds)
+#' @return the back-transformed value on the natural scale
+#' @author Hidde van de Beek
+#' @noRd
+.scaleBackTransformR <- function(i, x, xf) {
+  if (is.null(xf)) {
+    return(x)
+  }
+  if (!is.null(xf$logNthetas) && i %in% xf$logNthetas) {
+    return(exp(x))
+  }
+  .w <- match(i, xf$logitNthetas)
+  if (!is.na(.w)) {
+    return(rxode2::expit(x, xf$logitNthetasLow[.w], xf$logitNthetasHi[.w]))
+  }
+  .w <- match(i, xf$probitNthetas)
+  if (!is.na(.w)) {
+    return(rxode2::probitInv(x, xf$probitNthetasLow[.w], xf$probitNthetasHi[.w]))
+  }
+  x
+}
+
+#' Fill the parameter table from an externally-computed covariance
+#'
+#' For the `covType="analytic"` path where the C++ cov step was skipped (so
+#' `popDf` came back with NA SEs), rebuilds the numeric SE / %RSE / back-
+#' transformed CI columns of `popDf` and the character `popDfSig` in the same form
+#' `foceiFinalizeCov` (src/inner.cpp) builds them for a finite-difference cov, so
+#' the printed table is identical.  Runs before [.updateParFixed], which then
+#' appends the BSV / shrinkage columns as usual.
+#' @param .ret focei fit environment
+#' @param seNamed the analytic SE vector named by parameter; only names matching a
+#'   theta row are used (the residual sigma SE lands only when `covFull`; Omega SEs
+#'   are ignored, as they are not table rows)
+#' @return nothing; mutates `.ret$popDf`, `.ret$popDfSig` and `.ret$se`
+#' @author Hidde van de Beek
+#' @noRd
+.foceiAnalyticFillParFixed <- function(.ret, seNamed) {
+  if (!exists("popDf", envir = .ret, inherits = FALSE)) {
+    return(invisible())
+  }
+  .pd <- .ret$popDf
+  .tn <- rownames(.pd)
+  if (is.null(.tn) || is.null(.pd$Estimate)) {
+    return(invisible())
+  }
+  .est <- .pd$Estimate
+  .bt <- .pd[["Back-transformed"]]
+  .ci <- tryCatch(.ret$control$ci, error = function(e) 0.95)
+  if (is.null(.ci)) {
+    .ci <- 0.95
+  }
+  .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+  .xf <- if (exists("xform", envir = .ret, inherits = FALSE)) .ret$xform else NULL
+  .sdig <- tryCatch(as.integer(.ret$control$sigdig), error = function(e) 3L)
+  if (length(.sdig) != 1L || is.na(.sdig)) {
+    .sdig <- 3L
+  }
+  .se <- setNames(rep(NA_real_, length(.tn)), .tn)
+  .mi <- match(.tn, names(seNamed))
+  .ok <- !is.na(.mi)
+  .se[.ok] <- as.numeric(seNamed)[.mi[.ok]]
+  .rse <- abs(.se / .est) * 100
+  .lo <- .hi <- rep(NA_real_, length(.tn))
+  for (.i in seq_along(.tn)) {
+    if (is.finite(.se[.i])) {
+      .lo[.i] <- .scaleBackTransformR(.i, .est[.i] - .se[.i] * .qn, .xf)
+      .hi[.i] <- .scaleBackTransformR(.i, .est[.i] + .se[.i] * .qn, .xf)
+    }
+  }
+  .pd$SE <- .se
+  .pd[["%RSE"]] <- .rse
+  .pd[["CI Lower"]] <- .lo
+  .pd[["CI Upper"]] <- .hi
+  .ret$popDf <- .pd
+  .ret$se <- .se
+  # character popDfSig: Est. | SE | %RSE | Back-transformed(ci%CI), matching the FD form
+  .g <- function(v) ifelse(is.finite(v), formatC(v, digits = .sdig, format = "g"), "")
+  .btName <- paste0("Back-transformed(", as.integer(.ci * 100), "%CI)")
+  .btCi <- vapply(seq_along(.tn), function(.i) {
+    .b <- formatC(.bt[.i], digits = .sdig, format = "g")
+    if (is.finite(.se[.i])) {
+      paste0(.b, " (", formatC(.lo[.i], digits = .sdig, format = "g"), ", ",
+             formatC(.hi[.i], digits = .sdig, format = "g"), ")")
+    } else {
+      .b
+    }
+  }, character(1))
+  .sig <- data.frame(`Est.` = formatC(.est, digits = .sdig, format = "g"),
+                     `SE` = .g(.se),
+                     `%RSE` = .g(.rse),
+                     check.names = FALSE,
+                     stringsAsFactors = FALSE)
+  .sig[[.btName]] <- .btCi
+  rownames(.sig) <- .tn
+  .ret$popDfSig <- .sig
   invisible()
 }
 
@@ -2095,6 +2270,23 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
+  }
+  # Analytic covariance engine: decide the engine UP FRONT so the (expensive)
+  # finite-difference cov step is not computed just to be thrown away.  covType="fd"
+  # is untouched (FD as requested).  covType="analytic": if the model is structurally
+  # in analytic scope, zero covMethod so the C++ fit skips the FD Hessian entirely and
+  # the exact analytic cov is computed post-fit ([.foceiAnalyticCovOverride]); if out
+  # of scope, leave covMethod so FD runs as the fallback.  `.covAnalyticMode` carries
+  # the decision to the post-fit half.  A no-cov request (covMethod==0) is left alone.
+  if (identical(.control$covType, "analytic") &&
+        !is.null(.control$covMethod) && .control$covMethod != 0L) {
+    assign("control", .control, envir = .ui)   # so the scope check sees addProp etc.
+    if (.foceiAnalyticInScope(.ui)) {
+      .control$.covAnalyticMode <- "compute"
+      .control$covMethod <- 0L
+    } else {
+      .control$.covAnalyticMode <- "fd"
+    }
   }
   assign("control", .control, envir=.ui)
 }

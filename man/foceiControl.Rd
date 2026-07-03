@@ -379,10 +379,15 @@ derivatives while calculating the covariance components
 \item{covType}{covariance engine, one of \code{"fd"} (default) or
 \code{"analytic"}.  \code{"fd"} is the finite-difference observed
 information.  \code{"analytic"} is the exact, finite-difference-free
-observed-information covariance (mu-referenced thetas, covariate
-coefficients, and eta-less structural thetas are each handled by their
-own exact sensitivity direction); when a model is outside the analytic
-scope it announces this and falls back to the finite-difference engine.}
+observed-information covariance for \strong{FOCEI}: mu-referenced thetas,
+covariate coefficients, eta-less structural thetas, and non-mu-referenced
+etas are each handled by their own exact sensitivity direction, for add /
+prop / combined error.  When a model is outside the analytic scope -- FOCE
+(whose non-smooth objective is left to its finite-difference cov path),
+FO/FOI (first-order marginal, not conditional), an unsupported residual
+error model (lnorm / propT / propF), a fixed structural theta, or an
+augmented ODE that will not solve -- it announces this and falls back to the
+finite-difference engine.}
 
 \item{covFull}{logical (default \code{FALSE}).  When \code{FALSE} the
 covariance \code{$cov} covers the structural thetas only (the original

@@ -84,7 +84,11 @@ nmTest({
       "r,s" = c(tka = 0.1908, tcl = 0.0739, tv = 0.0428, add.sd = 0.0998,
                 om.tka = 0.2258, om.tcl = 0.0299, om.tv = 0.0084))
     for (.m in names(.nm)) {
-      .f <- .nlmixr(one.cmt, theo_sd, "focei", foceiControl(covMethod = .m, sigdig = 4, print = 0))
+      # covFull=TRUE so $cov spans theta + sigma + Omega (the reference SEs below
+      # include the residual and Omega blocks); the default covFull=FALSE keeps the
+      # original theta-only $cov.
+      .f <- .nlmixr(one.cmt, theo_sd, "focei",
+                    foceiControl(covMethod = .m, sigdig = 4, print = 0, covFull = TRUE))
       .se <- sqrt(abs(diag(.f$cov)))
       .ref <- .nm[[.m]]
       expect_true(all(names(.ref) %in% names(.se)),

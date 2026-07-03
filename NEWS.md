@@ -12,12 +12,26 @@
   solving the cov-step ODE at a tighter tolerance than estimation, so the
   second-difference Hessian is not dominated by solver noise), and
   `"analytic"` is an exact, finite-difference-free observed-information
-  covariance.  The analytic engine handles mu-referenced thetas,
-  covariate coefficients, and eta-less structural thetas uniformly (each
-  non-mu-ref theta contributes its own exact sensitivity direction); when
-  a model is outside its scope (unsupported error model, non-mu-referenced
-  eta, ...) it announces this and falls back to the finite-difference
-  covariance.
+  covariance for **FOCEI**.  The analytic engine handles mu-referenced
+  thetas, covariate coefficients, eta-less structural thetas, and
+  non-mu-referenced etas uniformly (each contributes its own exact
+  sensitivity direction), for `add`, `prop`, and `combined1`/`combined2`
+  residual error.  FOCE (whose non-smooth objective is left to its
+  finite-difference cov path), FO/FOI (a first-order marginal, not
+  conditional, method), and unsupported error models fall back to the
+  finite-difference covariance.  It has two solve tiers that share the same
+  direction-set model and reproduce each other to ~1e-3: the default is
+  the 2nd-order tier (whose 3rd-order term is recovered by Shi(2021)
+  finite differences of the exact 2nd-order sensitivities), which is
+  1.5-4x faster to build than the exact 3rd-order tier because it avoids
+  compiling the larger augmented model; the exact 3rd-order tier is the
+  fallback, used only when the 2nd-order step fails.
+  When `covType = "analytic"` the parameter table (SE / %RSE / CI) is
+  populated from the analytic covariance directly, and the finite-
+  difference cov step is skipped.  When a model is outside the analytic
+  scope (unsupported error model, fixed structural theta, or an augmented
+  ODE that will not solve) it announces this and falls back to the
+  finite-difference covariance.
 
 - Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
   `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`

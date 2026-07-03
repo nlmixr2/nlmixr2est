@@ -55,3 +55,6 @@ tests/testthat/fixtures/*.rds
 /.cache/
 .vexp
 ^.vexp$
+# local Windows build workaround with machine-specific paths; never commit
+/src/Makevars.win
+/inst/tools/workaround.Rout

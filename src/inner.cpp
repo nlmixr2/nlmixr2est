@@ -4308,17 +4308,12 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // data) so foceiCalcCov can re-run the solve setup with a tighter ODE tolerance
 // for the covariance finite differences and then restore it.  Preserved across
 // GC; replaced on every foceiSetup_.
-static SEXP _covSolveArgs = R_NilValue;
-static void _storeCovSolveArgs(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
-  SEXP L = PROTECT(Rf_allocVector(VECSXP, 4));
-  SET_VECTOR_ELT(L, 0, obj);
-  SET_VECTOR_ELT(L, 1, rxControl);
-  SET_VECTOR_ELT(L, 2, params);
-  SET_VECTOR_ELT(L, 3, data);
-  if (_covSolveArgs != R_NilValue) R_ReleaseObject(_covSolveArgs);
-  R_PreserveObject(L);
-  _covSolveArgs = L;
-  UNPROTECT(1);
+static SEXP covSolveArgs_ = R_NilValue;
+static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
+  List L = List::create(obj, rxControl, params, data);  // protected by Rcpp for this scope
+  if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
+  R_PreserveObject(L);                                   // survive GC until the next foceiSetup_
+  covSolveArgs_ = L;
 }
 
 // [[Rcpp::export]]
@@ -4638,7 +4633,7 @@ NumericVector foceiSetup_(const RObject &obj,
     // to rxSolve_ so that per-thread buffers (llikSave, lhs, on,
     // solveSave, etc.) are allocated for the correct number of threads.
     // Parallelization of the inner loop is managed in innerOpt().
-    _storeCovSolveArgs(obj, rxControl, params, data);   // #694: for cov-step tol re-setup
+    storeCovSolveArgs_(obj, rxControl, params, data);   // #694: for cov-step tol re-setup
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -6478,28 +6473,30 @@ void setupAq0_(Environment e) {
 // tolerance on exit.  Mid-run mutation of op->ATOL or the per-subject tolFactor
 // does not reach the lsoda solve, so the setup path is the only lever.
 struct CovSolveTolGuard {
-  bool active;
-  CovSolveTolGuard(double covSigdig) : active(false) {
-    if (_covSolveArgs == R_NilValue) return;
+  bool armed;
+  CovSolveTolGuard(double covSigdig) : armed(false) {
+    if (covSolveArgs_ == R_NilValue) return;
     double tol = 0.5 * std::pow(10.0, -covSigdig - 2.0);
-    RObject obj    = VECTOR_ELT(_covSolveArgs, 0);
-    List rxControl = as<List>(VECTOR_ELT(_covSolveArgs, 1));
-    RObject params = VECTOR_ELT(_covSolveArgs, 2);
-    RObject data   = VECTOR_ELT(_covSolveArgs, 3);
+    List args      = as<List>(covSolveArgs_);
+    RObject obj    = args[0];
+    List rxControl = as<List>(args[1]);
+    RObject params = args[2];
+    RObject data   = args[3];
     List rxC = clone(rxControl);
     rxC[Rxc_atol] = tol; rxC[Rxc_rtol] = tol;
     rxC[Rxc_atolSens] = tol; rxC[Rxc_rtolSens] = tol;
     rxode2::rxSolve_(obj, rxC, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
     rx = getRxSolve_();
-    active = true;
+    armed = true;
   }
   ~CovSolveTolGuard() {
-    if (!active) return;
+    if (!armed) return;
     try {
-      RObject obj    = VECTOR_ELT(_covSolveArgs, 0);
-      List rxControl = as<List>(VECTOR_ELT(_covSolveArgs, 1));
-      RObject params = VECTOR_ELT(_covSolveArgs, 2);
-      RObject data   = VECTOR_ELT(_covSolveArgs, 3);
+      List args      = as<List>(covSolveArgs_);
+      RObject obj    = args[0];
+      List rxControl = as<List>(args[1]);
+      RObject params = args[2];
+      RObject data   = args[3];
       rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
       rx = getRxSolve_();
     } catch (...) {}
