@@ -438,6 +438,81 @@ nmTest({
     expect_true("p1" %in% names(fit_saem_nested_split$theta))
     expect_true(!is.null(fit_saem_nested_split$cov))
   })
+
+  test_that("SAEM mixture components actually separate (not just 'no error')", {
+    # Regression test for the mixProb collapse bug: before the fix, this
+    # scenario deterministically collapsed every one of the 30 subjects
+    # onto a single component regardless of seed (mixProb converging to
+    # the same value independent of the data is the signature of the
+    # runaway feedback loop this guards against). The fix does not
+    # guarantee clean separation on every dataset/iteration budget --
+    # separation quality still depends on nBurn/nEm and mixProbPriorN --
+    # but it should reliably prevent the deterministic all-one-component
+    # failure mode.
+    set.seed(42)
+    n_subj <- 30
+    sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
+    cl_sim <- ifelse(sub_pop == 1, 1.2, 6.0)
+
+    sim_data <- do.call(rbind, lapply(1:n_subj, function(i) {
+      subj_cl <- cl_sim[i]
+      times <- c(0.5, 1, 2, 4, 8, 12, 24)
+      ka_val <- 1.5
+      v_val <- 24.0
+      k_val <- subj_cl / v_val
+      cp <- 100 * ka_val / (v_val * (ka_val - k_val)) * (exp(-k_val * times) - exp(-ka_val * times)) + rnorm(length(times), 0, 0.05)
+      cp[cp < 0] <- 0
+      data.frame(
+        ID = i,
+        TIME = c(0, times),
+        AMT = c(100, rep(0, length(times))),
+        EVID = c(1, rep(0, length(times))),
+        DV = c(0, cp),
+        CMT = c(1, rep(2, length(times)))
+      )
+    }))
+
+    one.compartment.mix <- function() {
+      ini({
+        tka <- log(1.5)
+        tcl1 <- log(1.0)
+        tcl2 <- log(5.0)
+        tv <- log(20)
+        p1 <- 0.5
+        eta.cl ~ 0.01
+        eta.v ~ 0.01
+        eta.ka ~ 0.01
+        add.sd <- 0.05
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- mix(exp(tcl1 + eta.cl), p1, exp(tcl2 + eta.cl))
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+
+    fit <- .nlmixr(one.compartment.mix, sim_data, est="saem",
+                   saemControl(print = 0, seed = 1234, nBurn = 200, nEm = 300,
+                               calcTables = TRUE, covMethod = 0L))
+
+    # Both components should end up populated -- a full collapse (the bug
+    # this guards against) deterministically puts every subject in one
+    # component, regardless of seed or the data's true split.
+    mixTab <- table(fit$mixNum$mixnum)
+    expect_true(length(mixTab) > 1)
+    expect_true(min(mixTab) >= 2)
+
+    # mixnum should track the true subpopulation better than a coin flip
+    # (a fully collapsed fit gets this right only by chance, at best
+    # matching the majority-class rate; it should not do *worse* than
+    # that either).
+    agree <- mean(fit$mixNum$mixnum[order(fit$mixNum$ID)] == sub_pop)
+    expect_true(agree > 0.6 || (1 - agree) > 0.6) # allow for label swap
+  })
 })
 
 
