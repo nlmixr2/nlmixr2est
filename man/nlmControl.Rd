@@ -157,6 +157,14 @@ Hessian step size using the Shi2021 method.}
 \item{shi21maxHess}{Maximum number of times to optimize the best
 step size for the hessian calculation}
 
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
+
 \item{useColor}{Logical (or `NULL`) — whether to emit ANSI
 bold/color escapes in the iteration print.  `NULL` (the default)
 defers to [iterPrintControl()]'s default ([crayon::has_color()]).

@@ -101,7 +101,8 @@ bobyqaControl <- function(npt=NULL,
                           addProp = c("combined2", "combined1"),
                           calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
-                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
+                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
+                          eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -117,6 +118,7 @@ bobyqaControl <- function(npt=NULL,
   checkmate::assertLogical(calcTables, len=1, any.missing=FALSE)
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
+  eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -215,6 +217,7 @@ bobyqaControl <- function(npt=NULL,
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
+               eventSens=eventSens,
                genRxControl=.genRxControl)
   class(.ret) <- "bobyqaControl"
   .ret
@@ -301,7 +304,8 @@ getValidNlmixrCtl.bobyqa <- function(control) {
                                 compress=.bobyqaControl$compress,
                                 ci=.bobyqaControl$ci,
                                 sigdigTable=.bobyqaControl$sigdigTable,
-                                indTolRelax=.bobyqaControl$indTolRelax)
+                                indTolRelax=.bobyqaControl$indTolRelax,
+                                eventSens=.bobyqaControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

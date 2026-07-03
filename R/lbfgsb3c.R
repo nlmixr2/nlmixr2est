@@ -315,7 +315,8 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 compress=.lbfgsb3cControl$compress,
                                 ci=.lbfgsb3cControl$ci,
                                 sigdigTable=.lbfgsb3cControl$sigdigTable,
-                                indTolRelax=.lbfgsb3cControl$indTolRelax)
+                                indTolRelax=.lbfgsb3cControl$indTolRelax,
+                                eventSens=.lbfgsb3cControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

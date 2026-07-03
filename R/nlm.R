@@ -904,7 +904,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 compress=.nlmControl$compress,
                                 ci=.nlmControl$ci,
                                 sigdigTable=.nlmControl$sigdigTable,
-                                indTolRelax=.nlmControl$indTolRelax)
+                                indTolRelax=.nlmControl$indTolRelax,
+                                eventSens=.nlmControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

@@ -37,6 +37,7 @@ bobyqaControl(
   ci = 0.95,
   sigdig = 4,
   sigdigTable = NULL,
+  eventSens = c("jump", "fd"),
   ...
 )
 }
@@ -356,6 +357,14 @@ function.  By default this is \code{TRUE}}
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
+
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
 
 \item{...}{Ignored parameters}
 }
