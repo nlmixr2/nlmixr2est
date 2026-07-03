@@ -298,3 +298,41 @@ test_that("analytic covariance is FOCEI only; FOCE falls back to finite differen
   expect_false(is.null(rpi))                                      # FOCEI: analytic cov
   expect_null(.foceiCovAnalytic(fpe, covFull = TRUE))             # FOCE: bows out
 })
+
+test_that("analytic covariance handles the #697 review edge cases", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  m <- function() {
+    ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5); eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ add(add.sd) })
+  }
+  # finding 1: subject IDs that are not 1..N must still join dataSav <-> eta correctly
+  .d <- nlmixr2data::theo_sd; .d$ID <- .d$ID + 100
+  fa <- suppressMessages(nlmixr(m, .d, "focei", foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+  fb <- suppressMessages(nlmixr(m, nlmixr2data::theo_sd, "focei", foceiControl(print = 0L, covMethod = "", sigdig = 6)))
+  ra <- .foceiCovAnalytic(fa, covFull = TRUE)
+  rb <- .foceiCovAnalytic(fb, covFull = TRUE)
+  expect_false(is.null(ra))                                       # was NULL (0 rows matched) before the fix
+  expect_equal(unname(ra$se[rb$params]), unname(rb$se), tolerance = 1e-3)  # ID labels don't change the cov
+
+  # finding 3: a multi-endpoint model is out of analytic scope -> finite-difference fallback
+  me <- function() {
+    ini({ tcl <- log(2.7); tv <- log(31.5); te <- log(8); eta.cl ~ 0.3; add.sd <- 0.7; eff.sd <- 2 })
+    model({ cl <- exp(tcl + eta.cl); v <- exp(tv); emax <- exp(te)
+      d/dt(center) <- -cl / v * center
+      cp <- center / v; eff <- emax * cp / (cp + 1)
+      cp ~ add(add.sd); eff ~ add(eff.sd) })
+  }
+  fme <- suppressMessages(nlmixr(me, nlmixr2data::theo_sd, "focei", foceiControl(print = 0L, covMethod = "")))
+  expect_false(.foceiAnalyticInScope(fme$finalUi))               # gate keeps FD
+  expect_null(.foceiCovAnalytic(fme, covFull = TRUE))            # engine bows out too
+
+  # finding 4: censored (BLOQ) data is out of scope -> finite-difference fallback
+  dc <- nlmixr2data::theo_sd; dc$CENS <- 0L; dc$CENS[dc$DV < 3 & dc$EVID == 0] <- 1L
+  fc <- suppressMessages(nlmixr(m, dc, "focei", foceiControl(print = 0L, covMethod = "")))
+  expect_null(.foceiCovAnalytic(fc, covFull = TRUE))
+})

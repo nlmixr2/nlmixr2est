@@ -62,6 +62,12 @@
 #' @author Hidde van de Beek
 #' @noRd
 .foceiAnalyticErrFull <- function(ui) {
+  # Single endpoint only: a multi-endpoint model pools error rows across endpoints
+  # into one R against one rx_pred_, which is the wrong likelihood -- bow out so the
+  # pre-fit gate keeps the finite-difference cov (#697 review, finding 3).
+  if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L) {
+    return(NULL)
+  }
   .ini <- ui$iniDf
   .er <- .ini[!is.na(.ini$err), , drop = FALSE]
   if (any(.er$err %in% c("lnorm", "propT", "propF"))) {
@@ -250,16 +256,19 @@
 #' @author Hidde van de Beek
 #' @noRd
 .foceiAnalyticSolveDir <- function(aug, params, ev, times) {
-  .d <- tryCatch(as.data.frame(rxode2::rxSolve(aug$augMod, params = params, ev,
-                                               returnType = "data.frame",
-                                               atol = 1e-10, rtol = 1e-10)),
-                 error = function(e) NULL, warning = function(w) NULL)
+  .d <- tryCatch(
+    withCallingHandlers(
+      as.data.frame(rxode2::rxSolve(aug$augMod, params = params, ev,
+                                    returnType = "data.frame",
+                                    atol = 1e-10, rtol = 1e-10)),
+      warning = function(w) invokeRestart("muffleWarning")),  # muffle benign warnings, don't abort the tier
+    error = function(e) NULL)
   if (is.null(.d)) {
     return(NULL)
   }
   .d <- .d[.d$time %in% times, , drop = FALSE]
-  if (nrow(.d) == 0L) {
-    return(NULL)
+  if (nrow(.d) != length(times)) {
+    return(NULL)   # extra solve rows (EVID=2, dose at an obs time) misalign f vs y -> bow out to FD
   }
   .dirs <- aug$dirs
   .nd <- length(.dirs)
@@ -311,16 +320,19 @@
   .dirs <- aug$dirs
   .nd <- length(.dirs)
   .solveA <- function(.p) {
-    .d <- tryCatch(as.data.frame(rxode2::rxSolve(aug$augMod, params = .p, ev,
-                                                 returnType = "data.frame",
-                                                 atol = 1e-10, rtol = 1e-10)),
-                   error = function(e) NULL, warning = function(w) NULL)
+    .d <- tryCatch(
+      withCallingHandlers(
+        as.data.frame(rxode2::rxSolve(aug$augMod, params = .p, ev,
+                                      returnType = "data.frame",
+                                      atol = 1e-10, rtol = 1e-10)),
+        warning = function(w) invokeRestart("muffleWarning")),  # muffle benign warnings, don't abort the tier
+      error = function(e) NULL)
     if (is.null(.d)) {
       return(NULL)
     }
     .d <- .d[.d$time %in% times, , drop = FALSE]
-    if (nrow(.d) == 0L || !all(c("predf", paste0("f1_", .dirs)) %in% names(.d))) {
-      return(NULL)
+    if (nrow(.d) != length(times) || !all(c("predf", paste0("f1_", .dirs)) %in% names(.d))) {
+      return(NULL)   # extra solve rows (EVID=2, dose at an obs time) misalign f vs y -> bow out to FD
     }
     .no <- nrow(.d)
     .a <- matrix(vapply(.dirs, function(.q) .d[[paste0("f1_", .q)]], numeric(.no)),
@@ -486,11 +498,11 @@
         .h <- .h * 0.5 / 3
         next
       }
-      .h <- .h * 2 / 3
       if (is.null(.gr)) {
-        .gr <- (.shi$fp1 - .shi$fm1) / (2 * .h)
+        .gr <- (.shi$fp1 - .shi$fm1) / (2 * .h)   # use the .h fp1/fm1 were evaluated at, before shrinking
         .hlast <- .h
       }
+      .h <- .h * 2 / 3
       next
     }
     .gr <- (.shi$fp1 - .shi$fm1) / (2 * .h)
@@ -854,6 +866,13 @@
   if (!.interaction) {
     return(NULL)                                        # FOCE -> finite-difference fallback
   }
+  # Censored (BLOQ, M2/M3/M4) data: the engine scores every DV as an exact Gaussian
+  # observation, so it would silently disagree with the FD censored likelihood -- bow
+  # out to FD (#697 review, finding 4).  (Data-dependent, so only checkable here.)
+  .cens <- fit$dataSav$CENS
+  if (!is.null(.cens) && any(.cens != 0, na.rm = TRUE)) {
+    return(NULL)
+  }
   .ef <- .foceiAnalyticErrFull(.ui)
   if (is.null(.ef)) {
     return(NULL)                                        # unsupported error model -> fallback
@@ -923,11 +942,16 @@
     return(NULL)
   }
   .ds <- fit$dataSav
-  .ids <- fit$eta$ID
+  # dataSav$ID is the integer 1..N renumbering etTrans applied; fit$eta$ID is a
+  # factor whose *labels* are the original subject IDs, so join on the integer code
+  # (its factor codes are the same 1..N renumbering) -- not the label, which would
+  # match zero rows for any IDs that are not literally 1..N (#697 review, finding 1).
+  .dsId <- if (is.factor(.ds$ID)) as.integer(.ds$ID) else .ds$ID
+  .ids <- as.integer(fit$eta$ID)
   .npOut <- if (covFull) .np else .nth                  # covFull=FALSE: structural thetas only
   .R <- matrix(0, .npOut, .npOut)
   for (.i in seq_along(.ids)) {
-    .s <- .ds[.ds$ID == .ids[.i], , drop = FALSE]       # solve over the subject's actual events
+    .s <- .ds[.dsId == .ids[.i], , drop = FALSE]        # solve over the subject's actual events
     .obs <- .s[.s$EVID == 0, , drop = FALSE]            # (CMT/EVID/II/SS/ADDL/covariates preserved)
     .p <- c(.th, setNames(.ebes[.i, ], .etaDirs))
     .E <- if (sens == "fd2") {

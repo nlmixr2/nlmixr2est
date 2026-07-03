@@ -1901,9 +1901,10 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
                 dataSav = .ret$dataSav)
   .ac <- tryCatch(.foceiCov(.shim, covFull = .covFull), error = function(e) NULL)
   if (is.null(.ac)) {
-    warning(paste0("nlmixr2: covType=\"analytic\" was in scope but its augmented ODE ",
-                   "solve failed; no covariance was produced. Re-run with ",
-                   "covType=\"fd\" for the finite-difference covariance."),
+    warning(paste0("nlmixr2: covType=\"analytic\" produced no covariance for this fit ",
+                   "(the augmented ODE did not solve, or the model is outside the ",
+                   "analytic scope, e.g. censored data or multiple endpoints); re-run ",
+                   "with covType=\"fd\" for the finite-difference covariance."),
             call. = FALSE)
     return(invisible())
   }
