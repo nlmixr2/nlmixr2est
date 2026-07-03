@@ -197,6 +197,82 @@
 #'   datasets; if components are still not cleanly separating, try
 #'   increasing this together with `nBurn`/`nEm` before reducing it.
 #'
+#' @param mixSampleMethod For mixture models (`mix()` in the model
+#'   block, more than one component), this controls the MCMC/sufficient-
+#'   statistic architecture used to explore and update the individual
+#'   random effects (`phi`), independently of `mixProbMethod` (which only
+#'   stabilizes the mixing-*probability* estimate). This is most relevant
+#'   to models where each component has its own eta(s) (e.g. `cl <-
+#'   mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`, "split-ETA" models): the
+#'   between-subject variability (`$omega`) for those components is
+#'   unreliable under `"parallel"` regardless of `mixProbMethod`.
+#'
+#'   * `"parallel"` (default): run one full MCMC chain *per component* for
+#'     every subject every iteration (each chain explores under the
+#'     standing assumption that the subject definitely belongs to that
+#'     component), then blend the results post hoc using the
+#'     responsibility weights. This mirrors NONMEM's population mixture
+#'     modeling ($MIX; see the NONMEM7 technical guide's "Population
+#'     Mixture Modeling" section) and correctly estimates a single BSV
+#'     shared across all components, which is what NONMEM's own M-step
+#'     formula assumes. It does not, however, have a way to obtain a
+#'     clean, unblended per-component BSV for split-ETA components: every
+#'     "wrong-hypothesis" chain still explores its non-owned column(s) as
+#'     an unconstrained prior-only random walk (since that hypothesis's
+#'     likelihood does not depend on them), and that noise ends up mixed
+#'     into the blended statistics.
+#'
+#'   * `"msaem"` (experimental): the MSAEM algorithm of Lavielle &
+#'     Mbogning (2014, *Statistics and Computing* 24(5), 693-707), the
+#'     method actually implemented in Monolix for mixture models. Only
+#'     one random-effects trajectory (`phi`) is simulated per subject per
+#'     iteration (no per-component parallel chains); the discrete mixture
+#'     label is never simulated at all -- instead it is analytically
+#'     marginalized out at every iteration via the exact posterior
+#'     responsibility (a closed-form softmax, computed once from the
+#'     single simulated `phi`), and that *continuous* weight (never
+#'     exactly zero) is what feeds the fixed-effect and BSV M-steps. The
+#'     paper shows this Rao-Blackwellization -- as opposed to simulating
+#'     the label -- is what gives the algorithm "very little sensitivity
+#'     to initial value" and prevents components from disappearing during
+#'     iteration, which the paper documents as the typical failure mode
+#'     of naively simulating the mixture label. Because there is only one
+#'     live trajectory per subject, the M-steps need no post-hoc blending
+#'     or pooling.
+#'
+#'     Since `"parallel"` runs `nMix` full chains per subject per
+#'     iteration and `"msaem"` runs one, they are not compute-matched at
+#'     equal `nmc`: set `nmc` to roughly `nMix` times its default (e.g.
+#'     `nmc=6` for a 2-component mixture, vs. the default 3) for a fair
+#'     comparison, and generally for `"msaem"` to work well at all --
+#'     without this it is *more* prone to under-separating than
+#'     `"parallel"` at matched `nmc`, not less.
+#'
+#'     Even compute-matched, this implementation fully separates
+#'     components when they start roughly *equidistant* from their true
+#'     values, but can settle into a stable, under-separated fixed point
+#'     (not a slow-convergence issue -- more iterations do not fix it)
+#'     when one component's initial guess already happens to sit near its
+#'     true value while the other must travel much further: the single
+#'     trajectory only gets pulled as hard as the *current*
+#'     (still-uncertain) responsibility allows, unlike `"parallel"`'s
+#'     unconditional per-hypothesis chains. This is a common practical
+#'     scenario (an initial guess landing near one plausible subgroup), so
+#'     `"msaem"` fits automatically apply a stratified initialization for
+#'     split-ETA components before the first iteration -- mirroring the
+#'     approach used by the `leaspy` Python package's SAEM mixture
+#'     implementation -- partitioning subjects into `nMix` naive,
+#'     roughly-equal strata by mean `DV` and nudging each component's
+#'     starting point toward its own stratum, instead of every component
+#'     starting from the same point. This is a model-agnostic heuristic
+#'     (it has no knowledge of which model parameter is actually driving
+#'     the mixture) and meaningfully improves -- but does not fully
+#'     resolve -- the under-separation failure mode; results still vary
+#'     by dataset depending on how well mean `DV` happens to correlate
+#'     with true group membership. Prefer `"parallel"` unless you have a
+#'     roughly symmetric/equidistant starting guess for the components or
+#'     are specifically evaluating this method.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -249,6 +325,7 @@ saemControl <- function(seed = 99,
                         mixProbMethod = c("regularized", "annealed"),
                         mixProbStepExp = 1,
                         mixProbPriorN = 20,
+                        mixSampleMethod = c("parallel", "msaem"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -313,6 +390,7 @@ saemControl <- function(seed = 99,
   mixProbMethod <- match.arg(mixProbMethod)
   checkmate::assertNumeric(mixProbStepExp, any.missing=FALSE, len=1, lower=0, finite=TRUE)
   checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  mixSampleMethod <- match.arg(mixSampleMethod)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -402,7 +480,8 @@ saemControl <- function(seed = 99,
     eventSens=eventSens,
     mixProbMethod=mixProbMethod,
     mixProbStepExp=mixProbStepExp,
-    mixProbPriorN=mixProbPriorN
+    mixProbPriorN=mixProbPriorN,
+    mixSampleMethod=mixSampleMethod
   )
   class(.ret) <- "saemControl"
   .ret

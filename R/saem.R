@@ -252,6 +252,7 @@
                         mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
                         mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
                         mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
+                        mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
                         omegaShareSubpop=ui$saemOmegaShareSubpop)
     .cfg$cres <- ui$saemCres

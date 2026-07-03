@@ -693,6 +693,7 @@ public:
       mixProbMethod = x.containsElementNamed("mixProbMethod") ? as<int>(x["mixProbMethod"]) : 0;
       pasMix = x.containsElementNamed("pasMix") ? as<vec>(x["pasMix"]) : pas;
       mixProbPriorN = x.containsElementNamed("mixProbPriorN") ? as<double>(x["mixProbPriorN"]) : 0.0;
+      mixSampleMethod = x.containsElementNamed("mixSampleMethod") ? as<int>(x["mixSampleMethod"]) : 0;
     } else {
       mixProb.clear();
     }
@@ -981,7 +982,202 @@ public:
       vec fsM;
       fsM.set_size(0);
 
-      if (nMix > 1) {
+      if (nMix > 1 && mixSampleMethod == 1) {
+        // ===== MSAEM (Lavielle & Mbogning 2014) =====
+        // S-step: a *single* MCMC trajectory per subject (phiM, the plain
+        // class member -- same one the nMix<=1 path below uses), targeting
+        // the marginal mixture density via mixObsLoss()/do_mcmc_msaem().
+        // No label is ever simulated or masked; see
+        // msaem-mixture-method.md for the full derivation.
+        vec U_y = mixObsLoss(phiM, mx);
+        if (nphi1 > 0) {
+          vec U_phi;
+          do_mcmc_msaem(1, nu1, mx, mphi1, phiM, U_y, U_phi);
+          mat dphi = phiM.cols(i1) - mphi1.mprior_phiM;
+          U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi1), 1);
+          do_mcmc_msaem(2, nu2, mx, mphi1, phiM, U_y, U_phi);
+          do_mcmc_msaem(3, nu3, mx, mphi1, phiM, U_y, U_phi);
+        }
+        if (nphi0 > 0) {
+          vec U_phi;
+          do_mcmc_msaem(1, nu1, mx, mphi0, phiM, U_y, U_phi);
+          mat dphi = phiM.cols(i0) - mphi0.mprior_phiM;
+          U_phi = 0.5 * sum(dphi % (dphi * IGamma2_phi0), 1);
+          do_mcmc_msaem(2, nu2, mx, mphi0, phiM, U_y, U_phi);
+          do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi);
+        }
+        if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
+        phiFile << phiM;
+
+        // E-step: exact posterior responsibility gamma_{i,m} from the one
+        // simulated phi (a plain softmax -- see mixWeights below), plus
+        // the per-hypothesis predictions needed for the mixture-weighted
+        // residual term further down (the *observation* depends on which
+        // mix() branch is read, even though phi itself does not).
+        field<vec> fsave_hyp(nMix);
+        mat Ly(N, nMix, fill::zeros);
+        for (int mHyp = 0; mHyp < nMix; mHyp++) {
+          current_saem_state->_saemMixest = mHyp + 1;
+          mat hypMat = user_fn(phiM, evt, optM);
+          fsave_hyp(mHyp) = hypMat.col(0);
+          vec fHyp = hypMat.col(0);
+          vec censHyp = hypMat.col(1);
+          vec limitHyp = hypMat.col(2);
+          mat DYFhyp = zeros<mat>(mlen, nM);
+          if (distribution == 1) {
+            vec yt = hasFixedObsTransform ? yTrans : y;
+            if (!hasFixedObsTransform) {
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              }
+            }
+            const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+            for (int k = 0; k < nmc; k++) {
+              int obs_start = k * ntotal;
+              vec fk = fHyp.subvec(obs_start, obs_start + ntotal - 1);
+              const vec censk = censHyp.subvec(obs_start, obs_start + ntotal - 1);
+              const vec limitk = limitHyp.subvec(obs_start, obs_start + ntotal - 1);
+              _scratch_ft = fk;
+              _scratch_limitT = limitk;
+              for (int i = ntotal; i--;) {
+                int cur = ix_endpnt(i);
+                _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+                _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fk(i), false, true);
+              }
+              _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+              _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+              _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+              _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+              _scratch_indio = indio + (arma::uword)k * stride;
+              DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              for (int j = ntotal; j--;) {
+                DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                       DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+              }
+            }
+          } else if (distribution == 2) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYFhyp(indio_k) = -y % log(fk) + fk;
+            }
+          } else if (distribution == 3) {
+            for (int k = 0; k < nmc; k++) {
+              vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+              uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+              DYFhyp(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+            }
+          }
+          vec U_y_hyp = sum(DYFhyp, 0).t();
+          for (int i = 0; i < N; i++) {
+            double sumL = 0.0;
+            for (int k = 0; k < nmc; k++) sumL += U_y_hyp(i + k * N);
+            Ly(i, mHyp) = sumL / nmc;
+          }
+        }
+        current_saem_state->_saemMixest = 0;
+
+        for (int i = 0; i < N; i++) {
+          double minL = Ly(i, 0);
+          for (int j = 1; j < nMix; j++) {
+            if (Ly(i, j) < minL) minL = Ly(i, j);
+          }
+          rowvec w_i(nMix);
+          double sumW = 0.0;
+          for (int j = 0; j < nMix; j++) {
+            w_i(j) = mixProb(j) * exp(minL - Ly(i, j));
+            sumW += w_i(j);
+          }
+          if (sumW > 0.0) {
+            mixWeights.row(i) = w_i / sumW;
+          } else {
+            mixWeights.row(i) = mixProb.t();
+          }
+        }
+
+        // AE-step: standard (unweighted) sufficient-statistic
+        // accumulation.  With a single trajectory the "blend" the
+        // parallel path needs is trivial here -- phi does not vary by
+        // hypothesis and responsibilities sum to 1, so
+        // sum_m(gamma_{i,m} * phi_i) collapses to plain phi_i, matching
+        // the paper's s_{1,i,k} carrying no per-component subscript.
+        // Only the residual term below genuinely differs by hypothesis
+        // (the *prediction* does), so only it needs explicit gamma
+        // weighting.
+        for (int k = 0; k < nmc; k++) {
+          phi.slice(k) = phiM.rows(span(k * N, (k + 1) * N - 1));
+
+          Statphi11 += phi.slice(k).cols(i1);
+          Statphi01 += phi.slice(k).cols(i0);
+          mat phik = phi.slice(k);
+          mat phi1k = phik.cols(i1);
+          mat phi0k = phik.cols(i0);
+          Statphi12 = Statphi12 + phi1k.t() * phi1k;
+          Statphi02 = Statphi02 + phi0k.t() * phi0k;
+
+          for (int b = 0; b < nendpnt; b++) {
+            double resk = 0.0;
+            for (int mHyp = 0; mHyp < nMix; mHyp++) {
+              vec fk = fsave_hyp(mHyp).subvec(k * ntotal, (k + 1) * ntotal - 1);
+              fk = fk(ix_sorting);
+              vec f_cur = fk(span(y_offset(b), y_offset(b+1)-1));
+              vec y_cur;
+              if (hasFixedObsTransform) {
+                y_cur = ysTrans(span(y_offset(b), y_offset(b+1)-1));
+              } else {
+                y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
+              }
+              for (int i = 0; i < y_cur.size(); i++) {
+                int idx_orig = ix_sorting(y_offset(b) + i);
+                int i_subj = obs_subject(idx_orig);
+                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+                double r_ji = y_cur[i] - ft;
+                if (res_mod(b) == rmProp) {
+                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
+                  if (fa <= double_xmin) fa = 1.0;
+                  r_ji /= fa;
+                }
+                double r_ji_sq = r_ji * r_ji;
+                if (r_ji_sq > xmax) r_ji_sq = xmax;
+                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
+
+                resk += mixWeights(i_subj, mHyp) * r_ji_sq;
+              }
+            }
+            statr[b] += resk;
+            resy(k) = resk;
+          }
+
+          mat dphi1k = phi1k - mprior_phi1;
+          mat dphi0k = phi0k - mprior_phi0;
+          vec sdg1 = sum(dphi1k % dphi1k, 0).t() / gamma2_phi1;
+          mat Md1 = (IGamma2_phi1 * (dphi1k.t() * Mcovariables)).t();
+          mat Md0 = (IGamma2_phi0 * (dphi0k.t() * Mcovariables)).t();
+          vec d1_mu_phi1 = Md1(ind_cov1);
+          vec d1_mu_phi0 = Md0(ind_cov0);
+          vec d1_loggamma2_phi1 = 0.5 * sdg1 - 0.5 * N;
+          vec d1_logsigma2(1);
+          d1_logsigma2[0] = 0.5 * resy(k) / sigma2[0] - 0.5 * ntotal;
+          vec d1logk = join_cols(d1_mu_phi1, join_cols(d1_mu_phi0, join_cols(d1_loggamma2_phi1, d1_logsigma2)));
+          D1 = D1 + d1logk;
+          D11 = D11 + d1logk * d1logk.t();
+
+          vec w2phi = -0.5 * sdg1;
+          for (int j = 0, l = 0; j < nphi1; j++) {
+            for (unsigned int jj = 0; jj < pc1(j); jj++) {
+              double temp = -dot(COV1.col(l), dphi1k.col(j)) / gamma2_phi1(j);
+              d2logk(l, nlambda + j) = temp;
+              d2logk(nlambda + j, l) = temp;
+              l = l + 1;
+            }
+            d2logk(nlambda + j, nlambda + j) = w2phi(j);
+          }
+          d2logk(nb_param - 1, nb_param - 1) = -0.5 * resy(k) / sigma2[0];
+          D2 = D2 + d2logk;
+        }
+      } else if (nMix > 1) {
         field<mat> DYF_mix(nMix);
         field<vec> U_y_mix(nMix);
 
@@ -1453,7 +1649,11 @@ public:
       if (DEBUG>0) Rcout << "integration successful\n";
 
       statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
-      if (nMix > 1) {
+      if (nMix > 1 && mixSampleMethod == 0) {
+        // Only "parallel" populates the unblended per-component
+        // Statphi11_mix accumulator (see the overrides below); "msaem"
+        // has a single trajectory, so statphi11 above is already the
+        // clean per-subject statistic and statphi11_mix stays unused.
         for (int _j = 0; _j < nMix; _j++) {
           statphi11_mix(_j) = statphi11_mix(_j) + pas(kiter)*(Statphi11_mix(_j)/nmc - statphi11_mix(_j));
         }
@@ -1495,7 +1695,12 @@ public:
           mat Xl = COV1.cols(lambdaIdx);
           mat XtW = Xl.t() * diagmat(w);
           mat XtWX = XtW * Xl;
-          vec y = statphi11_mix(subpop - 1).col(c);
+          // "msaem": statphi11 itself is already the clean, single-
+          // trajectory statistic (see the AE-step comment above).
+          // "parallel": fall back to the unblended per-component
+          // accumulator, since statphi11 there is the blended
+          // (cross-component-diluted) one.
+          vec y = (mixSampleMethod == 1) ? statphi11.col(c) : statphi11_mix(subpop - 1).col(c);
           vec XtWy = XtW * y;
           bool fixedCol = false;
           if (fixedIx1.n_elem > 0) {
@@ -1534,6 +1739,33 @@ public:
       }
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
+
+      // "msaem" only: the standard G1 diagonal above divides by all N
+      // subjects uniformly, which dilutes a split-ETA column's BSV with
+      // subjects who rarely/never belong to that column's owning
+      // component (their statphi11 entry, while a real single-trajectory
+      // value, is mostly uninformative about that component's variance).
+      // Override with a responsibility-weighted sample variance around
+      // the prior mean, restricted to (and normalized by) the owning
+      // component's current responsibilities -- safe under the same
+      // diagOnly separability argument as the theta override above.
+      if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          unsigned int subpop = omegaShareSubpop(c);
+          if (subpop < 1 || subpop > (unsigned int)nMix) continue;
+          bool diagOnly = true;
+          for (unsigned int cc = 0; cc < (unsigned int)nphi1; cc++) {
+            if (cc != c && covstruct1(c, cc) != 0) { diagOnly = false; break; }
+          }
+          if (!diagOnly) continue;
+          if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == c * nphi1 + c)) continue;
+          vec w = mixWeights.col(subpop - 1);
+          double sumW = arma::sum(w);
+          if (sumW <= 0.0) continue;
+          vec dev = statphi11.col(c) - mprior_phi1.col(c);
+          G1(c, c) = arma::sum(w % (dev % dev)) / sumW;
+        }
+      }
 
       if (kiter<=(unsigned int)(nb_sa)) {
         Gamma2_phi1=max(Gamma2_phi1*coef_sa, diagmat(G1));
@@ -2472,6 +2704,7 @@ private:
   int mixProbMethod; // 0 = annealed step-size, 1 = Dirichlet-style regularization
   vec pasMix;
   double mixProbPriorN;
+  int mixSampleMethod; // 0 = parallel per-component chains (NONMEM-style), 1 = MSAEM (Lavielle & Mbogning 2014)
   mat mixWeights;
   field<mat> phiM_mix;
   field<vec> fsave_mix;
@@ -2650,6 +2883,166 @@ private:
         ind = getObsIdx(ix_idM.rows(ind));
         cur_fsave(ind)=fs(ind);
         if (method<3) {
+          break;
+        }
+      }
+  }
+
+  // MSAEM (Lavielle & Mbogning 2014, Statistics and Computing 24(5)):
+  // mixture-weighted (log-sum-exp) observation loss for a candidate phi
+  // matrix, evaluated under every mixture component's branch of the
+  // model.  nlmixr2est's mix() DSL only lets the latent component affect
+  // *which columns the observation model reads* (paper's "mixture of
+  // conditional distributions" case, eq. 7-8) -- the prior over phi
+  // itself is a single, ordinary Gaussian regardless of component -- so
+  // only this observation-loss term needs the mixture treatment; the
+  // prior penalty used alongside it (in do_mcmc_msaem()) stays the
+  // standard single-Gaussian quadratic form.
+  vec mixObsLoss(const mat &phiC, const mcmcaux &mx) {
+    double double_xmin = 1.0e-200;
+    double xmax = 1e300;
+    mat lossByM(mx.nM, nMix);
+    for (int mHyp = 0; mHyp < nMix; mHyp++) {
+      current_saem_state->_saemMixest = mHyp + 1;
+      mat fcMat = user_fn(phiC, mx.evtM, mx.optM);
+      vec curLimit = fcMat.col(2);
+      vec curCens = fcMat.col(1);
+      vec fc = fcMat.col(0);
+      vec fs = fc;
+      mat DYFm = zeros<mat>(mlen, mx.nM);
+      switch (distribution) {
+      case 1:
+        {
+          vec yt = hasFixedObsTransform ? yTrans : mx.y;
+          if (!hasFixedObsTransform) {
+            for (int i = ntotal; i--;) {
+              int cur = ix_endpnt(i);
+              yt(i) = _powerD(mx.y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            }
+          }
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            int obs_start = k * ntotal;
+            vec fsk = fs.subvec(obs_start, obs_start + ntotal - 1);
+            const vec limitk = curLimit.subvec(obs_start, obs_start + ntotal - 1);
+            const vec censk = curCens.subvec(obs_start, obs_start + ntotal - 1);
+            _scratch_ft = fsk;
+            _scratch_limitT = limitk;
+            for (int i = ntotal; i--;) {
+              int cur = ix_endpnt(i);
+              _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+              _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
+            }
+            _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+            _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
+            _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+            _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+            _scratch_indio = mx.indio + (arma::uword)k * stride;
+            DYFm(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            for (int j = ntotal; j--;) {
+              DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
+                                                     DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+            }
+          }
+        }
+        break;
+      case 2:
+        {
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            _scratch_indio = mx.indio + (arma::uword)k * stride;
+            DYFm(_scratch_indio) = -mx.y % log(fck) + fck;
+          }
+        }
+        break;
+      case 3:
+        {
+          const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+          for (int k = 0; k < nmc; k++) {
+            vec fck = fc.subvec(k * ntotal, (k + 1) * ntotal - 1);
+            _scratch_indio = mx.indio + (arma::uword)k * stride;
+            DYFm(_scratch_indio) = -mx.y % log(fck) - (1 - mx.y) % log(1 - fck);
+          }
+        }
+        break;
+      }
+      lossByM.col(mHyp) = sum(DYFm, 0).t();
+    }
+    current_saem_state->_saemMixest = 0;
+
+    vec result(mx.nM);
+    for (int row = 0; row < mx.nM; row++) {
+      double minL = lossByM(row, 0);
+      for (int m = 1; m < nMix; m++) {
+        if (lossByM(row, m) < minL) minL = lossByM(row, m);
+      }
+      double sumExp = 0.0;
+      for (int m = 0; m < nMix; m++) {
+        sumExp += mixProb(m) * exp(minL - lossByM(row, m));
+      }
+      if (sumExp <= 0.0) sumExp = 1e-300;
+      result(row) = minL - log(sumExp);
+    }
+    return result;
+  }
+
+  // MSAEM's S-step MCMC kernel: identical proposal/prior machinery to
+  // do_mcmc() (single shared Gaussian prior -- see mixObsLoss() above for
+  // why), but the observation-loss term driving acceptance is the
+  // mixture-weighted mixObsLoss() instead of a single hypothesis's DYF.
+  // No column is ever masked or frozen for any row -- every proposal on
+  // every column is judged against the full mixture density, which is
+  // what avoids the label-simulation instability the paper documents
+  // (and this session found empirically with a masked/labeled design).
+  void do_mcmc_msaem(const int method,
+                      const int nu,
+                      const mcmcaux &mx,
+                      const mcmcphi &mphi,
+                      mat &phiM,
+                      vec &U_y,
+                      vec &U_phi) {
+    mat phiMc;
+    vec Uc_y, Uc_phi, deltu;
+    uvec ind;
+    uvec i = mphi.i;
+
+    for (int u = 0; u < nu; u++)
+      for (int k1 = 0; k1 < mphi.nphi; k1++) {
+        phiMc = phiM;
+        switch (method) {
+        case 1:
+          phiMc.cols(i) = randn<mat>(mx.nM, mphi.nphi) * mphi.Gamma_phi % current_saem_state->_saemUE.cols(i) +
+            mphi.mprior_phiM;
+          break;
+        case 2:
+          phiMc.cols(i) = phiM.cols(i) +
+            randn<mat>(mx.nM, mphi.nphi) * mphi.Gdiag_phi % current_saem_state->_saemUE.cols(i);
+          break;
+        case 3:
+          phiMc.col(i(k1)) = phiM.col(i(k1)) +
+            randn<vec>(mx.nM) * mphi.Gdiag_phi(k1, k1) % current_saem_state->_saemUE.col(i(k1));
+          break;
+        }
+
+        Uc_y = mixObsLoss(phiMc, mx);
+
+        if (method == 1) {
+          deltu = Uc_y - U_y;
+        } else {
+          mat dphic = phiMc.cols(i) - mphi.mprior_phiM;
+          Uc_phi = 0.5 * sum(dphic % (dphic * mphi.IGamma2_phi), 1);
+          deltu = Uc_y - U_y + Uc_phi - U_phi;
+        }
+
+        ind = find(deltu < -log(randu<vec>(mx.nM)));
+        phiM(ind, i) = phiMc(ind, i);
+        U_y(ind) = Uc_y(ind);
+        if (method > 1) {
+          U_phi(ind) = Uc_phi(ind);
+        }
+        if (method < 3) {
           break;
         }
       }
