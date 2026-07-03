@@ -116,7 +116,10 @@
                        perFixOmega=0.5,
                        perFixResid=0.75,
                        resFixed,
-                       ue) {
+                       ue,
+                       mixProb = numeric(0),
+                       omegaShare = integer(0),
+                       omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -445,6 +448,7 @@
                           rep(1L, length(ue[, 1]))
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
+
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
@@ -485,6 +489,17 @@
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
   minv <- rep(1e-20, nphi)
+  if (length(mixProb) > 1L) {
+    # Mixture fits (nMix > 1): i0 indexes phi positions with no associated
+    # eta at all (ordinary fixed-effect/population-only thetas, e.g. tka in
+    # a model with no eta.ka) -- not "non-mu-referenced etas". Their
+    # mixture-weighted Gamma2_phi0 computation can become near-singular
+    # under some covariance methods (e.g. linFim); floor them higher to
+    # keep the covariance step stable. Non-mixture fits keep the tight
+    # 1e-20 floor, since inflating it there wrongly biases these
+    # population-only parameters (see git history for 38bb062e).
+    minv[i0] <- 1.0
+  }
 
   # preserve par order when printing iter history
   mcov[mcov == 1] <- 1:nlambda
@@ -549,6 +564,8 @@
     Gamma2_phi1fixed=Gamma2_phi1fixed,
     Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
     Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
+    omegaShare = omegaShare,
+    omegaShareSubpop = omegaShareSubpop,
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,
@@ -608,7 +625,10 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed))
+  nMix <- max(1L, length(mixProb))
+  cfg$nMix <- nMix
+  cfg$mixProb <- mixProb
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

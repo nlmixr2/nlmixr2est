@@ -27,7 +27,8 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
     method=c("ML", "REML"),
     random=NULL, fixed=NULL, weights=NULL, verbose=TRUE, returnNlme=FALSE,
     addProp = c("combined2", "combined1"), calcTables=TRUE, compress=TRUE,
-    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE, ...) {
+    adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, muRefCovAlg=TRUE,
+    eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertLogical(optExpression, len=1, any.missing=FALSE)
   checkmate::assertLogical(literalFix, len=1, any.missing=FALSE)
@@ -58,6 +59,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
 
   method <- match.arg(method)
   addProp <- match.arg(addProp)
+  eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -113,6 +115,7 @@ nlmixr2NlmeControl <- function(maxIter = 100, pnlsMaxIter = 100, msMaxIter = 100
                returnNlme=returnNlme, addProp=addProp, calcTables=calcTables,
                compress=compress, random=random, fixed=fixed, weights=weights,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable, muRefCovAlg=muRefCovAlg,
+               eventSens=eventSens,
                genRxControl=.genRxControl)
   class(.ret) <- "nlmeControl"
   .ret
@@ -425,7 +428,8 @@ nmObjGetControl.nlme <- function(x, ...) {
                                 compress=.nlmeControl$compress,
                                 ci=.nlmeControl$ci,
                                 sigdigTable=.nlmeControl$sigdigTable,
-                                indTolRelax=TRUE)
+                                indTolRelax=TRUE,
+                                eventSens=.nlmeControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -529,6 +533,10 @@ nmObjGetFoceiControl.nlme <- function(x, ...) {
 #' @export
 nlmixr2Est.nlme <- function(env, ...) {
   .ui <- env$ui
+  if (length(.ui$mixProbs) > 0) {
+    stop("mix() models are not supported by est=\"nlme\" yet; use est=\"saem\" or est=\"focei\"",
+         call. = FALSE)
+  }
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'nlme', try 'focei'", .var.name=.ui$modelName)
   rxode2::assertRxUiNormal(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)
   rxode2::assertRxUiSingleEndpoint(.ui, " for the estimation routine 'nlme'", .var.name=.ui$modelName)

@@ -224,6 +224,20 @@
   if (length(.w) == 1) {
     names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
   }
+  # Format the formatted BSV (popDfSig) column to two decimal places for consistent display
+  .bsvNames <- c("BSV(CV% or SD)", "BSV(SD)", "BSV(CV%)")
+  .bsvName <- intersect(.bsvNames, names(.ret$popDfSig))
+  if (length(.bsvName) == 1) {
+    nm <- .bsvName[1]
+    .vals <- .ret$popDf[[nm]]
+    .fmtVals <- vapply(seq_along(.vals), function(i) {
+      v <- .vals[i]
+      vNum <- suppressWarnings(as.numeric(v))
+      if (is.na(vNum)) return(.ret$popDfSig[[nm]][i])
+      sprintf("%.2f", round(vNum, 2))
+    }, character(1))
+    .ret$popDfSig[[nm]] <- .fmtVals
+  }
 }
 
 .updateParFixedAddShrinkage <- function(.ret, .ui) {

@@ -117,9 +117,30 @@
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
+  # Iteration-print transforms: ship a single xform sub-list so the C
+  # side wires log/logit/probit back-transforms through one helper
+  # (scaleAttachXform in src/scale.h), identical to every other method
+  # (focei: env$xform, saem: .cfg$xform, nlm-family: .ctl$xform).
+  # nlm-family fits are population-only, so the printed parameters are
+  # just thetas in `par` order.
+  .ctl$xform <- .iterPrintXParFromUi(ui, names(par))
   .env$control <- .ctl
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
+  ## Event ("jump") sensitivities: if the gradient model carries rxode2's
+  ## analytic jump info (eventSens="jump"), point rxode2's runtime globals at it
+  ## and turn the jump injection on NOW -- before the scaleC solve below.  The
+  ## nlm-family solves go through rxode2's ind_solve/handle_evid which reads
+  ## these globals; activating after scaleC would compute the parameter scaling
+  ## from a jump-less gradient and mis-scale the dosing parameters (leaving the
+  ## optimizer stuck).  Deactivation happens in .nlmFreeEnv (the universal
+  ## cleanup every nlm-family fit driver calls on exit).  No-op for "fd" models.
+  .env$esActive <- FALSE
+  if (!is.null(.env$thetaGrad)) {
+    .env$esActive <- isTRUE(tryCatch(
+      rxode2::rxEventSensLoadModel(.env$thetaGrad),
+      error = function(e) FALSE))
+  }
   if (is.null(.ctl$scaleC) && .ctl$scaleType == 2L && .ctl$gradTo > 0) {
     .tmp <- .Call(`_nlmixr2est_nlmGetScaleC`, par, .ctl$gradTo)
     if (length(.tmp) == 0L) {
@@ -164,6 +185,10 @@
 .nlmFreeEnv <- function() {
  .Call(`_nlmixr2est_nlmFree`)
  rxode2::rxSolveFree()
+ ## Turn off any event ("jump") sensitivity injection activated in
+ ## .nlmSetupEnv so later unrelated solves are unaffected.  Safe no-op when it
+ ## was never activated (just sets the runtime gate to inactive).
+ tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
 }
 #' Finalizes output list
 #'

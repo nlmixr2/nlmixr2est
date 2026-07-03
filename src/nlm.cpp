@@ -24,7 +24,6 @@ struct nlmOptions {
   int *nobs = NULL;
   int *idS  = NULL;
   int *idF  = NULL;
-  int *xPar = NULL;
   unsigned int nobsTot = 0;
   double *thetahf=NULL; // Shi step size
   double *thetahh=NULL;
@@ -34,8 +33,6 @@ struct nlmOptions {
   double *grSave    = NULL;
   double *hSave     = NULL;
   double *scaleC    = NULL;
-  double *logitThetaLow = NULL;
-  double *logitThetaHi  = NULL;
 
   int eventType=3; // eventType
   int shi21maxFD=1000; //maxiter for shi
@@ -88,7 +85,6 @@ RObject nlmFree() {
   nlmOp.nobs    = NULL;
   nlmOp.idS     = NULL;
   nlmOp.idF     = NULL;
-  nlmOp.xPar    = NULL;
   if (nlmOp.thetahf != NULL) R_Free(nlmOp.thetahf);
   nlmOp.thetahf = NULL;
   nlmOp.thetahh = NULL;
@@ -98,8 +94,6 @@ RObject nlmFree() {
   nlmOp.hSave = NULL;
   nlmOp.initPar = NULL;
   nlmOp.scaleC  = NULL;
-  nlmOp.logitThetaLow = NULL;
-  nlmOp.logitThetaHi  = NULL;
 
   nlmOp.loaded = false;
   return R_NilValue;
@@ -177,11 +171,10 @@ RObject nlmSetup(Environment e) {
   // (see comment above where this used to live).
   nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
-  nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta * 2u + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
+  nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
   nlmOp.nobs = nlmOp.thetaFD + nlmOp.ntheta; // [nsub]
   nlmOp.idS = nlmOp.nobs + getRxNsub(rx); // [nsub]
   nlmOp.idF = nlmOp.idS + getRxNsub(rx); // [nsub]
-  nlmOp.xPar = nlmOp.idF + getRxNsub(rx); // [ntheta]
 
   // now calculate nobs per id
   nlmOp.nobsTot = 0U;
@@ -211,31 +204,27 @@ RObject nlmSetup(Environment e) {
   switch(nlmOp.solveType) {
   case solveType_nls:
     nlmOp.thetahf = R_Calloc(
-      nlmOp.ntheta * (5 + (size_t)getRxNsub(rx)) +
+      nlmOp.ntheta * (3 + (size_t)getRxNsub(rx)) +
       (size_t)nlmOp.nobsTot * ((size_t)1 + (size_t)nlmOp.ntheta),
       double); // [ntheta*nsub]
     nlmOp.thetaSave = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.initPar = nlmOp.thetaSave + nlmOp.ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
-    nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
-    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
-    nlmOp.valSave = nlmOp.logitThetaHi + nlmOp.ntheta; //[nlmOp.nobsTot]
+    nlmOp.valSave = nlmOp.scaleC    + nlmOp.ntheta; //[nlmOp.nobsTot]
     nlmOp.grSave  = nlmOp.valSave + nlmOp.nobsTot; // [nlmOp.nobsTot*ntheta]
     break;
   case solveType_nls_pred:
-    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(4+(size_t)getRxNsub(rx)), double);// [ntheta*nsub]
+    nlmOp.thetahf = R_Calloc(nlmOp.ntheta*(2+(size_t)getRxNsub(rx)), double);// [ntheta*nsub]
     nlmOp.initPar = nlmOp.thetahf + nlmOp.ntheta*getRxNsub(rx); // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + nlmOp.ntheta; // [ntheta]
-    nlmOp.logitThetaLow = nlmOp.scaleC + nlmOp.ntheta; // [ntheta]
-    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + nlmOp.ntheta; // [ntheta]
     break;
   default:
-    // 7*ntheta + nsub*ntheta + 1 + ntheta*ntheta
-    // ntheta*(7+nsub+ntheta) + 1
+    // 5*ntheta + nsub*ntheta + 1 + ntheta*ntheta
+    // ntheta*(5+nsub+ntheta) + 1
 #define ntheta nlmOp.ntheta
 #define nsub getRxNsub(rx)
     //nsub*ntheta
-    nlmOp.thetahf = R_Calloc(ntheta*((size_t)nsub + 7 + ntheta) + 1, double); //[nsub*ntheta]
+    nlmOp.thetahf = R_Calloc(ntheta*((size_t)nsub + 5 + ntheta) + 1, double); //[nsub*ntheta]
     nlmOp.thetahh = nlmOp.thetahf   + ntheta*nsub; // [ntheta]
     nlmOp.thetaSave = nlmOp.thetahh + ntheta; // [ntheta]
     nlmOp.valSave = nlmOp.thetaSave + ntheta; // [1]
@@ -243,8 +232,6 @@ RObject nlmSetup(Environment e) {
     nlmOp.hSave = nlmOp.grSave + ntheta;// [ntheta*ntheta]
     nlmOp.initPar = nlmOp.hSave + ntheta*ntheta; // [ntheta]
     nlmOp.scaleC  = nlmOp.initPar   + ntheta; // [ntheta]
-    nlmOp.logitThetaLow = nlmOp.scaleC + ntheta; // [ntheta]
-    nlmOp.logitThetaHi  = nlmOp.logitThetaLow + ntheta; // [ntheta]
 #undef ntheta
 #undef nsub
 
@@ -253,16 +240,15 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
-  // Iteration-print fields come from the iterPrintControl sub-list built
-  // R-side; scaleApplyIterPrintControl populates them on the scaling
-  // struct.  The useColor/printNcol/print args to scaleSetup are passed
-  // as placeholders since they get overwritten right after.
+  // Iteration-print formatting + transforms come from R-side sub-lists.
+  // scaleAttachXform wires the log/logit/probit back-transform arrays
+  // through one shared helper (mirrors saem and focei);
+  // scaleApplyIterPrintControl handles every/ncol/headerEvery/useColor/
+  // simple.  The useColor/printNcol/print args to scaleSetup are
+  // placeholders that get overwritten right after.
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
-             nlmOp.xPar,
-             nlmOp.logitThetaLow,
-             nlmOp.logitThetaHi,
              as<CharacterVector>(e["thetaNames"]) ,
              /*useColor*/0, /*printNcol*/1, /*print*/0,
              as<int>(control["normType"]),
@@ -271,6 +257,8 @@ RObject nlmSetup(Environment e) {
              as<double>(control["scaleCmax"]),
              as<double>(control["scaleTo"]),
              nlmOp.ntheta);
+  scaleAttachXform(&(nlmOp.scale),
+                   as<List>(control["xform"]));
   scaleApplyIterPrintControl(&(nlmOp.scale),
                              as<List>(control["iterPrintControl"]));
   nlmOp.needFD=false;
@@ -627,6 +615,58 @@ arma::mat nlmSolveGrad(arma::vec &theta) {
     setRxThreadId(-1);
   }
   return ret;
+}
+
+//' Per-subject prediction and Jacobian for mixed-effects engines
+//'
+//' Unlike the population gradient solver, which applies a single
+//' \code{theta} to every subject, this takes an \code{nsub x ntheta}
+//' matrix whose row \code{id} holds that subject's parameter vector
+//' (\code{phi = beta + b}, as supplied by \code{lme4::nlmer}).  Each
+//' subject is solved reusing the loaded \code{thetaGrad} model,
+//' sticky-tolerance recalculation, event finite differences, and jump
+//' sensitivities.  The nonlinear problem must already be loaded with
+//' \code{.nlmSetupEnv()}.
+//'
+//' @param thetaMat A \code{nsub x ntheta} matrix of per-subject
+//'   parameter values.  Row \code{id} is solved against subject
+//'   \code{id} (in the loaded \code{etTrans} order).
+//'
+//' @return A \code{nobsTot x (ntheta+1)} matrix in the loaded
+//'   (\code{etTrans}) observation order: column 1 is the prediction
+//'   (\code{rx_pred_}) and columns 2..(ntheta+1) are
+//'   \code{d(pred)/d(THETA[i])}.
+//'
+//' @details This is an internal function and should not be called
+//'   directly.
+//'
+//' @author Matthew L. Fidler
+//' @keywords internal
+//' @export
+//[[Rcpp::export]]
+RObject nlmerSolveGrad(arma::mat &thetaMat) {
+  if (!nlmOp.loaded) stop("'nlm' problem not loaded");
+  if (nlmOp.solveType == solveType_pred) stop("incorrect solve type");
+  int nsub = getRxNsub(rx);
+  if ((int)thetaMat.n_rows != nsub) {
+    stop("'thetaMat' must have one row per subject");
+  }
+  if ((int)thetaMat.n_cols != (int)nlmOp.ntheta) {
+    stop("'thetaMat' must have one column per estimated parameter");
+  }
+  arma::mat ret(nlmOp.nobsTot, nlmOp.ntheta+1);
+  rx_solving_options *op = getSolvingOptions(rx);
+  int cores = getOpCores(op);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(cores)
+#endif
+  for (int id = 0; id < nsub; ++id) {
+    setRxThreadId(omp_get_thread_num());
+    arma::vec th = thetaMat.row(id).t();
+    ret.rows(nlmOp.idS[id], nlmOp.idF[id]) = nlmSolveGradId(th, id);
+    setRxThreadId(-1);
+  }
+  return wrap(ret);
 }
 
 //[[Rcpp::export]]

@@ -112,7 +112,6 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
-
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()
@@ -130,3 +129,4 @@ compiled.rxode2.md5 <- rxode2::rxMd5()
   ## options(keep.source = TRUE)
   ## nocov end
 }
+
