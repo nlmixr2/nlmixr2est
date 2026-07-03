@@ -6645,8 +6645,8 @@ NumericMatrix foceiCalcCov(Environment e){
           } else if (_ctl.containsElementNamed("sigdig")) {
             double _sigdig = as<double>(_ctl["sigdig"]);
             _covSigdig = _sigdig + 5.0;
-            if (_covSigdig > 10.0) _covSigdig = 10.0;       // atol floor ~5e-13
-            if (_covSigdig < _sigdig) _covSigdig = _sigdig; // never looser than the fit
+            if (_covSigdig < _sigdig) _covSigdig = _sigdig; // never looser than the fit ...
+            if (_covSigdig > 10.0) _covSigdig = 10.0;       // ... but the atol floor ~5e-13 wins (#697 finding 14)
           }
         }
         CovSolveTolGuard _covTolGuard(_covSigdig);
@@ -7058,7 +7058,11 @@ NumericMatrix foceiCalcCov(Environment e){
             ++ncc;
           }
           std::vector<std::pair<int,int> > pairs;
-          if ((int)ncc == neta) {                 // diagonal Omega (incl. some fixed)
+          // Pure-diagonal Omega only when there is exactly one (variance) parameter per
+          // eta; a declared block whose off-diagonal converged <= tol still has nom > neta
+          // parameters, so it must NOT take the diagonal branch (which would use an omega
+          // parameter index as an eta index and read out of bounds) (#697 finding 8).
+          if ((int)ncc == neta && nom == (unsigned int)neta) {  // diagonal Omega
             for (unsigned int c = 0; c < nom; ++c) {
               int om = op_focei.fixedTrans[nth + c] - (int)op_focei.ntheta;
               pairs.push_back(std::make_pair(om, om));
@@ -7068,7 +7072,11 @@ NumericMatrix foceiCalcCov(Environment e){
               for (int a = b; a < neta; ++a)
                 if (comp[a] == comp[b]) pairs.push_back(std::make_pair(a, b));
           }
-          if (nom > 0 && (unsigned int)pairs.size() == nom && (int)cov.n_rows == (int)np) {
+          // every pair index must be a valid eta index, else skip the transform (do not throw)
+          bool _pairsOk = true;
+          for (unsigned int k = 0; k < pairs.size(); ++k)
+            if (pairs[k].first >= neta || pairs[k].second >= neta) _pairsOk = false;
+          if (_pairsOk && nom > 0 && (unsigned int)pairs.size() == nom && (int)cov.n_rows == (int)np) {
             List dOi = as<List>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "d.omegaInv", R_NilValue));
             arma::mat J(nom, nom, arma::fill::zeros);
             for (unsigned int c = 0; c < nom; ++c) {
