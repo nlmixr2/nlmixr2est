@@ -668,6 +668,84 @@ trusted to respect on its own.
 > for split-ETA mixture components as unreliable for now; the point estimates
 > of `tcl1`/`tcl2` and `p1` are the numbers to trust.
 
+### An alternative sampling architecture: `mixSampleMethod = "msaem"`
+
+The BSV problem above comes from *how* SAEM's default architecture explores
+the random effects for a mixture. `saemControl(mixSampleMethod=)` selects
+between two designs:
+
+* **`"parallel"` (default).** Every iteration, one full MCMC chain is run
+  *per component* for every subject (each chain explores as if that subject
+  definitely belongs to that component), then the results are blended
+  post hoc using posterior weights. This mirrors NONMEM's population
+  mixture modeling (`$MIX`) and correctly estimates a single BSV shared
+  across all components — but it has no way to obtain a clean per-component
+  BSV for split-ETA models: each "wrong-hypothesis" chain still explores its
+  non-owned column(s) as an unconstrained prior-only random walk, and that
+  noise ends up in the blended statistics.
+
+* **`"msaem"` (experimental).** Implements MSAEM (Lavielle & Mbogning 2014,
+  *Statistics and Computing* 24(5)), the method Monolix uses for mixture
+  models: only *one* random-effects trajectory is simulated per subject per
+  iteration, and the discrete component label is analytically marginalized
+  out via an exact posterior responsibility instead of being simulated —
+  so there is nothing to blend after the fact. It also uses a model-aware
+  stratified initialization (each subject is tested against every candidate
+  component using the actual compiled model before fitting starts), which
+  reliably separates split-ETA fixed effects even from the realistic
+  symmetric starting point used throughout this vignette (`tcl1`/`tcl2`
+  both initialized identically).
+
+`"parallel"` runs `nMix` full chains per subject per iteration where
+`"msaem"` runs one, so they are not compute-matched at equal `nmc` — set
+`nmc` to roughly `nMix` times its default (`nmc = 6` for a 2-component
+mixture here) for a fair comparison:
+
+```{r fit-saem-msaem, eval=FALSE}
+fitSaemMsaem <- nlmixr2(twoPopSplit, simData, "saem",
+                        control = saemControl(nBurn = 200, nEm = 300, nmc = 6,
+                                              mixSampleMethod = "msaem",
+                                              covMethod = "linFim"))
+print(fitSaemMsaem)
+```
+
+```{r fit-saem-msaem-show, echo=FALSE}
+cat("
+── Population Parameters (fitSaemMsaem$parFixed or fitSaemMsaem$parFixedDf): ──
+
+        Est.     SE  %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
+tka    0.152   0.04  26.4       1.16 (1.08, 1.26)
+tcl1   -5.64                                0.806
+tcl2   -3.33                                 6.98
+tv      3.38 0.0323 0.955       29.3 (27.5, 31.2)          17.35     48.99%
+p1     0.615                                0.615
+add.sd 0.379                                0.379
+eta.cl                                                      1.10     86.56%
+
+  Covariance Type (fitSaemMsaem$covMethod): linFim
+")
+```
+
+Fixed effects separate just as well as `"parallel"` (0.806 and 6.98,
+against the true 0.8/8 — the usual label-order caveat applies, here
+`tcl1`/`tcl2` swapped which component is which relative to the earlier
+examples). The raw, unpooled per-component BSV
+(`fitSaemMsaem$env$saem0$Gamma2_phi1`) is `0.009` and `0.027` here, against
+a true 0.09 — better than `"parallel"`, whose equivalent raw diagonal is
+*always* exactly zero for split-ETA columns (the pooled `$omega` shown in
+`parFixed` only looks reasonable because pooling adds in the
+between-component variance of the means), but still not a reliable
+recovery of the true value. `mixProb` is also less accurate than
+`"parallel"`'s here (0.615 vs. the true 0.667).
+
+**Bottom line:** `"msaem"`'s fixed-effect separation is as solid as
+`"parallel"`'s, and its split-ETA BSV, while still not reliable, is
+closer to the truth than `"parallel"`'s (which is always exactly zero
+underneath the pooled report). It remains experimental — `mixProb` can be
+less accurate, and BSV recovery is inconsistent across datasets/seeds.
+Prefer `"parallel"` (the default) unless you are specifically evaluating
+`"msaem"` or comparing the two.
+
 ## Choosing an Estimation Method
 
 All six gradient-based methods handle mixture models using the same strategy:
@@ -704,14 +782,16 @@ increased (see that section for a worked example):
   prevent label-switching for focei during optimization.
 - **SAEM** supports mixtures via soft assignment, stabilized against collapse
   by `saemControl(mixProbMethod=)`, and correctly separates split-ETA fixed
-  effects (see [Mixture Models with SAEM](#mixture-models-with-saem)); it
-  typically needs more tuning (iterations, `mixProbPriorN`) than the
-  gradient-based methods to match their separation precision. Two things it
-  does not currently do well regardless of parameterization: standard errors
+  effects under both `mixSampleMethod` options (see
+  [Mixture Models with SAEM](#mixture-models-with-saem)); it typically needs
+  more tuning (iterations, `mixProbPriorN`) than the gradient-based methods
+  to match their separation precision. Two things it does not currently do
+  well regardless of parameterization or `mixSampleMethod`: standard errors
   for the mixture-owned fixed effects (`tcl1`/`tcl2`-style parameters) come
   back as `NA` rather than a real SE, and `$omega`/BSV for split-ETA
-  components can be unreliable (too large or collapsed near zero) even when
-  the fixed effects themselves separate correctly — trust the point
-  estimates of `tcl1`/`tcl2`/`p1`, not their SEs or BSV%. Nested transforms
-  inside `mix()` require **rxode2 >= 5.1.3** regardless of estimation
-  method.
+  components can be unreliable (too large or collapsed near zero under
+  `mixSampleMethod="parallel"`, the default; improved but still not
+  consistently accurate under the experimental `"msaem"`) even when the
+  fixed effects themselves separate correctly — trust the point estimates
+  of `tcl1`/`tcl2`/`p1`, not their SEs or BSV%. Nested transforms inside
+  `mix()` require **rxode2 >= 5.1.3** regardless of estimation method.
