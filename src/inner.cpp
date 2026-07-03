@@ -6476,18 +6476,30 @@ struct CovSolveTolGuard {
   bool armed;
   CovSolveTolGuard(double covSigdig) : armed(false) {
     if (covSolveArgs_ == R_NilValue) return;
-    double tol = 0.5 * std::pow(10.0, -covSigdig - 2.0);
     List args      = as<List>(covSolveArgs_);
     RObject obj    = args[0];
     List rxControl = as<List>(args[1]);
     RObject params = args[2];
     RObject data   = args[3];
-    List rxC = clone(rxControl);
-    rxC[Rxc_atol] = tol; rxC[Rxc_rtol] = tol;
-    rxC[Rxc_atolSens] = tol; rxC[Rxc_rtolSens] = tol;
-    rxode2::rxSolve_(obj, rxC, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
-    rx = getRxSolve_();
-    armed = true;
+    try {
+      double tol = 0.5 * std::pow(10.0, -covSigdig - 2.0);
+      List rxC = clone(rxControl);
+      rxC[Rxc_atol] = tol; rxC[Rxc_rtol] = tol;
+      rxC[Rxc_atolSens] = tol; rxC[Rxc_rtolSens] = tol;
+      rxode2::rxSolve_(obj, rxC, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+      rx = getRxSolve_();
+      armed = true;
+    } catch (...) {
+      // Tightening the cov-step tolerance failed (e.g. an integration failure at the
+      // small atol/rtol); fall back to the existing solve setup so the covariance step
+      // still runs rather than aborting.  Leave armed=false and restore the original
+      // solve so downstream code sees a consistent state (mirrors the destructor).
+      armed = false;
+      try {
+        rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+        rx = getRxSolve_();
+      } catch (...) {}
+    }
   }
   ~CovSolveTolGuard() {
     if (!armed) return;

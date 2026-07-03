@@ -89,7 +89,7 @@ nmTest({
       # original theta-only $cov.
       .f <- .nlmixr(one.cmt, theo_sd, "focei",
                     foceiControl(covMethod = .m, sigdig = 4, print = 0, covFull = TRUE))
-      .se <- sqrt(abs(diag(.f$cov)))
+      .se <- sqrt(pmax(diag(.f$cov), 0))
       .ref <- .nm[[.m]]
       expect_true(all(names(.ref) %in% names(.se)),
                   label = paste0("covMethod=", .m, ": cov has theta + sigma + Omega names"))
