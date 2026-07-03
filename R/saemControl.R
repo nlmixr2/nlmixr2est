@@ -258,20 +258,39 @@
 #'     (still-uncertain) responsibility allows, unlike `"parallel"`'s
 #'     unconditional per-hypothesis chains. This is a common practical
 #'     scenario (an initial guess landing near one plausible subgroup), so
-#'     `"msaem"` fits automatically apply a stratified initialization for
-#'     split-ETA components before the first iteration -- mirroring the
-#'     approach used by the `leaspy` Python package's SAEM mixture
-#'     implementation -- partitioning subjects into `nMix` naive,
-#'     roughly-equal strata by mean `DV` and nudging each component's
-#'     starting point toward its own stratum, instead of every component
-#'     starting from the same point. This is a model-agnostic heuristic
-#'     (it has no knowledge of which model parameter is actually driving
-#'     the mixture) and meaningfully improves -- but does not fully
-#'     resolve -- the under-separation failure mode; results still vary
-#'     by dataset depending on how well mean `DV` happens to correlate
-#'     with true group membership. Prefer `"parallel"` unless you have a
-#'     roughly symmetric/equidistant starting guess for the components or
-#'     are specifically evaluating this method.
+#'     `"msaem"` fits automatically apply a model-aware stratified
+#'     initialization for split-ETA components before the first
+#'     iteration, in the same spirit as the per-cluster initialization
+#'     used by the `leaspy` Python package's SAEM mixture implementation
+#'     (partition subjects into naive strata before fitting, and derive
+#'     each component's starting point from its own stratum, instead of
+#'     every component starting from the same point) but grounded in the
+#'     actual compiled model rather than a generic per-subject data
+#'     summary: for each subject and each candidate component, it tests
+#'     whether a moderate shift toward that component's assumption
+#'     actually fits that subject's own data better, and starts from
+#'     whichever assumption wins. This consistently achieved full
+#'     separation across every seed/scenario tested (both bounded and
+#'     fully unbounded split-ETA parameterizations); an earlier,
+#'     model-agnostic version of this heuristic (stratifying by mean `DV`
+#'     alone) was tried first and was less reliable, since a generic
+#'     outcome summary does not always correlate well with true group
+#'     membership.
+#'
+#'     Theta/fixed-effect separation for split-ETA components is
+#'     therefore solid. The split-ETA BSV (`$omega`) this whole method
+#'     exists to improve is better than it was but still not reliable:
+#'     two genuine numerical bugs were found and fixed (an
+#'     `Gamma2_phi1`-inverse blowup that caused a hard numerical lock to
+#'     exactly zero rather than statistical shrinkage; and an inverted
+#'     responsibility sign in the internal prior-only variance weighting,
+#'     adapted from -- but initially miscopied from -- the `leaspy`
+#'     Python package's SAEM mixture implementation), which took the
+#'     per-component BSV estimate from *always* exactly zero to
+#'     *sometimes* a genuine non-zero value, but it still collapses
+#'     toward a safety-floor value in many cases rather than consistently
+#'     recovering the true variance. Prefer `"parallel"` unless you are
+#'     specifically evaluating this method.
 #'
 #' @param ... Other arguments to control SAEM.
 #'

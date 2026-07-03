@@ -691,6 +691,7 @@ public:
       mixProb = as<vec>(x["mixProb"]);
       mixProbInit = mixProb;
       mixWeights.zeros(N, nMix);
+      priorWeights.zeros(N, nMix);
       mixProbMethod = x.containsElementNamed("mixProbMethod") ? as<int>(x["mixProbMethod"]) : 0;
       pasMix = x.containsElementNamed("pasMix") ? as<vec>(x["pasMix"]) : pas;
       mixProbPriorN = x.containsElementNamed("mixProbPriorN") ? as<double>(x["mixProbPriorN"]) : 0.0;
@@ -709,6 +710,7 @@ public:
     nphi1 = as<int>(x["nphi1"]);
     i1 = as<uvec>(x["i1"]);
     Gamma2_phi1 = as<mat>(x["Gamma2_phi1"]);
+    Gamma2_phi1Init = Gamma2_phi1;
     Gamma2_phi1fixedIxIn = as<umat>(x["Gamma2_phi1fixedIx"]);
     Gamma2_phi1fixedIx = find(Gamma2_phi1fixedIxIn);
     Gamma2_phi1fixed = as<int>(x["Gamma2_phi1fixed"]);
@@ -933,6 +935,27 @@ public:
     if (DEBUG>0){
       RSprintf("initial user_fn successful\n");
     }
+    if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+      // Model-aware stratified initialization for MSAEM (see
+      // mixNaiveClassify()): nudge the initial MCMC draw and per-subject
+      // prior mean toward each subject's model-informed best-fitting
+      // hypothesis, so iteration 0 starts from an asymmetric point
+      // instead of every subject/component looking identical.
+      uvec cls = mixNaiveClassify(1.5);
+      for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+        unsigned int subpop = omegaShareSubpop(c);
+        if (subpop < 1) continue;
+        double sdCol = std::sqrt(Gamma2_phi1(c, c));
+        if (!std::isfinite(sdCol) || sdCol <= 0) continue;
+        for (int i = 0; i < N; i++) {
+          double nudge = (cls(i) == subpop ? 1.0 : -1.0) * 2.0 * sdCol;
+          mprior_phi1(i, c) += nudge;
+          for (int k = 0; k < nmc; k++) {
+            phiM(i + k * N, i1(c)) += nudge;
+          }
+        }
+      }
+    }
     for (unsigned int kiter=0; kiter<(unsigned int)(niter); kiter++) {
       gamma2_phi1=Gamma2_phi1.diag();
       IGamma2_phi1=inv_sympd(Gamma2_phi1);
@@ -1096,6 +1119,75 @@ public:
             mixWeights.row(i) = w_i / sumW;
           } else {
             mixWeights.row(i) = mixProb.t();
+          }
+        }
+
+        // Leaspy-style prior-only responsibility (see
+        // msaem-mixture-method.md's leaspy comparison): mixWeights above
+        // uses the full joint (observation+prior) NLL, the right signal
+        // for "which hypothesis's prediction fits the data" -- but
+        // leaspy's own SAEM mixture implementation
+        // (compute_ind_param_std_from_suff_stats_mixture in
+        // models/utilities.py) weights its *variance* update by a
+        // responsibility derived from the prior/regularization term
+        // alone (nll_regul_ind_sum_ind), not the joint likelihood. Under
+        // MSAEM's non-masked exploration, a subject's "wrong" component
+        // column is only weakly constrained by data (the mixture-
+        // weighted acceptance barely responds to it once that
+        // hypothesis is uncompetitive), so it naturally stays close to
+        // its own prior while the "true" component's column moves away
+        // to explain the data -- comparing each component's own owned
+        // column's deviation magnitude is therefore a genuinely
+        // different signal from mixWeights, not just a smoothed version
+        // of it.
+        if (omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+          mat priorPenalty(N, nMix, fill::zeros);
+          bool anyOwned = false;
+          for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+            unsigned int subpop = omegaShareSubpop(c);
+            if (subpop < 1 || subpop > (unsigned int)nMix) continue;
+            anyOwned = true;
+            double v = Gamma2_phi1(c, c);
+            if (!std::isfinite(v) || v <= 0) continue;
+            for (int i = 0; i < N; i++) {
+              double dsum = 0.0;
+              for (int k = 0; k < nmc; k++) {
+                dsum += phiM(i + k * N, i1(c)) - mprior_phi1(i, c);
+              }
+              double d = dsum / nmc;
+              priorPenalty(i, subpop - 1) += 0.5 * d * d / v;
+            }
+          }
+          if (anyOwned) {
+            // NB: larger priorPenalty(i,m) means component m's *own*
+            // owned column shows a bigger deviation from its prior --
+            // unlike leaspy's cluster-indexed single-variable case
+            // (where a smaller Mahalanobis distance to a candidate
+            // cluster's prior means a better fit), nlmixr2est's
+            // split-ETA columns are separate variables with fixed,
+            // non-cluster-varying priors -- the column that genuinely
+            // belongs to a subject is expected to show a *larger*
+            // (real, informative) deviation, not a smaller one (matching
+            // get_eta()'s already-correct behavior). So responsibility
+            // here favors the *larger* deviation, using max instead of
+            // min for the softmax stabilization.
+            for (int i = 0; i < N; i++) {
+              double maxP = priorPenalty(i, 0);
+              for (int j = 1; j < nMix; j++) {
+                if (priorPenalty(i, j) > maxP) maxP = priorPenalty(i, j);
+              }
+              rowvec pw(nMix);
+              double sumP = 0.0;
+              for (int j = 0; j < nMix; j++) {
+                pw(j) = exp(priorPenalty(i, j) - maxP);
+                sumP += pw(j);
+              }
+              if (sumP > 0.0) {
+                priorWeights.row(i) = pw / sumP;
+              } else {
+                priorWeights.row(i).fill(1.0 / nMix);
+              }
+            }
           }
         }
 
@@ -1650,7 +1742,24 @@ public:
       }//k
       if (DEBUG>0) Rcout << "integration successful\n";
 
-      statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
+      if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        // Split-ETA columns only: statphi11's stochastic-approximation
+        // smoothing uses the same decaying pas(kiter) as every other
+        // quantity, but separation for these columns can still be
+        // developing well after pas has already decayed (mirroring the
+        // same freeze-before-signal-arrives problem found for mixProb;
+        // see msaem-mixture-method.md). Give split-owned columns their
+        // own extended-flat schedule so later, correct exploration still
+        // has real weight in the accumulated statistic; non-split
+        // columns and "parallel" fits are completely unaffected.
+        double pasMsaemSplit = (kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          double pasUse = (omegaShareSubpop(c) >= 1) ? pasMsaemSplit : pas(kiter);
+          statphi11.col(c) = statphi11.col(c) + pasUse * (Statphi11.col(c) / nmc - statphi11.col(c));
+        }
+      } else {
+        statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
+      }
       if (nMix > 1 && mixSampleMethod == 0) {
         // Only "parallel" populates the unblended per-component
         // Statphi11_mix accumulator (see the overrides below); "msaem"
@@ -1761,7 +1870,7 @@ public:
           }
           if (!diagOnly) continue;
           if (Gamma2_phi1fixed == 1 && any(Gamma2_phi1fixedIx == c * nphi1 + c)) continue;
-          vec w = mixWeights.col(subpop - 1);
+          vec w = priorWeights.col(subpop - 1);
           double sumW = arma::sum(w);
           if (sumW <= 0.0) continue;
           vec dev = statphi11.col(c) - mprior_phi1.col(c);
@@ -1835,6 +1944,30 @@ public:
             for (unsigned int i : indices) {
               Gamma2_phi1Report(i, i) = total_var;
             }
+          }
+        }
+      }
+      // "msaem" only, split-ETA columns: the generic Gmin/minv floor below
+      // (1e-20 by default) is nowhere near tight enough to prevent a
+      // genuine numerical blowup. IGamma2_phi1 = inv_sympd(Gamma2_phi1)
+      // feeds directly into do_mcmc_msaem's prior-penalty term
+      // (Uc_phi = 0.5*dev^2*IGamma2_phi1); once a split column's variance
+      // shrinks toward ~1e-20, its precision explodes toward ~1e20, and
+      // *any* subsequent proposal of ordinary size gets an astronomically
+      // large Uc_phi-U_phi -- moves toward exactly zero are then always
+      // accepted and moves away are always rejected, a hard numerical
+      // lock onto zero rather than genuine statistical shrinkage (found
+      // via direct acceptance-ratio instrumentation: mean(Uc_phi-U_phi)
+      // on the order of 1e17 for a collapsed column, vs. O(1) normally).
+      // Floor at a meaningful fraction of the initial (ini()) variance so
+      // IGamma2_phi1 can never blow up catastrophically, while still
+      // allowing real shrinkage within a bounded, numerically-sane range.
+      if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          if (omegaShareSubpop(c) < 1) continue;
+          double floorVar = 0.1 * Gamma2_phi1Init(c, c);
+          if (std::isfinite(floorVar) && floorVar > 0 && Gamma2_phi1(c, c) < floorVar) {
+            Gamma2_phi1(c, c) = floorVar;
           }
         }
       }
@@ -2557,7 +2690,15 @@ public:
           // keeps working even during burn-in's flat pas(kiter)==1 step
           // size, unlike a step-size-only fix.
           vec mean_aji_reg = (mean_aji * N + mixProbPriorN * mixProbInit) / (N + mixProbPriorN);
-          mixProb = mixProb + pas(kiter) * (mean_aji_reg - mixProb);
+          // "msaem" only: separation develops more slowly than "parallel"
+          // (single trajectory vs unconditionally-committed per-hypothesis
+          // chains), so standard pas(kiter) can already be decaying by the
+          // time responsibility sharpens, freezing mixProb at an
+          // intermediate value from the still-ambiguous early iterations.
+          // Stay at a full-replacement step for most of the fit (80%) so
+          // mixProb has time to track the slower signal.
+          double pasMsaem = (mixSampleMethod == 1 && kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
+          mixProb = mixProb + pasMsaem * (mean_aji_reg - mixProb);
         } else {
           // Annealed step-size: give mixProb its own decaying schedule from
           // iteration 1 instead of the shared burn-in pas(kiter)==1, which
@@ -2633,6 +2774,7 @@ private:
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
   mat Gamma2_phi1Report; // reporting-only pooled BSV for split ETAs sharing an omegaShare group; never fed back into estimation
+  mat Gamma2_phi1Init; // initial (ini()) Gamma2_phi1, captured once; used as an msaem-only exploration floor for split-ETA columns (see saem_fit())
   mat IGamma2_phi1, D1Gamma21, D2Gamma21, CGamma21;
   mat IGamma2_phi0, D1Gamma20, D2Gamma20, CGamma20;
   mat Gamma_phi1, Gdiag_phi1, Gamma_phi0, Gdiag_phi0;
@@ -2710,6 +2852,7 @@ private:
   double mixProbPriorN;
   int mixSampleMethod; // 0 = parallel per-component chains (NONMEM-style), 1 = MSAEM (Lavielle & Mbogning 2014)
   mat mixWeights;
+  mat priorWeights; // leaspy-style prior-only responsibility, msaem only (see saem_fit()'s E-step)
   field<mat> phiM_mix;
   field<vec> fsave_mix;
   field<vec> limit_mix;
@@ -2990,6 +3133,108 @@ private:
       result(row) = minL - log(sumExp);
     }
     return result;
+  }
+
+  // Model-aware naive classification for MSAEM's stratified initialization
+  // (mixSampleMethod="msaem" only), run once before the first iteration.
+  // For each subject and each hypothesis m, build a candidate phi1 with a
+  // moderate (pertSd BSV-SD) shift toward "genuinely in component m" on
+  // that component's owned column(s) (and away from the alternative
+  // component's), then evaluate the *actual compiled model*'s fit under
+  // hypothesis m for that shifted candidate. Unlike a generic per-subject
+  // data summary (e.g. mean DV), this directly asks the model whether
+  // shifting a given subject's mixture-owned parameter toward each
+  // candidate value improves their fit, so it correctly reflects whatever
+  // functional relationship the model defines between that parameter and
+  // the observations. Returns the per-subject argmin-hypothesis
+  // classification (1-indexed).
+  uvec mixNaiveClassify(double pertSd) {
+    double double_xmin = 1.0e-200;
+    double xmax = 1e300;
+    mat lossByHyp(N, nMix, fill::zeros);
+    for (int mHyp = 0; mHyp < nMix; mHyp++) {
+      mat cand = phiM;
+      if (omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          unsigned int subpop = omegaShareSubpop(c);
+          if (subpop < 1) continue;
+          double sdCol = std::sqrt(Gamma2_phi1(c, c));
+          if (!std::isfinite(sdCol) || sdCol <= 0) continue;
+          double shift = (subpop == (unsigned int)(mHyp + 1)) ? pertSd * sdCol : -pertSd * sdCol;
+          cand.col(i1(c)) += shift;
+        }
+      }
+      current_saem_state->_saemMixest = mHyp + 1;
+      mat hypMat = user_fn(cand, evt, optM);
+      vec fHyp = hypMat.col(0);
+      vec censHyp = hypMat.col(1);
+      vec limitHyp = hypMat.col(2);
+      mat DYFhyp = zeros<mat>(mlen, nM);
+      if (distribution == 1) {
+        vec yt = hasFixedObsTransform ? yTrans : y;
+        if (!hasFixedObsTransform) {
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            yt(i) = _powerD(y(i), lambda(cur), yj(cur), low(cur), hi(cur));
+          }
+        }
+        const arma::uword stride = (arma::uword)N * (arma::uword)mlen;
+        for (int k = 0; k < nmc; k++) {
+          int obs_start = k * ntotal;
+          vec fk = fHyp.subvec(obs_start, obs_start + ntotal - 1);
+          const vec censk = censHyp.subvec(obs_start, obs_start + ntotal - 1);
+          const vec limitk = limitHyp.subvec(obs_start, obs_start + ntotal - 1);
+          _scratch_ft = fk;
+          _scratch_limitT = limitk;
+          for (int i = ntotal; i--;) {
+            int cur = ix_endpnt(i);
+            _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ft(i) = _powerD(fk(i), lambda(cur), yj(cur), low(cur), hi(cur));
+            _scratch_ftT(i) = handleF(propT(cur), fk(i), _scratch_ft(i), false, true);
+          }
+          _scratch_g = vecares + vecbres % abs(_scratch_ftT);
+          _scratch_g.elem(find(_scratch_g == 0.0)).fill(1.0);
+          _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
+          _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
+          _scratch_indio = indio + (arma::uword)k * stride;
+          DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+          for (int j = ntotal; j--;) {
+            DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
+                                                   DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
+          }
+        }
+      } else if (distribution == 2) {
+        for (int k = 0; k < nmc; k++) {
+          vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYFhyp(indio_k) = -y % log(fk) + fk;
+        }
+      } else if (distribution == 3) {
+        for (int k = 0; k < nmc; k++) {
+          vec fk = fHyp.subvec(k * ntotal, (k + 1) * ntotal - 1);
+          uvec indio_k = indio + (arma::uword)k * (arma::uword)(N * mlen);
+          DYFhyp(indio_k) = -y % log(fk) - (1 - y) % log(1 - fk);
+        }
+      }
+      vec U_y_hyp = sum(DYFhyp, 0).t();
+      for (int i = 0; i < N; i++) {
+        double sumL = 0.0;
+        for (int k = 0; k < nmc; k++) sumL += U_y_hyp(i + k * N);
+        lossByHyp(i, mHyp) = sumL / nmc;
+      }
+    }
+    current_saem_state->_saemMixest = 0;
+
+    uvec cls(N);
+    for (int i = 0; i < N; i++) {
+      unsigned int best = 0;
+      double bestL = lossByHyp(i, 0);
+      for (int m = 1; m < nMix; m++) {
+        if (lossByHyp(i, m) < bestL) { bestL = lossByHyp(i, m); best = (unsigned int)m; }
+      }
+      cls(i) = best + 1;
+    }
+    return cls;
   }
 
   // MSAEM's S-step MCMC kernel: identical proposal/prior machinery to

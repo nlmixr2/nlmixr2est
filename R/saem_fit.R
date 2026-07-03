@@ -17,90 +17,6 @@
 ## You should have received a copy of the GNU General Public License
 ## along with nlmixr2.  If not, see <http://www.gnu.org/licenses/>.
 
-#' Break the symmetric-start problem for `mixSampleMethod="msaem"` split-ETA
-#' mixture fits by nudging the initial phi1 draw toward a naive,
-#' model-agnostic per-subject stratification.
-#'
-#' MSAEM's single-trajectory MCMC only differentiates mixture components as
-#' fast as the current (still-uncertain) responsibility allows -- when a
-#' split-ETA model's components start at/near the *same* initial theta (the
-#' common case: a user rarely already knows the true split), one component
-#' can reach a stable, under-separated fixed point rather than actually
-#' separating (see the mixture-models vignette). This mirrors the
-#' initialization strategy used by the `leaspy` Python package's SAEM mixture
-#' implementation (`LogisticMixtureInitializationMixin`): partition subjects
-#' into naive, roughly-equal strata *before* fitting starts, and derive each
-#' component's initial values from its own stratum instead of one shared
-#' guess -- there, sorted by disease-progression time; here, generalized to
-#' any nlmixr2 model via a simple per-subject outcome summary (mean `DV`),
-#' since there is no model-agnostic equivalent of "disease time" available.
-#'
-#' Nudges both the initial MCMC draw (`phiM`) *and* the initial per-subject
-#' prior mean (`mprior_phi1`, what `set_mcmcphi()`'s independence-sampler
-#' kernel actually redraws from -- see `do_mcmc_msaem()`) -- not
-#' `theta`/`ini()` itself. Subjects in naive stratum `m` get a
-#' `sdMult`-BSV-SD-sized perturbation on component `m`'s owned column(s)
-#' (via `omegaShareSubpop`), consistently across all `nmc` replicate chains
-#' for that subject. `mprior_phi1` is what iteration 0's exploration and
-#' responsibility computation actually pull toward; nudging `phiM` alone is
-#' not enough, since do_mcmc_msaem's independence-sampler kernel (heavily
-#' weighted on iteration 0, see saem_fit()'s "CHG hard coded 20" boost)
-#' redraws phi1 from `mprior_phi1` on essentially every proposal, discarding
-#' any perturbation to `phiM` that isn't backed by a shifted center to
-#' redraw around. `mprior_phi1` itself only survives through iteration 0
-#' (it gets recomputed from the updated theta at the end of every
-#' iteration), so this only ever affects the starting point, not what the
-#' algorithm converges to.
-#'
-#' @param phiM initial MCMC phi matrix (`N*nmc` rows), 1-indexed columns,
-#'   already populated with the (currently symmetric) prior mean + random
-#'   jitter
-#' @param mprior_phi1 initial per-subject phi1 prior mean matrix (`N` rows,
-#'   `length(i1)` columns)
-#' @param y observed DV vector (length `ntotal`, one row per observation)
-#' @param id subject id vector aligned with `y`
-#' @param N number of subjects
-#' @param nmc number of MCMC replicate chains per subject
-#' @param i1 1-indexed phi1 (mu-referenced eta) column positions in `phiM`
-#' @param omegaShareSubpop length-`length(i1)` vector: 0 = not a split-ETA
-#'   column, else the 1-indexed mixture component that owns this column
-#'   (same indexing/order as `i1`)
-#' @param Gamma2_phi1 initial phi1 covariance matrix (for the nudge scale)
-#' @param nMix number of mixture components
-#' @param sdMult nudge size in units of the column's BSV SD
-#' @return list(phiM=, mprior_phi1=), nudged for stratified subjects on
-#'   owned split-ETA columns; returned unchanged if stratification isn't
-#'   possible (e.g. too few subjects, a degenerate/constant naive metric)
-#' @noRd
-.saemMixtureStratifiedInit <- function(phiM, mprior_phi1, y, id, N, nmc, i1, omegaShareSubpop,
-                                        Gamma2_phi1, nMix, sdMult = 2) {
-  .ret <- list(phiM = phiM, mprior_phi1 = mprior_phi1)
-  if (N < nMix) return(.ret)
-  uid <- unique(id)
-  naiveMetric <- vapply(uid, function(i) mean(y[id == i], na.rm = TRUE), numeric(1))
-  if (!all(is.finite(naiveMetric)) || length(unique(naiveMetric)) < nMix) return(.ret)
-  # Deterministic 1-D stratification (sort + contiguous split into
-  # roughly-equal strata) -- mirrors leaspy's sequential stratification;
-  # deliberately avoids kmeans() here so this consumes no R-level RNG
-  # state (C++'s Armadillo RNG is independent of R's).
-  ord <- order(naiveMetric)
-  grp <- integer(N)
-  grp[ord] <- pmin(nMix, ceiling(seq_along(ord) / (N / nMix)))
-  mc.idx <- rep(seq_len(N), nmc)
-  for (.c in seq_along(omegaShareSubpop)) {
-    subpop <- omegaShareSubpop[.c]
-    if (subpop < 1L) next
-    col <- i1[.c]
-    sdCol <- sqrt(Gamma2_phi1[.c, .c])
-    if (!is.finite(sdCol) || sdCol <= 0) next
-    nudgeM <- ifelse(grp[mc.idx] == subpop, 1, -1) * sdCol * sdMult
-    phiM[, col] <- phiM[, col] + nudgeM
-    nudgeP <- ifelse(grp == subpop, 1, -1) * sdCol * sdMult
-    mprior_phi1[, .c] <- mprior_phi1[, .c] + nudgeP
-  }
-  list(phiM = phiM, mprior_phi1 = mprior_phi1)
-}
-
 #' Configure an SAEM model
 #'
 #' Configure an SAEM model by generating an input list to the SAEM model function
@@ -542,13 +458,6 @@
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
   phiM <- phiM + .mat2 %*% .tmp
-  if (length(mixProb) > 1L && identical(match.arg(mixSampleMethod), "msaem") &&
-        length(omegaShareSubpop) > 0L && any(omegaShareSubpop > 0L)) {
-    .strat <- .saemMixtureStratifiedInit(phiM, mprior_phi1, y, id, N, nmc, i1, omegaShareSubpop,
-                                          Gamma2_phi1, max(1L, length(mixProb)))
-    phiM <- .strat$phiM
-    mprior_phi1 <- .strat$mprior_phi1
-  }
   # now replace with what is needed inside saem sampling
 
   # Since the .mat2 is adjusted for uninformative etas, the phiM stats
