@@ -1,14 +1,10 @@
 #' Quick linear-model regression step for the mu-referenced FOCEI family
 #'
-#' Shared implementation for both `muModel="lin"` (plain OLS) and
-#' `muModel="irls"` (reweighted). Regresses per-subject back-calculated
-#' `phi` values on covariate(s) to get a new population theta (intercept),
-#' new covariate coefficient(s) (slopes), and a per-subject residual that
-#' becomes that subject's new eta.
-#'
-#' Respects user-fixed covariate coefficients: a fixed coefficient's
-#' contribution is subtracted from `phi` as a known offset and is not
-#' re-estimated by the regression.
+#' Shared implementation for `muModel="lin"` (OLS) and `muModel="irls"`
+#' (reweighted): regresses per-subject `phi` on covariate(s) to get a new
+#' theta (intercept), covariate coefficients (slopes), and per-subject eta
+#' residuals. Fixed covariate coefficients are subtracted from `phi` as a
+#' known offset and not re-estimated.
 #'
 #' @param phi numeric vector, one back-calculated individual value per subject
 #' @param cov data.frame/matrix of covariate columns, one row per subject;

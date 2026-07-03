@@ -48,10 +48,8 @@
   if (is.environment(nlmixr2global$currentTimingEnvironment) &
         inherits(nlmixr2global$nlmixr2Time, "proc_time")) {
     .time <- .nlmixrMergeTimeWithExtraTime(get("time", envir=nlmixr2global$currentTimingEnvironment))
-    # Report every recorded stage, including ~0-duration ones, so the set of
-    # reported columns is consistent across platforms regardless of clock
-    # resolution (a stage that rounds to 0 on a coarse clock must not vanish).
-    # Filter for display if desired rather than dropping the stage here.
+    # Keep every recorded stage, even ~0-duration ones, so reported columns
+    # stay consistent across platforms/clock resolutions; filter downstream.
     .sum <- sum(vapply(seq_along(names(.time)),
                        function(i) {
                          .time[[i]]
@@ -175,10 +173,9 @@
 #'
 #' @param name Name of the timing to be integrated
 #' @param code Code to be evaluated and timed
-#' @param envir can be either the nlmixr2 fit data, the nlmixr2 fit
-#'   environment or NULL, which implies it is going to be added to the
-#'   nlmixr fit when it is finalized.  If the function is being called
-#'   after a fit is created, please supply this environmental variable
+#' @param envir nlmixr2 fit data, fit environment, or NULL (timing is
+#'   added when the fit is finalized); supply this if called after a fit
+#'   already exists
 #' @return Result of code
 #' @author Matthew L. Fidler
 #' @examples

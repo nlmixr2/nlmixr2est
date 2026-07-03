@@ -596,10 +596,7 @@ public:
     return Gamma2_phi1;
   }
 
-  // Reporting-only pooled BSV for split ETAs (see Gamma2_phi1Report's
-  // declaration) -- falls back to the live matrix when no pooling ever
-  // applied (non-mixture fits, or mixture fits without shared-ETA groups),
-  // since Gamma2_phi1Report is left as an unmodified copy in that case.
+  // Reporting-only pooled BSV for split ETAs; falls back to the live matrix if no pooling was ever applied.
   mat get_Gamma2_phi1Report() {
     if (Gamma2_phi1Report.n_elem == Gamma2_phi1.n_elem) return Gamma2_phi1Report;
     return Gamma2_phi1;
@@ -841,17 +838,8 @@ public:
       }
     }
 
-    // Set up the shared scale.h iteration-print struct.  saem uses
-    // scaleTypeNone (no internal optimizer scaling — Plambda is on
-    // model scale) so scalePrintFun's auto-skip drops the redundant U
-    // row.  The xform sub-list (xPar / probitIdx / logitThetaLow /
-    // logitThetaHi / probitThetaLow / probitThetaHi) is shipped from
-    // R by .iterPrintXParFromUi() and wired in one call through
-    // scaleAttachXform — the same path every other estimator uses,
-    // so the X row back-transforms exp / expit / probitInv identically
-    // to focei and the final-fit-summary block.  Omega and residual-
-    // error entries in the printed vector have xPar=0 / probitIdx=0
-    // and so contribute no X-row delta.
+    // Set up the shared scale.h iteration-print struct (scaleTypeNone; xform
+    // sub-list wired via scaleAttachXform, same path as other estimators).
     scaleNames = as<CharacterVector>(x["parHistNames"]);
     int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
@@ -906,9 +894,7 @@ public:
     if (DEBUG>0) {
       RSprintf("initialization successful\n");
     }
-    // Emit the unified column header once at fit start.  Periodic re-emits
-    // (every scale.headerEvery parameter-print events) are handled inside
-    // scalePrintFun.
+    // Emit the column header once; periodic re-emits are handled in scalePrintFun.
     scalePrintHeader(&scale);
     if (nMix > 1) {
       phiM_mix.set_size(nMix);
@@ -934,11 +920,8 @@ public:
       RSprintf("initial user_fn successful\n");
     }
     if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
-      // Model-aware stratified initialization for MSAEM (see
-      // mixNaiveClassify()): nudge the initial MCMC draw and per-subject
-      // prior mean toward each subject's model-informed best-fitting
-      // hypothesis, so iteration 0 starts from an asymmetric point
-      // instead of every subject/component looking identical.
+      // MSAEM stratified init: nudge each subject's MCMC draw/prior mean toward its
+      // best-fitting hypothesis (mixNaiveClassify) so iteration 0 isn't symmetric.
       uvec cls = mixNaiveClassify(1.5);
       for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
         unsigned int subpop = omegaShareSubpop(c);
@@ -1006,12 +989,8 @@ public:
       fsM.set_size(0);
 
       if (nMix > 1 && mixSampleMethod == 1) {
-        // ===== MSAEM (Lavielle & Mbogning 2014) =====
-        // S-step: a *single* MCMC trajectory per subject (phiM, the plain
-        // class member -- same one the nMix<=1 path below uses), targeting
-        // the marginal mixture density via mixObsLoss()/do_mcmc_msaem().
-        // No label is ever simulated or masked; see
-        // msaem-mixture-method.md for the full derivation.
+        // MSAEM (Lavielle & Mbogning 2014): S-step uses a single MCMC trajectory per
+        // subject (phiM) targeting the marginal mixture density; no label is simulated/masked.
         vec U_y = mixObsLoss(phiM, mx);
         if (nphi1 > 0) {
           vec U_phi;
@@ -1032,11 +1011,8 @@ public:
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
         phiFile << phiM;
 
-        // E-step: exact posterior responsibility gamma_{i,m} from the one
-        // simulated phi (a plain softmax -- see mixWeights below), plus
-        // the per-hypothesis predictions needed for the mixture-weighted
-        // residual term further down (the *observation* depends on which
-        // mix() branch is read, even though phi itself does not).
+        // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
+        // the one simulated phi, plus per-hypothesis predictions for the residual term below.
         field<vec> fsave_hyp(nMix);
         mat Ly(N, nMix, fill::zeros);
         for (int mHyp = 0; mHyp < nMix; mHyp++) {
@@ -1120,24 +1096,8 @@ public:
           }
         }
 
-        // Leaspy-style prior-only responsibility (see
-        // msaem-mixture-method.md's leaspy comparison): mixWeights above
-        // uses the full joint (observation+prior) NLL, the right signal
-        // for "which hypothesis's prediction fits the data" -- but
-        // leaspy's own SAEM mixture implementation
-        // (compute_ind_param_std_from_suff_stats_mixture in
-        // models/utilities.py) weights its *variance* update by a
-        // responsibility derived from the prior/regularization term
-        // alone (nll_regul_ind_sum_ind), not the joint likelihood. Under
-        // MSAEM's non-masked exploration, a subject's "wrong" component
-        // column is only weakly constrained by data (the mixture-
-        // weighted acceptance barely responds to it once that
-        // hypothesis is uncompetitive), so it naturally stays close to
-        // its own prior while the "true" component's column moves away
-        // to explain the data -- comparing each component's own owned
-        // column's deviation magnitude is therefore a genuinely
-        // different signal from mixWeights, not just a smoothed version
-        // of it.
+        // Leaspy-style prior-only responsibility (cf. mixWeights' joint obs+prior NLL): weights
+        // the variance update by prior-deviation alone, since an unmatched column stays near its prior.
         if (omegaShareSubpop.n_elem == (unsigned int)nphi1) {
           mat priorPenalty(N, nMix, fill::zeros);
           bool anyOwned = false;
@@ -1157,18 +1117,8 @@ public:
             }
           }
           if (anyOwned) {
-            // NB: larger priorPenalty(i,m) means component m's *own*
-            // owned column shows a bigger deviation from its prior --
-            // unlike leaspy's cluster-indexed single-variable case
-            // (where a smaller Mahalanobis distance to a candidate
-            // cluster's prior means a better fit), nlmixr2est's
-            // split-ETA columns are separate variables with fixed,
-            // non-cluster-varying priors -- the column that genuinely
-            // belongs to a subject is expected to show a *larger*
-            // (real, informative) deviation, not a smaller one (matching
-            // get_eta()'s already-correct behavior). So responsibility
-            // here favors the *larger* deviation, using max instead of
-            // min for the softmax stabilization.
+            // Split-ETA columns' genuinely-owned column shows a *larger* prior deviation
+            // (unlike leaspy's smaller-is-better case), so softmax uses max, not min.
             for (int i = 0; i < N; i++) {
               double maxP = priorPenalty(i, 0);
               for (int j = 1; j < nMix; j++) {
@@ -1189,15 +1139,8 @@ public:
           }
         }
 
-        // AE-step: standard (unweighted) sufficient-statistic
-        // accumulation.  With a single trajectory the "blend" the
-        // parallel path needs is trivial here -- phi does not vary by
-        // hypothesis and responsibilities sum to 1, so
-        // sum_m(gamma_{i,m} * phi_i) collapses to plain phi_i, matching
-        // the paper's s_{1,i,k} carrying no per-component subscript.
-        // Only the residual term below genuinely differs by hypothesis
-        // (the *prediction* does), so only it needs explicit gamma
-        // weighting.
+        // AE-step: unweighted accumulation (phi doesn't vary by hypothesis, so
+        // sum_m(gamma_{i,m}*phi_i) collapses to phi_i); only the residual term needs gamma weighting.
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM.rows(span(k * N, (k + 1) * N - 1));
 
@@ -1353,13 +1296,9 @@ public:
             do_mcmc(3, nu3, mx, mphi0, cur_DYF, cur_phiM, U_y, U_phi, cur_fsave, cur_cens, cur_limit);
           }
 
-          // Compute joint negative log-likelihood (U_y + U_phi) for mixture
-          // weight computation.  Using U_y (observation loss) alone is
-          // insufficient: MCMC adapts eta to minimise observation loss under
-          // every component, erasing the signal between components.  The prior
-          // penalty U_phi_k (Mahalanobis distance of each MCMC sample from the
-          // component mean) is what discriminates which component truly fits.
-          // We accumulate the per-sample joint NLL over all nmc MCMC samples.
+          // Joint NLL (U_y + U_phi) for mixture weights: U_y alone is insufficient since MCMC
+          // adapts eta to fit every component equally; the prior penalty U_phi (Mahalanobis
+          // distance from the component mean) is what discriminates the true component.
           {
             vec joint_nll(N * nmc);
             for (int k = 0; k < nmc; k++) {
@@ -1370,19 +1309,9 @@ public:
                   joint_nll(i + k * N) += cur_DYF(m, i + k * N);
                 }
               }
-              // Prior penalty for this MCMC sample.
-              // NB: cur_phiM is N*nmc x nphi (all phi columns); mprior_phiM
-              //     is N*nmc x nphi1 (or nphi0) -- it is repmat()'d from a
-              //     per-subject prior mean that is already restricted to the
-              //     i1/i0 columns (see set_mcmcphi()/mphi1.mprior_phiM), so
-              //     it must NOT be column-indexed again with i1/i0.
-              //     Slice the k-th row-block of cur_phiM/mprior_phiM directly
-              //     via .rows() -- this only materialises the N-row block
-              //     needed (not the full N*nmc-row matrix), unlike the old
-              //     mat(cur_phiM).rows(...) pattern which forced a full deep
-              //     copy of cur_phiM up front. Armadillo's row-subview does
-              //     not support uvec column indexing directly, so .cols(i1)
-              //     is applied after materialising the (small) row block.
+              // mprior_phiM is already restricted to i1/i0 columns (see set_mcmcphi()), so it
+              // must not be column-indexed again; slice the k-th row-block via .rows() to avoid
+              // a full deep copy of cur_phiM.
               if (nphi1 > 0) {
                 mat block1     = cur_phiM.rows(k * N, (k + 1) * N - 1);
                 mat phi1_k     = block1.cols(i1);
@@ -1475,12 +1404,8 @@ public:
               rowvec phi1_ji = phi1_mix(jMix).row(row_idx);
               rowvec phi0_ji = phi0_mix(jMix).row(row_idx);
 
-              // Unblended, per-component accumulation (no mixWeights
-              // factor here -- responsibility is applied as an explicit
-              // regression weight later, not baked into the value): this
-              // is what lets the theta M-step for mixture-owned columns
-              // avoid diluting a component's own informative MCMC draws
-              // with the other component's uninformative ones.
+              // Unblended per-component accumulation (no mixWeights factor) so the theta
+              // M-step for mixture-owned columns isn't diluted by the other component.
               Statphi11_mix(jMix).row(i) += phi1_ji;
 
               phi1_w += mixWeights(i, jMix) * phi1_ji;
@@ -1741,15 +1666,9 @@ public:
       if (DEBUG>0) Rcout << "integration successful\n";
 
       if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
-        // Split-ETA columns only: statphi11's stochastic-approximation
-        // smoothing uses the same decaying pas(kiter) as every other
-        // quantity, but separation for these columns can still be
-        // developing well after pas has already decayed (mirroring the
-        // same freeze-before-signal-arrives problem found for mixProb;
-        // see msaem-mixture-method.md). Give split-owned columns their
-        // own extended-flat schedule so later, correct exploration still
-        // has real weight in the accumulated statistic; non-split
-        // columns and "parallel" fits are completely unaffected.
+        // Split-ETA columns: separation can still be developing after pas(kiter) decays
+        // (same freeze-before-signal issue as mixProb), so give these columns their own
+        // extended-flat schedule; non-split columns and "parallel" fits are unaffected.
         double pasMsaemSplit = (kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           double pasUse = (omegaShareSubpop(c) >= 1) ? pasMsaemSplit : pas(kiter);
@@ -1759,10 +1678,8 @@ public:
         statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
       }
       if (nMix > 1 && mixSampleMethod == 0) {
-        // Only "parallel" populates the unblended per-component
-        // Statphi11_mix accumulator (see the overrides below); "msaem"
-        // has a single trajectory, so statphi11 above is already the
-        // clean per-subject statistic and statphi11_mix stays unused.
+        // Only "parallel" populates the unblended Statphi11_mix accumulator; "msaem" has a
+        // single trajectory, so statphi11 above is already clean and statphi11_mix is unused.
         for (int _j = 0; _j < nMix; _j++) {
           statphi11_mix(_j) = statphi11_mix(_j) + pas(kiter)*(Statphi11_mix(_j)/nmc - statphi11_mix(_j));
         }
@@ -1778,17 +1695,11 @@ public:
       // update parameters
       vec Plambda1, Plambda0;
       Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
-      // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2, each used by
-      // only one mix() component): the blended statphi11 used above dilutes
-      // each column with the *other* component's uninformative MCMC draws
-      // (that component's likelihood doesn't depend on this eta at all, so
-      // its sample just wanders its prior), which couples tcl1/tcl2 and
-      // shrinks their apparent BSV toward zero. Override just these
-      // columns' theta(s) with a proper responsibility-weighted regression
-      // against the clean, per-component statphi11_mix. This is safe (the
-      // joint system is genuinely separable) only when this column has no
-      // assumed correlation with any other phi1 column, since Gamma2_phi1's
-      // off-diagonal would otherwise couple it back into the shared solve.
+      // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2): blended statphi11 dilutes each
+      // column with the other component's uninformative draws, coupling tcl1/tcl2 and shrinking
+      // apparent BSV. Override these columns' theta via responsibility-weighted regression
+      // against the clean statphi11_mix -- safe only when the column has no assumed correlation
+      // with any other phi1 column (else Gamma2_phi1's off-diagonal couples it back in).
       if (nMix > 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           unsigned int subpop = omegaShareSubpop(c);
@@ -1804,11 +1715,8 @@ public:
           mat Xl = COV1.cols(lambdaIdx);
           mat XtW = Xl.t() * diagmat(w);
           mat XtWX = XtW * Xl;
-          // "msaem": statphi11 itself is already the clean, single-
-          // trajectory statistic (see the AE-step comment above).
-          // "parallel": fall back to the unblended per-component
-          // accumulator, since statphi11 there is the blended
-          // (cross-component-diluted) one.
+          // "msaem": statphi11 is already the clean single-trajectory statistic. "parallel":
+          // fall back to the unblended per-component accumulator (statphi11 there is diluted).
           vec y = (mixSampleMethod == 1) ? statphi11.col(c) : statphi11_mix(subpop - 1).col(c);
           vec XtWy = XtW * y;
           bool fixedCol = false;
@@ -1849,15 +1757,10 @@ public:
 
       mat G1=(statphi12+mprior_phi1.t()*mprior_phi1- statphi11.t()*mprior_phi1 - mprior_phi1.t()*statphi11)/N;
 
-      // "msaem" only: the standard G1 diagonal above divides by all N
-      // subjects uniformly, which dilutes a split-ETA column's BSV with
-      // subjects who rarely/never belong to that column's owning
-      // component (their statphi11 entry, while a real single-trajectory
-      // value, is mostly uninformative about that component's variance).
-      // Override with a responsibility-weighted sample variance around
-      // the prior mean, restricted to (and normalized by) the owning
-      // component's current responsibilities -- safe under the same
-      // diagOnly separability argument as the theta override above.
+      // "msaem" only: G1 above divides by all N uniformly, diluting a split-ETA column's
+      // BSV with subjects who rarely belong to that column's component. Override with a
+      // responsibility-weighted sample variance around the prior mean (same diagOnly
+      // separability argument as the theta override above).
       if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           unsigned int subpop = omegaShareSubpop(c);
@@ -1882,15 +1785,9 @@ public:
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
-      // Split-ETA components sharing an omegaShare group (e.g. eta.cl1 /
-      // eta.cl2) are pooled into a single BSV term via the law of total
-      // variance -- but this is a *reporting-only* transformation (each
-      // component is still meant to keep its own separately-estimated
-      // variance during the fit). Compute the pooled values into
-      // Gamma2_phi1Report and leave the live Gamma2_phi1 (which feeds
-      // IGamma2_phi1/D1Gamma21 and therefore the theta M-step every
-      // iteration) untouched, so tcl1/tcl2 aren't coupled through an
-      // artificially-shared precision during estimation.
+      // Split-ETA components sharing an omegaShare group are pooled into a single BSV term
+      // (law of total variance) for *reporting only*, into Gamma2_phi1Report; the live
+      // Gamma2_phi1 feeding IGamma2_phi1/D1Gamma21 stays untouched so tcl1/tcl2 stay uncoupled.
       Gamma2_phi1Report = Gamma2_phi1;
       if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
         unsigned int max_group = 0;
@@ -1945,21 +1842,8 @@ public:
           }
         }
       }
-      // "msaem" only, split-ETA columns: the generic Gmin/minv floor below
-      // (1e-20 by default) is nowhere near tight enough to prevent a
-      // genuine numerical blowup. IGamma2_phi1 = inv_sympd(Gamma2_phi1)
-      // feeds directly into do_mcmc_msaem's prior-penalty term
-      // (Uc_phi = 0.5*dev^2*IGamma2_phi1); once a split column's variance
-      // shrinks toward ~1e-20, its precision explodes toward ~1e20, and
-      // *any* subsequent proposal of ordinary size gets an astronomically
-      // large Uc_phi-U_phi -- moves toward exactly zero are then always
-      // accepted and moves away are always rejected, a hard numerical
-      // lock onto zero rather than genuine statistical shrinkage (found
-      // via direct acceptance-ratio instrumentation: mean(Uc_phi-U_phi)
-      // on the order of 1e17 for a collapsed column, vs. O(1) normally).
-      // Floor at a meaningful fraction of the initial (ini()) variance so
-      // IGamma2_phi1 can never blow up catastrophically, while still
-      // allowing real shrinkage within a bounded, numerically-sane range.
+      // "msaem" split-ETA columns: generic Gmin/minv floor (1e-20) isn't tight enough to stop
+      // IGamma2_phi1 exploding and locking MCMC proposals to zero; floor at a fraction of ini() variance instead.
       if (nMix > 1 && mixSampleMethod == 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
         for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
           if (omegaShareSubpop(c) < 1) continue;
@@ -2681,30 +2565,18 @@ public:
       if (nMix > 1) {
         vec mean_aji = mean(mixWeights, 0).t();
         if (mixProbMethod == 1) {
-          // Dirichlet-style regularization: blend in mixProbPriorN
-          // pseudo-subjects distributed according to the initial mixing
-          // distribution before taking the stochastic-approximation step.
-          // This directly dampens the responsibility average itself, so it
-          // keeps working even during burn-in's flat pas(kiter)==1 step
-          // size, unlike a step-size-only fix.
+          // Dirichlet-style regularization: blend in mixProbPriorN pseudo-subjects from the
+          // initial mixing distribution before the SA step, damping the responsibility average
+          // even during burn-in's flat pas(kiter)==1.
           vec mean_aji_reg = (mean_aji * N + mixProbPriorN * mixProbInit) / (N + mixProbPriorN);
-          // "msaem" only: separation develops more slowly than "parallel"
-          // (single trajectory vs unconditionally-committed per-hypothesis
-          // chains), so standard pas(kiter) can already be decaying by the
-          // time responsibility sharpens, freezing mixProb at an
-          // intermediate value from the still-ambiguous early iterations.
-          // Stay at a full-replacement step for most of the fit (80%) so
-          // mixProb has time to track the slower signal.
+          // "msaem" separation develops more slowly than "parallel", so stay at full-replacement
+          // step for 80% of the fit to give mixProb time to track the slower signal.
           double pasMsaem = (mixSampleMethod == 1 && kiter < (unsigned int)(0.8 * niter)) ? 1.0 : pas(kiter);
           mixProb = mixProb + pasMsaem * (mean_aji_reg - mixProb);
         } else {
-          // Annealed step-size: give mixProb its own decaying schedule from
-          // iteration 1 instead of the shared burn-in pas(kiter)==1, which
-          // has no memory and lets one noisy iteration's responsibility
-          // average fully replace the mixing probability -- a runaway
-          // positive feedback loop, since a smaller mixProb(k) directly
-          // shrinks every subject's responsibility for component k on the
-          // next iteration.
+          // Annealed step-size: mixProb gets its own decaying schedule instead of the shared
+          // burn-in pas(kiter)==1, which would let one noisy iteration fully replace it (a
+          // runaway feedback loop, since a smaller mixProb(k) shrinks its own responsibility further).
           mixProb = mixProb + pasMix(kiter) * (mean_aji - mixProb);
         }
       }
@@ -2719,13 +2591,8 @@ public:
         pl = join_cols(pl, mixP);
       }
       par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function; scale.showOfv was
-      // set to 0 in inits() so the Function Val column is suppressed and
-      // the `f` argument is ignored at print time (passing NA_REAL just
-      // to satisfy the signature).  scalePrintFun increments its own
-      // counter, gates printing on (cn % every == 0), and runs the
-      // user-interrupt check internally, and flushes any aggregated
-      // rxode2 solve warnings after each printed iteration.
+      // saem has no per-iteration objective function (scale.showOfv=0, so `f` is ignored here);
+      // scalePrintFun gates printing, checks for user interrupt, and flushes solve warnings.
       scalePrintFun(&scale, pl.memptr(), NA_REAL);
     }//kiter
     phiFile.close();
@@ -2783,12 +2650,8 @@ private:
   uvec ilambda1, ilambda0;
 
   mat statphi01, statphi02, statphi11, statphi12;
-  // Per-mixture-component, unblended, stochastic-approximation-smoothed
-  // sufficient statistic for phi1 (same role as statphi11, but never mixed
-  // with the other component's MCMC draws). Used to fix tcl1/tcl2-style
-  // fixed effects for split-ETA mixture-owned columns via a weighted
-  // regression -- see the omegaShareSubpop block after Plambda1's main
-  // (blended) computation.
+  // Per-component, unblended sufficient statistic (never mixed across components); used to fix
+  // tcl1/tcl2-style split-ETA fixed effects via weighted regression (see omegaShareSubpop block).
   field<mat> statphi11_mix;
   double statrese[MAXENDPNT];
   double sigma2[MAXENDPNT];
@@ -2812,11 +2675,8 @@ private:
 
   mcmcaux mx;
 
-  // Iteration-print formatting shared with focei/nlm via src/scale.h.
-  // saem uses scaleTypeNone (Plambda is already on the model scale).
-  // The transform fields (xPar / probitIdx / bounds) are populated
-  // by scaleAttachXform from the R-side xform sub-list at setup time;
-  // backing storage lives on the scaling struct itself.
+  // Iteration-print formatting shared with focei/nlm via src/scale.h (scaleTypeNone,
+  // since Plambda is already on the model scale); transform fields set by scaleAttachXform.
   scaling scale;
   std::vector<double> scaleInitPar;
   std::vector<double> scaleC;
@@ -3031,16 +2891,10 @@ private:
       }
   }
 
-  // MSAEM (Lavielle & Mbogning 2014, Statistics and Computing 24(5)):
-  // mixture-weighted (log-sum-exp) observation loss for a candidate phi
-  // matrix, evaluated under every mixture component's branch of the
-  // model.  nlmixr2est's mix() DSL only lets the latent component affect
-  // *which columns the observation model reads* (paper's "mixture of
-  // conditional distributions" case, eq. 7-8) -- the prior over phi
-  // itself is a single, ordinary Gaussian regardless of component -- so
-  // only this observation-loss term needs the mixture treatment; the
-  // prior penalty used alongside it (in do_mcmc_msaem()) stays the
-  // standard single-Gaussian quadratic form.
+  // MSAEM (Lavielle & Mbogning 2014): mixture-weighted (log-sum-exp) observation loss for a
+  // candidate phi, evaluated under every component. mix() only lets the component affect which
+  // observation columns are read, so only this loss needs mixture treatment; the prior penalty
+  // (in do_mcmc_msaem()) stays a standard single-Gaussian quadratic form.
   vec mixObsLoss(const mat &phiC, const mcmcaux &mx) {
     double double_xmin = 1.0e-200;
     double xmax = 1e300;
@@ -3131,19 +2985,10 @@ private:
     return result;
   }
 
-  // Model-aware naive classification for MSAEM's stratified initialization
-  // (mixSampleMethod="msaem" only), run once before the first iteration.
-  // For each subject and each hypothesis m, build a candidate phi1 with a
-  // moderate (pertSd BSV-SD) shift toward "genuinely in component m" on
-  // that component's owned column(s) (and away from the alternative
-  // component's), then evaluate the *actual compiled model*'s fit under
-  // hypothesis m for that shifted candidate. Unlike a generic per-subject
-  // data summary (e.g. mean DV), this directly asks the model whether
-  // shifting a given subject's mixture-owned parameter toward each
-  // candidate value improves their fit, so it correctly reflects whatever
-  // functional relationship the model defines between that parameter and
-  // the observations. Returns the per-subject argmin-hypothesis
-  // classification (1-indexed).
+  // Model-aware naive classification for MSAEM's stratified init (run once before iteration 1):
+  // for each subject/hypothesis, shift phi1's owned columns toward/away from that hypothesis
+  // (pertSd BSV-SD) and evaluate the compiled model's actual fit. Returns the per-subject
+  // argmin-hypothesis classification (1-indexed).
   uvec mixNaiveClassify(double pertSd) {
     double double_xmin = 1.0e-200;
     double xmax = 1e300;
@@ -3233,14 +3078,10 @@ private:
     return cls;
   }
 
-  // MSAEM's S-step MCMC kernel: identical proposal/prior machinery to
-  // do_mcmc() (single shared Gaussian prior -- see mixObsLoss() above for
-  // why), but the observation-loss term driving acceptance is the
-  // mixture-weighted mixObsLoss() instead of a single hypothesis's DYF.
-  // No column is ever masked or frozen for any row -- every proposal on
-  // every column is judged against the full mixture density, which is
-  // what avoids the label-simulation instability the paper documents
-  // (and this session found empirically with a masked/labeled design).
+  // MSAEM's S-step MCMC kernel: same proposal/prior machinery as do_mcmc(), but acceptance
+  // uses mixture-weighted mixObsLoss() instead of a single hypothesis's DYF. No column is ever
+  // masked or frozen -- every proposal is judged against the full mixture density, avoiding the
+  // label-simulation instability the paper documents.
   void do_mcmc_msaem(const int method,
                       const int nu,
                       const mcmcaux &mx,

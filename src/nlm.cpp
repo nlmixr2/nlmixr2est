@@ -34,19 +34,13 @@ struct nlmOptions {
   double *hSave     = NULL;
   double *scaleC    = NULL;
 
-  int eventType=3; // eventType
+  int eventType=3;
   int shi21maxFD=1000; //maxiter for shi
   int stickyTol=0;
   int stickyRecalcN=1;
   int stickyRecalcN2=0;
-  // Per-subject inner-retry counter, sized at setup() to nsub.  Replaces
-  // the formerly shared stickyRecalcN2 plain int that was racy under the
-  // parallel-for over subjects in nlmSolveF / nlmSolveGradId.  Each
-  // subject owns its own slot, so the retry decision (and therefore the
-  // per-subject solve outcome) is deterministic across runs at any cores
-  // setting.  The shared `stickyRecalcN2` member above is kept for
-  // backward compatibility with code that just records "did we ever
-  // bump tolerances at all".
+  // Per-subject retry counter (sized to nsub at setup()); avoids the data race
+  // the old shared plain-int had under the parallel-for over subjects.
   std::vector<int> stickyRecalcN2Per;
   int stickyRecalcN1=0;
   int maxOdeRecalc;
@@ -138,9 +132,7 @@ RObject nlmSetup(Environment e) {
   nlmOp.stickyRecalcN=as<int>(control["stickyRecalcN"]);
   nlmOp.stickyTol=0;
   nlmOp.stickyRecalcN2=0;
-  // NB: per-subject sticky counter is sized below, AFTER rxSolve_ sets
-  // up `rx`.  Sizing it here would read getRxNsub(NULL) on the first
-  // nlmSetup call of a fresh R session and crash.
+  // per-subject sticky counter sized below, after rxSolve_ sets up `rx`
   nlmOp.stickyRecalcN1=0;
   nlmOp.reducedTol = 0;
   nlmOp.reducedTol2 = 0;
@@ -167,8 +159,7 @@ RObject nlmSetup(Environment e) {
                    R_NilValue, // inits
                    1);//const int setupOnly = 0
   rx = getRxSolve_();
-  // Size the per-subject inner-retry counter now that `rx` is valid
-  // (see comment above where this used to live).
+  // Size the per-subject inner-retry counter now that `rx` is valid.
   nlmOp.stickyRecalcN2Per.assign((size_t)getRxNsub(rx), 0);
 
   nlmOp.thetaFD = R_Calloc((size_t)nlmOp.ntheta + (size_t)getRxNsub(rx) * 3u, int); // [ntheta]
@@ -240,12 +231,8 @@ RObject nlmSetup(Environment e) {
 
   std::copy(&p[0], &p[0] + nlmOp.ntheta, nlmOp.initPar);
 
-  // Iteration-print formatting + transforms come from R-side sub-lists.
-  // scaleAttachXform wires the log/logit/probit back-transform arrays
-  // through one shared helper (mirrors saem and focei);
-  // scaleApplyIterPrintControl handles every/ncol/headerEvery/useColor/
-  // simple.  The useColor/printNcol/print args to scaleSetup are
-  // placeholders that get overwritten right after.
+  // useColor/printNcol/print args below are placeholders, overwritten by
+  // scaleApplyIterPrintControl() right after (mirrors saem/focei wiring).
   scaleSetup(&(nlmOp.scale),
              nlmOp.initPar,
              nlmOp.scaleC,
@@ -298,10 +285,8 @@ NumericVector nlmUnscalePar(NumericVector p) {
   return ret;
 }
 
-// Per-subject "did THIS solve fail" check — same idea as inner.cpp's
-// indHasBadSolve(): scan ind->solve for NaN/Inf rather than reading
-// the shared op->badSolve flag, which can be flipped by another
-// thread's failure mid-loop and induce a non-deterministic retry.
+// Like inner.cpp's indHasBadSolve(): scan ind->solve for NaN/Inf instead of the
+// shared op->badSolve flag, which another thread can flip mid-loop.
 static inline bool nlmIndHasBadSolve(rx_solving_options *op,
                                      rx_solving_options_ind *ind) {
   int neq = getOpNeq(op);

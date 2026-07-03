@@ -7,20 +7,11 @@
 mufoceiControl(sigdig = 3, ..., muModel = c("lin", "irls", "none"))
 }
 \arguments{
-\item{sigdig}{Optimization significant digits. This controls:
-
-\itemize{
-
- \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-
- \item The tolerance of the ODE solvers is
- \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
- steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
- (sensitivity changes only applicable for liblsoda)
-
- \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-
-}}
+\item{sigdig}{Optimization significant digits; controls the inner/outer
+optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
+(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
+sensitivity/steady-state with liblsoda), and boundary check tolerance
+(\code{5*10^(-sigdig+1)}).}
 
 \item{...}{Parameters used in the default `foceiControl()`}
 
@@ -32,8 +23,8 @@ for the IRLS variant.}
 mufoceiControl object
 }
 \description{
-This is the mu-referenced-FOCEI-family closed-form-regression (`"lin"`)
-variant of FOCEI -- see `foceiControl(muModel=)` for what this changes.
+Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
+FOCEI; see `foceiControl(muModel=)`.
 }
 \examples{
 

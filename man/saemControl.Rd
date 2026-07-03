@@ -82,14 +82,10 @@ computation.  In Monolix this is equivalent to \code{L}.}
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
 
-\item{print}{Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.}
+\item{print}{Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. The scalar form is equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
 \item{trace}{An integer indicating if you want to trace(1) the
 SAEM algorithm process.  Useful for debugging, but not for
@@ -143,29 +139,13 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
-\item{addProp}{specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).
-
-The combined1 error type can be described by the following equation:
-
-  \deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err}
-
-The combined2 error model can be described by the following equation:
-
- \deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}
-
- Where:
-
- - y represents the observed value
-
- - f represents the predicted value
-
- - a  is the additive standard deviation
-
- - b is the proportional/power standard deviation
-
- - c is the power exponent (in the proportional case c=1)}
+\item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+\deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err};
+or `"combined2"`, where variances add:
+\deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).}
 
 \item{tol}{This is the tolerance for the regression models used
 for complex residual errors (ie add+prop etc)}
@@ -260,204 +240,74 @@ changes the system to a linear compartment model.  Therefore, by default this is
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
 
-\item{iovXform}{This is the transformation used on the diagonal
-    of the `iov`. The possibilities are:
+\item{iovXform}{Transformation used on the diagonal of the IOV: one of
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
 
-\itemize{
+\item{boundedTransform}{When `TRUE` (default), bounded parameters are
+transformed for unbounded optimization methods and back-transformed
+for final estimates. `FALSE` optimizes on the original scale with
+bounds passed to the optimizer. `NA` transforms for optimization but
+skips the final back-transform.}
 
- \item \code{sd} Estimate the IOV as the standard deviation for IOV
+\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.}
 
- \item \code{var} Estimate the IOV as the variance for IOV.
-
- \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
-
- \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
-
-}}
-
-\item{boundedTransform}{boolean indicating if the bounded
-parameters should by transformed when using a unbounded
-optimization method to make sure they are in bounds.  By default
-this is `TRUE`, which transforms during optimization and
-back-transforms for the final estimates.  When `FALSE`, the
-optimization is performed on the original scale and the bounds
-are passed to the optimization method.  When `NA`, the bounded
-parameters are transformed for the optimization, but the final
-estimates are not back-transformed.}
-
-\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
-`rate`, `dur`) sensitivities are computed whenever the estimation
-method needs the gradient of the model with respect to `THETA`
-or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
-("jump") sensitivities into the sensitivity states at each dosing
-event; `"fd"` keeps the legacy finite-difference behavior instead
-(the backward-compatible opt-out).}
-
-\item{mixProbMethod}{For mixture models (`mix()` in the model block,
-  more than one component), this controls how the mixing-probability
-  estimate is stabilized against collapsing onto a single component.
-  Ordinary theta/omega parameters use a step size of 1 (full
-  replacement, no memory) during the `nBurn` phase, which is
-  appropriate for them but is unstable for a mixing probability: the
-  per-subject responsibility used to update it is itself weighted by
-  the *current* mixing probability, so a small, noisy drift away from
-  the truth shrinks the responsibilities of the shrinking component
-  for every subject (not just the ones that truly belong to the other
-  component), which shrinks the next iteration's estimate further --
-  a runaway positive-feedback loop that can drive the mixing
-  probability to exactly 0/1 well before the fixed effects have had a
-  chance to separate the components. Two independent fixes are
-  available:
+\item{mixProbMethod}{For mixture models (`mix()`, more than one
+  component), stabilizes the mixing-probability estimate against
+  collapsing onto a single component (the responsibility used to
+  update it is itself weighted by the current mixing probability,
+  which can create a runaway feedback loop). Two options:
 
   * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
-    distributed according to the model's *initial* mixing probability
-    (from `ini()`), into the responsibility average used at every
-    iteration -- equivalent to a Dirichlet-prior/MAP-EM correction on
-    the mixing proportions. This changes what the estimate converges
-    toward (it is pulled toward the initial guess, with the pull's
-    relative strength shrinking as the number of subjects `N` grows),
-    at the cost of some bias toward the user-supplied initial mixing
-    probability. Empirically this is the fix that actually prevents
-    collapse in difficult (small `N`, weakly-separated, or
-    symmetric-start) cases -- it changes *where the update settles*,
-    not just how fast it gets there, which is what a runaway feedback
-    loop needs. It typically also needs somewhat more `nBurn`/`nEm`
-    than a well-separated non-mixture fit to fully resolve the
-    components, especially at larger `mixProbPriorN`; if separation is
-    still incomplete, increase `mixProbPriorN`, `nBurn`, and `nEm`
-    together.
+    distributed per the initial mixing probability, into the
+    responsibility average each iteration (Dirichlet/MAP-EM-style).
+    Prevents collapse even in difficult cases, at the cost of some
+    bias toward the initial guess; may need larger `nBurn`/`nEm`.
 
-  * `"annealed"`: give the mixing-probability update its own step-size
-    schedule that decays from iteration 1 (see `mixProbStepExp`),
-    instead of holding it at a full-replacement step of 1 throughout
-    `nBurn`. This slows *how fast* the estimate can move on a single,
-    possibly noisy, iteration without changing what it converges to.
-    That makes it the lower-bias option, but also means it does not,
-    by itself, fix a collapse caused by a systematically unfavorable
-    feedback loop (as opposed to one triggered by transient noise) --
-    slowing the walk to the wrong answer does not stop it from getting
-    there over enough iterations. Prefer this only when you have
-    reason to believe the collapse risk is mild/noise-driven (e.g.
-    already well-separated components, or moderate-to-large `N`) and
-    you want to avoid any bias toward the initial mixing probability.}
+  * `"annealed"`: give the mixing-probability update its own decaying
+    step-size schedule (`mixProbStepExp`) instead of the
+    full-replacement step used during `nBurn`. Lower bias, but does
+    not by itself fix a systematic (non-noise-driven) collapse.}
 
-\item{mixProbStepExp}{Only used when `mixProbMethod="annealed"`. The
-decay exponent for the mixing-probability step size, applied from
-iteration 1 across the entire fit (`1/iteration^mixProbStepExp`).
-The default of 1 matches the decay rate `saemControl()` already uses
-for ordinary parameters once the `nEm` (post-burn-in) phase begins;
-applying it from iteration 1 for the mixing probability is what
-prevents the burn-in-phase runaway. Smaller values (e.g. 0.5) decay
-more slowly, allowing the mixing probability to still move fairly
-quickly if the true separation is strong, at some cost in
-robustness to noise.}
+\item{mixProbStepExp}{Only used when `mixProbMethod="annealed"`. Decay
+exponent for the mixing-probability step size
+(`1/iteration^mixProbStepExp`), applied from iteration 1. Default 1;
+smaller values decay more slowly.}
 
 \item{mixProbPriorN}{Only used when `mixProbMethod="regularized"`.
-The number of pseudo-subjects (weighted according to the initial
-mixing probability) blended into the responsibility average at
-every iteration. Larger values pull harder toward the initial
-mixing probability and are more robust to collapse, but bias the
-final estimate more when the true mixing probability differs a lot
-from the initial guess or when the number of subjects is small
-relative to `mixProbPriorN`, and typically need more `nBurn`/`nEm`
-iterations to fully separate components. The default of 20 is
-strong enough to prevent outright collapse on small (~30-subject)
-datasets; if components are still not cleanly separating, try
-increasing this together with `nBurn`/`nEm` before reducing it.}
+Number of pseudo-subjects blended into the responsibility average
+each iteration. Larger values are more robust to collapse but bias
+the estimate more and need more `nBurn`/`nEm`. Default 20.}
 
-\item{mixSampleMethod}{For mixture models (`mix()` in the model
-  block, more than one component), this controls the MCMC/sufficient-
-  statistic architecture used to explore and update the individual
-  random effects (`phi`), independently of `mixProbMethod` (which only
-  stabilizes the mixing-*probability* estimate). This is most relevant
-  to models where each component has its own eta(s) (e.g. `cl <-
-  mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`, "split-ETA" models): the
-  between-subject variability (`$omega`) for those components is
-  unreliable under `"parallel"` regardless of `mixProbMethod`.
+\item{mixSampleMethod}{For mixture models with per-component etas
+  (split-ETA, e.g. `cl <- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`),
+  controls the MCMC/sufficient-statistic architecture for the
+  individual random effects, independent of `mixProbMethod`. BSV
+  (`$omega`) for split components is unreliable under `"parallel"`
+  regardless of `mixProbMethod`.
 
-  * `"parallel"` (default): run one full MCMC chain *per component* for
-    every subject every iteration (each chain explores under the
-    standing assumption that the subject definitely belongs to that
-    component), then blend the results post hoc using the
-    responsibility weights. This mirrors NONMEM's population mixture
-    modeling ($MIX; see the NONMEM7 technical guide's "Population
-    Mixture Modeling" section) and correctly estimates a single BSV
-    shared across all components, which is what NONMEM's own M-step
-    formula assumes. It does not, however, have a way to obtain a
-    clean, unblended per-component BSV for split-ETA components: every
-    "wrong-hypothesis" chain still explores its non-owned column(s) as
-    an unconstrained prior-only random walk (since that hypothesis's
-    likelihood does not depend on them), and that noise ends up mixed
-    into the blended statistics.
+  * `"parallel"` (default): one full MCMC chain per component per
+    subject per iteration, blended post hoc by responsibility. Mirrors
+    NONMEM's `$MIX` and correctly estimates BSV shared across
+    components, but cannot cleanly separate per-component BSV for
+    split-ETA models (each "wrong-hypothesis" chain still explores its
+    non-owned column(s) as unconstrained prior noise).
 
-  * `"msaem"` (experimental): the MSAEM algorithm of Lavielle &
-    Mbogning (2014, *Statistics and Computing* 24(5), 693-707), the
-    method actually implemented in Monolix for mixture models. Only
-    one random-effects trajectory (`phi`) is simulated per subject per
-    iteration (no per-component parallel chains); the discrete mixture
-    label is never simulated at all -- instead it is analytically
-    marginalized out at every iteration via the exact posterior
-    responsibility (a closed-form softmax, computed once from the
-    single simulated `phi`), and that *continuous* weight (never
-    exactly zero) is what feeds the fixed-effect and BSV M-steps. The
-    paper shows this Rao-Blackwellization -- as opposed to simulating
-    the label -- is what gives the algorithm "very little sensitivity
-    to initial value" and prevents components from disappearing during
-    iteration, which the paper documents as the typical failure mode
-    of naively simulating the mixture label. Because there is only one
-    live trajectory per subject, the M-steps need no post-hoc blending
-    or pooling.
-
-    Since `"parallel"` runs `nMix` full chains per subject per
-    iteration and `"msaem"` runs one, they are not compute-matched at
-    equal `nmc`: set `nmc` to roughly `nMix` times its default (e.g.
-    `nmc=6` for a 2-component mixture, vs. the default 3) for a fair
-    comparison, and generally for `"msaem"` to work well at all --
-    without this it is *more* prone to under-separating than
-    `"parallel"` at matched `nmc`, not less.
-
-    Even compute-matched, this implementation fully separates
-    components when they start roughly *equidistant* from their true
-    values, but can settle into a stable, under-separated fixed point
-    (not a slow-convergence issue -- more iterations do not fix it)
-    when one component's initial guess already happens to sit near its
-    true value while the other must travel much further: the single
-    trajectory only gets pulled as hard as the *current*
-    (still-uncertain) responsibility allows, unlike `"parallel"`'s
-    unconditional per-hypothesis chains. This is a common practical
-    scenario (an initial guess landing near one plausible subgroup), so
-    `"msaem"` fits automatically apply a model-aware stratified
-    initialization for split-ETA components before the first
-    iteration, in the same spirit as the per-cluster initialization
-    used by the `leaspy` Python package's SAEM mixture implementation
-    (partition subjects into naive strata before fitting, and derive
-    each component's starting point from its own stratum, instead of
-    every component starting from the same point) but grounded in the
-    actual compiled model rather than a generic per-subject data
-    summary: for each subject and each candidate component, it tests
-    whether a moderate shift toward that component's assumption
-    actually fits that subject's own data better, and starts from
-    whichever assumption wins. This consistently achieved full
-    separation across every seed/scenario tested (both bounded and
-    fully unbounded split-ETA parameterizations); an earlier,
-    model-agnostic version of this heuristic (stratifying by mean `DV`
-    alone) was tried first and was less reliable, since a generic
-    outcome summary does not always correlate well with true group
-    membership.
-
-    Theta/fixed-effect separation for split-ETA components is
-    therefore solid. The split-ETA BSV (`$omega`) this whole method
-    exists to improve is better than it was but still not reliable:
-    two genuine numerical bugs were found and fixed (an
-    `Gamma2_phi1`-inverse blowup that caused a hard numerical lock to
-    exactly zero rather than statistical shrinkage; and an inverted
-    responsibility sign in the internal prior-only variance weighting,
-    adapted from -- but initially miscopied from -- the `leaspy`
-    Python package's SAEM mixture implementation), which took the
-    per-component BSV estimate from *always* exactly zero to
-    *sometimes* a genuine non-zero value, but it still collapses
-    toward a safety-floor value in many cases rather than consistently
-    recovering the true variance. Prefer `"parallel"` unless you are
+  * `"msaem"` (experimental): the MSAEM algorithm (Lavielle & Mbogning
+    2014), as used by Monolix. Simulates one random-effects trajectory
+    per subject per iteration (label marginalized out via a
+    closed-form responsibility) instead of parallel per-component
+    chains, so no post-hoc blending is needed. Not compute-matched to
+    `"parallel"` at equal `nmc` -- set `nmc` to roughly `nMix` times
+    its default for a fair comparison. Uses a model-aware stratified
+    initialization for split-ETA components that reliably achieves
+    full theta/fixed-effect separation. Split-ETA BSV recovery is
+    improved (two numerical bugs fixed: an `IGamma2_phi1` blowup that
+    locked variance to exactly zero, and an inverted responsibility
+    sign) but still not reliable -- it often settles at a safety-floor
+    value rather than the true variance. Prefer `"parallel"` unless
     specifically evaluating this method.}
 
 \item{...}{Other arguments to control SAEM.}

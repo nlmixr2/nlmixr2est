@@ -134,44 +134,18 @@ nsis <- function() { ## build installer...
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
-#'
-#' @param lst When \code{TRUE} return a list with
-#'     \code{list(object, warning = ws, error = es)} instead of issuing
-#'     the warnings.  Otherwise, when \code{FALSE} issue the warnings
-#'     and return the object.
-#'
-#' @param collectErr When \code{TRUE}, errors raised during evaluation
-#'     of \code{expr} are recorded in addition to warnings.  A calling
-#'     handler captures every error message as it is signalled, then
-#'     lets the condition continue to propagate so that inner
-#'     \code{try()}/\code{tryCatch()} blocks in \code{expr} keep
-#'     working as usual.  An outer \code{tryCatch()} catches errors
-#'     that escape all inner handling, so the call always returns
-#'     instead of stopping.  If \code{expr} evaluated to a result
-#'     (i.e. no error escaped), the recorded errors were caught by
-#'     inner handlers and are discarded.  If an error did escape,
-#'     every message observed along the error chain (including
-#'     follow-up errors raised by \code{on.exit} handlers, see issue
-#'     607) is returned in the \code{error} element of the result list
-#'     (when \code{lst = TRUE}) or re-raised joined by newlines (when
-#'     \code{lst = FALSE}).  When \code{FALSE} (the default) errors
-#'     propagate normally and \code{es} is always \code{NULL}.  This
-#'     is used by \code{nlmixr2Est0()} so that all errors from a
-#'     failed estimation run are reported together rather than only
-#'     the last one.
-#'
-#' @return The value of the expression, or when \code{lst = TRUE} a
-#'     list of the form \code{list(object, warning = ws, error = es)}
-#'     where \code{ws} and \code{es} are character vectors of unique
-#'     warning and error messages (\code{es} is always \code{NULL}
-#'     when \code{collectErr = FALSE}, and is also \code{NULL} when
-#'     the expression evaluated successfully under \code{collectErr =
-#'     TRUE}).
-#'
+#' @param lst When \code{TRUE} return \code{list(object, warning = ws,
+#'   error = es)} instead of issuing the warnings.
+#' @param collectErr When \code{TRUE}, also record errors raised during
+#'   evaluation instead of letting them propagate; used by
+#'   \code{nlmixr2Est0()} so all errors from a failed run are reported
+#'   together rather than only the last one.
+#' @return The value of the expression, or when \code{lst = TRUE} a list
+#'   \code{list(object, warning = ws, error = es)} of unique warning/error
+#'   messages (\code{es} is \code{NULL} unless \code{collectErr = TRUE}
+#'   and an error escaped).
 #' @author Matthew L. Fidler
-#'
 #' @export
-#'
 #' @keywords internal
 .collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
   ws <- NULL
@@ -227,11 +201,8 @@ nsis <- function() { ## build installer...
 # nlmixr2Print() -----------------------------------------------------------
 #' Print x using the message facility
 #'
-#' This allows the suppressMessages to work on print functions.  This
-#' captures the output function sends it through the message routine.
-#'
-#' catpureOutput was used since it is much faster than the internal
-#' capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
+#' Captures print() output and routes it through message() so
+#' suppressMessages() works on print functions.
 #' @param x object to print
 #' @return Nothing, called for its side effects
 #' @param ... Other things output
@@ -349,9 +320,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 
 #' Respect suppress messages for nlmixr2 C functions
 #'
-#' This turns on the silent REprintf in C when `suppressMessages()` is
-#' turned on. This makes the `REprintf` act like `messages` in R,
-#' they can be suppressed with `suppressMessages()`
+#' Makes C-level `REprintf` respect `suppressMessages()`, like R messages.
 #'
 #' @return Nothing
 #' @keywords internal
@@ -359,15 +328,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 #' @export
 #' @examples
 #'
-#' # nmSupressMsg() is called with nlmixr2()
-#'
-#' # In nlmixr2, we use REprintf so that interrupted threads do not crash R
-#' # if there is a user interrupt. This isn't captured by R's messages, but
-#' # This interface allows the `suppressMessages()` to suppress the C printing
-#' # as well
-#'
-#' # If you  want to suppress messages from nlmixr2 in other packages, you can use
-#' # this function
+#' # Called automatically by nlmixr2(); other packages can call it too.
 nmSuppressMsg <- function() {
   if (requireNamespace("knitr", quietly = TRUE)) {
     if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
@@ -399,11 +360,10 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #'
 #' @inherit Matrix::nearPD
 #'
-#' @param ensureSymmetry  logical; by default, \code{\link[Matrix]{symmpart}(x)}
-#' is used whenever \code{isSymmetric(x)} is not true.  The user
-#' can explicitly set this to \code{TRUE} or \code{FALSE}, saving the
-#' symmetry test. \emph{Beware} however that setting it \code{FALSE}
-#' for an \bold{a}symmetric input \code{x}, is typically nonsense!
+#' @param ensureSymmetry logical; symmetrizes `x` via
+#'   \code{\link[Matrix]{symmpart}} unless already symmetric.
+#'   \emph{Beware}: setting \code{FALSE} for asymmetric input is
+#'   typically nonsense.
 #'
 #' @return unlike the matrix package, this simply returns the nearest
 #'   positive definite matrix

@@ -1,39 +1,25 @@
 #' Classify theta/eta pairs for the mu-referenced FOCEI family
 #'
-#' The mu-referenced FOCEI family (`mufocei`/`irlsfocei`/etc.) only applies
-#' its in-C++ regression machinery (`updateMuGroups()`, `src/inner.cpp`) to
-#' thetas and etas that participate in a **mu-ref covariate** relationship
-#' (`ui$muRefCovariateDataFrame`). A theta+eta pair with no covariate ("eta
-#' by itself") and a theta with no covariate and no eta ("theta by itself")
-#' are left completely alone, handled by standard FOCEI inner/outer
-#' optimization exactly as today -- this is a deliberate difference from
-#' SAEM's mu-referencing, which mu-refs even the plain theta+eta case.
-#'
-#' Complex covariate expressions (mu2/mu3/mu4-eligible, see `R/mu2.R`) are
-#' expected to have already been algebraically rewritten into simple linear
-#' `muRefCovariateDataFrame` terms by the existing `.uiApplyMu2hook()`
-#' pre-processing hook before this function is called -- that hook is
-#' triggered generically by `.isMuMethod()` checking the `"mu"` S3 attribute
-#' on `nlmixr2Est.<method>`, exactly as SAEM/nlme already do (see
-#' `R/mu2.R`). This function does not need to know anything about mu2/mu3/mu4
-#' itself; it only reads the already-simplified `ui$muRefCovariateDataFrame`.
+#' Only thetas/etas in a mu-ref covariate relationship
+#' (`ui$muRefCovariateDataFrame`) get the in-C++ regression machinery
+#' (`updateMuGroups()`, `src/inner.cpp`); plain theta+eta or lone-theta
+#' pairs are left to standard FOCEI inner/outer optimization (unlike SAEM,
+#' which mu-refs even the plain case). Complex covariate expressions are
+#' assumed already rewritten into simple linear `muRefCovariateDataFrame`
+#' terms by `.uiApplyMu2hook()`.
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return A list with:
 #' \itemize{
-#'  \item{\code{muCovThetas}}{character vector of population thetas that
-#'    have at least one mu-ref covariate relationship (with or without an
-#'    associated eta)}
-#'  \item{\code{muCovEtas}}{character vector of etas whose associated theta
-#'    is in \code{muCovThetas}}
-#'  \item{\code{muCovCovariateParams}}{character vector of the
-#'    covariate-coefficient thetas themselves (the "slopes")}
-#'  \item{\code{standardThetas}}{character vector of population thetas left
-#'    untouched by this family (no covariate involvement); excludes sigma/
-#'    residual-error parameters}
-#'  \item{\code{standardEtas}}{character vector of etas left untouched by
-#'    this family (no covariate involvement on their associated theta, or
-#'    not mu-referenced to any theta at all)}
+#'  \item{\code{muCovThetas}}{population thetas with at least one mu-ref
+#'    covariate relationship}
+#'  \item{\code{muCovEtas}}{etas whose associated theta is in
+#'    \code{muCovThetas}}
+#'  \item{\code{muCovCovariateParams}}{the covariate-coefficient thetas
+#'    themselves (the "slopes")}
+#'  \item{\code{standardThetas}}{population thetas left untouched by this
+#'    family; excludes sigma/residual-error parameters}
+#'  \item{\code{standardEtas}}{etas left untouched by this family}
 #' }
 #' @author Matthew L. Fidler
 #' @noRd
@@ -84,48 +70,23 @@
 #' Build per-group theta/eta/covariate structures for the in-C++ regression
 #' (`updateMuGroups()`, `src/inner.cpp`)
 #'
-#' Each group is one mu-ref-covariate population theta that also has an
-#' associated eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)` is one
-#' group: `theta="tcl"`, `eta="eta.cl"`, one covariate row `covariate=
-#' "logWT", covariateParameter="allo.cl"`; a theta can have more than one
-#' covariate).
+#' Each group is one mu-ref-covariate population theta with an associated
+#' eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`: `theta="tcl"`,
+#' `eta="eta.cl"`, covariate row `covariate="logWT"`,
+#' `covariateParameter="allo.cl"`). Covariate thetas with no associated eta
+#' are intentionally excluded (no per-subject residual to regress against)
+#' and behave as ordinary outer-optimized thetas.
 #'
-#' Mu-ref-covariate thetas with **no** associated eta (a pure fixed-effect
-#' covariate relationship, e.g. bioavailability with no random effect) are
-#' intentionally **not** included here -- there is no per-subject residual
-#' to regress against, so the regression step has nothing to update them
-#' with. They are left out of the "fixed for the outer optimizer" set
-#' entirely and behave as ordinary, outer-optimized thetas. This is a
-#' deliberate scoping decision, not an oversight.
-#'
-#' A group's *population* theta having a finite bound
-#' (`ini(...~c(lower, est, upper))`) excludes the **whole group** (with a
-#' `warning()`, captured into the fit's `runInfo` the same way every
-#' other pre-fit warning is) -- the population theta is the regression's
-#' intercept, and an unconstrained OLS/IRLS solve has no way to respect a
-#' box constraint on it.
-#'
-#' A bound on one of the group's *covariate-coefficient* thetas (the
-#' "slopes") is handled more narrowly: only that one covariate is
-#' excluded from the regression (marked `bounded=TRUE` in the returned
-#' `covariates` data frame) -- it is treated exactly like a time-varying
-#' covariate would be (see `.muRefClassify()`'s docs: a plain covariate
-#' relationship with no eta is never mu-ref-eligible to begin with), i.e.
-#' left to ordinary, bounded outer-optimizer handling while its *current*
-#' (not fixed -- gradient-updated every real outer iteration) contribution
-#' is still subtracted from the regression's target as a live offset,
-#' exactly like `.muRefLin()`'s `fixedCoef` contract but recomputed each
-#' iteration instead of held constant (`src/inner.cpp`'s
-#' `updateMuGroups()`). The population theta and any of the group's
-#' *other*, unbounded covariates still get the full mu-ref speed-up.
-#'
-#' Both cases warn. Both only ever apply to this function (and therefore
-#' only to the `mufocei`/`irlsfocei`/`mufoce`/`irlsfoce`/`muagq`/
-#' `irlsagq`/`mulaplace`/`irlslaplace` family) -- `.muRefGroups()` has
-#' exactly one caller (`.muRefCppGroupSetup()`, itself only reached from
-#' `rxUiGet.foceiOptEnv` when `muModel != "none"`), so SAEM's own,
-#' unrelated mu-referencing mechanism and every other estimator are
-#' untouched.
+#' A finite bound on the group's population theta excludes the whole group
+#' (with a `warning()`) since OLS/IRLS can't respect a box constraint on
+#' its intercept. A bound on one covariate-coefficient theta excludes only
+#' that covariate (marked `bounded=TRUE`), treating it like a time-varying
+#' covariate whose current, gradient-updated contribution is still
+#' subtracted from the regression target as a live offset; the population
+#' theta and any other unbounded covariates in the group still get the
+#' mu-ref speed-up. Both cases only affect this family (`mufocei`/
+#' `irlsfocei`/`mufoce`/`irlsfoce`/`muagq`/`irlsagq`/`mulaplace`/
+#' `irlslaplace`); SAEM and every other estimator are untouched.
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list of `list(theta=, eta=, covariates=data.frame(covariate=,
@@ -191,9 +152,8 @@
 #' mu-referenced-FOCEI-family regression (`updateMuGroups()`,
 #' `src/inner.cpp`) expects
 #'
-#' Purely UI-derived (no dataset needed) -- the covariate *values* matrix
-#' is built separately by `.muRefCppCovData()` once the dataset is
-#' available (see `R/focei.R`'s `.foceiFamilyReturn()`).
+#' UI-derived only; the covariate values matrix is built separately by
+#' `.muRefCppCovData()` once the dataset is available.
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list with `muGroupTheta`, `muGroupEta`, `muGroupCovStart`,
@@ -266,12 +226,10 @@
 #' Build the baseline (first-observation) covariate-value matrix for the
 #' mu-referenced-FOCEI-family C++ regression
 #'
-#' One row per subject, sorted by ID (matching the subject ordering
-#' `foceiSetup_()` already uses for `etaMat`), one column per flattened
-#' covariate entry from `.muRefCppGroupSetup()` (in the same order --
-#' duplicate covariate names across groups get their own column, which is
-#' fine, `src/inner.cpp`'s `updateMuGroups()` slices by flattened index,
-#' not by name).
+#' One row per subject (sorted by ID, matching `etaMat`'s ordering), one
+#' column per flattened covariate entry from `.muRefCppGroupSetup()` in the
+#' same order (duplicate covariate names across groups get their own
+#' column, since `updateMuGroups()` slices by flattened index, not name).
 #'
 #' @param covNames character vector, `muGroupCovNames` from
 #'   `.muRefCppGroupSetup()`

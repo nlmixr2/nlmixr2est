@@ -430,11 +430,8 @@
   .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
-  # Gamma2_phi1Report holds the (reporting-only) pooled BSV for split ETAs
-  # sharing an omegaShare group -- Gamma2_phi1 itself is left unpooled so
-  # per-component fixed effects aren't coupled through a shared precision
-  # during estimation (see src/saem.cpp). Falls back to Gamma2_phi1 for
-  # older cached fits without the field.
+  # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
+  # back to Gamma2_phi1 for older cached fits without the field.
   .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
@@ -528,10 +525,8 @@
         .doIt <- !inherits(.covm, "try-error")
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
         if (.doIt) {
-          # .covm may have NA rows/columns for specific ill-identified
-          # parameters (see .nlmixr2RobustCov()); validate only the
-          # well-identified submatrix so those don't force a fallback to a
-          # cruder covariance estimator for every parameter.
+          # .covm may have NA rows/columns for ill-identified parameters;
+          # validate only the well-identified submatrix (.nlmixr2RobustCov()).
           .tmp <- .nlmixr2CholPartial(.covm)
           .addCov <- TRUE
           .sqrtm <- FALSE
@@ -874,19 +869,10 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
-    # .nlmixr2FitUpdateParams() rebuilds ui$iniDf (and therefore ui$theta)
-    # from env$omega -- it must run against the *un-pooled* omega (still one
-    # row per split ETA, e.g. eta.cl1/eta.cl2 separately) so the model's mu-
-    # referencing structure survives the rebuild. .saemMixFix() pools split
-    # ETAs into a single reported eta.cl column (env$omega gets fewer rows
-    # than the model actually has), so it must run *after* this, purely for
-    # display -- pooling first previously corrupted ui$theta for every
-    # parameter (not just the mixture-owned ones), silently falling back to
-    # each theta's ini() value instead of its fitted estimate.
+    # Must run against the un-pooled omega, before .saemMixFix() pools split
+    # ETAs, or ui$theta silently falls back to ini() values for every param.
     .nlmixr2FitUpdateParams(.ret)
-    # For mixture models: build mixList/mixNum/mixIcov from SAEM's mixWeights
-    # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
-    # available to rxode2 during the table/solve step.
+    # Builds mixList/mixNum/mixIcov; must run before nlmixr2CreateOutputFromUi.
     .saemMixFix(.ret, .ui)
     .ui <- .ret$ui
     .saemAddParHist(.ret)

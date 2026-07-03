@@ -27,17 +27,10 @@ passed back through `do.call(*Control, .ctl)`.}
 An `iterPrintControl` list.
 }
 \description{
-Package-set internal helper used by every `*Control()` function in
-`nlmixr2est` and downstream packages (e.g. `babelmixr2`) to absorb
-the scalar `print` / `printNcol` / `useColor` arguments into a
-single [iterPrintControl()] sub-list.  If the user already passed
-a pre-built `iterPrintControl()` object via the `print` argument
-(or, on round-trip, via an `iterPrintControl =` slot in `...`),
-return it directly.
-}
-\details{
-Exported under a leading-dot name to mark it as a package-set
-internal — callable from sibling packages in the nlmixr2 family
-but not meant for end users.
+Internal helper used by every `*Control()` function (and downstream
+packages like `babelmixr2`) to absorb the scalar `print`/`printNcol`/
+`useColor` arguments into a single [iterPrintControl()] object, or pass
+through an already pre-built one. Exported under a leading-dot name to
+mark it as package-internal, not for end users.
 }
 \keyword{internal}

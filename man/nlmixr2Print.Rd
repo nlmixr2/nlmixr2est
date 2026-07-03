@@ -15,12 +15,8 @@ nlmixr2Print(x, ...)
 Nothing, called for its side effects
 }
 \description{
-This allows the suppressMessages to work on print functions.  This
-captures the output function sends it through the message routine.
-}
-\details{
-catpureOutput was used since it is much faster than the internal
-capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
+Captures print() output and routes it through message() so
+suppressMessages() works on print functions.
 }
 \author{
 Matthew L. Fidler

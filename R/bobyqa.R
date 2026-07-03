@@ -7,33 +7,16 @@
 #' @param returnBobyqa return the bobyqa output instead of the nlmixr2
 #'   fit
 #'
-#' @param npt The number of points used to approximate the objective
-#'   function via a quadratic approximation. The value of npt must be
-#'   in the interval [n+2,(n+1)(n+2)/2] where n is the number of
-#'   parameters in `par`. Choices that exceed 2*n+1 are not
-#'   recommended.  If not defined, it will be set to min(n * 2, n+2).
+#' @param npt Number of points for the quadratic approximation to the
+#'   objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `min(n*2, n+2)`.
 #'
-#' @param rhobeg `rhobeg` and `rhoend` must be set to the initial and
-#'   final values of a trust region radius, so both must be positive
-#'   with `0 < rhoend < rhobeg`. Typically `rhobeg` should be about
-#'   one tenth of the greatest expected change to a variable.  If the
-#'   user does not provide a value, this will be set to `min(0.95, 0.2
-#'   * max(abs(par)))`.  Note also that smallest difference
-#'   `abs(upper-lower)` should be greater than or equal to `rhobeg*2`.
-#'   If this is not the case then `rhobeg` will be adjusted.
-#' @param rhoend The smallest value of the trust region radius that is
-#'   allowed. If not defined, then 1e-6 times the value set for
-#'   `rhobeg` will be used.
-#' @param iprint The value of `iprint` should be set to an integer
-#'   value in `0, 1, 2, 3, ...`, which controls the amount of
-#'   printing.  Specifically, there is no output if `iprint=0` and
-#'   there is output only at the start and the return if `iprint=1`.
-#'   Otherwise, each new value of `rho` is printed, with the best
-#'   vector of variables so far and the corresponding value of the
-#'   objective function. Further, each new value of the objective
-#'   function with its variables are output if `iprint=3`.  If `iprint
-#'   > 3`, the objective function value and corresponding variables
-#'   are output every `iprint` evaluations.  Default value is `0`.
+#' @param rhobeg Initial trust region radius (with `rhoend`, must satisfy
+#'   `0 < rhoend < rhobeg`). Defaults to `min(0.95, 0.2*max(abs(par)))`;
+#'   adjusted upward if smaller than `abs(upper-lower)/2`.
+#' @param rhoend Final trust region radius. Defaults to `1e-6*rhobeg`.
+#' @param iprint Controls amount of printing (`0`=none, `1`=start/end only,
+#'   `2`=each new rho, `3`=every function evaluation, `>3`=every `iprint`
+#'   evaluations). Default `0`.
 #' @param maxfun The maximum allowed number of function
 #'   evaluations. If this is exceeded, the method will terminate.
 #' @return bobqya control structure
@@ -65,12 +48,9 @@
 #'
 #' print(fit2)
 #'
-#' # you can also get the nlm output with
+#' # you can also get the bobyqa output with
 #'
 #' fit2$bobyqa
-#'
-#' # The nlm control has been modified slightly to include
-#' # extra components and name the parameters
 #' }
 bobyqaControl <- function(npt=NULL,
                           rhobeg=NULL,
@@ -363,28 +343,9 @@ getValidNlmixrCtl.bobyqa <- function(control) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
+  # .ret holds standard focei-family fit state (table, data, ui, theta/omega,
+  # cov, objective, message, etc.); a foceiControl object is also needed to
+  # build the final nlmixr2 object.
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .bobyqa <- .collectWarn(.bobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)

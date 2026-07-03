@@ -1,24 +1,11 @@
 #' Compute a covariance matrix from a stacked linearized design matrix,
-#' degrading only the specific ill-identified parameter(s) instead of the
-#' whole matrix
+#' degrading only ill-identified parameter(s) instead of the whole matrix
 #'
-#' Ordinary `crossprod()`/`backsolve()`-based covariance calculations
-#' (`(X'X)^-1`, from a QR decomposition of `X`) error out entirely when even
-#' one column of `X` is (numerically) rank-deficient given the others -- e.g.
-#' a fixed effect that is only informative for a handful of subjects. This
-#' throws away valid information about every *other*, well-identified
-#' parameter along with it. This helper instead detects exactly which
-#' parameter column(s) are singular (via `qr()`'s own pivoted rank
-#' detection) and returns `NA` only for those, computing a normal covariance
-#' for the rest.
-#'
-#' This is deliberately a plain-matrix utility with no dependency on any
-#' particular estimation method's internal state, so it can be reused by any
-#' mixed-effects method's R-level covariance step. `focei`/`foce`/`fo`/`foi`/
-#' `laplace`/`agq` share one C++ covariance implementation (`src/inner.cpp`)
-#' that already uses a pseudo-inverse for the same purpose and does not need
-#' this; `saem`'s R-level `calc.COV()` (`R/saem_fit_aux.R`) is the first
-#' consumer.
+#' Ordinary `crossprod()`/`backsolve()` covariance (`(X'X)^-1`) errors
+#' entirely when any column of `X` is rank-deficient. This detects exactly
+#' which column(s) are singular (via `qr()`'s pivoted rank detection) and
+#' returns `NA` only for those. Reusable by any mixed-effects method's
+#' R-level covariance step; `saem`'s `calc.COV()` is the first consumer.
 #'
 #' @param X n x p design/derivative matrix (rows = stacked per-subject
 #'   observation blocks, columns = parameters being estimated)
@@ -53,12 +40,8 @@
 #' Validate a covariance matrix that may have `NA` rows/columns for
 #' ill-identified parameters (see `.nlmixr2RobustCov()`)
 #'
-#' `chol()` errors on any matrix containing `NA`, which would otherwise
-#' discard a perfectly good partial covariance (one where only a handful of
-#' parameters are unidentifiable) along with the well-identified rest. This
-#' runs `chol()` only on the finite (non-`NA`) submatrix, so a caller can
-#' treat "some parameters unidentifiable" as success rather than falling
-#' back to a cruder covariance estimator for every parameter.
+#' `chol()` errors on any matrix containing `NA`; this runs it only on the
+#' finite submatrix so partial identifiability doesn't discard the rest.
 #'
 #' @param covm p x p covariance matrix, possibly with `NA_real_` rows/columns
 #' @return `try()`-wrapped result of `chol()` on the finite submatrix (or
