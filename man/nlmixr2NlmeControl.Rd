@@ -42,6 +42,7 @@ nlmixr2NlmeControl(
   sigdig = 4,
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
+  eventSens = c("jump", "fd"),
   ...
 )
 
@@ -82,6 +83,7 @@ nlmeControl(
   sigdig = 4,
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
+  eventSens = c("jump", "fd"),
   ...
 )
 }
@@ -312,6 +314,14 @@ If not specified, then it matches the significant digits in the
     (\code{muModel != "none"}); it mirrors
     \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
     reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
+
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

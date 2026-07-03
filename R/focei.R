@@ -964,7 +964,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   }
   ## Event-sensitivity method.  "jump" enables rxode2's analytic dosing-parameter
   ## (alag/F/rate/dur) sensitivities.
-  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(ui, "eventSens", "jump")
   ## `eventEta`/`eventTheta` flag the parameters that enter a dosing expression
   ## (alag/F/rate/dur).  In the legacy "fd" path inner.cpp computes their
   ## sensitivity by finite differences (predOde) because the analytic `rx__sens`
@@ -1149,7 +1149,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## eventSens changes the inner model codegen (analytic jump sensitivities) and
   ## the eventEta/eventTheta finite-difference flags, so it must be part of the
   ## cache key -- otherwise a "jump" build would reuse a cached "fd" model.
-  .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "fd")
+  .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "jump")
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
@@ -1800,7 +1800,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## never goes through rxSolve()/.rxSetEventSensDims()).  The handle_evid jump
   ## injection is compartment-count guarded, so the smaller pred model solved in
   ## the same loop skips it safely.  Reset on exit.
-  .eventSens <- tryCatch(.ret$control$eventSens, error=function(e) "fd")
+  .eventSens <- tryCatch(.ret$control$eventSens, error=function(e) "jump")
   if (identical(.eventSens, "jump") &&
         exists("model", .ret) && !is.null(.ret$model$inner)) {
     .esLoaded <- tryCatch(

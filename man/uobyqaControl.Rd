@@ -38,6 +38,7 @@ uobyqaControl(
   sigdig = 4,
   sigdigTable = NULL,
   boundedTransform = TRUE,
+  eventSens = c("jump", "fd"),
   ...
 )
 }
@@ -368,6 +369,14 @@ optimization is performed on the original scale and the bounds
 are passed to the optimization method.  When `NA`, the bounded
 parameters are transformed for the optimization, but the final
 estimates are not back-transformed.}
+
+\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed whenever the estimation
+method needs the gradient of the model with respect to `THETA`
+or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+("jump") sensitivities into the sensitivity states at each dosing
+event; `"fd"` keeps the legacy finite-difference behavior instead
+(the backward-compatible opt-out).}
 
 \item{...}{Ignored parameters}
 }

@@ -73,7 +73,8 @@ newuoaControl <- function(npt=NULL,
                           calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
-                          boundedTransform=TRUE, ...) {
+                          boundedTransform=TRUE,
+                          eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -90,6 +91,7 @@ newuoaControl <- function(npt=NULL,
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
   checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -189,7 +191,8 @@ newuoaControl <- function(npt=NULL,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl,
-               boundedTransform=boundedTransform)
+               boundedTransform=boundedTransform,
+               eventSens=eventSens)
   class(.ret) <- "newuoaControl"
   .ret
 }
@@ -275,7 +278,8 @@ getValidNlmixrCtl.newuoa <- function(control) {
                                 compress=.newuoaControl$compress,
                                 ci=.newuoaControl$ci,
                                 sigdigTable=.newuoaControl$sigdigTable,
-                                indTolRelax=.newuoaControl$indTolRelax)
+                                indTolRelax=.newuoaControl$indTolRelax,
+                                eventSens=.newuoaControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

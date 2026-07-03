@@ -1,13 +1,16 @@
 .foceiControlInternal <- c("genRxControl", "resetEtaSize",
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
-                           "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
+                           "foceiMuRef", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
-                           "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
+                           "iterPrintControl", "est",
+                           "foceiMuCovEta", "foceiMuModel",
+                           "foceiMuGroupTheta", "foceiMuGroupEta",
+                           "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
                            "foceiMuGroupCovBounded",
-                           "foceiMuGroupCovData", "foceiMuGroupTol", "foceiMuGroupMaxCycles")
+                           "foceiMuGroupCovData", "foceiMuGroupTol",
+                           "foceiMuGroupMaxCycles")
 
 #' Control Options for FOCEi
 #'
@@ -704,14 +707,6 @@
 #' @param eventType Event gradient type for dosing events; Can be
 #'   "central" or "forward"
 #'
-#' @param eventSens How sensitivities of dosing/event parameters
-#'   (absorption lag time, bioavailability, infusion rate and duration,
-#'   etc.) are computed.  `"fd"` uses the legacy finite
-#'   differences.  `"jump"` (the default) uses the analytic event ("jump")
-#'   sensitivities provided by `rxode2`, which add accuracy and can speed
-#'   up the gradient/Hessian by avoiding the extra finite-difference
-#'   solves for these parameters.
-#'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
 #'
@@ -844,6 +839,14 @@
 #'   parameters are transformed for the optimization, but the final
 #'   estimates are not back-transformed.
 #'
+#' @param eventSens controls how dosing/event-parameter (`alag`, `F`,
+#'   `rate`, `dur`) sensitivities are computed whenever the estimation
+#'   method needs the gradient of the model with respect to `THETA`
+#'   or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+#'   ("jump") sensitivities into the sensitivity states at each dosing
+#'   event; `"fd"` keeps the legacy finite-difference behavior instead
+#'   (the backward-compatible opt-out).
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -912,7 +915,6 @@ foceiControl <- function(sigdig = 4, #
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
                          eventType = c("central", "forward"), #
-                         eventSens = c("jump", "fd"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -956,6 +958,7 @@ foceiControl <- function(sigdig = 4, #
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
+                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -1032,7 +1035,9 @@ foceiControl <- function(sigdig = 4, #
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
+                         eventSens = c("jump", "fd"),
                          boundedTransform=TRUE) { #
+  eventSens <- match.arg(eventSens)
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1227,10 +1232,6 @@ foceiControl <- function(sigdig = 4, #
     .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
-  ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
-  ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
-  ## sensitivities from rxode2).  "fd" is the backward-compatible default.
-  eventSens <- match.arg(eventSens)
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -1558,7 +1559,6 @@ foceiControl <- function(sigdig = 4, #
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
     indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
-    eventSens = eventSens,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
     badSolveObjfAdj=badSolveObjfAdj,
@@ -1580,11 +1580,9 @@ foceiControl <- function(sigdig = 4, #
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
+    eventSens=eventSens,
     boundedTransform=boundedTransform
   )
-  if (!is.null(.xtra$est)) {
-    .ret$est <- .xtra$est
-  }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
@@ -1609,8 +1607,8 @@ foceiControl <- function(sigdig = 4, #
   if (object$outerOpt == -1L && object$outerOptTxt == "custom") {
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
-  } else if (!(object$outerOptTxt %in% c("nlminb", "stats::optimize")) && object$outerOptTxt != .ret$outerOptTxt) {
-    .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
+  } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
+    .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
   if (length(.w) == 0 && length(.outerOpt) == 0) {
@@ -1625,28 +1623,28 @@ foceiControl <- function(sigdig = 4, #
     }
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+      paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {
       if (object[[x]] == 0L) {
         paste0(x, " = \"\"")
       } else {
         .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
+        paste0(x, " =", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
       }
     } else {
-      paste0(x, " = ", deparse1(object[[x]]))
+      paste0(x, "=", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=", "), ")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=","),")"))
 }
 
 #' @export

@@ -284,7 +284,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 compress=.n1qn1Control$compress,
                                 ci=.n1qn1Control$ci,
                                 sigdigTable=.n1qn1Control$sigdigTable,
-                                indTolRelax=.n1qn1Control$indTolRelax)
+                                indTolRelax=.n1qn1Control$indTolRelax,
+                                eventSens=.n1qn1Control$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

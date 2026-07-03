@@ -1,5 +1,19 @@
 # nlmixr2est (development version)
 
+- The test suite runs a single testthat worker on CI and on CRAN (so it
+  does not oversubscribe a core-limited runner) and parallel
+  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
+  capped to 2 only on CRAN and left to rxode2's own management otherwise.
+
+- `fit$time` now reports every estimation stage consistently; previously
+  stages under 5e-5 s were dropped, so the set of reported stages varied
+  with the platform's clock resolution.
+
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
+  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
+  `foceiControl()` correctly omits `outerOpt` when it is left at this
+  default.
+
 - Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
   `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`
   (adaptive Gauss-Hermite quadrature); `mulaplace`, `irlslaplace`
@@ -45,15 +59,6 @@
   gradient-print rows, since these thetas are never part of the outer
   optimizer's gradient finite-difference.
 
-- Fix issue 641: FOCEI now updates additive mu-referenced population
-  parameters whose initial estimates are large in magnitude.
-  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
-  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
-  unit steps in scaled space to negligible steps in unscaled space and
-  effectively pinned such parameters at their initial value (e.g.
-  `tvemax <- -40` with no transform).
->>>>>>> origin/main
-
 - When model estimation fails, all errors raised during the run are now
   collected and reported together, instead of only the last error. This
   is supported by a new `collectErr` argument to the internal
@@ -63,6 +68,14 @@
   (such as the "Aborted calculation" message reported in issue 607)
   no longer mask the underlying cause; both the inner stop message and
   any follow-up error from `on.exit` are now reported to the user.
+
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters whose initial estimates are large in magnitude.
+  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
+  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
+  unit steps in scaled space to negligible steps in unscaled space and
+  effectively pinned such parameters at their initial value (e.g.
+  `tvemax <- -40` with no transform).
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
