@@ -1,3 +1,37 @@
+#' Re-run the covariance step post-fit and install the result
+#'
+#' Shared core of [setCov] and the analytic-covariance FD fallback
+#' ([.foceiAnalyticFdFallback]): given a fitted UI, the original data and a control
+#' whose `covType`/`covMethod` select the covariance, re-runs
+#' [nlmixr2CreateOutputFromUi] with `est="none"` (a zero-iteration re-fit that only
+#' recomputes the cov) and installs `$cov` / `$covMethod` / the parameter table into
+#' the fit environment.  Does not overwrite `$cov` when the re-run yields no matrix.
+#' @param env fit environment to install into
+#' @param ui fitted rxode2 UI
+#' @param data original data (`getData(fit)` / `fit$origData`)
+#' @param control foceiControl with the covariance selection already set
+#' @param table table control (may be NULL)
+#' @param outEnv environment passed to [nlmixr2CreateOutputFromUi] as its output env
+#'   (setCov threads its own so a supplied covariance matrix is carried in)
+#' @return TRUE if a covariance matrix was installed, FALSE otherwise
+#' @author Hidde van de Beek
+#' @noRd
+.foceiRecomputeCov <- function(env, ui, data, control, table, outEnv = new.env(parent = emptyenv())) {
+  .fit2 <- tryCatch(
+    nlmixr2CreateOutputFromUi(ui, data = data, control = control,
+                              table = table, env = outEnv, est = "none"),
+    error = function(e) NULL)
+  .cov <- tryCatch(.fit2$cov, error = function(e) NULL)
+  if (is.null(.cov) || !is.matrix(.cov)) {
+    return(FALSE)
+  }
+  env$cov <- .cov
+  env$covMethod <- .fit2$covMethod
+  if (!is.null(.fit2$parFixedDf)) env$parFixedDf <- .fit2$parFixedDf
+  if (!is.null(.fit2$parFixed)) env$parFixed <- .fit2$parFixed
+  TRUE
+}
+
 .setCov <- function(obj, ...) {
   .pt <- proc.time()
   .env <- obj
@@ -80,15 +114,9 @@
   }
   .dat <- getData(obj)
   .ui <- obj$ui
-  .mat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
   .control$skipCov <- obj$skipCov
-  .control$etaMat <- .mat
-  .fit2 <- nlmixr2CreateOutputFromUi(.ui, data=.dat, control=.control,
-                                     table=.env$table,env=.env2, est="none")
-  .env$cov <- .fit2$cov
-  .env$parFixedDf <- .fit2$parFixedDf
-  .env$parFixed <- .fit2$parFixed
-  .env$covMethod <- .fit2$covMethod
+  .control$etaMat <- obj$etaMat # as.matrix(nlme::random.effects(obj)[, -1])
+  .foceiRecomputeCov(.env, .ui, .dat, .control, .env$table, .env2)
   #.updateParFixed(.env)
   .parent <- parent.frame(2)
   .bound <- do.call("c", lapply(ls(.parent), function(.cur) {

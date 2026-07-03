@@ -1882,20 +1882,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$calcTables <- FALSE
   .control$skipCov <- .ret$skipCov
   .control$etaMat <- .ret$etaMat
-  .fit2 <- tryCatch(
-    nlmixr2CreateOutputFromUi(ui, data = .dat, control = .control,
-                              table = .ret$table, env = new.env(parent = emptyenv()),
-                              est = "none"),
-    error = function(e) NULL)
-  .cov <- tryCatch(.fit2$cov, error = function(e) NULL)
-  if (is.null(.cov) || !is.matrix(.cov)) {
-    return(FALSE)
-  }
-  .ret$cov <- .cov
-  .ret$covMethod <- .fit2$covMethod
-  if (!is.null(.fit2$parFixedDf)) .ret$parFixedDf <- .fit2$parFixedDf
-  if (!is.null(.fit2$parFixed)) .ret$parFixed <- .fit2$parFixed
-  TRUE
+  .foceiRecomputeCov(.ret, ui, .dat, .control, .ret$table)
 }
 
 #' Post-fit half of the `covType="analytic"` engine
