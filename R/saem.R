@@ -249,6 +249,10 @@
                         resFixed=ui$saemResFixed,
                         ue=.ue,
                         mixProb=ui$saemMixProb,
+                        mixProbMethod=rxode2::rxGetControl(ui, "mixProbMethod", "regularized"),
+                        mixProbStepExp=rxode2::rxGetControl(ui, "mixProbStepExp", 1),
+                        mixProbPriorN=rxode2::rxGetControl(ui, "mixProbPriorN", 20),
+                        mixSampleMethod=rxode2::rxGetControl(ui, "mixSampleMethod", "parallel"),
                         omegaShare=ui$saemOmegaShare,
                         omegaShareSubpop=ui$saemOmegaShareSubpop)
     .cfg$cres <- ui$saemCres
@@ -426,7 +430,9 @@
   .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
-  .curOme <- .saem$Gamma2_phi1
+  # Gamma2_phi1Report is the reporting-only pooled BSV for split ETAs; falls
+  # back to Gamma2_phi1 for older cached fits without the field.
+  .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
@@ -514,12 +520,14 @@
         .cov <- NULL
         env$covMethod <- "none"
       } else if (.calcCov) {
-        .covm <- .saem$Ha[1:.nth, 1:.nth]
+        .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
         .covm <- try(calc.COV(.saem))
         .doIt <- !inherits(.covm, "try-error")
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
         if (.doIt) {
-          .tmp <- try(chol(.covm), silent = TRUE)
+          # .covm may have NA rows/columns for ill-identified parameters;
+          # validate only the well-identified submatrix (.nlmixr2RobustCov()).
+          .tmp <- .nlmixr2CholPartial(.covm)
           .addCov <- TRUE
           .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
@@ -527,12 +535,12 @@
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .calcCov <- FALSE
-              .covm <- .saem$Ha[1:.nth, 1:.nth]
+              .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               .tmp <- try(chol(.covm), silent = TRUE)
               .addCov <- TRUE
               .sqrtm <- FALSE
               if (inherits(.tmp, "try-error")) {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
                 .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
                 if (inherits(.tmp, "try-error")) {
                   .addCov <- FALSE
@@ -540,7 +548,7 @@
                   .sqrtm <- TRUE
                 }
               } else {
-                .tmp <- .saem$Ha[1:.nth, 1:.nth]
+                .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
               }
             } else {
               .sqrtm <- TRUE
@@ -549,13 +557,14 @@
             .tmp <- .covm
           }
         } else {
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
+          .tmp <- try(chol(.covm), silent = TRUE)
           .tmp <- .saem$Ha[1:.nth, 1:.nth]
-          .tmp <- try(chol(.tmp), silent = TRUE)
           .calcCov <- FALSE
           .addCov <- TRUE
           .sqrtm <- FALSE
           if (inherits(.tmp, "try-error")) {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
             if (inherits(.tmp, "try-error")) {
               .addCov <- FALSE
@@ -563,7 +572,7 @@
               .sqrtm <- TRUE
             }
           } else {
-            .tmp <- .saem$Ha[1:.nth, 1:.nth]
+            .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
             .calcCov <- FALSE
           }
         }
@@ -572,7 +581,7 @@
         .addCov <- TRUE
         .sqrtm <- FALSE
         if (inherits(.tmp, "try-error")) {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .tmp <- try(sqrtm(.tmp %*% t(.tmp)), silent = FALSE)
           if (inherits(.tmp, "try-error")) {
             .addCov <- FALSE
@@ -580,7 +589,7 @@
             .sqrtm <- TRUE
           }
         } else {
-          .tmp <- .saem$Ha[1:.nth, 1:.nth]
+          .tmp <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
           .calcCov <- FALSE
         }
       }
@@ -860,12 +869,12 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     nmObjHandleControlObject(.ret$control, .ret)
     .getSaemTheta(.ret)
     .getSaemOmega(.ret)
-    # For mixture models: build mixList/mixNum/mixIcov from SAEM's mixWeights
-    # matrix.  Must run before nlmixr2CreateOutputFromUi so that mixIcov is
-    # available to rxode2 during the table/solve step.
+    # Must run against the un-pooled omega, before .saemMixFix() pools split
+    # ETAs, or ui$theta silently falls back to ini() values for every param.
+    .nlmixr2FitUpdateParams(.ret)
+    # Builds mixList/mixNum/mixIcov; must run before nlmixr2CreateOutputFromUi.
     .saemMixFix(.ret, .ui)
     .ui <- .ret$ui
-    .nlmixr2FitUpdateParams(.ret)
     .saemAddParHist(.ret)
     .saemCalcLikelihood(.ret)
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {

@@ -125,6 +125,62 @@
 #'   calculate uninformative etas and handle them specially (default
 #'   is `TRUE`).
 #'
+#' @param mixProbMethod For mixture models (`mix()`, more than one
+#'   component), stabilizes the mixing-probability estimate against
+#'   collapsing onto a single component (the responsibility used to
+#'   update it is itself weighted by the current mixing probability,
+#'   which can create a runaway feedback loop). Two options:
+#'
+#'   * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+#'     distributed per the initial mixing probability, into the
+#'     responsibility average each iteration (Dirichlet/MAP-EM-style).
+#'     Prevents collapse even in difficult cases, at the cost of some
+#'     bias toward the initial guess; may need larger `nBurn`/`nEm`.
+#'
+#'   * `"annealed"`: give the mixing-probability update its own decaying
+#'     step-size schedule (`mixProbStepExp`) instead of the
+#'     full-replacement step used during `nBurn`. Lower bias, but does
+#'     not by itself fix a systematic (non-noise-driven) collapse.
+#'
+#' @param mixProbStepExp Only used when `mixProbMethod="annealed"`. Decay
+#'   exponent for the mixing-probability step size
+#'   (`1/iteration^mixProbStepExp`), applied from iteration 1. Default 1;
+#'   smaller values decay more slowly.
+#'
+#' @param mixProbPriorN Only used when `mixProbMethod="regularized"`.
+#'   Number of pseudo-subjects blended into the responsibility average
+#'   each iteration. Larger values are more robust to collapse but bias
+#'   the estimate more and need more `nBurn`/`nEm`. Default 20.
+#'
+#' @param mixSampleMethod For mixture models with per-component etas
+#'   (split-ETA, e.g. `cl <- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`),
+#'   controls the MCMC/sufficient-statistic architecture for the
+#'   individual random effects, independent of `mixProbMethod`. BSV
+#'   (`$omega`) for split components is unreliable under `"parallel"`
+#'   regardless of `mixProbMethod`.
+#'
+#'   * `"parallel"` (default): one full MCMC chain per component per
+#'     subject per iteration, blended post hoc by responsibility. Mirrors
+#'     NONMEM's `$MIX` and correctly estimates BSV shared across
+#'     components, but cannot cleanly separate per-component BSV for
+#'     split-ETA models (each "wrong-hypothesis" chain still explores its
+#'     non-owned column(s) as unconstrained prior noise).
+#'
+#'   * `"msaem"` (experimental): the MSAEM algorithm (Lavielle & Mbogning
+#'     2014), as used by Monolix. Simulates one random-effects trajectory
+#'     per subject per iteration (label marginalized out via a
+#'     closed-form responsibility) instead of parallel per-component
+#'     chains, so no post-hoc blending is needed. Not compute-matched to
+#'     `"parallel"` at equal `nmc` -- set `nmc` to roughly `nMix` times
+#'     its default for a fair comparison. Uses a model-aware stratified
+#'     initialization for split-ETA components that reliably achieves
+#'     full theta/fixed-effect separation. Split-ETA BSV recovery is
+#'     improved (two numerical bugs fixed: an `IGamma2_phi1` blowup that
+#'     locked variance to exactly zero, and an inverted responsibility
+#'     sign) but still not reliable -- it often settles at a safety-floor
+#'     value rather than the true variance. Prefer `"parallel"` unless
+#'     specifically evaluating this method.
+#'
 #' @param ... Other arguments to control SAEM.
 #'
 #' @inheritParams rxode2::rxSolve
@@ -174,6 +230,10 @@ saemControl <- function(seed = 99,
                         iovXform = c("sd", "var", "logsd", "logvar"),
                         boundedTransform = TRUE,
                         eventSens = c("jump", "fd"),
+                        mixProbMethod = c("regularized", "annealed"),
+                        mixProbStepExp = 1,
+                        mixProbPriorN = 20,
+                        mixSampleMethod = c("parallel", "msaem"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -235,6 +295,10 @@ saemControl <- function(seed = 99,
   checkmate::assertLogical(handleUninformativeEtas, any.missing=FALSE, len=1)
   checkmate::assertLogical(boundedTransform, any.missing=FALSE, len=1)
   eventSens <- match.arg(eventSens)
+  mixProbMethod <- match.arg(mixProbMethod)
+  checkmate::assertNumeric(mixProbStepExp, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  checkmate::assertNumeric(mixProbPriorN, any.missing=FALSE, len=1, lower=0, finite=TRUE)
+  mixSampleMethod <- match.arg(mixSampleMethod)
 
   type <- match.arg(type)
   if (inherits(addProp, "numeric")) {
@@ -321,7 +385,11 @@ saemControl <- function(seed = 99,
     handleUninformativeEtas=handleUninformativeEtas,
     iovXform=iovXform,
     boundedTransform=boundedTransform,
-    eventSens=eventSens
+    eventSens=eventSens,
+    mixProbMethod=mixProbMethod,
+    mixProbStepExp=mixProbStepExp,
+    mixProbPriorN=mixProbPriorN,
+    mixSampleMethod=mixSampleMethod
   )
   class(.ret) <- "saemControl"
   .ret

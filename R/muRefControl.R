@@ -1,7 +1,7 @@
 #' Control options for the mufocei estimation method
 #'
-#' This is the mu-referenced-FOCEI-family closed-form-regression (`"lin"`)
-#' variant of FOCEI -- see `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
+#' FOCEI; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -82,8 +82,8 @@ nmObjGetFoceiControl.mufocei <- function(x, ...) {
 
 #' Control options for the irlsfocei estimation method
 #'
-#' This is the mu-referenced-FOCEI-family reweighted-regression (`"irls"`)
-#' variant of FOCEI -- see `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
+#' FOCEI; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -164,9 +164,8 @@ nmObjGetFoceiControl.irlsfocei <- function(x, ...) {
 
 #' Control options for the mufoce estimation method
 #'
-#' This is the mu-referenced-FOCEI-family closed-form-regression (`"lin"`)
-#' variant of FOCE (no interaction) -- see `foceiControl(muModel=)` for
-#' what this changes.
+#' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
+#' FOCE (no interaction); see `foceiControl(muModel=)`.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -256,9 +255,8 @@ nmObjGetFoceiControl.mufoce <- function(x, ...) {
 
 #' Control options for the irlsfoce estimation method
 #'
-#' This is the mu-referenced-FOCEI-family reweighted-regression (`"irls"`)
-#' variant of FOCE (no interaction) -- see `foceiControl(muModel=)` for
-#' what this changes.
+#' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
+#' FOCE (no interaction); see `foceiControl(muModel=)`.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -348,9 +346,8 @@ nmObjGetFoceiControl.irlsfoce <- function(x, ...) {
 
 #' Control options for the muagq estimation method
 #'
-#' This is the mu-referenced-FOCEI-family closed-form-regression (`"lin"`)
-#' variant of adaptive Gauss-Hermite quadrature -- see
-#' `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
+#' adaptive Gauss-Hermite quadrature; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams agqControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -439,9 +436,8 @@ nmObjGetFoceiControl.muagq <- function(x, ...) {
 
 #' Control options for the irlsagq estimation method
 #'
-#' This is the mu-referenced-FOCEI-family reweighted-regression (`"irls"`)
-#' variant of adaptive Gauss-Hermite quadrature -- see
-#' `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
+#' adaptive Gauss-Hermite quadrature; see `foceiControl(muModel=)`.
 #'
 #' @inheritParams agqControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -530,9 +526,8 @@ nmObjGetFoceiControl.irlsagq <- function(x, ...) {
 
 #' Control options for the mulaplace estimation method
 #'
-#' This is the mu-referenced-FOCEI-family closed-form-regression (`"lin"`)
-#' variant of the Laplace method (`nAGQ=1`) -- see
-#' `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family closed-form-regression (`"lin"`) variant of
+#' the Laplace method (`nAGQ=1`); see `foceiControl(muModel=)`.
 #'
 #' @inheritParams laplaceControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -612,9 +607,8 @@ nmObjGetFoceiControl.mulaplace <- function(x, ...) {
 
 #' Control options for the irlslaplace estimation method
 #'
-#' This is the mu-referenced-FOCEI-family reweighted-regression (`"irls"`)
-#' variant of the Laplace method (`nAGQ=1`) -- see
-#' `foceiControl(muModel=)` for what this changes.
+#' Mu-referenced-FOCEI-family reweighted-regression (`"irls"`) variant of
+#' the Laplace method (`nAGQ=1`); see `foceiControl(muModel=)`.
 #'
 #' @inheritParams laplaceControl
 #' @param ... Parameters used in the default `foceiControl()`

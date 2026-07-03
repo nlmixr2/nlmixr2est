@@ -1,163 +1,89 @@
 # nlmixr2est (development version)
 
-- The test suite runs a single testthat worker on CI and on CRAN (so it
-  does not oversubscribe a core-limited runner) and parallel
-  (`Config/testthat/parallel`) elsewhere; rxode2's within-solve threads are
-  capped to 2 only on CRAN and left to rxode2's own management otherwise.
+- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
+  with a single population parameter.
 
-- `fit$time` now reports every estimation stage consistently; previously
-  stages under 5e-5 s were dropped, so the set of reported stages varied
-  with the platform's clock resolution.
+- Test suite uses a single testthat worker on CI/CRAN and parallel
+  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN.
 
-- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` (previously
-  `"nlminb"`) and `sigdig = 4` (previously `3`).  `rxUiDeparse()` of a
-  `foceiControl()` correctly omits `outerOpt` when it is left at this
-  default.
+- `fit$time` now reports every estimation stage consistently (previously
+  stages under 5e-5 s were dropped).
 
-- Added new mu-referenced FOCEI-family estimation methods: `mufocei`,
-  `irlsfocei` (FOCEI); `mufoce`, `irlsfoce` (FOCE); `muagq`, `irlsagq`
-  (adaptive Gauss-Hermite quadrature); `mulaplace`, `irlslaplace`
-  (Laplace).  For any theta/eta that participates in a mu-ref covariate
-  relationship (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`), the
-  covariate-coefficient theta(s) are excluded from the outer gradient
-  optimizer entirely and instead re-derived directly by a closed-form
-  OLS (`mu*` methods) or curvature-reweighted IRLS (`irls*` methods)
-  regression of each subject's back-calculated conditional value on the
-  covariate(s); the regression residual becomes that subject's eta.
-  This runs natively in C++ inside the same inner-optimization pass
-  every outer iteration already uses -- no restart loop, no repeated
-  model setup/compilation, no R-level round trip -- and converges to
-  comparable objective function values and parameter estimates as the
-  corresponding standard method, typically in less time. New
-  `foceiControl()` options control the mechanism: `muModel`
-  (`"none"`/`"lin"`/`"irls"`, default `"none"`), `muRefCovAlg`,
-  `muModelTol`, `muModelMaxCycles`. Ordinary `focei`/`foce`/`agq`/
-  `laplace`/`fo`/`foi` default to `muModel="none"` and are completely
-  unaffected; `fo`/`foi` are intentionally not given `mu*`/`irls*`
-  counterparts (their first-order approximation has no per-subject
-  conditional estimate to regress against).
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
+  `sigdig = 4`.
 
-- A mu-referenced theta with a finite boundary
-  (`ini(...~c(lower, est, upper))`) cannot use the mu-referenced
-  FOCEI-family regression above (it is an unconstrained solve with no
-  way to respect a box constraint), so it now automatically falls back
-  to ordinary, bounded outer-optimizer handling instead, with a warning
-  explaining why -- captured in the fit's `runInfo` the same way as any
-  other pre-fit warning. A bound on the group's population theta
-  excludes the whole theta/eta/covariate group; a bound on just one
-  covariate coefficient excludes only that covariate (treated as if it
-  were a time-varying covariate) while the population theta and any
-  other, unbounded covariates in the same group keep the speed-up. This
-  exclusion only ever applies to the new mu-referenced FOCEI family --
-  SAEM's own, unrelated mu-referencing and every other estimation method
-  are unaffected by theta boundaries.
+- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
+  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
+  `mulaplace`/`irlslaplace`. Mu-ref covariate-coefficient thetas are
+  solved by closed-form OLS (`mu*`) or IRLS (`irls*`) regression instead
+  of the outer gradient optimizer, converging to comparable estimates
+  typically faster. New `foceiControl()` options: `muModel`
+  (`"none"`/`"lin"`/`"irls"`), `muRefCovAlg`, `muModelTol`,
+  `muModelMaxCycles`. `fo`/`foi` do not get `mu*`/`irls*` counterparts
+  (no per-subject conditional estimate to regress against).
 
-- The live iteration-print table for the mu-referenced FOCEI family
-  (`muModel != "none"`) now shows an extra row with each mu-group
-  theta's current value (the latest in-C++ regression result) after
-  every real per-iteration print, and a blank/NA placeholder on
-  gradient-print rows, since these thetas are never part of the outer
-  optimizer's gradient finite-difference.
+- A mu-referenced theta with a finite boundary now falls back to
+  ordinary bounded outer-optimizer handling (with a warning) instead of
+  using the mu-ref regression above, since that solve is unconstrained.
 
-- When model estimation fails, all errors raised during the run are now
-  collected and reported together, instead of only the last error. This
-  is supported by a new `collectErr` argument to the internal
-  `.collectWarn()` helper, which captures errors alongside warnings and
-  returns them in the `error` element of its result list. As a result,
-  errors hidden by `on.exit({rxode2::rxProgressAbort()})` handlers
-  (such as the "Aborted calculation" message reported in issue 607)
-  no longer mask the underlying cause; both the inner stop message and
-  any follow-up error from `on.exit` are now reported to the user.
+- The mu-referenced FOCEI family's live iteration-print table now shows
+  each mu-group theta's current value as an extra row.
+
+- Errors during estimation are now collected and reported together
+  instead of only the last one (new `collectErr` argument to
+  `.collectWarn()`).
 
 - Fix issue 641: FOCEI now updates additive mu-referenced population
-  parameters whose initial estimates are large in magnitude.
-  Previously a missing branch in `.foceiOptEnvSetupScaleC()` let
-  `scaleC` fall through to the C++ default of `1/|init|`, which mapped
-  unit steps in scaled space to negligible steps in unscaled space and
-  effectively pinned such parameters at their initial value (e.g.
-  `tvemax <- -40` with no transform).
+  parameters with large-magnitude initial estimates (previously pinned
+  at their initial value due to a missing `scaleC` branch).
 
-- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
-  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
-  statically links its own OpenMP runtime, so when the parallel inner
-  loop called rxode2's solver across threads rxode2 saw every worker as
-  thread 0 and collapsed its per-thread solve buffers onto a single
-  slot, racing and corrupting the heap.  The inner loop now hands rxode2
-  the real thread id via `setRxThreadId()` from rxode2 api (requires the
-  matching rxode2).
+- Fix Windows heap-corruption segfault for parallel multi-core pooled
+  fits (`focei`, `foce`, `fo`, `laplace`, `agq`, and related pooled
+  optimizers) by passing the real thread id to rxode2's solver.
 
-- The iteration-time progress output emitted by every estimator
-  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
-  newuoa, uobyqa) now flows through a single shared printer
-  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
-  Each estimator's iteration trace has the same `#`/`U`/`X` row
-  layout, column wrapping, ANSI handling, periodic header re-emit
-  cadence, and per-iteration user-interrupt check.
+- Iteration-time progress output for all estimators now flows through a
+  single shared printer (`scaleApplyIterPrintControl`/`scalePrintFun`
+  in `src/scale.h`) with consistent layout and behavior.
 
-- New `iterPrintControl()` function bundles every iteration-print
-  option (`every`, `ncol`, `headerEvery`, `useColor`, `simple`) into
-  one validated, classed list.  Pass it via the existing `print`
-  argument on any `*Control()` function:
-  `foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))`.
-  The historical scalar form `foceiControl(print = 5, printNcol = 8)`
-  continues to work — internally the outer `*Control()` wraps the
-  scalar arguments into an `iterPrintControl()` call.
+- New `iterPrintControl()` bundles iteration-print options (`every`,
+  `ncol`, `headerEvery`, `useColor`, `simple`); pass via `print` on any
+  `*Control()`. The historical scalar form still works.
 
-- saem now applies the same parameter back-transforms as focei.
-  The `X` row shows `exp(theta)` for log-transformed thetas and
-  `expit(theta, lower, upper)` for logit-transformed ones, derived
-  from `ui$muRefCurEval` on the R side.
+- `saem` now applies the same parameter back-transforms as `focei` in
+  its iteration-print `X` row.
 
 - Estimators with no per-iteration objective function (saem) now
-  suppress the `Function Val.` column entirely instead of printing
-  `nan` in every iteration row.  The column header, separator, and
-  per-row prefix all shrink accordingly.
+  suppress the `Function Val.` column instead of printing `nan`.
 
-- The shared iteration-printer auto-skips degenerate rows: when a
-  method has no internal optimizer scaling (saem, group-C
-  optimizers with `scaleType = "none"`) the `U` row is dropped
-  because it would mirror `#`, and when there are also no
-  log/logit-transformed parameters the `X` row is dropped too —
-  so models with no transforms collapse to a single `#` row per
-  iteration.  Users who want to force-skip the U/X rows even with
-  transforms present can pass
-  `*Control(print = iterPrintControl(simple = TRUE))`.
+- The shared iteration-printer auto-skips the `U`/`X` rows when they'd
+  be redundant (no optimizer scaling / no transformed parameters); force
+  skip with `*Control(print = iterPrintControl(simple = TRUE))`.
 
 - Added focei, foce, foi, fo mixture support in `nlmixr2est`
 
-- Fix `focei` mixture models with llik residual distributions (`dnorm`,
-  `t`, `cauchy`): a matrix-orientation bug in `.backTransformParHistMix`
-  caused a "replacement has 1 row, data has N" error during
-  `foceiFinalizeTables` when a model had exactly one mixture probability
-  parameter.
+- Fix `focei` mixture models with llik residual distributions: a
+  matrix-orientation bug in `.backTransformParHistMix` caused an error
+  when a model had exactly one mixture probability parameter.
 
-- Fix `fit$mixList` returning only the first mixture component: the
-  prior probability vector stored in `env$mixProbabilities` was missing
-  the implicit last component, so `nMix` was derived as 1 instead of
-  the true number of components.
+- Fix `fit$mixList` returning only the first mixture component (the
+  stored prior-probability vector was missing the implicit last
+  component).
 
 - `parHistData` Back-Transformed rows now show mixture probability
-  parameters on the natural probability scale (0, 1) instead of the
-  raw mlogit estimation scale.
+  parameters on the natural probability scale instead of the raw
+  mlogit scale.
 
 - Hardened mixture-model (`mix()`) estimation:
-  - `est="nlme"` now errors clearly on `mix()` models instead of
-    silently freezing the mixture probability at its initial value
-    (nlme has no mixture support yet).
-  - Invalid initial mixture probabilities (out of `[0, 1]` or summing
-    to more than 1) now raise a clear error instead of silently
-    corrupting the SAEM/FOCEI fit.
-  - SAEM/FOCEI now warn (instead of silently continuing) when a
-    subject's posterior mixture-component likelihoods all underflow,
-    or when a final estimated mixture probability collapses toward
-    0/1 or requires rescaling — both signs the mixture components may
-    not be well identified.
-  - Fixed an unrelated regression where the SAEM omega-diagonal floor
-    for non-mu-referenced parameters was raised from `1e-20` to `1.0`
-    for every SAEM fit, not just mixture fits; the higher floor is now
-    scoped to mixture fits only, where it is needed for covariance
-    stability.
+  - `est="nlme"` now errors clearly on `mix()` models (unsupported)
+    instead of silently freezing the mixture probability.
+  - Invalid initial mixture probabilities now raise a clear error
+    instead of silently corrupting the fit.
+  - SAEM/FOCEI now warn when posterior mixture-component likelihoods
+    underflow, or when an estimated mixture probability collapses
+    toward 0/1 or needs rescaling.
+  - Fixed a regression where the SAEM omega-diagonal floor for
+    non-mu-referenced parameters was raised for every SAEM fit instead
+    of mixture fits only.
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`

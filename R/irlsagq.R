@@ -20,10 +20,8 @@ nlmixr2Est.irlsagq <- function(env, ...) {
 attr(nlmixr2Est.irlsagq, "iov") <- TRUE
 attr(nlmixr2Est.irlsagq, "covPresent") <- TRUE
 attr(nlmixr2Est.irlsagq, "unbounded") <- .foUnbounded
-# Activates the existing mu2/mu3/mu4 algebraic covariate rewriting hook
-# (.uiApplyMu2hook, see R/mu2.R) for complex covariate expressions -- see
-# .isMuMethod(). Gated on muModel/muRefCovAlg so it only fires for this
-# family, matching the "bit-identical when muModel='none'" requirement.
+# Activates mu2/mu3/mu4 covariate rewriting (R/mu2.R); gated on
+# muModel/muRefCovAlg for bit-identical behavior when muModel="none".
 attr(nlmixr2Est.irlsagq, "mu") <- function(control) {
   isTRUE(!identical(control$muModel, "none")) && isTRUE(control$muRefCovAlg)
 }

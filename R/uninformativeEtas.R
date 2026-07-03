@@ -19,13 +19,7 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 #' @param name name of the eta parameter
 #' @param ui rxode2 user interface object
 #' @param pm plus or minus values
-#' @param plus What type of deviate is this:
-#'
-#' - `plus=TRUE`: high estimate
-#'
-#' - `plus=FALSE`: low estimate
-#'
-#' - `plus=NA`: middle estimate
+#' @param plus High estimate if `TRUE`, low if `FALSE`, middle if `NA`
 #'
 #' @param saem is this a saem-style mu-referenced model?
 #'
@@ -64,15 +58,9 @@ attr(rxUiGet.transUE, "rstudio")  <- c(eta.ka="tka")
 #'   when choosing the quadrature points
 #' @param saem boolean indicating if the model is a mu-referenced.
 #' @param q plus or minus quadrature
-#' @return a list with:
-#'
-#' - `trans` the translation of the parameters
-#'   from etas to model pars (useful in mu-referenced modeling
-#'   algorithms like `saem`)
-#'
-#' - `dat` rxode2 translated dataset (using etTrans)
-#'
-#' - `param` full list of parameters to solve for
+#' @return a list with `trans` (eta-to-model-par translation, used in
+#'   mu-referenced algorithms like `saem`), `dat` (rxode2-translated
+#'   dataset via `etTrans`), and `param` (full parameter list to solve)
 #'
 #' @noRd
 #' @author Matthew L. Fidler

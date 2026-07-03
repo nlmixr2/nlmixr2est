@@ -2154,8 +2154,19 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   if (!is.null(.env$cov)) {
-    if (!checkmate::testMatrix(.env$cov, any.missing=FALSE, min.rows=1, #.var.name="env$cov",
-                               row.names="strict", col.names="strict")) {
+    # Accept NA only for whole ill-identified parameter rows/columns (see
+    # .nlmixr2RobustCov(), R/cov.R); any other missingness is malformed.
+    .validCov <- checkmate::testMatrix(.env$cov, min.rows=1, #.var.name="env$cov",
+                                       row.names="strict", col.names="strict")
+    if (.validCov && anyNA(.env$cov)) {
+      .bad <- which(is.na(diag(.env$cov)))
+      .good <- setdiff(seq_len(nrow(.env$cov)), .bad)
+      .validCov <- length(.bad) > 0 &&
+        all(is.na(.env$cov[.bad, , drop = FALSE])) &&
+        all(is.na(.env$cov[, .bad, drop = FALSE])) &&
+        !anyNA(.env$cov[.good, .good, drop = FALSE])
+    }
+    if (!.validCov) {
       .env$covDebug <- .env$cov
       .minfo(paste0("covariance not in proper form, can access value in ", crayon::bold$blue("$covDebug")))
       warning(paste0("covariance not in proper form, can access value in $covDebug"))

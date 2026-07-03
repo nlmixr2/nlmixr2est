@@ -118,6 +118,10 @@
                        resFixed,
                        ue,
                        mixProb = numeric(0),
+                       mixProbMethod = c("regularized", "annealed"),
+                       mixProbStepExp = 1,
+                       mixProbPriorN = 20,
+                       mixSampleMethod = c("parallel", "msaem"),
                        omegaShare = integer(0),
                        omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
@@ -488,16 +492,16 @@
     pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
+  # Decaying step-size schedule for the "annealed" mixProbMethod (see
+  # saemControl() docs); decays from iteration 1 instead of pas's
+  # full-replacement step throughout nBurn.
+  mixProbMethod <- match.arg(mixProbMethod)
+  pasMix <- 1 / (1:niter)^mixProbStepExp
+  mixSampleMethod <- match.arg(mixSampleMethod)
   minv <- rep(1e-20, nphi)
   if (length(mixProb) > 1L) {
-    # Mixture fits (nMix > 1): i0 indexes phi positions with no associated
-    # eta at all (ordinary fixed-effect/population-only thetas, e.g. tka in
-    # a model with no eta.ka) -- not "non-mu-referenced etas". Their
-    # mixture-weighted Gamma2_phi0 computation can become near-singular
-    # under some covariance methods (e.g. linFim); floor them higher to
-    # keep the covariance step stable. Non-mixture fits keep the tight
-    # 1e-20 floor, since inflating it there wrongly biases these
-    # population-only parameters (see git history for 38bb062e).
+    # Mixture fits: floor population-only phi0 params higher to keep
+    # covariance stable (mixture-weighted Gamma2_phi0 can be near-singular).
     minv[i0] <- 1.0
   }
 
@@ -532,6 +536,10 @@
     coef_sa = .95,
     pas = pas,
     pash = pash,
+    pasMix = pasMix,
+    mixProbMethod = if (identical(mixProbMethod, "regularized")) 1L else 0L,
+    mixProbPriorN = mixProbPriorN,
+    mixSampleMethod = if (identical(mixSampleMethod, "msaem")) 1L else 0L,
     minv = minv,
     N = N,
     ntotal = ntotal,

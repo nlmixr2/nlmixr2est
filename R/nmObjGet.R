@@ -21,23 +21,17 @@ nmObjGet <- function(x, ...) {
     .nmObjEnsureObjective(x[[1]])
   }
   if (.rstudioComplete()) {
-    # If Rstudio is running completion, then we need to simply
-    # return a dummy object so it doesn't calculate the value.
-    #
-    # However, if the object actually exists, then use the rxUiGet.default method
-    # to get the value.
+    # During Rstudio completion, return a dummy/rstudio value instead of computing the real one.
     .v <- as.character(utils::methods("nmObjGet"))
     .cls <- .arg
     .method <- paste0("nmObjGet.", .cls)
     if (.method %in% .v) {
-      # If there is a rstudio value in the method, assume that is what you
-      # wish to return for the rstudio auto-completion method
+      # Use the rstudio attr as the auto-completion return value, if present
       .rstudio <- attr(utils::getS3method("nmObjGet", .cls), "rstudio")
       if (length(.rstudio) == 0) {
         return(list("calculated value"))
       } else if (is.na(.rstudio)) {
-        # If the rstudio value is NA, then we assume that it is a passthrough
-        # and we return the value the next method
+        # NA rstudio value means passthrough to the next method's return value
       } else {
         return(.rstudio)
       }
@@ -117,23 +111,17 @@ nmObjGetData <- function(x, ...) {
     stop("'x' is wrong type for 'nmObjGetData'", call.=FALSE)
   }
   if (.rstudioComplete()) {
-    # If Rstudio is running completion, then we need to simply
-    # return a dummy object so it doesn't calculate the value.
-    #
-    # However, if the object actually exists, then use the rxUiGet.default method
-    # to get the value.
+    # During Rstudio completion, return a dummy/rstudio value instead of computing the real one.
     .v <- as.character(utils::methods("nmObjGetData"))
     .cls <- class(x)[1]
     .method <- paste0("nmObjGetData.", .cls)
     if (.method %in% .v) {
-      # If there is a rstudio value in the method, assume that is what you
-      # wish to return for the rstudio auto-completion method
+      # Use the rstudio attr as the auto-completion return value, if present
       .rstudio <- attr(utils::getS3method("nmObjGetData", .cls), "rstudio")
       if (length(.rstudio) == 0) {
         return(list("calculated value"))
       } else if (is.na(.rstudio)) {
-        # If the rstudio value is NA, then we assume that it is a passthrough
-        # and we return the value the next method
+        # NA rstudio value means passthrough to the next method's return value
       } else {
         return(.rstudio)
       }

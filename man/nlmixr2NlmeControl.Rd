@@ -237,29 +237,13 @@ this is \code{FALSE}.}
 object (by default FALSE).  If any of the nlme specific options
 of `random`, `fixed`, `sens`, the nlme object is returned}
 
-\item{addProp}{specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).
-
-The combined1 error type can be described by the following equation:
-
-  \deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err}
-
-The combined2 error model can be described by the following equation:
-
- \deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}
-
- Where:
-
- - y represents the observed value
-
- - f represents the predicted value
-
- - a  is the additive standard deviation
-
- - b is the proportional/power standard deviation
-
- - c is the power exponent (in the proportional case c=1)}
+\item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+\deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err};
+or `"combined2"`, where variances add:
+\deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}
@@ -273,55 +257,28 @@ function.  By default this is \code{TRUE}}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{sigdig}{Optimization significant digits. This controls:
-
-\itemize{
-
- \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-
- \item The tolerance of the ODE solvers is
- \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
- steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
- (sensitivity changes only applicable for liblsoda)
-
- \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-
-}}
+\item{sigdig}{Optimization significant digits; controls the inner/outer
+optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
+(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
+sensitivity/steady-state with liblsoda), and boundary check tolerance
+(\code{5*10^(-sigdig+1)}).}
 
 \item{sigdigTable}{Significant digits in the final output table.
 If not specified, then it matches the significant digits in the
 `sigdig` optimization algorithm.  If `sigdig` is NULL, use 3.}
 
-\item{muRefCovAlg}{This controls if algebraic expressions that can
-    be mu-referenced are treated as mu-referenced covariates by:
+\item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
+be mu-referenced are internally rewritten as mu-referenced
+covariates (more accurate, since it linearizes the system) and
+restored in the model after optimization. Mirrors
+\code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
+for \code{foceiControl()} only takes effect when
+\code{muModel != "none"}.}
 
-    1. Creating a internal data-variable `nlmixrMuDerCov#` for each
-       algebraic mu-referenced expression
-
-    2. Change the algebraic expression to `nlmixrMuDerCov# * mu_cov_theta`
-
-    3. Use the internal mu-referenced covariate for the estimation method
-
-    4. After optimization is completed, replace `model({})` with old
-    `model({})` expression
-
-    5. Remove `nlmixrMuDerCov#` from nlmix2 output
-
-    In general, these covariates should be more accurate since it
-    changes the system to a linear compartment model.  Therefore, by
-    default this is `TRUE`.  For \code{foceiControl()} this only has an
-    effect for the mu-referenced-FOCEI-family methods
-    (\code{muModel != "none"}); it mirrors
-    \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)} and
-    reuses the same underlying mu2/mu3/mu4 algebraic rewriting machinery.}
-
-\item{eventSens}{controls how dosing/event-parameter (`alag`, `F`,
-`rate`, `dur`) sensitivities are computed whenever the estimation
-method needs the gradient of the model with respect to `THETA`
-or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
-("jump") sensitivities into the sensitivity states at each dosing
-event; `"fd"` keeps the legacy finite-difference behavior instead
-(the backward-compatible opt-out).}
+\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.}
 
 \item{...}{Further, named control arguments to be passed to
    \code{\link{nlminb}} (apart from \code{trace} and \code{iter.max}

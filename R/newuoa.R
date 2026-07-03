@@ -335,28 +335,9 @@ getValidNlmixrCtl.newuoa <- function(control) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
+  # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
+  # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
+  # est, ofvType (a foceiControl object is also needed downstream)
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .newuoa <- .collectWarn(.newuoaFitModel(.ui, .ret$dataSav), lst = TRUE)
