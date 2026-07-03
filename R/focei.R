@@ -1857,15 +1857,16 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 
 #' Post-fit half of the `covType="analytic"` engine
 #'
-#' The pre-fit half is in [.foceiFamilyControl], which sets `.covAnalyticMode` and
-#' skips the FD cov step when in scope.  Driven by that mode: `"compute"` (in
-#' scope, FD was skipped) computes the analytic cov and installs it as `$cov`, or,
-#' if the augmented ODE solve fails, warns and produces no covariance; `"fd"` (out
-#' of scope) means the FD cov already ran as the fallback, so this just announces
-#' it.  The analytic engine [.foceiCov] is a post-fit oracle over a fit object, so a
-#' light shim exposes the pieces it needs (finalUi/omega/eta/dataSav).
+#' The finite-difference cov has already run (its machinery is untouched).  Driven by
+#' `.covAnalyticMode` from [.foceiFamilyControl]: `"compute"` (in analytic scope)
+#' computes the exact analytic cov and, when it succeeds, overwrites the FD `$cov`
+#' with it; if the analytic engine cannot produce one (out of scope on the data, or
+#' an augmented ODE that will not solve) the FD cov stays as the fallback.  `"fd"`
+#' (out of scope up front) just announces that FD was used.  The analytic engine
+#' [.foceiCov] is a post-fit oracle over a fit object, so a light shim exposes the
+#' pieces it needs (finalUi/omega/eta/dataSav).
 #' @param .ret focei fit environment
-#' @return nothing; may set `.ret$cov`
+#' @return nothing; may overwrite `.ret$cov` with the analytic cov
 #' @author Hidde van de Beek
 #' @noRd
 .foceiAnalyticCovOverride <- function(.ret) {
@@ -1887,9 +1888,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   # SEs would be on the wrong (transformed) scale -- bow out to FD (#697 review,
   # finding 9).
   if (length(.ui$boundedTransforms)) {
-    warning(paste0("nlmixr2: covType=\"analytic\" does not support bounded-parameter ",
-                   "transforms; re-run with covType=\"fd\" for the finite-difference ",
-                   "covariance."), call. = FALSE)
+    # the FD cov (already computed) carries the natural-scale Jacobian; keep it
+    .minfo("analytic covariance does not support bounded-parameter transforms; using finite differences")
     return(invisible())
   }
   .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", FALSE))
@@ -1911,19 +1911,26 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .shim <- list(finalUi = .ui, omega = .ret$omega, eta = .ret$ranef,
                 dataSav = .ret$dataSav)
   .ac <- tryCatch(.foceiCov(.shim, covFull = .covFull), error = function(e) NULL)
+  # The finite-difference cov already ran (existing machinery).  Overwrite it with the
+  # exact analytic cov only when analytic succeeded AND the FD step produced a cov --
+  # if analytic could not (out of scope on the data, augmented ODE failure) the FD cov
+  # stays as the fallback (#697 review 5); if the FD step itself declined (e.g. a
+  # boundary estimate, #697 review 12) that refusal is respected, not overridden.
+  .hasFd <- exists("cov", envir = .ret, inherits = FALSE) && is.matrix(.ret$cov)
   if (is.null(.ac)) {
-    warning(paste0("nlmixr2: covType=\"analytic\" produced no covariance for this fit ",
-                   "(the augmented ODE did not solve, or the model is outside the ",
-                   "analytic scope, e.g. censored data or multiple endpoints); re-run ",
-                   "with covType=\"fd\" for the finite-difference covariance."),
-            call. = FALSE)
+    if (.hasFd) {
+      .minfo("analytic covariance not available for this fit; using the finite-difference covariance")
+    }
+    return(invisible())
+  }
+  if (!.hasFd) {                                          # FD declined (boundary/etc.): keep the refusal
     return(invisible())
   }
   .ret$cov <- .ac$cov
   .ret$covMethod <- .ac$method                          # "analytic-fd2" / "analytic"
   assign(".covMethodEngine", paste0("analytic (", .ac$method, ")"), envir = .ret)
-  # the C++ cov step was skipped, so popDf came back with NA SEs; fill the
-  # SE/%RSE/CI columns from the analytic cov so the printed table matches an FD fit.
+  # refill the SE / %RSE / CI columns of the parameter table from the analytic cov so
+  # the printed table matches the installed covariance (was the FD one until now).
   .foceiAnalyticFillParFixed(.ret, .ac$se)
   invisible()
 }
@@ -1959,9 +1966,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
 
 #' Fill the parameter table from an externally-computed covariance
 #'
-#' For the `covType="analytic"` path where the C++ cov step was skipped (so
-#' `popDf` came back with NA SEs), rebuilds the numeric SE / %RSE / back-
-#' transformed CI columns of `popDf` and the character `popDfSig` in the same form
+#' For the `covType="analytic"` path (where the analytic cov overwrote the FD one),
+#' rebuilds the numeric SE / %RSE / back-transformed CI columns of `popDf` from the
+#' analytic covariance and the character `popDfSig` in the same form
 #' `foceiFinalizeCov` (src/inner.cpp) builds them for a finite-difference cov, so
 #' the printed table is identical.  Runs before [.updateParFixed], which then
 #' appends the BSV / shrinkage columns as usual.
@@ -2283,19 +2290,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   if (.control$needOptimHess) {
     .control$interaction <- 0L
   }
-  # Analytic covariance engine: decide the engine UP FRONT so the (expensive)
-  # finite-difference cov step is not computed just to be thrown away.  covType="fd"
-  # is untouched (FD as requested).  covType="analytic": if the model is structurally
-  # in analytic scope, zero covMethod so the C++ fit skips the FD Hessian entirely and
-  # the exact analytic cov is computed post-fit ([.foceiAnalyticCovOverride]); if out
-  # of scope, leave covMethod so FD runs as the fallback.  `.covAnalyticMode` carries
-  # the decision to the post-fit half.  A no-cov request (covMethod==0) is left alone.
+  # Analytic covariance engine (covType="analytic").  The finite-difference cov runs
+  # as usual (the existing C++ machinery); when the model is in analytic scope, the
+  # exact analytic cov overwrites it post-fit ([.foceiAnalyticCovOverride]).  If the
+  # analytic engine cannot produce a cov (out of scope on the data, or an augmented
+  # ODE that will not solve) the FD cov it computed stays, so FD is always the
+  # fallback -- at the cost of computing FD even when analytic wins.  `.covAnalyticMode`
+  # carries the decision.  A no-cov request (covMethod==0) is left alone.
   if (identical(.control$covType, "analytic") &&
         !is.null(.control$covMethod) && .control$covMethod != 0L) {
     assign("control", .control, envir = .ui)   # so the scope check sees addProp etc.
     if (.foceiAnalyticInScope(.ui)) {
       .control$.covAnalyticMode <- "compute"
-      .control$covMethod <- 0L
     } else {
       .control$.covAnalyticMode <- "fd"
     }

@@ -331,8 +331,13 @@ test_that("analytic covariance handles the #697 review edge cases", {
   expect_false(.foceiAnalyticInScope(fme$finalUi))               # gate keeps FD
   expect_null(.foceiCovAnalytic(fme, covFull = TRUE))            # engine bows out too
 
-  # finding 4: censored (BLOQ) data is out of scope -> finite-difference fallback
+  # finding 4/5: censored (BLOQ) data is out of scope; the analytic engine bows out
+  # and the fit still gets a covariance from the finite-difference fallback.
   dc <- nlmixr2data::theo_sd; dc$CENS <- 0L; dc$CENS[dc$DV < 3 & dc$EVID == 0] <- 1L
   fc <- suppressMessages(nlmixr(m, dc, "focei", foceiControl(print = 0L, covMethod = "")))
-  expect_null(.foceiCovAnalytic(fc, covFull = TRUE))
+  expect_null(.foceiCovAnalytic(fc, covFull = TRUE))            # engine bows out
+  fcf <- suppressMessages(suppressWarnings(
+    nlmixr(m, dc, "focei", foceiControl(print = 0L, covType = "analytic", covMethod = "r,s"))))
+  expect_true(is.matrix(fcf$cov))                              # finding 5: FD fallback still gives a cov
+  expect_false(grepl("analytic", fcf$covMethod))               # ... and it is the finite-difference one
 })
