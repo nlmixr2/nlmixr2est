@@ -724,6 +724,10 @@ public:
     statphi12 = as<mat>(x["statphi12"]);
     omegaShare = x.containsElementNamed("omegaShare") ? as<uvec>(x["omegaShare"]) : uvec();
     omegaShareSubpop = x.containsElementNamed("omegaShareSubpop") ? as<uvec>(x["omegaShareSubpop"]) : uvec();
+    statphi11_mix.set_size(std::max(nMix, 1));
+    for (int _j = 0; _j < std::max(nMix, 1); _j++) {
+      statphi11_mix(_j) = statphi11;
+    }
 
     nphi0 = as<int>(x["nphi0"]);
     if (nphi0>0) {
@@ -960,6 +964,10 @@ public:
       mat Statphi01 = zeros<mat>(N, nphi0);
       mat Statphi12 = zeros<mat>(nphi1, nphi1);
       mat Statphi02 = zeros<mat>(nphi0, nphi0);
+      field<mat> Statphi11_mix(std::max(nMix, 1));
+      for (int _j = 0; _j < std::max(nMix, 1); _j++) {
+        Statphi11_mix(_j) = zeros<mat>(N, nphi1);
+      }
       double statr[MAXENDPNT];
       for (int b = 0; b < nendpnt; b++) {
         statr[b] = 0.0;
@@ -1178,6 +1186,14 @@ public:
             for (int jMix = 0; jMix < nMix; jMix++) {
               rowvec phi1_ji = phi1_mix(jMix).row(row_idx);
               rowvec phi0_ji = phi0_mix(jMix).row(row_idx);
+
+              // Unblended, per-component accumulation (no mixWeights
+              // factor here -- responsibility is applied as an explicit
+              // regression weight later, not baked into the value): this
+              // is what lets the theta M-step for mixture-owned columns
+              // avoid diluting a component's own informative MCMC draws
+              // with the other component's uninformative ones.
+              Statphi11_mix(jMix).row(i) += phi1_ji;
 
               phi1_w += mixWeights(i, jMix) * phi1_ji;
               phi0_w += mixWeights(i, jMix) * phi0_ji;
@@ -1437,6 +1453,11 @@ public:
       if (DEBUG>0) Rcout << "integration successful\n";
 
       statphi11=statphi11+pas(kiter)*(Statphi11/nmc-statphi11);
+      if (nMix > 1) {
+        for (int _j = 0; _j < nMix; _j++) {
+          statphi11_mix(_j) = statphi11_mix(_j) + pas(kiter)*(Statphi11_mix(_j)/nmc - statphi11_mix(_j));
+        }
+      }
       statphi12=statphi12+pas(kiter)*(Statphi12/nmc-statphi12);
       statphi01=statphi01+pas(kiter)*(Statphi01/nmc-statphi01);
       // s_{2, k} = statphi02
@@ -1448,6 +1469,47 @@ public:
       // update parameters
       vec Plambda1, Plambda0;
       Plambda1=inv_sympd(CGamma21)*sum((D1Gamma21%(COV1.t()*statphi11)),1);
+      // Split-ETA mixture-owned columns (e.g. eta.cl1/eta.cl2, each used by
+      // only one mix() component): the blended statphi11 used above dilutes
+      // each column with the *other* component's uninformative MCMC draws
+      // (that component's likelihood doesn't depend on this eta at all, so
+      // its sample just wanders its prior), which couples tcl1/tcl2 and
+      // shrinks their apparent BSV toward zero. Override just these
+      // columns' theta(s) with a proper responsibility-weighted regression
+      // against the clean, per-component statphi11_mix. This is safe (the
+      // joint system is genuinely separable) only when this column has no
+      // assumed correlation with any other phi1 column, since Gamma2_phi1's
+      // off-diagonal would otherwise couple it back into the shared solve.
+      if (nMix > 1 && omegaShareSubpop.n_elem == (unsigned int)nphi1) {
+        for (unsigned int c = 0; c < (unsigned int)nphi1; c++) {
+          unsigned int subpop = omegaShareSubpop(c);
+          if (subpop < 1 || subpop > (unsigned int)nMix) continue;
+          bool diagOnly = true;
+          for (unsigned int cc = 0; cc < (unsigned int)nphi1; cc++) {
+            if (cc != c && covstruct1(c, cc) != 0) { diagOnly = false; break; }
+          }
+          if (!diagOnly) continue;
+          uvec lambdaIdx = find(LCOV1.col(c) == 1);
+          if (lambdaIdx.n_elem == 0) continue;
+          vec w = mixWeights.col(subpop - 1);
+          mat Xl = COV1.cols(lambdaIdx);
+          mat XtW = Xl.t() * diagmat(w);
+          mat XtWX = XtW * Xl;
+          vec y = statphi11_mix(subpop - 1).col(c);
+          vec XtWy = XtW * y;
+          bool fixedCol = false;
+          if (fixedIx1.n_elem > 0) {
+            for (unsigned int li = 0; li < lambdaIdx.n_elem; li++) {
+              if (any(fixedIx1 == lambdaIdx(li))) { fixedCol = true; break; }
+            }
+          }
+          if (fixedCol) continue;
+          mat XtWXi;
+          if (inv_sympd(XtWXi, XtWX)) {
+            Plambda1(lambdaIdx) = XtWXi * XtWy;
+          }
+        }
+      }
       if (fixedIx1.n_elem>0) {
         Plambda1(fixedIx1) = MCOV1(jcov1(fixedIx1));
       }
@@ -2347,6 +2409,13 @@ private:
   uvec ilambda1, ilambda0;
 
   mat statphi01, statphi02, statphi11, statphi12;
+  // Per-mixture-component, unblended, stochastic-approximation-smoothed
+  // sufficient statistic for phi1 (same role as statphi11, but never mixed
+  // with the other component's MCMC draws). Used to fix tcl1/tcl2-style
+  // fixed effects for split-ETA mixture-owned columns via a weighted
+  // regression -- see the omegaShareSubpop block after Plambda1's main
+  // (blended) computation.
+  field<mat> statphi11_mix;
   double statrese[MAXENDPNT];
   double sigma2[MAXENDPNT];
   vec ares, bres, cres, lres, lambda, low, hi;
