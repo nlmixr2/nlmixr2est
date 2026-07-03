@@ -2,7 +2,7 @@
 % Please edit documentation in R/hook.R
 \name{postFinalObjectHooksRm}
 \alias{postFinalObjectHooksRm}
-\title{Remove the hook from the pre-final table nlmixr2est}
+\title{Remove a post-final-object hook from nlmixr2est}
 \usage{
 postFinalObjectHooksRm(name)
 }
@@ -13,8 +13,7 @@ postFinalObjectHooksRm(name)
 logical indicating if the hook was removed (invisibly)
 }
 \description{
-This removes the hook from nlmixr2est.  If the hook does not exist, a warning
-is issued.
+Warns if the hook does not exist.
 }
 \seealso{
 Other preProcessHooks:

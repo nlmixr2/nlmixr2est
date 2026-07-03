@@ -7,24 +7,12 @@
 #' @inheritParams saemControl
 #' @inheritParams nlmControl
 #'
-#' @param solveType tells if `optim` will use nlmixr2's analytical
-#'   gradients when available (finite differences will be used for
-#'   event-related parameters like parameters controlling lag time,
-#'   duration/rate of infusion, and modeled bioavailability). This can
-#'   be:
-#'
-#' - `"gradient"` which will use the gradient and let `optim` calculate
-#'    the finite difference hessian
-#'
-#' - `"fun"` where optim will calculate both the finite difference
-#'    gradient and the finite difference Hessian
-#'
-#'  When using nlmixr2's finite differences, the "ideal" step size for
-#'  either central or forward differences are optimized for with the
-#'  Shi2021 method which may give more accurate derivatives
-#'
-#' These are only applied in the gradient based methods: "BFGS", "CG",
-#' "L-BFGS-B"
+#' @param solveType controls whether `optim` uses nlmixr2's analytical
+#'   gradients (event-related parameters like lag time/duration/rate/F use
+#'   Shi2021 finite differences instead). `"gradient"` supplies the gradient
+#'   and lets `optim` compute the finite-difference Hessian; `"fun"` lets
+#'   `optim` compute both by finite differences. Only applies to the
+#'   gradient-based methods: "BFGS", "CG", "L-BFGS-B".
 #'
 #' @param returnOptim logical; when TRUE this will return the optim
 #'   list instead of the nlmixr2 fit object

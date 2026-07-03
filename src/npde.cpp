@@ -112,19 +112,13 @@ arma::mat decorrelateNpdeMat(arma::mat& varsim, unsigned int& warn, unsigned int
 
 
 
-// This is similar to a truncated normal BUT the truncated normal handles the range (low,hi)
-// so instead of updating the DV based on cdf method, simply use the truncated normal
-// we also don't need to back-calculate the simulated DV value
+// Like a truncated normal but without needing to back-calculate the simulated DV value.
 static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, arma::vec &limit,
                                      int &censMethod, bool &doLimit,
                                      unsigned int i, arma::vec &ru2,  arma::vec &ru3, unsigned int& K, bool &ties) {
   if (censMethod != CENS_CDF) return;
-  // For left censoring NPDE the probability is already calculated with the current pd
-  // 1. Replace value with lloq
-  // 2. The current pd represents the probability being below the limit of quantitation;
-  //    If it is right censored 1-pde[i] represents the probability of being above the limit of quantitation
-  // 4. For blq the pd is replaced with runif(0, p(bloq)) or runif(p(paloq), 1)
-  // 5. The epred is then replaced with back-calculated uniform value based on sorted tcomp of row
+  // pd already holds the below-limit probability (left cens) or 1-pd (right cens);
+  // replace with runif over that range, then back-calculate EPRED from sorted tcomp.
   arma::vec curRow;
   unsigned int j, j2;
   double low, hi, low2, hi2;
@@ -155,9 +149,7 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, 
   else hi = curRow[j+1];
   if (j2+1 >= K) hi2 = (j2 > 0) ? (2*low2 - curRow[j2-1]) : low2;
   else hi2 = curRow[j2+1];
-  // check if this makes sense
-  // Use npd instead of npde as suggested by Nguyen2017
-  // Could be turned on/off by npdeControl()
+  // Use npd instead of npde as suggested by Nguyen2017; toggled by npdeControl()
   if (ties) {
     ret.yobst[i] = hi2;
   }

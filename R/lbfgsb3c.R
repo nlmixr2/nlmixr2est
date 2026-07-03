@@ -9,32 +9,23 @@
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit
 #'
-#' @param trace If positive, tracing information on the progress of
-#'   the optimization is produced. Higher values may produce more
-#'   tracing information: for method "L-BFGS-B" there are six levels
-#'   of tracing. (To understand exactly what these do see the source
-#'   code: higher levels give more detail.)
+#' @param trace If positive, print tracing information; higher values give
+#'   more detail (see source for "L-BFGS-B" trace levels).
 #'
-#' @param factr controls the convergence of the "L-BFGS-B" method.
-#'   Convergence occurs when the reduction in the objective is within
-#'   this factor of the machine tolerance. Default is 1e7, that is a
-#'   tolerance of about 1e-8.
+#' @param factr Convergence tolerance factor for "L-BFGS-B"; converges when
+#'   the objective reduction is within this factor of machine tolerance
+#'   (default 1e7, i.e. ~1e-8).
 #'
-#' @param pgtol helps control the convergence of the "L-BFGS-B"
-#'   method. It is a tolerance on the projected gradient in the
-#'   current search direction. This defaults to zero, when the check
-#'   is suppressed.
+#' @param pgtol Tolerance on the projected gradient for "L-BFGS-B"; 0
+#'   (default) suppresses the check.
 #'
-#' @param abstol helps control the convergence of the "L-BFGS-B"
-#'   method. It is an absolute tolerance difference in x values. This
-#'   defaults to zero, when the check is suppressed.
+#' @param abstol Absolute x-value tolerance for "L-BFGS-B"; 0 (default)
+#'   suppresses the check.
 #'
-#' @param reltol helps control the convergence of the "L-BFGS-B"
-#'   method. It is an relative tolerance difference in x values. This
-#'   defaults to zero, when the check is suppressed.
+#' @param reltol Relative x-value tolerance for "L-BFGS-B"; 0 (default)
+#'   suppresses the check.
 #'
-#' @param lmm is an integer giving the number of BFGS updates retained
-#'   in the "L-BFGS-B" method, It defaults to 5.
+#' @param lmm Number of BFGS updates retained in "L-BFGS-B" (default 5).
 #'
 #' @param maxit maximum number of iterations.
 
@@ -332,8 +323,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   # support gradient
   .ret <- bquote(lbfgsb3c::lbfgsb3c(
     par=.(.env$par.ini),
-    # Calls grad with every function evaluation, use .nlmixrOptimFunC
-    # which does as well
+    # fn is called every eval too, so use .nlmixrOptimFunC like gr does
     fn=.(nlmixr2est::.nlmixrOptimFunC),
     gr=.(nlmixr2est::.nlmixrOptimGradC),
     control=.(.oCtl),

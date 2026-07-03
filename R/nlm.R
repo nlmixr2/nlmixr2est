@@ -4,32 +4,17 @@
 #' @inheritParams stats::nlm
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
-#' @param covMethod allows selection of "r", which uses nlmixr2's
-#'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
-#'   the hessian from `stats::nlm(.., hessian=TRUE)`. When using
-#'   `nlmixr2's` hessian for optimization or `nlmixr2's` gradient for
-#'   solving this defaults to "nlm" since `stats::optimHess()` assumes
-#'   an accurate gradient and is faster than `nlmixr2Hess`
+#' @param covMethod "r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
+#'   "nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
+#'   "nlm" when using nlmixr2's hessian/gradient for solving.
 #' @param returnNlm is a logical that allows a return of the `nlm`
 #'   object
-#' @param solveType tells if `nlm` will use nlmixr2's analytical
-#'   gradients when available (finite differences will be used for
-#'   event-related parameters like parameters controlling lag time,
-#'   duration/rate of infusion, and modeled bioavailability). This can
-#'   be:
-#'
-#'  - `"hessian"` which will use the analytical gradients to create a
-#'     Hessian with finite differences.
-#'
-#' - `"gradient"` which will use the gradient and let `nlm` calculate
-#'    the finite difference hessian
-#'
-#' - `"fun"` where nlm will calculate both the finite difference
-#'    gradient and the finite difference Hessian
-#'
-#'  When using nlmixr2's finite differences, the "ideal" step size for
-#'  either central or forward differences are optimized for with the
-#'  Shi2021 method which may give more accurate derivatives
+#' @param solveType controls whether `nlm` uses nlmixr2's analytical
+#'   gradients (event-related parameters like lag time/duration/rate/F use
+#'   Shi2021 finite differences instead): `"hessian"` builds a Hessian from
+#'   the analytical gradient via finite differences, `"gradient"` supplies
+#'   the gradient and lets `nlm` compute the finite-difference Hessian, and
+#'   `"fun"` lets `nlm` compute both by finite differences.
 #'
 #' @param shiErr This represents the epsilon when optimizing the ideal
 #'   step size for numeric differentiation using the Shi2021 method
@@ -217,10 +202,8 @@ nlmControl <- function(typsize = NULL,
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
-  ## Event ("jump") sensitivity method for the analytic gradient (thetaGrad)
-  ## model.  "jump" routes the dosing-parameter (alag/F/rate/dur) sensitivities
-  ## through rxode2's analytic event jumps; "fd" keeps the legacy behavior where
-  ## the augmented sensitivity ODE misses the event jump.
+  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
   eventSens <- match.arg(eventSens)
 
   .iterPrintControl <- .absorbIterPrintControl(print = print,
@@ -703,15 +686,8 @@ rxUiGet.nlmEnv <- function(x, ...) {
   } else {
     .eventTheta <- integer(0)
   }
-  ## `eventTheta` flags the population parameters that enter a dosing expression
-  ## (alag/F/rate/dur).  In the "fd" path nlm overrides their analytic gradient
-  ## column with a shi21 finite difference (nlmOp.thetaFD) because the augmented
-  ## sensitivity ODE misses the event jump.  Under "jump" rxode2 injects the
-  ## analytic jump into those rx__sens_*_BY_THETA_n___ states, so the analytic
-  ## gradient is now correct and the finite-difference override must be turned
-  ## OFF (otherwise the jump-corrected column is computed but discarded for FD).
-  ## Leaving the flags at zero routes every parameter through the analytic
-  ## sensitivity.
+  ## eventTheta flags dosing-parameter (alag/F/rate/dur) THETAs; under "fd" nlm
+  ## overrides their gradient with finite differences, under "jump" it's left analytic since rxode2 injects the jump directly.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   if (!identical(.eventSens, "jump")) {
     for (.v in .s$..eventVars) {
@@ -752,10 +728,7 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 rxUiGet.nlmSensModel <- function(x, ...) {
   .s <- rxUiGet.nlmEnv(x, ...)
   ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
-  ## the thetaGrad model so the population-parameter gradient picks up the dosing
-  ## jumps analytically.  nlm reads the analytic rx__sens_*_BY_THETA_n___ values
-  ## as its only gradient source (it has no event finite-difference fallback), so
-  ## under "fd" the gradient simply misses the jump.
+  ## the thetaGrad model; nlm has no FD fallback so under "fd" the gradient simply misses the jump.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
   list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
@@ -835,9 +808,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   } else {
     .mi <- ui$nlmSensModel
   }
-  ## Event ("jump") sensitivities are activated inside .nlmSetupEnv (before the
-  ## scaleC solve) and deactivated in .nlmFreeEnv, so nothing extra is needed
-  ## here for eventSens="jump".
+  ## Event ("jump") sensitivities are activated in .nlmSetupEnv and deactivated in .nlmFreeEnv; nothing extra needed here.
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
   on.exit({.nlmFreeEnv()})
   .ret <- eval(bquote(stats::nlm(

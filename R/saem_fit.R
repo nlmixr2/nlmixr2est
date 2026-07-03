@@ -493,25 +493,16 @@
     pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
-  # Independent, damped step-size schedule for the mixture-probability
-  # update ("annealed" mixProbMethod): decays from iteration 1 instead of
-  # being held at a full-replacement step of 1 throughout nBurn like `pas`
-  # is for ordinary parameters. See saemControl()'s mixProbMethod docs for
-  # why the mixing probability specifically needs this (it feeds back
-  # multiplicatively into its own next update, unlike theta/omega).
+  # Decaying step-size schedule for the "annealed" mixProbMethod (see
+  # saemControl() docs); decays from iteration 1 instead of pas's
+  # full-replacement step throughout nBurn.
   mixProbMethod <- match.arg(mixProbMethod)
   pasMix <- 1 / (1:niter)^mixProbStepExp
   mixSampleMethod <- match.arg(mixSampleMethod)
   minv <- rep(1e-20, nphi)
   if (length(mixProb) > 1L) {
-    # Mixture fits (nMix > 1): i0 indexes phi positions with no associated
-    # eta at all (ordinary fixed-effect/population-only thetas, e.g. tka in
-    # a model with no eta.ka) -- not "non-mu-referenced etas". Their
-    # mixture-weighted Gamma2_phi0 computation can become near-singular
-    # under some covariance methods (e.g. linFim); floor them higher to
-    # keep the covariance step stable. Non-mixture fits keep the tight
-    # 1e-20 floor, since inflating it there wrongly biases these
-    # population-only parameters (see git history for 38bb062e).
+    # Mixture fits: floor population-only phi0 params higher to keep
+    # covariance stable (mixture-weighted Gamma2_phi0 can be near-singular).
     minv[i0] <- 1.0
   }
 

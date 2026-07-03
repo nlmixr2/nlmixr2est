@@ -4,14 +4,9 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-/* Flush rxode2's aggregated ODE-solve warnings (intdy window-misses,
-   lsoda nhnil, dop853 stiff/step-too-small). Resolved lazily on first
-   call. The lookup runs inside R_ToplevelExec so a stale rxode2 that
-   predates the symbol — common when CI installs the released rxode2
-   from CRAN/RSPM against this branch — degrades to a no-op instead of
-   crashing the fit with "function 'rxSolveWarnFlush' not provided by
-   package 'rxode2'". Call sites: end of FOCEi outer iteration print
-   and end of SAEM per-iter print. */
+/* Flush rxode2's aggregated ODE-solve warnings; resolved lazily so a
+   stale rxode2 predating this symbol degrades to a no-op instead of
+   crashing the fit. Called at end of FOCEi/SAEM iteration print. */
 
 struct nmFlushLookup_ {
   void *fn; /* really a rxSolveWarnFlush_t but kept as void* in the struct */
@@ -31,9 +26,7 @@ static inline void nmFlushRxSolveWarn(int maxIds) {
   if (!triedLoad) {
     struct nmFlushLookup_ ctx;
     ctx.fn = NULL;
-    /* R_ToplevelExec returns TRUE iff the body completed without
-       longjmping. On failure ctx.fn is whatever the body wrote before
-       the error — we ignore it. */
+    /* R_ToplevelExec returns TRUE iff body completed without longjmping. */
     if (R_ToplevelExec(nmFlushLookupBody_, &ctx) && ctx.fn != NULL) {
       fn = (rxSolveWarnFlush_t) ctx.fn;
     }

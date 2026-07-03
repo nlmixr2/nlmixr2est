@@ -6,8 +6,7 @@
 #' @export
 #' @author Matthew L. Fidler
 .nlmixr0preProcessCovariatesPresent <- function(ui, est, data, control) {
-  # Could possibly use to stack data or use an DV or IDV different
-  # than what is present in the data
+  # Could later support stacking data or custom DV/IDV columns.
 
   if (!missing(data) &&
         length(data) > 0L &&

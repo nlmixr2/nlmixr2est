@@ -40,11 +40,10 @@ nmNearPD(
 \item{only.values}{logical; if \code{TRUE}, the result is just the
     vector of eigenvalues of the approximating matrix.}
 
-\item{ensureSymmetry}{logical; by default, \code{\link[Matrix]{symmpart}(x)}
-is used whenever \code{isSymmetric(x)} is not true.  The user
-can explicitly set this to \code{TRUE} or \code{FALSE}, saving the
-symmetry test. \emph{Beware} however that setting it \code{FALSE}
-for an \bold{a}symmetric input \code{x}, is typically nonsense!}
+\item{ensureSymmetry}{logical; symmetrizes `x` via
+\code{\link[Matrix]{symmpart}} unless already symmetric.
+\emph{Beware}: setting \code{FALSE} for asymmetric input is
+typically nonsense.}
 
 \item{eig.tol}{defines relative positiveness of eigenvalues compared
     to largest one, \eqn{\lambda_1}. Eigenvalues \eqn{\lambda_k} are

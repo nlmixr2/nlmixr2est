@@ -9,63 +9,24 @@
 #'
 #' @param data rxode2 compatible data for solving/setting up
 #'
-#' @param modelInfo A list containing the following elements:
-#'
-#' - `predOnly` -- A model with only predictions calculated.  These
-#' predictions should be in terms of `THETA[#]` and `DV`.  The
-#'
-#' - `eventTheta` is an indicator if the `THETA[#]` is related to an
-#' event (like `dur(x)` `f(x)`).  These variables will use Shi2021
-#' finite differences and need to be indicated when setting up the
-#' solving environment.  When finite differences are required, this is
-#' `1L` when they are not it should be `0L`.  This should match the
-#' length of `par`
-#'
-#' - `thetaGrad` -- needed when solveType != 1; a model that gives the
-#' value and gradient of each `THETA[#]`
-#'
-#' An example can be found with `ui$nlmSensModel` or `ui$nlmRxModel`
-#'
-#' @param control is a control structure with a few required elements:
-#'
-#' - `rxControl` represents the rxode2 solving options
-#' - `solveType` integer indicating the solveType (optional)
-#' - `stickyRecalcN`
-#' - `maxOdeRecalc`
-#' - `odeRecalcFactor`
-#' - `eventType` (optional)
-#' - `shi21maxFD` (optional)
-#' - `shiErr` (optional)
-#' - `optimHessType` (optional)
-#' - `shi21maxHess` (optional)
-#' - `hessErr` (optional)
-#' - `useColor`
-#' - `printNcol`
-#' - `print`
-#' - `normType`
-#' - `scaleType`
-#' - `scaleCmin`
-#' - `scaleCmax`
-#' - `scaleTo`
-#' - `scaleC`
-#' - `gradTo` (optional); if missing assumed gradTo=0
+#' @param modelInfo A list with `predOnly` (predictions-only model in terms of
+#'   `THETA[#]`/`DV`), `eventTheta` (0/1 per THETA flagging event-related
+#'   parameters that need Shi2021 finite differences, same length as `par`),
+#'   and `thetaGrad` (needed when solveType != 1; gives value/gradient per
+#'   THETA). See `ui$nlmSensModel` or `ui$nlmRxModel` for examples.
+#' @param control control structure; required: `rxControl`, `stickyRecalcN`,
+#'   `maxOdeRecalc`, `odeRecalcFactor`. Optional: `solveType`, `eventType`,
+#'   `shi21maxFD`, `shiErr`, `optimHessType`, `shi21maxHess`, `hessErr`,
+#'   `useColor`, `printNcol`, `print`, `normType`, `scaleType`, `scaleCmin`,
+#'   `scaleCmax`, `scaleTo`, `scaleC`, `gradTo` (default 0 if missing).
 #' @param lower lower bounds, will be scaled if present
 #' @param upper upper bounds, will be scaled if present
-#' @return nlm solve environment; of interest
-#'
-#' `$par.ini` -- scaled parameter initial value
-#'
-#' `$lower` -- scaled parameter lower value
-#'
-#' `$upper` -- scaled parameter upper value
-#'
-#' `$.ctl`  -- control structure
+#' @return nlm solve environment; key fields: `$par.ini`, `$lower`, `$upper`
+#'   (all scaled), and `$.ctl` (control structure).
 #'
 #' @details
 #'
-#' In between using this, rxode2 solving should not be called.
-#'
-#' This will also print the header for solving (if print != 0)
+#' No rxode2 solving should occur between setup calls; prints the solving header if `print != 0`.
 #'
 #' @author Matthew Fidler
 #' @keywords internal
@@ -117,24 +78,14 @@
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
-  # Iteration-print transforms: ship a single xform sub-list so the C
-  # side wires log/logit/probit back-transforms through one helper
-  # (scaleAttachXform in src/scale.h), identical to every other method
-  # (focei: env$xform, saem: .cfg$xform, nlm-family: .ctl$xform).
-  # nlm-family fits are population-only, so the printed parameters are
-  # just thetas in `par` order.
+  # Ship a single xform sub-list so C wires log/logit/probit back-transforms
+  # via scaleAttachXform (src/scale.h), like focei/saem; nlm-family prints thetas in `par` order.
   .ctl$xform <- .iterPrintXParFromUi(ui, names(par))
   .env$control <- .ctl
   .env$data <- nlmixr2global$nlmEnv$data
   .Call(`_nlmixr2est_nlmSetup`, .env)
-  ## Event ("jump") sensitivities: if the gradient model carries rxode2's
-  ## analytic jump info (eventSens="jump"), point rxode2's runtime globals at it
-  ## and turn the jump injection on NOW -- before the scaleC solve below.  The
-  ## nlm-family solves go through rxode2's ind_solve/handle_evid which reads
-  ## these globals; activating after scaleC would compute the parameter scaling
-  ## from a jump-less gradient and mis-scale the dosing parameters (leaving the
-  ## optimizer stuck).  Deactivation happens in .nlmFreeEnv (the universal
-  ## cleanup every nlm-family fit driver calls on exit).  No-op for "fd" models.
+  ## Activate event-jump sensitivity (if eventSens="jump") now, before the
+  ## scaleC solve -- doing it after would mis-scale dosing params from a jump-less gradient. Deactivated in .nlmFreeEnv; no-op for "fd".
   .env$esActive <- FALSE
   if (!is.null(.env$thetaGrad)) {
     .env$esActive <- isTRUE(tryCatch(
@@ -185,9 +136,7 @@
 .nlmFreeEnv <- function() {
  .Call(`_nlmixr2est_nlmFree`)
  rxode2::rxSolveFree()
- ## Turn off any event ("jump") sensitivity injection activated in
- ## .nlmSetupEnv so later unrelated solves are unaffected.  Safe no-op when it
- ## was never activated (just sets the runtime gate to inactive).
+ ## Deactivate any event-jump sensitivity injection from .nlmSetupEnv; no-op if never activated.
  tryCatch(rxode2::rxEventSensDeactivate(), error = function(e) NULL)
 }
 #' Finalizes output list

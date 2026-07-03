@@ -294,8 +294,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   on.exit({.nlmFreeEnv()})
   # support gradient
   .ret <- bquote(n1qn1::n1qn1(
-    # Calls grad with every function evaluation, use .nlmixrOptimFunC
-    # which does as well
+    # call_eval is called every eval too, so use .nlmixrOptimFunC like call_grad does
     call_eval=.(nlmixr2est::.nlmixrOptimFunC),
     #call_eval=.(nlmixr2est::.nlmixrNlminbFunC),
     call_grad=.(nlmixr2est::.nlmixrOptimGradC),

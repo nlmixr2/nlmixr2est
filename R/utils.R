@@ -224,11 +224,8 @@ nsis <- function() { ## build installer...
 # nlmixr2Print() -----------------------------------------------------------
 #' Print x using the message facility
 #'
-#' This allows the suppressMessages to work on print functions.  This
-#' captures the output function sends it through the message routine.
-#'
-#' catpureOutput was used since it is much faster than the internal
-#' capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
+#' Captures print() output and routes it through message() so
+#' suppressMessages() works on print functions.
 #' @param x object to print
 #' @return Nothing, called for its side effects
 #' @param ... Other things output
@@ -331,9 +328,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 
 #' Respect suppress messages for nlmixr2 C functions
 #'
-#' This turns on the silent REprintf in C when `suppressMessages()` is
-#' turned on. This makes the `REprintf` act like `messages` in R,
-#' they can be suppressed with `suppressMessages()`
+#' Makes C-level `REprintf` respect `suppressMessages()`, like R messages.
 #'
 #' @return Nothing
 #' @keywords internal
@@ -341,15 +336,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 #' @export
 #' @examples
 #'
-#' # nmSupressMsg() is called with nlmixr2()
-#'
-#' # In nlmixr2, we use REprintf so that interrupted threads do not crash R
-#' # if there is a user interrupt. This isn't captured by R's messages, but
-#' # This interface allows the `suppressMessages()` to suppress the C printing
-#' # as well
-#'
-#' # If you  want to suppress messages from nlmixr2 in other packages, you can use
-#' # this function
+#' # Called automatically by nlmixr2(); other packages can call it too.
 nmSuppressMsg <- function() {
   if (requireNamespace("knitr", quietly = TRUE)) {
     if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
@@ -381,11 +368,10 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #'
 #' @inherit Matrix::nearPD
 #'
-#' @param ensureSymmetry  logical; by default, \code{\link[Matrix]{symmpart}(x)}
-#' is used whenever \code{isSymmetric(x)} is not true.  The user
-#' can explicitly set this to \code{TRUE} or \code{FALSE}, saving the
-#' symmetry test. \emph{Beware} however that setting it \code{FALSE}
-#' for an \bold{a}symmetric input \code{x}, is typically nonsense!
+#' @param ensureSymmetry logical; symmetrizes `x` via
+#'   \code{\link[Matrix]{symmpart}} unless already symmetric.
+#'   \emph{Beware}: setting \code{FALSE} for asymmetric input is
+#'   typically nonsense.
 #'
 #' @return unlike the matrix package, this simply returns the nearest
 #'   positive definite matrix

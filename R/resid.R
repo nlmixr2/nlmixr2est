@@ -1,19 +1,11 @@
-#'  theta/eta parameters needed for residuals/shrinkage calculations
+#' Get theta/eta parameters needed for residuals/shrinkage calculations
 #'
 #' @param fit focei style fit
-#'
-#' @return list with:
-#'
-#'  - A rxode2 `params` dataset `pred` predictions
-#'
-#'  - A rxode2 `params` dataset for `ipred` predictions
-#'
-#'  - `eta.lst` is a numerical vector for each of the ETAs listed. The first 5 components are the mean, sd, variance, kurtosis and
-#'    skewness statistics.  The rest of the components will be filled in later when calculating the shrinkage dataframe
-#'
+#' @return list with rxode2 `params` datasets for `pred`/`ipred`, plus
+#'   `eta.lst` (mean/sd/variance/kurtosis/skewness per ETA; more filled in
+#'   later for shrinkage)
 #' @author Matthew Fidler
 #' @noRd
-#'
 
 
 # Since it can be accessed by the object, simply export it
@@ -88,10 +80,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     stop("cannot solve with `model` NULL", call.=FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  # The numeric versions are at
-  # https://github.com/nlmixr2/rxode2/blob/7e27a7842ca0b5dd849ea75833bc7c34be729e31/R/rxsolve.R#L804,
-  # but keeping them in sync will be fragile.  Only using the character
-  # versions.
+  # Use character method names, not numeric codes, to avoid staying in sync
+  # with rxode2 internals.
   currentOdeMethod <- fit$methodOde
   if (!inherits(currentOdeMethod, "character")) {
     cur <- as.integer(currentOdeMethod)+1L
@@ -105,8 +95,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       # ignore indLin for now
       "indLin"
     )
-  # Fallback methods based on discussion in
-  # https://github.com/nlmixr2/nlmixr2est/issues/254
+  # Fallback ODE methods, see nlmixr2/nlmixr2est#254
   if (currentOdeMethod %in% "dop853") {
     allOdeMethods <- "liblsoda"
   } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
@@ -123,11 +112,9 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
-  # For mixture models, pass per-subject mixture assignments via iCov so that
-  # rxode2 sets ind->mixest correctly (fixes 'me <- mixest' and uses the right
-  # parameter branch for each individual during the table solve).
-  # fit IS the underlying nlmixr2FitCore environment (passed via addTable ->
-  # object$env), so we can access it directly with exists()/get().
+  # For mixture models, pass per-subject mixture assignments via iCov so
+  # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
+  # nlmixr2FitCore environment, accessed directly.
   .iCov <- NULL
   .env <- fit
   if (!is.environment(.env) && is.environment(fit$env)) {
@@ -136,12 +123,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
     .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
   }
-  # Safety flag: if rxode2 rejects the iCov (e.g. older version before the
-  # lName[i]/liName[i] typo fix), fall back gracefully to no-iCov and let
-  # .mixFixTable() post-correct me/mn/mu from mixNum.
+  # Fallback flag: if rxode2 rejects iCov (older versions), retry without
+  # it; .mixFixTable() post-corrects me/mn/mu from mixNum.
   .iCovOK <- !is.null(.iCov)
   while (recalc & length(odeMethods) > 0) {
-    # Iterate through ODE methods
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
@@ -434,47 +419,23 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .ret[, -dim(.omega)[1] - 1]
 }
 
-#' Add Levels to Data Based on Fit Object
+#' Add factor levels to data based on fit object
 #'
-#' This function modifies a data frame by adding levels to a specified
-#' variable based on the levels defined in a fit$ui$levels
-#'
-#' @param fit A list object that contains a `ui` element with `levels`
-#'   to be added to the data.
-#' @param data A data frame that will be modified by adding levels to
-#'   one or more of its variables.
-#' @return A modified data frame with levels added to the specified
-#'   variables. If the variable's values are out of the defined range,
-#'   they are set to `NA`.
-#' @details The function checks if the `fit` object contains
-#'   levels.
-#'
-#' If levels are present, it iterates through them and modifies the
-#' corresponding variable in the data frame:
-#'
-#' - Converts the variable to integer type.
-#'
-#' - Sets values less than 1 to `NA_integer_`.
-#'
-#' - Sets values greater than the number of levels to `NA_integer_`.
-#'
-#' - Assigns the levels and sets the class of the variable to
-#'   "factor".
-#'
-#'
+#' @param fit A list with a `ui` element containing `levels` to apply.
+#' @param data A data frame to modify.
+#' @return Data frame with the specified variables converted to factors;
+#'   out-of-range values become `NA`.
 #' @author Matthew L. Fidler
-#'
 #' @noRd
 .addLevels <- function(fit, data) {
   .levels <-  fit$ui$levels
   if (!is.null(.levels)) {
     for (i in seq_along(.levels)) {
-      .cur <- .levels[[i]] # language expression of levels() declaration
-      .var <- deparse1(.cur[[2]][[2]]) # levels variable
-      .w <- which(names(data) == .var) # does one of the output
-                                       # variables match?
+      .cur <- .levels[[i]] # levels() expression
+      .var <- deparse1(.cur[[2]][[2]]) # levels variable name
+      .w <- which(names(data) == .var) # does an output var match?
       if (length(.w) == 1) {
-        # now change to a factor
+        # convert to factor
         data[[.var]] <- as.integer(data[[.var]])
         .w <- which(data[[.var]] < 1L)
         data[[.var]][.w] <- NA_integer_
@@ -876,11 +837,8 @@ addTable <- function(object, updateObject = FALSE,
 #' @inheritParams addNpde
 #' @inheritParams rxode2::rxSolve
 #'
-#' @details
-#'
-#' If you ever want to add CWRES/FOCEi objective function you can use the \code{\link{addCwres}}
-#'
-#' If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
+#' @details Use \code{\link{addCwres}} to add CWRES/FOCEi objective
+#'   function, or \code{\link{addNpde}} to add NPDE/EPRED columns.
 #'
 #' @return A list of table options for nlmixr2
 #' @author Matthew L. Fidler

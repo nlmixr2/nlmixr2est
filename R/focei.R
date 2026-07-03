@@ -2155,12 +2155,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
   }
   if (!is.null(.env$cov)) {
-    # A covariance matrix may legitimately have NA for specific
-    # ill-identified parameters (see .nlmixr2RobustCov(), R/cov.R):
-    # their whole row/column is NA, while every other (well-identified)
-    # parameter's row/column has no NA at all. That clean pattern is
-    # accepted; any other missingness (scattered NA, a partially-NA "good"
-    # parameter, etc.) still indicates a malformed matrix.
+    # Accept NA only for whole ill-identified parameter rows/columns (see
+    # .nlmixr2RobustCov(), R/cov.R); any other missingness is malformed.
     .validCov <- checkmate::testMatrix(.env$cov, min.rows=1, #.var.name="env$cov",
                                        row.names="strict", col.names="strict")
     if (.validCov && anyNA(.env$cov)) {

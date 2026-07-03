@@ -440,15 +440,8 @@ nmTest({
   })
 
   test_that("SAEM mixture components actually separate (not just 'no error')", {
-    # Regression test for the mixProb collapse bug: before the fix, this
-    # scenario deterministically collapsed every one of the 30 subjects
-    # onto a single component regardless of seed (mixProb converging to
-    # the same value independent of the data is the signature of the
-    # runaway feedback loop this guards against). The fix does not
-    # guarantee clean separation on every dataset/iteration budget --
-    # separation quality still depends on nBurn/nEm and mixProbPriorN --
-    # but it should reliably prevent the deterministic all-one-component
-    # failure mode.
+    # Regression test for the mixProb collapse bug (all subjects landing on
+    # one component regardless of seed).
     set.seed(42)
     n_subj <- 30
     sub_pop <- rbinom(n_subj, 1, 0.6) + 1 # 1 or 2
@@ -499,41 +492,24 @@ nmTest({
                    saemControl(print = 0, seed = 1234, nBurn = 200, nEm = 300,
                                calcTables = TRUE, covMethod = 0L))
 
-    # Both components should end up populated -- a full collapse (the bug
-    # this guards against) deterministically puts every subject in one
-    # component, regardless of seed or the data's true split.
+    # A full collapse puts every subject in one component regardless of seed.
     mixTab <- table(fit$mixNum$mixnum)
     expect_true(length(mixTab) > 1)
     expect_true(min(mixTab) >= 2)
 
-    # mixnum should track the true subpopulation better than a coin flip
-    # (a fully collapsed fit gets this right only by chance, at best
-    # matching the majority-class rate; it should not do *worse* than
-    # that either).
+    # mixnum should track the true subpopulation better than a coin flip.
     agree <- mean(fit$mixNum$mixnum[order(fit$mixNum$ID)] == sub_pop)
     expect_true(agree > 0.6 || (1 - agree) > 0.6) # allow for label swap
   })
 
   test_that("SAEM split-ETA fixed effects actually separate (not just 'no error')", {
-    # Regression test for a second, independent collapse mode: split-ETA
-    # SAEM fits (separate eta.cl1/eta.cl2, one per mixture component) could
-    # converge with tcl1 and tcl2 landing on nearly the same value even
-    # though the mixing probability (p1) and per-subject responsibilities
-    # were fine -- i.e. NOT the mixProb collapse tested above. Root cause
-    # was two independent bugs in src/saem.cpp/R/saem.R: (1) the theta
-    # M-step regressed a cross-component-blended sufficient statistic even
-    # for phi1 columns owned by a single component, diluting/coupling
-    # tcl1/tcl2; (2) .nlmixr2FitUpdateParams() rebuilt ui$iniDf from the
-    # *pooled* (display-only) omega, corrupting ui$theta for every
-    # parameter. Both matter: check the actual back-transformed estimates
-    # are near their simulated truth and clearly separated from each other,
-    # not just "not identical".
+    # Regression test for split-ETA (separate eta.cl1/eta.cl2) collapse: tcl1
+    # and tcl2 landing on nearly the same value even with mixProb/responsibility
+    # fine. Checks back-transformed estimates are near truth and separated.
     #
-    # NB: label order (which true subpopulation ends up as component 1 vs
-    # 2) is not guaranteed and can vary by seed -- there is no way to pin a
-    # bound/order on tcl1 vs tcl2 without breaking mu-referencing (adding a
-    # bounding transform, e.g. logit(), makes the parameter no longer a
-    # direct linear combination of theta+eta). So this test checks the
+    # NB: label order (which true subpopulation is component 1 vs 2) is not
+    # guaranteed and can vary by seed -- no way to bound/order tcl1 vs tcl2
+    # without breaking mu-referencing. So this test checks the
     # *set* of recovered clearances against the true set, not tcl1
     # specifically against the EM truth.
     set.seed(2024)

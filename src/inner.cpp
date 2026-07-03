@@ -27,11 +27,9 @@
 #include <chrono>
 #include <memory>
 
-// Flag indicating we're inside the parallel inner optimization region.
-// When set, R-API operations (warnings/errors, R memory allocations) and
-// running-mean accumulation are deferred to the post-parallel phase.
-// Atomic so that worker threads see a consistent value without a data
-// race on the plain int read that TSan would flag.
+// Set while inside the parallel inner optimization region: R-API calls and
+// running-mean accumulation are deferred to the post-parallel phase. Atomic
+// to avoid a TSan-flagged data race on worker threads' reads.
 static std::atomic<int> _innerParallel{0};
 
 extern "C" {
@@ -177,12 +175,9 @@ struct focei_options {
   bool aqfirst = false;
   double scaleC0;
   int *xPar = NULL;
-  // probitIdxArr is the per-printed-parameter (op_focei.npars-sized)
-  // probit index: 0 means "no probit transform", k>=1 means "k-th
-  // probit transform; bounds at probitThetaLow[k-1], probitThetaHi[k-1]".
-  // Mirrors logit's encoding in xPar (-m-1 = m-th logit) but kept as
-  // a separate array so positive xPar values 2-5 (omega scaling codes
-  // consumed by scaleGetScaleC) cannot collide.
+  // probitIdxArr (npars-sized): 0 = no probit transform, k>=1 = k-th probit
+  // transform (bounds at probitThetaLow/Hi[k-1]). Kept separate from xPar's
+  // logit encoding so it doesn't collide with xPar's omega scaling codes 2-5.
   int *probitIdxArr = NULL;
   NumericVector lowerIn;
   double *lower = NULL;
@@ -282,16 +277,12 @@ struct focei_options {
   int checkTheta;
   int *muRef = NULL;
   unsigned int muRefN;
-  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) per-eta opt-out from
-  // both the plain eta-drift zero-reset (below) and the mu-ref theta
-  // soft-shift (thetaReset0()/thetaReset()); indexed identically to muRef
-  // (one entry per eta, muRefN long). NULL (default, muModel="none") means
-  // no etas are protected -- behavior is unchanged from today.
+  // Per-eta opt-out (indexed like muRef) from eta-drift zero-reset and mu-ref
+  // theta soft-shift; NULL (default) protects no etas.
   int *muRefEtaCovSkipReset = NULL;
-  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) group structure: one
-  // group per mu-ref-covariate population theta that also has an eta. All
-  // arrays NULL/0 when muModel="none" (default) -- behavior is unchanged.
-  // muModel: 0=none, 1=lin (plain OLS), 2=irls (reweighted).
+  // mufocei/irlsfocei group structure: one group per mu-ref-covariate
+  // population theta with an eta. Arrays NULL/0 when muModel="none".
+  // muModel: 0=none, 1=lin (OLS), 2=irls (reweighted).
   int muModel = 0;
   unsigned int muGroupN = 0;
   int *muGroupTheta = NULL;      // [muGroupN] population theta index (0-based, ntheta space)
@@ -301,56 +292,30 @@ struct focei_options {
   unsigned int muGroupCovN = 0;  // total flattened covariate count across all groups
   int *muGroupCovTheta = NULL;   // [muGroupCovN] covariate-coefficient theta index (0-based, ntheta space)
   arma::mat muGroupCovData;      // nsub x muGroupCovN, baseline covariate values per subject
-  // Per-theta skip flag (0-based, ntheta space): TRUE if this theta index
-  // belongs to a group (population or covariate-coefficient) and should be
-  // excluded from the outer optimizer's free-parameter set. Built once at
-  // setup from muGroupTheta/muGroupCovTheta.
+  // Per-theta skip flag (ntheta space): excludes group thetas from the outer
+  // optimizer's free-parameter set. Built once at setup.
   int *muGroupThetaSkip = NULL;  // [ntheta]
-  // Which of the flattened covariate-coefficient thetas (muGroupCovTheta,
-  // muGroupCovN long) the *user* fixed via ini(...~fix) -- distinct from
-  // muGroupThetaSkip: once a theta is excluded via muGroupThetaSkip it is
-  // never in fixedTrans, so isFixedTheta() can no longer tell "user fixed
-  // it" apart from "it's a mu-group theta"; this array is how
-  // updateMuGroups() tells them apart (a user-fixed covariate coefficient
-  // is held at its value and excluded from the regression design matrix,
-  // matching .muRefLin()'s fixedCoef contract; a merely mu-group-excluded
-  // one is estimated by the regression as normal).
+  // User-fixed (ini(...~fix)) flattened covariate-coefficient thetas. Needed
+  // because once a theta is in muGroupThetaSkip it's no longer in fixedTrans,
+  // so isFixedTheta() can't tell "user fixed" from "mu-group excluded";
+  // updateMuGroups() uses this to hold user-fixed coefficients out of the
+  // regression design matrix while merely-excluded ones are estimated normally.
   int *muGroupCovUserFixed = NULL; // [muGroupCovN]
-  // Which of the flattened covariate-coefficient thetas has a finite
-  // bound (ini(...~c(lower, est, upper))), computed once in R
-  // (.muRefGroups(), R/muRefClassify.R) from the theta's own lower/upper.
-  // A bounded covariate is handled like a user-fixed one for the
-  // regression (excluded from the design matrix, its *current* --
-  // gradient-updated, not held constant -- contribution subtracted as a
-  // live offset in updateMuGroups()) but, unlike muGroupCovUserFixed,
-  // must NOT be added to muGroupThetaSkip: it needs to stay in
-  // fixedTrans/npars so the outer optimizer keeps optimizing it subject
-  // to its bound (see foceiSetupTheta_()'s isMuGroupSkip). The
-  // population theta and any other, unbounded covariates in the same
-  // group are unaffected and still get the full mu-ref treatment.
+  // Flattened covariate-coefficient thetas with a finite bound
+  // (ini(...~c(lower,est,upper))). Handled like user-fixed for the regression
+  // (excluded from the design matrix, live gradient-updated offset subtracted)
+  // but NOT added to muGroupThetaSkip, since it must stay in fixedTrans/npars
+  // so the outer optimizer keeps optimizing it subject to its bound.
   int *muGroupCovBounded = NULL; // [muGroupCovN]
-  // Display names for the mu-group population/covariate-coefficient
-  // thetas (e.g. "tcl", "allo.cl"), captured once at setup from the full
-  // ntheta-sized thetaNames vector -- used only by printMuGroupThetaRow()
-  // (Phase 5) to label the extra print row shown for a live mufocei/
-  // irlsfocei/... fit; these thetas are excluded from op_focei.scale's
-  // own (npars-sized) column names since they're excluded from npars
-  // itself (see foceiSetupTheta_()'s isMuGroupSkip).
+  // Display names for mu-group thetas, used only by printMuGroupThetaRow() to
+  // label the extra print row; excluded from op_focei.scale's own column names.
   CharacterVector muGroupThetaNames;    // [muGroupN]
   CharacterVector muGroupCovThetaNames; // [muGroupCovN]
-  // updateMuGroups() alone (one regress step per real outer iteration) is
-  // not sufficient when a mu-group's population/covariate thetas are
-  // strongly coupled with the etas they were just regressed from -- the
-  // outer optimizer's own gradient-based convergence check only watches
-  // the *remaining* (non-mu-group) parameters, so it can declare
-  // convergence while the mu-group's inner regress/re-optimize
-  // sub-problem is still far from its own fixed point. innerOpt() instead
-  // repeats {re-optimize every subject's eta, then updateMuGroups()} up to
-  // muGroupMaxCycles times (or until the mu-group thetas stop moving by
-  // more than muGroupTol), entirely in C++, before returning control to
-  // the outer optimizer -- reusing the existing, documented
-  // muModelTol/muModelMaxCycles foceiControl() fields (originally written
-  // for the superseded R-level restart loop).
+  // A single updateMuGroups() step per outer iteration isn't always enough:
+  // the outer optimizer's convergence check ignores mu-group parameters, so
+  // it can converge while the mu-group regress/re-optimize sub-problem is
+  // still moving. innerOpt() instead cycles {re-optimize etas, updateMuGroups()}
+  // up to muGroupMaxCycles times (or until movement < muGroupTol).
   double muGroupTol = 1e-3;
   int muGroupMaxCycles = 10;
   int resetHessianAndEta;
@@ -419,10 +384,8 @@ struct focei_options {
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
 
-  // Pre-drawn ETA samples for mceta >= 1 path.  Shape is
-  // (neta x (mceta-1) x nsub).  Filled serially on the main thread in
-  // innerOpt() before entering the parallel for-loop so that worker
-  // threads can read by id without R API calls.  Empty when mceta < 1.
+  // Pre-drawn ETA samples for mceta >= 1 (neta x (mceta-1) x nsub); filled
+  // serially before the parallel for-loop so workers avoid R API calls.
   arma::cube mcetaSamples;
 
   unsigned int mixIdxN = 0;
@@ -430,11 +393,8 @@ struct focei_options {
   double *mixProb = NULL;
   double *mixProbGrad = NULL;
 
-  // Iteration-print formatting shared with saem/nlm via src/scale.h.
-  // Populated by foceiSetupScale() after the other op_focei fields
-  // (xPar, scaleC, initPar, logitThetaLow/Hi, etc.) are filled in.
-  // scale.save=0 because focei already records iteration history into the
-  // module-level vPar/niter/iterType/vGrad/niterGrad/gradType globals.
+  // Iteration-print formatting shared with saem/nlm via src/scale.h; populated
+  // by foceiSetupScale(). scale.save=0 since focei records history separately.
   scaling scale;
   bool isSaem = false;
 };
@@ -453,13 +413,9 @@ static inline int getRxId(int id) {
   return id % getRxNsub(rx);
 }
 
-// Mu-referenced-FOCEI-family support: is eta index j (0-based, same
-// ordering as op_focei.muRef) excluded from both the plain eta-drift
-// zero-reset and the mu-ref theta soft-shift because it is being driven by
-// the mufocei/irlsfocei-family restart-loop's linear-model step instead?
-// Bounds-checked against muRefN defensively (muRefEtaCovSkipReset is
-// allocated to be muRefN long); when NULL/unset (muModel="none", the
-// default) this always returns false, so behavior is unchanged from today.
+// Is eta j excluded from the eta-drift zero-reset / mu-ref theta soft-shift
+// because it's driven by the mufocei/irlsfocei restart-loop's linear-model
+// step instead? False when NULL/unset (muModel="none").
 static inline bool isMuRefCovProtected(unsigned int j) {
   return op_focei.muRefEtaCovSkipReset != NULL && j < op_focei.muRefN &&
     op_focei.muRefEtaCovSkipReset[j] != 0;
@@ -515,13 +471,9 @@ struct focei_ind {
   int doFD=0;
   int doEtaNudge;
   int badSolve=0;
-  // Per-subject cumulative count of tolerance-loosening retries this
-  // subject has consumed in its likInner0 inner-retry loop.  Replaces
-  // the formerly-shared op_focei.stickyRecalcN2 atomic, which could be
-  // mutated by another thread mid-loop and made the retry decision (and
-  // therefore the final ETA / objective) non-deterministic across runs.
-  // The cap is op_focei.stickyRecalcN; once exceeded the subject's
-  // tolFactor stays loose and op_focei.stickyTol latches.
+  // Per-subject tolerance-loosening retry count in likInner0's inner-retry loop;
+  // replaces the old shared atomic, which raced across threads. Capped at
+  // op_focei.stickyRecalcN; past that, tolFactor stays loose and stickyTol latches.
   int stickyRecalcN2=0;
   int parWarnBadHess=0;  // deferred "non-positive definite Hessian" warning
   int parErrorNoEta=0;   // deferred "could not find best eta" error
@@ -536,10 +488,8 @@ struct focei_ind {
   double *mixProbGrad;
 };
 
-// Zero every eta for this subject except protected (mu-ref-covariate) ones,
-// see isMuRefCovProtected() above. With no protected etas (the default,
-// muModel="none") this is identical to
-// std::fill(&fInd->eta[0], &fInd->eta[0]+neta, 0.0).
+// Zero every eta except protected (mu-ref-covariate) ones (isMuRefCovProtected).
+// With no protected etas (default) this is a plain std::fill to 0.
 static inline void resetEtaSelective(focei_ind *fInd, int neta) {
   if (op_focei.muRefEtaCovSkipReset == NULL) {
     std::fill(&fInd->eta[0], &fInd->eta[0] + neta, 0.0);
@@ -595,10 +545,7 @@ extern "C" void rxOptionsFreeFocei() {
   op_focei.alloc = false;
   op_focei.didPredSolve = false;
 
-  // Reset op_focei to defaults.  Cannot use copy-assignment because
-  // std::atomic members delete the copy/move operators.  Placement-new
-  // destructs all members (NumericVector, arma::mat, etc.) and then
-  // reconstructs with default-initialised values.
+  // Placement-new reset (copy-assignment is deleted by std::atomic members).
   op_focei.~focei_options();
   new (&op_focei) focei_options();
 
@@ -892,13 +839,10 @@ void updateEta(double *eta, int cid) {
   }
 }
 
-// RAII guard that snapshots a per-individual ETA vector on construction
-// and restores it on destruction unless disarm() is called.  Protects
-// the inner problem against ETA-leak when an ODE solve throws/returns
-// NA halfway through a finite-difference perturbation in shi21EtaGeneral
-// or a doFD=1 fallback.  Without this, ind->par_ptr can carry a perturbed
-// ETA into the next call and silently corrupt subsequent likelihoods —
-// the bug Matt Fidler flagged on PR #621 (2026-05-01).
+// RAII guard: snapshots a per-individual ETA vector, restores it on
+// destruction unless disarm() is called. Protects against ETA-leak when an
+// ODE solve throws/returns NA mid finite-difference perturbation, which
+// would otherwise leave a perturbed ETA in ind->par_ptr and corrupt later calls.
 struct EtaRestoreGuard {
   rx_solving_options_ind *ind;
   arma::vec saved;
@@ -919,18 +863,11 @@ struct EtaRestoreGuard {
   void disarm() { armed = false; }
 };
 
-// Per-subject "did this individual's solve fail" check.  Replaces the
-// shared `hasOpBadSolve(op)` poll inside parallel inner-retry loops.
-// op->badSolve is set globally by rxode2's badSolveExit macro whenever
-// ANY thread's solve fails — but that is THIS thread's failure
-// information mixed with other threads' failures.  Reading it from a
-// retry-loop condition is racy: thread A's flip may cause thread B to
-// do an extra retry even though thread B's own solve was clean.  That
-// races the retry count, which races the final ETA, which races the
-// objective.  Each subject's solve writes NA_REAL into its own
-// ind->solve buffer on failure (also via badSolveExit), so a per-
-// subject NaN scan answers "did THIS subject's solve fail?" without
-// touching shared state.
+// Per-subject "did this solve fail" check, replacing the shared
+// hasOpBadSolve(op) poll: op->badSolve is set globally on ANY thread's
+// failure, so reading it in a retry loop is racy across threads. Each
+// subject's own ind->solve buffer holds NA_REAL on failure, so scanning it
+// answers "did THIS subject fail" without touching shared state.
 static inline bool indHasBadSolve(rx_solving_options *op,
                                   rx_solving_options_ind *ind) {
   int neq = getOpNeq(op);
@@ -945,13 +882,9 @@ static inline bool indHasBadSolve(rx_solving_options *op,
   return false;
 }
 
-// RAII guard for ind->neqOverride.  Snapshots the per-individual override
-// on construction, restores it on destruction.  Used to switch a single
-// subject's effective neq for a predOde finite-difference pass without
-// mutating shared op->neq from a parallel worker thread.  rxode2 honours
-// the override via rxEffNeq(ind, op) inside its solve loop (par_solve.cpp,
-// par_solve.h, rx2api.c, inst/include/rxode2.h) so concurrent threads on
-// other subjects see a stable state count.
+// RAII guard for ind->neqOverride: switches one subject's effective neq for a
+// predOde finite-difference pass without mutating shared op->neq (rxode2
+// honors it via rxEffNeq(ind, op)), so other threads keep a stable state count.
 struct IndNeqOverrideGuard {
   rx_solving_options_ind *ind;
   int saved;
@@ -1030,25 +963,14 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
 
 // This is needed for shi21 h optimization
 arma::vec shi21EtaGeneral(arma::vec &eta, int id, int w) {
-  // ETA-restoration RAII: snapshot the per-subject ETAs from
-  // ind->par_ptr on entry and restore them on every exit path.  Without
-  // this, an early return / throw inside predOde / iniSubjectE / the
-  // calc_lhs loop would leave perturbed ETAs in ind->par_ptr and
-  // corrupt the next call to f() / dur() / rate() that reads them.
-  EtaRestoreGuard etaGuard(id);
+  EtaRestoreGuard etaGuard(id); // restores ind->par_ptr on any exit path
   updateEta(eta.memptr(), id);
   focei_ind *fInd = &(inds_focei[id]);
   arma::vec ret(fInd->nObs);
   int _rxId = getRxId(id); // base subject index for rxode2 (only nSub subjects)
   rx_solving_options_ind *ind =  getSolvingOptionsInd(rx, _rxId);
   rx_solving_options *op = getSolvingOptions(rx);
-  // Per-individual neqOverride: rxode2's solve loop honors this via
-  // rxEffNeq(ind, op).  Switches THIS subject's effective neq to predNeq
-  // for the predOde finite-difference pass; concurrent worker threads on
-  // other subjects keep using op->neq for their inner solves.  No
-  // mutation of shared op->neq, so this is safe under cores > 1 even
-  // when the model's f() / dur() / rate() / alag() depend on ETAs.
-  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq);
+  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq); // switches this subject's neq to predNeq
   predOde(_rxId); // Assumes same order of parameters; use base subject index
   int kk, k = 0;
   iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
@@ -1140,38 +1062,24 @@ double likInner0(double *eta, int id) {
     for (j = op_focei.neta; j--;){
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
     }
-    // Per-subject sticky-recalc counter: reset only when this subject
-    // hasn't itself exhausted its retry budget yet.  Once it has, the
-    // counter stays high and subsequent likInner0 calls for THIS subject
-    // short-circuit the retry loop (the subject's tolFactor is already
-    // permanently loose, so retries would just churn).
+    // Reset the sticky-recalc counter only if this subject hasn't exhausted its
+    // retry budget yet; otherwise subsequent calls keep short-circuiting the
+    // retry loop since tolFactor is already permanently loose.
     if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
       fInd->stickyRecalcN2 = 0;
     }
     setIndSolve(ind, -1);
-    // Reset shared op->badSolve before the solve as a courtesy (rxode2
-    // doesn't read it from any internal control flow we depend on, but
-    // resetting keeps op->badSolve a meaningful "any-thread failed
-    // recently" indicator for the post-solve diagnostic path).  Our
-    // retry loop reads per-subject indHasBadSolve() instead — the
-    // shared flag is racy under cores>1 (another thread's failed solve
-    // would flip it, causing this thread to retry unnecessarily and
-    // therefore producing a non-deterministic ETA).
+    // op->badSolve is racy under cores>1; our retry loop reads per-subject
+    // indHasBadSolve() instead, this reset is just a courtesy for diagnostics.
     resetOpBadSolve(op);
     bool predSolve = false;
-    // Guard for ind->neqOverride.  Allocated lazily inside the doFD
-    // branch and lives until likInner0 returns so that every subsequent
-    // read of ind->solve in this regime (bad-solve scan, FD perturbation
-    // loop, solveSave) sees the same predNeq stride rxPred wrote.  In the
-    // common (innerOde) path this stays nullptr — no-op.
+    // Guard for ind->neqOverride; lazily allocated in the doFD branch, lives
+    // until likInner0 returns so all reads of ind->solve see the same predNeq
+    // stride. Stays nullptr (no-op) on the common innerOde path.
     std::unique_ptr<IndNeqOverrideGuard> neqGuard;
-    // For mixture model subjects (id >= nSub), use the base subject index
-    // in rxode2 ind_solve calls — rxode2 only knows nSub base subjects.
+    // Mixture subjects (id >= nSub) use the base subject index for rxode2 calls.
     int _rxId = getRxId(id);
     if (fInd->doFD == 0) {
-      // Snapshot the per-individual sticky factor up front.  If no retry
-      // is needed we want to leave it untouched; if retries succeed we
-      // promote the factor to "sticky" only when the threshold is hit.
       double prevTol = getIndTolFactor(ind);
       innerOde(_rxId);
       j = 0;
@@ -1180,9 +1088,6 @@ double likInner0(double *eta, int id) {
         fInd->stickyRecalcN2++;
         op_focei.reducedTol.store(1, std::memory_order_relaxed);
         op_focei.reducedTol2.store(1, std::memory_order_relaxed);
-        // Thread-safe: writes to the calling thread's tolerance slice
-        // (gatol2Thread / grtol2Thread) and updates ind->tolFactor so
-        // iniSubject() on the next re-solve re-applies the loosening.
         atolRtolFactor_(op_focei.odeRecalcFactor);
         setIndSolve(ind, -1);
         resetOpBadSolve(op);
@@ -1191,32 +1096,23 @@ double likInner0(double *eta, int id) {
       }
       if (j != 0) {
         if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) {
-          // Solve eventually succeeded within this subject's retry
-          // budget; un-stick by restoring the prior factor.
-          setIndTolFactor(ind, prevTol);
+          setIndTolFactor(ind, prevTol); // succeeded within budget; un-stick
         } else {
-          // This subject hit its sticky threshold; tolFactor stays
-          // loose and the global stickyTol flag latches so the outer
-          // FOCEi loop knows at least one subject is in sticky mode.
+          // Hit sticky threshold: tolFactor stays loose, latch global stickyTol.
           op_focei.stickyTol.store(1, std::memory_order_relaxed);
         }
       }
     } else {
-      // doFD: inner sensitivity solve has failed; fall back to perturbing
-      // the simpler prediction model.  Switch this subject's effective neq
-      // to predNeq for the predOde call AND keep the override alive until
-      // the end of likInner0 so all subsequent reads of ind->solve (the
-      // bad-solve scan, getOpIndSolve in the FD loop, the solveSave copy)
-      // see the same compact stride that rxPred wrote at.
+      // Inner sensitivity solve failed; fall back to perturbing the simpler
+      // prediction model, keeping the neq override alive through likInner0's
+      // remaining reads of ind->solve.
       neqGuard.reset(new IndNeqOverrideGuard(ind, op_focei.predNeq));
       predOde(_rxId);
       predSolve=true;
       op_focei.didPredSolve.store(true, std::memory_order_relaxed);
     }
     bool isBadSolve = false;
-    // Under predSolve the buffer is laid out at predNeq stride; scan only
-    // those slots so stale tail values (sensitivity slots not written by
-    // rxPred) don't trigger false NaN flags.
+    // predSolve lays the buffer out at predNeq stride; scan only those slots.
     int effNeq = predSolve ? op_focei.predNeq : getOpNeq(op);
     int nsolve = (effNeq + getOpNlin(op))*getIndNallTimes(ind);
     if (effNeq > 0) {
@@ -1474,10 +1370,8 @@ double likInner0(double *eta, int id) {
             }
             // Ci = fpm %*% omega %*% t(fpm) + Vi; Vi=diag(r)
           } else {
-            // For logLik simply use a for the gradient which is fpm
-            // This way, the dose-based etas use the same approach for
-            // normal and non-normal log likelikoods
-            // The err and r terms are garbgage, though
+            // Use `a` (=fpm) for the gradient so dose-based etas share the same
+            // approach for normal and non-normal log likelihoods; err/r are garbage here.
             if (dist == rxDistributionNorm) lnr =_safe_log(lhs[op_focei.neta + 1]);
             else lnr = 0;
             // fInd->r(k, 0) = lhs[op_focei.neta+1];
@@ -1825,21 +1719,10 @@ double LikInner2(double *eta, int likId, int id) {
     if (_aqn == 0) {
       lik += logH0diag + op_focei.logDetOmegaInv5;
     } else {
-      // This is where the log likelihood can be adapted for the
-      // Gaussian Hermite Quadrature
+      // Adaptive Gaussian Hermite Quadrature expansion around the EBE mode;
+      // the SE of the EBE estimate (inverse cholesky of the Hessian) drives
+      // the expansion (not needed for the Laplace case).
       // https://en.wikipedia.org/wiki/Gauss%E2%80%93Hermite_quadrature
-
-      // At the mode of the distribution the eta is given by the EBE
-      // estimates (determined above).
-      //
-      // The standard error of the EBE estimates is given by the inverse
-      // of the cholesky decomposition of the hessian
-      //
-      // Hence this is used in the expansion of the likelihood for the
-      // adaptive Gaussian Hermite Quadrature.
-
-      // The standard error is not needed for the Laplace approximation
-
       // Get x and w from the AQ
       arma::mat aqx(op_focei.aqx, _aqn, op_focei.neta, false, true);
       arma::mat aqw(op_focei.aqw, _aqn, op_focei.neta, false, true);
@@ -2629,24 +2512,13 @@ static inline void innerOptId(int id) {
 
 
 
-// Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) regression update.
-// Called once per real outer iteration, from innerOpt() after every
-// subject's eta has been finalized for the current (fixed) mu-group theta
-// values -- see the "Architecture revision" note in the design plan for why
-// this location is safe. For each group: build the per-subject phi_i =
-// fullTheta[popIdx] + covariate_effect_i + eta_i, regress it on the free
-// (non-user-fixed) covariates via OLS ("lin") or a curvature-weighted
-// solve ("irls"), write the new population/covariate thetas directly into
-// fullTheta and the regression residuals into each subject's eta, then
-// propagate via setIndParPtr() exactly like updateTheta() does. No stop(),
-// no R round-trip -- the outer optimizer's next objective evaluation just
-// sees the updated values transparently.
-//
-// Returns the maximum absolute change, across every group's
-// population/covariate theta, between the value going in and the
-// regression's new value -- innerOpt() uses this to decide whether another
-// {re-optimize etas, regress} cycle is needed before returning control to
-// the outer optimizer (see muGroupMaxCycles/muGroupTol).
+// mufocei/irlsfocei regression update, called once per outer iteration after
+// every subject's eta is finalized. Per group: build phi_i = fullTheta[popIdx]
+// + covariate_effect_i + eta_i, regress on the free covariates (OLS "lin" or
+// curvature-weighted "irls"), write new thetas into fullTheta and residuals
+// into each subject's eta via setIndParPtr() (like updateTheta(), no R round-trip).
+// Returns the max absolute theta change, used by innerOpt() to decide whether
+// another {re-optimize etas, regress} cycle is needed (muGroupMaxCycles/Tol).
 static inline double updateMuGroups() {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return 0.0;
   rx = getRxSolve_();
@@ -2659,16 +2531,10 @@ static inline double updateMuGroups() {
     unsigned int covStart = (unsigned int)op_focei.muGroupCovStart[g];
     unsigned int covCount = (unsigned int)op_focei.muGroupCovCount[g];
 
-    // Split this group's covariates into "known offset, not estimated by
-    // the regression" (user-fixed OR bounded) vs free (estimated by the
-    // regression). Both user-fixed and bounded covariates read
-    // fullTheta[covTheta] fresh every call -- for user-fixed it's a
-    // constant (fix=TRUE means nothing else can change it either), for
-    // bounded it's whatever the outer optimizer's *latest* gradient step
-    // set it to (its own bounded free parameter, updated by
-    // updateTheta() before this runs) -- so this one code path already
-    // gives the bounded case the "recomputed every iteration, not held
-    // constant" behavior it needs with no extra logic.
+    // Split covariates into known-offset (user-fixed or bounded, not estimated
+    // here) vs free (estimated by the regression). Both read fullTheta[covTheta]
+    // fresh each call, so bounded ones automatically pick up the outer
+    // optimizer's latest value with no extra logic.
     std::vector<unsigned int> freeCovCols;
     std::vector<int> freeCovTheta;
     arma::vec offset(nsubAll, arma::fill::zeros);
@@ -2706,11 +2572,8 @@ static inline double updateMuGroups() {
       }
       y(id) = phi;
       if (op_focei.muModel == 2) {
-        // "irls": weight by each subject's inner-optimization curvature
-        // for this eta (n1qn1's per-eta precision estimate, fInd->var).
-        // This is the same open design question flagged for the R
-        // prototype (R/muRefLinear.R) -- a reasonable, cheap default, not
-        // yet independently validated against alternative weight choices.
+        // "irls": weight by each subject's n1qn1 per-eta precision estimate
+        // (fInd->var) -- a cheap default, not independently validated.
         double v = fInd->var[etaIdx];
         w(id) = (v > 0 && R_FINITE(v)) ? (1.0 / v) : 1.0;
       }
@@ -2730,11 +2593,8 @@ static inline double updateMuGroups() {
     }
     if (!solveOk || beta.n_elem != (unsigned int)(nFree + 1) ||
         !beta.is_finite()) {
-      // Dire circumstances only: a singular/ill-conditioned design matrix
-      // (e.g. a covariate with ~zero between-subject variability). Leave
-      // this group's thetas/etas untouched for this iteration rather than
-      // propagating garbage; the outer optimizer will simply see the same
-      // objective contribution as last iteration and try again.
+      // Singular/ill-conditioned design matrix: leave this group's thetas/etas
+      // untouched this iteration rather than propagating garbage.
       continue;
     }
 
@@ -2775,10 +2635,8 @@ void innerOpt() {
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
   }
-  // For mceta >= 1, pre-draw all the per-subject ETA samples serially on
-  // the main thread before entering the parallel for-loop.  Worker
-  // threads then read by id from op_focei.mcetaSamples — pure memory
-  // access, no R API calls.  This makes mceta safe under cores > 1.
+  // Pre-draw per-subject ETA samples serially before the parallel for-loop so
+  // workers only do memory access (no R API calls), making mceta safe under cores > 1.
   if (op_focei.mceta >= 1 && op_focei.maxInnerIterations > 0) {
     int nsubAll = (int)getRxNsubAndMix(rx);
     int nmc = op_focei.mceta - 1;
@@ -2820,27 +2678,13 @@ void innerOpt() {
     int nsub = nsub_orig * nMix;
     bool _doParallel = (cores > 1) && solveMethodThreadSafe(op);
 
-    // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): a single
-    // {re-optimize every subject's eta, then updateMuGroups()} pass is not
-    // always enough -- the population/covariate thetas updateMuGroups()
-    // just wrote can shift where each subject's *own* conditional-mode eta
-    // is (the regression only re-decomposes the *old* phi_i, it does not
-    // itself re-run inner optimization), so a subsequent inner-opt pass can
-    // legitimately move etas again, which in turn changes what the next
-    // regression would produce. Left at a single pass, the outer
-    // optimizer's own gradient check (which only watches the *other*
-    // parameters) can declare convergence while this mu-group sub-problem
-    // is still mid-alternation, landing on a spurious fixed point instead
-    // of the true joint optimum (see updateMuGroups()'s header comment for
-    // the first-order-condition argument for why the true joint optimum
-    // *is* a fixed point of this alternation). So: repeat the whole
-    // {inner-opt-all-subjects, updateMuGroups} cycle, entirely in C++, no
-    // R round-trip and no stop()-based restart, until the mu-group
-    // thetas stop moving by more than muGroupTol or muGroupMaxCycles is
-    // hit. When there are no mu-groups (muModel="none", the default) or
-    // during gradient/Hessian finite-difference perturbations
-    // (op_focei.calcGrad), this reduces to exactly one pass -- unchanged
-    // behavior.
+    // A single {re-optimize etas, updateMuGroups()} pass isn't always enough:
+    // the regression's new thetas can shift each subject's conditional-mode
+    // eta, changing what the next regression would produce, while the outer
+    // optimizer's gradient check (which ignores mu-group params) could declare
+    // convergence early. So cycle until mu-group thetas move less than
+    // muGroupTol or muGroupMaxCycles is hit; reduces to one pass when there
+    // are no mu-groups or during gradient/Hessian FD perturbations.
     int muCycles = (op_focei.muModel != 0 && op_focei.muGroupN > 0 &&
                      !op_focei.calcGrad) ? op_focei.muGroupMaxCycles : 1;
     for (int muCyc = 0; muCyc < muCycles; muCyc++) {
@@ -2848,41 +2692,19 @@ void innerOpt() {
       sortIds(rx, 2); // only initialize if rx->ordId == NULL
       _innerParallel.store(1, std::memory_order_release);
     }
-    // Cross-DLL OpenMP thread-id fix (Windows static libgomp).  rxode2 and
-    // nlmixr2est each statically link their own libgomp, so inside rxode2's
-    // ind_solve (called from THIS team) rxode2's omp_get_thread_num() returns 0
-    // for every worker -> rxode2's per-thread solve buffers all collapse onto
-    // slot 0 and race -> heap corruption (Windows-only; Linux shares one
-    // libgomp).  Hand rxode2 our real thread id around each per-subject solve.
-    // Resolved once on the main thread.
+    // Cross-DLL OpenMP thread-id fix: rxode2 and nlmixr2est each statically
+    // link their own libgomp on Windows, so rxode2's omp_get_thread_num()
+    // inside ind_solve returns 0 for every worker, collapsing its per-thread
+    // solve buffers onto slot 0 and corrupting the heap. Hand rxode2 our real
+    // thread id around each per-subject solve (resolved once on main thread).
     //
-    // NOTE on parallelization granularity for mixture models (nMix > 1):
-    // this loop is parallelized over PHYSICAL subjects `i` (0..nsub_orig-1),
-    // with the `jMix` mixture-component loop kept SERIAL *inside* each
-    // thread's work item, rather than flattening across the full
-    // nsub_orig*nMix index space. This is required for correctness, not
-    // just style: rxode2 only allocates nsub_orig physical `rx_solving_options_ind`
-    // structs (rx->subjects[]), keyed by the physical id returned by
-    // getRxId(_id) = _id % nsub_orig. ALL mixture components of a given
-    // physical subject share that SAME struct -- its solve buffer
-    // (mutated in-place by ind_solve/innerOde), parameter pointers
-    // (setIndParPtr), tolFactor, and ind->mixest (setIndMixest) are all
-    // shared, non-atomic state. If two mixture components of the SAME
-    // physical subject were solved concurrently (as they would be if the
-    // parallel-for ranged over the combined nsub_orig*nMix index space
-    // with dynamic scheduling), two threads would race on that shared
-    // struct -- e.g. one thread's setIndMixest() clobbering another's
-    // right before/during innerOde(), corrupting results silently. The
-    // previous code's outer sequential `for (jMix...)` loop (with an
-    // OpenMP barrier at the end of each jMix's parallel region) is what
-    // prevented that race; simply flattening to `ii = jMix*nsub_orig + i`
-    // would remove that barrier and reintroduce it. Parallelizing over
-    // physical subjects instead (each thread owns one physical subject's
-    // struct and walks all of its jMix components sequentially) still
-    // collapses the fork/join to a single parallel region -- the actual
-    // performance goal -- while preserving the "only one thread touches
-    // a given physical subject's struct at a time" invariant. For
-    // nMix == 1 (non-mixture fits) this is exactly the prior loop.
+    // Mixture models (nMix > 1): parallelize over PHYSICAL subjects, keeping
+    // the jMix loop serial inside each thread's work item. rxode2 only
+    // allocates nsub_orig physical rx_solving_options_ind structs, shared
+    // (non-atomic) across all mixture components of that subject; flattening
+    // to the full nsub_orig*nMix index space would let two threads race on
+    // the same struct. Per-physical-subject parallelism still collapses to a
+    // single parallel region while keeping "one thread per struct at a time".
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) schedule(dynamic) if(_doParallel)
 #endif
@@ -2937,13 +2759,9 @@ void innerOpt() {
       }
     }
 
-    // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): run the
-    // regression update once per cycle, after every subject's eta is
-    // finalized for the current mu-group theta values. Gated by
-    // !calcGrad for the same reason thetaReset() below is -- this call
-    // site is also reached during gradient/Hessian finite-difference
-    // perturbations (foceiCalcR()), where overwriting fullTheta would
-    // corrupt the derivative being computed.
+    // Gated by !calcGrad: this site is also reached during gradient/Hessian FD
+    // perturbations (foceiCalcR()), where overwriting fullTheta would corrupt
+    // the derivative being computed.
     if (!op_focei.calcGrad) {
       double muDelta = updateMuGroups();
       if (muDelta <= op_focei.muGroupTol) break;
@@ -4029,12 +3847,10 @@ static inline void foceiSetupTheta_(List mvi,
   } else {
     thetaFixed2 =LogicalVector(0);
   }
-  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...): thetas that belong
-  // to a mu-ref-covariate group are excluded from the outer optimizer's
-  // free-parameter set here too -- a *separate* exclusion from the user's
-  // own ini(...~fix), not a replacement for it (see includeMuGroupThetas
-  // for the "unlock for the final Hessian pass" counterpart). Skip the
-  // count for thetas the user already marked fixed to avoid double-counting.
+  // Mu-group thetas are excluded from the outer optimizer's free-parameter set
+  // separately from the user's own ini(...~fix) (see includeMuGroupThetas for
+  // the final-Hessian-pass unlock counterpart); skip already-fixed thetas to
+  // avoid double-counting.
   auto isMuGroupSkip = [&](int jj) -> bool {
     return op_focei.muModel != 0 && op_focei.muGroupThetaSkip != NULL &&
       jj < thetan && op_focei.muGroupThetaSkip[jj] != 0;
@@ -4366,19 +4182,10 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.repeatGillMax=as<int>(foceiO["repeatGillMax"]);
   op_focei.stickyRecalcN=as<int>(foceiO["stickyRecalcN"]);
   op_focei.neta = (unsigned int)as<int>(foceiO["neta"]);
-  // this sets up the zero gradient reset
-  //
-  // When 'NA' the zeroGradReset is FALSE and the zeroGradBobyqa is
-  // 'FALSE' and zeroGradBobyqaRun matches the option
-  // zeroGradBobyqa. This way the last reset will call the bobyqa instead
-  //
-  // When 'TRUE' or 'FALSE' both zeroGradBobyqaRun and zeroGradBobyqa
-  // match zeroGradBobyqa.
-  //
-  // When zeroGradBobyqa is 'NA', whenever zeroGradBobya can be 'TRUE'
-  // or 'FALSE' the op_focei.zeroGradBobya = true and the
-  // op_focei.zeroGradBobyqaRun=false
-  //
+  // Zero gradient reset setup: NA -> zeroGradReset=FALSE, zeroGradBobyqa=FALSE,
+  // zeroGradBobyqaRun tracks the zeroGradBobyqa option (last reset calls bobyqa
+  // instead); TRUE/FALSE -> zeroGradBobyqaRun matches zeroGradBobyqa directly;
+  // zeroGradBobyqa=NA -> zeroGradBobyqa=true, zeroGradBobyqaRun=false.
   int curI = as<int>(foceiO["zeroGradFirstReset"]);
   if (curI == 1) {
     op_focei.zeroGradFirstReset = true;
@@ -4427,12 +4234,10 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.mixIdx = tempMixIdx;
   }
 
-  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) group setup. Must
-  // happen *before* foceiSetupTheta_() below since it reads
-  // op_focei.muGroupThetaSkip while building fixedTrans/npars. Own,
-  // independent R_Calloc block (not part of the gillRet combined buffer
-  // further down) because that buffer's size depends on op_focei.npars,
-  // itself only known after foceiSetupTheta_() runs.
+  // Mu-group setup must happen before foceiSetupTheta_() below, which reads
+  // muGroupThetaSkip while building fixedTrans/npars. Kept as its own R_Calloc
+  // block since the gillRet combined buffer's size depends on npars, which
+  // is only known after foceiSetupTheta_() runs.
   if (op_focei.muGroupTheta != NULL) R_Free(op_focei.muGroupTheta);
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
   op_focei.muGroupCovStart = NULL; op_focei.muGroupCovCount = NULL;
@@ -4480,12 +4285,9 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.muGroupThetaSkip[op_focei.muGroupTheta[g]] = 1;
     }
     for (unsigned int c = 0; c < op_focei.muGroupCovN; c++) {
-      // Bounded covariates stay OUT of muGroupThetaSkip: they must
-      // remain ordinary, outer-optimized (bounded) free parameters, not
-      // excluded from fixedTrans/npars. updateMuGroups() still excludes
-      // them from the regression design matrix (see the userFixed ||
-      // bounded check there) -- they just aren't estimated by anyone
-      // *else* either besides the outer optimizer.
+      // Bounded covariates stay OUT of muGroupThetaSkip: they remain ordinary
+      // outer-optimized free parameters (updateMuGroups() still excludes them
+      // from the regression design matrix).
       if (op_focei.muGroupCovBounded[c] == 0) {
         op_focei.muGroupThetaSkip[op_focei.muGroupCovTheta[c]] = 1;
       }
@@ -4616,10 +4418,9 @@ NumericVector foceiSetup_(const RObject &obj,
   params.attr("row.names") = IntegerVector::create(NA_INTEGER,-expected_nsub);
   // Now pre-fill parameters.
   if (!Rf_isNull(obj)) {
-    // Don't force cores=1. The user-requested core count must propagate
-    // to rxSolve_ so that per-thread buffers (llikSave, lhs, on,
-    // solveSave, etc.) are allocated for the correct number of threads.
-    // Parallelization of the inner loop is managed in innerOpt().
+    // Don't force cores=1: the user-requested core count must propagate to
+    // rxSolve_ so per-thread buffers are sized correctly (parallelization
+    // itself is managed in innerOpt()).
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -4666,11 +4467,8 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.muRefN=(unsigned int)muRef.size();
   }
 
-  // Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) per-eta opt-out from
-  // both the plain eta-drift zero-reset and the mu-ref theta soft-shift;
-  // same length/ordering as foceiMuRef. Absent for every other estimation
-  // method (muModel="none"), in which case the allocated block below stays
-  // R_Calloc-zeroed and behavior is unchanged from today.
+  // Per-eta opt-out from eta-drift zero-reset / mu-ref theta soft-shift,
+  // same length/ordering as foceiMuRef; unused (stays zeroed) when muModel="none".
   IntegerVector muCovEta;
   bool haveMuCovEta = false;
   if (foceiO.containsElementNamed("foceiMuCovEta")){
@@ -4710,10 +4508,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixIdx = op_focei.muRefEtaCovSkipReset + op_focei.muRefN; // [op_focei.mixIdxN  + getRxNsub(rx)]
   if (op_focei.mixIdxN) {
     std::copy(mixIdx.begin(), mixIdx.end(), op_focei.mixIdx);
-    // Re-run mixTrans setup now that op_focei.mixIdx is filled.
-    // foceiSetupMixTrans was called earlier (when mixIdx was NULL) and only
-    // set all entries to -1; now fill in the real mixture-parameter indices
-    // by calling the same function again for every parameter.
+    // Re-run mixTrans now that mixIdx is filled (earlier call only set -1 placeholders).
     for (unsigned int _k = op_focei.npars; _k--;) {
       foceiSetupMixTrans((int)_k, op_focei.fixedTrans[_k]);
     }
@@ -4733,8 +4528,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.mixProb = op_focei.gillDf+totN; // [op_focei.mixIdN+1 + (op_focei.mixIdN+1)*getRxNsub(rx)]
   op_focei.mixProbGrad = op_focei.mixProb + (op_focei.mixIdxN+1)*(getRxNsub(rx)+1);
   op_focei.gillDf2 = op_focei.mixProbGrad + (op_focei.mixIdxN)*(getRxNsub(rx)+1);
-  // Now that mixIdx/mixProb/mixProbGrad are allocated, patch the per-individual
-  // pointers that were left as NULL during the earlier inds_focei initialisation loop.
+  // Patch per-individual pointers left NULL during earlier inds_focei init.
   if (op_focei.mixIdxN != 0) {
     for (size_t _mi = getRxNsubAndMix(rx); _mi--;) {
       focei_ind *_fI = &(inds_focei[_mi]);
@@ -5161,21 +4955,12 @@ static inline void foceiPrintLine(int ncol){
   RSprintf("\n");
 }
 
-// Mu-referenced-FOCEI-family (mufocei/irlsfocei/...) extra print row
-// (Phase 5): the mu-group population/covariate thetas are excluded from
-// the outer optimizer's parameter vector (op_focei.scale's own npars/
-// thetaNames), so scalePrintFun()/scalePrintGrad()'s existing table never
-// shows them at all. This adds one extra, self-labeled row right after
-// each of those calls: the *current* value (updateMuGroups()'s latest
-// regression result) when called from the real-objective print
-// (isGrad=false), or a blank "NA" placeholder when called from the
-// gradient print (isGrad=true) -- these thetas are never part of the
-// gradient FD, so there is no gradient to show, only the restart-free
-// regression update. Implemented entirely here (not in the shared
-// scale.h, which every other estimator also uses) to avoid touching that
-// mechanism's column layout; gated on the exact same scale->every/cn
-// throttle scalePrintFun/scalePrintGrad already use, so it silently
-// no-ops whenever printing is off (e.g. print=0) or muModel="none".
+// Mu-group thetas are excluded from op_focei.scale's parameter vector, so
+// scalePrintFun/scalePrintGrad's table never shows them; this adds one extra
+// self-labeled row after each call (current regression value, or NA for the
+// gradient print since these thetas have no FD gradient). Kept out of the
+// shared scale.h to avoid touching its column layout; uses the same
+// scale->every/cn throttle so it no-ops when printing is off or muModel="none".
 static inline void printMuGroupThetaRow(bool isGrad) {
   if (op_focei.muModel == 0 || op_focei.muGroupN == 0) return;
   scaling *scale = &op_focei.scale;
@@ -5245,14 +5030,8 @@ extern "C" double foceiOfvOptim(int n, double *x, void *ex){
                                       op_focei.scale.probitThetaLow,
                                       op_focei.scale.probitThetaHi));
   }
-  // Emit the per-iteration #/U/X rows via the shared scale.h helper.
-  // Gating (every `scale.every` calls) and column wrapping happen inside
-  // scalePrintFun.  When scaleObjective is on, op_focei.scaleObjectiveTo
-  // is the optimizer's working OFV magnitude; pass the unscaled (model-
-  // level) OFV so all three rows show the same number the user expects.
-  // The counter shown in the # column is scale.cn (incremented inside
-  // scalePrintFun); it differs from op_focei.nF+nF2 only across theta-
-  // resets.
+  // Emit the per-iteration #/U/X rows via scale.h; when scaleObjective is on,
+  // rescale back to the unscaled OFV so all rows show the number the user expects.
   double displayedOfv = op_focei.scaleObjective
     ? op_focei.initObjective * ret / op_focei.scaleObjectiveTo
     : ret;
@@ -5290,9 +5069,7 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex){
   } else {
     gradType.push_back(4);
   }
-  // Gradient row via the shared scale.h helper.  The type code passed
-  // here uses focei's gradType convention: 1=Gill, 2=Mixed, 3=Forward,
-  // 4=Central, 5=Shi21.  scalePrintGrad maps these to G/M/F/C/S labels.
+  // gradType convention: 1=Gill, 2=Mixed, 3=Forward, 4=Central, 5=Shi21.
   scalePrintGrad(&op_focei.scale, gr, gradType.back());
   printMuGroupThetaRow(true);
   vGrad.push_back(NA_REAL); // Gradient doesn't record objf
@@ -6542,24 +6319,14 @@ NumericMatrix foceiCalcCov(Environment e){
       }
       // foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, op_focei.scaleTo, false);
       setupAq0_(e);
-      // Mu-referenced-FOCEI-family: mu-group thetas were excluded from
-      // fixedTrans/npars throughout optimization (foceiSetupTheta_()'s
-      // muGroupThetaSkip check, gated on op_focei.muModel != 0) so the
-      // outer optimizer/updateMuGroups() alternation never fought over
-      // them. Now that optimization has converged, unlock them for this
-      // final covariance/Hessian pass by temporarily zeroing muModel --
-      // foceiSetupTheta_() then treats them as ordinary free parameters
-      // (respecting the user's own ini(...~fix), which is unaffected) so
-      // they get a real SE like any other theta, and updateMuGroups() is
-      // transparently skipped during the Hessian's finite-difference
-      // perturbations below (it early-returns when muModel==0) instead of
-      // re-profiling them mid-derivative. skipCov must NOT also mark them
-      // skipped here (that was tried and reverted -- it left them
-      // permanently "FIXED" with no SE, contradicting this unlock). Restore
-      // on scope exit (RAII, not a single assignment before one `return`)
-      // because the rest of this function has several early `return`s and
-      // a `catch(...)` -- muModel must come back regardless of which exit
-      // path is taken.
+      // Mu-group thetas were excluded from fixedTrans/npars throughout
+      // optimization; now that it's converged, unlock them for this final
+      // covariance/Hessian pass by temporarily zeroing muModel so
+      // foceiSetupTheta_() treats them as ordinary free parameters (getting a
+      // real SE) and updateMuGroups() early-returns during the Hessian FD
+      // perturbations instead of re-profiling mid-derivative. skipCov must NOT
+      // mark them skipped here, or they'd stay permanently "FIXED" with no SE.
+      // Restored via RAII since this function has several early returns/catch.
       struct MuModelRestore {
         int saved;
         explicit MuModelRestore(int s) : saved(s) {}
@@ -7320,10 +7087,9 @@ void foceiFinalizeTables(Environment e){
   CharacterVector btCi(Estimate.size());
   // LogicalVector EstBT(Estimate.size());
   // Rf_pt(stat[7],(double)n1,1,0)
-  // Per-theta transform codes shipped from R by .iterPrintXParFromUi
-  // (see R/focei.R::.foceiOptEnvLik).  xform$xPar[i] / xform$probitIdx[i]
-  // hold the i-th theta's log/logit/probit code; the bounds vectors
-  // are indexed by the absolute value of the relevant code minus one.
+  // Per-theta transform codes from R's .iterPrintXParFromUi: xform$xPar[i] /
+  // xform$probitIdx[i] hold the log/logit/probit code; bounds vectors are
+  // indexed by abs(code)-1.
   List xform = as<List>(e["xform"]);
   IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
   IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
@@ -7774,12 +7540,9 @@ Environment foceiFitCpp_(Environment e){
   }
   wallT0 = focei_wall_clock::now();
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
-  // Mu-referenced-FOCEI-family (Phase 5): capture display names for the
-  // mu-group thetas once here, while the full (ntheta-sized) thetaNames
-  // is available -- op_focei.scale's own thetaNames is npars-sized and
-  // never includes these (they're excluded from npars by
-  // foceiSetupTheta_()'s isMuGroupSkip). Used only by
-  // printMuGroupThetaRow() below.
+  // Capture mu-group theta display names here while the full thetaNames is
+  // available (op_focei.scale's own is npars-sized and excludes them); used
+  // only by printMuGroupThetaRow() below.
   if (op_focei.muModel != 0 && op_focei.muGroupN > 0) {
     CharacterVector muThetaNm(op_focei.muGroupN);
     for (unsigned int g = 0; g < op_focei.muGroupN; g++) {
@@ -7802,11 +7565,9 @@ Environment foceiFitCpp_(Environment e){
     arma::vec scaleC = as<arma::vec>(e["scaleC"]);
     std::copy(scaleC.begin(), scaleC.end(), &op_focei.scaleC[0]);
   }
-  // Theta transforms — ntheta-indexed.  Shipped from R by
-  // .iterPrintXParFromUi via .foceiOptEnvLik (see R/focei.R) as a single
-  // env$xform sub-list.  Length == ntheta_total (fixed + unfixed); we
-  // re-index by op_focei.fixedTrans below to map them into the npars-
-  // sized op_focei.xPar / probitIdxArr.
+  // Theta transforms (ntheta-indexed, from R's .iterPrintXParFromUi xform list,
+  // length ntheta_total); re-indexed below via fixedTrans into the npars-sized
+  // xPar/probitIdxArr.
   List xform = as<List>(e["xform"]);
   IntegerVector thetaXPar      = as<IntegerVector>(xform["xPar"]);
   IntegerVector thetaProbitIdx = as<IntegerVector>(xform["probitIdx"]);
@@ -7814,11 +7575,9 @@ Environment foceiFitCpp_(Environment e){
   op_focei.logitThetaHi   = as<NumericVector>(xform["logitThetaHi"]);
   op_focei.probitThetaLow = as<NumericVector>(xform["probitThetaLow"]);
   op_focei.probitThetaHi  = as<NumericVector>(xform["probitThetaHi"]);
-  // Setup which parameters are transformed.  For theta slots (j < ntheta)
-  // the per-printed-parameter code comes from thetaXPar[j] / probitIdx[j];
-  // for omega slots (j >= ntheta) the existing omega scaling code from
-  // xType applies (xPar values 2-5 consumed by scaleGetScaleC).  Omegas
-  // never get probit; probitIdxArr stays 0 for those slots.
+  // Theta slots (j < ntheta) get their code from thetaXPar[j]/probitIdx[j];
+  // omega slots (j >= ntheta) use the existing xType scaling code (xPar 2-5),
+  // and never get probit.
   for (unsigned int k = op_focei.npars; k--;){
     int j = op_focei.fixedTrans[k];
     op_focei.xPar[k] = 0;
@@ -7837,13 +7596,9 @@ Environment foceiFitCpp_(Environment e){
     Environment thetaReset = nlmixr2[".thetaReset"];
     restoreFromEnvrionment(thetaReset);
   }
-  // Populate the shared scale.h struct from op_focei's already-filled fields.
-  // We do this unconditionally (even when print is off) so that scalePrintFun
-  // calls below can no-op cleanly via scale.every==0.  scale.save=0 because
-  // focei keeps its own iteration history in the module-level globals
-  // (vPar/niter/iterType/vGrad/niterGrad/gradType).  scale.keyExtra holds the
-  // focei-specific suffix appended to the standard "Key:" line (gradient
-  // method labels and the diagXform omega note).
+  // Populate the shared scale.h struct unconditionally (even when print is
+  // off) so scalePrintFun calls below can no-op via scale.every==0. scale.save=0
+  // since focei keeps its own iteration history in module-level globals.
   {
     // Build a CharacterVector with the printed column names in the same
     // order scalePrintFun emits them (fixedTrans-indexed).

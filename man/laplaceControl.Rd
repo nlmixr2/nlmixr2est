@@ -7,31 +7,18 @@
 laplaceControl(sigdig = 3, ..., nAGQ = 1)
 }
 \arguments{
-\item{sigdig}{Optimization significant digits. This controls:
-
-\itemize{
-
- \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-
- \item The tolerance of the ODE solvers is
- \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
- steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
- (sensitivity changes only applicable for liblsoda)
-
- \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-
-}}
+\item{sigdig}{Optimization significant digits; controls the inner/outer
+optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
+(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
+sensitivity/steady-state with liblsoda), and boundary check tolerance
+(\code{5*10^(-sigdig+1)}).}
 
 \item{...}{Parameters used in the default `foceiControl()`}
 
-\item{nAGQ}{Number of Gauss-Hermite Adaptive Quadrature points to
-take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
-is equivalent to the Laplace method. The adaptive quadrature
-expands every node for each of the ETAs, so it can be quite
-expensive with a large amount of ETAs.  Once the EBE is obtained
-for a subject, you will have nAGQ^neta additional function
-evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
-function evaluations for odd nAGQ numbers.}
+\item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
+disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
+ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
+`(nAGQ^neta)-1` (odd `nAGQ`) additional evaluations per subject.}
 }
 \value{
 laplaceControl object
