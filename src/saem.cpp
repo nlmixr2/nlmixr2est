@@ -597,6 +597,15 @@ public:
     return Gamma2_phi1;
   }
 
+  // Reporting-only pooled BSV for split ETAs (see Gamma2_phi1Report's
+  // declaration) -- falls back to the live matrix when no pooling ever
+  // applied (non-mixture fits, or mixture fits without shared-ETA groups),
+  // since Gamma2_phi1Report is left as an unmodified copy in that case.
+  mat get_Gamma2_phi1Report() {
+    if (Gamma2_phi1Report.n_elem == Gamma2_phi1.n_elem) return Gamma2_phi1Report;
+    return Gamma2_phi1;
+  }
+
   mat get_Ha() {
     return Ha;
   }
@@ -1472,6 +1481,16 @@ public:
         Gamma2_phi1=G1;
       }
       Gamma2_phi1=Gamma2_phi1%covstruct1;
+      // Split-ETA components sharing an omegaShare group (e.g. eta.cl1 /
+      // eta.cl2) are pooled into a single BSV term via the law of total
+      // variance -- but this is a *reporting-only* transformation (each
+      // component is still meant to keep its own separately-estimated
+      // variance during the fit). Compute the pooled values into
+      // Gamma2_phi1Report and leave the live Gamma2_phi1 (which feeds
+      // IGamma2_phi1/D1Gamma21 and therefore the theta M-step every
+      // iteration) untouched, so tcl1/tcl2 aren't coupled through an
+      // artificially-shared precision during estimation.
+      Gamma2_phi1Report = Gamma2_phi1;
       if (nMix > 1 && omegaShare.n_elem == (unsigned int)nphi1) {
         unsigned int max_group = 0;
         for (unsigned int i = 0; i < omegaShare.n_elem; ++i) {
@@ -1520,7 +1539,7 @@ public:
             var_of_means /= sum_weights;
             double total_var = mean_of_vars + var_of_means;
             for (unsigned int i : indices) {
-              Gamma2_phi1(i, i) = total_var;
+              Gamma2_phi1Report(i, i) = total_var;
             }
           }
         }
@@ -2319,6 +2338,7 @@ private:
   uvec pc1;
   mat COV1, COV0, LCOV1, LCOV0, COV21, COV20, MCOV1, MCOV0;
   mat Gamma2_phi1, Gamma2_phi0, mprior_phi1, mprior_phi0;
+  mat Gamma2_phi1Report; // reporting-only pooled BSV for split ETAs sharing an omegaShare group; never fed back into estimation
   mat IGamma2_phi1, D1Gamma21, D2Gamma21, CGamma21;
   mat IGamma2_phi0, D1Gamma20, D2Gamma20, CGamma20;
   mat Gamma_phi1, Gdiag_phi1, Gamma_phi0, Gdiag_phi0;
@@ -2812,6 +2832,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
     Named("Gamma2_phi1") = saem.get_Gamma2_phi1(),
+    Named("Gamma2_phi1Report") = saem.get_Gamma2_phi1Report(),
     Named("Plambda") = saem.get_Plambda(),
     Named("Ha") = saem.get_Ha(),
     Named("sig2") = saem.get_sig2(),

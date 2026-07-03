@@ -429,7 +429,12 @@
   .neta <- length(.etaNames)
   .len <- length(.etaNames)
   .ome <- matrix(rep(0, .len * .len), .len, .len, dimnames=list(.etaNames, .etaNames))
-  .curOme <- .saem$Gamma2_phi1
+  # Gamma2_phi1Report holds the (reporting-only) pooled BSV for split ETAs
+  # sharing an omegaShare group -- Gamma2_phi1 itself is left unpooled so
+  # per-component fixed effects aren't coupled through a shared precision
+  # during estimation (see src/saem.cpp). Falls back to Gamma2_phi1 for
+  # older cached fits without the field.
+  .curOme <- if (!is.null(.saem$Gamma2_phi1Report)) .saem$Gamma2_phi1Report else .saem$Gamma2_phi1
   .mat <- nlme::random.effects(.saem)
   .mat2 <- .mat[, .etaTrans, drop = FALSE]
   colnames(.mat2) <- .etaNames
