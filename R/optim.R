@@ -556,7 +556,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
                                 compress=.optimControl$compress,
                                 ci=.optimControl$ci,
                                 sigdigTable=.optimControl$sigdigTable,
-                                indTolRelax=.optimControl$indTolRelax)
+                                indTolRelax=.optimControl$indTolRelax,
+                                eventSens=.optimControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

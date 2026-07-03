@@ -844,6 +844,14 @@
 #'   parameters are transformed for the optimization, but the final
 #'   estimates are not back-transformed.
 #'
+#' @param eventSens controls how dosing/event-parameter (`alag`, `F`,
+#'   `rate`, `dur`) sensitivities are computed whenever the estimation
+#'   method needs the gradient of the model with respect to `THETA`
+#'   or `ETA`.  `"jump"` (the default) injects rxode2's analytic event
+#'   ("jump") sensitivities into the sensitivity states at each dosing
+#'   event; `"fd"` keeps the legacy finite-difference behavior instead
+#'   (the backward-compatible opt-out).
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'

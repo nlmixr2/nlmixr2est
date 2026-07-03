@@ -106,3 +106,4 @@ BinaryFiles$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$
+^vignettes/$

@@ -758,6 +758,7 @@
                                 rxControl=.rxControl,
                                 resetThetaP = 0,
                                 resetThetaFinalP = 0,
+                                eventSens=.saemControl$eventSens,
                                 est = "saem")
   if (exists(".etaMat", envir=env, inherits=FALSE)) {
     rm(list=".etaMat", envir=env)

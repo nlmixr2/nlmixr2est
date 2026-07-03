@@ -1010,7 +1010,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
                                 compress=.nlsControl$compress,
                                 ci=.nlsControl$ci,
                                 sigdigTable=.nlsControl$sigdigTable,
-                                indTolRelax=.nlsControl$indTolRelax)
+                                indTolRelax=.nlsControl$indTolRelax,
+                                eventSens=.nlsControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
