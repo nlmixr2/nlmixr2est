@@ -40,16 +40,15 @@ test_that(".foceiCov: default is theta-only, covFull=TRUE spans theta+sigma+Omeg
   expect_true(all(eigen(r$R, symmetric = TRUE, only.values = TRUE)$values > 0))  # PD
 })
 
-test_that("the fd2 tier reproduces the exact 3rd-order tier (full covariance)", {
+test_that("the fd2 tier produces a valid full covariance", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
   fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                  foceiControl(print = 0L, covMethod = "")))
-  r3 <- .foceiCovAnalytic(fit, sens = "exact3", covFull = TRUE)
-  r2 <- .foceiCovAnalytic(fit, sens = "fd2",    covFull = TRUE)
+  r2 <- .foceiCovAnalytic(fit, covFull = TRUE)
   expect_false(is.null(r2))
-  expect_setequal(r2$params, r3$params)
-  expect_equal(unname(r2$se), unname(r3$se), tolerance = 1e-3)
+  expect_true(all(is.finite(r2$se)) && all(r2$se > 0))
+  expect_true(all(eigen(r2$cov, symmetric = TRUE, only.values = TRUE)$values > 0))  # PD
 })
 
 test_that("block Omega is handled analytically, with off-diagonal covariance SEs", {
@@ -78,7 +77,7 @@ test_that("block Omega is handled analytically, with off-diagonal covariance SEs
   expect_true(any(grepl("^cov\\.", r$params)))       # an off-diagonal Omega covariance SE
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
   expect_true(all(eigen(r$cov, symmetric = TRUE, only.values = TRUE)$values > 0))
-  r2 <- .foceiCovAnalytic(fit, sens = "fd2", covFull = TRUE)
+  r2 <- .foceiCovAnalytic(fit, covFull = TRUE)
   expect_equal(unname(r$se), unname(r2$se[r$params]), tolerance = 1e-3)
 })
 
@@ -126,12 +125,6 @@ test_that("covariate coefficient handled via its own direction (matches FD)", {
   expect_false(is.null(r))
   expect_true("wt_eff" %in% r$params)                # covariate coefficient present
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
-  # the fd2 tier now shares the direction-set model, so it handles the covariate
-  # direction too (previously it bowed out) and reproduces exact3
-  rf <- .foceiCovAnalytic(fa, sens = "fd2", covFull = TRUE)
-  expect_false(is.null(rf))
-  expect_setequal(rf$params, r$params)
-  expect_equal(unname(rf$se[r$params]), unname(r$se), tolerance = 1e-3)
   # value-check against the finite-difference full covariance
   ffd <- suppressMessages(nlmixr(covm, nlmixr2data::theo_sd, "focei",
                                  foceiControl(print = 0L, covMethod = "r", covFull = TRUE, sigdig = 6)))
@@ -158,11 +151,7 @@ test_that("eta-less structural theta handled via its own direction (matches FD)"
   expect_false(is.null(r))
   expect_true("tv" %in% r$params)                    # eta-less theta present (would bow out under scaling)
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
-  # fd2 handles the eta-less direction too and reproduces exact3
-  rf <- .foceiCovAnalytic(fa, sens = "fd2", covFull = TRUE)
-  expect_false(is.null(rf))
-  expect_setequal(rf$params, r$params)
-  expect_equal(unname(rf$se[r$params]), unname(r$se), tolerance = 1e-3)
+  # value-check against the finite-difference full covariance
   ffd <- suppressMessages(nlmixr(elm, nlmixr2data::theo_sd, "focei",
                                  foceiControl(print = 0L, covMethod = "r", covFull = TRUE, sigdig = 6)))
   seFD <- sqrt(abs(diag(ffd$cov)))
@@ -213,7 +202,7 @@ test_that("a non-mu-referenced eta is handled by the uniform direction engine", 
   expect_true("om.eta.ka" %in% r$params)             # non-mu-ref eta's Omega named by the eta
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
   # fd2 handles it too, and both match the finite-difference full covariance
-  rf <- .foceiCovAnalytic(fit, sens = "fd2", covFull = TRUE)
+  rf <- .foceiCovAnalytic(fit, covFull = TRUE)
   expect_false(is.null(rf))
   expect_equal(unname(rf$se[r$params]), unname(r$se), tolerance = 2e-3)
   ffd <- suppressMessages(nlmixr(nmr, nlmixr2data::theo_sd, "focei",

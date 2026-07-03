@@ -1,20 +1,13 @@
-# Full FOCEI covariance (structural theta + residual sigma + Omega, diagonal or block)
-# with a two-tier ladder.  Both tiers use the SAME direction-set model and the SAME
-# R-matrix assembly, differing only in how the 3rd-order tensor is obtained:
-#
-#   1. fd2 (DEFAULT): analytic 2nd-order sensitivities plus Shi(2021) adaptive finite
-#      differences of those EXACT 2nd-order sensitivities for the 3rd-order term.  It
-#      reproduces the exact tier to ~1e-3 (it differences exact derivatives, not the
-#      objective, so no catastrophic cancellation) AND avoids building the large
-#      3rd-order augmented model, whose C compile is the dominant cost: for a
-#      covariate model the 3rd-order model is ~80 KB and takes ~40 s to compile vs
-#      ~4 s for the 2nd-order model, so fd2 is ~10x faster to build.
-#   2. exact3 (FALLBACK): analytic exact 3rd-order sensitivities, used only when the
-#      2nd-order finite-difference step fails (non-finite), so the exact tier is
-#      always available but rarely paid for.
-#
-# Both tiers return the SAME full covariance (theta + sigma + Omega, diagonal or
-# block), so the fallback never silently drops the Omega/residual blocks.
+# Full FOCEI covariance (structural theta + residual sigma + Omega, diagonal or block).
+# One analytic tier (fd2): analytic 2nd-order sensitivities plus Shi(2021) adaptive
+# finite differences of those EXACT 2nd-order sensitivities for the 3rd-order term.  It
+# differences exact derivatives (not the objective, so no catastrophic cancellation)
+# and only ever builds the 2nd-order augmented model.  There is deliberately no exact
+# 3rd-order tier: it would build an even larger augmented model (for a covariate model
+# the 3rd-order C source is ~80 KB / ~40 s to compile vs ~4 s for the 2nd-order one),
+# and it could never rescue fd2 -- whenever the 2nd-order model cannot build or solve,
+# a 3rd-order model cannot either.  So fd2 either succeeds or the caller falls back to
+# the finite-difference covariance.
 
 #' Omega blocks (connected components of the random-effect covariance)
 #'
@@ -121,32 +114,27 @@
 #' Full covariance for a fitted nlmixr2 FOCEI object
 #'
 #' Returns the full observed-information covariance over the structural thetas,
-#' residual sigma, and Omega (diagonal or block) variances and covariances, via a
-#' two-tier ladder: fd2 (the default, 2nd-order model with Shi finite differences)
-#' then exact3 (the 3rd-order fallback).  Each tier returns the same full set of
-#' parameters; the analytic path is never partially applied.
+#' residual sigma, and Omega (diagonal or block) variances and covariances, from the
+#' analytic 2nd-order sensitivities with Shi finite differences for the 3rd-order term
+#' (the fd2 tier).  The analytic path is never partially applied: it returns the full
+#' set of parameters or NULL.
 #' @param fit a fitted nlmixr2 focei object
 #' @param covFull FALSE for the structural-theta block only, TRUE for theta +
 #'   sigma + Omega
-#' @return list with `cov`, `se`, `params`, and `method` (`"analytic-fd2"` /
-#'   `"analytic"`), or NULL if no tier succeeds
+#' @return list with `cov`, `se`, `params`, and `method` (`"analytic-fd2"`), or NULL
 #' @author Hidde van de Beek
 #' @noRd
 .foceiCov <- function(fit, covFull = FALSE) {
-  # each tier is guarded: an unexpected error (e.g. a singular Omega solve) drops
-  # to the next.  fd2 is the default: same result to ~1e-3 as exact3 but ~10x
-  # faster to build (it skips compiling the large 3rd-order augmented model).
-  # exact3 is the exact fallback.
-  .r <- tryCatch(.foceiCovAnalytic(fit, sens = "fd2", covFull = covFull),
-                 error = function(e) NULL)
+  # Single analytic tier (fd2): the analytic 2nd-order sensitivities with Shi(2021)
+  # finite differences for the 3rd-order term.  The builder bails cheaply if the
+  # 1st-order sensitivities are unavailable, and any other failure (a model that will
+  # not build/solve) returns NULL -- in every case the caller falls back to the
+  # finite-difference covariance.  (There is no exact-3rd-order tier: it builds an even
+  # larger augmented model, so whenever fd2 cannot solve, an exact-3 model cannot
+  # either -- it could never rescue fd2, only cost time.)
+  .r <- tryCatch(.foceiCovAnalytic(fit, covFull = covFull), error = function(e) NULL)
   if (!is.null(.r)) {
     .r$method <- "analytic-fd2"
-    return(.r)
-  }
-  .r <- tryCatch(.foceiCovAnalytic(fit, sens = "exact3", covFull = covFull),
-                 error = function(e) NULL)
-  if (!is.null(.r)) {
-    .r$method <- "analytic"
     return(.r)
   }
   NULL

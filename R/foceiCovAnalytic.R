@@ -4,12 +4,15 @@
 # observed information: the population Hessian splits into a data term (the
 # 2nd-order sensitivities already needed for the gradient) and a log-determinant
 # term (the 3rd-order sensitivities).  The state sensitivities come from rxode2's
-# .rxSens (rxExpandSens_/2_/3_); the higher-order prediction chain is built here.
-# .foceiCov runs a two-tier ladder over the SAME direction-set model and the SAME
-# R-matrix assembly: fd2 (default, 2nd-order model + Shi(2021) finite differences
-# of the exact 2nd-order sensitivities) and exact3 (3rd-order model, the fallback).
-# Every per-subject solve is guarded; any failure returns NULL and the caller
-# drops to the next tier, so the analytic path is never partially applied.
+# .rxSens (rxExpandSens_/2_); the higher-order prediction chain is built here.
+# .foceiCovAnalytic builds one direction-set model: the analytic 2nd-order
+# sensitivities plus Shi(2021) finite differences of those exact 2nd-order
+# sensitivities for the 3rd-order term (the fd2 tier).  It first checks that the
+# 1st-order sensitivities are available (free -- they are already expanded for the
+# gradient) and bails otherwise, so a non-differentiable model never pays for the
+# 2nd-order build.  Every per-subject solve is guarded; any failure returns NULL
+# and the caller ([.foceiCov]) falls back to the finite-difference covariance, so
+# the analytic path is never partially applied.
 
 #' Are the rxode2 sensitivity primitives available for the analytic covariance
 #'
@@ -148,27 +151,32 @@
 #' its own THETA_j_ direction carrying its true sensitivity, so no covariate is
 #' detected or scaled.  State sensitivities use rxode2's .rxSens (the nlmixr2est
 #' convention, as in .sensEtaOrTheta / rxUiGet.foceiEtaS): it runs the
-#' rxExpandSens_/2_/3_ grid and applies .rxDelaySensAugment for lag/delay terms,
+#' rxExpandSens_/2_ grid and applies .rxDelaySensAugment for lag/delay terms,
 #' and it accepts a mixed direction set.  The higher-order prediction chain
-#' f1/f2/f3 is built here because rxode2's prediction expander rxExpandFEta_ only
-#' does 1st order over a homogeneous set (there is no rxExpandFEta2_/3_); it uses
+#' f1/f2 is built here because rxode2's prediction expander rxExpandFEta_ only
+#' does 1st order over a homogeneous set (there is no rxExpandFEta2_); it uses
 #' the same machinery .rxSens uses, symengine (C++) differentiation orchestrated
-#' in R and emitted via rxFromSE.
+#' in R and emitted via rxFromSE.  Bails (returns NULL) if the 1st-order
+#' sensitivities are unavailable, before paying for the 2nd-order build.
 #' @param ui the rxode2 UI object
 #' @param dirs character vector of direction names (ETA_i_ / THETA_j_)
-#' @param order sensitivity order to carry, 2L (fd2 tier) or 3L (exact3 tier)
-#' @return list(augMod, dirs, ndir, st, P2, P3), with P3 NULL when order == 2L, or
-#'   NULL on any build failure
+#' @return list(augMod, dirs, ndir, st, P2), or NULL on any build failure
 #' @author Hidde van de Beek
 #' @noRd
-.foceiAnalyticAugModelDirs <- function(ui, dirs, order = 3L) {
+.foceiAnalyticAugModelDirs <- function(ui, dirs) {
   tryCatch({
     .s <- ui$loadPruneSens
     .st <- rxode2::rxStateOde(.s)
     rxode2::.rxJacobian(.s, c(.st, dirs))
+    # 1st-order sensitivities are already expanded for the FOCEi gradient, so this is
+    # essentially free; if they are unavailable the model is not analytically
+    # differentiable and there is no point building the (expensive) 2nd-order model --
+    # bail so the caller falls back to finite differences.
     .s1 <- rxode2::.rxSens(.s, dirs)
-    .s2 <- rxode2::.rxSens(.s, dirs, dirs)
-    .s3 <- if (order >= 3L) rxode2::.rxSens(.s, dirs, dirs, dirs) else character(0)
+    if (length(.s1) == 0L) {
+      return(NULL)
+    }
+    .s2 <- rxode2::.rxSens(.s, dirs, dirs)          # 2nd order: the expensive expansion
     .pred <- get("rx_pred_", .s)
     .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
     .sn1 <- function(.j, ...) {
@@ -193,22 +201,6 @@
       }
       .e
     }
-    .g3 <- function(.ex, .p, .q, .r) {
-      .gqr <- .g2(.ex, .q, .r)
-      .e <- .Dn(.gqr, .p)
-      for (.k in .st) {
-        .e <- .e + .Dn(.gqr, .k) * .sn1(.k, .p)
-      }
-      for (.aa in unique(c(.q, .r))) {
-        for (.m in .st) {
-          .e <- .e + symengine::D(.gqr, .sn1(.m, .aa)) * .sn1(.m, .p, .aa)
-        }
-      }
-      for (.m in .st) {
-        .e <- .e + symengine::D(.gqr, .sn1(.m, .q, .r)) * .sn1(.m, .p, .q, .r)
-      }
-      .e
-    }
     .P2 <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)
     .fL1 <- vapply(dirs, function(.p) {
       paste0("f1_", .p, "=", .toRx(.g1(.pred, .p)))
@@ -217,21 +209,11 @@
       paste0("f2_", .P2$i[.r], "_", .P2$j[.r], "=",
              .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r])))
     }, character(1))
-    if (order >= 3L) {
-      .P3 <- expand.grid(i = dirs, j = dirs, k = dirs, stringsAsFactors = FALSE)
-      .fL3 <- vapply(seq_len(nrow(.P3)), function(.r) {
-        paste0("f3_", .P3$i[.r], "_", .P3$j[.r], "_", .P3$k[.r], "=",
-               .toRx(.g3(.pred, .P3$i[.r], .P3$j[.r], .P3$k[.r])))
-      }, character(1))
-    } else {
-      .P3 <- NULL
-      .fL3 <- character(0)
-    }
     .baseOde <- vapply(.st, function(.x) {
       paste0("d/dt(", .x, ")=", .toRx(get(paste0("rx__d_dt_", .x, "__"), .s)))
     }, character(1))
-    .modTxt <- paste(c(.baseOde, .s1, .s2, .s3, paste0("predf=", .toRx(.pred)),
-                       .fL1, .fL2, .fL3),
+    .modTxt <- paste(c(.baseOde, .s1, .s2, paste0("predf=", .toRx(.pred)),
+                       .fL1, .fL2),
                      collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt)
     .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
@@ -239,63 +221,8 @@
          dirs = dirs,
          ndir = length(dirs),
          st = .st,
-         P2 = .P2,
-         P3 = .P3)
+         P2 = .P2)
   }, error = function(e) NULL)
-}
-
-#' Solve the direction-set augmented model (order 3) for one subject
-#'
-#' @param aug the augmented model list from .foceiAnalyticAugModelDirs
-#' @param params named parameter vector (thetas and eta directions)
-#' @param ev the subject's event data frame
-#' @param times observation times to keep
-#' @return list(f, a, A, Ath) with the per-observation prediction and the
-#'   direction-indexed 1st/2nd/3rd-order sensitivity arrays, or NULL on any solve
-#'   failure or non-finite result
-#' @author Hidde van de Beek
-#' @noRd
-.foceiAnalyticSolveDir <- function(aug, params, ev, times, solveOpts = NULL) {
-  .args <- c(list(aug$augMod, params = params, ev, returnType = "data.frame",
-                  atol = 1e-10, rtol = 1e-10),           # tight tol for the sensitivity states
-             solveOpts)                                  # + the fit's covsInterpolation / method (#697 finding 15)
-  .d <- tryCatch(
-    withCallingHandlers(
-      as.data.frame(do.call(rxode2::rxSolve, .args)),
-      warning = function(w) invokeRestart("muffleWarning")),  # muffle benign warnings, don't abort the tier
-    error = function(e) NULL)
-  if (is.null(.d)) {
-    return(NULL)
-  }
-  .d <- .d[.d$time %in% times, , drop = FALSE]
-  if (nrow(.d) != length(times)) {
-    return(NULL)   # extra solve rows (EVID=2, dose at an obs time) misalign f vs y -> bow out to FD
-  }
-  .dirs <- aug$dirs
-  .nd <- length(.dirs)
-  .no <- nrow(.d)
-  if (!all(c("predf", paste0("f1_", .dirs)) %in% names(.d))) {
-    return(NULL)
-  }
-  .a <- matrix(vapply(.dirs, function(.p) .d[[paste0("f1_", .p)]], numeric(.no)),
-               .no, .nd)
-  .A <- array(0, c(.no, .nd, .nd))
-  for (.r in seq_len(nrow(aug$P2))) {
-    .A[, match(aug$P2$i[.r], .dirs), match(aug$P2$j[.r], .dirs)] <-
-      .d[[paste0("f2_", aug$P2$i[.r], "_", aug$P2$j[.r])]]
-  }
-  .At <- array(0, c(.no, .nd, .nd, .nd))
-  for (.r in seq_len(nrow(aug$P3))) {
-    .At[, match(aug$P3$i[.r], .dirs), match(aug$P3$j[.r], .dirs),
-        match(aug$P3$k[.r], .dirs)] <-
-      .d[[paste0("f3_", aug$P3$i[.r], "_", aug$P3$j[.r], "_", aug$P3$k[.r])]]
-  }
-  .out <- list(f = .d$predf, a = .a, A = .A, Ath = .At)
-  if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) ||
-      !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) {
-    return(NULL)
-  }
-  .out
 }
 
 #' Solve the direction-set augmented model (order 2) with a finite-difference 3rd order
@@ -307,8 +234,9 @@
 #' differences (shi21Central in inner.cpp).  Each direction is a named coordinate
 #' of `params` (an ETA_i_ or a THETA_j_), so covariate / eta-less thetas are
 #' differenced by their own theta exactly like the etas.  The result is
-#' symmetrized (the 3rd derivative is fully symmetric) and returned in the same
-#' shape .foceiAnalyticSolveDir returns, so the downstream assembly is identical.
+#' symmetrized (the 3rd derivative is fully symmetric) and returned as
+#' list(f, a, A, Ath) -- the per-observation prediction and the direction-indexed
+#' 1st/2nd/3rd-order sensitivity arrays -- for the downstream R-matrix assembly.
 #' @param aug the augmented model list (order 2) from .foceiAnalyticAugModelDirs
 #' @param params named parameter vector (thetas and eta directions)
 #' @param ev the subject's event data frame
@@ -834,17 +762,12 @@
 #' log-determinant term) over the structural (mu-referenced) fixed effects, the
 #' residual sigma, and the Omega variances and covariances (diagonal or block, via
 #' the non-Cholesky rxOmegaVarCovDeriv derivatives), and returns the covariance
-#' solve(R).  Finite-difference-free for the `exact3` tier.  Returns NULL (the
-#' caller should fall back) when the model is out of scope (unsupported error
-#' model, fixed structural theta) or any per-subject augmented solve fails.
+#' solve(R).  Returns NULL (the caller should fall back to finite differences) when
+#' the model is out of scope (unsupported error model, fixed structural theta) or any
+#' per-subject augmented solve fails.
 #' Mu-referenced thetas, covariate coefficients, eta-less thetas, and
 #' non-mu-referenced etas are all in scope.
 #' @param fit a fitted nlmixr2 focei object
-#' @param sens sensitivity source for the log-determinant term: `"exact3"`
-#'   (analytic 3rd-order) or `"fd2"` (analytic 2nd-order with Shi finite
-#'   differences of the 2nd-order sensitivities for the 3rd-order tensor, a lighter
-#'   model that builds faster).  Both tiers use the same direction set and the same
-#'   R-matrix assembly.
 #' @param covFull FALSE (default) returns the structural-theta block only; TRUE
 #'   returns the full theta + sigma + Omega covariance
 #' @return list(cov, se, R, params), with `params` covering theta, sigma, the
@@ -852,8 +775,7 @@
 #'   NULL
 #' @author Hidde van de Beek
 #' @noRd
-.foceiCovAnalytic <- function(fit, sens = c("exact3", "fd2"), covFull = FALSE) {
-  sens <- match.arg(sens)
+.foceiCovAnalytic <- function(fit, covFull = FALSE) {
   .ui <- fit$finalUi
   if (!.hasRxExpandSens2()) {
     return(NULL)                                        # need rxExpandSens2_ + symengine
@@ -950,9 +872,9 @@
   .ebes <- as.matrix(fit$eta[, .etaNames, drop = FALSE])
   .nsg <- length(.ef$sgVar)
   .np <- .nth + .nsg + .omd$nom
-  # Both tiers use the same direction-set augmented model; exact3 carries the
-  # 3rd-order prediction chain, fd2 stops at 2nd order and differences it.
-  .am <- .foceiAnalyticAugModelDirs(.ui, .dirs, order = if (sens == "fd2") 2L else 3L)
+  # The direction-set augmented model carries the 2nd-order prediction chain; the
+  # 3rd-order term is recovered by finite-differencing it (.foceiAnalyticSolveDirFD3).
+  .am <- .foceiAnalyticAugModelDirs(.ui, .dirs)
   if (is.null(.am) || .am$ndir != .ndir) {
     return(NULL)
   }
@@ -969,13 +891,9 @@
     .s <- .ds[.dsId == .ids[.i], , drop = FALSE]        # solve over the subject's actual events
     .obs <- .s[.s$EVID == 0, , drop = FALSE]            # (CMT/EVID/II/SS/ADDL/covariates preserved)
     .p <- c(.th, setNames(.ebes[.i, ], .etaDirs))
-    .E <- if (sens == "fd2") {
-      .foceiAnalyticSolveDirFD3(.am, .p, .s, .obs$TIME, solveOpts = .solveOpts)
-    } else {
-      .foceiAnalyticSolveDir(.am, .p, .s, .obs$TIME, solveOpts = .solveOpts)
-    }
+    .E <- .foceiAnalyticSolveDirFD3(.am, .p, .s, .obs$TIME, solveOpts = .solveOpts)
     if (is.null(.E)) {
-      return(NULL)                                      # solve failure -> next tier (caller)
+      return(NULL)                                      # solve failure -> finite-difference fallback
     }
     .E$y <- .obs$DV
     .Ri <- tryCatch(.foceiAnalyticSubjectR(.E, .ebes[.i, ], .Om, .ef, .neta, .nth,
