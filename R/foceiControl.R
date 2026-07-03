@@ -10,7 +10,8 @@
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
                            "foceiMuGroupCovBounded",
                            "foceiMuGroupCovData", "foceiMuGroupTol",
-                           "foceiMuGroupMaxCycles")
+                           "foceiMuGroupMaxCycles",
+                           ".covAnalyticMode", ".covAnalyticFdMethod")
 
 #' Control Options for FOCEi
 #'

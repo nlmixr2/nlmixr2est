@@ -58,11 +58,18 @@
   }
   .ini <- ui$iniDf
   .er <- .ini[!is.na(.ini$err), , drop = FALSE]
-  if (any(.er$err %in% c("lnorm", "propT", "propF"))) {
+  # only additive / proportional error is supported; any other rider (lnorm, propT/
+  # propF, or a DV/variance transform such as boxCox / yeoJohnson / pow) is out of
+  # scope -> finite differences.
+  if (!all(.er$err %in% c("add", "prop"))) {
     return(NULL)
   }
-  .addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"),
-                     error = function(e) "combined2")
+  # model-declared addProp wins; the control applies only when the model says "default"
+  .addPr <- as.character(ui$predDf$addProp)
+  if (length(.addPr) != 1L || is.na(.addPr) || .addPr == "default") {
+    .addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"),
+                       error = function(e) "combined2")
+  }
   .addN <- .er$name[.er$err == "add"]
   .propN <- .er$name[.er$err == "prop"]
   .hasA <- length(.addN) == 1L

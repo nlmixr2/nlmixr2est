@@ -1871,6 +1871,9 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     if (identical(as.integer(rxode2::rxGetControl(ui, "interaction", 1L)), 0L)) {
       return(FALSE)                                    # FOCE -> finite-difference fallback (analytic is FOCEI only)
     }
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) {
+      return(FALSE)                                    # AGQ quadrature objective (analytic is FOCEI/Laplace only)
+    }
     if (is.null(.foceiAnalyticErrFull(ui))) {
       return(FALSE)
     }
