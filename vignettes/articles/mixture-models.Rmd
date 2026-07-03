@@ -394,24 +394,27 @@ cat("
 
 ── Population Parameters (fitSaem$parFixed or fitSaem$parFixedDf): ──
 
-        Est.   SE %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
-tka    0.188 -nan  nan       1.21 (-nan, -nan)
-tcl1   -4.09 -nan  nan         3.38 (nan, nan)
-tcl2   -6.35 -nan  nan         0.45 (nan, nan)
-tv      3.39 -nan  nan       29.6 (-nan, -nan)          18.01     10.97%
-p1     0.691                             0.691
-add.sd 0.326                             0.326
-eta.cl                                                   1.11     23.20%
+        Est.     SE  %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
+tka    0.188 0.0348  18.6       1.21 (1.13, 1.29)
+tcl1   -4.09                                 3.38
+tcl2   -6.35                                 0.45
+tv      3.39 0.0332 0.981       29.6 (27.7, 31.6)          18.01     10.97%
+p1     0.691                                0.691
+add.sd 0.326                                0.326
+eta.cl                                                      1.11     23.20%
 
+  Covariance Type ($covMethod): linFim
   Information about run found ($runInfo):
    • error calculating tables, returning without table step
    • diag(V) had non-positive or NA entries; the non-finite result may be dubious
-   • NaNs produced
 ")
 ```
 
-The back-transformed `p1` of **0.691** is in the right neighborhood of the true
-EM prevalence (0.67), and `fitSaem$mixNum` shows a real (not collapsed) split:
+`tka` and `tv` get real, finite SEs; `tcl1`/`tcl2` (the mixture-owned fixed
+effects) correctly show no SE rather than either an error or a fabricated
+number — see the covariance callout below. The back-transformed `p1` of
+**0.691** is in the right neighborhood of the true EM prevalence (0.67), and
+`fitSaem$mixNum` shows a real (not collapsed) split:
 
 ```{r mixnum-saem-table, echo=FALSE}
 cat("
@@ -434,14 +437,13 @@ Predicted   EM (fast) PM (slow)
 ```
 
 > **Two known limitations, both distinct from component separation itself.**
-> First, standard errors above are `NaN`: the linearized Fisher-information
-> calculation for this *single, shared* `eta.cl` (used by both components)
-> remains ill-conditioned when few subjects are confidently assigned to the
-> minority component — the package's own test suite works around exactly this
-> by setting `covMethod = 0L` for this configuration. Give each component its
-> own random effect instead (see [Shared variability across
-> components](#shared-variability-across-components-split-etas) below) and
-> `covMethod="linFim"` produces finite SEs normally. Second, separation
+> First, `tcl1`/`tcl2` (the mixture-owned fixed effects) show no SE. The
+> linearized Fisher-information calculation degrades gracefully now — `tka`
+> and `tv` get real SEs instead of the whole covariance matrix failing — but
+> `tcl1`/`tcl2` themselves remain genuinely under-identified from the
+> linearization alone whenever few subjects are confidently assigned to the
+> minority component, *whether or not* the components share an ETA (using
+> split ETAs, see below, does not by itself fix this). Second, separation
 > quality itself is sensitive to `nBurn`/`nEm` and to the
 > `mixProbPriorN`/`mixProbMethod` settings described next — increasing
 > `mixProbPriorN` to 30 and using `nBurn = 400, nEm = 800` recovers a 21/9
@@ -575,20 +577,96 @@ $$
 \qquad w_k = \frac{\sum_i a_{ik}}{\sum_i \sum_j a_{ij}}
 $$
 so a single `eta.cl` term is reported even though each component was sampled with
-its own random effect during estimation. This calculation is only as good as
-the posterior weights $a_{ik}$ feeding it, so it benefits from the same
-`mixProbMethod` stabilization described above, and split ETAs are what makes
-`covMethod = "linFim"` produce finite SEs.
+its own random effect during estimation.
 
-> **A separate, still-open issue with split ETAs.** In testing, split-ETA
-> mixture fits can converge with `p1` looking reasonable but with `tcl1` and
-> `tcl2` themselves settling on nearly *identical* values — i.e. the
-> components' central tendencies merge even though the mixing-probability
-> collapse described above is fixed. If your split-ETA fit's back-transformed
-> `tcl1`/`tcl2` (or other per-component fixed effects) come out suspiciously
-> close together, check the fit carefully rather than trusting `$mixNum`/`$omega`
-> at face value — this looks like a distinct problem from the mixing-probability
-> collapse and is not addressed by `mixProbMethod`.
+```{r fit-saem-split, eval=FALSE}
+twoPopSplit <- function() {
+  ini({
+    tka   <- log(1.2)
+    tcl1  <- logit(0.8, 0.1, 200)
+    tcl2  <- logit(0.8, 0.1, 200)
+    tv    <- log(30)
+    p1    <- 0.67
+    eta.cl1 ~ 0.09
+    eta.cl2 ~ 0.09
+    eta.v  ~ 0.04
+    add.sd <- 0.2
+  })
+  model({
+    ka <- exp(tka)
+    cl <- mix(expit(tcl1 + eta.cl1, 0.1, 200), p1, expit(tcl2 + eta.cl2, 0.1, 200))
+    v  <- exp(tv + eta.v)
+    linCmt() ~ add(add.sd)
+  })
+}
+fitSaemSplit <- nlmixr2(twoPopSplit, simData, "saem",
+                        control = saemControl(nBurn = 200, nEm = 300,
+                                              covMethod = "linFim"))
+print(fitSaemSplit)
+```
+
+```{r fit-saem-split-show, echo=FALSE}
+cat("
+── nlmixr² SAEM OBJF by FOCEi approximation ──
+
+── Population Parameters (fitSaemSplit$parFixed or fitSaemSplit$parFixedDf): ──
+
+        Est.     SE %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
+tka    0.308 0.0485 15.7        1.36 (1.24, 1.5)
+tcl1    -3.5                                5.98
+tcl2   -5.79                               0.709
+tv      3.46  0.036 1.04       31.9 (29.8, 34.3)          19.31    100.0%
+p1     0.661                               0.661
+add.sd 0.412                               0.412
+eta.cl                                                     1.08     84.56%
+
+  Covariance Type ($covMethod): linFim
+")
+```
+
+Split ETAs correctly separate the two clearances (5.98 and 0.71, near the true
+8 and 0.8) instead of collapsing together — as with the non-split example
+above, `tcl1`/`tcl2` still show no SE from the linearization, and this
+particular run's reported `eta.cl` BSV (1.08 SD) is not trustworthy (true
+value: 0.3 SD) — see the callout below.
+
+#### Prefer a truly mu-referenced parameterization when you can
+
+`tcl1 + eta.cl1` above is *nested inside* `expit(...)`, so `cl` itself is a
+nonlinear function of the mu-referenced quantity. If your parameter doesn't
+need a hard bound, write the mixture directly in terms of the mu-referenced
+value with no wrapper, e.g. `cl <- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`
+with `tcl1`/`tcl2` initialized directly to a clearance guess (not a
+log/logit-scale one). On the same simulated data this recovers **7.5–7.6**
+and **0.64–0.67** across seeds — closer to the true 8/0.8 than the bounded
+form above — because SAEM's per-component weighted update (used to keep
+`tcl1`/`tcl2` from being diluted by each other, described next) is an exact
+weighted-least-squares fit when the mu-referenced quantity has no nonlinear
+wrapper, and a wrapped/bounded parameterization tends to compress the two
+components closer together in the space the likelihood actually sees,
+weakening separation. Prefer the bounded form only when you genuinely need a
+hard constraint (e.g. a rate that must stay positive) that the data can't be
+trusted to respect on its own.
+
+> **No parameterization prevents label switching.** Whichever form you use,
+> there is no way to pin down *which* mixture component ends up as component
+> 1 vs. component 2 without adding a boundary/ordering constraint to the
+> parameter — and adding one (e.g. wrapping in `logit()`/bounding `tcl1` below
+> `tcl2`) requires a nonlinear transform, which is exactly the "wrapped" form
+> the previous paragraph recommends against for separation quality. So the
+> order of `tcl1`/`tcl2` (which one comes out larger) — and correspondingly
+> which numeric label `mixNum` assigns to which true subpopulation — can
+> differ from run to run or across seeds. Always check the *estimated
+> values* (or cross-tabulate `mixNum` against known labels, as in the
+> classification example above) rather than assuming `tcl1` is always "the
+> fast/EM group."
+>
+> **The BSV/`$omega` issue above is independent of parameterization.**
+> Whether you use the bounded or the mu-referenced form, split ETAs' reported
+> variability can still come out wrong (too large or collapsed near zero) even
+> when the fixed effects themselves separate correctly. Treat `$omega`/BSV%
+> for split-ETA mixture components as unreliable for now; the point estimates
+> of `tcl1`/`tcl2` and `p1` are the numbers to trust.
 
 ## Choosing an Estimation Method
 
@@ -625,10 +703,15 @@ increased (see that section for a worked example):
 - **Initial estimates matter**: provide lower bounds on `tcl1` and `tcl2` to
   prevent label-switching for focei during optimization.
 - **SAEM** supports mixtures via soft assignment, stabilized against collapse
-  by `saemControl(mixProbMethod=)` (see
-  [Mixture Models with SAEM](#mixture-models-with-saem)); it typically needs
-  more tuning (iterations, `mixProbPriorN`) than the gradient-based methods to
-  match their separation precision, and does not currently support covariance
-  for mixtures with a single shared ETA (use split ETAs for that). Nested
-  transforms inside `mix()` require **rxode2 >= 5.1.3** regardless of
-  estimation method.
+  by `saemControl(mixProbMethod=)`, and correctly separates split-ETA fixed
+  effects (see [Mixture Models with SAEM](#mixture-models-with-saem)); it
+  typically needs more tuning (iterations, `mixProbPriorN`) than the
+  gradient-based methods to match their separation precision. Two things it
+  does not currently do well regardless of parameterization: standard errors
+  for the mixture-owned fixed effects (`tcl1`/`tcl2`-style parameters) come
+  back as `NA` rather than a real SE, and `$omega`/BSV for split-ETA
+  components can be unreliable (too large or collapsed near zero) even when
+  the fixed effects themselves separate correctly — trust the point
+  estimates of `tcl1`/`tcl2`/`p1`, not their SEs or BSV%. Nested transforms
+  inside `mix()` require **rxode2 >= 5.1.3** regardless of estimation
+  method.
