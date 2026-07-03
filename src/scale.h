@@ -31,10 +31,10 @@ struct scaling {
   // Iteration-print formatting, populated via scaleApplyIterPrintControl();
   // field names mirror iterPrintControl()'s R argument names.
   int useColor;
-  int ncol;        // iterPrintControl$ncol         — columns per row
-  int every;       // iterPrintControl$every        — print row every N evals (0=silent)
-  int simple;      // iterPrintControl$simple       — single-row mode (skip U/X)
-  int headerEvery; // iterPrintControl$headerEvery  — re-emit header every N prints (0=once)
+  int ncol;        // iterPrintControl$ncol: columns per row
+  int every;       // iterPrintControl$every: print row every N evals (0=silent)
+  int simple;      // iterPrintControl$simple: single-row mode (skip U/X)
+  int headerEvery; // iterPrintControl$headerEvery: re-emit header every N prints (0=once)
   // showOfv: 1 = show "Function Val." column (default); 0 = skip it (used by
   // estimators like saem with no per-iteration OFV, avoiding a NaN column).
   int showOfv;

@@ -18,19 +18,14 @@
 \item{printNcol, useColor}{Scalar `*Control()` arguments forwarded
 to [iterPrintControl()] only when `print` is a scalar.}
 
-\item{iterPrintControl}{Optional pre-built [iterPrintControl()]
-object.  Wins over `print` and the other scalars when supplied —
-used by the round-trip case where a returned control list is
-passed back through `do.call(*Control, .ctl)`.}
+\item{iterPrintControl}{Optional pre-built [iterPrintControl()] object.
+Wins over `print` and the other scalars when supplied.}
 }
 \value{
 An `iterPrintControl` list.
 }
 \description{
-Internal helper used by every `*Control()` function (and downstream
-packages like `babelmixr2`) to absorb the scalar `print`/`printNcol`/
-`useColor` arguments into a single [iterPrintControl()] object, or pass
-through an already pre-built one. Exported under a leading-dot name to
-mark it as package-internal, not for end users.
+Absorbs the scalar `print`/`printNcol`/`useColor` arguments into a single
+[iterPrintControl()] object, or passes through an already pre-built one.
 }
 \keyword{internal}

@@ -81,7 +81,7 @@
 #'   this factor of the machine tolerance. Default is `1e7`, that is a
 #'   tolerance of about `1e-8`.
 #'
-#' @param pgtol helps control the convergence of the ‘"L-BFGS-B"’
+#' @param pgtol helps control the convergence of the `"L-BFGS-B"`
 #'   method.  It is a tolerance on the projected gradient in the
 #'   current search direction. This defaults to zero, when the check
 #'   is suppressed

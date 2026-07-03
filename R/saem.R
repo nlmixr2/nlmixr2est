@@ -263,14 +263,10 @@
     .cfg$propT <- ui$saemPropT
     .cfg$addProp <- ui$saemAddProp
     .cfg$resValue <- ui$saemResValue
-    # Iteration-print formatting flows through one sub-list consumed by
-    # the shared src/scale.h helper scaleApplyIterPrintControl.  saem
-    # uses the same default as every other method (full #/U/X output);
-    # because Plambda lives on the model scale (no internal optimizer
-    # scaling), the U row will auto-skip — leaving # and X.  The xform
-    # sub-list (xPar + probitIdx + bounds) flows through one helper —
-    # scaleAttachXform — so the saem X row back-transforms exp / expit /
-    # probitInv identically to every other estimator.
+    # Iteration-print flows through the shared scaleApplyIterPrintControl
+    # (src/scale.h); U auto-skips since Plambda has no optimizer scaling,
+    # leaving # and X. xform (xPar/probitIdx/bounds) drives the X row's
+    # back-transform via scaleAttachXform, same as every other estimator.
     .cfg$parHistNames <- as.character(ui$saemParHistNames)
     .cfg$xform        <- .iterPrintXParFromUi(ui, .cfg$parHistNames)
     .cfg$iterPrintControl <- rxode2::rxGetControl(ui, "iterPrintControl",

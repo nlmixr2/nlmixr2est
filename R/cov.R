@@ -1,21 +1,13 @@
-#' Compute a covariance matrix from a stacked linearized design matrix,
-#' degrading only ill-identified parameter(s) instead of the whole matrix
-#'
-#' Ordinary `crossprod()`/`backsolve()` covariance (`(X'X)^-1`) errors
-#' entirely when any column of `X` is rank-deficient. This detects exactly
-#' which column(s) are singular (via `qr()`'s pivoted rank detection) and
-#' returns `NA` only for those. Reusable by any mixed-effects method's
-#' R-level covariance step; `saem`'s `calc.COV()` is the first consumer.
+#' Linearized `(X'X)^-1` covariance, degrading only rank-deficient
+#' parameter(s) instead of erroring on the whole matrix
 #'
 #' @param X n x p design/derivative matrix (rows = stacked per-subject
 #'   observation blocks, columns = parameters being estimated)
 #' @param tol numeric tolerance passed to `qr()` for rank detection (default
 #'   matches `qr()`'s own default of `1e-07`)
-#' @return p x p matrix. Entries are the usual linearized `(X'X)^-1`
-#'   covariance for well-identified parameters; the row/column for any
-#'   parameter whose contribution to `X` is (numerically) rank-deficient
-#'   given the rest is `NA_real_` instead of causing the whole calculation
-#'   to error.
+#' @return p x p matrix; well-identified parameters get the usual `(X'X)^-1`
+#'   covariance, rank-deficient ones get `NA_real_` rows/columns instead of
+#'   the whole calculation erroring.
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixr2RobustCov <- function(X, tol = 1e-07) {
@@ -37,17 +29,12 @@
   ret
 }
 
-#' Validate a covariance matrix that may have `NA` rows/columns for
-#' ill-identified parameters (see `.nlmixr2RobustCov()`)
-#'
-#' `chol()` errors on any matrix containing `NA`; this runs it only on the
-#' finite submatrix so partial identifiability doesn't discard the rest.
+#' `chol()` on the finite submatrix of a covariance matrix that may have
+#' `NA` rows/columns (see `.nlmixr2RobustCov()`)
 #'
 #' @param covm p x p covariance matrix, possibly with `NA_real_` rows/columns
-#' @return `try()`-wrapped result of `chol()` on the finite submatrix (or
-#'   the whole matrix, if none of it is `NA`); inherits `"try-error"` the
-#'   same way a direct `chol(covm)` call would if the finite part itself
-#'   isn't valid
+#' @return `try()`-wrapped `chol()` result on the finite submatrix (or the
+#'   whole matrix if none of it is `NA`)
 #' @noRd
 #' @author Matthew L. Fidler
 .nlmixr2CholPartial <- function(covm) {

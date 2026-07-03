@@ -66,10 +66,10 @@ if (!dir.exists(.fitCacheDir)) {
     tryCatch({
       cached <- readRDS(cachePath)
       if (!is.null(cached$version) && cached$version == .fitCacheVersion) {
-        message(sprintf("✓ Loading cached fit: %s", name))
+        message(sprintf("[ok] Loading cached fit: %s", name))
         return(cached$fit)
       } else {
-        message(sprintf("⚠ Cache version mismatch for %s (expected %s, got %s)",
+        message(sprintf("[warn] Cache version mismatch for %s (expected %s, got %s)",
                        name, .fitCacheVersion, cached$version))
       }
     }, error = function(e) {
@@ -78,14 +78,14 @@ if (!dir.exists(.fitCacheDir)) {
   }
 
   # Compute fit if cache miss or invalid
-  message(sprintf("⚙ Computing fit: %s (this may take a while...)", name))
+  message(sprintf("[..] Computing fit: %s (this may take a while...)", name))
   fit <- fitFn()
   AIC(fit)  # Force evaluation of AIC
 
   # Save to cache
   tryCatch({
     saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
-    message(sprintf("✓ Cached fit saved: %s", name))
+    message(sprintf("[ok] Cached fit saved: %s", name))
   }, error = function(e) {
     warning(sprintf("Failed to save cache for %s: %s", name, e$message))
   })
@@ -219,6 +219,6 @@ one.compartment.with.lag.fit.saem <- .getCachedFit(
   cacheFile = "fit-one-compartment-lag-saem.rds"
 )
 
-message("✓ Helper-fits.R loaded successfully")
+message("[ok] Helper-fits.R loaded successfully")
 message(sprintf("  Cache version: %s", .fitCacheVersion))
 message(sprintf("  Cache directory: %s", .fitCacheDir))

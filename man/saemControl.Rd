@@ -84,7 +84,7 @@ computation.  In Monolix this is equivalent to \code{L}.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
-[iterPrintControl()] object. The scalar form is equivalent to
+[iterPrintControl()] object. Equivalent to
 `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
 \item{trace}{An integer indicating if you want to trace(1) the

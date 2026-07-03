@@ -1890,18 +1890,9 @@ static inline int innerOpt1(int id, int likId) {
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
   } else if (op_focei.mceta >= 1 &&
              static_cast<arma::uword>(id) < op_focei.mcetaSamples.n_slices) {
-    // mceta sampling: ETA samples are pre-drawn serially in innerOpt()
-    // before entering the parallel loop (op_focei.mcetaSamples cube).
-    // Reading them here is pure memory access, safe under OpenMP.
-    //
-    // The cube is only filled when maxInnerIterations > 0 (see innerOpt());
-    // a pure evaluation such as the covariance / linearization step runs with
-    // maxInnerIterations == 0 and leaves the cube empty (n_slices == 0).  The
-    // n_slices guard above skips the sampling in that case -- the eta is left
-    // unchanged, which is correct when no inner optimization is happening --
-    // instead of indexing an empty cube, which threw
-    // "Cube::slice(): index out of bounds" and aborted R (uncaught in the
-    // OpenMP parallel region).
+    // mceta sampling: ETA samples pre-drawn serially in innerOpt() (mcetaSamples
+    // cube); guard skips subjects with no slice (maxInnerIterations == 0, e.g.
+    // covariance/linearization step) to avoid an out-of-bounds Cube::slice().
     int nmc = op_focei.mceta-1;
     double fcur = likInner0(fInd->eta, id); // last eta
     std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
@@ -2872,7 +2863,7 @@ static inline double foceiOfv0(double *theta){
     op_focei.stickyRecalcN1++;
     if (op_focei.indTolRelax) {
       // Per-individual tolFactor is sticky: stiff subjects keep their loosened
-      // tolerance across optimizer calls — no tolerance reset.
+      // tolerance across optimizer calls; no tolerance reset.
       if (op_focei.stickyRecalcN1 > op_focei.stickyRecalcN) {
         op_focei.stickyTol=1;
       }
@@ -2897,7 +2888,7 @@ static inline double foceiOfv0(double *theta){
          op_focei.objfRecalN < op_focei.maxOdeRecalc){
     op_focei.reducedTol=1;
     if (op_focei.indTolRelax) {
-      // Only loosen subjects whose ODE solve produced NaN/Inf — stiff subjects
+      // Only loosen subjects whose ODE solve produced NaN/Inf; stiff subjects
       // accumulate loosening across calls; non-stiff subjects are unaffected.
       if (getOpNeq(_op0) > 0) {
         int _nsub = (int)getRxNsubAndMix(rx);

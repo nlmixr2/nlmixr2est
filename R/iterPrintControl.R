@@ -1,36 +1,26 @@
 #' Iteration-print configuration parameters (documentation stub)
 #'
-#' Documentation-only stub holding every argument that controls
-#' iteration-time print formatting in `nlmixr2est`: both the scalar
-#' `*Control()` arguments (`print`, `printNcol`, `useColor`) and the
-#' [iterPrintControl()] arguments (`every`, `ncol`, `headerEvery`,
-#' `useColor`, `simple`); downstream functions pull entries via
-#' `@inheritParams iterPrintParams`.
+#' Shared `@param` docs for iteration-print formatting, used by both the
+#' scalar `*Control()` arguments and [iterPrintControl()] via `@inheritParams`.
 #'
 #' @param print Either a scalar print-frequency (`0` = suppress, `1`
 #'   (default) = every evaluation, `N` = every Nth), OR a pre-built
-#'   [iterPrintControl()] object. The scalar form is equivalent to
+#'   [iterPrintControl()] object. Equivalent to
 #'   `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.
-#' @param printNcol Integer (or `NULL`) — parameter columns per row before
-#'   wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`
-#'   (fits an 80-column terminal). Equivalent to `print =
-#'   iterPrintControl(ncol = ...)`.
+#' @param printNcol Integer (or `NULL`) parameter columns per row before
+#'   wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.
 #' @param every Integer. Print one iteration row every `every` parameter
-#'   evaluations; `0` suppresses output. Defaults to `1L`. This is
-#'   [iterPrintControl()]'s name for what `*Control()` calls `print`.
+#'   evaluations; `0` suppresses output. Defaults to `1L`.
 #' @param ncol Integer or `NULL`. Parameter columns per row before wrapping.
-#'   `NULL` (default) uses `floor((getOption("width") - 23) / 12)`. This is
-#'   [iterPrintControl()]'s name for what `*Control()` calls `printNcol`.
+#'   `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.
 #' @param headerEvery Integer or `NULL`. Re-emit the column header every
-#'   `headerEvery` parameter-print events (not raw iterations); `0` prints
-#'   it once at fit start. `NULL` (default) uses `10L`.
-#' @param useColor Logical (or `NULL`) — emit ANSI bold/color escapes in the
+#'   `headerEvery` parameter-print events; `0` prints it once at fit start.
+#'   `NULL` (default) uses `10L`.
+#' @param useColor Logical (or `NULL`) emit ANSI bold/color escapes in the
 #'   iteration print. `NULL` (default) defers to [crayon::has_color()].
-#'   Equivalent to `print = iterPrintControl(useColor = ...)`.
-#' @param simple Logical. When `TRUE`, print a single row per iteration
-#'   (optimizer-scale parameters only), suppressing the unscaled (`U`) /
-#'   back-transformed (`X`) rows — used by estimators like saem with no
-#'   internal optimizer scaling. Defaults to `FALSE`.
+#' @param simple Logical. When `TRUE`, print a single row per iteration,
+#'   suppressing the unscaled (`U`) / back-transformed (`X`) rows. Defaults
+#'   to `FALSE`.
 #' @return Nothing; this is a documentation-only helper.
 #' @keywords internal
 #' @name iterPrintParams
@@ -38,13 +28,10 @@ NULL
 
 #' Control iteration-time print formatting
 #'
-#' Bundles every option controlling the iteration progress output emitted by
-#' `nlmixr2` estimators; consumed by the shared C++ helper
-#' (`scaleApplyIterPrintControl` in `src/scale.h`) so every estimator formats
-#' its trace through one code path. Pass as the `print` argument to any
-#' `*Control()` function, e.g. `foceiControl(print = iterPrintControl(every =
-#' 5, headerEvery = 20))`; the scalar form `foceiControl(print = 5, printNcol
-#' = 8)` still works and is wrapped into an `iterPrintControl()` internally.
+#' Bundles the options controlling the iteration progress output emitted by
+#' `nlmixr2` estimators. Pass as the `print` argument to any `*Control()`
+#' function; the scalar form (`print = N`) still works and is wrapped into
+#' an `iterPrintControl()` internally.
 #'
 #' @inheritParams iterPrintParams
 #' @return A list with the validated, defaulted iteration-print
@@ -120,9 +107,8 @@ iterPrintControl <- function(every = 1L,
 #' @param ui rxode2 ui object.
 #' @param printNames Character vector of parameter names in the same
 #'   order as the printed parameter vector.  When `NULL` (default)
-#'   uses all thetas (fixed + unfixed) in `ntheta` order — the form
-#'   focei's C-side consumes for its theta-indexed back-transform.
-#' @return Named list of integer / numeric vectors as documented above.
+#'   uses all thetas (fixed + unfixed) in `ntheta` order.
+#' @return Named list of integer / numeric vectors, see source.
 #' @noRd
 .iterPrintXParFromUi <- function(ui, printNames = NULL) {
   iniThetas <- ui$iniDf[!is.na(ui$iniDf$ntheta), c("ntheta", "name")]
@@ -185,20 +171,15 @@ iterPrintControl <- function(every = 1L,
 
 #' Wrap scalar or list arguments into an iterPrintControl object
 #'
-#' Internal helper used by every `*Control()` function (and downstream
-#' packages like `babelmixr2`) to absorb the scalar `print`/`printNcol`/
-#' `useColor` arguments into a single [iterPrintControl()] object, or pass
-#' through an already pre-built one. Exported under a leading-dot name to
-#' mark it as package-internal, not for end users.
+#' Absorbs the scalar `print`/`printNcol`/`useColor` arguments into a single
+#' [iterPrintControl()] object, or passes through an already pre-built one.
 #'
 #' @param print Either an integer print-frequency or an
 #'   `iterPrintControl` object.
 #' @param printNcol,useColor Scalar `*Control()` arguments forwarded
 #'   to [iterPrintControl()] only when `print` is a scalar.
-#' @param iterPrintControl Optional pre-built [iterPrintControl()]
-#'   object.  Wins over `print` and the other scalars when supplied —
-#'   used by the round-trip case where a returned control list is
-#'   passed back through `do.call(*Control, .ctl)`.
+#' @param iterPrintControl Optional pre-built [iterPrintControl()] object.
+#'   Wins over `print` and the other scalars when supplied.
 #' @return An `iterPrintControl` list.
 #' @keywords internal
 #' @export
