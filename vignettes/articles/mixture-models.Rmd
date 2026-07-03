@@ -40,9 +40,15 @@ block. The following estimation methods all support mixture models:
 | `saem`    | Stochastic Approximation Expectation-Maximization |
 
 The gradient-based methods (`focei`, `foce`, `fo`, `foi`, `laplace`, `agq`) all
-use the same *hard-assignment* strategy described below. SAEM supports mixtures
-through a different *soft-assignment* (probabilistic) scheme and is covered in
-its own section, [Mixture Models with SAEM](#mixture-models-with-saem).
+use the same *hard-assignment* strategy described below and reliably separate
+mixture components with high precision. SAEM supports mixtures through a
+different *soft-assignment* (probabilistic) scheme, described in its own
+section, [Mixture Models with SAEM](#mixture-models-with-saem); it is stabilized
+against a mixing-probability collapse failure mode by default, but with default
+settings may separate components less precisely than the gradient-based
+methods on small or weakly-separated datasets. **`focei` is recommended when
+precise per-subject classification matters; SAEM is a usable alternative that
+may need tuning (see its section) to match it.**
 
 > **rxode2 requirement.** Nested transformations inside `mix()` — for example
 > `mix(expit(tcl1 + eta.cl, 0.1, 200), p1, ...)` — require **rxode2 >= 5.1.3**.
@@ -185,26 +191,28 @@ print(fit)
 
 ```{r fit-show, echo=FALSE}
 cat("
-── nlmixr² FOCEi (outer: nlminb) ──
+── nlmixr² FOCEi (outer: bobyqa) ──
 
-           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-FOCEi -262.1829 360.3165 390.7092      -172.1582           11.19           2.803
+           OBJF      AIC      BIC Log-likelihood Condition#(Cov)
+FOCEi -262.2443 360.2551 390.6479      -172.1276        14.14459
+      Condition#(Cor)
+FOCEi        2.891855
 
 ── Population Parameters (fit$parFixed or fit$parFixedDf): ──
 
-         Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-tka     0.173 0.0741   43       1.19 (1.03, 1.37)
-tcl1     1.95  0.118 6.02       7.04 (5.59, 8.86)
-tcl2   -0.256  0.162 63.5     0.774 (0.563, 1.06)
-tv       3.38 0.0613 1.81       29.4 (26.1, 33.2)     18.7      13.7%
-p1      0.684                               0.684
-add.sd  0.328                               0.328
-eta.cl                                                34.4      7.99%
+         Est.      SE  %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
+tka    0.1712 0.07434 43.42    1.187 (1.026, 1.373)
+tcl1   -3.323  0.1272 3.827    7.057 (5.564, 8.939)
+tcl2   -5.693  0.1783 3.133  0.7715 (0.5739, 1.051)
+tv       3.38 0.06005 1.776    29.38 (26.11, 33.05)          18.00     11.97%
+p1     0.6666                                0.6666
+add.sd 0.3279                                0.3279
+eta.cl                                                        0.36      8.322%
 ")
 ```
 
-The back-transformed `p1` of **0.684** closely matches the true EM prevalence
-(0.67). The EM clearance (`tcl1` → 7.04 L/hr) and PM clearance (`tcl2` → 0.774
+The back-transformed `p1` of **0.667** closely matches the true EM prevalence
+(0.67). The EM clearance (`tcl1` → 7.06 L/hr) and PM clearance (`tcl2` → 0.772
 L/hr) both recover the true values within a few percent.
 
 ### Why the estimates are good
@@ -251,13 +259,13 @@ head(fit$mixList$mix1)
 
 ```{r mixlist-show, echo=FALSE}
 cat("
-  ID     eta.cl      eta.v      prob
-1  1  0.3696  0.08841 1.0000000
-2  2  0.1695 -0.04068 1.0000000
-3  3  0.0118 -0.09650 1.0000000
-4  4 -0.0538  0.33962 0.9999999
-5  5  0.3673 -0.07519 1.0000000
-6  6  0.4510  0.01170 1.0000000
+  ID      eta.cl       eta.v      prob
+1  1  0.39326459  0.08586619 1.0000000
+2  2  0.17811121 -0.03913940 1.0000000
+3  3  0.01023984 -0.09369114 1.0000000
+4  4 -0.05653866  0.33189804 0.9999999
+5  5  0.38879404 -0.07281481 1.0000000
+6  6  0.47960137  0.01132721 1.0000000
 ")
 ```
 
@@ -368,8 +376,8 @@ clear separation of the two populations.
 
 ## Mixture Models with SAEM
 
-SAEM supports the same `mix()` model syntax as the gradient-based methods, so the
-`twoPop` model defined above can be fit directly:
+SAEM accepts the same `mix()` model syntax as the gradient-based methods, so the
+`twoPop` model defined above can be submitted to it directly:
 
 ```{r fit-saem, eval=FALSE}
 fitSaem <- nlmixr2(twoPop, simData, "saem",
@@ -379,22 +387,118 @@ print(fitSaem)
 
 ```{r fit-saem-show, echo=FALSE}
 cat("
-── nlmixr² SAEM ──
+── nlmixr² SAEM OBJF by FOCEi approximation ──
 
-         OBJF      AIC      BIC Log-likelihood
-SAEM -261.74  361.02  391.41        -172.51
+ Gaussian/Laplacian Likelihoods: AIC() or $objf etc.
+ FOCEi CWRES & Likelihoods: addCwres()
 
 ── Population Parameters (fitSaem$parFixed or fitSaem$parFixedDf): ──
 
-         Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-tka     0.171 0.0760   44       1.19 (1.02, 1.38)
-tcl1     1.96  0.121 6.18       7.10 (5.60, 9.00)
-tcl2   -0.249  0.169 67.7     0.780 (0.560, 1.09)
-tv       3.38 0.0625 1.85       29.4 (26.0, 33.3)     18.9      14.1%
-p1      0.681                               0.681
-add.sd  0.330                               0.330
-eta.cl                                                34.7      8.40%
+        Est.   SE %RSE Back-transformed(95%CI) BSV(CV% or SD) Shrink(SD)%
+tka    0.188 -nan  nan       1.21 (-nan, -nan)
+tcl1   -4.09 -nan  nan         3.38 (nan, nan)
+tcl2   -6.35 -nan  nan         0.45 (nan, nan)
+tv      3.39 -nan  nan       29.6 (-nan, -nan)          18.01     10.97%
+p1     0.691                             0.691
+add.sd 0.326                             0.326
+eta.cl                                                   1.11     23.20%
+
+  Information about run found ($runInfo):
+   • error calculating tables, returning without table step
+   • diag(V) had non-positive or NA entries; the non-finite result may be dubious
+   • NaNs produced
 ")
+```
+
+The back-transformed `p1` of **0.691** is in the right neighborhood of the true
+EM prevalence (0.67), and `fitSaem$mixNum` shows a real (not collapsed) split:
+
+```{r mixnum-saem-table, echo=FALSE}
+cat("
+ 1  2
+26  4
+")
+```
+
+Cross-tabulated against the true labels, SAEM gets every true EM subject right
+but only 4 of the 10 true PM subjects — noticeably less precise than FOCEI's
+perfect separation on the same data:
+
+```{r classification-saem, echo=FALSE}
+cat("
+           True
+Predicted   EM (fast) PM (slow)
+  EM (fast)        20         6
+  PM (slow)         0         4
+")
+```
+
+> **Two known limitations, both distinct from component separation itself.**
+> First, standard errors above are `NaN`: the linearized Fisher-information
+> calculation for this *single, shared* `eta.cl` (used by both components)
+> remains ill-conditioned when few subjects are confidently assigned to the
+> minority component — the package's own test suite works around exactly this
+> by setting `covMethod = 0L` for this configuration. Give each component its
+> own random effect instead (see [Shared variability across
+> components](#shared-variability-across-components-split-etas) below) and
+> `covMethod="linFim"` produces finite SEs normally. Second, separation
+> quality itself is sensitive to `nBurn`/`nEm` and to the
+> `mixProbPriorN`/`mixProbMethod` settings described next — increasing
+> `mixProbPriorN` to 30 and using `nBurn = 400, nEm = 800` recovers a 21/9
+> split (`p1` ≈ 0.675) on this same simulated data, much closer to FOCEI. For
+> a first look at a mixture model, or when precise per-subject classification
+> matters, `focei` remains the more reliable default; SAEM is a usable
+> alternative that may need more iterations and/or a higher `mixProbPriorN`
+> to match it.
+
+### Why SAEM needs help separating mixture components
+
+The gradient-based methods use a **hard assignment**: every subject is solved
+under each component, and the single best-fitting component is selected before
+the sufficient statistics are updated — this optimizes each subject
+independently on every iteration, so it cannot get stuck. SAEM instead uses a
+**soft (probabilistic) assignment** that fits naturally into its
+stochastic-approximation framework, but that same stochastic-approximation
+mechanism makes the *mixing probability* itself prone to a runaway
+positive-feedback collapse: the per-subject responsibility used to update it
+is weighted by the *current* mixing probability, so a small, noisy drift
+shrinks the responsibility of the shrinking component for every subject (not
+just the ones that truly belong to the other component), which shrinks the
+next iteration's estimate further. Left unchecked this can drive the mixing
+probability all the way to exactly 0 or 1 well before the fixed effects have
+separated — `saemControl()`'s `mixProbMethod` (below) exists specifically to
+prevent that.
+
+### Stabilizing the mixing-probability estimate: `mixProbMethod`
+
+`saemControl()` exposes two independent ways to stabilize the mixing
+probability against the collapse described above:
+
+* **`mixProbMethod = "regularized"` (default).** Blend `mixProbPriorN`
+  pseudo-subjects, distributed according to the model's *initial* mixing
+  probability (from `ini()`), into the responsibility average used at every
+  iteration — equivalent to a Dirichlet-prior/MAP-EM correction on the mixing
+  proportions. This changes what the estimate converges toward (pulled toward
+  the initial guess, with the pull's relative strength shrinking as the
+  number of subjects grows), in exchange for reliably preventing collapse.
+  Larger `mixProbPriorN` and more `nBurn`/`nEm` iterations both improve
+  separation quality, as shown above.
+
+* **`mixProbMethod = "annealed"`.** Give the mixing-probability update its own
+  step-size schedule that decays from iteration 1 (`mixProbStepExp`), instead
+  of the shared burn-in step of 1 used for ordinary parameters. This only
+  slows *how fast* the estimate can move, without biasing what it converges
+  to — but for a systematic (rather than purely noise-driven) collapse,
+  slowing the walk to the same wrong answer does not, by itself, prevent
+  reaching it. Prefer this when you want to avoid any bias toward the initial
+  mixing probability and believe the components are already reasonably
+  separated.
+
+```{r mixprob-method, eval=FALSE}
+# more separation power, at the cost of more iterations and some bias
+# toward the ini()-specified p1:
+saemControl(mixProbMethod = "regularized", mixProbPriorN = 30,
+            nBurn = 400, nEm = 800)
 ```
 
 ### How SAEM handles mixtures differently
@@ -437,7 +541,8 @@ perfectly separated.
 
 ### Accessing SAEM mixture results
 
-The same accessors are available as for the gradient-based fits:
+The same accessors are available as for the gradient-based fits, and return
+values without error:
 
 ```{r saem-accessors, eval=FALSE}
 fitSaem$mixNum         # most-likely component per subject (1-indexed)
@@ -449,6 +554,10 @@ For SAEM, the `prob` column in `$mixList` is the posterior membership weight
 $a_{ik}$ computed by the SAEM engine directly (returned internally as the
 `mixWeights` matrix), and `$mixNum` reports the component with the largest
 weight. `$etaExpected` holds the posterior-weighted ETAs used for shrinkage.
+As shown above, these are meaningful once `mixProbMethod` is stabilizing the
+fit, but their precision (how many subjects land in the correct component)
+depends on `mixProbPriorN` and the number of iterations, more so than for the
+gradient-based methods.
 
 ### Shared variability across components (split ETAs)
 
@@ -466,15 +575,32 @@ $$
 \qquad w_k = \frac{\sum_i a_{ik}}{\sum_i \sum_j a_{ij}}
 $$
 so a single `eta.cl` term is reported even though each component was sampled with
-its own random effect during estimation.
+its own random effect during estimation. This calculation is only as good as
+the posterior weights $a_{ik}$ feeding it, so it benefits from the same
+`mixProbMethod` stabilization described above, and split ETAs are what makes
+`covMethod = "linFim"` produce finite SEs.
+
+> **A separate, still-open issue with split ETAs.** In testing, split-ETA
+> mixture fits can converge with `p1` looking reasonable but with `tcl1` and
+> `tcl2` themselves settling on nearly *identical* values — i.e. the
+> components' central tendencies merge even though the mixing-probability
+> collapse described above is fixed. If your split-ETA fit's back-transformed
+> `tcl1`/`tcl2` (or other per-component fixed effects) come out suspiciously
+> close together, check the fit carefully rather than trusting `$mixNum`/`$omega`
+> at face value — this looks like a distinct problem from the mixing-probability
+> collapse and is not addressed by `mixProbMethod`.
 
 ## Choosing an Estimation Method
 
 All six gradient-based methods handle mixture models using the same strategy:
 ETAs are optimized separately for every subject × mixture combination and the
-best-fitting component is selected. SAEM uses the soft-assignment scheme
-described in [Mixture Models with SAEM](#mixture-models-with-saem). The choice of
-method affects only accuracy and speed:
+best-fitting component is selected. This works reliably in practice and gives
+the cleanest separation. SAEM uses the soft-assignment scheme described in
+[Mixture Models with SAEM](#mixture-models-with-saem); with the default
+`mixProbMethod = "regularized"` it no longer collapses, but by default it may
+separate components less precisely than the gradient-based methods on
+small/weakly-separated datasets unless `mixProbPriorN` and `nBurn`/`nEm` are
+increased (see that section for a worked example):
 
 | Method    | Interaction | Accuracy | Notes |
 |-----------|:-----------:|:--------:|-------|
@@ -484,12 +610,13 @@ method affects only accuracy and speed:
 | `agq`     | Yes | Highest | Most accurate; slowest |
 | `fo`      | No  | Low     | Linearization; fast but less accurate |
 | `foi`     | Yes | Low     | FO with interaction |
-| `saem`    | Yes | High    | Soft (probabilistic) assignment; robust when components overlap |
+| `saem`    | Yes | Moderate–High | Soft assignment; tune `mixProbPriorN`/`nBurn`/`nEm` for closer-to-FOCEI separation; see [Mixture Models with SAEM](#mixture-models-with-saem) |
 
 ## Notes and Limitations
 
 - **Computational cost** is multiplied by the number of mixture components,
-  because the inner optimization runs for `nSub × nMix` individuals.
+  because the inner optimization runs for `nSub × nMix` individuals (or, for
+  SAEM, `nMix` MCMC passes per iteration).
 - **Identifiability** requires that the mixture components are well-separated
   in the data. More than 2–3 components is rarely supportable with typical
   PK/PD datasets.
@@ -497,6 +624,11 @@ method affects only accuracy and speed:
   block for diagnostic purposes but do not affect the likelihood.
 - **Initial estimates matter**: provide lower bounds on `tcl1` and `tcl2` to
   prevent label-switching for focei during optimization.
-- **SAEM** supports mixtures via soft assignment (see
-  [Mixture Models with SAEM](#mixture-models-with-saem)). Nested transforms
-  inside `mix()` require **rxode2 >= 5.1.3**.
+- **SAEM** supports mixtures via soft assignment, stabilized against collapse
+  by `saemControl(mixProbMethod=)` (see
+  [Mixture Models with SAEM](#mixture-models-with-saem)); it typically needs
+  more tuning (iterations, `mixProbPriorN`) than the gradient-based methods to
+  match their separation precision, and does not currently support covariance
+  for mixtures with a single shared ETA (use split ETAs for that). Nested
+  transforms inside `mix()` require **rxode2 >= 5.1.3** regardless of
+  estimation method.
