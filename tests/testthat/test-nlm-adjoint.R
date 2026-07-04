@@ -108,6 +108,46 @@ nmTest({
                  tolerance = 1e-4)
   })
 
+  test_that("focei adjoint inner sensitivities match the forward fit", {
+    .d <- nlmixr2data::theo_sd
+    ## 3 etas > 2 ODE states so the inner sens auto-resolves to adjoint
+    mod <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45
+        eta.ka ~ 0.1; eta.cl ~ 0.1; eta.v ~ 0.1
+        add.sd <- 0.7
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v <- exp(tv + eta.v)
+        d/dt(depot) <- -ka * depot
+        d/dt(center) <- ka * depot - cl / v * center
+        cp <- center / v
+        cp ~ add(add.sd)
+      })
+    }
+    ## the adjoint inner model keeps FOCEi's lhs offsets (pred at lhs[0]) and
+    ## appends the rx__adj* sweep lhs after them
+    ui <- rxode2::rxUiDecompress(rxode2::as.rxUi(mod))
+    assign("control", foceiControl(sensMethod = "adjoint"), envir = ui)
+    .lhs <- rxode2::rxModelVars(ui$focei$inner)$lhs
+    expect_identical(.lhs[1], "rx_pred_")
+    expect_true(any(grepl("^rx__adjFX", .lhs)))
+    expect_gt(which(.lhs == "rx__adjFX_0_0__"), 8L)
+
+    .rf <- function(sm) {
+      .nlmixr(mod, .d, est = "focei",
+              foceiControl(sensMethod = sm, print = 0, maxOuterIterations = 12L))
+    }
+    fwd <- .rf("forward")
+    adj <- .rf("adjoint")
+    expect_equal(adj$objf, fwd$objf, tolerance = 1e-3)
+    expect_equal(setNames(adj$parFixedDf$Estimate, rownames(adj$parFixedDf)),
+                 setNames(fwd$parFixedDf$Estimate, rownames(fwd$parFixedDf)),
+                 tolerance = 1e-3)
+  })
+
   test_that("default sensMethod is 'auto' across the nlm family", {
     expect_equal(nlmControl()$sensMethod, "auto")
     expect_equal(foceiControl()$sensMethod, "auto")
