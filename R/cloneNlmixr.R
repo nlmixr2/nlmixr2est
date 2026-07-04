@@ -1,9 +1,18 @@
-.cloneEnv <- function(env) {
+.cloneEnv <- function(env, .seen = NULL) {
+  # .seen maps env address -> clone so cycles/shared envs terminate instead of recursing forever.
+  if (is.null(.seen)) {
+    .seen <- new.env(parent = emptyenv())
+  }
+  .addr <- data.table::address(env)
+  if (!is.null(.seen[[.addr]])) {
+    return(.seen[[.addr]])
+  }
   .cls <- attr(env, "class")
   .env <- new.env(parent = emptyenv())
+  .seen[[.addr]] <- .env
   for (.x in ls(env, all.names=TRUE)) {
     if (is.environment(get(.x, env))) {
-      assign(.x, .cloneEnv(get(.x, env)), .env)
+      assign(.x, .cloneEnv(get(.x, env), .seen), .env)
     } else {
       assign(.x, get(.x, env), .env)
     }
