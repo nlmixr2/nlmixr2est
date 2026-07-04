@@ -261,6 +261,9 @@ rxUiGet.saemParamsToEstimate <- function(x, ...) {
   .ui <- x[[1]]
   .iniDf <- .ui$iniDf
   .ret <- c(.iniDf$name[!is.na(.iniDf$ntheta) & is.na(.iniDf$err)])
+  if (length(.ui$mixProbs) > 0) {
+    .ret <- .ret[!(.ret %in% .ui$mixProbs)]
+  }
   .cov <- rxUiGet.saemMuRefCovariateDataFrame(x, ...)
   if (length(.cov$theta) > 0) {
     .theta <- .ret
@@ -368,7 +371,18 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
   for (.e in seq_along(.etaTrans)) {
     .eta <- paste0("ETA[", .e, "]")
     .tn <- .etaTrans[.e]
-    if (.tn < 0) {
+    if (is.na(.tn)) {
+      .mergedEtaName <- .etas[.e]
+      .thetaValue[.mergedEtaName] <- .eta
+      .nonMuEtas <- .ui$nonMuEtas
+      if (length(.nonMuEtas) > 0) {
+        .roots <- gsub("[0-9]+$", "", .nonMuEtas)
+        .matches <- .nonMuEtas[.roots == .mergedEtaName]
+        if (length(.matches) > 0) {
+          .thetaValue[.matches] <- .mergedEtaName
+        }
+      }
+    } else if (.tn < 0) {
       .thetaValue[.etas[-.tn]] <- .eta
     } else {
       if (.thetaValue[.tn] == "") {
@@ -388,6 +402,16 @@ rxUiGet.saemModelPredReplaceLst <- function(x, ...) {
       .cur <- c(.thetaValue[.tv], .tcov)
       .cur <- .cur[.cur != ""]
       .thetaValue[.tv] <- paste(.cur, collapse=" + ")
+    }
+  }
+  .nonMuEtas <- .ui$nonMuEtas
+  if (length(.nonMuEtas) > 0) {
+    .roots <- unique(gsub("[0-9]+$", "", .nonMuEtas))
+    .rootsInNames <- .roots[.roots %in% names(.thetaValue)]
+    .rootsInNames <- setdiff(.rootsInNames, .nonMuEtas)
+    if (length(.rootsInNames) > 0) {
+      .otherNames <- names(.thetaValue)[!(names(.thetaValue) %in% c(.rootsInNames, .nonMuEtas))]
+      .thetaValue <- .thetaValue[c(.otherNames, .rootsInNames, .nonMuEtas)]
     }
   }
   .thetaValue

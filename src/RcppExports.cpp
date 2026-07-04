@@ -418,6 +418,17 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// nlmerSolveGrad
+RObject nlmerSolveGrad(arma::mat& thetaMat);
+RcppExport SEXP _nlmixr2est_nlmerSolveGrad(SEXP thetaMatSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat& >::type thetaMat(thetaMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(nlmerSolveGrad(thetaMat));
+    return rcpp_result_gen;
+END_RCPP
+}
 // nlmSetScaleC
 RObject nlmSetScaleC(NumericVector scaleC);
 RcppExport SEXP _nlmixr2est_nlmSetScaleC(SEXP scaleCSEXP) {

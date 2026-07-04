@@ -8,6 +8,7 @@
 ^.zed$
 ^AGENTS.md$
 ^.claude$
+^\.clauderules$
 ^.vexp
 ^.vscode$
 ^compile_commands.json$
@@ -105,3 +106,4 @@ BinaryFiles$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
 ^LICENSE\.md$
+^vignettes/$
