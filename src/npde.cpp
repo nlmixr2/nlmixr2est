@@ -139,8 +139,7 @@ static inline void handleCensNpdeCdf(calcNpdeInfoId &ret, arma::Col<int> &cens, 
   // Now back-calculate the EPRED
   j = trunc(ret.pd[i]*K);
   j2 = trunc(ret.pd2[i]*K);
-  // pd can round to exactly 1.0 (e.g. right-censored with a tiny ru2) giving
-  // j == K; clamp into [0, K-1] so curRow[j]/curRow[j+1] stay in bounds.
+  // pd can round to 1.0; clamp to keep curRow indices in bounds
   if (j >= K) j = K - 1;
   if (j2 >= K) j2 = K - 1;
   low = curRow[j];
