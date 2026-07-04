@@ -298,11 +298,6 @@
 
 #' Uppercase data column names except the model covariates
 #'
-#' nlmixr2 normalizes input/event-table column names to upper case, but leaves
-#' model covariate columns at their declared case.  This is the single shared
-#' implementation used by `.foceiPreProcessData()`, the covariate-present
-#' pre-process hook, and the output-table re-insertion helpers.
-#'
 #' @param nms character vector of column names
 #' @param covNames character vector of model covariate names (kept as-is)
 #' @return character vector of names, upper-cased except those in `covNames`
@@ -315,12 +310,7 @@
   }, character(1), USE.NAMES = FALSE)
 }
 
-#' Detect the time-varying covariate columns for mu-referenced estimators
-#'
-#' SAEM and NLME both support mu-referenced covariates and must know which
-#' covariate columns vary within a subject.  This is the single shared
-#' implementation; it translates the (already preprocessed) data with the base
-#' model vars and returns the time-varying covariate column names.
+#' Detect the time-varying covariate columns for mu-referenced estimators (SAEM/NLME)
 #'
 #' @param dataSav preprocessed event-table data (from `.foceiPreProcessData()`)
 #' @param ui rxode2 ui model (uses `ui$mv0`)
@@ -334,23 +324,14 @@
                          addlDropSs = rxControl$addlDropSs,
                          ssAtDoseTime = rxControl$ssAtDoseTime)
   .nTv <- attr(class(.et), ".rxode2.lst")$nTv
-  # nTv == 0 -> no time-varying covariates; otherwise (or, defensively, when the
-  # attribute is absent) the time-varying covariate columns follow the first 6
-  # event-table columns.  This preserves the prior saem behavior exactly.
+  # nTv == 0 means no time-varying covariates; otherwise they follow the first 6 columns
   if (!is.null(.nTv) && .nTv == 0L) {
     return(character(0))
   }
   names(.et)[-seq_len(6)]
 }
 
-#' Generic family-control setup for the nlm-family estimation methods
-#'
-#' Every nlm-family method (`nlm`, `nlminb`, `bobyqa`, `newuoa`, `uobyqa`,
-#' `n1qn1`, `lbfgsb3c`, `optim`, `nls`) sets up its control identically: take the
-#' control from the dispatch env, default it, coerce a plain list to the proper
-#' control object, and assign it onto the ui.  This is that shared body; the
-#' per-method `.<m>FamilyControl` wrappers pass their `*Control()` function and
-#' its class name.
+#' Shared control setup for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui` and `control`)
 #' @param controlFn the method's `*Control()` constructor (e.g. `nlmControl`)
@@ -370,24 +351,13 @@
   assign("control", .control, envir = .ui)
 }
 
-#' Generic family-fit driver for the nlm-family estimation methods
-#'
-#' Every nlm-family method shares the same fit spine: preprocess the data, run
-#' the method's optimizer (`fitModel`) collecting warnings, assemble the fit
-#' environment (objective, theta, control, message, ...), and hand it to
-#' `nlmixr2CreateOutputFromUi()`.  The per-method `.<m>FamilyFit` wrappers supply
-#' only what genuinely differs.  The fit environment built here needs (and this
-#' driver populates): table, origData/dataSav/idLvl/covLvl (via
-#' `.foceiPreProcessData`), ui, adjObf, fullTheta, control, extra, est,
-#' objective, model, ofvType, message, theta.
+#' Shared fit driver for the nlm-family estimation methods
 #'
 #' @param env dispatch environment (provides `ui`, `control`, `data`, `table`)
 #' @param method estimation-method string; also the slot the raw fit is stored
 #'   under (e.g. `"nlm"` -> `.ret[["nlm"]]`)
 #' @param fitModel `function(ui, dataSav)` running the optimizer
 #' @param getTheta `function(fit, ui)` returning the full theta vector
-#' @param objective `function(fit)` returning the raw objective (driver does not
-#'   multiply; pass e.g. `function(f) 2 * as.numeric(f$minimum)`)
 #' @param controlToFocei `function(env)` translating the control to a
 #'   focei-style control for output assembly
 #' @param returnFlag rxode2 control flag name that short-circuits and returns the
@@ -401,8 +371,8 @@
 #'   `NULL` the driver does not set `$objective` (a `postSetup` closure did)
 #' @param postSetup optional `function(ret, ui, fitList)` returning a modified
 #'   `ret`, run right after the raw fit is stored and before
-#'   `.nlmFamilyAdjustOutput()` -- for methods that must set cov/covMethod/
-#'   objective with custom values that adjustOutput's `is.null` guards then keep
+#'   `.nlmFamilyAdjustOutput()` (for methods that set cov/covMethod/objective
+#'   with custom values)
 #' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
 #' @author Matthew L. Fidler
 #' @noRd

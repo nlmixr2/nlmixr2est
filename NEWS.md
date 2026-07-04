@@ -17,6 +17,10 @@
   re-inserted into the output with a population `PRED` and `NA` individual
   columns, like FOCEi (#687)
 
+- Internal consolidation of data preparation and the nlm-family
+  control/fit functions across estimation methods; no change to any fit
+  result
+
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal
 
 - Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
