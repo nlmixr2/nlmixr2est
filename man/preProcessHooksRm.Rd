@@ -2,7 +2,7 @@
 % Please edit documentation in R/hook.R
 \name{preProcessHooksRm}
 \alias{preProcessHooksRm}
-\title{Remove the hook from nlmixr2est}
+\title{Remove a pre-processing hook from nlmixr2est}
 \usage{
 preProcessHooksRm(name)
 }
@@ -13,8 +13,7 @@ preProcessHooksRm(name)
 logical indicating if the hook was removed (invisibly)
 }
 \description{
-This removes the hook from nlmixr2est.  If the hook does not exist, a warning
-is issued.
+Warns if the hook does not exist.
 }
 \seealso{
 Other preProcessHooks:

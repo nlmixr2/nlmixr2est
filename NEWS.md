@@ -1,64 +1,68 @@
 # nlmixr2est (development version)
 
-- Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
-  `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`) fits at more than one core.  On Windows each package
-  statically links its own OpenMP runtime, so when the parallel inner
-  loop called rxode2's solver across threads rxode2 saw every worker as
-  thread 0 and collapsed its per-thread solve buffers onto a single
-  slot, racing and corrupting the heap.  The inner loop now hands rxode2
-  the real thread id via `setRxThreadId()` from rxode2 api (requires the
-  matching rxode2).
+- Fix `cov2cor` error when omega has exactly one nonzero diagonal
 
-- The iteration-time progress output emitted by every estimator
-  (focei, saem, bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1,
-  newuoa, uobyqa) now flows through a single shared printer
-  (`scaleApplyIterPrintControl`/`scalePrintFun` in `src/scale.h`).
-  Each estimator's iteration trace has the same `#`/`U`/`X` row
-  layout, column wrapping, ANSI handling, periodic header re-emit
-  cadence, and per-iteration user-interrupt check.
+- Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
+  when exactly one covariate-model parameter is estimated
 
-- New `iterPrintControl()` function bundles every iteration-print
-  option (`every`, `ncol`, `headerEvery`, `useColor`, `simple`) into
-  one validated, classed list.  Pass it via the existing `print`
-  argument on any `*Control()` function:
-  `foceiControl(print = iterPrintControl(every = 5, headerEvery = 20))`.
-  The historical scalar form `foceiControl(print = 5, printNcol = 8)`
-  continues to work — internally the outer `*Control()` wraps the
-  scalar arguments into an `iterPrintControl()` call.
+- Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` and `maxInnerIterations == 0`
 
-- saem now applies the same parameter back-transforms as focei.
-  The `X` row shows `exp(theta)` for log-transformed thetas and
-  `expit(theta, lower, upper)` for logit-transformed ones, derived
-  from `ui$muRefCurEval` on the R side.
+- Fix Windows heap-corruption segfault for gradient/pooled estimator
+  fits at more than one core
 
-- Estimators with no per-iteration objective function (saem) now
-  suppress the `Function Val.` column entirely instead of printing
-  `nan` in every iteration row.  The column header, separator, and
-  per-row prefix all shrink accordingly.
+- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
+  with a single population parameter
 
-- The shared iteration-printer auto-skips degenerate rows: when a
-  method has no internal optimizer scaling (saem, group-C
-  optimizers with `scaleType = "none"`) the `U` row is dropped
-  because it would mirror `#`, and when there are also no
-  log/logit-transformed parameters the `X` row is dropped too —
-  so models with no transforms collapse to a single `#` row per
-  iteration.  Users who want to force-skip the U/X rows even with
-  transforms present can pass
-  `*Control(print = iterPrintControl(simple = TRUE))`.
+- Test suite uses a single testthat worker on CI/CRAN and parallel
+  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
 
+- `fit$time` now reports every estimation stage consistently
+
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
+  `sigdig = 4`
+
+- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
+  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
+  `mulaplace`/`irlslaplace`, with new `foceiControl()` options
+  `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
+
+- Errors during estimation are now collected and reported together
+  instead of only the last one
+
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters with large-magnitude initial estimates
+
+- Iteration-time progress output for all estimators now flows through
+  a shared printer; new `iterPrintControl()` bundles the `every`,
+  `ncol`, `headerEvery`, `useColor`, `simple` options
+
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
+- Fix `focei` mixture models with llik residual distributions erroring
+  when a model had exactly one mixture probability parameter
+
+- Fix `fit$mixList` returning only the first mixture component
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale
+
+- Hardened mixture-model (`mix()`) estimation: clearer errors for
+  `est="nlme"` and invalid initial probabilities, warnings for
+  underflowing/collapsing mixture probabilities, and a fix for the
+  SAEM omega-diagonal floor being raised outside mixture fits
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
-  session affecting every pooled estimator except `nls`
-  (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`);
+  session for pooled estimators
+
+- Fix heap-buffer overflow and wrong back-transform in SAEM lambda
+  (Box-Cox) residual-error models
 
 - Guard against null pointer arithmetic in inner.cpp
 
 - Use OpenMP threading for S matrix calculation
 
-- Use OpenMP threading wile calculating NPDEs
-
+- Use OpenMP threading while calculating NPDEs
 
 # nlmixr2est 6.0.1
 
