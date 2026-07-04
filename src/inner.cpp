@@ -512,7 +512,10 @@ std::vector<double> vGrad;
 std::vector<int> niterGrad;
 std::vector<int> gradType;
 
+static void releaseCovSolveArgs_(); // defined with covSolveArgs_ below; teardown backstop
+
 extern "C" void rxOptionsFreeFocei() {
+  releaseCovSolveArgs_(); // release any preserved covType="analytic" solve args
   if (op_focei.etaTrans != NULL) R_Free(op_focei.etaTrans);
   op_focei.etaTrans=NULL;
 
@@ -4120,6 +4123,42 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 extern "C" double foceiOfvOptim(int n, double *x, void *ex);
 extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 
+// covType="analytic" FD fallback: the augmented cov solves run through
+// rxode2::rxSolve, which calls rxSolveFree() and frees the fit's global solve.
+// Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
+// the fit solve before the finite-difference Hessian.
+static SEXP covSolveArgs_ = R_NilValue;
+static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
+  List L = List::create(obj, rxControl, params, data);
+  if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
+  R_PreserveObject(L);
+  covSolveArgs_ = L;
+}
+// release the preserved model+rxControl+params+data once the cov step is done
+// so an analytic fit doesn't pin its whole dataset until the next analytic fit
+static void releaseCovSolveArgs_() {
+  if (covSolveArgs_ != R_NilValue) {
+    R_ReleaseObject(covSolveArgs_);
+    covSolveArgs_ = R_NilValue;
+  }
+}
+static bool restoreFitSolve_() {
+  if (covSolveArgs_ == R_NilValue) return false;
+  try {
+    List args = as<List>(covSolveArgs_);
+    RObject obj = args[0]; List rxControl = as<List>(args[1]);
+    RObject params = args[2]; RObject data = args[3];
+    rxode2::rxSolve_(obj, rxControl, R_NilValue, R_NilValue, params, data, R_NilValue, 1);
+    rx = getRxSolve_();
+    return true;
+  } catch (Rcpp::internal::InterruptedException&) {
+    throw;   // Ctrl-C: Rcpp requires the interrupt to propagate, never swallow it
+  } catch (Rcpp::LongjumpException&) {
+    throw;   // Rcpp longjump protocol must be rethrown intact, not turned into false
+  } catch (...) {
+    return false;   // genuine solve error -> report a failed restore
+  }
+}
 
 // [[Rcpp::export]]
 NumericVector foceiSetup_(const RObject &obj,
@@ -4422,6 +4461,12 @@ NumericVector foceiSetup_(const RObject &obj,
     // Don't force cores=1: the user-requested core count must propagate to
     // rxSolve_ so per-thread buffers are sized correctly (parallelization
     // itself is managed in innerOpt()).
+    // stash the solve args only for covType="analytic" (the sole reader); avoids
+    // retaining the model/dataset for the session on every finite-difference fit
+    if (foceiO.containsElementNamed("covType") &&
+        as<std::string>(foceiO["covType"]) == "analytic") {
+      storeCovSolveArgs_(obj, rxControl, params, data);
+    }
     rxode2::rxSolve_(obj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
@@ -5897,8 +5942,80 @@ RObject nlmixr2Hess_(RObject thetaT, RObject fT, RObject e,
 
 ////////////////////////////////////////////////////////////////////////////////
 // Covariance functions
+
+// R-callable bridge to shi21Central (analytic-cov 3rd-order tensor): `f` returns
+// the vector to difference (NULL/short -> NaN, which shi21Central tolerates).
+// Serial use only (single static holder); the covariance step is not parallel.
+static Rcpp::Function *shiWrapFn_ = NULL;
+static unsigned int shiWrapN_ = 0;
+static arma::vec shiWrapCall_(arma::vec &t, int id) {
+  arma::vec bad(shiWrapN_); bad.fill(NA_REAL);
+  RObject res = (*shiWrapFn_)(NumericVector(t.begin(), t.end()));
+  if (Rf_isNull(res)) return bad;
+  NumericVector rv(res);
+  if ((unsigned int)rv.size() != shiWrapN_) return bad;
+  return arma::vec(rv.begin(), rv.size());
+}
+struct ShiWrapGuard { ~ShiWrapGuard() { shiWrapFn_ = NULL; } };
+//[[Rcpp::export]]
+Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef) {
+  ShiWrapGuard _g;                                  // clear the holder even on an R error
+  shiWrapFn_ = &f; shiWrapN_ = f0.n_elem;
+  arma::vec gr(f0.n_elem, arma::fill::zeros);
+  double h = 0.0;
+  h = shi21Central(shiWrapCall_, t, h, f0, gr, 0, idx - 1, ef);
+  return Rcpp::List::create(_["h"] = h, _["gr"] = gr);
+}
+
 int foceiCalcR(Environment e){
   rx = getRxSolve_();
+  // covType="analytic": the exact analytic observed-information R-matrix while the
+  // optimizer is live; `.foceiCalcRanalytic` returns the npars x npars R or NULL to
+  // fall through to the finite-difference Hessian below.
+  {
+    List _ctl = as<List>(e["control"]);
+    std::string _covType = _ctl.containsElementNamed("covType") ?
+      as<std::string>(_ctl["covType"]) : "fd";
+    if (_covType == "analytic") {
+      Environment nlmixr2est = Environment::namespace_env("nlmixr2est");
+      Function af = as<Function>(nlmixr2est[".foceiCalcRanalytic"]);
+      RObject res = af(e);
+      if (!Rf_isNull(res)) {
+        arma::mat H0 = as<arma::mat>(res);
+        e["R.0"] = wrap(H0);
+        arma::mat cholR0, RE0;
+        bool rpd0 = cholSE0(cholR0, RE0, H0, op_focei.cholSEtol);
+        e["R.pd"] = wrap(rpd0);
+        e["R.E"]  = wrap(RE0);
+        e["cholR"] = wrap(cholR0);
+        // the augmented sensitivity solves replaced the fit's global solve; restore it
+        // so foceiFinalizeTables (llikObs, tolFactor) reads the fit, not the last
+        // subject.  If the restore fails the global solve is unusable -> abort the cov
+        // step (foceiCalcCov honors covMethod==0 as a clean skip) rather than let
+        // finalize read a dangling solve.
+        if (!restoreFitSolve_()) {
+          op_focei.covMethod = 0;
+          return 0;
+        }
+        return 1;
+      }
+      // analytic declined -> FD Hessian below.  Restore the freed global solve BEFORE
+      // the warning (options(warn=2) longjmps out); a failed restore -> failed cov,
+      // don't run FD against a freed solve.
+      if (e.exists(".analyticStarted") && as<bool>(e[".analyticStarted"])) {
+        if (!restoreFitSolve_()) {
+          op_focei.covMethod = 0;
+          return 0;
+        }
+      }
+      // tell the user (not silent).  RSprintf is the visible channel (like "Could not
+      // calculate covariance matrix"); the warning condition is for programmatic capture.
+      RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
+               "the augmented model would not build/solve); using finite differences.\n");
+      Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
+                 "this model; used the finite-difference covariance instead.");
+    }
+  }
   arma::mat H(op_focei.npars, op_focei.npars);
   arma::vec theta(op_focei.npars);
   unsigned int i, j, k;
@@ -6239,6 +6356,10 @@ void setupAq0_(Environment e) {
 NumericMatrix foceiCalcCov(Environment e){
   std::string boundStr = "";
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
+  // covType="analytic" stashes the fit's solve args (foceiSetup_); restoreFitSolve_
+  // needs them for the whole cov step (incl. foceiCalcR below), so release only on
+  // exit.  RAII covers every early return, the catch, and the covMethod=="" no-op.
+  struct CovSolveArgsRelease { ~CovSolveArgsRelease() { releaseCovSolveArgs_(); } } _covSolveArgsRelease;
   try {
     if (op_focei.covMethod) {
       op_focei.derivMethodSwitch=0;
@@ -6441,6 +6562,16 @@ NumericMatrix foceiCalcCov(Environment e){
           arma::mat cholR;
           if (!e.exists("cholR")){
             foceiCalcR(e);
+            // covType="analytic" signals an unrecoverable abort (the fit's global
+            // solve could not be restored after the augmented sensitivity solves) by
+            // zeroing covMethod.  Honor it as a clean cov-skip; do NOT fall through to
+            // the S-matrix path below, which would run foceiS against a freed solve.
+            if (op_focei.covMethod == 0) {
+              warning(_("covariance step failed"));
+              e["covMethod"] = CharacterVector::create("failed");
+              NumericMatrix ret;
+              return ret;
+            }
           } else {
             op_focei.cur += op_focei.npars*2;
             op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
@@ -6633,15 +6764,21 @@ NumericMatrix foceiCalcCov(Environment e){
                     e["cov"] = as<NumericMatrix>(e["covS"]);
                     op_focei.covMethod=3;
                   } else {
-                    // Now check sandwich matrix against R and S methods
+                    // Now check sandwich matrix against R and S methods.
+                    // issue #666 rescaled covR (2*Rinv->Rinv) and covS (4*Sinv->Sinv)
+                    // but left the sandwich covRS unchanged.  This selector's covSmall
+                    // diagonal floors and magnitude ordering were calibrated to the OLD
+                    // covR/covS scale, so compare in that scale (covR*2, covS*4) to keep
+                    // the estimator choice invariant to the rescale; the *installed*
+                    // covR/covS/covRS (below) stay on the corrected #666 scale.
                     bool covRSsmall = arma::any(abs(covRS.diag()) < op_focei.covSmall);
                     double covRSd= sum(covRS.diag());
                     arma::mat covR = as<arma::mat>(e["covR"]);
-                    bool covRsmall = arma::any(abs(covR.diag()) < op_focei.covSmall);
-                    double covRd= sum(covR.diag());
+                    bool covRsmall = arma::any(abs(2.0*covR.diag()) < op_focei.covSmall);
+                    double covRd= sum(2.0*covR.diag());
                     arma::mat covS = as<arma::mat>(e["covS"]);
-                    bool covSsmall = arma::any(abs(covS.diag()) < op_focei.covSmall);
-                    double  covSd= sum(covS.diag());
+                    bool covSsmall = arma::any(abs(4.0*covS.diag()) < op_focei.covSmall);
+                    double  covSd= sum(4.0*covS.diag());
                     if ((covRSsmall && covSsmall && covRsmall)){
                       e["cov"] = covRS;
                     } else if (covRSsmall && covSsmall && !covRsmall) {

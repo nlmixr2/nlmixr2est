@@ -95,6 +95,10 @@ nlmixr2Hess_ <- function(thetaT, fT, e, gillInfoT) {
     .Call(`_nlmixr2est_nlmixr2Hess_`, thetaT, fT, e, gillInfoT)
 }
 
+shi21CentralWrap <- function(f, t, f0, idx, ef) {
+    .Call(`_nlmixr2est_shi21CentralWrap`, f, t, f0, idx, ef)
+}
+
 #' Return the square root of general square matrix A
 #'
 #' @param m Matrix to take the square root of.
