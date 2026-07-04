@@ -96,7 +96,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   if (is.null(.ret)) {
     .cls <- class(obj)
     .lst <- attr(.cls, ".nlmixr2Gill")
-    return(.lst[[arg]])
+    .ret <- .lst[[arg]]
   }
   .ret
 }
@@ -112,7 +112,7 @@ iYeoJohnson <- function(x, lambda = 1) {
   .ret <- try(rbind(p1, p2), silent=TRUE)
   if (inherits(.ret, "try-error")) {
     warning("parameter history may be incomplete")
-    return(p2)
+    .ret <- p2
   }
   .ret
 }
@@ -134,57 +134,75 @@ nsis <- function() { ## build installer...
 #' Collect warnings and just warn once.
 #'
 #' @param expr R expression
-#'
-#' @param lst When \code{TRUE} return a list with
-#'     list(object,warnings) instead of issuing the warnings.
-#'     Otherwise, when \code{FALSE} issue the warnings and return the
-#'     object.
-#'
-#' @return The value of the expression or a list with the value of
-#'     the expression and a list of warning messages
-#'
+#' @param lst When \code{TRUE} return \code{list(object, warning = ws,
+#'   error = es)} instead of issuing the warnings.
+#' @param collectErr When \code{TRUE}, also record errors raised during
+#'   evaluation instead of letting them propagate; used by
+#'   \code{nlmixr2Est0()} so all errors from a failed run are reported
+#'   together rather than only the last one.
+#' @return The value of the expression, or when \code{lst = TRUE} a list
+#'   \code{list(object, warning = ws, error = es)} of unique warning/error
+#'   messages (\code{es} is \code{NULL} unless \code{collectErr = TRUE}
+#'   and an error escaped).
 #' @author Matthew L. Fidler
-#'
 #' @export
-#'
 #' @keywords internal
-.collectWarn <- function(expr, lst = FALSE) {
+.collectWarn <- function(expr, lst = FALSE, collectErr = FALSE) {
+  ws <- NULL
+  es <- NULL
   if (getOption("nlmixr2.collectWarnings", TRUE)) {
-    ws <- c()
     this.env <- environment()
-    ret <-
-      suppressWarnings(withCallingHandlers(
-        expr,
-        warning = function(w) {
-          assign("ws", unique(c(w$message, ws)), this.env)
+    if (collectErr) {
+      errored <- FALSE
+      ret <- tryCatch(
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          },
+          error = function(e) {
+            assign("es", unique(c(e$message, es)), this.env)
+          }
+        )),
+        error = function(e) {
+          assign("errored", TRUE, this.env)
+          NULL
         }
-      ))
-    if (lst) {
-      list(ret, ws)
-    } else {
-      for (w in ws) {
-        warning(w)
+      )
+      if (!errored) {
+        es <- NULL
       }
-      ret
+    } else {
+      ret <-
+        suppressWarnings(withCallingHandlers(
+          expr,
+          warning = function(w) {
+            assign("ws", unique(c(w$message, ws)), this.env)
+          }
+        ))
     }
   } else {
     ret <- force(expr)
-    if (lst) {
-      return(list(ret, NULL))
-    }
-    ret
   }
+  if (lst) {
+    ret <- list(ret, warning = ws, error = es)
+  } else {
+    for (w in ws) {
+      warning(w)
+    }
+    if (length(es) > 0) {
+      stop(paste(es, collapse = "\n"))
+    }
+  }
+  ret
 }
 # #########################################################################
 
 # nlmixr2Print() -----------------------------------------------------------
 #' Print x using the message facility
 #'
-#' This allows the suppressMessages to work on print functions.  This
-#' captures the output function sends it through the message routine.
-#'
-#' catpureOutput was used since it is much faster than the internal
-#' capture.output see https://www.r-bloggers.com/performance-captureoutput-is-much-faster-than-capture-output/
+#' Captures print() output and routes it through message() so
+#' suppressMessages() works on print functions.
 #' @param x object to print
 #' @return Nothing, called for its side effects
 #' @param ... Other things output
@@ -244,21 +262,6 @@ cholSE <- function(matrix, tol = (.Machine$double.eps)^(1 / 3)) {
   setwd("c:/")
 }
 
-#' Generate a data.frame using the R4.0 convention
-#'
-#' @param ... Passed to \code{base::data.frame()} or
-#'   \code{base::as.data.frame()}
-#' @param stringsAsFactors Captured so that it can be ignored and always set to
-#'   \code{FALSE}
-#' @return A data.frame with strings not converted to factors
-#' @noRd
-.data.frame <- function(..., stringsAsFactors = FALSE) {
-  base::data.frame(..., stringsAsFactors = FALSE)
-}
-.as.data.frame <- function(..., stringsAsFactors = FALSE) {
-  base::as.data.frame(..., stringsAsFactors = FALSE)
-}
-
 #' Nelder-Mead simplex search
 #'
 #' @param start initials
@@ -302,9 +305,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 
 #' Respect suppress messages for nlmixr2 C functions
 #'
-#' This turns on the silent REprintf in C when `suppressMessages()` is
-#' turned on. This makes the `REprintf` act like `messages` in R,
-#' they can be suppressed with `suppressMessages()`
+#' Makes C-level `REprintf` respect `suppressMessages()`, like R messages.
 #'
 #' @return Nothing
 #' @keywords internal
@@ -312,15 +313,7 @@ nmsimplex <- function(start, fr, rho = NULL, control = list()) {
 #' @export
 #' @examples
 #'
-#' # nmSupressMsg() is called with nlmixr2()
-#'
-#' # In nlmixr2, we use REprintf so that interrupted threads do not crash R
-#' # if there is a user interrupt. This isn't captured by R's messages, but
-#' # This interface allows the `suppressMessages()` to suppress the C printing
-#' # as well
-#'
-#' # If you  want to suppress messages from nlmixr2 in other packages, you can use
-#' # this function
+#' # Called automatically by nlmixr2(); other packages can call it too.
 nmSuppressMsg <- function() {
   if (requireNamespace("knitr", quietly = TRUE)) {
     if (!is.null(knitr::opts_knit$get("rmarkdown.pandoc.to"))) {
@@ -352,11 +345,10 @@ rxModelVarsS3.nlmixr2FitCoreSilent <- function(obj) {
 #'
 #' @inherit Matrix::nearPD
 #'
-#' @param ensureSymmetry  logical; by default, \code{\link[Matrix]{symmpart}(x)}
-#' is used whenever \code{isSymmetric(x)} is not true.  The user
-#' can explicitly set this to \code{TRUE} or \code{FALSE}, saving the
-#' symmetry test. \emph{Beware} however that setting it \code{FALSE}
-#' for an \bold{a}symmetric input \code{x}, is typically nonsense!
+#' @param ensureSymmetry logical; symmetrizes `x` via
+#'   \code{\link[Matrix]{symmpart}} unless already symmetric.
+#'   \emph{Beware}: setting \code{FALSE} for asymmetric input is
+#'   typically nonsense.
 #'
 #' @return unlike the matrix package, this simply returns the nearest
 #'   positive definite matrix

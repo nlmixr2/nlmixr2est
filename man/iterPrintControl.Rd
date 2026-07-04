@@ -13,36 +13,22 @@ iterPrintControl(
 )
 }
 \arguments{
-\item{every}{Integer.  Print one iteration row every `every`
-parameter evaluations.  `0` suppresses iteration output entirely.
-Defaults to `1L`.  Inside [iterPrintControl()] this is the
-canonical name for what the outer `*Control()` functions call
-`print`.}
+\item{every}{Integer. Print one iteration row every `every` parameter
+evaluations; `0` suppresses output. Defaults to `1L`.}
 
-\item{ncol}{Integer or `NULL`.  Number of parameter columns to
-emit per row before wrapping to a continuation row.  `NULL`
-(default) uses `floor((getOption("width") - 23) / 12)`, which
-fits an 80-column terminal.  Inside [iterPrintControl()] this
-is the canonical name for what the outer `*Control()` functions
-call `printNcol`.}
+\item{ncol}{Integer or `NULL`. Parameter columns per row before wrapping.
+`NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
-\item{headerEvery}{Integer or `NULL`.  Re-emit the column header
-every `headerEvery` parameter-print events (not raw iterations).
-With `every = 5` and `headerEvery = 10`, the header re-prints
-every 50 iterations.  `0` prints the header once at fit start
-only.  `NULL` (default) uses `10L`.}
+\item{headerEvery}{Integer or `NULL`. Re-emit the column header every
+`headerEvery` parameter-print events; `0` prints it once at fit start.
+`NULL` (default) uses `10L`.}
 
-\item{useColor}{Logical (or `NULL`) — whether to emit ANSI
-bold/color escapes in the iteration print.  `NULL` (the default)
-defers to [iterPrintControl()]'s default ([crayon::has_color()]).
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
-\item{simple}{Logical.  When `TRUE`, the printer emits a single
-row per iteration (just the optimizer-scale parameters) and
-suppresses the unscaled (`U`) / back-transformed (`X`) follow-up
-rows.  Used by estimators (like saem) that have no internal
-optimizer scaling, where U and X would be degenerate copies of
-the first row.  Defaults to `FALSE` (full three-row output).}
+\item{simple}{Logical. When `TRUE`, print a single row per iteration,
+suppressing the unscaled (`U`) / back-transformed (`X`) rows. Defaults
+to `FALSE`.}
 }
 \value{
 A list with the validated, defaulted iteration-print
@@ -51,23 +37,10 @@ A list with the validated, defaulted iteration-print
   `print = N`.
 }
 \description{
-Bundles every option that controls the formatting of the iteration
-progress output emitted by `nlmixr2` estimators (focei, saem,
-bobyqa, nlm, optim, nls, nlminb, lbfgsb3c, n1qn1, newuoa, uobyqa).
-The returned list is consumed by the shared C++ helper
-(`scaleApplyIterPrintControl` in `src/scale.h`) so every estimator
-formats its iteration trace through one code path.
-}
-\details{
-Pass this as the `print` argument to any of the `*Control()`
-functions, e.g. `foceiControl(print = iterPrintControl(every = 5,
-headerEvery = 20))`.  Equivalently, the existing scalar form
-`foceiControl(print = 5, printNcol = 8)` continues to work — the
-outer `*Control()` wraps your individual arguments into an
-`iterPrintControl()` call internally.
-
-All argument descriptions live in [iterPrintParams] so the same
-text is shared with every `*Control()` function.
+Bundles the options controlling the iteration progress output emitted by
+`nlmixr2` estimators. Pass as the `print` argument to any `*Control()`
+function; the scalar form (`print = N`) still works and is wrapped into
+an `iterPrintControl()` internally.
 }
 \examples{
 iterPrintControl()

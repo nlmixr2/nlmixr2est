@@ -73,6 +73,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          literalFix=TRUE,
                          literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
+                         eventSens = c("jump", "fd"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
@@ -191,6 +192,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
     scaleTo=scaleTo,
 
     addProp=match.arg(addProp),
+    eventSens=match.arg(eventSens),
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -282,7 +284,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 compress=.n1qn1Control$compress,
                                 ci=.n1qn1Control$ci,
                                 sigdigTable=.n1qn1Control$sigdigTable,
-                                indTolRelax=.n1qn1Control$indTolRelax)
+                                indTolRelax=.n1qn1Control$indTolRelax,
+                                eventSens=.n1qn1Control$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -299,8 +302,7 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   on.exit({.nlmFreeEnv()})
   # support gradient
   .ret <- bquote(n1qn1::n1qn1(
-    # Calls grad with every function evaluation, use .nlmixrOptimFunC
-    # which does as well
+    # call_eval is called every eval too, so use .nlmixrOptimFunC like call_grad does
     call_eval=.(nlmixr2est::.nlmixrOptimFunC),
     #call_eval=.(nlmixr2est::.nlmixrNlminbFunC),
     call_grad=.(nlmixr2est::.nlmixrOptimGradC),
@@ -339,28 +341,9 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
+  # Needs table/origData/dataSav/idLvl/covLvl/ui/etaObf/cov/covMethod/adjObf/
+  # objective/extra/method/omega/theta/model/message/est/ofvType, plus a
+  # foceiControl object, to build the final nlmixr fit object.
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .n1qn1 <- .collectWarn(.n1qn1FitModel(.ui, .ret$dataSav), lst = TRUE)
