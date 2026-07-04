@@ -553,14 +553,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' }
 #' Re-insert subjects dropped during preprocessing into an output table
 #'
-#' Subjects with a dose but no usable observation are dropped by
-#' `.foceiPreProcessData()` so the estimator never sees an observation-less
-#' subject.  Their input rows remain in `origData`; this adds them back to the
-#' assembled residual/prediction table.  A population `PRED` is solved for them
-#' (eta = 0) while the individual columns (`IPRED`, etas, residuals) stay `NA`,
-#' matching FOCEi.  Estimator-agnostic: it works off `origData` and the
-#' surviving subject set, with no per-estimator tracking state.  When no subject
-#' was dropped (the common case) it returns `df` unchanged without solving.
+#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
 #'
 #' @param df assembled output data.frame (one row per output record for the
 #'   subjects that were estimated)
@@ -576,9 +569,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(.orig) || is.null(.orig$ID) || is.null(df$ID)) {
     return(df)
   }
-  # normalize origData column names the same way .foceiPreProcessData does
-  # (uppercase everything except model covariates) so ID/TIME/DV/EVID match the
-  # output table's column names regardless of the user's input column case
+  # normalize origData names to match the output table (uppercase except covariates)
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
   if (is.null(.cov)) .cov <- character(0)
   names(.orig) <- vapply(names(.orig), function(.x) {
@@ -589,22 +580,17 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .full <- unique(as.character(.orig$ID))
   .miss <- setdiff(.full, .have)
   if (length(.miss) == 0L) {
-    # no subject was dropped -- the common case; do not solve anything
     return(df)
   }
   .rows <- .orig[as.character(.orig$ID) %in% .miss, , drop = FALSE]
-  # only show the records a kept subject would show: observation/other records
-  # (EVID 0 or 2), plus dosing records when addDosing is requested
+  # only observation/other records (EVID 0 or 2), plus dosing if addDosing is requested
   if (!is.null(.rows$EVID) && !isTRUE(table$addDosing)) {
     .rows <- .rows[.rows$EVID %in% c(0, 2), , drop = FALSE]
   }
   if (nrow(.rows) == 0L) {
-    # nothing observable to show (e.g. a dose-only subject); leave it out, which
-    # matches how etTrans-dropped dose-only subjects already behave
     return(df)
   }
-  # build NA rows that inherit the output column types, then fill the
-  # input-derived columns (ID/TIME/DV/covariates) from origData
+  # NA rows with output column types, filled from origData below
   .add <- df[rep(1L, nrow(.rows)), , drop = FALSE]
   for (.cn in names(.add)) {
     .add[[.cn]][] <- NA
@@ -617,10 +603,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .add[[.cn]] <- as.vector(.rows[[.cn]])
     }
   }
-  # population PRED (eta = 0) for the dropped subjects; individual columns stay NA
   .add <- .fillNoObsPred(.add, .rows, object, table)
-  # rebuild the ID factor on both halves with the full origData level order so
-  # rbind aligns and the re-inserted subjects sort into place
+  # rebuild ID factor on both halves with the full origData level order for rbind
   .add$ID <- factor(as.character(.rows$ID), levels = .full)
   df$ID <- factor(as.character(df$ID), levels = .full)
   .out <- rbind(df, .add)
@@ -630,11 +614,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 #' Fill the population PRED column for re-inserted no-observation subjects
 #'
-#' Solves the fit's prediction model at the population estimates (eta = 0) over
-#' the dropped subjects' input records and writes the result into the `PRED`
-#' column of `add` (the assembled NA rows).  Only `PRED` is filled; individual
-#' columns stay `NA`.  Best-effort: if the solve fails for any reason `add` is
-#' returned unchanged (PRED stays `NA`).
+#' Solves at the population estimates (eta = 0) and writes `PRED` into `add`; best-effort, leaves `PRED` NA on failure.
 #'
 #' @param add the NA-filled re-insertion rows (output-table columns)
 #' @param rows the matching origData records for the dropped subjects
@@ -655,12 +635,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     if (.x %in% .cov) .x else toupper(.x)
   }, character(1))
   .dvCol <- which(names(.orig) == "DV")
-  # Solve each dropped subject on its own.  A single-subject population solve
-  # returns one row per observation request (no ID column), so we can align by
-  # row order; a multi-subject solve would renumber IDs, which we avoid by
-  # looping.  Population PRED does not depend on DV, so we replace the (missing)
-  # measurements with a dummy value purely so the population predict run does
-  # not itself drop these subjects.
+  # solve one subject at a time to align rows by order and avoid ID renumbering;
+  # dummy DV avoids the predict run dropping these subjects again
   for (.id in unique(as.character(rows$ID))) {
     .subj <- .orig[as.character(.orig$ID) == .id, , drop = FALSE]
     if (length(.dvCol) == 1L) {
@@ -756,11 +732,7 @@ addTable <- function(object, updateObject = FALSE,
       class(.l) <- "factor"
       .df[[.v]] <- .l
     }
-    # Re-insert subjects dropped during preprocessing because they had no usable
-    # observation (a dose but only NA measurements).  Their input rows remain in
-    # origData; add them back with a population PRED (solved at eta=0) and NA for
-    # the individual columns (IPRED/eta/residuals), matching FOCEi -- for every
-    # estimator.
+    # re-insert subjects dropped for having no usable observation
     .df <- .reinsertNoObsSubjects(.df, object, table)
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
