@@ -67,8 +67,7 @@ double shi21Forward(shi21fn_type f, arma::vec &t, double &h,
   }
   double l = 0, u = R_PosInf, rcur = NA_REAL;
   arma::vec f1(f0.size());
-  gr.zeros(f0.n_elem); // ensure gr is defined even if no finite forward step is ever found
-                       // (otherwise the caller reads an uninitialized arma::vec)
+  gr.zeros(f0.n_elem); // avoid uninitialized read if no finite forward step is found
   double lasth = h;
   int iter=0;
   bool finiteF1 = true, finiteF4 = true, calcGrad = false;
@@ -195,8 +194,7 @@ double shi21Central(shi21fn_type f, arma::vec &t, double &h,
 
   arma::vec fp1(f0.size());
   arma::vec fm1(f0.size());
-  gr.zeros(f0.n_elem); // ensure gr is defined even if no finite central step is ever found
-                       // (otherwise the caller reads an uninitialized arma::vec)
+  gr.zeros(f0.n_elem); // avoid uninitialized read if no finite central step is found
 
   int iter=0;
   bool finiteFp1 = true, finiteFp3 = true,

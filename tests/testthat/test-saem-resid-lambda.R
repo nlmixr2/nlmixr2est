@@ -1,13 +1,6 @@
 nmTest({
 
-  ## B2: the SAEM residual-error optimization for the lambda (Box-Cox/Yeo-Johnson)
-  ## combined error models rmPowLam / rmAddPropLam / rmAddPowLam declared
-  ## `vec xmin(2)` but passed n=3 (n=4 for add+pow+lambda) to the Nelder-Mead
-  ## optimizer, which writes xmin[0..n-1] and whose caller then reads pxmin[2]
-  ## (pxmin[3]) -- a heap buffer overflow.  AddressSanitizer:
-  ##   heap-buffer-overflow WRITE of size 8 at nelder_fn (neldermead.cpp:268).
-  ## These fits exercise each affected error model; the overflow is caught under
-  ## valgrind/ASAN CI, and the fits must complete with finite estimates.
+  ## B2 regression: SAEM lambda (Box-Cox) combined error models under-sized xmin, overflowing the Nelder-Mead buffer.
 
   .ctl <- saemControl(nBurn = 20, nEm = 20, print = 0L, nmc = 2)
 
