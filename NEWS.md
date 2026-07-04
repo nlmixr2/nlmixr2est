@@ -17,24 +17,12 @@
 - Test suite uses a single testthat worker on CI/CRAN and parallel
   elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
 
-<<<<<<< HEAD
-- `focei` (and the `foce`/`fo`/`foi`/`posthoc` family) again shows the
-  `Function Val.` objective-function column in its iteration trace.
-  The column had silently disappeared when the shared printer gained
-  its `showOfv` flag, because `focei` sets up its scaling struct by
-  hand and the flag defaulted to off — dropping the objective from
-  every outer optimizer (including `foceiControl(outerOpt = "bobyqa")`)
-  and misaligning the gradient (`G`/`F`/`C`/`M`) rows, whose method
-  label lives in that same column slot.
+- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
+  `posthoc`, which had dropped out once the shared printer gained `showOfv`
 
-- The periodic header that the shared iteration-printer re-emits every
-  `headerEvery` prints no longer repeats the multi-line `Key:` legend
-  (the `U`/`X` row explanation and, for `focei`, the `G`/`F`/`C`/`M`
-  gradient-method note).  The legend is shown once at the start of the
-  fit; each refresh now repeats only the compact column labels and the
-  separator line, keeping long traces readable.
+- Periodic header re-emits now repeat only the column labels, not the
+  full `Key:` legend
 
-=======
 - `fit$time` now reports every estimation stage consistently
 
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
@@ -69,7 +57,6 @@
   `est="nlme"` and invalid initial probabilities, warnings for
   underflowing/collapsing mixture probabilities, and a fix for the
   SAEM omega-diagonal floor being raised outside mixture fits
->>>>>>> origin/main
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session for pooled estimators
