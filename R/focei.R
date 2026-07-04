@@ -2229,6 +2229,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     }
     assign("est", est, envir=.ret)
+    .foceiInstallAnalyticCov(.ret)
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()

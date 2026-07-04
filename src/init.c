@@ -35,6 +35,7 @@ extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
+SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
 SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
@@ -170,6 +171,7 @@ static const R_CallMethodDef CallEntries[] = {
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
+  {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},

@@ -26,6 +26,9 @@ foceiControl(
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
   covMethod = c("r,s", "r", "s", ""),
+  covType = c("fd", "analytic"),
+  covSolveTol = NULL,
+  covFull = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -221,8 +224,34 @@ derivatives while calculating the covariance components
 Hessian and S the sum of individual gradient cross-products (at the
 empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
-(\code{2\%*\%solve(R)}), \code{"s"} cross-product-based
-(\code{4\%*\%solve(S)}), or \code{""} to skip the covariance step.}
+(\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+\code{""} to skip the covariance step.}
+
+\item{covType}{covariance R-matrix (Hessian) source, \code{"fd"} (default) or
+\code{"analytic"}.  \code{"analytic"} uses the exact analytic
+observed-information R-matrix and can additionally return the residual and
+Omega standard errors.  It applies to FOCEI and FOCE fits with additive or
+combined additive-plus-proportional error, and covers mu-referenced,
+covariate, and other non-mu-referenced structural parameters as well as
+SD-scale inter-occasion variability.  It defaults to \code{covMethod = "r"}
+(the observed-information \eqn{R^{-1}}, computed even when \code{covMethod =
+""}); an explicit \code{covMethod = "r,s"} or \code{"s"} is honored, with the
+analytic R feeding the native finite-difference sandwich / S-matrix.  It warns
+and falls back to the finite-difference Hessian for anything out of scope (FO,
+\code{nAGQ > 1}, censoring, pure-proportional or DV-transformed error,
+bounded-parameter transforms, a structural theta shared by two etas, or non-SD
+\code{iovXform}).}
+
+\item{covSolveTol}{absolute/relative ODE tolerance for the augmented-sensitivity
+solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
+tight tolerance from \code{sigdig}; supply a number to override it.}
+
+\item{covFull}{for \code{covType="analytic"}, controls the shape of
+\code{fit$cov}.  \code{FALSE} (default) installs only the structural-theta
+block (the NONMEM-matched theta covariance, matching the finite-difference
+\code{fit$cov} shape for backwards compatibility); \code{TRUE} installs the
+full theta + residual sigma + Omega analytic covariance.  The theta standard
+errors are identical either way.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}

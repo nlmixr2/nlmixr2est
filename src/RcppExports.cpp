@@ -285,6 +285,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// shi21CentralWrap
+Rcpp::List shi21CentralWrap(Rcpp::Function f, arma::vec t, arma::vec f0, int idx, double ef);
+RcppExport SEXP _nlmixr2est_shi21CentralWrap(SEXP fSEXP, SEXP tSEXP, SEXP f0SEXP, SEXP idxSEXP, SEXP efSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::Function >::type f(fSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type t(tSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type f0(f0SEXP);
+    Rcpp::traits::input_parameter< int >::type idx(idxSEXP);
+    Rcpp::traits::input_parameter< double >::type ef(efSEXP);
+    rcpp_result_gen = Rcpp::wrap(shi21CentralWrap(f, t, f0, idx, ef));
+    return rcpp_result_gen;
+END_RCPP
+}
 // sqrtm
 NumericMatrix sqrtm(NumericMatrix m);
 RcppExport SEXP _nlmixr2est_sqrtm(SEXP mSEXP) {

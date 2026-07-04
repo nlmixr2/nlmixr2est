@@ -52,8 +52,34 @@
 #'     Hessian and S the sum of individual gradient cross-products (at the
 #'     empirical Bayes estimates): \code{"r,s"} sandwich
 #'     (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
-#'     (\code{2\%*\%solve(R)}), \code{"s"} cross-product-based
-#'     (\code{4\%*\%solve(S)}), or \code{""} to skip the covariance step.
+#'     (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+#'     \code{""} to skip the covariance step.
+#'
+#' @param covType covariance R-matrix (Hessian) source, \code{"fd"} (default) or
+#'     \code{"analytic"}.  \code{"analytic"} uses the exact analytic
+#'     observed-information R-matrix and can additionally return the residual and
+#'     Omega standard errors.  It applies to FOCEI and FOCE fits with additive or
+#'     combined additive-plus-proportional error, and covers mu-referenced,
+#'     covariate, and other non-mu-referenced structural parameters as well as
+#'     SD-scale inter-occasion variability.  It defaults to \code{covMethod = "r"}
+#'     (the observed-information \eqn{R^{-1}}, computed even when \code{covMethod =
+#'     ""}); an explicit \code{covMethod = "r,s"} or \code{"s"} is honored, with the
+#'     analytic R feeding the native finite-difference sandwich / S-matrix.  It warns
+#'     and falls back to the finite-difference Hessian for anything out of scope (FO,
+#'     \code{nAGQ > 1}, censoring, pure-proportional or DV-transformed error,
+#'     bounded-parameter transforms, a structural theta shared by two etas, or non-SD
+#'     \code{iovXform}).
+#'
+#' @param covSolveTol absolute/relative ODE tolerance for the augmented-sensitivity
+#'     solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
+#'     tight tolerance from \code{sigdig}; supply a number to override it.
+#'
+#' @param covFull for \code{covType="analytic"}, controls the shape of
+#'     \code{fit$cov}.  \code{FALSE} (default) installs only the structural-theta
+#'     block (the NONMEM-matched theta covariance, matching the finite-difference
+#'     \code{fit$cov} shape for backwards compatibility); \code{TRUE} installs the
+#'     full theta + residual sigma + Omega analytic covariance.  The theta standard
+#'     errors are identical either way.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating
@@ -546,6 +572,9 @@ foceiControl <- function(sigdig = 4, #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
                          covMethod = c("r,s", "r", "s", ""), #
+                         covType = c("fd", "analytic"), #
+                         covSolveTol = NULL, #
+                         covFull = FALSE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          hessEps =(.Machine$double.eps)^(1/3),
@@ -878,6 +907,7 @@ foceiControl <- function(sigdig = 4, #
     covDerivMethod <- match.arg(covDerivMethod)
     covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
+  .covMethodMissing <- missing(covMethod)
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
   } else if (rxode2::rxIs(covMethod, "character")) {
@@ -887,6 +917,22 @@ foceiControl <- function(sigdig = 4, #
       covMethod <- match.arg(covMethod)
       .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
       covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
+    }
+  }
+  covType <- match.arg(covType)
+  if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
+                                                      finite = TRUE, any.missing = FALSE)
+  checkmate::assertFlag(covFull)
+  # covType="analytic" seams the analytic R-matrix into the R step.  Default to "r"
+  # (the observed-information R^-1); an explicit "r,s"/"s" is honored -- the analytic R
+  # then feeds the native finite-difference sandwich / S-matrix.  A missing method or ""
+  # uses "r" so a covariance is always produced.
+  if (identical(covType, "analytic")) {
+    if (.covMethodMissing) {
+      covMethod <- 2L
+    } else if (identical(covMethod, 0L)) {
+      warning("covType=\"analytic\" computes a covariance; using \"r\" instead of \"\"", call. = FALSE)
+      covMethod <- 2L
     }
   }
   .xtra <- list(...)
@@ -1092,6 +1138,9 @@ foceiControl <- function(sigdig = 4, #
     derivMethod = derivMethod,
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
+    covType = covType,
+    covSolveTol = covSolveTol,
+    covFull = covFull,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),

@@ -1,5 +1,31 @@
 # nlmixr2est (development version)
 
+- Added `foceiControl(covType = "analytic")`, an exact analytic observed-information
+  covariance for FOCEI and FOCE fits.  The R-matrix is assembled in closed form -- a data
+  term from the analytic 2nd-order sensitivities (rxode2 `.rxSens`) and a log-determinant
+  term whose 3rd-order tensor is recovered by Shi (2021) central differences of those
+  sensitivities (keeping the augmented ODE at O(ndir^2)) -- matching NONMEM
+  `$COV MATRIX=R`.  It is computed while the optimizer is live and covers mu-referenced,
+  covariate, and other non-mu-referenced structural parameters as well as SD-scale
+  inter-occasion variability; any fit outside its scope (FO, `nAGQ > 1`, censoring,
+  pure-proportional or DV-transformed error, bounded-parameter transforms, a structural
+  theta shared by two etas, or a non-SD `iovXform`) warns and falls back to the
+  finite-difference Hessian.  FOCE (interaction off) uses the general total-derivative
+  Hessian and re-solves the FOCE empirical-Bayes estimates to the FOCE inner stationarity
+  before assembly (FOCE reduces to the FOCEI result for additive error).  It defaults to
+  `covMethod = "r"` (the observed-information inverse); an explicit `covMethod = "r,s"` or
+  `"s"` is honored, with the analytic R feeding the native finite-difference sandwich /
+  S-matrix.  `covFull` chooses the `"r"` `fit$cov` shape: the structural-theta block
+  (default, matching the finite-difference shape) or the full theta + residual sigma +
+  Omega matrix, which adds the Omega/residual SEs the `"r"` matrix does not provide (via
+  rxode2's `rxOmegaVarCovDeriv`).  The augmented-solve tolerance is derived from `sigdig`
+  (override with `covSolveTol`).  The default remains `covType = "fd"`.
+
+- Fixed the FOCEI `covMethod = "r"` / `"s"` / `"r,s"` standard errors, which were
+  inflated by a constant factor (√2 for `"r"`, 2 for `"s"`) because the R- and
+  S-matrix covariances used `2*R^{-1}` / `4*S^{-1}` instead of `R^{-1}` / `S^{-1}`;
+  they now match NONMEM `$COV` (#666).
+
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and
   re-inserted into the output with a population `PRED` and `NA` individual
