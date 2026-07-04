@@ -2,7 +2,7 @@
 % Please edit documentation in R/hook.R
 \name{postFinalObjectHooks}
 \alias{postFinalObjectHooks}
-\title{Return a list of all pre-final table processing hooks}
+\title{List all post-final-object processing hooks}
 \usage{
 postFinalObjectHooks(name = NULL)
 }
@@ -15,7 +15,7 @@ a charcter vector listing all pre-processing hooks or the
   function for the hook
 }
 \description{
-Return a list of all pre-final table processing hooks
+List all post-final-object processing hooks
 }
 \seealso{
 Other preProcessHooks:

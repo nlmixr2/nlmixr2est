@@ -71,7 +71,14 @@ SEXP _nlmixr2est_setSilentErr(SEXP in) {
   return ret;
 }
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 void RSprintf(const char *format, ...) {
+#ifdef _OPENMP
+  // R's print API is single-threaded; only emit from the master thread.
+  if (omp_get_thread_num() != 0) return;
+#endif
   if (_setSilentErr == 0) {
     va_list args;
     va_start(args, format);

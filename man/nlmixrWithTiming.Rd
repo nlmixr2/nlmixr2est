@@ -11,10 +11,9 @@ nlmixrWithTiming(name, code, envir = NULL)
 
 \item{code}{Code to be evaluated and timed}
 
-\item{envir}{can be either the nlmixr2 fit data, the nlmixr2 fit
-environment or NULL, which implies it is going to be added to the
-nlmixr fit when it is finalized.  If the function is being called
-after a fit is created, please supply this environmental variable}
+\item{envir}{nlmixr2 fit data, fit environment, or NULL (timing is
+added when the fit is finalized); supply this if called after a fit
+already exists}
 }
 \value{
 Result of code
