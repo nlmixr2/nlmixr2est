@@ -12,7 +12,7 @@ test_that("nlmSetup does not segfault on first estimator call in a fresh R sessi
   #
   # The regression only fires when `rx` has not yet been populated by
   # an earlier rxode2 solve or focei fit, so this test MUST run in a
-  # truly fresh R session — running inline in the testthat process is
+  # truly fresh R session -- running inline in the testthat process is
   # not enough because earlier tests will already have populated `rx`
   # (per Matt Fidler's review on #653).  callr spawns a clean
   # subprocess; if the segfault returns the child dies and

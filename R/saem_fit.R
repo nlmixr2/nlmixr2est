@@ -116,7 +116,14 @@
                        perFixOmega=0.5,
                        perFixResid=0.75,
                        resFixed,
-                       ue) {
+                       ue,
+                       mixProb = numeric(0),
+                       mixProbMethod = c("regularized", "annealed"),
+                       mixProbStepExp = 1,
+                       mixProbPriorN = 20,
+                       mixSampleMethod = c("parallel", "msaem"),
+                       omegaShare = integer(0),
+                       omegaShareSubpop = integer(0)) {
   if (is.null(fixedOmega)) stop("requires fixedOmega", call.=FALSE)
   if (is.null(fixedOmegaValues)) stop("requires fixedOmegaValues", call.=FALSE)
   if (is.null(parHistThetaKeep)) stop("requires parHistThetaKeep", call.=FALSE)
@@ -437,6 +444,7 @@
                           rep(1L, length(ue[, 1]))
                         }))
   dimnames(.ue) <- list(NULL, names(model$log.eta))
+
   .mat2 <- matrix(rnorm(phiM), dim(phiM))
   .ue <- .ue[rep(1:N, nmc),, drop = FALSE] * 1.0
   .mat2 <- .mat2 * .ue
@@ -476,7 +484,18 @@
     pas <- c(pas, 1 / ((k1 + 1):(k1 + vna[ia]))^va[ia])
   }
   pash <- c(rep(1, mcmc$burn.in), 1 / (1:niter))
+  # Decaying step-size schedule for the "annealed" mixProbMethod (see
+  # saemControl() docs); decays from iteration 1 instead of pas's
+  # full-replacement step throughout nBurn.
+  mixProbMethod <- match.arg(mixProbMethod)
+  pasMix <- 1 / (1:niter)^mixProbStepExp
+  mixSampleMethod <- match.arg(mixSampleMethod)
   minv <- rep(1e-20, nphi)
+  if (length(mixProb) > 1L) {
+    # Mixture fits: floor population-only phi0 params higher to keep
+    # covariance stable (mixture-weighted Gamma2_phi0 can be near-singular).
+    minv[i0] <- 1.0
+  }
 
   # preserve par order when printing iter history
   mcov[mcov == 1] <- 1:nlambda
@@ -509,6 +528,10 @@
     coef_sa = .95,
     pas = pas,
     pash = pash,
+    pasMix = pasMix,
+    mixProbMethod = if (identical(mixProbMethod, "regularized")) 1L else 0L,
+    mixProbPriorN = mixProbPriorN,
+    mixSampleMethod = if (identical(mixSampleMethod, "msaem")) 1L else 0L,
     minv = minv,
     N = N,
     ntotal = ntotal,
@@ -541,6 +564,8 @@
     Gamma2_phi1fixed=Gamma2_phi1fixed,
     Gamma2_phi1fixedIx=Gamma2_phi1fixedIx,
     Gamma2_phi1fixedValues=Gamma2_phi1fixedValues,
+    omegaShare = omegaShare,
+    omegaShareSubpop = omegaShareSubpop,
     mprior_phi0 = mprior_phi0,
     mprior_phi1 = mprior_phi1,
     jcov0 = jcov0,
@@ -600,7 +625,10 @@
   cfg$ares[cfg$res.mod == 2] <- 0
   cfg$bres[cfg$res.mod == 1] <- 0
   cfg$res_offset <- cumsum(c(0L, nres))
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed))
+  nMix <- max(1L, length(mixProb))
+  cfg$nMix <- nMix
+  cfg$mixProb <- mixProb
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")
