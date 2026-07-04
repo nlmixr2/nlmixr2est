@@ -37,4 +37,15 @@ vignettes/ggpmx_GOF/
 docs
 revdep/
 tests/testthat/fixtures/*.rds
-/.claude/worktrees
+/.antigravity/
+/.augment/
+/.cache/
+/.claude/
+/.continue/
+/.cursor/
+/.kilocode/
+/.kiro/
+/.vscode/
+/.windsurf/
+/.zed/
+/compile_commands.json
