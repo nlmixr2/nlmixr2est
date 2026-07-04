@@ -149,7 +149,6 @@
 }
 #' filter the synthetic IOVs
 #'
-#'
 #' @param warnings character vector of warning messages
 #' @param ui rxode2 ui object
 #' @return character vector of warning messages with synthetic IOV mu
@@ -558,6 +557,16 @@
   }
 
   .postEstimationBoundedTransformUi(env, .transforms, .ui)
+
+  .newUi <- env$ui
+  .xform <- .iterPrintXParFromUi(.newUi)
+  env$logThetasF       <- .xform$logNthetas
+  env$logitThetasF     <- .xform$logitNthetas
+  env$logitThetasLowF  <- .xform$logitNthetasLow
+  env$logitThetasHiF   <- .xform$logitNthetasHi
+  env$probitThetasF    <- .xform$probitNthetas
+  env$probitThetasLowF <- .xform$probitNthetasLow
+  env$probitThetasHiF  <- .xform$probitNthetasHi
 
   invisible(NULL)
 }

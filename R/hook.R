@@ -1,15 +1,9 @@
 .postFinalObjectHooks <- new.env(parent=emptyenv())
 
-#' This adds a pre-final table processing hook to nlmixr2est
+#' Register a post-final-object hook run after estimation completes
 #'
-#' This pre-processing hook is run before the estimation process
-#' begins.  It is useful for modifying the user interface, the
-#' estimation object, the data, or the control object before the
-#' estimation process begins.  The function must take one argument:
-#' ret.  The function must return the finalized return object.  If the
-#' element is not returned, the original object is used.  If the
-#' element is returned, the original object is replaced with the new
-#' object.
+#' `fun` must take one argument (`ret`) and return the finalized return
+#' object (or `NULL`/nothing to leave it unchanged).
 #'
 #' @param name Character vector representing the name of the hook
 #' @param fun The function to run
@@ -33,10 +27,9 @@ postFinalObjectHooksAdd <- function(name, fun) {
 
 
 
-#' Remove the hook from the pre-final table nlmixr2est
+#' Remove a post-final-object hook from nlmixr2est
 #'
-#' This removes the hook from nlmixr2est.  If the hook does not exist, a warning
-#' is issued.
+#' Warns if the hook does not exist.
 #'
 #' @param name Character vector representing the name of the hook
 #' @return logical indicating if the hook was removed (invisibly)
@@ -58,7 +51,7 @@ postFinalObjectHooksRm <- function(name) {
   }
 }
 
-#' Return a list of all pre-final table processing hooks
+#' List all post-final-object processing hooks
 #'
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks
@@ -86,9 +79,8 @@ postFinalObjectHooks <- function(name=NULL) {
 }
 
 .postFinalObjectHooksRun <- function(ret) {
-  # This is for updating the return object from the estimation process.
-  # This is used for modifying the return object after the estimation process is complete, but
-  # before it is returned to the user.
+  # Runs registered post-final-object hooks to update the return object
+  # after estimation completes, before it is returned to the user.
   .ret <- ret
   for (name in postFinalObjectHooks()) {
     .fun <- get(name, envir=.postFinalObjectHooks)
@@ -104,15 +96,10 @@ postFinalObjectHooks <- function(name=NULL) {
 
 
 .preFinalParTableHooks <- new.env(parent=emptyenv())
-#' This adds a pre-final table processing hook to nlmixr2est
+#' Register a pre-final parameter table hook run before final table assembly
 #'
-#' This pre-processing hook is run before the estimation process begins.  It is
-#' useful for modifying the user interface, the estimation object, the data, or
-#' the control object before the estimation process begins.  The function must
-#' take four arguments: ui, est, data, and control.  The function must return a
-#' list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
-#' not returned, the original object is used.  If the element is returned, the
-#' original object is replaced with the new object.
+#' `fun` must take one argument (`env`) and update it in place (e.g. `cov`,
+#' `theta`, `thetaNames`, `thetaDf`) before the final tables are built.
 #'
 #' @param name Character vector representing the name of the hook
 #' @param fun The function to run
@@ -126,7 +113,7 @@ preFinalParTableHooksAdd <- function(name, fun) {
                              pattern="^[.]*[a-zA-Z]+[a-zA-Z0-9._]*$",
                              min.chars=1)
   checkmate::assertFunction(fun, args="env")
-  if (exists(name, envir=.preProcessHooks)) {
+  if (exists(name, envir=.preFinalParTableHooks)) {
     stop("nlmixr2est pre-table hook '", name, "' already exists",
          call.=FALSE)
   }
@@ -134,10 +121,9 @@ preFinalParTableHooksAdd <- function(name, fun) {
   invisible(fun)
 }
 
-#' Remove the hook from the pre-final table nlmixr2est
+#' Remove a pre-final parameter table hook from nlmixr2est
 #'
-#' This removes the hook from nlmixr2est.  If the hook does not exist, a warning
-#' is issued.
+#' Warns if the hook does not exist.
 #'
 #' @param name Character vector representing the name of the hook
 #' @return logical indicating if the hook was removed (invisibly)
@@ -159,7 +145,7 @@ preFinalParTableHooksRm <- function(name) {
   }
 }
 
-#' Return a list of all pre-final table processing hooks
+#' List all pre-final parameter table processing hooks
 #'
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks
@@ -187,15 +173,8 @@ preFinalParTableHooks <- function(name=NULL) {
 }
 
 .preFinalParTableHooksRun <- function(env) {
-  # This is for updating:
-  # - `cov` before running
-  # - `theta` before running
-  # - `thetaNames` before running
-  # - `thetaDf` before running
-  # - Possibly `etaObf`  before running
-  # - Possibly updating `ui` before running
-  # These should check to make sure that the objects exist before
-  # modifying them.
+  # Updates cov/theta/thetaNames/thetaDf/etaObf/ui before final table
+  # assembly; hooks should check objects exist before modifying them.
   for (name in preFinalParTableHooks()) {
     .fun <- get(name, envir=.preFinalParTableHooks)
     .ret <- .fun(env)
@@ -214,15 +193,11 @@ preFinalParTableHooks <- function(name=NULL) {
   }
 }
 
-#' This adds a pre-processing hook to nlmixr2est
+#' Register a pre-processing hook run before estimation begins
 #'
-#' This pre-processing hook is run before the estimation process begins.  It is
-#' useful for modifying the user interface, the estimation object, the data, or
-#' the control object before the estimation process begins.  The function must
-#' take four arguments: ui, est, data, and control.  The function must return a
-#' list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
-#' not returned, the original object is used.  If the element is returned, the
-#' original object is replaced with the new object.
+#' `fun` must take four arguments (`ui`, `est`, `data`, `control`) and return
+#' a list with any of `'ui'`, `'est'`, `'data'`, `'control'` to override; a
+#' non-returned element is left unchanged.
 #'
 #' @param name Character vector representing the name of the hook
 #' @param fun The function to run
@@ -243,10 +218,9 @@ preProcessHooksAdd <- function(name, fun) {
   assign(name, fun, envir=.preProcessHooks)
   invisible(fun)
 }
-#' Remove the hook from nlmixr2est
+#' Remove a pre-processing hook from nlmixr2est
 #'
-#' This removes the hook from nlmixr2est.  If the hook does not exist, a warning
-#' is issued.
+#' Warns if the hook does not exist.
 #'
 #' @param name Character vector representing the name of the hook
 #' @return logical indicating if the hook was removed (invisibly)
@@ -267,8 +241,7 @@ preProcessHooksRm <- function(name) {
     invisible(FALSE)
   }
 }
-#' Return a list of all pre-processing hooks
-#'
+#' List all pre-processing hooks
 #'
 #' @param name when specified, the name of the hook, otherwise `NULL`
 #'   to list all hooks

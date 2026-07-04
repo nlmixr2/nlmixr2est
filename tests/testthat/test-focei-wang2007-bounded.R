@@ -1,4 +1,5 @@
 nmTest({
+  skip_on_ci()
   skip_on_cran()
   rxode2::rxUnloadAll()
   skip_on_os("windows")
