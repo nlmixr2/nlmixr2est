@@ -37,3 +37,21 @@ vignettes/ggpmx_GOF/
 docs
 revdep/
 tests/testthat/fixtures/*.rds
+
+# Local code-index tooling (vexp MCP) — never commit
+/.vexp/
+/.antigravity/
+/.augment/
+/.claude/
+/.continue/
+/.cursor/
+/.kilocode/
+/.kiro/
+/.vscode/
+/.windsurf/
+/.zed/
+/compile_commands.json
+/vexp.toml
+/.cache/
+.vexp
+^.vexp$
