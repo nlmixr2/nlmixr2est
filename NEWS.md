@@ -26,16 +26,9 @@
   internal event-table `dv` column drop in `.configsaem()` is now by-name with a
   layout assertion instead of a positional index.
 
-- Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) when
-  exactly one covariate-model parameter is estimated.  The linearization
-  selected the estimated parameters with `Ai[cov.est.ix, ]`, which
-  collapsed to a vector for a single parameter so the subsequent
-  transpose produced a `1 x nphi` row instead of the intended `nphi x 1`
-  column.  For models with more than one random effect this made the
-  design multiply non-conformable; `calc.COV()` errored and the fit fell
-  back (and could fail outright with "Not a matrix").  The selection now
-  uses `drop = FALSE`, so the single-parameter covariance is computed
-  correctly and matches the multi-parameter result.
+- Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
+  (or falling back) when exactly one covariate-model parameter is estimated,
+  due to a vector-collapse transpose bug in `calc.COV()`.
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
