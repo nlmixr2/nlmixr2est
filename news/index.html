@@ -34,6 +34,7 @@
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
 <ul><li><p>Fix <code>cov2cor</code> error when omega has exactly one nonzero diagonal by subsetting with <code>drop = FALSE</code></p></li>
+<li><p>Fix the SAEM linearized-FIM covariance (<code>covMethod = "linFim"</code>) erroring (or falling back) when exactly one covariate-model parameter is estimated, due to a vector-collapse transpose bug in <code>calc.COV()</code>.</p></li>
 <li><p>Fix FOCEi aborting R with <code>Cube::slice(): index out of bounds</code> when <code>mceta &gt;= 1</code> and <code>maxInnerIterations == 0</code> (covariance step, <code>nlmixr2extra::linearize()</code>).</p></li>
 <li><p>Fix Windows heap-corruption segfault for <code>focei</code>/<code>foce</code>/<code>fo</code>/<code>laplace</code>/ <code>agq</code>/<code>bobyqa</code>/<code>nlm</code>/<code>optim</code>/<code>nls</code>/<code>nlminb</code>/<code>lbfgsb3c</code>/<code>n1qn1</code>/<code>newuoa</code>/ <code>uobyqa</code> fits at more than one core (requires matching rxode2 with <code>setRxThreadId()</code>).</p></li>
 <li><p>Fix SAEM covariance error (<code>rxInv(.tmp): Not a matrix</code>) for models with a single population parameter.</p></li>
