@@ -1,41 +1,11 @@
 #' Get Control Settings for nlmixr
 #'
-#' This function retrieves and sets control settings for the `nlmixr`
-#' package from the given environment  It ensures that the control
-#' settings are valid and, if necessary, uses default settings from
-#' `rxode2::rxControl()`.
+#' Retrieves and validates `rxControl` settings from the given fit
+#' environment (falling back to `rxode2::rxControl()` defaults),
+#' updating it for simulation info and `table` overrides if present.
 #'
 #' @param env Environment from which to retrieve control settings.
 #' @return A list of control settings for `rxSolve`.
-#' @details
-#' The function performs the following steps:
-#'
-#' - Retrieves the `ui` object from the provided environment.
-#'
-#' - Checks if a `control` object exists in the environment and
-#' retrieves it.
-#'
-#' - Validates if the retrieved `control` object is of class
-#' `rxControl`. If not, it attempts to retrieve the `rxControl`
-#' element from the `control` object.
-#'
-#' - If the `rxControl` object is still not valid, it uses default
-#' solving options from `rxode2::rxControl()`.
-#'
-#' - Determines if the model is a prediction model based on the
-#' `omega` and `sigma` values.
-#'
-#' - If additional simulation information (`nlmixr2global$nlmixr2SimInfo`) is
-#' available, it updates the `rxControl` object with population
-#' uncertainty, number of observations, number of subjects, and
-#' diagonal `sigma` based on the fitted model.
-#'
-#' - Checks if a `table` object exists in the environment.  If it
-#' does, adjust the rxode2 solving control options by preferring
-#' non-default values from table as well as combining `keep` and
-#' `drop` from `tableControl()`.  If `cores` is non-NULL, use that
-#' instead of the value from `rxControl()`.
-#'
 #' @noRd
 .rxSolveGetControlForNlmixr <- function(env) {
   .ui <- get("ui", envir=env)
@@ -235,9 +205,8 @@ attr(nlmixr2Est.predict, "random") <- TRUE
 }
 #' Predict method for nlmixr2 fit core objects
 #'
-#' This function generates predictions from an `nlmixr2FitCore` object.
-#' It allows for both population-level and individual-level predictions
-#' based on the specified `level` parameter.
+#' Generates population- or individual-level predictions from an
+#' `nlmixr2FitCore` object.
 #'
 #' @param object nlmixr2 fit core object to predict
 #'

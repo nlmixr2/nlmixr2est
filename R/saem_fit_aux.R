@@ -311,6 +311,10 @@ calc.COV <- function(fit0) {
   omega <- fit$Gamma2_phi1
   evt <- saem.cfg$evt
   id <- evt[evt[, "EVID"] == 0, "ID"] + 1
+  
+  if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
+    saem.cfg$opt$mixest <- as.integer(.env$mixIcov$mixest)
+  }
 
   dphi <- cutoff(abs(phi) * 1e-4, 1e-10)
   f1 <- sapply(1:nphi, function(j) {
@@ -346,15 +350,14 @@ calc.COV <- function(fit0) {
     diag(m) <- 1 / sqrt(D)
     invVi.5 <- m %*% t(V) # backsolve(chol(Vi), diag(11)); chol() is worse
     Ai <- kronecker(diag(nphi), saem.cfg$Mcovariables[i, ])
-    DFAi <- DFi %*% t(Ai[cov.est.ix, ]) # CHECK!
+    # drop = FALSE avoids a vector collapse (and wrong transpose) when only one covariate parameter is estimated
+    DFAi <- DFi %*% t(Ai[cov.est.ix, , drop = FALSE])
     ret <- invVi.5 %*% DFAi
     rxode2::rxTick()
     return(ret)
   })
-  npar <- sum(cov.est.ix)
   X <- do.call("rbind", Xi)
-  Ri <- backsolve(qr.R(qr(X)), diag(npar))
-  ret <- crossprod(t(Ri))
+  ret <- .nlmixr2RobustCov(X)
   rxode2::rxProgressStop()
   return(ret)
 }

@@ -1,3 +1,54 @@
+#' Linearized `(X'X)^-1` covariance, degrading only rank-deficient
+#' parameter(s) instead of erroring on the whole matrix
+#'
+#' @param X n x p design/derivative matrix (rows = stacked per-subject
+#'   observation blocks, columns = parameters being estimated)
+#' @param tol numeric tolerance passed to `qr()` for rank detection (default
+#'   matches `qr()`'s own default of `1e-07`)
+#' @return p x p matrix; well-identified parameters get the usual `(X'X)^-1`
+#'   covariance, rank-deficient ones get `NA_real_` rows/columns instead of
+#'   the whole calculation erroring.
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr2RobustCov <- function(X, tol = 1e-07) {
+  p <- ncol(X)
+  qrX <- qr(X, tol = tol)
+  rank <- qrX$rank
+  if (rank == p) {
+    Ri <- backsolve(qr.R(qrX), diag(p))
+    return(crossprod(t(Ri)))
+  }
+  ret <- matrix(NA_real_, p, p)
+  if (rank > 0) {
+    keep <- sort(qrX$pivot[seq_len(rank)])
+    Xkeep <- X[, keep, drop = FALSE]
+    qrKeep <- qr(Xkeep, tol = tol)
+    Rikeep <- backsolve(qr.R(qrKeep), diag(rank))
+    ret[keep, keep] <- crossprod(t(Rikeep))
+  }
+  ret
+}
+
+#' `chol()` on the finite submatrix of a covariance matrix that may have
+#' `NA` rows/columns (see `.nlmixr2RobustCov()`)
+#'
+#' @param covm p x p covariance matrix, possibly with `NA_real_` rows/columns
+#' @return `try()`-wrapped `chol()` result on the finite submatrix (or the
+#'   whole matrix if none of it is `NA`)
+#' @noRd
+#' @author Matthew L. Fidler
+.nlmixr2CholPartial <- function(covm) {
+  .bad <- which(is.na(diag(covm)))
+  if (length(.bad) == 0) {
+    return(try(chol(covm), silent = TRUE))
+  }
+  .good <- setdiff(seq_len(nrow(covm)), .bad)
+  if (length(.good) == 0) {
+    return(try(stop("no identifiable parameters"), silent = TRUE))
+  }
+  try(chol(covm[.good, .good, drop = FALSE]), silent = TRUE)
+}
+
 .setCov <- function(obj, ...) {
   .pt <- proc.time()
   .env <- obj

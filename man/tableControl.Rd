@@ -97,9 +97,8 @@ A list of table options for nlmixr2
 Output table/data.frame options
 }
 \details{
-If you ever want to add CWRES/FOCEi objective function you can use the \code{\link{addCwres}}
-
-If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
+Use \code{\link{addCwres}} to add CWRES/FOCEi objective
+  function, or \code{\link{addNpde}} to add NPDE/EPRED columns.
 }
 \author{
 Matthew L. Fidler

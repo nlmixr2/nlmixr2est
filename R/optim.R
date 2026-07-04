@@ -7,24 +7,12 @@
 #' @inheritParams saemControl
 #' @inheritParams nlmControl
 #'
-#' @param solveType tells if `optim` will use nlmixr2's analytical
-#'   gradients when available (finite differences will be used for
-#'   event-related parameters like parameters controlling lag time,
-#'   duration/rate of infusion, and modeled bioavailability). This can
-#'   be:
-#'
-#' - `"gradient"` which will use the gradient and let `optim` calculate
-#'    the finite difference hessian
-#'
-#' - `"fun"` where optim will calculate both the finite difference
-#'    gradient and the finite difference Hessian
-#'
-#'  When using nlmixr2's finite differences, the "ideal" step size for
-#'  either central or forward differences are optimized for with the
-#'  Shi2021 method which may give more accurate derivatives
-#'
-#' These are only applied in the gradient based methods: "BFGS", "CG",
-#' "L-BFGS-B"
+#' @param solveType controls whether `optim` uses nlmixr2's analytical
+#'   gradients (event-related parameters like lag time/duration/rate/F use
+#'   Shi2021 finite differences instead). `"gradient"` supplies the gradient
+#'   and lets `optim` compute the finite-difference Hessian; `"fun"` lets
+#'   `optim` compute both by finite differences. Only applies to the
+#'   gradient-based methods: "BFGS", "CG", "L-BFGS-B".
 #'
 #' @param returnOptim logical; when TRUE this will return the optim
 #'   list instead of the nlmixr2 fit object
@@ -93,7 +81,7 @@
 #'   this factor of the machine tolerance. Default is `1e7`, that is a
 #'   tolerance of about `1e-8`.
 #'
-#' @param pgtol helps control the convergence of the ‘"L-BFGS-B"’
+#' @param pgtol helps control the convergence of the `"L-BFGS-B"`
 #'   method.  It is a tolerance on the projected gradient in the
 #'   current search direction. This defaults to zero, when the check
 #'   is suppressed
@@ -176,6 +164,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          literalFixRes=TRUE,
                          returnOptim=FALSE,
                          addProp = c("combined2", "combined1"),
+                         eventSens = c("jump", "fd"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "optim", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
@@ -340,6 +329,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                rxControl=rxControl,
                returnOptim=returnOptim,
                addProp=match.arg(addProp),
+               eventSens=match.arg(eventSens),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -382,15 +372,11 @@ rxUiDeparse.optimControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .optimFamilyControl <- function(env, ...) {
+  .nlmFamilyControlGeneric(env, nlmixr2est::optimControl, "optimControl")
+  # optim additionally warns that bounds are ignored for methods that do not
+  # support them
   .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::optimControl()
-  }
-  if (!inherits(.control, "optimControl")) {
-    .control <- do.call(nlmixr2est::optimControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .control <- .ui$control
   if (.control$method %in% c("L-BFGS-B", "Brent")) {
   } else {
     .methodWarn <- paste0(" which are ignored in 'optim' with method='",
@@ -558,71 +544,21 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
                                 compress=.optimControl$compress,
                                 ci=.optimControl$ci,
                                 sigdigTable=.optimControl$sigdigTable,
-                                indTolRelax=.optimControl$indTolRelax)
+                                indTolRelax=.optimControl$indTolRelax,
+                                eventSens=.optimControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
 
 .optimFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .optim <- .collectWarn(.optimFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$optim <- .optim[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "optim")
-  .ret$message <- .ret$optim$message
-  if (rxode2::rxGetControl(.ui, "returnOptim", FALSE)) {
-    return(.ret$optim)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .optimGetTheta(.ret$optim, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- paste0(" with ", crayon::bold$yellow(.control$method),  " method")
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "optim"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$optim$value)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "optim"
-  .optimControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="optim")
-  .env <- .ret$env
-  .env$method <- "optim"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "optim", .optimFitModel, .optimGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$value),
+    controlToFocei = .optimControlToFoceiControl,
+    returnFlag = "returnOptim",
+    extra = function(.control) {
+      paste0(" with ", crayon::bold$yellow(.control$method), " method")
+    })
 }
 
 #' @rdname nlmixr2Est

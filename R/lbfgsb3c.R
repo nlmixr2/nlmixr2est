@@ -9,32 +9,23 @@
 #' @param returnLbfgsb3c return the lbfgsb3c output instead of the nlmixr2
 #'   fit
 #'
-#' @param trace If positive, tracing information on the progress of
-#'   the optimization is produced. Higher values may produce more
-#'   tracing information: for method "L-BFGS-B" there are six levels
-#'   of tracing. (To understand exactly what these do see the source
-#'   code: higher levels give more detail.)
+#' @param trace If positive, print tracing information; higher values give
+#'   more detail (see source for "L-BFGS-B" trace levels).
 #'
-#' @param factr controls the convergence of the "L-BFGS-B" method.
-#'   Convergence occurs when the reduction in the objective is within
-#'   this factor of the machine tolerance. Default is 1e7, that is a
-#'   tolerance of about 1e-8.
+#' @param factr Convergence tolerance factor for "L-BFGS-B"; converges when
+#'   the objective reduction is within this factor of machine tolerance
+#'   (default 1e7, i.e. ~1e-8).
 #'
-#' @param pgtol helps control the convergence of the "L-BFGS-B"
-#'   method. It is a tolerance on the projected gradient in the
-#'   current search direction. This defaults to zero, when the check
-#'   is suppressed.
+#' @param pgtol Tolerance on the projected gradient for "L-BFGS-B"; 0
+#'   (default) suppresses the check.
 #'
-#' @param abstol helps control the convergence of the "L-BFGS-B"
-#'   method. It is an absolute tolerance difference in x values. This
-#'   defaults to zero, when the check is suppressed.
+#' @param abstol Absolute x-value tolerance for "L-BFGS-B"; 0 (default)
+#'   suppresses the check.
 #'
-#' @param reltol helps control the convergence of the "L-BFGS-B"
-#'   method. It is an relative tolerance difference in x values. This
-#'   defaults to zero, when the check is suppressed.
+#' @param reltol Relative x-value tolerance for "L-BFGS-B"; 0 (default)
+#'   suppresses the check.
 #'
-#' @param lmm is an integer giving the number of BFGS updates retained
-#'   in the "L-BFGS-B" method, It defaults to 5.
+#' @param lmm Number of BFGS updates retained in "L-BFGS-B" (default 5).
 #'
 #' @param maxit maximum number of iterations.
 
@@ -104,6 +95,7 @@ lbfgsb3cControl <- function(trace=0,
                             literalFix=TRUE,
                             literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
+                            eventSens = c("jump", "fd"),
                             calcTables=TRUE, compress=FALSE,
                             covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
@@ -224,6 +216,7 @@ lbfgsb3cControl <- function(trace=0,
     scaleTo=scaleTo,
 
     addProp=match.arg(addProp),
+    eventSens=match.arg(eventSens),
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -247,15 +240,7 @@ rxUiDeparse.lbfgsb3cControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .lbfgsb3cFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::lbfgsb3cControl()
-  }
-  if (!inherits(.control, "lbfgsb3cControl")){
-    .control <- do.call(nlmixr2est::lbfgsb3cControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::lbfgsb3cControl, "lbfgsb3cControl")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -313,7 +298,8 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 compress=.lbfgsb3cControl$compress,
                                 ci=.lbfgsb3cControl$ci,
                                 sigdigTable=.lbfgsb3cControl$sigdigTable,
-                                indTolRelax=.lbfgsb3cControl$indTolRelax)
+                                indTolRelax=.lbfgsb3cControl$indTolRelax,
+                                eventSens=.lbfgsb3cControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -337,8 +323,7 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
   # support gradient
   .ret <- bquote(lbfgsb3c::lbfgsb3c(
     par=.(.env$par.ini),
-    # Calls grad with every function evaluation, use .nlmixrOptimFunC
-    # which does as well
+    # fn is called every eval too, so use .nlmixrOptimFunC like gr does
     fn=.(nlmixr2est::.nlmixrOptimFunC),
     gr=.(nlmixr2est::.nlmixrOptimGradC),
     control=.(.oCtl),
@@ -369,67 +354,11 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
 }
 
 .lbfgsb3cFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .lbfgsb3c <- .collectWarn(.lbfgsb3cFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$lbfgsb3c <- .lbfgsb3c[[1]]
-
-  .ret <- .nlmFamilyAdjustOutput(.ret, "lbfgsb3c")
-
-  .ret$message <- .ret$lbfgsb3c$message
-  if (rxode2::rxGetControl(.ui, "returnLbfgsb3c", FALSE)) {
-    return(.ret$lbfgsb3c)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .lbfgsb3cGetTheta(.ret$lbfgsb3c, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "lbfgsb3c"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$lbfgsb3c$value)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "lbfgsb3c"
-  .lbfgsb3cControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="lbfgsb3c")
-  .env <- .ret$env
-  .env$method <- "lbfgsb3c"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "lbfgsb3c", .lbfgsb3cFitModel, .lbfgsb3cGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$value),
+    controlToFocei = .lbfgsb3cControlToFoceiControl,
+    returnFlag = "returnLbfgsb3c")
 }
 
 #' @rdname nlmixr2Est

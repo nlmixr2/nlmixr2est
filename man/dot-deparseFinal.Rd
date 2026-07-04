@@ -29,8 +29,8 @@ specific to an estimation control and is used by functions like
 A language object representing the deparsed expression.
 }
 \description{
-This function deparses an object into a language expression,
-optionally using a custom function for specific elements.
+Deparses an object into a language expression, optionally using a
+custom function for specific elements.
 }
 \author{
 Matthew L. Fidler
