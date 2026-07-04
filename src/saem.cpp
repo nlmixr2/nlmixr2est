@@ -2830,7 +2830,7 @@ private:
                 int cur = ix_endpnt(i);
                 _scratch_limitT(i) = _powerD(limitk(i), lambda(cur), yj(cur), low(cur), hi(cur));
                 _scratch_ft(i) = _powerD(fsk(i), lambda(cur), yj(cur), low(cur), hi(cur));
-                _scratch_ftT(i) = handleF(propT(cur), fsk(i), _scratch_ft(i), false, true);
+                _scratch_ftT(i) = handleF(propT(cur), _scratch_ft(i), fsk(i), false, true);
               }
               _scratch_g = vecares + vecbres % abs(_scratch_ftT);
               _scratch_g.elem(find(_scratch_g == 0.0)).fill(1);
