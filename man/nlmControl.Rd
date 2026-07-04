@@ -27,6 +27,7 @@ nlmControl(
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
   eventSens = c("jump", "fd"),
+  sensMethod = c("forward", "adjoint", "auto"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -144,6 +145,13 @@ step size for the hessian calculation}
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
+
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
+`"forward"` (default) uses the classic variational (forward) sensitivity
+ODEs; `"adjoint"` solves them with the in-engine discrete adjoint using the
+matching adjoint (`s`) integration method; `"auto"` selects `"adjoint"`
+when the number of estimated `THETA` parameters exceeds the number of ODE
+states (where the adjoint is cheaper) and `"forward"` otherwise.}
 
 \item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
 iteration print. `NULL` (default) defers to [crayon::has_color()].}
