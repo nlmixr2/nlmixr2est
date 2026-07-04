@@ -525,11 +525,11 @@
 #'   uses the legacy finite-difference behavior.
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities:
-#'   `"forward"` (default) uses the classic variational (forward) sensitivity
-#'   ODEs; `"adjoint"` solves them with the in-engine discrete adjoint using the
-#'   matching adjoint (`s`) integration method; `"auto"` selects `"adjoint"`
-#'   when the number of estimated `THETA` parameters exceeds the number of ODE
-#'   states (where the adjoint is cheaper) and `"forward"` otherwise.
+#'   `"auto"` (default) selects `"adjoint"` when the number of estimated `THETA`
+#'   parameters exceeds the number of ODE states (where the adjoint is cheaper)
+#'   and `"forward"` otherwise; `"forward"` always uses the classic variational
+#'   (forward) sensitivity ODEs; `"adjoint"` always solves them with the
+#'   in-engine discrete adjoint using the matching adjoint (`s`) method.
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -708,7 +708,7 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          eventSens = c("jump", "fd"),
-                         sensMethod = c("forward", "adjoint", "auto"),
+                         sensMethod = c("auto", "forward", "adjoint"),
                          boundedTransform=TRUE) { #
   eventSens <- match.arg(eventSens)
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
