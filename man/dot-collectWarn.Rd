@@ -4,19 +4,24 @@
 \alias{.collectWarn}
 \title{Collect warnings and just warn once.}
 \usage{
-.collectWarn(expr, lst = FALSE)
+.collectWarn(expr, lst = FALSE, collectErr = FALSE)
 }
 \arguments{
 \item{expr}{R expression}
 
-\item{lst}{When \code{TRUE} return a list with
-list(object,warnings) instead of issuing the warnings.
-Otherwise, when \code{FALSE} issue the warnings and return the
-object.}
+\item{lst}{When \code{TRUE} return \code{list(object, warning = ws,
+error = es)} instead of issuing the warnings.}
+
+\item{collectErr}{When \code{TRUE}, also record errors raised during
+evaluation instead of letting them propagate; used by
+\code{nlmixr2Est0()} so all errors from a failed run are reported
+together rather than only the last one.}
 }
 \value{
-The value of the expression or a list with the value of
-    the expression and a list of warning messages
+The value of the expression, or when \code{lst = TRUE} a list
+  \code{list(object, warning = ws, error = es)} of unique warning/error
+  messages (\code{es} is \code{NULL} unless \code{collectErr = TRUE}
+  and an error escaped).
 }
 \description{
 Collect warnings and just warn once.
