@@ -51,6 +51,11 @@
   inflated by a constant factor (√2 for `"r"`, 2 for `"s"`) because the R- and
   S-matrix covariances used `2*R^{-1}` / `4*S^{-1}` instead of `R^{-1}` / `S^{-1}`;
   they now match NONMEM `$COV` (#666).
+- Added `sensMethod` to `nlmControl()`/`foceiControl()`; the nlm-family
+  methods can now compute ODE parameter sensitivities with the in-engine
+  discrete adjoint (`"adjoint"`) using the matching `s`-method, or pick it
+  automatically (`"auto"`) when estimated thetas exceed ODE states, matching
+  the forward result
 
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and
