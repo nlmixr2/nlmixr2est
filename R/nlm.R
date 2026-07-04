@@ -640,12 +640,6 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (identical(.sensMethod, "auto")) {
     .sensMethod <- if (nParam > .nState && .nState > 0L) "adjoint" else "forward"
   }
-  # Modeled dosing modifiers (f/alag/rate/dur) drive an adjoint dose-jump path
-  # (rx__adjdF/adjDlag/adjDrate) that is not yet reconciled with the estimation
-  # inner solve, so fall back to the forward sensitivities for such models.
-  if (identical(.sensMethod, "adjoint") && .rxHasDosingModifier(ui)) {
-    .sensMethod <- "forward"
-  }
   # the discrete adjoint only applies to ODE-state sensitivities; models with no
   # ODE states (e.g. linCmt()/algebraic) fall back to the forward path.
   if (!identical(.sensMethod, "adjoint") || .nState == 0L) {
@@ -654,21 +648,6 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .sm <- .nlmAdjointSMethod(ui)
   list(useAdjoint = TRUE, sMethodInt = .sm$sMethodInt, sMethodName = .sm$sMethodName,
        stiff = .sm$stiff, nParam = nParam, nState = .nState)
-}
-
-#' Does a model use a modeled dosing modifier (`f`/`alag`/`rate`/`dur`)?
-#'
-#' Such models drive the adjoint dose-jump corrections, whose integration with
-#' the estimation inner solve is not yet settled, so the adjoint sensitivity
-#' path is disabled for them.
-#'
-#' @param ui rxode2 UI environment (i.e. `x[[1]]`)
-#' @return TRUE if any compartment has a modeled f/alag/rate/dur assignment.
-#' @author Matthew L. Fidler
-#' @noRd
-.rxHasDosingModifier <- function(ui) {
-  .norm <- rxode2::rxNorm(rxode2::rxModelVars(ui))
-  grepl("(^|;|\n)[[:space:]]*(alag|lag|rate|dur|f)\\([^)]+\\)[[:space:]]*=", .norm)
 }
 
 #' Map the base ODE method to its in-engine discrete-adjoint (`s`) variant
