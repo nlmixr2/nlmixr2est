@@ -7,9 +7,7 @@
       return(.b)
     }
   }
-  # If this has extra information in the mu-ref
-  # (ie exp(tv + eta.v + 2)), then this shouldn't
-  # have a default back-transformation
+  # Extra mu-ref info (e.g. exp(tv + eta.v + 2)) means no default back-transformation
   .w <- which(ui$muRefExtra$parameter == par)
   if (length(.w) == 1L) {
     return("")
@@ -223,6 +221,20 @@
   .w <- which(names(.ret$popDf) == "BSD")
   if (length(.w) == 1) {
     names(.ret$popDf)[.w] <- ifelse(.env$.sdOnly, "BSV(SD)", ifelse(.env$.cvOnly, "BSV(CV%)", "BSV(CV% or SD)"))
+  }
+  # Format the formatted BSV (popDfSig) column to two decimal places for consistent display
+  .bsvNames <- c("BSV(CV% or SD)", "BSV(SD)", "BSV(CV%)")
+  .bsvName <- intersect(.bsvNames, names(.ret$popDfSig))
+  if (length(.bsvName) == 1) {
+    nm <- .bsvName[1]
+    .vals <- .ret$popDf[[nm]]
+    .fmtVals <- vapply(seq_along(.vals), function(i) {
+      v <- .vals[i]
+      vNum <- suppressWarnings(as.numeric(v))
+      if (is.na(vNum)) return(.ret$popDfSig[[nm]][i])
+      sprintf("%.2f", round(vNum, 2))
+    }, character(1))
+    .ret$popDfSig[[nm]] <- .fmtVals
   }
 }
 
@@ -682,8 +694,7 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
   for (.n in names(.thetas)) {
     .iniDf$est[.iniDf$name == .n] <- .thetas[.n]
   }
-  # In the case of nlme, it estimates the whole covariance matrix, even if you don't want it to.
-  # Allow the omega to expand the initial estimates if needed.
+  # nlme estimates the full covariance matrix; expand omega initial estimates to match if needed.
   .omega <- x$omega
   if (is.null(.omega)) {
     .ui <- rxode2::rxUiDecompress(.ui)

@@ -11,7 +11,7 @@ install.packages(c("assertthat", "backports", "BH", "brew", "broom.mixed", "chec
                    "matrixcalc", "memoise", "methods", "microbenchmark", "minqa",
                    "n1qn1", "nlme", "nloptr", "officer", "pillar", "pkgdown",
                    "PreciseSums", "Rcpp",  "RcppEigen", "remotes",
-                   "reshape2", "rex", "rlang", "rmarkdown", "roxygen2", "Rvmmin",
+                   "reshape2", "rex", "rlang", "rmarkdown", "roxygen2",
                    "scales", "shiny", "sitmo", "stringi", "symengine",
                    "sys", "testthat", "tibble", "tidyr", "tidyverse", "tools", "ucminf",
                    "units", "usethis", "vdiffr", "vpc", "xgxr", "xpose",

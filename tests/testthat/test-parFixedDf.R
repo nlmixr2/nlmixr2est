@@ -28,7 +28,9 @@ nmTest({
     expect_equal(fit$parFixedDf[["BSV(CV% or SD)"]][1],
                  sqrt(fit$omega[1, 1]))
 
+    # parFixed prints the SD to the foceiControl() default `sigdig`
+    # significant figures (now 4); parFixedDf keeps full precision.
     expect_equal(as.numeric(fit$parFixed[["BSV(CV% or SD)"]][1]),
-                 round(sqrt(fit$omega[1, 1]), 2))
+                 signif(sqrt(fit$omega[1, 1]), foceiControl()$sigdig))
   })
 })

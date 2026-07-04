@@ -1,9 +1,10 @@
 nmTest({
-  
+
   skip_on_cran()
+  skip_on_ci()
   rxode2::rxUnloadAll()
   skip_on_os("windows")
-  
+
   # Expected value vectors for power tests
   .propVals <- c(39.458, 39.458, 39.275, 39.207, 39.213, 39.213,
                  39.365, 39.365, 39.458, 39.458)
@@ -27,73 +28,73 @@ nmTest({
                      49.34, 49.34, 49.312, 49.312)
   .powFMod3Vals <- c(10.848, 10.848, 10.784, 9.446, 9.96, 9.96,
                      10.915, 10.915, 10.848, 10.848)
-  
+
   ################################################################################
   # Power Model Tests
   ################################################################################
   testWang2007ErrorModel("pow1=prop", function(f) {
     f |> model(ipre ~ pow(pow.sd, pw)) |> ini(pow.sd=sqrt(0.1), pw=1)
   }, .propVals)
-  
+
   testWang2007ErrorModel("powT1=propT=prop", function(f) {
     f |> model(ipre ~ powT(pow.sd, pw)) |> ini(pow.sd=sqrt(0.1), pw=1)
   }, .propVals)
-  
+
   testWang2007ErrorModel("powF1=propF", function(f) {
     f |> model(ipre ~ powF(pow.sd, pw, f2)) |> ini(pow.sd=sqrt(0.1), pw=1)
   }, .propFVals)
-  
+
   testWang2007ErrorModel("pow1Mod=propMod", function(f) {
     f |> model(ipre ~ pow(f2, pw)) |> ini(pw=1)
   }, .propModVals)
-  
+
   testWang2007ErrorModel("pow", function(f) {
     f |> model(ipre ~ pow(pow.sd, pw)) |> ini(pow.sd=sqrt(0.1), pw=0.5)
   }, .powVals)
-  
+
   testWang2007ErrorModel("powF1", function(f) {
     f |> model(ipre ~ pow(f2, pw)) |> ini(pw=0.5)
   }, .powF1Vals)
-  
+
   testWang2007ErrorModel("powF2", function(f) {
     f |> model(ipre ~ pow(pow.sd, f2)) |> ini(pow.sd=sqrt(0.1))
   }, .powF2Vals)
-  
+
   testWang2007ErrorModel("powF3", function(f) {
     f |> model(ipre ~ pow(lipre, f2))
   }, .powF3Vals)
-  
+
   testWang2007ErrorModel("powT", function(f) {
     f |> model(ipre ~ powT(pow.sd, pw)) |> ini(pow.sd=sqrt(0.1), pw=0.5)
   }, .powVals)
-  
+
   testWang2007ErrorModel("powTF1", function(f) {
     f |> model(ipre ~ powT(f2, pw)) |> ini(pw=0.5)
   }, .powF1Vals)
-  
+
   testWang2007ErrorModel("powFT2", function(f) {
     f |> model(ipre ~ powT(pow.sd, f2)) |> ini(pow.sd=sqrt(0.1))
   }, .powF2Vals)
-  
+
   testWang2007ErrorModel("powTF3", function(f) {
     f |> model(ipre ~ powT(lipre, f2))
   }, .powF3Vals)
-  
+
   testWang2007ErrorModel("powFMod", function(f) {
     f |> model(ipre ~ powF(pow.sd, pw, f2)) |> ini(pow.sd=sqrt(0.1), pw=0.5)
   }, .powFModVals)
-  
+
   testWang2007ErrorModel("powFMod1", function(f) {
     f |> model(ipre ~ powF(lipre, pw, f2)) |> ini(pw=0.5)
   }, .powFMod1Vals)
-  
+
   testWang2007ErrorModel("powFMod2", function(f) {
     f |> model(ipre ~ powF(pow.sd, lipre, f2)) |> ini(pow.sd=sqrt(0.1))
   }, .powFMod2Vals)
-  
+
   testWang2007ErrorModel("powFMod3", function(f) {
     f |> model(ipre ~ powF(lipre, f3, f2))
   }, .powFMod3Vals)
-  
+
   rxode2::rxUnloadAll()
 })

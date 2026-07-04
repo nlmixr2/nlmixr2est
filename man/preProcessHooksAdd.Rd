@@ -2,7 +2,7 @@
 % Please edit documentation in R/hook.R
 \name{preProcessHooksAdd}
 \alias{preProcessHooksAdd}
-\title{This adds a pre-processing hook to nlmixr2est}
+\title{Register a pre-processing hook run before estimation begins}
 \usage{
 preProcessHooksAdd(name, fun)
 }
@@ -15,13 +15,9 @@ preProcessHooksAdd(name, fun)
 The function that was added (invisibly)
 }
 \description{
-This pre-processing hook is run before the estimation process begins.  It is
-useful for modifying the user interface, the estimation object, the data, or
-the control object before the estimation process begins.  The function must
-take four arguments: ui, est, data, and control.  The function must return a
-list with elements 'ui', 'est', 'data', and/or 'control'.  If the element is
-not returned, the original object is used.  If the element is returned, the
-original object is replaced with the new object.
+`fun` must take four arguments (`ui`, `est`, `data`, `control`) and return
+a list with any of `'ui'`, `'est'`, `'data'`, `'control'` to override; a
+non-returned element is left unchanged.
 }
 \seealso{
 Other preProcessHooks:
