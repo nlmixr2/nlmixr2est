@@ -33,6 +33,8 @@
   matrix for the correlation (`cov2cor`) calculation, so an omega with
   exactly one nonzero diagonal element does not collapse to a scalar and
   trigger a "'V' is not a square numeric matrix" error.
+- Fix `cov2cor` error when omega has exactly one nonzero diagonal by
+  subsetting with `drop = FALSE`
 
 - Fix Windows heap-corruption segfault building (`focei`, `foce`, `fo`,
   `laplace`, `agq`, `bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
