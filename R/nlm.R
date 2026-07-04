@@ -4,32 +4,17 @@
 #' @inheritParams stats::nlm
 #' @inheritParams foceiControl
 #' @inheritParams saemControl
-#' @param covMethod allows selection of "r", which uses nlmixr2's
-#'   `nlmixr2Hess()` for the hessian calculation or "nlm" which uses
-#'   the hessian from `stats::nlm(.., hessian=TRUE)`. When using
-#'   `nlmixr2's` hessian for optimization or `nlmixr2's` gradient for
-#'   solving this defaults to "nlm" since `stats::optimHess()` assumes
-#'   an accurate gradient and is faster than `nlmixr2Hess`
+#' @param covMethod "r" uses nlmixr2's `nlmixr2Hess()` for the hessian, or
+#'   "nlm" uses the hessian from `stats::nlm(.., hessian=TRUE)`; defaults to
+#'   "nlm" when using nlmixr2's hessian/gradient for solving.
 #' @param returnNlm is a logical that allows a return of the `nlm`
 #'   object
-#' @param solveType tells if `nlm` will use nlmixr2's analytical
-#'   gradients when available (finite differences will be used for
-#'   event-related parameters like parameters controlling lag time,
-#'   duration/rate of infusion, and modeled bioavailability). This can
-#'   be:
-#'
-#'  - `"hessian"` which will use the analytical gradients to create a
-#'     Hessian with finite differences.
-#'
-#' - `"gradient"` which will use the gradient and let `nlm` calculate
-#'    the finite difference hessian
-#'
-#' - `"fun"` where nlm will calculate both the finite difference
-#'    gradient and the finite difference Hessian
-#'
-#'  When using nlmixr2's finite differences, the "ideal" step size for
-#'  either central or forward differences are optimized for with the
-#'  Shi2021 method which may give more accurate derivatives
+#' @param solveType controls whether `nlm` uses nlmixr2's analytical
+#'   gradients (event-related parameters like lag time/duration/rate/F use
+#'   Shi2021 finite differences instead): `"hessian"` builds a Hessian from
+#'   the analytical gradient via finite differences, `"gradient"` supplies
+#'   the gradient and lets `nlm` compute the finite-difference Hessian, and
+#'   `"fun"` lets `nlm` compute both by finite differences.
 #'
 #' @param shiErr This represents the epsilon when optimizing the ideal
 #'   step size for numeric differentiation using the Shi2021 method
@@ -99,6 +84,8 @@ nlmControl <- function(typsize = NULL,
                        optimHessType=c("central", "forward"),
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
+
+                       eventSens=c("jump", "fd"),
 
                        useColor = NULL,
                        printNcol = NULL, #
@@ -215,6 +202,10 @@ nlmControl <- function(typsize = NULL,
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
 
+  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
+  eventSens <- match.arg(eventSens)
+
   .iterPrintControl <- .absorbIterPrintControl(print = print,
                                                printNcol = printNcol,
                                                useColor = useColor,
@@ -265,6 +256,8 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+
+               eventSens=eventSens,
 
                iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
@@ -474,17 +467,28 @@ attr(rxUiGet.nlmParams, "rstudio") <- "params()"
 #' @export
 rxUiGet.nlmRxModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneNlm(x, ...)
+  # For matExp() models materialize the implied d/dt() from the k_from_to rate
+  # constants.  When this fires we must also emit the model LHS (which defines
+  # the k_from_to constants and other assignments) ahead of the d/dt() lines so
+  # the derivative expressions can resolve them.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .lhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .lhs,
     .ddt,
     .prd,
     .fr$f_line,
@@ -598,6 +602,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 #' @noRd
 .rxFinalizeNlm <- function(.s, sum.prod = FALSE,
                            optExpression = TRUE) {
+  .rxInjectMatExpDdt(.s)
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   .yj <- paste(get("rx_yj_", envir = .s))
@@ -610,6 +615,8 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .low <- paste0("rx_low_~", rxode2::rxFromSE(.low))
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- character(0)
+  .lhs <- .s$..lhs
+  if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
   # Extract rx_pred_f_ and rx_r_ for censoring support
@@ -617,6 +624,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   .s$..nlmS <- paste(c(
     .s$params,
     .s$..stateInfo["state"],
+    .lhs,
     .ddt,
     .sens,
     .yj,
@@ -637,6 +645,7 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .s$params,
     .s$..stateInfo["state"],
     .lhs0,
+    .lhs,
     .ddt,
     .yj,
     .lambda,
@@ -677,14 +686,19 @@ rxUiGet.nlmEnv <- function(x, ...) {
   } else {
     .eventTheta <- integer(0)
   }
-  for (.v in .s$..eventVars) {
-    .vars <- as.character(get(.v, envir = .s))
-    .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
-    for (.v2 in .vars) {
-      .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
-      if (regexpr(.reg, .v2) != -1) {
-        .num <- as.numeric(sub(.reg, "\\1", .v2))
-        .eventTheta[.num] <- 1L
+  ## eventTheta flags dosing-parameter (alag/F/rate/dur) THETAs; under "fd" nlm
+  ## overrides their gradient with finite differences, under "jump" it's left analytic since rxode2 injects the jump directly.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
+  if (!identical(.eventSens, "jump")) {
+    for (.v in .s$..eventVars) {
+      .vars <- as.character(get(.v, envir = .s))
+      .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
+      for (.v2 in .vars) {
+        .reg <- rex::rex(start, "THETA[", capture(any_numbers), "]", end)
+        if (regexpr(.reg, .v2) != -1) {
+          .num <- as.numeric(sub(.reg, "\\1", .v2))
+          .eventTheta[.num] <- 1L
+        }
       }
     }
   }
@@ -713,7 +727,10 @@ attr(rxUiGet.nlmEnv, "rstudio") <- emptyenv()
 #' @export
 rxUiGet.nlmSensModel <- function(x, ...) {
   .s <- rxUiGet.nlmEnv(x, ...)
-  list(thetaGrad=rxode2::rxode2(.s$..nlmS),
+  ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
+  ## the thetaGrad model; nlm has no FD fallback so under "fd" the gradient simply misses the jump.
+  .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
+  list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
 }
@@ -791,6 +808,7 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
   } else {
     .mi <- ui$nlmSensModel
   }
+  ## Event ("jump") sensitivities are activated in .nlmSetupEnv and deactivated in .nlmFreeEnv; nothing extra needed here.
   .env <- .nlmSetupEnv(.p, ui, dataSav, .mi, .ctl)
   on.exit({.nlmFreeEnv()})
   .ret <- eval(bquote(stats::nlm(
@@ -849,7 +867,8 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
                                 compress=.nlmControl$compress,
                                 ci=.nlmControl$ci,
                                 sigdigTable=.nlmControl$sigdigTable,
-                                indTolRelax=.nlmControl$indTolRelax)
+                                indTolRelax=.nlmControl$indTolRelax,
+                                eventSens=.nlmControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

@@ -1,19 +1,11 @@
-#'  theta/eta parameters needed for residuals/shrinkage calculations
+#' Get theta/eta parameters needed for residuals/shrinkage calculations
 #'
 #' @param fit focei style fit
-#'
-#' @return list with:
-#'
-#'  - A rxode2 `params` dataset `pred` predictions
-#'
-#'  - A rxode2 `params` dataset for `ipred` predictions
-#'
-#'  - `eta.lst` is a numerical vector for each of the ETAs listed. The first 5 components are the mean, sd, variance, kurtosis and
-#'    skewness statistics.  The rest of the components will be filled in later when calculating the shrinkage dataframe
-#'
+#' @return list with rxode2 `params` datasets for `pred`/`ipred`, plus
+#'   `eta.lst` (mean/sd/variance/kurtosis/skewness per ETA; more filled in
+#'   later for shrinkage)
 #' @author Matthew Fidler
 #' @noRd
-#'
 
 
 # Since it can be accessed by the object, simply export it
@@ -23,6 +15,10 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .fit <- x[[1]]
   .etas <- .fit$ranef
   .thetas <- .fit$fixef
+  .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
+  if (length(.w) > 0L) {
+    .etas <- .etas[, -.w, drop=FALSE]
+  }
   .Call(`_nlmixr2est_nlmixr2Parameters`, .thetas, .etas)
 }
 #attr(nmObjGet.foceiThetaEtaParameters, "desc") <- "nmObjGet.foceiThetaEtaParameters"
@@ -84,10 +80,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     stop("cannot solve with `model` NULL", call.=FALSE)
   }
   keep <- unique(c(keep, "nlmixrRowNums"))
-  # The numeric versions are at
-  # https://github.com/nlmixr2/rxode2/blob/7e27a7842ca0b5dd849ea75833bc7c34be729e31/R/rxsolve.R#L804,
-  # but keeping them in sync will be fragile.  Only using the character
-  # versions.
+  # Use character method names, not numeric codes, to avoid staying in sync
+  # with rxode2 internals.
   currentOdeMethod <- fit$methodOde
   if (!inherits(currentOdeMethod, "character")) {
     cur <- as.integer(currentOdeMethod)+1L
@@ -101,8 +95,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       # ignore indLin for now
       "indLin"
     )
-  # Fallback methods based on discussion in
-  # https://github.com/nlmixr2/nlmixr2est/issues/254
+  # Fallback ODE methods, see nlmixr2/nlmixr2est#254
   if (currentOdeMethod %in% "dop853") {
     allOdeMethods <- "liblsoda"
   } else if (currentOdeMethod %in% c("liblsoda", "lsoda")) {
@@ -119,8 +112,21 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   maxAtolRtol <- fit$foceiControl$rxControl$maxAtolRtolFactor
   recalcFactor <- fit$foceiControl$odeRecalcFactor
   .tolFactor <- fit$env$tolFactor
+  # For mixture models, pass per-subject mixture assignments via iCov so
+  # rxode2 sets ind->mixest correctly during the table solve. `fit` is the
+  # nlmixr2FitCore environment, accessed directly.
+  .iCov <- NULL
+  .env <- fit
+  if (!is.environment(.env) && is.environment(fit$env)) {
+    .env <- fit$env
+  }
+  if (is.environment(.env) && exists("mixIcov", envir=.env, inherits = FALSE)) {
+    .iCov <- get("mixIcov", envir=.env, inherits = FALSE)
+  }
+  # Fallback flag: if rxode2 rejects iCov (older versions), retry without
+  # it; .mixFixTable() post-corrects me/mn/mu from mixNum.
+  .iCovOK <- !is.null(.iCov)
   while (recalc & length(odeMethods) > 0) {
-    # Iterate through ODE methods
     recalcN <- 0
     currentOdeMethod <- odeMethods[[1]]
     odeMethods <- odeMethods[-1]
@@ -130,7 +136,22 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
     while (recalc & recalcN < fit$foceiControl$stickyRecalcN) {
       # Iterate up atol/rtol
       ## message("\t", .atol, " ", .rtol)
-      .res <- .foceiSolveWithId(model, pars, fit$dataSav,
+      .res <- if (.iCovOK) {
+        tryCatch(
+          .foceiSolveWithId(model, pars, fit$dataSav,
+                            returnType = returnType,
+                            atol = .atol, rtol = .rtol,
+                            maxsteps = fit$maxstepsOde,
+                            hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                            maxordn = fit$maxordn, maxords = fit$maxords,
+                            method = rxode2::odeMethodToInt(currentOdeMethod),
+                            tolFactor = .tolFactor,
+                            iCov = .iCov,
+                            keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov),
+          error = function(e) {
+            if (grepl("time.varying|mixest must be", conditionMessage(e), ignore.case=TRUE)) {
+              .iCovOK <<- FALSE
+              .foceiSolveWithId(model, pars, fit$dataSav,
                                 returnType = returnType,
                                 atol = .atol, rtol = .rtol,
                                 maxsteps = fit$maxstepsOde,
@@ -138,7 +159,22 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
                                 maxordn = fit$maxordn, maxords = fit$maxords,
                                 method = rxode2::odeMethodToInt(currentOdeMethod),
                                 tolFactor = .tolFactor,
+                                iCov = NULL,
                                 keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
+            } else stop(e)
+          })
+      } else {
+        .foceiSolveWithId(model, pars, fit$dataSav,
+                          returnType = returnType,
+                          atol = .atol, rtol = .rtol,
+                          maxsteps = fit$maxstepsOde,
+                          hmin = fit$hmin, hmax = fit$hmax, hini = fit$hini,
+                          maxordn = fit$maxordn, maxords = fit$maxords,
+                          method = rxode2::odeMethodToInt(currentOdeMethod),
+                          tolFactor = .tolFactor,
+                          iCov = NULL,
+                          keep=keep, addDosing=addDosing, subsetNonmem=subsetNonmem, addCov=addCov)
+      }
       rxode2::rxSolveFree()
       recalc <- any(is.na(.res$rx_pred_))
       recalcN <- recalcN + 1
@@ -369,51 +405,37 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 
 .calcShrinkOnly <- function(fit, thetaEtaParameters=fit$foceiThetaEtaParameters) {
   .omega <- fit$omega
-  .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  if (exists("etaExpected", envir=fit$env)) {
+    .etas <- fit$env$etaExpected
+    .w <- which(names(.etas) %in% c("mixnum", "MIXEST"))
+    if (length(.w) > 0L) {
+      .etas <- .etas[, -.w, drop=FALSE]
+    }
+    .pars <- .Call(`_nlmixr2est_nlmixr2Parameters`, fit$fixef, .etas)
+    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, .pars$eta.lst, length(.etas[,1]))
+  } else {
+    .ret <- .Call(`_nlmixr2est_calcShrinkOnly`, .omega, thetaEtaParameters$eta.lst, length(fit$eta[,1]))
+  }
   .ret[, -dim(.omega)[1] - 1]
 }
 
-#' Add Levels to Data Based on Fit Object
+#' Add factor levels to data based on fit object
 #'
-#' This function modifies a data frame by adding levels to a specified
-#' variable based on the levels defined in a fit$ui$levels
-#'
-#' @param fit A list object that contains a `ui` element with `levels`
-#'   to be added to the data.
-#' @param data A data frame that will be modified by adding levels to
-#'   one or more of its variables.
-#' @return A modified data frame with levels added to the specified
-#'   variables. If the variable's values are out of the defined range,
-#'   they are set to `NA`.
-#' @details The function checks if the `fit` object contains
-#'   levels.
-#'
-#' If levels are present, it iterates through them and modifies the
-#' corresponding variable in the data frame:
-#'
-#' - Converts the variable to integer type.
-#'
-#' - Sets values less than 1 to `NA_integer_`.
-#'
-#' - Sets values greater than the number of levels to `NA_integer_`.
-#'
-#' - Assigns the levels and sets the class of the variable to
-#'   "factor".
-#'
-#'
+#' @param fit A list with a `ui` element containing `levels` to apply.
+#' @param data A data frame to modify.
+#' @return Data frame with the specified variables converted to factors;
+#'   out-of-range values become `NA`.
 #' @author Matthew L. Fidler
-#'
 #' @noRd
 .addLevels <- function(fit, data) {
   .levels <-  fit$ui$levels
   if (!is.null(.levels)) {
     for (i in seq_along(.levels)) {
-      .cur <- .levels[[i]] # language expression of levels() declaration
-      .var <- deparse1(.cur[[2]][[2]]) # levels variable
-      .w <- which(names(data) == .var) # does one of the output
-                                       # variables match?
+      .cur <- .levels[[i]] # levels() expression
+      .var <- deparse1(.cur[[2]][[2]]) # levels variable name
+      .w <- which(names(data) == .var) # does an output var match?
       if (length(.w) == 1) {
-        # now change to a factor
+        # convert to factor
         data[[.var]] <- as.integer(data[[.var]])
         .w <- which(data[[.var]] < 1L)
         data[[.var]][.w] <- NA_integer_
@@ -531,14 +553,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' }
 #' Re-insert subjects dropped during preprocessing into an output table
 #'
-#' Subjects with a dose but no usable observation are dropped by
-#' `.foceiPreProcessData()` so the estimator never sees an observation-less
-#' subject.  Their input rows remain in `origData`; this adds them back to the
-#' assembled residual/prediction table.  A population `PRED` is solved for them
-#' (eta = 0) while the individual columns (`IPRED`, etas, residuals) stay `NA`,
-#' matching FOCEi.  Estimator-agnostic: it works off `origData` and the
-#' surviving subject set, with no per-estimator tracking state.  When no subject
-#' was dropped (the common case) it returns `df` unchanged without solving.
+#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
 #'
 #' @param df assembled output data.frame (one row per output record for the
 #'   subjects that were estimated)
@@ -554,9 +569,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   if (is.null(.orig) || is.null(.orig$ID) || is.null(df$ID)) {
     return(df)
   }
-  # normalize origData column names the same way .foceiPreProcessData does
-  # (uppercase everything except model covariates) so ID/TIME/DV/EVID match the
-  # output table's column names regardless of the user's input column case
+  # normalize origData names to match the output table (uppercase except covariates)
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
   names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .have <- levels(df$ID)
@@ -564,22 +577,17 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .full <- unique(as.character(.orig$ID))
   .miss <- setdiff(.full, .have)
   if (length(.miss) == 0L) {
-    # no subject was dropped -- the common case; do not solve anything
     return(df)
   }
   .rows <- .orig[as.character(.orig$ID) %in% .miss, , drop = FALSE]
-  # only show the records a kept subject would show: observation/other records
-  # (EVID 0 or 2), plus dosing records when addDosing is requested
+  # only observation/other records (EVID 0 or 2), plus dosing if addDosing is requested
   if (!is.null(.rows$EVID) && !isTRUE(table$addDosing)) {
     .rows <- .rows[.rows$EVID %in% c(0, 2), , drop = FALSE]
   }
   if (nrow(.rows) == 0L) {
-    # nothing observable to show (e.g. a dose-only subject); leave it out, which
-    # matches how etTrans-dropped dose-only subjects already behave
     return(df)
   }
-  # build NA rows that inherit the output column types, then fill the
-  # input-derived columns (ID/TIME/DV/covariates) from origData
+  # NA rows with output column types, filled from origData below
   .add <- df[rep(1L, nrow(.rows)), , drop = FALSE]
   for (.cn in names(.add)) {
     .add[[.cn]][] <- NA
@@ -592,10 +600,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
       .add[[.cn]] <- as.vector(.rows[[.cn]])
     }
   }
-  # population PRED (eta = 0) for the dropped subjects; individual columns stay NA
   .add <- .fillNoObsPred(.add, .rows, object, table)
-  # rebuild the ID factor on both halves with the full origData level order so
-  # rbind aligns and the re-inserted subjects sort into place
+  # rebuild ID factor on both halves with the full origData level order for rbind
   .add$ID <- factor(as.character(.rows$ID), levels = .full)
   df$ID <- factor(as.character(df$ID), levels = .full)
   .out <- rbind(df, .add)
@@ -605,11 +611,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 }
 #' Fill the population PRED column for re-inserted no-observation subjects
 #'
-#' Solves the fit's prediction model at the population estimates (eta = 0) over
-#' the dropped subjects' input records and writes the result into the `PRED`
-#' column of `add` (the assembled NA rows).  Only `PRED` is filled; individual
-#' columns stay `NA`.  Best-effort: if the solve fails for any reason `add` is
-#' returned unchanged (PRED stays `NA`).
+#' Solves at the population estimates (eta = 0) and writes `PRED` into `add`; best-effort, leaves `PRED` NA on failure.
 #'
 #' @param add the NA-filled re-insertion rows (output-table columns)
 #' @param rows the matching origData records for the dropped subjects
@@ -627,12 +629,8 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
   names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .dvCol <- which(names(.orig) == "DV")
-  # Solve each dropped subject on its own.  A single-subject population solve
-  # returns one row per observation request (no ID column), so we can align by
-  # row order; a multi-subject solve would renumber IDs, which we avoid by
-  # looping.  Population PRED does not depend on DV, so we replace the (missing)
-  # measurements with a dummy value purely so the population predict run does
-  # not itself drop these subjects.
+  # solve one subject at a time to align rows by order and avoid ID renumbering;
+  # dummy DV avoids the predict run dropping these subjects again
   for (.id in unique(as.character(rows$ID))) {
     .subj <- .orig[as.character(.orig$ID) == .id, , drop = FALSE]
     if (length(.dvCol) == 1L) {
@@ -728,11 +726,7 @@ addTable <- function(object, updateObject = FALSE,
       class(.l) <- "factor"
       .df[[.v]] <- .l
     }
-    # Re-insert subjects dropped during preprocessing because they had no usable
-    # observation (a dose but only NA measurements).  Their input rows remain in
-    # origData; add them back with a population PRED (solved at eta=0) and NA for
-    # the individual columns (IPRED/eta/residuals), matching FOCEi -- for every
-    # estimator.
+    # re-insert subjects dropped for having no usable observation
     .df <- .reinsertNoObsSubjects(.df, object, table)
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
@@ -815,11 +809,8 @@ addTable <- function(object, updateObject = FALSE,
 #' @inheritParams addNpde
 #' @inheritParams rxode2::rxSolve
 #'
-#' @details
-#'
-#' If you ever want to add CWRES/FOCEi objective function you can use the \code{\link{addCwres}}
-#'
-#' If you ever want to add NPDE/EPRED columns you can use the \code{\link{addNpde}}
+#' @details Use \code{\link{addCwres}} to add CWRES/FOCEi objective
+#'   function, or \code{\link{addNpde}} to add NPDE/EPRED columns.
 #'
 #' @return A list of table options for nlmixr2
 #' @author Matthew L. Fidler

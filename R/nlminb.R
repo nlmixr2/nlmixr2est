@@ -25,9 +25,9 @@
 #'
 #' @param xf.tol false convergence tolerance.  Defaults to `2.2e-14`.
 #'
-#' @param step.min  Minimum step size.  Default to ‘1.’.
+#' @param step.min  Minimum step size.  Default to `1.`.
 #'
-#' @param step.max Maximum step size.  Default to ‘1.’.
+#' @param step.max Maximum step size.  Default to `1.`.
 #'
 #' @param sing.tol singular convergence tolerance; defaults to `rel.tol;.
 #'
@@ -114,6 +114,7 @@ nlminbControl <- function(eval.max=200,
                           gradTo=1.0,
 
                           addProp = c("combined2", "combined1"),
+                          eventSens = c("jump", "fd"),
                           calcTables=TRUE, compress=TRUE,
                           covMethod=c("r", "nlminb", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
@@ -286,6 +287,7 @@ nlminbControl <- function(eval.max=200,
                rxControl=rxControl,
                returnNlminb=returnNlminb,
                addProp=match.arg(addProp),
+               eventSens=match.arg(eventSens),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -471,7 +473,8 @@ getValidNlmixrCtl.nlminb <- function(control) {
                                 compress=.nlminbControl$compress,
                                 ci=.nlminbControl$ci,
                                 sigdigTable=.nlminbControl$sigdigTable,
-                                indTolRelax=.nlminbControl$indTolRelax)
+                                indTolRelax=.nlminbControl$indTolRelax,
+                                eventSens=.nlminbControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

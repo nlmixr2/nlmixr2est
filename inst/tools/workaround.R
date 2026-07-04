@@ -28,6 +28,7 @@ close(md5file)
 .in <- gsub("@BH@", file.path(find.package("BH"),"include"), .in)
 .in <- gsub("@RCPP@", file.path(find.package("Rcpp"),"include"), .in)
 .in <- gsub("@RXP@", file.path(find.package("rxode2"),"include"), .in)
+.in <- gsub("@EG@", file.path(find.package("RcppEigen"),"include"), .in)
 
 
 if (.Platform$OS.type == "windows") {

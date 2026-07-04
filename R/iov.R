@@ -1,16 +1,9 @@
 #' Check if an estimation method supports iov
 #'
-#' Uses the \code{"iov"} attribute on the \code{nlmixr2Est.<method>}
-#' S3 method. This allows external packages (babelmixr2, etc.) to register
-#' whether their own methods support IOV without modifying this file.
-#'
-#' The attribute can be:
-#' \itemize{
-#'   \item \code{TRUE} - supports IOV
-#'   \item \code{FALSE} - does not support IOV
-#'   \item \code{function(control)} returning logical - conditional support
-#'     (e.g., optim method-dependent, FOCEI outer optimizer-dependent)
-#' }
+#' Uses the \code{"iov"} attribute on the \code{nlmixr2Est.<method>} S3
+#' method (so external packages can register IOV support without editing
+#' this file). The attribute may be \code{TRUE}/\code{FALSE}, or a
+#' \code{function(control)} returning logical for conditional support.
 #'
 #' @param est estimation routine name
 #' @param control control object
@@ -30,7 +23,7 @@
 }
 
 .nlmixr2iov <- function(val, type, transform) {
-  # First get the standard deviation
+  # get the standard deviation
   if (transform == "logvar") {
     sd <- sqrt(exp(val))
   } else if (transform == "logsd") {
@@ -204,10 +197,9 @@ nlmixr2iovVarSd <- function(val) {
                        .var <- .iniDf$name[.w]
                        .fixed <- .iniDf$fix[.w]
                        .lst <- c(lapply(.var, function(v) {
-                         # Add theta to dataset; represents variance of iov
+                         # Add theta to dataset; represents variance of iov,
+                         # converted below based on the xform
                          .curTheta <- .theta1
-                         # This is in variance and needs to be converted
-                         # based on the xform
                          .est <- .iniDf[which(.iniDf$name == v &
                                                 is.na(.iniDf$ntheta)), "est"]
                          if (.xform == "var") {
@@ -454,12 +446,7 @@ nlmixr2iovVarSd <- function(val) {
                   ## nocov end
                   .curd <- .shrinkN[,.w,  drop=FALSE]
 
-                  # n = the same for each eta (#id)
-                  # mean = sum(mean)/n_means
-                  # var = sum(var)/n_vars
-                  # sd = sqrt(var)
-                  # skewness = sum(skewness)/n_skewness
-                  # kurtosis = sum(kurtosis+3)/n_kurtosis - 3
+                  # combine per-level mean/var/skewness/kurtosis by averaging
                   .nv <- length(.curd["var",])
                   .var <- sum(.curd["var", ])/.nv
 
@@ -513,9 +500,7 @@ nlmixr2iovVarSd <- function(val) {
                                     measure.vars=names(.curd)[-1],
                                     variable.name = var,
                                     value.name = d)
-          # Since this is scaled by the standard deviation, we can
-          # calculate it from the derived eta fixed to 1 by mutiplying
-          # by the standard deviation of the IOV variable (calculated above)
+          # rescale the derived eta (fixed to 1) by the IOV variable's sd
           .curd[[d]] <- .curd[[d]] *.sdIov[d]
           if (is.null(.dt)) {
             .dt <- .curd
