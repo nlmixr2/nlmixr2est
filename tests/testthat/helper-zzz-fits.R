@@ -21,8 +21,28 @@
 # - When you need to modify the fit object (create a copy first: fitLocal <- fit)
 
 # Version identifier for cache invalidation
-# Increment this when models, data, or nlmixr2est version changes significantly
-.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"))
+#
+# Keyed off both the package version AND a hash of the package's R/ and
+# src/ sources, so a `devtools::load_all()` picking up local code changes
+# (without a DESCRIPTION version bump, the common case while iterating on
+# a branch) automatically invalidates every cached fit instead of silently
+# reusing fits computed under the old code -- see the mufocei muModel/
+# muRefCovAlg regression this masked.
+.fitCacheSrcHash <- local({
+  .pkgRoot <- normalizePath(file.path(testthat::test_path(), "..", ".."), mustWork = FALSE)
+  .srcFiles <- sort(list.files(file.path(.pkgRoot, c("R", "src")),
+                                pattern = "\\.(R|cpp|h|hpp)$",
+                                full.names = TRUE, recursive = TRUE))
+  if (length(.srcFiles) == 0 || !requireNamespace("digest", quietly = TRUE)) {
+    ""
+  } else {
+    .fileHashes <- vapply(.srcFiles, digest::digest, character(1),
+                           file = TRUE, algo = "xxhash32")
+    digest::digest(.fileHashes, algo = "xxhash32")
+  }
+})
+.fitCacheVersion <- paste0("v1.0.2-nlmixr2est-", utils::packageVersion("nlmixr2est"),
+                           "-", .fitCacheSrcHash)
 
 # Cache directory for fit objects
 .fitCacheDir <- file.path(testthat::test_path(), "fixtures")
@@ -46,10 +66,10 @@ if (!dir.exists(.fitCacheDir)) {
     tryCatch({
       cached <- readRDS(cachePath)
       if (!is.null(cached$version) && cached$version == .fitCacheVersion) {
-        message(sprintf("✓ Loading cached fit: %s", name))
+        message(sprintf("[ok] Loading cached fit: %s", name))
         return(cached$fit)
       } else {
-        message(sprintf("⚠ Cache version mismatch for %s (expected %s, got %s)",
+        message(sprintf("[warn] Cache version mismatch for %s (expected %s, got %s)",
                        name, .fitCacheVersion, cached$version))
       }
     }, error = function(e) {
@@ -58,14 +78,14 @@ if (!dir.exists(.fitCacheDir)) {
   }
 
   # Compute fit if cache miss or invalid
-  message(sprintf("⚙ Computing fit: %s (this may take a while...)", name))
+  message(sprintf("[..] Computing fit: %s (this may take a while...)", name))
   fit <- fitFn()
   AIC(fit)  # Force evaluation of AIC
 
   # Save to cache
   tryCatch({
     saveRDS(list(version = .fitCacheVersion, fit = fit), cachePath)
-    message(sprintf("✓ Cached fit saved: %s", name))
+    message(sprintf("[ok] Cached fit saved: %s", name))
   }, error = function(e) {
     warning(sprintf("Failed to save cache for %s: %s", name, e$message))
   })
@@ -199,6 +219,6 @@ one.compartment.with.lag.fit.saem <- .getCachedFit(
   cacheFile = "fit-one-compartment-lag-saem.rds"
 )
 
-message("✓ Helper-fits.R loaded successfully")
+message("[ok] Helper-fits.R loaded successfully")
 message(sprintf("  Cache version: %s", .fitCacheVersion))
 message(sprintf("  Cache directory: %s", .fitCacheDir))
