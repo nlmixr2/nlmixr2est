@@ -350,7 +350,8 @@ calc.COV <- function(fit0) {
     diag(m) <- 1 / sqrt(D)
     invVi.5 <- m %*% t(V) # backsolve(chol(Vi), diag(11)); chol() is worse
     Ai <- kronecker(diag(nphi), saem.cfg$Mcovariables[i, ])
-    DFAi <- DFi %*% t(Ai[cov.est.ix, ]) # CHECK!
+    # drop = FALSE avoids a vector collapse (and wrong transpose) when only one covariate parameter is estimated
+    DFAi <- DFi %*% t(Ai[cov.est.ix, , drop = FALSE])
     ret <- invVi.5 %*% DFAi
     rxode2::rxTick()
     return(ret)

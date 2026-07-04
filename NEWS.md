@@ -3,6 +3,10 @@
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal by
   subsetting with `drop = FALSE`
 
+- Fix the SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
+  (or falling back) when exactly one covariate-model parameter is estimated,
+  due to a vector-collapse transpose bug in `calc.COV()`.
+
 - Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
   `mceta >= 1` and `maxInnerIterations == 0` (covariance step,
   `nlmixr2extra::linearize()`).
