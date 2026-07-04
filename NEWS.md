@@ -1,5 +1,8 @@
 # nlmixr2est (development version)
 
+- Fix `cov2cor` error when omega has exactly one nonzero diagonal by
+  subsetting with `drop = FALSE`
+
 - Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
   `mceta >= 1` and `maxInnerIterations == 0` (covariance step,
   `nlmixr2extra::linearize()`).

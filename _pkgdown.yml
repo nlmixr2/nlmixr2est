@@ -3,9 +3,3 @@ template:
   bootstrap: 5
   params:
     bootswatch: flatly
-
-articles:
-  - title: "Estimation Methods"
-    navbar: ~
-    contents:
-      - mixture-models

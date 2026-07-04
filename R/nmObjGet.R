@@ -287,7 +287,7 @@ attr(nmObjGet.cor, "rstudio") <- lotri::lotri(a+b~c(1, 0.1, 1))
     .cor <- .cov
   } else {
     .w <- which(diag(.cov) != 0)
-    .cor2 <- stats::cov2cor(.cov[.w, .w])
+    .cor2 <- stats::cov2cor(.cov[.w, .w, drop = FALSE])
     .d <- dim(.cov)[1]
     .cor <- matrix(rep(NA, .d^2), .d, .d)
     .cor[.w, .w] <- .cor2
