@@ -1,20 +1,9 @@
 # Regression tests for the unified iteration-time printer (src/scale.h):
-#
-#   1. focei must show the "Function Val." objective-function column in its
-#      iteration trace for every outer optimizer (including
-#      foceiControl(outerOpt = "bobyqa")).  The column silently disappeared
-#      once the shared printer gained its `showOfv` flag, because focei sets
-#      up its scaling struct by hand (it does not call scaleSetup(), where
-#      showOfv would default to on) and `op_focei` is a zero-initialized
-#      global, so the flag defaulted to off.
-#
-#   2. The periodic header the printer re-emits every `headerEvery` prints
-#      must repeat only the compact column labels, not the multi-line "Key:"
-#      legend (the U/X explanation and focei's G/F/C/M gradient note).
+# focei's Function Val. column and the periodic header's Key-legend suppression.
 #
 # The iteration trace is written from C and surfaces on the message stream,
-# so it is captured with a dual output+message sink.  It must NOT be wrapped
-# in suppressMessages() -- that muffles the trace itself.
+# so it is captured with a dual output+message sink; do not wrap in
+# suppressMessages() -- that muffles the trace itself.
 .captureIterTrace <- function(expr) {
   tf <- tempfile(fileext = ".txt")
   con <- file(tf, "w")
@@ -68,9 +57,7 @@ test_that("focei shows the Function Val. objective column for every outer optimi
     # the objective column header is present ...
     expect_true(any(grepl("|    #| Function Val. |", .out, fixed = TRUE)),
                 info = paste0(.info, ": missing 'Function Val.' header"))
-    # ... and the numbered (#) iteration rows actually carry an objective
-    # value in that slot ("|<n>|<ofv> |..."), i.e. showOfv really is on --
-    # not the bare "|<n>|..." prefix that showOfv = off would emit.
+    # ... and the # rows actually carry an objective value in that slot.
     expect_true(any(grepl("^\\|\\s*[0-9]+\\|\\s*[0-9.eE+-]+ \\|", .out)),
                 info = paste0(.info, ": # rows carry no objective value"))
   }
@@ -88,9 +75,7 @@ test_that("focei periodic header repeats column labels but not the Key legend", 
   .nHeader <- sum(grepl("^\\|\\s*#\\|", .out))
   # the legend is printed exactly once, at fit start ...
   expect_equal(.nKey, 1L)
-  # ... while the compact column-label header is re-emitted several more
-  # times on top of the startup header (headerEvery = 3 over many bobyqa
-  # evaluations), each refresh without the legend.
+  # ... while the column-label header re-emits several more times without it.
   expect_gt(.nHeader, 1L)
 })
 

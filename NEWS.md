@@ -198,14 +198,13 @@
   every outer optimizer (including `foceiControl(outerOpt = "bobyqa")`)
   and misaligning the gradient (`G`/`F`/`C`/`M`) rows, whose method
   label lives in that same column slot.
+- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
+  `posthoc`, which had dropped out once the shared printer gained `showOfv`
 
-- The periodic header that the shared iteration-printer re-emits every
-  `headerEvery` prints no longer repeats the multi-line `Key:` legend
-  (the `U`/`X` row explanation and, for `focei`, the `G`/`F`/`C`/`M`
-  gradient-method note).  The legend is shown once at the start of the
-  fit; each refresh now repeats only the compact column labels and the
-  separator line, keeping long traces readable.
+- Periodic header re-emits now repeat only the column labels, not the
+  full `Key:` legend
 
+- `fit$time` now reports every estimation stage consistently
 
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
   session affecting every pooled estimator except `nls`

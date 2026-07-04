@@ -514,14 +514,7 @@ static inline void scalePrintLine(scaling *scale, int ncol) {
   RSprintf("\n");
 }
 
-// withKey: 1 = emit the "Key:" legend block (U/X transform legend plus any
-//              estimator-specific keyExtra) above the column-label header.
-//          0 = emit only the column-label header and its separator line.
-// The legend explains the row codes and only needs to be shown once, so the
-// startup header (printed by each estimator at fit start) passes withKey=1
-// while the periodic re-emits every `headerEvery` prints pass withKey=0 —
-// repeating just the compact column labels for readability without
-// reprinting the multi-line explanation on every header refresh.
+// withKey: 1 = also emit the "Key:" legend block; 0 = column labels only.
 static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
   if (scale->every != 0) {
     if (withKey) {
