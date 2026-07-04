@@ -1,10 +1,11 @@
 # nlmixr2est (development version)
 
-- Added `sensMethod` to `nlmControl()`/`foceiControl()`; the nlm-family
-  methods can now compute ODE parameter sensitivities with the in-engine
-  discrete adjoint (`"adjoint"`) using the matching `s`-method, or pick it
-  automatically (`"auto"`) when estimated thetas exceed ODE states, matching
-  the forward result
+- Added `sensMethod` to the nlm-family controls (`nlmControl()`,
+  `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`,
+  and `foceiControl()`); ODE parameter sensitivities can be computed with the
+  in-engine discrete adjoint (`"adjoint"`) using the matching `s`-method.  The
+  default is `"auto"`, which uses the adjoint when estimated thetas exceed ODE
+  states and the forward sensitivities otherwise, matching the forward result
 
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and

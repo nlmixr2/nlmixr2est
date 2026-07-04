@@ -32,7 +32,7 @@ n1qn1Control(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("forward", "adjoint", "auto"),
+  sensMethod = c("auto", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "n1qn1", ""),
@@ -159,11 +159,11 @@ sd, c = power exponent (1 in the proportional case).}
 uses the legacy finite-difference behavior.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"forward"` (default) uses the classic variational (forward) sensitivity
-ODEs; `"adjoint"` solves them with the in-engine discrete adjoint using the
-matching adjoint (`s`) integration method; `"auto"` selects `"adjoint"`
-when the number of estimated `THETA` parameters exceeds the number of ODE
-states (where the adjoint is cheaper) and `"forward"` otherwise.}
+`"auto"` (default) selects `"adjoint"` when the number of estimated `THETA`
+parameters exceeds the number of ODE states (where the adjoint is cheaper)
+and `"forward"` otherwise; `"forward"` always uses the classic variational
+(forward) sensitivity ODEs; `"adjoint"` always solves them with the
+in-engine discrete adjoint using the matching adjoint (`s`) method.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

@@ -108,13 +108,25 @@ nmTest({
                  tolerance = 1e-4)
   })
 
-  test_that("default nlm sensMethod is 'forward' (no behavior change)", {
-    expect_equal(nlmControl()$sensMethod, "forward")
-    expect_equal(foceiControl()$sensMethod, "forward")
-    expect_equal(nlminbControl()$sensMethod, "forward")
-    expect_equal(optimControl()$sensMethod, "forward")
-    expect_equal(n1qn1Control()$sensMethod, "forward")
-    expect_equal(lbfgsb3cControl()$sensMethod, "forward")
+  test_that("default sensMethod is 'auto' across the nlm family", {
+    expect_equal(nlmControl()$sensMethod, "auto")
+    expect_equal(foceiControl()$sensMethod, "auto")
+    expect_equal(nlminbControl()$sensMethod, "auto")
+    expect_equal(optimControl()$sensMethod, "auto")
+    expect_equal(n1qn1Control()$sensMethod, "auto")
+    expect_equal(lbfgsb3cControl()$sensMethod, "auto")
+  })
+
+  test_that("default (auto) nlm fit matches an explicit forward fit", {
+    .d <- nlmixr2data::theo_sd
+    ## 4 thetas > 2 states, so the auto default resolves to adjoint
+    dft <- .nlmixr(one.cmt, .d, est = "nlm", nlmControl(solveType = "grad", print = 0))
+    fwd <- .nlmixr(one.cmt, .d, est = "nlm",
+                   nlmControl(sensMethod = "forward", solveType = "grad", print = 0))
+    expect_equal(dft$objf, fwd$objf, tolerance = 1e-4)
+    expect_equal(setNames(dft$parFixedDf$Estimate, rownames(dft$parFixedDf)),
+                 setNames(fwd$parFixedDf$Estimate, rownames(fwd$parFixedDf)),
+                 tolerance = 1e-4)
   })
 
 })
