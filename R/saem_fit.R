@@ -320,10 +320,7 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  # The 6th etTrans column is the observation 'dv'; it is dropped here because
-  # the SAEM C kernel receives observations separately (as 'y').  Drop it by
-  # name and assert the expected layout so a future change to etTrans's column
-  # order cannot silently feed the kernel a misaligned event table.
+  # drop 'dv' by name (kernel gets observations separately as 'y'); assert layout instead of hardcoding index
   .dvCol <- which(tolower(names(dat)) == "dv")
   if (length(.dvCol) != 1L || .dvCol != 6L) {
     stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",

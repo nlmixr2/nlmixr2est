@@ -5,18 +5,9 @@
   re-inserted into the output with a population `PRED` and `NA` individual
   columns, like FOCEi (#687)
 
-- Internal consolidation of data preparation across estimation methods (no
-  change to any fit result).  The shared preprocessor `.foceiPreProcessData()`
-  already fed every method; this removes the duplication layered on top of it:
-  two never-called data-setup functions (`.nlminbFitDataSetup`,
-  `.nlsFitDataSetup`) were deleted; the column-name normalization and the
-  time-varying-covariate detection were each extracted into a single shared
-  helper (`.nmUpcaseNonCov`, `.nlmixrTimeVaryingCovariates`); and the nine
-  nlm-family `*FamilyControl`/`*FamilyFit` functions (`nlm`, `nlminb`, `bobyqa`,
-  `newuoa`, `uobyqa`, `n1qn1`, `lbfgsb3c`, `optim`, `nls`) were collapsed onto
-  two generics (`.nlmFamilyControlGeneric`, `.nlmFamilyFitGeneric`).  SAEM's
-  internal event-table `dv` column drop in `.configsaem()` is now by-name with a
-  layout assertion instead of a positional index.
+- Internal consolidation of data preparation and the nlm-family
+  control/fit functions across estimation methods; no change to any fit
+  result
 
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal
 
