@@ -145,18 +145,15 @@ step size for the hessian calculation}
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
 
-\item{useColor}{Logical (or `NULL`) — emit ANSI bold/color escapes in the
-iteration print. `NULL` (default) defers to [crayon::has_color()].
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
-\item{printNcol}{Integer (or `NULL`) — parameter columns per row before
-wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`
-(fits an 80-column terminal). Equivalent to `print =
-iterPrintControl(ncol = ...)`.}
+\item{printNcol}{Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
-[iterPrintControl()] object. The scalar form is equivalent to
+[iterPrintControl()] object. Equivalent to
 `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
 \item{normType}{Parameter normalization/scaling used to get scaled

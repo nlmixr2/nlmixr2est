@@ -1,8 +1,6 @@
-## Regression test for issue 641 — FOCEI was failing to update population
-## fixed effects on an algebraic model when a free theta had a large-magnitude
-## initial estimate.  Root cause: scaleC for additive mu-referenced thetas was
-## falling through to the C++ default of 1/|init|, which made the optimizer's
-## scaled-space steps map to negligibly small unscaled steps for |init| >> 1.
+## Regression test for issue 641: FOCEI wasn't updating large-magnitude
+## additive mu-referenced thetas because scaleC fell through to the C++
+## default of 1/|init|, shrinking scaled-space steps to nothing for |init| >> 1.
 
 test_that("issue 641: FOCEI moves large-magnitude additive theta in algebraic model", {
   skip_on_cran()
@@ -56,13 +54,9 @@ test_that("issue 641: FOCEI moves large-magnitude additive theta in algebraic mo
   tvemaxEst <- fit$parFixedDf["tvemax", "Estimate"]
   let50Est  <- fit$parFixedDf["let50",  "Estimate"]
 
-  # Before the fix tvemax was stuck within ~0.05 of the initial -40 and the
-  # final OFV was ~3000 — essentially no fit.  After the fix the optimizer
-  # walks tvemax tens of units away from -40 and the OFV drops by an order of
-  # magnitude.  The thresholds are loose to absorb optimizer noise from
-  # ordering of inner-eta updates while still catching a regression to "no
-  # movement".  True emax in the simulated data is ~20–25 so a working
-  # optimizer should pull tvemax well into positive territory.
+  # Before the fix tvemax stayed within ~0.05 of the initial -40; after the
+  # fix it moves tens of units away. Thresholds are loose to absorb optimizer
+  # noise while still catching a regression to "no movement".
   expect_gt(abs(tvemaxEst - (-40)), 30)
   expect_lt(fit$objf, 1000)
 

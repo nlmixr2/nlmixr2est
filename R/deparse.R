@@ -49,10 +49,8 @@
 
 #' Identify Differences Between Standard and New Objects but used in rxUiDeparse
 #'
-#' This function compares elements of a standard object with a new
-#' object and identifies which elements are different.  It is used to
-#' only show values that are different from the default when deparsing
-#' control objects.
+#' Compares elements of a standard object against a new one so
+#' `rxUiDeparse` only shows values that differ from the default.
 #'
 #' @param standard The standard object used for comparison. (for example `foceiControl()`)
 #'
@@ -90,8 +88,8 @@
 
 #' Deparse finalize a control or related object into a language object
 #'
-#' This function deparses an object into a language expression,
-#' optionally using a custom function for specific elements.
+#' Deparses an object into a language expression, optionally using a
+#' custom function for specific elements.
 #'
 #' @param default A default object used for comparison; This is the
 #'   estimation control procedure.  It should have a class matching

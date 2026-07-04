@@ -1604,15 +1604,10 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   .foceiOptEnvAssignNllik(ui, env)
   .foceiOptEnvSetupBounds(ui, env)
   .foceiOptEnvSetupScaleC(ui, env)
-  # Theta-side transform codes (log/logit/probit) come from the
-  # shared pure inspector .iterPrintXParFromUi.  Default call gives
-  # vectors of length ntheta_total in ntheta order — exactly what
-  # focei's C-side consumes (both the iteration printer and the
-  # final-fit-summary back-transform read xform$xPar / xform$probitIdx
-  # by ntheta index, and xform$logitThetaLow/Hi / probitThetaLow/Hi
-  # by the codes those arrays encode).  Single transport sub-list,
-  # consistent with how saem (.cfg$xform) and nlm (.ctl$iterPrintXform)
-  # ship the same data.
+  # Theta-side transform codes (log/logit/probit) from the shared
+  # .iterPrintXParFromUi inspector, ntheta-ordered; consumed by focei's
+  # C-side iteration printer and final-fit back-transform, same as
+  # saem's .cfg$xform / nlm's .ctl$iterPrintXform.
   env$xform <- .iterPrintXParFromUi(ui)
   .foceiSetupSkipCov(ui, env)
   env$control <- get("control", envir=ui)

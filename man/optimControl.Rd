@@ -124,7 +124,7 @@ Convergence occurs when the reduction in the objective is within
 this factor of the machine tolerance. Default is `1e7`, that is a
 tolerance of about `1e-8`.}
 
-\item{pgtol}{helps control the convergence of the ‘"L-BFGS-B"’
+\item{pgtol}{helps control the convergence of the `"L-BFGS-B"`
 method.  It is a tolerance on the projected gradient in the
 current search direction. This defaults to zero, when the check
 is suppressed}
@@ -168,18 +168,15 @@ and lets `optim` compute the finite-difference Hessian; `"fun"` lets
 `optim` compute both by finite differences. Only applies to the
 gradient-based methods: "BFGS", "CG", "L-BFGS-B".}
 
-\item{useColor}{Logical (or `NULL`) — emit ANSI bold/color escapes in the
-iteration print. `NULL` (default) defers to [crayon::has_color()].
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
-\item{printNcol}{Integer (or `NULL`) — parameter columns per row before
-wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`
-(fits an 80-column terminal). Equivalent to `print =
-iterPrintControl(ncol = ...)`.}
+\item{printNcol}{Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{print}{Either a scalar print-frequency (`0` = suppress, `1`
 (default) = every evaluation, `N` = every Nth), OR a pre-built
-[iterPrintControl()] object. The scalar form is equivalent to
+[iterPrintControl()] object. Equivalent to
 `iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
 \item{normType}{Parameter normalization/scaling used to get scaled
