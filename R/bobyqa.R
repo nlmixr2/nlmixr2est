@@ -218,15 +218,7 @@ rxUiDeparse.bobyqaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .bobyqaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::bobyqaControl()
-  }
-  if (!inherits(.control, "bobyqaControl")){
-    .control <- do.call(nlmixr2est::bobyqaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::bobyqaControl, "bobyqaControl")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -339,46 +331,11 @@ getValidNlmixrCtl.bobyqa <- function(control) {
 }
 
 .bobyqaFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # .ret holds standard focei-family fit state (table, data, ui, theta/omega,
-  # cov, objective, message, etc.); a foceiControl object is also needed to
-  # build the final nlmixr2 object.
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .bobyqa <- .collectWarn(.bobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$bobyqa <- .bobyqa[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "bobyqa")
-  .ret$message <- .ret$bobyqa$message
-  if (rxode2::rxGetControl(.ui, "returnBobyqa", FALSE)) {
-    return(.ret$bobyqa)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .bobyqaGetTheta(.ret$bobyqa, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "bobyqa"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$bobyqa$fval)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "bobyqa"
-  .bobyqaControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="bobyqa")
-  .env <- .ret$env
-  .env$method <- "bobyqa"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "bobyqa", .bobyqaFitModel, .bobyqaGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    controlToFocei = .bobyqaControlToFoceiControl,
+    returnFlag = "returnBobyqa")
 }
 
 #' @rdname nlmixr2Est

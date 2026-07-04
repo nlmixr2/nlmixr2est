@@ -320,7 +320,13 @@
   opt$.rx <- .rx
   opt$.pars <- .pars
   ## opt$.dat <- dat;
-  dat <- as.data.frame(dat[, -6])
+  # drop 'dv' by name (kernel gets observations separately as 'y'); assert layout instead of hardcoding index
+  .dvCol <- which(tolower(names(dat)) == "dv")
+  if (length(.dvCol) != 1L || .dvCol != 6L) {
+    stop("internal error: unexpected etTrans column layout in .configsaem (expected 'dv' as column 6)",
+         call. = FALSE)
+  }
+  dat <- as.data.frame(dat[, -.dvCol])
   names(dat) <- vapply(names(dat), function(n) {
     if (n %in% inPars) return(n)
     return(toupper(n))

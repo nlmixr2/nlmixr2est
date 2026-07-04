@@ -571,10 +571,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   }
   # normalize origData names to match the output table (uppercase except covariates)
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
-  if (is.null(.cov)) .cov <- character(0)
-  names(.orig) <- vapply(names(.orig), function(.x) {
-    if (.x %in% .cov) .x else toupper(.x)
-  }, character(1))
+  names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .have <- levels(df$ID)
   if (is.null(.have)) .have <- unique(as.character(df$ID))
   .full <- unique(as.character(.orig$ID))
@@ -630,10 +627,7 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
   .orig <- object$origData
   if (is.null(.orig) || is.null(.orig$ID)) return(add)
   .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
-  if (is.null(.cov)) .cov <- character(0)
-  names(.orig) <- vapply(names(.orig), function(.x) {
-    if (.x %in% .cov) .x else toupper(.x)
-  }, character(1))
+  names(.orig) <- .nmUpcaseNonCov(names(.orig), .cov)
   .dvCol <- which(names(.orig) == "DV")
   # solve one subject at a time to align rows by order and avoid ID renumbering;
   # dummy DV avoids the predict run dropping these subjects again

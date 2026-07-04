@@ -333,15 +333,7 @@ rxUiDeparse.nlminbControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .nlminbFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::nlminbControl()
-  }
-  if (!inherits(.control, "nlminbControl")){
-    .control <- do.call(nlmixr2est::nlminbControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::nlminbControl, "nlminbControl")
 }
 
 
@@ -379,17 +371,6 @@ getValidNlmixrCtl.nlminb <- function(control) {
     .ctl <- do.call(nlminbControl, .ctl)
   }
   .ctl
-}
-
-#' Setup the data for nlminb estimation
-#'
-#' @param dataSav Formatted Data
-#' @return Nothing, called for side effects
-#' @author Matthew L. Fidler
-#' @noRd
-.nlminbFitDataSetup <- function(dataSav) {
-  .dsAll <- dataSav[dataSav$EVID != 2, ] # Drop EVID=2 for estimation
-  nlmixr2global$nlmEnv$data <- rxode2::etTrans(.dsAll, nlmixr2global$nlmEnv$model)
 }
 
 .nlminbFitModel <- function(ui, dataSav) {
@@ -499,46 +480,11 @@ getValidNlmixrCtl.nlminb <- function(control) {
 }
 
 .nlminbFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
-  # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
-  # est, ofvType (a foceiControl object is also needed downstream)
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .nlminb <- .collectWarn(.nlminbFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$nlminb <- .nlminb[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "nlminb")
-  .ret$message <- .ret$nlminb$message
-  if (rxode2::rxGetControl(.ui, "returnNlminb", FALSE)) {
-    return(.ret$nlminb)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .nlminbGetTheta(.ret$nlminb, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "nlminb"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$nlminb$objective)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "nlminb"
-  .nlminbControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlminb")
-  .env <- .ret$env
-  .env$method <- "nlminb"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "nlminb", .nlminbFitModel, .nlminbGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$objective),
+    controlToFocei = .nlminbControlToFoceiControl,
+    returnFlag = "returnNlminb")
 }
 
 #' @rdname nlmixr2Est

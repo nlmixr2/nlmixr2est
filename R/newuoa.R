@@ -212,15 +212,7 @@ rxUiDeparse.newuoaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .newuoaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::newuoaControl()
-  }
-  if (!inherits(.control, "newuoaControl")){
-    .control <- do.call(nlmixr2est::newuoaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::newuoaControl, "newuoaControl")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -331,46 +323,11 @@ getValidNlmixrCtl.newuoa <- function(control) {
 }
 
 .newuoaFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
-  # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
-  # est, ofvType (a foceiControl object is also needed downstream)
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .newuoa <- .collectWarn(.newuoaFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$newuoa <- .newuoa[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "newuoa")
-  .ret$message <- .ret$newuoa$message
-  if (rxode2::rxGetControl(.ui, "returnNewuoa", FALSE)) {
-    return(.ret$newuoa)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .newuoaGetTheta(.ret$newuoa, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "newuoa"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$newuoa$fval)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "newuoa"
-  .newuoaControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="newuoa")
-  .env <- .ret$env
-  .env$method <- "newuoa"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "newuoa", .newuoaFitModel, .newuoaGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    controlToFocei = .newuoaControlToFoceiControl,
+    returnFlag = "returnNewuoa")
 }
 
 #' @rdname nlmixr2Est

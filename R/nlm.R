@@ -296,15 +296,7 @@ rxUiDeparse.nlmControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .nlmFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::nlmControl()
-  }
-  if (!inherits(.control, "nlmControl")){
-    .control <- do.call(nlmixr2est::nlmControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::nlmControl, "nlmControl")
 }
 
 
@@ -883,67 +875,29 @@ rxUiGet.optimParName <- rxUiGet.nlmParName
 
 
 .nlmFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # .ret env fields: table, origData, dataSav, idLvl, covLvl, ui, etaObf, cov,
-  # covMethod, adjObf, objective, extra, method, omega, theta, model, message,
-  # est, ofvType (a foceiControl object is also needed downstream)
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .nlm <- .collectWarn(.nlmFitModel(.ui, .ret$dataSav), lst = TRUE)
-
-  .ret$nlm <- .nlm[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "nlm")
-
-  .ret$message <- NULL
-  lapply(.nlm[[2]], function(x){
-    warning(x, call.=FALSE)
-  })
-
-  if (rxode2::rxGetControl(.ui, "returnNlm", FALSE)) {
-    return(.ret$nlm)
-  }
-  if (.ret$nlm$code == 1) {
-    .ret$message <- "relative gradient is close to zero, current iterate is probably solution"
-  } else if (.ret$nlm$code == 2) {
-    .ret$message <- "successive iterates within tolerance, current iterate is probably solution"
-  } else if (.ret$nlm$code == 3) {
-    .ret$message <- c("last global step failed to locate a point lower than 'estimate'",
-                      "either 'estimate' is an approximate local minimum of the function or 'steptol' is too small")
-  } else if (.ret$nlm$code == 4) {
-    .ret$message <- "iteration limit exceeded"
-  } else if (.ret$nlm$code == 5) {
-    .ret$message <- c("maximum step size 'stepmax' exceeded five consecutive times",
-                      "either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or 'stepmax' is too small")
-  } else {
-    .ret$message <- ""
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .nlmGetTheta(.ret$nlm, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "nlm"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$nlm$minimum)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "nlm"
-  .nlmControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="nlm")
-  .env <- .ret$env
-  .env$method <- "nlm"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "nlm", .nlmFitModel, .nlmGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$minimum),
+    controlToFocei = .nlmControlToFoceiControl,
+    returnFlag = "returnNlm",
+    emitFitWarnings = TRUE,
+    message = function(.fit) {
+      if (.fit$code == 1) {
+        "relative gradient is close to zero, current iterate is probably solution"
+      } else if (.fit$code == 2) {
+        "successive iterates within tolerance, current iterate is probably solution"
+      } else if (.fit$code == 3) {
+        c("last global step failed to locate a point lower than 'estimate'",
+          "either 'estimate' is an approximate local minimum of the function or 'steptol' is too small")
+      } else if (.fit$code == 4) {
+        "iteration limit exceeded"
+      } else if (.fit$code == 5) {
+        c("maximum step size 'stepmax' exceeded five consecutive times",
+          "either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or 'stepmax' is too small")
+      } else {
+        ""
+      }
+    })
 }
 
 #' @rdname nlmixr2Est

@@ -218,15 +218,7 @@ rxUiDeparse.n1qn1Control <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .n1qn1FamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::n1qn1Control()
-  }
-  if (!inherits(.control, "n1qn1Control")) {
-    .control <- do.call(nlmixr2est::n1qn1Control, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::n1qn1Control, "n1qn1Control")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -337,46 +329,11 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
 }
 
 .n1qn1FamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # Needs table/origData/dataSav/idLvl/covLvl/ui/etaObf/cov/covMethod/adjObf/
-  # objective/extra/method/omega/theta/model/message/est/ofvType, plus a
-  # foceiControl object, to build the final nlmixr fit object.
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .n1qn1 <- .collectWarn(.n1qn1FitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$n1qn1 <- .n1qn1[[1]]
-  .ret <- .nlmFamilyAdjustOutput(.ret, "n1qn1")
-  .ret$message <- .ret$n1qn1$message
-  if (rxode2::rxGetControl(.ui, "returnN1qn1", FALSE)) {
-    return(.ret$n1qn1)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .n1qn1GetTheta(.ret$n1qn1, .ui)
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "n1qn1"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$n1qn1$value)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "n1qn1"
-  .n1qn1ControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="n1qn1")
-  .env <- .ret$env
-  .env$method <- "n1qn1"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "n1qn1", .n1qn1FitModel, .n1qn1GetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$value),
+    controlToFocei = .n1qn1ControlToFoceiControl,
+    returnFlag = "returnN1qn1")
 }
 
 #' @rdname nlmixr2Est

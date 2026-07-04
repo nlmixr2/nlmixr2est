@@ -212,15 +212,7 @@ rxUiDeparse.uobyqaControl <- function(object, var) {
 #' @author Matthew L. Fidler
 #' @noRd
 .uobyqaFamilyControl <- function(env, ...) {
-  .ui <- env$ui
-  .control <- env$control
-  if (is.null(.control)) {
-    .control <- nlmixr2est::uobyqaControl()
-  }
-  if (!inherits(.control, "uobyqaControl")) {
-    .control <- do.call(nlmixr2est::uobyqaControl, .control)
-  }
-  assign("control", .control, envir=.ui)
+  .nlmFamilyControlGeneric(env, nlmixr2est::uobyqaControl, "uobyqaControl")
 }
 
 #' @rdname nmObjHandleControlObject
@@ -333,50 +325,20 @@ getValidNlmixrCtl.uobyqa <- function(control) {
 }
 
 .uobyqaFamilyFit <- function(env, ...) {
-  .ui <- env$ui
-  .control <- .ui$control
-  .data <- env$data
-  .ret <- new.env(parent=emptyenv())
-  # .ret must carry the standard nlmixr2FitCore env fields (table,
-  # origData, dataSav, idLvl, covLvl, ui, cov, covMethod, adjObf,
-  # objective, extra, method, omega, theta, model, message, est, ofvType)
-  # plus a foceiControl object, to build the output fit.
-  .ret$table <- env$table
-  .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
-  .uobyqa <- .collectWarn(.uobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
-  .ret$uobyqa <- .uobyqa[[1]]
-  .ret$parHistData <- .ret$uobyqa$parHistData
-  .ret$uobyqa$parHistData <- NULL
-  .ret$message <- .ret$uobyqa$message
-  if (rxode2::rxGetControl(.ui, "returnUobyqa", FALSE)) {
-    return(.ret$uobyqa)
-  }
-  .ret$ui <- .ui
-  .ret$adjObf <- rxode2::rxGetControl(.ui, "adjObf", TRUE)
-  .ret$fullTheta <- .uobyqaGetTheta(.ret$uobyqa, .ui)
-  .ret$cov <- .ret$uobyqa$cov
-  .ret$covMethod <- .ret$uobyqa$covMethod
-  #.ret$etaMat <- NULL
-  #.ret$etaObf <- NULL
-  #.ret$omega <- NULL
-  .ret$control <- .control
-  .ret$extra <- ""
-  .nlmixr2FitUpdateParams(.ret)
-  nmObjHandleControlObject(.ret$control, .ret)
-  if (exists("control", .ui)) {
-    rm(list="control", envir=.ui)
-  }
-  .ret$est <- "uobyqa"
-  # There is no parameter history for nlme
-  .ret$objective <- 2 * as.numeric(.ret$uobyqa$fval)
-  .ret$model <- .ui$ebe
-  .ret$ofvType <- "uobyqa"
-  .uobyqaControlToFoceiControl(.ret)
-  .ret$theta <- .ret$ui$saemThetaDataFrame
-  .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="uobyqa")
-  .env <- .ret$env
-  .env$method <- "uobyqa"
-  .ret
+  .nlmFamilyFitGeneric(
+    env, "uobyqa", .uobyqaFitModel, .uobyqaGetTheta,
+    objective = function(.fit) 2 * as.numeric(.fit$fval),
+    controlToFocei = .uobyqaControlToFoceiControl,
+    returnFlag = "returnUobyqa",
+    # uobyqa manages its own cov/parHistData instead of .nlmFamilyAdjustOutput
+    adjustOutput = FALSE,
+    postSetup = function(.ret, .ui, .fit) {
+      .ret$parHistData <- .ret$uobyqa$parHistData
+      .ret$uobyqa$parHistData <- NULL
+      .ret$cov <- .ret$uobyqa$cov
+      .ret$covMethod <- .ret$uobyqa$covMethod
+      .ret
+    })
 }
 
 #' @rdname nlmixr2Est

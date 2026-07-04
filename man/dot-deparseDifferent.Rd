@@ -24,10 +24,8 @@ A vector of indices indicating which elements of the
   standard object differ from the new object.
 }
 \description{
-This function compares elements of a standard object with a new
-object and identifies which elements are different.  It is used to
-only show values that are different from the default when deparsing
-control objects.
+Compares elements of a standard object against a new one so
+`rxUiDeparse` only shows values that differ from the default.
 }
 \examples{
 standard <- list(a = 1, b = 2, c = 3)
