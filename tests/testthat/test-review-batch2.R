@@ -1,9 +1,6 @@
 nmTest({
 
-  ## D2: handleCensNpdeCdf computed j = trunc(pd*K) before pd was clamped, so a
-  ## (right-)censored point whose pd rounds to 1.0 read curRow[K]/curRow[K+1]
-  ## out of bounds (and with unsigned j, j-1 wrapped for K==1).  This exercises
-  ## the censored cdf npde path; the OOB read is caught by valgrind/ASAN CI.
+  ## D2: guard against OOB curRow read in handleCensNpdeCdf when pd rounds to 1.0
   test_that("npde cdf censoring on BLQ data yields finite NPDE (D2 OOB regression)", {
     d <- theo_sd
     lloq <- 2.0
@@ -24,10 +21,7 @@ nmTest({
     expect_true(all(is.finite(fit$NPDE)))
   })
 
-  ## B1: do_mcmc passed the raw and transformed predictions to handleF in the
-  ## wrong order (vs saem.cpp:942), so for propT/transformed-error endpoints the
-  ## residual SD used in the MCMC acceptance was computed from the un-transformed
-  ## prediction.  Exercise the transformed-prediction do_mcmc path.
+  ## B1: fix argument order of raw/transformed predictions passed to handleF in do_mcmc
   test_that("SAEM prop+boxCox (transformed-prediction do_mcmc path) runs finite (B1)", {
     f <- function() {
       ini({ tka <- 0.45; tcl <- 1; tv <- 3.45
