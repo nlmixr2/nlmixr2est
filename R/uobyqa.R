@@ -73,7 +73,8 @@ uobyqaControl <- function(npt=NULL,
                           calcTables=TRUE, compress=FALSE,
                           covMethod=c("r", ""),
                           adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
-                          boundedTransform=TRUE, ...) {
+                          boundedTransform=TRUE,
+                          eventSens=c("jump", "fd"), ...) {
 
   checkmate::assertIntegerish(npt, null.ok=TRUE, any.missing=FALSE, lower=2, len=1)
   checkmate::assertNumeric(rhobeg, null.ok=TRUE, any.missing=FALSE, lower=0, len=1)
@@ -90,6 +91,7 @@ uobyqaControl <- function(npt=NULL,
   checkmate::assertLogical(compress, len=1, any.missing=TRUE)
   checkmate::assertLogical(adjObf, len=1, any.missing=TRUE)
   checkmate::assertLogical(boundedTransform, len=1, any.missing=FALSE)
+  eventSens <- match.arg(eventSens)
 
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -189,7 +191,8 @@ uobyqaControl <- function(npt=NULL,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
                genRxControl=.genRxControl,
-               boundedTransform=boundedTransform)
+               boundedTransform=boundedTransform,
+               eventSens=eventSens)
   class(.ret) <- "uobyqaControl"
   .ret
 }
@@ -275,7 +278,8 @@ getValidNlmixrCtl.uobyqa <- function(control) {
                                 compress=.uobyqaControl$compress,
                                 ci=.uobyqaControl$ci,
                                 sigdigTable=.uobyqaControl$sigdigTable,
-                                indTolRelax=.uobyqaControl$indTolRelax)
+                                indTolRelax=.uobyqaControl$indTolRelax,
+                                eventSens=.uobyqaControl$eventSens)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
@@ -333,28 +337,10 @@ getValidNlmixrCtl.uobyqa <- function(control) {
   .control <- .ui$control
   .data <- env$data
   .ret <- new.env(parent=emptyenv())
-  # The environment needs:
-  # - table for table options
-  # - $origData -- Original Data
-  # - $dataSav -- Processed data from .foceiPreProcessData
-  # - $idLvl -- Level information for ID factor added
-  # - $covLvl -- Level information for items to convert to factor
-  # - $ui for ui fullTheta Full theta information
-  # - $etaObf data frame with ID, etas and OBJI
-  # - $cov For covariance
-  # - $covMethod for the method of calculating the covariance
-  # - $adjObf Should the objective function value be adjusted
-  # - $objective objective function value
-  # - $extra Extra print information
-  # - $method Estimation method (for printing)
-  # - $omega Omega matrix
-  # - $theta Is a theta data frame
-  # - $model a list of model information for table generation.  Needs a `predOnly` model
-  # - $message Message for display
-  # - $est estimation method
-  # - $ofvType (optional) tells the type of ofv is currently being used
-  # When running the focei problem to create the nlmixr object, you also need a
-  #  foceiControl object
+  # .ret must carry the standard nlmixr2FitCore env fields (table,
+  # origData, dataSav, idLvl, covLvl, ui, cov, covMethod, adjObf,
+  # objective, extra, method, omega, theta, model, message, est, ofvType)
+  # plus a foceiControl object, to build the output fit.
   .ret$table <- env$table
   .foceiPreProcessData(.data, .ret, .ui, .control$rxControl)
   .uobyqa <- .collectWarn(.uobyqaFitModel(.ui, .ret$dataSav), lst = TRUE)
