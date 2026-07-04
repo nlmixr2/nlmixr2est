@@ -17,10 +17,5 @@ formatMinWidth(x, digits = 3, naValue = "NA")
 A character vector converting the numbers with minimum width
 }
 \description{
-Special values (`NaN`, `Inf`, `-Inf`, and `0`) are returned as their
-character representation without additional modification. `NA` is returned as
-the value of the `naValue` argument.
-}
-\examples{
-formatMinWidth(x = -123456*10^(-10:10))
+Special values (`NaN`, `Inf`, `-Inf`, `0`) are shown as-is; `NA` uses `naValue`.
 }

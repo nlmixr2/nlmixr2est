@@ -1,16 +1,11 @@
 # nlmixr2est (development version)
 
-- New function `formatMinWidth()` to make `$parFixed` show shorter text
-  and more often show non-scientific notation representations. The
-  `$parFixed` data.frame is now built directly with data.frame
-  operations rather than environment side-effects, and `FIXED` and
-  shrinkage suffixes are appended. (#346, #516)
+- New function `formatMinWidth()` for shorter, more often non-scientific
+  `$parFixed` display; `$parFixed` is now built with data.frame operations
+  instead of environment side-effects (#346, #516)
 
-  - The table's significant digits (`sigdigTable`) and confidence
-    interval (`ci`) are now read from the estimation control for fits
-    that contain literally-fixed parameters.  Previously these fits
-    silently fell back to the defaults, ignoring a user-specified
-    `sigdig`/`ci`.
+- Fix `$parFixed` ignoring a user-specified `sigdig`/`ci` for fits with
+  literally-fixed parameters
 
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and
@@ -56,7 +51,6 @@
 
 - Errors during estimation are now collected and reported together
   instead of only the last one
->>>>>>> main
 
 - Fix issue 641: FOCEI now updates additive mu-referenced population
   parameters with large-magnitude initial estimates

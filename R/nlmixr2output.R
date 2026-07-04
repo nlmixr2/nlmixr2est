@@ -146,24 +146,15 @@
   )
 }
 
-#'  Add the between-subject variability column to the popDf data.frame
-#'
-#' Both mu-referenced and non-mu-referenced ETAs are added.  The list
-#' of row names (within the returned data.frame) whose corresponding
-#' omega is fixed is also returned so that the formatting step can
-#' wrap those values with `fix(...)`.
+#' Add the between-subject variability column to the popDf data.frame (mu-ref and non-mu-ref ETAs)
 #'
 #' @param popDf data.frame of parameter estimates (numeric)
 #' @param iniDf The `ini` data.frame from the rxUi object
 #' @param omega The omega matrix
-#' @param .sigdig Number of significant digits for the character
-#'   representation used inside `.updateParFixedGetEtaRow()` (the
-#'   numeric values added to `popDf` are not rounded)
+#' @param .sigdig Number of significant digits for the character representation
 #' @param .muRefDataFrame `.ui$muRefDataFrame`
 #' @param .muRefCurEval `.ui$muRefCurEval`
-#' @returns A list with `popDf` (popDf with a BSV column appended,
-#'   plus any non-mu-referenced ETA rows) and `bsvFixedNames` (row
-#'   names whose BSV is fixed)
+#' @returns A list with `popDf` (BSV column and non-mu-referenced ETA rows appended) and `bsvFixedNames` (row names whose BSV is fixed)
 #' @author Matthew L. Fidler
 #' @noRd
 .updateParFixedAddBsv <- function(popDf, iniDf, omega, .sigdig, .muRefDataFrame, .muRefCurEval) {
@@ -283,9 +274,7 @@
     ret$`CI Lower` <- NULL
     ret$`CI Upper` <- NULL
   }
-  # Add the suffix to the shrinkage
   if ("Shrink(SD)%" %in% names(df)) {
-    # Only add the suffix if they are not NA
     shrinkMask <- !is.na(df$`Shrink(SD)%`)
     if (any(shrinkMask)) {
       shrinkSuffix <-
@@ -297,13 +286,11 @@
       ret$`Shrink(SD)%`[shrinkMask] <- paste0(ret$`Shrink(SD)%`[shrinkMask], shrinkSuffix[shrinkMask])
     }
   }
-  # Add SE and RSE FIXED
   if (length(fixedNames) > 0) {
     ret[fixedNames, "SE"] <- "FIXED"
     ret[fixedNames, "%RSE"] <- "FIXED"
   }
-  # Wrap fixed BSV cells with fix(...) so the printed table preserves the
-  # information that the omega is fixed
+  # wrap fixed BSV cells with fix(...) to preserve fixed-omega info in the printed table
   if (length(bsvFixedNames) > 0) {
     .bsvCol <- which(startsWith(names(ret), "BSV("))
     if (length(.bsvCol) == 1L) {
@@ -344,28 +331,16 @@
         check.names = FALSE,
         check.rows = FALSE
       )
-    # Combine estimated and fixed parameters, then order them by the theta names
+    # combine estimated and fixed parameters, ordered by theta name
     .popDf <- rbind(.popDfEst, .popDfFixed)[.tn, ]
-
-    # Show the fixed values in the model
     .ret$popDf <- .popDf
   } else {
-    # Without literal fixing (e.g. `literalFix=FALSE`) the fixed population
-    # parameters are still present in `$popDf` with NA standard errors; recover
-    # their names from the model so their SE/%RSE cells are marked `FIXED`
-    # (matches the `literalFix=TRUE` path and the prior C++ behavior).
+    # literalFix=FALSE: fixed thetas remain in $popDf with NA SE; mark SE/%RSE FIXED
     .iniDf <- as.data.frame(.ui$iniDf)
     .fixedNames <- .iniDf$name[!is.na(.iniDf$ntheta) & .iniDf$fix]
     .fixedNames <- intersect(.fixedNames, rownames(.ret$popDf))
   }
-  # The `sigdig`/`ci` for the $parFixed table come from the estimation control
-  # (`.ret$control`).  For fits with literally-fixed parameters `.ui` was
-  # reassigned above to the pre-fix `uiUnfix` model, which does not carry the
-  # estimation control, so reading via `rxGetControl(.ui, ...)` would silently
-  # fall back to the defaults and drop a user-specified `ci`/`sigdig`.  Read
-  # `.ret$control` first (uses `sigdigTable` for the table, matching the C++
-  # side), then fall back to the ui/default for `est="foi"` and Monolix/NONMEM
-  # imported fits whose `$control` is empty.
+  # .ret$control first, since .ui may be the pre-fix uiUnfix model (no control)
   .parFixedNum <- function(.nm, .default) {
     .v <- .ret$control[[.nm]]
     if (length(.v) == 1L && is.finite(.v)) return(.v)
@@ -392,9 +367,7 @@
   popDf <- .bsv$popDf
   popDf <- .updateParFixedAddShrinkage(popDf, shrink = .ret$shrink, ui = .ui)
   .ret$popDf <- popDf
-  # Applying significant digits happens via .updateParFixedApplySig.
-  # The C++ side may have populated $popDfSig but it is no longer used
-  # here.
+  # $popDfSig may still exist from the C++ side but is no longer used
   .ret$parFixed <-
     .updateParFixedApplySig(
       popDf,
@@ -740,16 +713,12 @@ vcov.nlmixr2FitCoreSilent <- vcov.nlmixr2FitCore
 
 #' Format numeric values to minimize the printing width
 #'
-#' Special values (`NaN`, `Inf`, `-Inf`, and `0`) are returned as their
-#' character representation without additional modification. `NA` is returned as
-#' the value of the `naValue` argument.
+#' Special values (`NaN`, `Inf`, `-Inf`, `0`) are shown as-is; `NA` uses `naValue`.
 #'
 #' @param x The numeric vector to convert
 #' @param digits The number of significant digits to show
 #' @param naValue The value to return if `is.na(x)`
 #' @returns A character vector converting the numbers with minimum width
-#' @examples
-#' formatMinWidth(x = -123456*10^(-10:10))
 #' @export
 formatMinWidth <- function(x, digits = 3, naValue = "NA") {
   checkmate::assert_numeric(x)
