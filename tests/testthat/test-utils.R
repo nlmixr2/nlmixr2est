@@ -49,7 +49,7 @@ test_that(".collectWarn", {
     regexp = NA
   )
   expect_equal(check, list(NULL, warning = "A", error = "B"))
-  # Inner try() blocks still work — when expr ultimately succeeds, the
+  # Inner try() blocks still work -- when expr ultimately succeeds, the
   # captured "internal" errors are discarded so they cannot leak into
   # the caller's error list (regression: previously every error fired
   # inside expr was returned, breaking SAEM's covariance recovery).

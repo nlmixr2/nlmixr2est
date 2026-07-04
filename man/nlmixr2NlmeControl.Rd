@@ -269,8 +269,7 @@ If not specified, then it matches the significant digits in the
 
 \item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
 be mu-referenced are internally rewritten as mu-referenced
-covariates (more accurate, since it linearizes the system) and
-restored in the model after optimization. Mirrors
+covariates and restored after optimization. Mirrors
 \code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
 for \code{foceiControl()} only takes effect when
 \code{muModel != "none"}.}
@@ -291,7 +290,7 @@ a nlmixr-nlme list
 \description{
 The values supplied in the function call replace the defaults and
 a list with all possible arguments is returned.  The returned list
-is used as the ‘control’ argument to the ‘nlme’ function.
+is used as the `control` argument to the `nlme` function.
 }
 \examples{
 nlmeControl()

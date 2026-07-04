@@ -26,7 +26,7 @@ using namespace arma;
 using namespace Rcpp;
 
 // scale.h needs Rcpp:: types in scope (CharacterVector, RObject, warning, stop)
-// — must be included AFTER the `using namespace Rcpp;` above.
+// -- must be included AFTER the `using namespace Rcpp;` above.
 #include "scale.h"
 
 typedef void (*fn_ptr) (double *, double *);
@@ -1503,7 +1503,7 @@ public:
         vec f = fsave;
         fsave = f;
         if (distribution == 1){
-          // Build yt once — it does not depend on chain index k
+          // Build yt once: does not depend on chain index k
           vec yt = hasFixedObsTransform ? yTrans : y;
           if (!hasFixedObsTransform) {
             for (int i = ntotal; i--;) {
@@ -2810,7 +2810,7 @@ private:
         switch (distribution) {
         case 1:
           {
-            // Build yt once — it does not depend on chain index k
+            // Build yt once: does not depend on chain index k
             vec yt = hasFixedObsTransform ? yTrans : mx.y;
             if (!hasFixedObsTransform) {
               for (int i = ntotal; i--;) {
@@ -3202,7 +3202,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
     if (current_saem_state->_saemIndTolRelax) {
       // Only loosen tolerance for subjects whose ODE solve produced NaN/Inf.
       // Tolerance is sticky via ind->tolFactor so iniSubject reapplies it on
-      // subsequent SAEM iterations — genuinely stiff subjects stay loosened.
+      // subsequent SAEM iterations; genuinely stiff subjects stay loosened.
       if (getOpNeq(op) > 0) {
         for (int _i = 0; _i < _Nnlmixr2; _i++) {
           rx_solving_options_ind *_indI = getSolvingOptionsInd(_rx, _i);
@@ -3289,7 +3289,7 @@ mat user_function(const mat &_phi, const mat &_evt, const List &_opt) {
 //   nsim = nPopPar / nsub = (N*nmc) / N = nmc
 // Chains 1..nmc-1 automatically share chain 0's event data pointers
 // (all_times, evid, dose, ii, idose, cov_ptr) while each subject retains
-// its own solve/ix/tolFactor buffers, reducing event-table memory by ~nmc×.
+// its own solve/ix/tolFactor buffers, reducing event-table memory by ~nmc times.
 void setupRx(List &opt, SEXP evt, int nmc, int N) {
   RObject obj = opt[".rx"];
   List mv = _rxode2_rxModelVars_(obj);

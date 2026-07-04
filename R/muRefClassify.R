@@ -1,12 +1,9 @@
 #' Classify theta/eta pairs for the mu-referenced FOCEI family
 #'
-#' Only thetas/etas in a mu-ref covariate relationship
+#' Only thetas/etas with a mu-ref covariate relationship
 #' (`ui$muRefCovariateDataFrame`) get the in-C++ regression machinery
-#' (`updateMuGroups()`, `src/inner.cpp`); plain theta+eta or lone-theta
-#' pairs are left to standard FOCEI inner/outer optimization (unlike SAEM,
-#' which mu-refs even the plain case). Complex covariate expressions are
-#' assumed already rewritten into simple linear `muRefCovariateDataFrame`
-#' terms by `.uiApplyMu2hook()`.
+#' (`updateMuGroups()`, `src/inner.cpp`); plain pairs use standard FOCEI
+#' inner/outer optimization (unlike SAEM, which mu-refs the plain case too).
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return A list with:
@@ -70,23 +67,19 @@
 #' Build per-group theta/eta/covariate structures for the in-C++ regression
 #' (`updateMuGroups()`, `src/inner.cpp`)
 #'
-#' Each group is one mu-ref-covariate population theta with an associated
-#' eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)`: `theta="tcl"`,
-#' `eta="eta.cl"`, covariate row `covariate="logWT"`,
-#' `covariateParameter="allo.cl"`). Covariate thetas with no associated eta
-#' are intentionally excluded (no per-subject residual to regress against)
-#' and behave as ordinary outer-optimized thetas.
+#' Each group is one mu-ref-covariate population theta with its associated
+#' eta (e.g. `cl <- exp(tcl + eta.cl + allo.cl*logWT)` groups
+#' `theta="tcl"`/`eta="eta.cl"` with covariate `allo.cl` on `logWT`).
+#' Covariate thetas with no associated eta are excluded (no per-subject
+#' residual to regress against) and stay ordinary outer-optimized thetas.
 #'
 #' A finite bound on the group's population theta excludes the whole group
-#' (with a `warning()`) since OLS/IRLS can't respect a box constraint on
-#' its intercept. A bound on one covariate-coefficient theta excludes only
-#' that covariate (marked `bounded=TRUE`), treating it like a time-varying
-#' covariate whose current, gradient-updated contribution is still
-#' subtracted from the regression target as a live offset; the population
-#' theta and any other unbounded covariates in the group still get the
-#' mu-ref speed-up. Both cases only affect this family (`mufocei`/
-#' `irlsfocei`/`mufoce`/`irlsfoce`/`muagq`/`irlsagq`/`mulaplace`/
-#' `irlslaplace`); SAEM and every other estimator are untouched.
+#' (warns) since OLS/IRLS can't respect a box constraint on its intercept.
+#' A bound on one covariate-coefficient theta excludes only that covariate
+#' (marked `bounded=TRUE`, treated like a time-varying covariate), while
+#' the population theta and other unbounded covariates in the group still
+#' get the mu-ref speed-up. Only affects this family (`mufocei`/`irlsfocei`/
+#' `mufoce`/`irlsfoce`/`muagq`/`irlsagq`/`mulaplace`/`irlslaplace`).
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list of `list(theta=, eta=, covariates=data.frame(covariate=,
@@ -152,8 +145,8 @@
 #' mu-referenced-FOCEI-family regression (`updateMuGroups()`,
 #' `src/inner.cpp`) expects
 #'
-#' UI-derived only; the covariate values matrix is built separately by
-#' `.muRefCppCovData()` once the dataset is available.
+#' UI-derived only; `.muRefCppCovData()` builds the covariate matrix
+#' separately once the dataset is available.
 #'
 #' @param ui rxode2 ui object (post mu2-hook, if applicable)
 #' @return list with `muGroupTheta`, `muGroupEta`, `muGroupCovStart`,
