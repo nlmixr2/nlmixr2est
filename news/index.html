@@ -33,35 +33,28 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>Fix <code>cov2cor</code> error when omega has exactly one nonzero diagonal by subsetting with <code>drop = FALSE</code></p></li>
-<li><p>Fix the SAEM linearized-FIM covariance (<code>covMethod = "linFim"</code>) erroring (or falling back) when exactly one covariate-model parameter is estimated, due to a vector-collapse transpose bug in <code>calc.COV()</code>.</p></li>
-<li><p>Fix FOCEi aborting R with <code>Cube::slice(): index out of bounds</code> when <code>mceta &gt;= 1</code> and <code>maxInnerIterations == 0</code> (covariance step, <code>nlmixr2extra::linearize()</code>).</p></li>
-<li><p>Fix Windows heap-corruption segfault for <code>focei</code>/<code>foce</code>/<code>fo</code>/<code>laplace</code>/ <code>agq</code>/<code>bobyqa</code>/<code>nlm</code>/<code>optim</code>/<code>nls</code>/<code>nlminb</code>/<code>lbfgsb3c</code>/<code>n1qn1</code>/<code>newuoa</code>/ <code>uobyqa</code> fits at more than one core (requires matching rxode2 with <code>setRxThreadId()</code>).</p></li>
-<li><p>Fix SAEM covariance error (<code>rxInv(.tmp): Not a matrix</code>) for models with a single population parameter.</p></li>
-<li><p>Test suite uses a single testthat worker on CI/CRAN and parallel elsewhere; rxode2’s within-solve threads capped to 2 only on CRAN.</p></li>
-<li><p><code>fit$time</code> now reports every estimation stage consistently (previously stages under 5e-5 s were dropped).</p></li>
-<li><p><code><a href="../reference/foceiControl.html">foceiControl()</a></code> now defaults to <code>outerOpt = "lbfgsb3c"</code> and <code>sigdig = 4</code>.</p></li>
-<li><p>Added mu-referenced FOCEI-family estimation methods: <code>mufocei</code>/ <code>irlsfocei</code>, <code>mufoce</code>/<code>irlsfoce</code>, <code>muagq</code>/<code>irlsagq</code>, <code>mulaplace</code>/<code>irlslaplace</code>. Mu-ref covariate-coefficient thetas are solved by closed-form OLS (<code>mu*</code>) or IRLS (<code>irls*</code>) regression instead of the outer gradient optimizer. New <code><a href="../reference/foceiControl.html">foceiControl()</a></code> options: <code>muModel</code> (<code>"none"</code>/<code>"lin"</code>/<code>"irls"</code>), <code>muRefCovAlg</code>, <code>muModelTol</code>, <code>muModelMaxCycles</code>. <code>fo</code>/<code>foi</code> have no <code>mu*</code>/<code>irls*</code> counterparts. A mu-referenced theta with a finite boundary falls back to ordinary bounded outer-optimizer handling (with a warning). The live iteration-print table shows each mu-group theta as an extra row.</p></li>
-<li><p>Errors during estimation are now collected and reported together instead of only the last one (new <code>collectErr</code> argument to <code><a href="../reference/dot-collectWarn.html">.collectWarn()</a></code>).</p></li>
-<li><p>Fix issue 641: FOCEI now updates additive mu-referenced population parameters with large-magnitude initial estimates (previously pinned at their initial value due to a missing <code>scaleC</code> branch).</p></li>
-<li><p>Iteration-time progress output for all estimators now flows through a single shared printer (<code>scaleApplyIterPrintControl</code>/<code>scalePrintFun</code> in <code>src/scale.h</code>). New <code><a href="../reference/iterPrintControl.html">iterPrintControl()</a></code> bundles the options (<code>every</code>, <code>ncol</code>, <code>headerEvery</code>, <code>useColor</code>, <code>simple</code>); pass via <code>print</code> on any <code>*Control()</code> (the historical scalar form still works). <code>saem</code> now back-transforms its iteration-print <code>X</code> row like <code>focei</code>. Estimators with no per-iteration objective (saem) suppress <code>Function Val.</code> instead of printing <code>nan</code>. The <code>U</code>/<code>X</code> rows auto-skip when redundant; force skip with <code>*Control(print = iterPrintControl(simple = TRUE))</code>.</p></li>
+<ul><li><p>Fix <code>cov2cor</code> error when omega has exactly one nonzero diagonal</p></li>
+<li><p>Fix SAEM linearized-FIM covariance (<code>covMethod = "linFim"</code>) erroring when exactly one covariate-model parameter is estimated</p></li>
+<li><p>Fix FOCEi aborting R with <code>Cube::slice(): index out of bounds</code> when <code>mceta &gt;= 1</code> and <code>maxInnerIterations == 0</code></p></li>
+<li><p>Fix Windows heap-corruption segfault for gradient/pooled estimator fits at more than one core</p></li>
+<li><p>Fix SAEM covariance error (<code>rxInv(.tmp): Not a matrix</code>) for models with a single population parameter</p></li>
+<li><p>Test suite uses a single testthat worker on CI/CRAN and parallel elsewhere; rxode2’s within-solve threads capped to 2 only on CRAN</p></li>
+<li><p><code>fit$time</code> now reports every estimation stage consistently</p></li>
+<li><p><code><a href="../reference/foceiControl.html">foceiControl()</a></code> now defaults to <code>outerOpt = "lbfgsb3c"</code> and <code>sigdig = 4</code></p></li>
+<li><p>Added mu-referenced FOCEI-family estimation methods: <code>mufocei</code>/ <code>irlsfocei</code>, <code>mufoce</code>/<code>irlsfoce</code>, <code>muagq</code>/<code>irlsagq</code>, <code>mulaplace</code>/<code>irlslaplace</code>, with new <code><a href="../reference/foceiControl.html">foceiControl()</a></code> options <code>muModel</code>, <code>muRefCovAlg</code>, <code>muModelTol</code>, <code>muModelMaxCycles</code></p></li>
+<li><p>Errors during estimation are now collected and reported together instead of only the last one</p></li>
+<li><p>Fix issue 641: FOCEI now updates additive mu-referenced population parameters with large-magnitude initial estimates</p></li>
+<li><p>Iteration-time progress output for all estimators now flows through a shared printer; new <code><a href="../reference/iterPrintControl.html">iterPrintControl()</a></code> bundles the <code>every</code>, <code>ncol</code>, <code>headerEvery</code>, <code>useColor</code>, <code>simple</code> options</p></li>
 <li><p>Added focei, foce, foi, fo mixture support in <code>nlmixr2est</code></p></li>
-<li><p>Fix <code>focei</code> mixture models with llik residual distributions: a matrix-orientation bug in <code>.backTransformParHistMix</code> caused an error when a model had exactly one mixture probability parameter.</p></li>
-<li><p>Fix <code>fit$mixList</code> returning only the first mixture component (the stored prior-probability vector was missing the implicit last component).</p></li>
-<li><p><code>parHistData</code> Back-Transformed rows now show mixture probability parameters on the natural probability scale instead of the raw mlogit scale.</p></li>
-<li>
-<p>Hardened mixture-model (<code>mix()</code>) estimation:</p>
-<ul><li>
-<code>est="nlme"</code> now errors clearly on <code>mix()</code> models (unsupported) instead of silently freezing the mixture probability.</li>
-<li>Invalid initial mixture probabilities now raise a clear error instead of silently corrupting the fit.</li>
-<li>SAEM/FOCEI now warn when posterior mixture-component likelihoods underflow, or when an estimated mixture probability collapses toward 0/1 or needs rescaling.</li>
-<li>Fixed a regression where the SAEM omega-diagonal floor for non-mu-referenced parameters was raised for every SAEM fit instead of mixture fits only.</li>
-</ul></li>
-<li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session affecting every pooled estimator except <code>nls</code> (<code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>);</p></li>
+<li><p>Fix <code>focei</code> mixture models with llik residual distributions erroring when a model had exactly one mixture probability parameter</p></li>
+<li><p>Fix <code>fit$mixList</code> returning only the first mixture component</p></li>
+<li><p><code>parHistData</code> Back-Transformed rows now show mixture probability parameters on the natural probability scale</p></li>
+<li><p>Hardened mixture-model (<code>mix()</code>) estimation: clearer errors for <code>est="nlme"</code> and invalid initial probabilities, warnings for underflowing/collapsing mixture probabilities, and a fix for the SAEM omega-diagonal floor being raised outside mixture fits</p></li>
+<li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session for pooled estimators</p></li>
 <li><p>Fix heap-buffer overflow and wrong back-transform in SAEM lambda (Box-Cox) residual-error models</p></li>
 <li><p>Guard against null pointer arithmetic in inner.cpp</p></li>
 <li><p>Use OpenMP threading for S matrix calculation</p></li>
-<li><p>Use OpenMP threading wile calculating NPDEs</p></li>
+<li><p>Use OpenMP threading while calculating NPDEs</p></li>
 </ul></div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="6.0.1" id="nlmixr2est-601">nlmixr2est 6.0.1<a class="anchor" aria-label="anchor" href="#nlmixr2est-601"></a></h2><p class="text-muted">CRAN release: 2026-06-03</p>
