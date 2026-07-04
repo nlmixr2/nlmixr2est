@@ -95,9 +95,26 @@ nmTest({
     expect_equal(.est(adjAuto), .est(fwd), tolerance = 1e-4)
   })
 
+  test_that("nlminb (gradient family) shares the adjoint wiring", {
+    .d <- nlmixr2data::theo_sd
+    fwd <- .nlmixr(one.cmt, .d, est = "nlminb",
+                   nlminbControl(sensMethod = "forward", solveType = "grad", print = 0))
+    adj <- .nlmixr(one.cmt, .d, est = "nlminb",
+                   nlminbControl(sensMethod = "adjoint", solveType = "grad", print = 0,
+                                 rxControl = rxode2::rxControl(method = "ros4")))
+    expect_equal(adj$objf, fwd$objf, tolerance = 1e-4)
+    expect_equal(setNames(adj$parFixedDf$Estimate, rownames(adj$parFixedDf)),
+                 setNames(fwd$parFixedDf$Estimate, rownames(fwd$parFixedDf)),
+                 tolerance = 1e-4)
+  })
+
   test_that("default nlm sensMethod is 'forward' (no behavior change)", {
     expect_equal(nlmControl()$sensMethod, "forward")
     expect_equal(foceiControl()$sensMethod, "forward")
+    expect_equal(nlminbControl()$sensMethod, "forward")
+    expect_equal(optimControl()$sensMethod, "forward")
+    expect_equal(n1qn1Control()$sensMethod, "forward")
+    expect_equal(lbfgsb3cControl()$sensMethod, "forward")
   })
 
 })
