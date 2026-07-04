@@ -27,41 +27,47 @@ nmTest({
   theo_iov$occ <- 1
   theo_iov$occ[theo_iov$TIME >= 144] <- 2
 
-  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                 control=foceiControlFast)
+  test_that("IOV focei basic fit + refit reuses etaMat", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                   control=foceiControlFast)
 
-  .df1 <- as.data.frame(fit[,c("ID", "occ", "iov.cl")])
-  .df1 <- .df1[!duplicated(paste0(.df1$ID, ";", .df1$occ)), ]
-  row.names(.df1) <- NULL
-  expect_equal(.df1,
-               fit$iov$occ)
+    .df1 <- as.data.frame(fit[,c("ID", "occ", "iov.cl")])
+    .df1 <- .df1[!duplicated(paste0(.df1$ID, ";", .df1$occ)), ]
+    row.names(.df1) <- NULL
+    expect_equal(.df1,
+                 fit$iov$occ)
 
-  expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true(inherits(fit, "nlmixr2FitCore"))
 
-  expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
 
-  expect_null(fit$control$etaMat)
+    expect_null(fit$control$etaMat)
 
-  fit2 <- .nlmixr(fit, est="focei", control=foceiControlFast)
+    fit2 <- .nlmixr(fit, est="focei", control=foceiControlFast)
 
-  expect_true(inherits(fit2, "nlmixr2FitCore"))
+    expect_true(inherits(fit2, "nlmixr2FitCore"))
 
-  expect_false(fit2$iniDf[fit2$iniDf$name == "iov.cl", "fix"])
+    expect_false(fit2$iniDf[fit2$iniDf$name == "iov.cl", "fix"])
 
-  expect_equal(dimnames(fit2$control$etaMat)[[2]],
-               c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+    expect_equal(dimnames(fit2$control$etaMat)[[2]],
+                 c("eta.ka", "eta.cl", "eta.v", "rx.iov.cl.1", "rx.iov.cl.2"))
+  })
 
-  fit <- .nlmixr(one.cmt, theo_iov, est="foce",
-                 control=foceControlFast)
+  test_that("IOV works with foce", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="foce",
+                   control=foceControlFast)
 
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  })
 
-  fit <- .nlmixr(one.cmt, theo_iov, est="saem",
-                 control=saemControlFast)
+  test_that("IOV works with saem", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="saem",
+                   control=saemControlFast)
 
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_false(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+  })
 
 
   one.cmt <- function() {
@@ -87,49 +93,60 @@ nmTest({
     })
   }
 
-  .foceiCtl <- foceiControlFast
-  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                 control=foceiControlFast)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
+  test_that("IOV fixed variance: default focei", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                   control=foceiControlFast)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
-  .foceiCtl$iovXform <- "var"
+  test_that("IOV fixed variance: iovXform='var' (focei)", {
+    .foceiCtl <- foceiControlFast
+    .foceiCtl$iovXform <- "var"
 
-  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                 control=.foceiCtl)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
+    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                   control=.foceiCtl)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
+  test_that("IOV fixed variance: iovXform='logvar' (focei)", {
+    .foceiCtl <- foceiControlFast
+    .foceiCtl$iovXform <- "logvar"
+    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                   control=.foceiCtl)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
-  .foceiCtl$iovXform <- "logvar"
-  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                 control=.foceiCtl)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
+  test_that("IOV fixed variance: iovXform='logsd' (focei)", {
+    .foceiCtl <- foceiControlFast
+    .foceiCtl$iovXform <- "logsd"
+    fit <- .nlmixr(one.cmt, theo_iov, est="focei",
+                   control=.foceiCtl)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
+  test_that("IOV fixed variance: foce", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="foce",
+                   control=foceControlFast)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
-  .foceiCtl$iovXform <- "logsd"
-  fit <- .nlmixr(one.cmt, theo_iov, est="focei",
-                 control=.foceiCtl)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true( fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
-
-  fit <- .nlmixr(one.cmt, theo_iov, est="foce",
-                 control=foceControlFast)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
-
-
-  fit <- .nlmixr(one.cmt, theo_iov, est="saem",
-                 control=saemControlFast)
-  expect_true(inherits(fit, "nlmixr2FitCore"))
-  expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
-  expect_true(any(names(fit) == "iov.cl"))
+  test_that("IOV fixed variance: saem", {
+    fit <- .nlmixr(one.cmt, theo_iov, est="saem",
+                   control=saemControlFast)
+    expect_true(inherits(fit, "nlmixr2FitCore"))
+    expect_true(fit$iniDf[fit$iniDf$name == "iov.cl", "fix"])
+    expect_true(any(names(fit) == "iov.cl"))
+  })
 
   one.cmt <- function() {
     ini({
@@ -154,8 +171,10 @@ nmTest({
     })
   }
 
-  expect_error(suppressWarnings(.nlmixr(one.cmt, theo_iov, est="focei",
-                                        control=foceiControlFast)), "whoa")
+  test_that("IOV errors with undefined conditioning variable", {
+    expect_error(suppressWarnings(.nlmixr(one.cmt, theo_iov, est="focei",
+                                          control=foceiControlFast)), "whoa")
+  })
 
   # Test that stale .uiIovEnv state is cleared when a non-IOV fit follows
   # an IOV fit in the same R session.
@@ -197,18 +216,20 @@ nmTest({
     })
   }
 
-  fit_iov_stale <- .nlmixr(one.cmt.iov, theo_iov, est="focei",
-                             control=foceiControlFast)
-  expect_true(inherits(fit_iov_stale, "nlmixr2FitCore"))
+  test_that("stale .uiIovEnv state is cleared for a non-IOV fit following an IOV fit", {
+    fit_iov_stale <- .nlmixr(one.cmt.iov, theo_iov, est="focei",
+                               control=foceiControlFast)
+    expect_true(inherits(fit_iov_stale, "nlmixr2FitCore"))
 
-  # Now run a non-IOV fit; stale .uiIovEnv state must not contaminate it
-  fit_no_iov <- .nlmixr(one.cmt.no.iov, theo_iov, est="focei",
-                         control=foceiControlFast)
-  expect_true(inherits(fit_no_iov, "nlmixr2FitCore"))
-  # No IOV table should be attached
-  expect_null(fit_no_iov$iov)
-  # No internal rx. IOV columns should leak into the output data frame
-  expect_false(any(grepl("^rx[.]", names(fit_no_iov))))
+    # Now run a non-IOV fit; stale .uiIovEnv state must not contaminate it
+    fit_no_iov <- .nlmixr(one.cmt.no.iov, theo_iov, est="focei",
+                           control=foceiControlFast)
+    expect_true(inherits(fit_no_iov, "nlmixr2FitCore"))
+    # No IOV table should be attached
+    expect_null(fit_no_iov$iov)
+    # No internal rx. IOV columns should leak into the output data frame
+    expect_false(any(grepl("^rx[.]", names(fit_no_iov))))
+  })
 
   # Test IOV on two different conditioning variables (occ and occ2).
   # This exercises the fix for .uiIovEnv$lines saving ALL injected
@@ -237,16 +258,18 @@ nmTest({
   theo_iov2$occ2 <- 1L
   theo_iov2$occ2[theo_iov2$TIME >= 168] <- 2L
 
-  fit_two_cond <- .nlmixr(one.cmt.two.cond, theo_iov2, est="focei",
-                           control=foceiControlFast)
-  expect_true(inherits(fit_two_cond, "nlmixr2FitCore"))
-  # Both IOV parameters should be present (not fixed unless specified)
-  expect_false(fit_two_cond$iniDf[fit_two_cond$iniDf$name == "iov.cl", "fix"])
-  expect_false(fit_two_cond$iniDf[fit_two_cond$iniDf$name == "iov.ka", "fix"])
-  # IOV tables for both conditioning variables should be attached
-  expect_true(!is.null(fit_two_cond$iov$occ))
-  expect_true(!is.null(fit_two_cond$iov$occ2))
-  # No internal rx. injection lines should remain in the output columns
-  expect_false(any(grepl("^rx[.]", names(fit_two_cond))))
+  test_that("IOV works with two different conditioning variables (occ, occ2)", {
+    fit_two_cond <- .nlmixr(one.cmt.two.cond, theo_iov2, est="focei",
+                             control=foceiControlFast)
+    expect_true(inherits(fit_two_cond, "nlmixr2FitCore"))
+    # Both IOV parameters should be present (not fixed unless specified)
+    expect_false(fit_two_cond$iniDf[fit_two_cond$iniDf$name == "iov.cl", "fix"])
+    expect_false(fit_two_cond$iniDf[fit_two_cond$iniDf$name == "iov.ka", "fix"])
+    # IOV tables for both conditioning variables should be attached
+    expect_true(!is.null(fit_two_cond$iov$occ))
+    expect_true(!is.null(fit_two_cond$iov$occ2))
+    # No internal rx. injection lines should remain in the output columns
+    expect_false(any(grepl("^rx[.]", names(fit_two_cond))))
+  })
 
 })

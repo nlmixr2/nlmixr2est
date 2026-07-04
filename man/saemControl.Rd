@@ -44,6 +44,11 @@ saemControl(
   handleUninformativeEtas = TRUE,
   iovXform = c("sd", "var", "logsd", "logvar"),
   boundedTransform = TRUE,
+  eventSens = c("jump", "fd"),
+  mixProbMethod = c("regularized", "annealed"),
+  mixProbStepExp = 1,
+  mixProbPriorN = 20,
+  mixSampleMethod = c("parallel", "msaem"),
   ...
 )
 }
@@ -77,14 +82,10 @@ computation.  In Monolix this is equivalent to \code{L}.}
     The third value represents the number of bootstrap/reshuffling or
     uni-dimensional random samples are taken.}
 
-\item{print}{Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.}
+\item{print}{Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. Equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
 \item{trace}{An integer indicating if you want to trace(1) the
 SAEM algorithm process.  Useful for debugging, but not for
@@ -138,29 +139,13 @@ multiplication to high precision multiplication and sums to
 high precision sums using the PreciseSums package.  By default
 this is \code{FALSE}.}
 
-\item{addProp}{specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).
-
-The combined1 error type can be described by the following equation:
-
-  \deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err}
-
-The combined2 error model can be described by the following equation:
-
- \deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}
-
- Where:
-
- - y represents the observed value
-
- - f represents the predicted value
-
- - a  is the additive standard deviation
-
- - b is the proportional/power standard deviation
-
- - c is the power exponent (in the proportional case c=1)}
+\item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+\deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err};
+or `"combined2"`, where variances add:
+\deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).}
 
 \item{tol}{This is the tolerance for the regression models used
 for complex residual errors (ie add+prop etc)}
@@ -255,30 +240,75 @@ changes the system to a linear compartment model.  Therefore, by default this is
 calculate uninformative etas and handle them specially (default
 is `TRUE`).}
 
-\item{iovXform}{This is the transformation used on the diagonal
-    of the `iov`. The possibilities are:
+\item{iovXform}{Transformation used on the diagonal of the IOV: one of
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
 
-\itemize{
+\item{boundedTransform}{When `TRUE` (default), bounded parameters are
+transformed for unbounded optimization methods and back-transformed
+for final estimates. `FALSE` optimizes on the original scale with
+bounds passed to the optimizer. `NA` transforms for optimization but
+skips the final back-transform.}
 
- \item \code{sd} Estimate the IOV as the standard deviation for IOV
+\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.}
 
- \item \code{var} Estimate the IOV as the variance for IOV.
+\item{mixProbMethod}{For mixture models (`mix()`, more than one
+  component), stabilizes the mixing-probability estimate against
+  collapsing onto a single component (the responsibility used to
+  update it is itself weighted by the current mixing probability,
+  which can create a runaway feedback loop). Two options:
 
- \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
+  * `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+    distributed per the initial mixing probability, into the
+    responsibility average each iteration (Dirichlet/MAP-EM-style).
+    Prevents collapse even in difficult cases, at the cost of some
+    bias toward the initial guess; may need larger `nBurn`/`nEm`.
 
- \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
+  * `"annealed"`: give the mixing-probability update its own decaying
+    step-size schedule (`mixProbStepExp`) instead of the
+    full-replacement step used during `nBurn`. Lower bias, but does
+    not by itself fix a systematic (non-noise-driven) collapse.}
 
-}}
+\item{mixProbStepExp}{Only used when `mixProbMethod="annealed"`. Decay
+exponent for the mixing-probability step size
+(`1/iteration^mixProbStepExp`), applied from iteration 1. Default 1;
+smaller values decay more slowly.}
 
-\item{boundedTransform}{boolean indicating if the bounded
-parameters should by transformed when using a unbounded
-optimization method to make sure they are in bounds.  By default
-this is `TRUE`, which transforms during optimization and
-back-transforms for the final estimates.  When `FALSE`, the
-optimization is performed on the original scale and the bounds
-are passed to the optimization method.  When `NA`, the bounded
-parameters are transformed for the optimization, but the final
-estimates are not back-transformed.}
+\item{mixProbPriorN}{Only used when `mixProbMethod="regularized"`.
+Number of pseudo-subjects blended into the responsibility average
+each iteration. Larger values are more robust to collapse but bias
+the estimate more and need more `nBurn`/`nEm`. Default 20.}
+
+\item{mixSampleMethod}{For mixture models with per-component etas
+  (split-ETA, e.g. `cl <- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`),
+  controls the MCMC/sufficient-statistic architecture for the
+  individual random effects, independent of `mixProbMethod`. BSV
+  (`$omega`) for split components is unreliable under `"parallel"`
+  regardless of `mixProbMethod`.
+
+  * `"parallel"` (default): one full MCMC chain per component per
+    subject per iteration, blended post hoc by responsibility. Mirrors
+    NONMEM's `$MIX` and correctly estimates BSV shared across
+    components, but cannot cleanly separate per-component BSV for
+    split-ETA models (each "wrong-hypothesis" chain still explores its
+    non-owned column(s) as unconstrained prior noise).
+
+  * `"msaem"` (experimental): the MSAEM algorithm (Lavielle & Mbogning
+    2014), as used by Monolix. Simulates one random-effects trajectory
+    per subject per iteration (label marginalized out via a
+    closed-form responsibility) instead of parallel per-component
+    chains, so no post-hoc blending is needed. Not compute-matched to
+    `"parallel"` at equal `nmc` -- set `nmc` to roughly `nMix` times
+    its default for a fair comparison. Uses a model-aware stratified
+    initialization for split-ETA components that reliably achieves
+    full theta/fixed-effect separation. Split-ETA BSV recovery is
+    improved (two numerical bugs fixed: an `IGamma2_phi1` blowup that
+    locked variance to exactly zero, and an inverted responsibility
+    sign) but still not reliable -- it often settles at a safety-floor
+    value rather than the true variance. Prefer `"parallel"` unless
+    specifically evaluating this method.}
 
 \item{...}{Other arguments to control SAEM.}
 }

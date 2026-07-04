@@ -1,5 +1,5 @@
 // https://github.com/cran/Matrix/blob/master/R/nearPD.R
-// Contributors Martin Maechler, Jens Oehlschlägel
+// Contributors Martin Maechler, Jens Oehlschlaegel
 #define ARMA_WARN_LEVEL 1
 #define STRICT_R_HEADER
 #include "armahead.h"
