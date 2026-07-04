@@ -1738,19 +1738,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
-  # Drop subjects that have no usable observation (no EVID==0 rows).  rxode2's
-  # etTrans already removes dose-only subjects (emitting an "IDs without
-  # observations dropped" warning), but a subject whose only observations have
-  # DV=NA is converted by etTrans into EVID==2 rows and would otherwise be kept
-  # with zero observations.  Removing such subjects here -- in the shared
-  # preprocessor -- means every estimation method (FOCEi, SAEM, ...) receives
-  # data without observation-less subjects (e.g. saem's kernel cannot represent
-  # them; see .configsaem).  Their input rows stay in origData and are
-  # re-inserted into the output table (see addTable()): a population PRED is
-  # solved for them while individual columns stay NA, matching FOCEi.  Mirror
-  # etTrans exactly: same warning wording (so it de-duplicates in .collectWarn
-  # and reads identically in $runInfo) and renumber survivors to a contiguous
-  # 1..K sequence.
+  # Drop subjects with no EVID==0 rows (DV=NA observations become EVID==2 in
+  # etTrans and would otherwise slip through); re-inserted later in addTable().
   .obsId <- unique(.dat$ID[.dat$EVID == 0])
   .noObsId <- setdiff(unique(.dat$ID), .obsId)
   if (length(.noObsId) > 0L) {

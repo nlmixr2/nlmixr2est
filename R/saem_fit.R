@@ -217,12 +217,8 @@
   s <- subset(data$nmdat, EVID == 0)
   data$data <- as.matrix(s[, c("ID", "TIME", "DV", c(model$covars, inPars))])
 
-  # Subjects without an observation are dropped upstream by the shared
-  # preprocessor (.foceiPreProcessData()) -- which renumbers the survivors to a
-  # contiguous 1..K sequence -- and re-inserted into the output (see
-  # addTable()).  Every ID reaching the saem kernel therefore has at least one
-  # EVID==0 record, so the previous "No data with ID" guard here is unreachable
-  # and has been removed.
+  # Subjects without an observation are now dropped upstream, so the previous
+  # "No data with ID" guard here is unreachable and has been removed.
 
   nphi <- model$N.eta
   mcov <- model$cov.mod
