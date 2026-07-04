@@ -165,6 +165,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                          returnOptim=FALSE,
                          addProp = c("combined2", "combined1"),
                          eventSens = c("jump", "fd"),
+                         sensMethod = c("forward", "adjoint", "auto"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "optim", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
@@ -330,6 +331,7 @@ optimControl <- function(method = c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SA
                returnOptim=returnOptim,
                addProp=match.arg(addProp),
                eventSens=match.arg(eventSens),
+               sensMethod=match.arg(sensMethod),
                calcTables=calcTables,
                compress=compress,
                ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -545,7 +547,8 @@ attr(rxUiGet.optimParUpper, "rstudio") <- 0.1
                                 ci=.optimControl$ci,
                                 sigdigTable=.optimControl$sigdigTable,
                                 indTolRelax=.optimControl$indTolRelax,
-                                eventSens=.optimControl$eventSens)
+                                eventSens=.optimControl$eventSens,
+                                sensMethod=.optimControl$sensMethod)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }
