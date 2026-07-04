@@ -1,9 +1,7 @@
 # Identify Differences Between Standard and New Objects but used in rxUiDeparse
 
-This function compares elements of a standard object with a new object
-and identifies which elements are different. It is used to only show
-values that are different from the default when deparsing control
-objects.
+Compares elements of a standard object against a new one so
+\`rxUiDeparse\` only shows values that differ from the default.
 
 ## Usage
 

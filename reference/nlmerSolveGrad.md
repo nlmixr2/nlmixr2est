@@ -1,12 +1,10 @@
 # Per-subject prediction and Jacobian for mixed-effects engines
 
-Unlike the population gradient solver, which applies a single `theta` to
-every subject, this takes an `nsub x ntheta` matrix whose row `id` holds
-that subject's parameter vector (`phi = beta + b`, as supplied by
-`lme4::nlmer`). Each subject is solved reusing the loaded `thetaGrad`
-model, sticky-tolerance recalculation, event finite differences, and
-jump sensitivities. The nonlinear problem must already be loaded with
-[`.nlmSetupEnv()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.md).
+Like the population gradient solver but takes a per-subject
+`nsub x ntheta` parameter matrix (`phi = beta + b`, as supplied by
+`lme4::nlmer`) instead of one shared `theta`. Requires
+[`.nlmSetupEnv()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.md)
+to already be loaded.
 
 ## Usage
 

@@ -1,7 +1,7 @@
 # Deparse finalize a control or related object into a language object
 
-This function deparses an object into a language expression, optionally
-using a custom function for specific elements.
+Deparses an object into a language expression, optionally using a custom
+function for specific elements.
 
 ## Usage
 

@@ -1,8 +1,7 @@
 # Predict method for nlmixr2 fit core objects
 
-This function generates predictions from an \`nlmixr2FitCore\` object.
-It allows for both population-level and individual-level predictions
-based on the specified \`level\` parameter.
+Generates population- or individual-level predictions from an
+\`nlmixr2FitCore\` object.
 
 ## Usage
 

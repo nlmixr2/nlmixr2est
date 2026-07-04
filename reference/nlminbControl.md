@@ -398,36 +398,38 @@ fit2 <- nlmixr(mod, dsn, est="nlminb")
 #>  
 #>  
 #> ✔ done
-#> ℹ covariance not in proper form, can access value in $covDebug
 #> → Calculating residuals/tables
 #> ✔ done
-#> → compress origData in nlmixr2 object, save 8352
-#> → compress parHistData in nlmixr2 object, save 5888
+#> → compress origData in nlmixr2 object, save 8320
+#> → compress parHistData in nlmixr2 object, save 5936
 
 print(fit2)
 #> ── nlmixr² log-likelihood nlminb ──
 #> 
-#>           OBJF      AIC      BIC Log-likelihood
-#> lPop -1104.336 739.5406 754.2639      -366.7703
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -1104.719 739.1585 753.8818      -366.5792    1.633096e+14               1
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01152425 0.001465644  2.854e-06      0.033       0.009 0.018    0.009
+#>             setup    optimize covariance preprocess postprocess table compress
+#> elapsed 0.0147334 0.001749309  3.587e-06      0.042       0.013 0.023    0.012
 #>             other
-#> elapsed 0.7050072
+#> elapsed 0.9595137
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>          Est. Back-transformed BSV(SD) Shrink(SD)%
-#> E0     0.3668           0.3668                    
-#> Em  1.071e-05        1.071e-05                    
-#> E50     1.832            1.832                    
-#> g           2                2                    
+#>         Est.        SE      %RSE        Back-transformed(95%CI) BSV(SD)
+#> E0    0.3666 4.745e+04 1.294e+07 0.3666 (-9.301e+04, 9.301e+04)        
+#> Em  5.26e-05  0.003713      7059 5.26e-05 (-0.007225, 0.007331)        
+#> E50    1.835  0.004601    0.2508           1.835 (1.826, 1.844)        
+#> g          2     FIXED     FIXED                              2        
+#>     Shrink(SD)%
+#> E0             
+#> Em             
+#> E50            
+#> g              
 #>  
-#>   Covariance Type ($covMethod): failed
-#>   Information about run found ($runInfo):
-#>    • covariance not in proper form, can access value in $covDebug 
+#>   Covariance Type ($covMethod): r (nlminb)
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
 #>     false convergence (8) 
@@ -441,9 +443,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED     v
 #>   <fct>  <dbl> <dbl>  <dbl> <dbl>
-#> 1 1     0.0261     0 -0.893 0.367
-#> 2 1     0.0476     0 -0.893 0.367
-#> 3 1     0.0505     0 -0.893 0.367
+#> 1 1     0.0404     1 -0.527 0.367
+#> 2 1     0.0592     0 -0.893 0.367
+#> 3 1     0.0614     0 -0.893 0.367
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlminb
@@ -451,10 +453,10 @@ print(fit2)
 fit2$nlminb
 #> $par
 #>           E0           Em          E50 
-#> 3.667703e-01 1.070985e-05 1.831987e+00 
+#> 3.665792e-01 5.260204e-05 1.834769e+00 
 #> 
 #> $objective
-#> [1] 366.7703
+#> [1] 366.5792
 #> 
 #> $convergence
 #> [1] 1
@@ -464,23 +466,35 @@ fit2$nlminb
 #> 
 #> $evaluations
 #> function gradient 
-#>       59       18 
+#>       60       18 
 #> 
 #> $message
 #> [1] "false convergence (8)"
 #> 
 #> $scaleC
-#> [1] 0.0005000000 0.0003333333 0.0004184103
+#> [1] 0.0005000000 0.0003333333 0.0004130114
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#>  -267.4594 -1500.9679  -400.5498 
+#>  -267.8415 -1500.8422  -399.0644 
 #> 
 #> $hessian
-#>      E0  Em E50
-#> E0  NaN NaN NaN
-#> Em  NaN   0   0
-#> E50 NaN   0   0
+#>              E0 Em E50
+#> E0  -0.03223291  0   0
+#> Em   0.00000000  0   0
+#> E50  0.00000000  0   0
+#> 
+#> $cov.scaled
+#>               E0       Em      E50
+#> E0  9.007199e+15   0.0000   0.0000
+#> Em  0.000000e+00 124.0968   0.0000
+#> E50 0.000000e+00   0.0000 124.0968
+#> 
+#> $r
+#>              E0 Em E50
+#> E0  -0.01611645  0   0
+#> Em   0.00000000  0   0
+#> E50  0.00000000  0   0
 #> 
 # }
 ```

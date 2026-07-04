@@ -8,8 +8,6 @@
   : Add CWRES
 - [`addNpde()`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
   : NPDE calculation for nlmixr2
-- [`addTable()`](https://nlmixr2.github.io/nlmixr2est/reference/addTable.md)
-  : Add table information to nlmixr2 fit object without tables
 - [`agqControl()`](https://nlmixr2.github.io/nlmixr2est/reference/agqControl.md)
   : Control options for the agq estimation method
 - [`assertNlmixrFit()`](https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.md)
@@ -27,6 +25,8 @@
   : Generalized Cholesky Matrix Decomposition
 - [`.augPredIpredModel()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-augPredIpredModel.md)
   : Augment Prediction for Ipred Model
+- [`.nlmFamilyFitGeneric()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFamilyFitGeneric.md)
+  : Shared fit driver for the nlm-family estimation methods
 - [`.nlmixr0preProcessCovariatesPresent()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixr0preProcessCovariatesPresent.md)
   : Preprocess Covariates needed (or other data items)
 - [`.nlmixrPreprocessLiteralFix()`](https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmixrPreprocessLiteralFix.md)

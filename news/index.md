@@ -2,6 +2,16 @@
 
 ## nlmixr2est (development version)
 
+- Fix SAEM erroring with `No data with ID: <id>` for a dosed subject
+  with no usable observation; such subjects are now dropped before
+  estimation and re-inserted into the output with a population `PRED`
+  and `NA` individual columns, like FOCEi
+  ([\#687](https://github.com/nlmixr2/nlmixr2est/issues/687))
+
+- Internal consolidation of data preparation and the nlm-family
+  control/fit functions across estimation methods; no change to any fit
+  result
+
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal
 
 - Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
@@ -18,6 +28,13 @@
 
 - Test suite uses a single testthat worker on CI/CRAN and parallel
   elsewhere; rxode2’s within-solve threads capped to 2 only on CRAN
+
+- Restore the `Function Val.` objective column for
+  `focei`/`foce`/`fo`/`foi`/ `posthoc`, which had dropped out once the
+  shared printer gained `showOfv`
+
+- Periodic header re-emits now repeat only the column labels, not the
+  full `Key:` legend
 
 - `fit$time` now reports every estimation stage consistently
 

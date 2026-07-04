@@ -313,22 +313,22 @@ print(fit2)
 #> ── nlmixr² log-likelihood bobyqa ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -705.7412 1138.136 1152.859      -566.0679        535.8212         57.3951
+#> lPop -714.4946 1129.382 1144.106      -561.6912        203.1204         52.1171
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01725391 0.001722791  5.569e-06      0.033       0.014 0.028    0.001
+#> elapsed 0.01893302 0.001989218  3.387e-06       0.04       0.017 0.029    0.002
 #>            other
-#> elapsed 1.302018
+#> elapsed 1.627074
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.     SE  %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.5294 0.2242 42.35 -0.5294 (-0.9689, -0.08994)                    
-#> Em    6.175  2.877 46.59       6.175 (0.5367, 11.81)                    
-#> E50   3.204  1.307 40.77       3.204 (0.6436, 5.765)                    
-#> g         2  FIXED FIXED                           2                    
+#>        Est.     SE  %RSE   Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.7919 0.2718 34.33 -0.7919 (-1.325, -0.2591)                    
+#> Em    4.822  1.611 33.42       4.822 (1.664, 7.98)                    
+#> E50   2.282 0.9253 40.55     2.282 (0.4681, 4.095)                    
+#> g         2  FIXED FIXED                         2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -337,16 +337,16 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0356     1 -0.992 -0.529
-#> 2 1     0.0378     0 -0.463 -0.529
-#> 3 1     0.0509     1 -0.992 -0.528
+#> 1 1     0.0564     0 -0.375 -0.789
+#> 2 1     0.0595     1 -1.16  -0.789
+#> 3 1     0.0650     0 -0.375 -0.788
 #> # ℹ 997 more rows
 
 # you can also get the bobyqa output with
 
 fit2$bobyqa
-#> parameter estimates: -0.529410062523091, 6.17454286590706, 3.20433769295219 
-#> objective: 566.067911160651 
-#> number of function evaluations: 224 
+#> parameter estimates: -0.79192990090358, 4.82215060488291, 2.28158116706737 
+#> objective: 561.691220766955 
+#> number of function evaluations: 201 
 # }
 ```

@@ -9,7 +9,6 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/aaaCranNlmixrThreads.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addCwres.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addNpde.html</loc></url>
-<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/addTable.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/agqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/assertNlmixrFitData.html</loc></url>
@@ -28,6 +27,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-iniS3.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmAdjustCov.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFamilyAdjustOutput.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFamilyFitGeneric.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFinalizeList.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmFreeEnv.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-nlmSetupEnv.html</loc></url>

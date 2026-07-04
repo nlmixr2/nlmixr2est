@@ -414,16 +414,16 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01169475 0.002245177  2.874e-06      0.033        0.01 0.018    0.001
+#> elapsed 0.01566781 0.002455588  3.326e-06       0.04       0.013 0.023    0.001
 #>             other
-#> elapsed 0.6680572
+#> elapsed 0.8878733
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
 #>     Est.        SE      %RSE     Back-transformed(95%CI) BSV(SD) Shrink(SD)%
 #> E0   0.5 4.745e+04 9.491e+06 0.5 (-9.301e+04, 9.301e+04)                    
 #> Em   0.5 3.164e+04 6.327e+06     0.5 (-6.2e+04, 6.2e+04)                    
-#> E50    2 3.925e+04 1.963e+06   2 (-7.693e+04, 7.693e+04)                    
+#> E50    2 3.953e+04 1.977e+06   2 (-7.748e+04, 7.748e+04)                    
 #> g      2     FIXED     FIXED                           2                    
 #>  
 #>   Covariance Type ($covMethod): r (nlm)
@@ -436,9 +436,9 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED     v
 #>   <fct>  <dbl> <dbl>  <dbl> <dbl>
-#> 1 1     0.0646     1 -0.474 0.501
-#> 2 1     0.0661     1 -0.474 0.501
-#> 3 1     0.0811     1 -0.474 0.501
+#> 1 1     0.0489     0 -0.974 0.500
+#> 2 1     0.0679     0 -0.974 0.501
+#> 3 1     0.0702     0 -0.974 0.501
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
@@ -452,7 +452,7 @@ fit2$nlm
 #> 0.5 0.5 2.0 
 #> 
 #> $gradient
-#> [1] 0.2500000 0.6666667 0.2703484
+#> [1] 0.2500000 0.6666667 0.2698833
 #> 
 #> $hessian
 #>     E0 Em E50
@@ -467,7 +467,7 @@ fit2$nlm
 #> [1] 1
 #> 
 #> $scaleC
-#> [1] 0.0005000000 0.0003333333 0.0004135785
+#> [1] 0.0005000000 0.0003333333 0.0004165234
 #> 
 #> $estimate.scaled
 #>  E0  Em E50 

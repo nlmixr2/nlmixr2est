@@ -33,12 +33,16 @@
 
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="development version" id="nlmixr2est-development-version">nlmixr2est (development version)<a class="anchor" aria-label="anchor" href="#nlmixr2est-development-version"></a></h2>
-<ul><li><p>Fix <code>cov2cor</code> error when omega has exactly one nonzero diagonal</p></li>
+<ul><li><p>Fix SAEM erroring with <code>No data with ID: &lt;id&gt;</code> for a dosed subject with no usable observation; such subjects are now dropped before estimation and re-inserted into the output with a population <code>PRED</code> and <code>NA</code> individual columns, like FOCEi (<a href="https://github.com/nlmixr2/nlmixr2est/issues/687" class="external-link">#687</a>)</p></li>
+<li><p>Internal consolidation of data preparation and the nlm-family control/fit functions across estimation methods; no change to any fit result</p></li>
+<li><p>Fix <code>cov2cor</code> error when omega has exactly one nonzero diagonal</p></li>
 <li><p>Fix SAEM linearized-FIM covariance (<code>covMethod = "linFim"</code>) erroring when exactly one covariate-model parameter is estimated</p></li>
 <li><p>Fix FOCEi aborting R with <code>Cube::slice(): index out of bounds</code> when <code>mceta &gt;= 1</code> and <code>maxInnerIterations == 0</code></p></li>
 <li><p>Fix Windows heap-corruption segfault for gradient/pooled estimator fits at more than one core</p></li>
 <li><p>Fix SAEM covariance error (<code>rxInv(.tmp): Not a matrix</code>) for models with a single population parameter</p></li>
 <li><p>Test suite uses a single testthat worker on CI/CRAN and parallel elsewhere; rxode2’s within-solve threads capped to 2 only on CRAN</p></li>
+<li><p>Restore the <code>Function Val.</code> objective column for <code>focei</code>/<code>foce</code>/<code>fo</code>/<code>foi</code>/ <code>posthoc</code>, which had dropped out once the shared printer gained <code>showOfv</code></p></li>
+<li><p>Periodic header re-emits now repeat only the column labels, not the full <code>Key:</code> legend</p></li>
 <li><p><code>fit$time</code> now reports every estimation stage consistently</p></li>
 <li><p><code><a href="../reference/foceiControl.html">foceiControl()</a></code> now defaults to <code>outerOpt = "lbfgsb3c"</code> and <code>sigdig = 4</code></p></li>
 <li><p>Added mu-referenced FOCEI-family estimation methods: <code>mufocei</code>/ <code>irlsfocei</code>, <code>mufoce</code>/<code>irlsfoce</code>, <code>muagq</code>/<code>irlsagq</code>, <code>mulaplace</code>/<code>irlslaplace</code>, with new <code><a href="../reference/foceiControl.html">foceiControl()</a></code> options <code>muModel</code>, <code>muRefCovAlg</code>, <code>muModelTol</code>, <code>muModelMaxCycles</code></p></li>
