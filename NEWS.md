@@ -88,6 +88,9 @@
   (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
   `newuoa`, `uobyqa`);
 
+- Fix heap-buffer overflow and wrong back-transform in SAEM lambda
+  (Box-Cox) residual-error models
+
 - Guard against null pointer arithmetic in inner.cpp
 
 - Use OpenMP threading for S matrix calculation
