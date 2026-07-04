@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
+  usable observation; such subjects are now dropped before estimation and
+  re-inserted into the output with a population `PRED` and `NA` individual
+  columns, like FOCEi (#687)
+
 - Fix `cov2cor` error when omega has exactly one nonzero diagonal
 
 - Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring

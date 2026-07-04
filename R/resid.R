@@ -551,6 +551,115 @@ nmObjGet.foceiThetaEtaParameters <- function(x, ...) {
 #' print(f)
 #'
 #' }
+#' Re-insert subjects dropped during preprocessing into an output table
+#'
+#' Adds subjects dropped by `.foceiPreProcessData()` back into the table with a population `PRED` and NA individual columns.
+#'
+#' @param df assembled output data.frame (one row per output record for the
+#'   subjects that were estimated)
+#' @param object the nlmixr2 fit object
+#' @param table the `tableControl()` list
+#' @return `df` with the dropped subjects re-inserted (population `PRED`, NA
+#'   individual columns), `ID` factor extended to the full `origData` levels, and
+#'   rows re-sorted by ID/TIME.  Unchanged when nothing was dropped.
+#' @author Matthew L. Fidler
+#' @noRd
+.reinsertNoObsSubjects <- function(df, object, table) {
+  .orig <- object$origData
+  if (is.null(.orig) || is.null(.orig$ID) || is.null(df$ID)) {
+    return(df)
+  }
+  # normalize origData names to match the output table (uppercase except covariates)
+  .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
+  if (is.null(.cov)) .cov <- character(0)
+  names(.orig) <- vapply(names(.orig), function(.x) {
+    if (.x %in% .cov) .x else toupper(.x)
+  }, character(1))
+  .have <- levels(df$ID)
+  if (is.null(.have)) .have <- unique(as.character(df$ID))
+  .full <- unique(as.character(.orig$ID))
+  .miss <- setdiff(.full, .have)
+  if (length(.miss) == 0L) {
+    return(df)
+  }
+  .rows <- .orig[as.character(.orig$ID) %in% .miss, , drop = FALSE]
+  # only observation/other records (EVID 0 or 2), plus dosing if addDosing is requested
+  if (!is.null(.rows$EVID) && !isTRUE(table$addDosing)) {
+    .rows <- .rows[.rows$EVID %in% c(0, 2), , drop = FALSE]
+  }
+  if (nrow(.rows) == 0L) {
+    return(df)
+  }
+  # NA rows with output column types, filled from origData below
+  .add <- df[rep(1L, nrow(.rows)), , drop = FALSE]
+  for (.cn in names(.add)) {
+    .add[[.cn]][] <- NA
+  }
+  for (.cn in intersect(names(.add), names(.rows))) {
+    if (.cn == "ID") next
+    if (is.factor(df[[.cn]])) {
+      .add[[.cn]] <- factor(as.character(.rows[[.cn]]), levels = levels(df[[.cn]]))
+    } else {
+      .add[[.cn]] <- as.vector(.rows[[.cn]])
+    }
+  }
+  .add <- .fillNoObsPred(.add, .rows, object, table)
+  # rebuild ID factor on both halves with the full origData level order for rbind
+  .add$ID <- factor(as.character(.rows$ID), levels = .full)
+  df$ID <- factor(as.character(df$ID), levels = .full)
+  .out <- rbind(df, .add)
+  .out <- .out[order(as.integer(.out$ID), .out$TIME), , drop = FALSE]
+  rownames(.out) <- NULL
+  .out
+}
+#' Fill the population PRED column for re-inserted no-observation subjects
+#'
+#' Solves at the population estimates (eta = 0) and writes `PRED` into `add`; best-effort, leaves `PRED` NA on failure.
+#'
+#' @param add the NA-filled re-insertion rows (output-table columns)
+#' @param rows the matching origData records for the dropped subjects
+#' @param object the nlmixr2 fit object
+#' @param table the `tableControl()` list
+#' @return `add` with `PRED` filled where it could be solved
+#' @author Matthew L. Fidler
+#' @noRd
+.fillNoObsPred <- function(add, rows, object, table) {
+  if (!("PRED" %in% names(add)) || is.null(rows$ID) || is.null(rows$TIME)) {
+    return(add)
+  }
+  .orig <- object$origData
+  if (is.null(.orig) || is.null(.orig$ID)) return(add)
+  .cov <- tryCatch(object$ui$covariates, error = function(e) character(0))
+  if (is.null(.cov)) .cov <- character(0)
+  names(.orig) <- vapply(names(.orig), function(.x) {
+    if (.x %in% .cov) .x else toupper(.x)
+  }, character(1))
+  .dvCol <- which(names(.orig) == "DV")
+  # solve one subject at a time to align rows by order and avoid ID renumbering;
+  # dummy DV avoids the predict run dropping these subjects again
+  for (.id in unique(as.character(rows$ID))) {
+    .subj <- .orig[as.character(.orig$ID) == .id, , drop = FALSE]
+    if (length(.dvCol) == 1L) {
+      .subj[[.dvCol]][is.na(.subj[[.dvCol]])] <- 0
+    }
+    .p <- tryCatch(suppressMessages(suppressWarnings(
+      as.data.frame(stats::predict(object, newdata = .subj, level = "population")))),
+      error = function(e) NULL)
+    if (is.null(.p)) next
+    .pc <- which(tolower(names(.p)) == "pred")
+    if (length(.pc) != 1L) next
+    .w <- which(as.character(rows$ID) == .id)
+    if (length(.w) == nrow(.p)) {
+      add$PRED[.w] <- .p[[.pc]]
+    } else {
+      .tc <- which(tolower(names(.p)) == "time")
+      if (length(.tc) == 1L) {
+        add$PRED[.w] <- .p[[.pc]][match(rows$TIME[.w], .p[[.tc]])]
+      }
+    }
+  }
+  add
+}
 addTable <- function(object, updateObject = FALSE,
                      data=object$dataSav,
                      thetaEtaParameters=object$foceiThetaEtaParameters,
@@ -623,6 +732,8 @@ addTable <- function(object, updateObject = FALSE,
       class(.l) <- "factor"
       .df[[.v]] <- .l
     }
+    # re-insert subjects dropped for having no usable observation
+    .df <- .reinsertNoObsSubjects(.df, object, table)
     .isDplyr <- requireNamespace("tibble", quietly = TRUE)
     if (!.isDplyr) {
       .isDataTable <- requireNamespace("data.table", quietly = TRUE)

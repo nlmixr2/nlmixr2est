@@ -1744,6 +1744,18 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .keepL <- .lst$keepL[[1]]
   .idLvl <- .lst$idLvl
   .dat <- cbind(as.data.frame(.et), .keepL)
+  # Drop subjects with no EVID==0 rows (DV=NA observations become EVID==2 in
+  # etTrans and would otherwise slip through); re-inserted later in addTable().
+  .obsId <- unique(.dat$ID[.dat$EVID == 0])
+  .noObsId <- setdiff(unique(.dat$ID), .obsId)
+  if (length(.noObsId) > 0L) {
+    warning("IDs without observations dropped: ",
+            paste(.idLvl[.noObsId], collapse = " "), call. = FALSE)
+    .dat <- .dat[!(.dat$ID %in% .noObsId), , drop = FALSE]
+    .keepLvl <- .idLvl[sort(.obsId)]
+    .dat$ID <- match(.idLvl[.dat$ID], .keepLvl)
+    .idLvl <- .keepLvl
+  }
   env$dataSav <- .dat
   env$idLvl <- .idLvl
   env$covLvl <- .lvls

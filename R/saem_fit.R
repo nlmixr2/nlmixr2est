@@ -217,12 +217,8 @@
   s <- subset(data$nmdat, EVID == 0)
   data$data <- as.matrix(s[, c("ID", "TIME", "DV", c(model$covars, inPars))])
 
-  ###  chk for no obs records
-  wh <- setdiff(unique(data$nmdat$ID), unique(data$data[, "ID"]))
-  if (length(wh)) {
-    msg <- paste0("No data with ID: ", paste(wh, collapse = ", "))
-    stop(msg)
-  }
+  # Subjects without an observation are now dropped upstream, so the previous
+  # "No data with ID" guard here is unreachable and has been removed.
 
   nphi <- model$N.eta
   mcov <- model$cov.mod
