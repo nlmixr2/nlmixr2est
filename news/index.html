@@ -58,6 +58,7 @@
 <li>Fixed a regression where the SAEM omega-diagonal floor for non-mu-referenced parameters was raised for every SAEM fit instead of mixture fits only.</li>
 </ul></li>
 <li><p>Fix segfault in <code>nlmSetup</code> on the first estimator call of a fresh R session affecting every pooled estimator except <code>nls</code> (<code>bobyqa</code>, <code>nlm</code>, <code>optim</code>, <code>nls</code>, <code>nlminb</code>, <code>lbfgsb3c</code>, <code>n1qn1</code>, <code>newuoa</code>, <code>uobyqa</code>);</p></li>
+<li><p>Fix heap-buffer overflow and wrong back-transform in SAEM lambda (Box-Cox) residual-error models</p></li>
 <li><p>Guard against null pointer arithmetic in inner.cpp</p></li>
 <li><p>Use OpenMP threading for S matrix calculation</p></li>
 <li><p>Use OpenMP threading wile calculating NPDEs</p></li>
