@@ -515,29 +515,32 @@ static inline void scalePrintLine(scaling *scale, int ncol) {
   RSprintf("\n");
 }
 
-static inline void scalePrintHeader(scaling *scale) {
+// withKey: 1 = also emit the "Key:" legend block; 0 = column labels only.
+static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
   if (scale->every != 0) {
-    // Match scalePrintFun's auto-skip rules so Key only lists rows that appear.
-    int skipU = (scale->scaleType == scaleTypeNone);
-    int anyXform = 0;
-    for (int k = 0; k < scale->npars; k++) {
-      if (scale->xPar[k] != 0) { anyXform = 1; break; }
-      if (scale->probitIdx != NULL && scale->probitIdx[k] != 0) { anyXform = 1; break; }
-    }
-    int skipX = skipU && !anyXform;
-    if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
-      if (scale->useColor)
-        RSprintf("\033[1mKey:\033[0m ");
-      else
-        RSprintf("Key: ");
-      if (!skipU) RSprintf("U: Unscaled Parameters; ");
-      if (!skipX) RSprintf("X: Back-transformed parameters; ");
-      // Estimator-specific Key suffix (e.g. focei's gradient legend); NULL closes
-      // the line with a newline so the header follows on a fresh row.
-      if (scale->keyExtra != NULL) {
-        RSprintf("%s", scale->keyExtra);
-      } else {
-        RSprintf("\n");
+    if (withKey) {
+      // Match scalePrintFun's auto-skip rules so Key only lists rows that appear.
+      int skipU = (scale->scaleType == scaleTypeNone);
+      int anyXform = 0;
+      for (int k = 0; k < scale->npars; k++) {
+        if (scale->xPar[k] != 0) { anyXform = 1; break; }
+        if (scale->probitIdx != NULL && scale->probitIdx[k] != 0) { anyXform = 1; break; }
+      }
+      int skipX = skipU && !anyXform;
+      if (!scale->simple && (!skipU || !skipX || scale->keyExtra != NULL)) {
+        if (scale->useColor)
+          RSprintf("\033[1mKey:\033[0m ");
+        else
+          RSprintf("Key: ");
+        if (!skipU) RSprintf("U: Unscaled Parameters; ");
+        if (!skipX) RSprintf("X: Back-transformed parameters; ");
+        // Estimator-specific Key suffix (e.g. focei's gradient legend); NULL closes
+        // the line with a newline so the header follows on a fresh row.
+        if (scale->keyExtra != NULL) {
+          RSprintf("%s", scale->keyExtra);
+        } else {
+          RSprintf("\n");
+        }
       }
     }
     int i, finalize=0, n=scale->thetaNames.size();
@@ -657,7 +660,8 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
     if (scale->headerEvery > 0 &&
         scale->printCount > 1 &&
         ((scale->printCount - 1) % scale->headerEvery == 0)) {
-      scalePrintHeader(scale);
+      // Periodic refresh: repeat only the column labels, not the legend.
+      scalePrintHeader(scale, 0);
     }
     if (scale->showOfv) {
       if (scale->useColor && !isRstudio())

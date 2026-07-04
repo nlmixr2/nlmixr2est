@@ -17,6 +17,12 @@
 - Test suite uses a single testthat worker on CI/CRAN and parallel
   elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
 
+- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
+  `posthoc`, which had dropped out once the shared printer gained `showOfv`
+
+- Periodic header re-emits now repeat only the column labels, not the
+  full `Key:` legend
+
 - `fit$time` now reports every estimation stage consistently
 
 - `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
