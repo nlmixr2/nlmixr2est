@@ -112,6 +112,18 @@ nmObjGet(x, ...)
 # S3 method for class 'rxControl'
 nmObjGet(x, ...)
 
+# S3 method for class 'mixList'
+nmObjGet(x, ...)
+
+# S3 method for class 'mixNum'
+nmObjGet(x, ...)
+
+# S3 method for class 'ranef'
+nmObjGet(x, ...)
+
+# S3 method for class 'eta'
+nmObjGet(x, ...)
+
 # S3 method for class 'rxControlWithVar'
 nmObjGet(x, ...)
 

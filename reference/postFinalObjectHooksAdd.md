@@ -1,12 +1,7 @@
-# This adds a pre-final table processing hook to nlmixr2est
+# Register a post-final-object hook run after estimation completes
 
-This pre-processing hook is run before the estimation process begins. It
-is useful for modifying the user interface, the estimation object, the
-data, or the control object before the estimation process begins. The
-function must take one argument: ret. The function must return the
-finalized return object. If the element is not returned, the original
-object is used. If the element is returned, the original object is
-replaced with the new object.
+\`fun\` must take one argument (\`ret\`) and return the finalized return
+object (or \`NULL\`/nothing to leave it unchanged).
 
 ## Usage
 

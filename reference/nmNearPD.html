@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -89,11 +89,10 @@
 
 
 <dt id="arg-ensuresymmetry">ensureSymmetry<a class="anchor" aria-label="anchor" href="#arg-ensuresymmetry"></a></dt>
-<dd><p>logical; by default, <code><a href="https://rdrr.io/pkg/Matrix/man/symmpart-methods.html" class="external-link">symmpart</a>(x)</code>
-is used whenever <code>isSymmetric(x)</code> is not true.  The user
-can explicitly set this to <code>TRUE</code> or <code>FALSE</code>, saving the
-symmetry test. <em>Beware</em> however that setting it <code>FALSE</code>
-for an <b>a</b>symmetric input <code>x</code>, is typically nonsense!</p></dd>
+<dd><p>logical; symmetrizes `x` via
+<code><a href="https://rdrr.io/pkg/Matrix/man/symmpart-methods.html" class="external-link">symmpart</a></code> unless already symmetric.
+<em>Beware</em>: setting <code>FALSE</code> for asymmetric input is
+typically nonsense.</p></dd>
 
 
 <dt id="arg-eig-tol">eig.tol<a class="anchor" aria-label="anchor" href="#arg-eig-tol"></a></dt>

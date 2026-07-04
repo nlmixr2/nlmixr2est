@@ -2,7 +2,7 @@
 
 The values supplied in the function call replace the defaults and a list
 with all possible arguments is returned. The returned list is used as
-the ‘control’ argument to the ‘nlme’ function.
+the \`control\` argument to the \`nlme\` function.
 
 ## Usage
 
@@ -44,6 +44,7 @@ nlmixr2NlmeControl(
   sigdig = 4,
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
+  eventSens = c("jump", "fd"),
   ...
 )
 
@@ -84,6 +85,7 @@ nlmeControl(
   sigdig = 4,
   sigdigTable = NULL,
   muRefCovAlg = TRUE,
+  eventSens = c("jump", "fd"),
   ...
 )
 ```
@@ -289,30 +291,12 @@ nlmeControl(
 
 - addProp:
 
-  specifies the type of additive plus proportional errors, the one where
-  standard deviations add (combined1) or the type where the variances
-  add (combined2).
-
-  The combined1 error type can be described by the following equation:
-
-  \$\$y = f + (a + b\times f^c) \times \varepsilon\$\$
-
-  The combined2 error model can be described by the following equation:
-
-  \$\$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times
-  \varepsilon\$\$
-
-  Where:
-
-  \- y represents the observed value
-
-  \- f represents the predicted value
-
-  \- a is the additive standard deviation
-
-  \- b is the proportional/power standard deviation
-
-  \- c is the power exponent (in the proportional case c=1)
+  Type of additive-plus-proportional error: \`"combined1"\`, where
+  standard deviations add: \$\$y = f + (a + b\times f^c) \times
+  \varepsilon\$\$; or \`"combined2"\`, where variances add: \$\$y = f +
+  \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon\$\$. Here y =
+  observed, f = predicted, a = additive sd, b = proportional/power sd, c
+  = power exponent (1 in the proportional case).
 
 - calcTables:
 
@@ -336,16 +320,10 @@ nlmeControl(
 
 - sigdig:
 
-  Optimization significant digits. This controls:
-
-  - The tolerance of the inner and outer optimization is `10^-sigdig`
-
-  - The tolerance of the ODE solvers is `0.5*10^(-sigdig-2)`; For the
-    sensitivity equations and steady-state solutions the default is
-    `0.5*10^(-sigdig-1.5)` (sensitivity changes only applicable for
-    liblsoda)
-
-  - The tolerance of the boundary check is `5 * 10 ^ (-sigdig + 1)`
+  Optimization significant digits; controls the inner/outer optimization
+  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
+  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
+  and boundary check tolerance (`5*10^(-sigdig+1)`).
 
 - sigdigTable:
 
@@ -355,25 +333,19 @@ nlmeControl(
 
 - muRefCovAlg:
 
-  This controls if algebraic expressions that can be mu-referenced are
-  treated as mu-referenced covariates by:
+  When \`TRUE\` (default), algebraic expressions that can be
+  mu-referenced are internally rewritten as mu-referenced covariates and
+  restored after optimization. Mirrors
+  `saemControl(muRefCovAlg=)`/`nlmeControl(muRefCovAlg=)`; for
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  only takes effect when `muModel != "none"`.
 
-  1\. Creating a internal data-variable \`nlmixrMuDerCov#\` for each
-  algebraic mu-referenced expression
+- eventSens:
 
-  2\. Change the algebraic expression to \`nlmixrMuDerCov# \*
-  mu_cov_theta\`
-
-  3\. Use the internal mu-referenced covariate for saem
-
-  4\. After optimization is completed, replace \`model()\` with old
-  \`model()\` expression
-
-  5\. Remove \`nlmixrMuDerCov#\` from nlmix2 output
-
-  In general, these covariates should be more accurate since it changes
-  the system to a linear compartment model. Therefore, by default this
-  is \`TRUE\`.
+  Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
+  \`dur\`) sensitivities are computed for THETA/ETA gradients:
+  \`"jump"\` (default) uses rxode2's analytic event sensitivities;
+  \`"fd"\` uses the legacy finite-difference behavior.
 
 - ...:
 
@@ -895,6 +867,9 @@ nlmeControl()
 #> $muRefCovAlg
 #> [1] TRUE
 #> 
+#> $eventSens
+#> [1] "jump"
+#> 
 #> $genRxControl
 #> [1] TRUE
 #> 
@@ -1399,6 +1374,9 @@ nlmixr2NlmeControl()
 #> 
 #> $muRefCovAlg
 #> [1] TRUE
+#> 
+#> $eventSens
+#> [1] "jump"
 #> 
 #> $genRxControl
 #> [1] TRUE

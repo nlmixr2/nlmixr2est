@@ -13,16 +13,10 @@ foceControl(sigdig = 3, ..., interaction = FALSE)
 
 - sigdig:
 
-  Optimization significant digits. This controls:
-
-  - The tolerance of the inner and outer optimization is `10^-sigdig`
-
-  - The tolerance of the ODE solvers is `0.5*10^(-sigdig-2)`; For the
-    sensitivity equations and steady-state solutions the default is
-    `0.5*10^(-sigdig-1.5)` (sensitivity changes only applicable for
-    liblsoda)
-
-  - The tolerance of the boundary check is `5 * 10 ^ (-sigdig + 1)`
+  Optimization significant digits; controls the inner/outer optimization
+  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
+  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
+  and boundary check tolerance (`5*10^(-sigdig+1)`).
 
 - ...:
 
@@ -236,6 +230,18 @@ foceControl()
 #> $resetHessianAndEta
 #> [1] 0
 #> 
+#> $muModel
+#> [1] "none"
+#> 
+#> $muRefCovAlg
+#> [1] TRUE
+#> 
+#> $muModelTol
+#> [1] 0.001
+#> 
+#> $muModelMaxCycles
+#> [1] 10
+#> 
 #> $stateTrim
 #> [1] Inf
 #> 
@@ -358,9 +364,6 @@ foceControl()
 #> 
 #> $eventType
 #> [1] 2
-#> 
-#> $eventSens
-#> [1] "jump"
 #> 
 #> $gradProgressOfvTime
 #> [1] 10
@@ -818,6 +821,9 @@ foceControl()
 #> 
 #> $agqLow
 #> [1] -Inf
+#> 
+#> $eventSens
+#> [1] "jump"
 #> 
 #> $boundedTransform
 #> [1] TRUE

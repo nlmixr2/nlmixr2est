@@ -1,6 +1,6 @@
-# Return a list of all pre-final table processing hooks
+# List all post-final-object processing hooks
 
-Return a list of all pre-final table processing hooks
+List all post-final-object processing hooks
 
 ## Usage
 

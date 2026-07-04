@@ -26,6 +26,30 @@ nmObjGetControl(x, ...)
 # S3 method for class 'lbfgsb3c'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'mufocei'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'irlsfocei'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'mufoce'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'irlsfoce'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'muagq'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'irlsagq'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'mulaplace'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'irlslaplace'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'n1qn1'
 nmObjGetControl(x, ...)
 

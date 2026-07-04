@@ -26,10 +26,34 @@ nlmixr2Est(env, ...)
 # S3 method for class 'foi'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'irlsagq'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfoce'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfocei'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlslaplace'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'laplace'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'lbfgsb3c'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'muagq'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufoce'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufocei'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mulaplace'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'n1qn1'

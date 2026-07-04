@@ -26,6 +26,30 @@ getValidNlmixrCtl(control)
 # S3 method for class 'lbfgsb3c'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'mufocei'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfocei'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mufoce'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfoce'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'muagq'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsagq'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mulaplace'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlslaplace'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'n1qn1'
 getValidNlmixrCtl(control)
 

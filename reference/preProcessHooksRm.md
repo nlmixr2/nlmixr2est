@@ -1,7 +1,6 @@
-# Remove the hook from nlmixr2est
+# Remove a pre-processing hook from nlmixr2est
 
-This removes the hook from nlmixr2est. If the hook does not exist, a
-warning is issued.
+Warns if the hook does not exist.
 
 ## Usage
 

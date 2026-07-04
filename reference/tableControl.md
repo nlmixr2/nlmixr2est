@@ -138,11 +138,11 @@ A list of table options for nlmixr2
 
 ## Details
 
-If you ever want to add CWRES/FOCEi objective function you can use the
+Use
 [`addCwres`](https://nlmixr2.github.io/nlmixr2est/reference/addCwres.md)
-
-If you ever want to add NPDE/EPRED columns you can use the
+to add CWRES/FOCEi objective function, or
 [`addNpde`](https://nlmixr2.github.io/nlmixr2est/reference/addNpde.md)
+to add NPDE/EPRED columns.
 
 ## Author
 

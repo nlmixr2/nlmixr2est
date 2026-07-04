@@ -56,12 +56,10 @@ nmNearPD(
 
 - ensureSymmetry:
 
-  logical; by default,
-  [`symmpart`](https://rdrr.io/pkg/Matrix/man/symmpart-methods.html)`(x)`
-  is used whenever `isSymmetric(x)` is not true. The user can explicitly
-  set this to `TRUE` or `FALSE`, saving the symmetry test. *Beware*
-  however that setting it `FALSE` for an **a**symmetric input `x`, is
-  typically nonsense!
+  logical; symmetrizes \`x\` via
+  [`symmpart`](https://rdrr.io/pkg/Matrix/man/symmpart-methods.html)
+  unless already symmetric. *Beware*: setting `FALSE` for asymmetric
+  input is typically nonsense.
 
 - eig.tol:
 

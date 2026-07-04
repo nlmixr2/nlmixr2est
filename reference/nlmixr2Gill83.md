@@ -47,10 +47,9 @@ nlmixr2Gill83(
 
 - gillK:
 
-  The total number of possible steps to determine the optimal
-  forward/central difference step size per parameter (by the Gill 1983
-  method). If 0, no optimal step size is determined. Otherwise this is
-  the optimal step size determined.
+  Max steps to determine the optimal forward/central difference step
+  size per parameter (Gill 1983). \`0\` = no optimal step size
+  determined.
 
 - gillStep:
 

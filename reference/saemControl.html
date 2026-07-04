@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -78,6 +78,11 @@
 <span>  handleUninformativeEtas <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  iovXform <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"sd"</span>, <span class="st">"var"</span>, <span class="st">"logsd"</span>, <span class="st">"logvar"</span><span class="op">)</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
+<span>  mixProbMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"regularized"</span>, <span class="st">"annealed"</span><span class="op">)</span>,</span>
+<span>  mixProbStepExp <span class="op">=</span> <span class="fl">1</span>,</span>
+<span>  mixProbPriorN <span class="op">=</span> <span class="fl">20</span>,</span>
+<span>  mixSampleMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"parallel"</span>, <span class="st">"msaem"</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -123,14 +128,10 @@ computation.  In Monolix this is equivalent to <code>L</code>.</p></dd>
 
 
 <dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
-<dd><p>Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.</p></dd>
+<dd><p>Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. Equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.</p></dd>
 
 
 <dt id="arg-trace">trace<a class="anchor" aria-label="anchor" href="#arg-trace"></a></dt>
@@ -200,19 +201,13 @@ this is <code>FALSE</code>.</p></dd>
 
 
 <dt id="arg-addprop">addProp<a class="anchor" aria-label="anchor" href="#arg-addprop"></a></dt>
-<dd><p>specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).</p>
-<p>The combined1 error type can be described by the following equation:</p>
-<p>$$y = f + (a + b\times f^c) \times \varepsilon$$</p>
-<p>The combined2 error model can be described by the following equation:</p>
-<p>$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$</p>
-<p>Where:</p>
-<p>- y represents the observed value</p>
-<p>- f represents the predicted value</p>
-<p>- a  is the additive standard deviation</p>
-<p>- b is the proportional/power standard deviation</p>
-<p>- c is the power exponent (in the proportional case c=1)</p></dd>
+<dd><p>Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+$$y = f + (a + b\times f^c) \times \varepsilon$$;
+or `"combined2"`, where variances add:
+$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).</p></dd>
 
 
 <dt id="arg-tol">tol<a class="anchor" aria-label="anchor" href="#arg-tol"></a></dt>
@@ -343,25 +338,83 @@ is `TRUE`).</p></dd>
 
 
 <dt id="arg-iovxform">iovXform<a class="anchor" aria-label="anchor" href="#arg-iovxform"></a></dt>
-<dd><p>This is the transformation used on the diagonal
-    of the `iov`. The possibilities are:</p>
-<ul><li><p><code>sd</code> Estimate the IOV as the standard deviation for IOV</p></li>
-<li><p><code>var</code> Estimate the IOV as the variance for IOV.</p></li>
-<li><p><code>logsd</code> Estimate the IOV as the log(sd) instead of sd.</p></li>
-<li><p><code>logvar</code> Estimate the IOV as the log(var) instead of variance.</p></li>
-</ul></dd>
+<dd><p>Transformation used on the diagonal of the IOV: one of
+<code>"sd"</code>, <code>"var"</code>, <code>"logsd"</code>, or <code>"logvar"</code>.</p></dd>
 
 
 <dt id="arg-boundedtransform">boundedTransform<a class="anchor" aria-label="anchor" href="#arg-boundedtransform"></a></dt>
-<dd><p>boolean indicating if the bounded
-parameters should by transformed when using a unbounded
-optimization method to make sure they are in bounds.  By default
-this is `TRUE`, which transforms during optimization and
-back-transforms for the final estimates.  When `FALSE`, the
-optimization is performed on the original scale and the bounds
-are passed to the optimization method.  When `NA`, the bounded
-parameters are transformed for the optimization, but the final
-estimates are not back-transformed.</p></dd>
+<dd><p>When `TRUE` (default), bounded parameters are
+transformed for unbounded optimization methods and back-transformed
+for final estimates. `FALSE` optimizes on the original scale with
+bounds passed to the optimizer. `NA` transforms for optimization but
+skips the final back-transform.</p></dd>
+
+
+<dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
+<dd><p>Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.</p></dd>
+
+
+<dt id="arg-mixprobmethod">mixProbMethod<a class="anchor" aria-label="anchor" href="#arg-mixprobmethod"></a></dt>
+<dd><p>For mixture models (`mix()`, more than one
+  component), stabilizes the mixing-probability estimate against
+  collapsing onto a single component (the responsibility used to
+  update it is itself weighted by the current mixing probability,
+  which can create a runaway feedback loop). Two options:</p>
+<p>* `"regularized"` (default): blend `mixProbPriorN` pseudo-subjects,
+    distributed per the initial mixing probability, into the
+    responsibility average each iteration (Dirichlet/MAP-EM-style).
+    Prevents collapse even in difficult cases, at the cost of some
+    bias toward the initial guess; may need larger `nBurn`/`nEm`.</p>
+<p>* `"annealed"`: give the mixing-probability update its own decaying
+    step-size schedule (`mixProbStepExp`) instead of the
+    full-replacement step used during `nBurn`. Lower bias, but does
+    not by itself fix a systematic (non-noise-driven) collapse.</p></dd>
+
+
+<dt id="arg-mixprobstepexp">mixProbStepExp<a class="anchor" aria-label="anchor" href="#arg-mixprobstepexp"></a></dt>
+<dd><p>Only used when `mixProbMethod="annealed"`. Decay
+exponent for the mixing-probability step size
+(`1/iteration^mixProbStepExp`), applied from iteration 1. Default 1;
+smaller values decay more slowly.</p></dd>
+
+
+<dt id="arg-mixprobpriorn">mixProbPriorN<a class="anchor" aria-label="anchor" href="#arg-mixprobpriorn"></a></dt>
+<dd><p>Only used when `mixProbMethod="regularized"`.
+Number of pseudo-subjects blended into the responsibility average
+each iteration. Larger values are more robust to collapse but bias
+the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
+
+
+<dt id="arg-mixsamplemethod">mixSampleMethod<a class="anchor" aria-label="anchor" href="#arg-mixsamplemethod"></a></dt>
+<dd><p>For mixture models with per-component etas
+  (split-ETA, e.g. `cl &lt;- mix(tcl1 + eta.cl1, p1, tcl2 + eta.cl2)`),
+  controls the MCMC/sufficient-statistic architecture for the
+  individual random effects, independent of `mixProbMethod`. BSV
+  (`$omega`) for split components is unreliable under `"parallel"`
+  regardless of `mixProbMethod`.</p>
+<p>* `"parallel"` (default): one full MCMC chain per component per
+    subject per iteration, blended post hoc by responsibility. Mirrors
+    NONMEM's `$MIX` and correctly estimates BSV shared across
+    components, but cannot cleanly separate per-component BSV for
+    split-ETA models (each "wrong-hypothesis" chain still explores its
+    non-owned column(s) as unconstrained prior noise).</p>
+<p>* `"msaem"` (experimental): the MSAEM algorithm (Lavielle &amp; Mbogning
+    2014), as used by Monolix. Simulates one random-effects trajectory
+    per subject per iteration (label marginalized out via a
+    closed-form responsibility) instead of parallel per-component
+    chains, so no post-hoc blending is needed. Not compute-matched to
+    `"parallel"` at equal `nmc` – set `nmc` to roughly `nMix` times
+    its default for a fair comparison. Uses a model-aware stratified
+    initialization for split-ETA components that reliably achieves
+    full theta/fixed-effect separation. Split-ETA BSV recovery is
+    improved (two numerical bugs fixed: an `IGamma2_phi1` blowup that
+    locked variance to exactly zero, and an inverted responsibility
+    sign) but still not reliable – it often settles at a safety-floor
+    value rather than the true variance. Prefer `"parallel"` unless
+    specifically evaluating this method.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>

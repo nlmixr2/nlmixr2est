@@ -1,6 +1,6 @@
-# Return a list of all pre-processing hooks
+# List all pre-processing hooks
 
-Return a list of all pre-processing hooks
+List all pre-processing hooks
 
 ## Usage
 

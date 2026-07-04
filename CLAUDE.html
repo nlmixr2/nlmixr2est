@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -36,7 +36,7 @@
 <p>This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.</p>
 <div class="section level2">
 <h2 id="what-this-package-does">What this package does<a class="anchor" aria-label="anchor" href="#what-this-package-does"></a></h2>
-<p><code>nlmixr2est</code> provides the core nonlinear mixed-effects (NLME) estimation routines for the <code>nlmixr2</code> ecosystem. It implements multiple estimation methods for PK/PD modeling: SAEM, FOCEI, FOCE, FO/FOI, Laplace, AGQ, and NLM-family methods (nlminb, nlm, bobyqa, newuoa, n1qn1, lbfgsb3c, optim, uobyqa, nls). It depends heavily on <code>rxode2</code> for ODE solving — models are compiled to rxode2 C code at runtime.</p>
+<p><code>nlmixr2est</code> provides the core nonlinear mixed-effects (NLME) estimation routines for the <code>nlmixr2</code> ecosystem. It implements multiple estimation methods for PK/PD modeling: SAEM, FOCEI, FOCE, FO/FOI, Laplace, AGQ, and NLM-family methods (nlminb, nlm, bobyqa, newuoa, n1qn1, lbfgsb3c, optim, uobyqa, nls). It depends heavily on <code>rxode2</code> for ODE solving – models are compiled to rxode2 C code at runtime.</p>
 </div>
 <div class="section level2">
 <h2 id="common-commands">Common commands<a class="anchor" aria-label="anchor" href="#common-commands"></a></h2>
@@ -64,10 +64,10 @@
 <h2 id="architecture">Architecture<a class="anchor" aria-label="anchor" href="#architecture"></a></h2>
 <div class="section level3">
 <h3 id="estimation-dispatch">Estimation dispatch<a class="anchor" aria-label="anchor" href="#estimation-dispatch"></a></h3>
-<p>Entry point is <code><a href="reference/nlmixr2.html">nlmixr2()</a></code> in <code>R/nlmixr2.R</code>, which calls <code><a href="reference/nlmixr2Est.html">nlmixr2Est()</a></code> — an S3 generic dispatching on the <code>est</code> argument string. Each estimation method has its own R file (<code>R/saem.R</code>, <code>R/focei.R</code>, <code>R/fo.R</code>, <code>R/foce.R</code>, <code>R/laplace.R</code>, <code>R/agq.R</code>, <code>R/nlm.R</code>, <code>R/nlminb.R</code>, <code>R/bobyqa.R</code>, etc.) plus a corresponding control function (e.g., <code><a href="reference/saemControl.html">saemControl()</a></code>, <code><a href="reference/foceiControl.html">foceiControl()</a></code>).</p>
+<p>Entry point is <code><a href="reference/nlmixr2.html">nlmixr2()</a></code> in <code>R/nlmixr2.R</code>, which calls <code><a href="reference/nlmixr2Est.html">nlmixr2Est()</a></code> – an S3 generic dispatching on the <code>est</code> argument string. Each estimation method has its own R file (<code>R/saem.R</code>, <code>R/focei.R</code>, <code>R/fo.R</code>, <code>R/foce.R</code>, <code>R/laplace.R</code>, <code>R/agq.R</code>, <code>R/nlm.R</code>, <code>R/nlminb.R</code>, <code>R/bobyqa.R</code>, etc.) plus a corresponding control function (e.g., <code><a href="reference/saemControl.html">saemControl()</a></code>, <code><a href="reference/foceiControl.html">foceiControl()</a></code>).</p>
 </div>
 <div class="section level3">
-<h3 id="ui--rxode2-pipeline">UI → rxode2 pipeline<a class="anchor" aria-label="anchor" href="#ui--rxode2-pipeline"></a></h3>
+<h3 id="ui---rxode2-pipeline">UI -&gt; rxode2 pipeline<a class="anchor" aria-label="anchor" href="#ui---rxode2-pipeline"></a></h3>
 <p>Before estimation, model UI objects are translated to rxode2-compatible representations via <code>rxPipeline()</code> (<code>R/rxPipeline.R</code>) and method-specific <code>*RxUiGet</code> handlers (<code>R/saemRxUiGet.R</code>, <code>R/saemRxUiGetModel.R</code>, <code>R/splitModelRxUiGet.R</code>, <code>R/nlmeRxUiGet.R</code>). The <code>ini</code> block sets initial estimates; mu-referencing (where population parameters appear linearly in ETAs) is detected and handled specially for SAEM efficiency.</p>
 </div>
 <div class="section level3">
@@ -76,7 +76,7 @@
 </div>
 <div class="section level3">
 <h3 id="c-layer-src">C++ layer (<code>src/</code>)<a class="anchor" aria-label="anchor" href="#c-layer-src"></a></h3>
-<p>Core numerical work is in C++17 with RcppArmadillo/RcppEigen: - <code>saem.cpp</code> — SAEM algorithm kernel - <code>nlm.cpp</code> / <code>innerPoint.cpp</code> — NLM-family optimization - <code>cwres.cpp</code>, <code>npde.cpp</code>, <code>ires.cpp</code> — residual calculations - <code>censResid.cpp</code>, <code>censEst.cpp</code> — M2/M3/M4 censoring methods - <code>nearPD.cpp</code> — nearest positive-definite matrix - <code>uninformativeEtas.cpp</code>, <code>shrink.cpp</code> — ETA diagnostics</p>
+<p>Core numerical work is in C++17 with RcppArmadillo/RcppEigen: - <code>saem.cpp</code> – SAEM algorithm kernel - <code>nlm.cpp</code> / <code>innerPoint.cpp</code> – NLM-family optimization - <code>cwres.cpp</code>, <code>npde.cpp</code>, <code>ires.cpp</code> – residual calculations - <code>censResid.cpp</code>, <code>censEst.cpp</code> – M2/M3/M4 censoring methods - <code>nearPD.cpp</code> – nearest positive-definite matrix - <code>uninformativeEtas.cpp</code>, <code>shrink.cpp</code> – ETA diagnostics</p>
 </div>
 <div class="section level3">
 <h3 id="post-fit-objects">Post-fit objects<a class="anchor" aria-label="anchor" href="#post-fit-objects"></a></h3>
@@ -86,6 +86,16 @@
 <h3 id="test-fixtures">Test fixtures<a class="anchor" aria-label="anchor" href="#test-fixtures"></a></h3>
 <p><code>tests/testthat/helper-zzz-fits.R</code> pre-fits models and caches them so individual test files can reference fitted objects without re-running estimation. Fixture <code>.rds</code> files live in <code>tests/testthat/fixtures/</code>.</p>
 </div>
+<div class="section level3">
+<h3 id="test-thread-policy">Test thread policy<a class="anchor" aria-label="anchor" href="#test-thread-policy"></a></h3>
+<p><code>tests/testthat.R</code> keeps CI and CRAN from oversubscribing core-limited runners (which historically caused 6h timeouts / exit-143 “the runner has received a shutdown signal”):</p>
+<ul><li>
+<strong>testthat workers</strong>: a single worker on CI (<code>CI=true</code>) or CRAN; everywhere else testthat manages <code>Config/testthat/parallel</code> (<code>parallel: true</code>, <code>edition: 3</code> in <code>DESCRIPTION</code>) normally.</li>
+<li>
+<strong>rxode2 / data.table within-solve threads</strong>: capped to 2 on CRAN only; on CI and locally rxode2 manages its own threads.</li>
+<li>
+<strong>Do not pass a non-parallel reporter</strong> to <code>test_check()</code> – testthat silently falls back to serial when <code>reporter$capabilities$parallel_support</code> is FALSE (e.g. <code>LocationReporter</code>), which defeats the parallel config.</li>
+</ul></div>
 </div>
 <div class="section level2">
 <h2 id="key-conventions">Key conventions<a class="anchor" aria-label="anchor" href="#key-conventions"></a></h2>
@@ -94,7 +104,22 @@
 <li>IOV (inter-occasion variability) support is in <code>R/iov.R</code> with special handling in the mu-referencing hooks</li>
 <li>The <code>sharedControl()</code> function (<code>R/sharedControl.R</code>) defines options common across all estimation methods</li>
 <li>
-<code>R/nlmixr2Est.R</code> contains the central S3 dispatch table — look here to understand what methods exist</li>
+<code>R/nlmixr2Est.R</code> contains the central S3 dispatch table – look here to understand what methods exist</li>
+</ul></div>
+<div class="section level2">
+<h2 id="comment-and-documentation-style">Comment and documentation style<a class="anchor" aria-label="anchor" href="#comment-and-documentation-style"></a></h2>
+<ul><li>Avoid AI-typical verbosity: no multi-paragraph explanations in code comments, no worked examples or numeric anecdotes embedded in comments, no restating what the code obviously does. One line is usually enough; only explain non-obvious <em>why</em>.</li>
+<li>Roxygen descriptions should be short (a sentence or two) – keep every <code>@param</code>/<code>@return</code> tag, but don’t pad <code>@details</code> with tutorial-style prose.</li>
+<li>
+<code>NEWS.md</code> entries should be terse, single-bullet, past-tense, similar to the existing entries under older version headers (e.g. <code># nlmixr2est 6.0.1</code> / <code>6.0.0</code>) – not multi-line narrations of root cause and mechanism.</li>
+<li>No Unicode in source, comments, or docs (em dashes, smart quotes, arrows, etc.) – CRAN policy expects plain ASCII. Use <code>--</code>, <code>'</code>/<code>"</code>, or <code>-&gt;</code> instead.</li>
+</ul></div>
+<div class="section level2">
+<h2 id="coding-conventions">Coding Conventions<a class="anchor" aria-label="anchor" href="#coding-conventions"></a></h2>
+<ul><li>
+<strong>R Style</strong>: All variable and function names in R must be in <code>camelCase</code> (e.g., <code>simData</code>, <code>fitSaem</code>, <code>oneCompartmentMix</code>). Do not use <code>snake_case</code> or <code>dot.case</code> for R objects.</li>
+<li>
+<strong>C++ Style</strong>: Follow Rcpp/Armadillo conventions. Use <code>snake_case</code> or <code>camelCase</code> as appropriate.</li>
 </ul></div>
 </div>
 

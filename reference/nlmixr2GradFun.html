@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -101,11 +101,9 @@ determination of optimal step size.</p></dd>
 
 
 <dt id="arg-gillk">gillK<a class="anchor" aria-label="anchor" href="#arg-gillk"></a></dt>
-<dd><p>The total number of possible steps to determine the
-optimal forward/central difference step size per parameter (by
-the Gill 1983 method).  If 0, no optimal step size is
-determined.  Otherwise this is the optimal step size
-determined.</p></dd>
+<dd><p>Max steps to determine the optimal forward/central
+difference step size per parameter (Gill 1983). `0` = no optimal
+step size determined.</p></dd>
 
 
 <dt id="arg-gillstep">gillStep<a class="anchor" aria-label="anchor" href="#arg-gillstep"></a></dt>
@@ -121,29 +119,20 @@ is acceptable before issuing a warning/error about the gradient estimates.</p></
 
 
 <dt id="arg-usecolor">useColor<a class="anchor" aria-label="anchor" href="#arg-usecolor"></a></dt>
-<dd><p>Logical (or `NULL`) — whether to emit ANSI
-bold/color escapes in the iteration print.  `NULL` (the default)
-defers to [iterPrintControl()]'s default ([crayon::has_color()]).
-Equivalent to `print = iterPrintControl(useColor = ...)`.</p></dd>
+<dd><p>Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].</p></dd>
 
 
 <dt id="arg-printncol">printNcol<a class="anchor" aria-label="anchor" href="#arg-printncol"></a></dt>
-<dd><p>Integer (or `NULL`) — number of parameter columns
-emitted per row before wrapping to a continuation row.  `NULL`
-(the default) defers to [iterPrintControl()]'s default
-(`floor((getOption("width") - 23) / 12)`, which fits an 80-column
-terminal).  Equivalent to `print = iterPrintControl(ncol = ...)`.</p></dd>
+<dd><p>Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.</p></dd>
 
 
 <dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
-<dd><p>Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.</p></dd>
+<dd><p>Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. Equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.</p></dd>
 
 </dl></div>
     <div class="section level2">

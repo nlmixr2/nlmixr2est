@@ -27,36 +27,21 @@ Setup a nonlinear system for optimization
 
 - modelInfo:
 
-  A list containing the following elements:
-
-  \- \`predOnly\` – A model with only predictions calculated. These
-  predictions should be in terms of \`THETA\[#\]\` and \`DV\`. The
-
-  \- \`eventTheta\` is an indicator if the \`THETA\[#\]\` is related to
-  an event (like \`dur(x)\` \`f(x)\`). These variables will use Shi2021
-  finite differences and need to be indicated when setting up the
-  solving environment. When finite differences are required, this is
-  \`1L\` when they are not it should be \`0L\`. This should match the
-  length of \`par\`
-
-  \- \`thetaGrad\` – needed when solveType != 1; a model that gives the
-  value and gradient of each \`THETA\[#\]\`
-
-  An example can be found with \`ui\$nlmSensModel\` or
-  \`ui\$nlmRxModel\`
+  A list with \`predOnly\` (predictions-only model in terms of
+  \`THETA\[#\]\`/\`DV\`), \`eventTheta\` (0/1 per THETA flagging
+  event-related parameters that need Shi2021 finite differences, same
+  length as \`par\`), and \`thetaGrad\` (needed when solveType != 1;
+  gives value/gradient per THETA). See \`ui\$nlmSensModel\` or
+  \`ui\$nlmRxModel\` for examples.
 
 - control:
 
-  is a control structure with a few required elements:
-
-  \- \`rxControl\` represents the rxode2 solving options - \`solveType\`
-  integer indicating the solveType (optional) - \`stickyRecalcN\` -
-  \`maxOdeRecalc\` - \`odeRecalcFactor\` - \`eventType\` (optional) -
-  \`shi21maxFD\` (optional) - \`shiErr\` (optional) - \`optimHessType\`
-  (optional) - \`shi21maxHess\` (optional) - \`hessErr\` (optional) -
-  \`useColor\` - \`printNcol\` - \`print\` - \`normType\` -
-  \`scaleType\` - \`scaleCmin\` - \`scaleCmax\` - \`scaleTo\` -
-  \`scaleC\` - \`gradTo\` (optional); if missing assumed gradTo=0
+  control structure; required: \`rxControl\`, \`stickyRecalcN\`,
+  \`maxOdeRecalc\`, \`odeRecalcFactor\`. Optional: \`solveType\`,
+  \`eventType\`, \`shi21maxFD\`, \`shiErr\`, \`optimHessType\`,
+  \`shi21maxHess\`, \`hessErr\`, \`useColor\`, \`printNcol\`, \`print\`,
+  \`normType\`, \`scaleType\`, \`scaleCmin\`, \`scaleCmax\`,
+  \`scaleTo\`, \`scaleC\`, \`gradTo\` (default 0 if missing).
 
 - lower:
 
@@ -68,21 +53,13 @@ Setup a nonlinear system for optimization
 
 ## Value
 
-nlm solve environment; of interest
-
-\`\$par.ini\` – scaled parameter initial value
-
-\`\$lower\` – scaled parameter lower value
-
-\`\$upper\` – scaled parameter upper value
-
-\`\$.ctl\` – control structure
+nlm solve environment; key fields: \`\$par.ini\`, \`\$lower\`,
+\`\$upper\` (all scaled), and \`\$.ctl\` (control structure).
 
 ## Details
 
-In between using this, rxode2 solving should not be called.
-
-This will also print the header for solving (if print != 0)
+No rxode2 solving should occur between setup calls; prints the solving
+header if \`print != 0\`.
 
 ## Author
 

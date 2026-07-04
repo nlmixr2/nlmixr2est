@@ -14,6 +14,30 @@ nmObjGetFoceiControl(x, ...)
 # S3 method for class 'laplace'
 nmObjGetFoceiControl(x, ...)
 
+# S3 method for class 'mufocei'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'irlsfocei'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'mufoce'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'irlsfoce'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'muagq'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'irlsagq'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'mulaplace'
+nmObjGetFoceiControl(x, ...)
+
+# S3 method for class 'irlslaplace'
+nmObjGetFoceiControl(x, ...)
+
 # S3 method for class 'nlme'
 nmObjGetFoceiControl(x, ...)
 

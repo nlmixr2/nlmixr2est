@@ -20,26 +20,17 @@ agqControl(
 
 - sigdig:
 
-  Optimization significant digits. This controls:
-
-  - The tolerance of the inner and outer optimization is `10^-sigdig`
-
-  - The tolerance of the ODE solvers is `0.5*10^(-sigdig-2)`; For the
-    sensitivity equations and steady-state solutions the default is
-    `0.5*10^(-sigdig-1.5)` (sensitivity changes only applicable for
-    liblsoda)
-
-  - The tolerance of the boundary check is `5 * 10 ^ (-sigdig + 1)`
+  Optimization significant digits; controls the inner/outer optimization
+  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
+  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
+  and boundary check tolerance (`5*10^(-sigdig+1)`).
 
 - nAGQ:
 
-  Number of Gauss-Hermite Adaptive Quadrature points to take. When
-  \`nAGQ=0\`, the AGQ is not used. With \`nAGQ=1\`, this is equivalent
-  to the Laplace method. The adaptive quadrature expands every node for
-  each of the ETAs, so it can be quite expensive with a large amount of
-  ETAs. Once the EBE is obtained for a subject, you will have nAGQ^neta
-  additional function evaluations for even nAGQ numbers and
-  (nAGQ^neta)-1 additional function evaluations for odd nAGQ numbers.
+  Number of Gauss-Hermite adaptive quadrature points. \`0\` disables
+  AGQ; \`1\` is equivalent to Laplace. Cost grows quickly with ETAs:
+  once the EBE is found, expect \`nAGQ^neta\` (even \`nAGQ\`) or
+  \`(nAGQ^neta)-1\` (odd \`nAGQ\`) additional evaluations per subject.
 
 - ...:
 
@@ -266,6 +257,18 @@ agqControl()
 #> $resetHessianAndEta
 #> [1] 0
 #> 
+#> $muModel
+#> [1] "none"
+#> 
+#> $muRefCovAlg
+#> [1] TRUE
+#> 
+#> $muModelTol
+#> [1] 0.001
+#> 
+#> $muModelMaxCycles
+#> [1] 10
+#> 
 #> $stateTrim
 #> [1] Inf
 #> 
@@ -388,9 +391,6 @@ agqControl()
 #> 
 #> $eventType
 #> [1] 2
-#> 
-#> $eventSens
-#> [1] "jump"
 #> 
 #> $gradProgressOfvTime
 #> [1] 10
@@ -848,6 +848,9 @@ agqControl()
 #> 
 #> $agqLow
 #> [1] -Inf
+#> 
+#> $eventSens
+#> [1] "jump"
 #> 
 #> $boundedTransform
 #> [1] TRUE

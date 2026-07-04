@@ -20,10 +20,8 @@ nlmixrWithTiming(name, code, envir = NULL)
 
 - envir:
 
-  can be either the nlmixr2 fit data, the nlmixr2 fit environment or
-  NULL, which implies it is going to be added to the nlmixr fit when it
-  is finalized. If the function is being called after a fit is created,
-  please supply this environmental variable
+  nlmixr2 fit data, fit environment, or NULL (timing is added when the
+  fit is finalized); supply this if called after a fit already exists
 
 ## Value
 
@@ -90,8 +88,8 @@ fit <- nlmixr(one.cmt, theo_sd, est="saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8272
-#> → compress phiM in nlmixr2 object, save 429416
+#> → compress parHistData in nlmixr2 object, save 8864
+#> → compress phiM in nlmixr2 object, save 448192
 
 nlmixrWithTiming("time1", {
    Sys.sleep(1)
@@ -109,18 +107,18 @@ print(fit)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  covariance preprocess configure  saem postprocess table
-#> elapsed 0.02227857 0.008002473      0.065     0.014 1.803       0.689 0.062
-#>         compress    other time2 time1
-#> elapsed    0.056 0.295719 1.001 1.003
+#>              setup   optimize  covariance preprocess configure  saem
+#> elapsed 0.02225129 3.9925e-05 0.007003477      0.071     0.019 1.619
+#>         postprocess table compress     other time2 time1
+#> elapsed       0.467 0.057    0.136 0.3097053 1.001 1.003
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
-#> add.sd           0.699                               0.699                     
+#> tka              0.444  0.194 43.6       1.56 (1.07, 2.28)    70.48    -0.467% 
+#> tcl               1.12 0.0901 8.03       3.07 (2.57, 3.66)    29.54      8.37% 
+#> tv         log V  3.45 0.0452 1.31       31.4 (28.7, 34.3)    13.18      12.2% 
+#> add.sd           0.698                               0.698                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -130,14 +128,14 @@ print(fit)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06    0.102 -0.463 -0.0793
-#> 2 1      0.25  2.84  3.21 -0.371  3.81 -0.967  -1.38    0.102 -0.463 -0.0793
-#> 3 1      0.57  6.57  5.61  0.964  6.59 -0.0191 -0.0273  0.102 -0.463 -0.0793
+#>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.109 -0.580 -0.0762  320.
+#> 2 1      0.25  2.84  3.23 -0.388  3.83 -0.994 -1.42   0.109 -0.580 -0.0762  207.
+#> 3 1      0.57  6.57  5.72  0.846  6.72 -0.149 -0.214  0.109 -0.580 -0.0762  119.
 #> # ℹ 129 more rows
-#> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
-#> #   tad <dbl>, dosenum <dbl>
+#> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
+#> #   dosenum <dbl>
 
 # }
 ```

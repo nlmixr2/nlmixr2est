@@ -20,8 +20,8 @@ Matthew L. Fidler
 
 ``` r
 
-# For tools like nlmixr2shiny, this export allows nlmixr2shiny to
-# not depend on `nlmixr2est`, but can import it instead
+# Lets tools like nlmixr2shiny import S3 registration without
+# depending on nlmixr2est
 
 .iniS3() # run to register S3 methods
 #> NULL

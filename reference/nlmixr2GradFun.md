@@ -65,10 +65,9 @@ nlmixr2GradFun(
 
 - gillK:
 
-  The total number of possible steps to determine the optimal
-  forward/central difference step size per parameter (by the Gill 1983
-  method). If 0, no optimal step size is determined. Otherwise this is
-  the optimal step size determined.
+  Max steps to determine the optimal forward/central difference step
+  size per parameter (Gill 1983). \`0\` = no optimal step size
+  determined.
 
 - gillStep:
 
@@ -83,28 +82,20 @@ nlmixr2GradFun(
 
 - useColor:
 
-  Logical (or \`NULL\`) — whether to emit ANSI bold/color escapes in the
-  iteration print. \`NULL\` (the default) defers to
-  \[iterPrintControl()\]'s default (\[crayon::has_color()\]). Equivalent
-  to \`print = iterPrintControl(useColor = ...)\`.
+  Logical (or \`NULL\`) emit ANSI bold/color escapes in the iteration
+  print. \`NULL\` (default) defers to \[crayon::has_color()\].
 
 - printNcol:
 
-  Integer (or \`NULL\`) — number of parameter columns emitted per row
-  before wrapping to a continuation row. \`NULL\` (the default) defers
-  to \[iterPrintControl()\]'s default (\`floor((getOption("width") - 23)
-  / 12)\`, which fits an 80-column terminal). Equivalent to \`print =
-  iterPrintControl(ncol = ...)\`.
+  Integer (or \`NULL\`) parameter columns per row before wrapping.
+  \`NULL\` (default) uses \`floor((getOption("width") - 23) / 12)\`.
 
 - print:
 
-  Either a scalar print-frequency (\`0\` = suppress iteration output;
-  \`1\` (default) = print every parameter evaluation; \`N\` = print
-  every Nth evaluation), OR a pre-built \[iterPrintControl()\] object
-  bundling all iteration-print options (column wrap, header cadence,
-  color, simple/three-row mode). The scalar form is equivalent to
-  \`iterPrintControl(every = print, ncol = printNcol, useColor =
-  useColor)\`.
+  Either a scalar print-frequency (\`0\` = suppress, \`1\` (default) =
+  every evaluation, \`N\` = every Nth), OR a pre-built
+  \[iterPrintControl()\] object. Equivalent to \`iterPrintControl(every
+  = print, ncol = printNcol, useColor = useColor)\`.
 
 ## Value
 

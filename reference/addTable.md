@@ -116,8 +116,8 @@ f <- nlmixr2(one.cmt, theo_sd, "saem", control=list(calcTables=FALSE))
 #>  
 #>  
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 8272
-#> → compress phiM in nlmixr2 object, save 429416
+#> → compress parHistData in nlmixr2 object, save 8864
+#> → compress phiM in nlmixr2 object, save 448192
 
 print(f)
 #> ── nlmixr² SAEM OBJF by FOCEi approximation ──
@@ -127,18 +127,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  covariance preprocess configure  saem postprocess compress
-#> elapsed 0.02843072 0.007002522      0.065     0.015 1.802       0.422    0.057
-#>             other
-#> elapsed 0.2945668
+#>              setup   optimize  covariance preprocess configure  saem
+#> elapsed 0.02959752 1.9556e-05 0.009002835      0.065      0.02 1.616
+#>         postprocess compress     other
+#> elapsed       0.446    0.128 0.3043801
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
-#> add.sd           0.699                               0.699                     
+#> tka              0.444  0.194 43.6       1.56 (1.07, 2.28)    70.48    -0.467% 
+#> tcl               1.12 0.0901 8.03       3.07 (2.57, 3.66)    29.54      8.37% 
+#> tv         log V  3.45 0.0452 1.31       31.4 (28.7, 34.3)    13.18      12.2% 
+#> add.sd           0.698                               0.698                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -160,18 +160,18 @@ print(f)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup  covariance preprocess configure  saem postprocess compress
-#> elapsed 0.02843072 0.007002522      0.065     0.015 1.802       0.422    0.057
-#>             other
-#> elapsed 0.2945668
+#>              setup   optimize  covariance preprocess configure  saem
+#> elapsed 0.02959752 1.9556e-05 0.009002835      0.065      0.02 1.616
+#>         postprocess compress     other
+#> elapsed       0.446    0.128 0.3043801
 #> 
 #> ── Population Parameters ($parFixed or $parFixedDf): ──
 #> 
 #>        Parameter  Est.     SE %RSE Back-transformed(95%CI) BSV(CV%) Shrink(SD)%
-#> tka              0.459  0.193 42.1       1.58 (1.08, 2.31)    70.29    -0.958% 
-#> tcl               0.99 0.0851  8.6       2.69 (2.28, 3.18)    27.49      4.30% 
-#> tv         log V  3.45 0.0452 1.31         31.6 (29, 34.6)    13.26      10.2% 
-#> add.sd           0.699                               0.699                     
+#> tka              0.444  0.194 43.6       1.56 (1.07, 2.28)    70.48    -0.467% 
+#> tcl               1.12 0.0901 8.03       3.07 (2.57, 3.66)    29.54      8.37% 
+#> tv         log V  3.45 0.0452 1.31       31.4 (28.7, 34.3)    13.18      12.2% 
+#> add.sd           0.698                               0.698                     
 #>  
 #>   Covariance Type ($covMethod): linFim
 #>   No correlations in between subject variability (BSV) matrix
@@ -181,14 +181,14 @@ print(f)
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 132 × 18
-#>   ID     TIME    DV  PRED    RES IPRED    IRES   IWRES eta.ka eta.cl   eta.v
-#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>   <dbl>   <dbl>  <dbl>  <dbl>   <dbl>
-#> 1 1      0     0.74  0     0.74   0     0.74    1.06    0.102 -0.463 -0.0793
-#> 2 1      0.25  2.84  3.21 -0.371  3.81 -0.967  -1.38    0.102 -0.463 -0.0793
-#> 3 1      0.57  6.57  5.61  0.964  6.59 -0.0191 -0.0273  0.102 -0.463 -0.0793
+#>   ID     TIME    DV  PRED    RES IPRED   IRES  IWRES eta.ka eta.cl   eta.v depot
+#>   <fct> <dbl> <dbl> <dbl>  <dbl> <dbl>  <dbl>  <dbl>  <dbl>  <dbl>   <dbl> <dbl>
+#> 1 1      0     0.74  0     0.74   0     0.74   1.06   0.109 -0.580 -0.0762  320.
+#> 2 1      0.25  2.84  3.23 -0.388  3.83 -0.994 -1.42   0.109 -0.580 -0.0762  207.
+#> 3 1      0.57  6.57  5.72  0.846  6.72 -0.149 -0.214  0.109 -0.580 -0.0762  119.
 #> # ℹ 129 more rows
-#> # ℹ 7 more variables: depot <dbl>, central <dbl>, ka <dbl>, cl <dbl>, v <dbl>,
-#> #   tad <dbl>, dosenum <dbl>
+#> # ℹ 6 more variables: central <dbl>, ka <dbl>, cl <dbl>, v <dbl>, tad <dbl>,
+#> #   dosenum <dbl>
 
 # }
 ```

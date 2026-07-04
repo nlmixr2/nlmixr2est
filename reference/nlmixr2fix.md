@@ -1,7 +1,7 @@
 # Try to fix a nlmixr2 fit
 
-Currently this re-evaluates the function in the current version of
-rxode2.
+Re-evaluates the model function against the current version of rxode2,
+for fits created with an older nlmixr2/rxode2 version.
 
 ## Usage
 
@@ -29,31 +29,10 @@ Matthew L. Fidler
 ``` r
 
 if (FALSE) { # \dontrun{
-
-
-  # qs is no longer on CRAN, but you could run this with qs package installed
-  # This is a nlmixr2 v3 fit and requires the qs package to read in
-  # fit <- system.file("testfit_nlmixr3.rds", package = "nlmixr2est")
-  # fit <- readRDS(fit)
-
-  # While it prints well, it can't be used in all functions because
-  # Language features (like +var()) are not supported in the v3 version
-
-  # try(print(fit))
-
-  # try(rxSolve(fit)) # should error, but with try it will just display the error
-
-  # This function attempts to fix it by regenerating the rxode2 model with the
-  # new features
-
-  # This function also prints out the information on how this fit was created
-
-
+  # requires the qs package to read an older nlmixr2 v3 fit (qs is no
+  # longer on CRAN); regenerates the rxode2 model so it works again
+  # fit <- readRDS(system.file("testfit_nlmixr3.rds", package = "nlmixr2est"))
   # fit <- try(nlmixr2fix(fit))
-
-  # Now solving and other functions work
-  # if (!inherits(fit, "try-error")) {
-  #   rxSolve(fit)
-  # }
+  # if (!inherits(fit, "try-error")) rxSolve(fit)
 } # }
 ```

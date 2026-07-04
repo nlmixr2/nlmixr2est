@@ -97,131 +97,43 @@ n1qn1Control(
 
 - useColor:
 
-  Logical (or \`NULL\`) — whether to emit ANSI bold/color escapes in the
-  iteration print. \`NULL\` (the default) defers to
-  \[iterPrintControl()\]'s default (\[crayon::has_color()\]). Equivalent
-  to \`print = iterPrintControl(useColor = ...)\`.
+  Logical (or \`NULL\`) emit ANSI bold/color escapes in the iteration
+  print. \`NULL\` (default) defers to \[crayon::has_color()\].
 
 - printNcol:
 
-  Integer (or \`NULL\`) — number of parameter columns emitted per row
-  before wrapping to a continuation row. \`NULL\` (the default) defers
-  to \[iterPrintControl()\]'s default (\`floor((getOption("width") - 23)
-  / 12)\`, which fits an 80-column terminal). Equivalent to \`print =
-  iterPrintControl(ncol = ...)\`.
+  Integer (or \`NULL\`) parameter columns per row before wrapping.
+  \`NULL\` (default) uses \`floor((getOption("width") - 23) / 12)\`.
 
 - print:
 
-  Either a scalar print-frequency (\`0\` = suppress iteration output;
-  \`1\` (default) = print every parameter evaluation; \`N\` = print
-  every Nth evaluation), OR a pre-built \[iterPrintControl()\] object
-  bundling all iteration-print options (column wrap, header cadence,
-  color, simple/three-row mode). The scalar form is equivalent to
-  \`iterPrintControl(every = print, ncol = printNcol, useColor =
-  useColor)\`.
+  Either a scalar print-frequency (\`0\` = suppress, \`1\` (default) =
+  every evaluation, \`N\` = every Nth), OR a pre-built
+  \[iterPrintControl()\] object. Equivalent to \`iterPrintControl(every
+  = print, ncol = printNcol, useColor = useColor)\`.
 
 - normType:
 
-  This is the type of parameter normalization/scaling used to get the
-  scaled initial values for nlmixr2. These are used with `scaleType` of.
-
-  With the exception of `rescale2`, these come from [Feature
-  Scaling](https://en.wikipedia.org/wiki/Feature_scaling). The
-  `rescale2` The rescaling is the same type described in the
+  Parameter normalization/scaling used to get scaled initial values for
+  `scaleType`, of the form `Vscaled = (Vunscaled-C1)/C2` (see [Feature
+  Scaling](https://en.wikipedia.org/wiki/Feature_scaling); `rescale2`
+  follows the
   [OptdesX](http://apmonitor.com/me575/uploads/Main/optimization_book.pdf)
-  software manual.
-
-  In general, all all scaling formula can be described by:
-
-  \$\$v\_{scaled}\$\$ = (\$\$v\_{unscaled}-C\_{1}\$\$)/\$\$C\_{2}\$\$
-
-  Where
-
-  The other data normalization approaches follow the following formula
-
-  \$\$v\_{scaled}\$\$ = (\$\$v\_{unscaled}-C\_{1}\$\$)/\$\$C\_{2}\$\$
-
-  - `rescale2` This scales all parameters from (-1 to 1). The relative
-    differences between the parameters are preserved with this approach
-    and the constants are:
-
-    \$\$C\_{1}\$\$ = (max(all unscaled values)+min(all unscaled
-    values))/2
-
-    \$\$C\_{2}\$\$ = (max(all unscaled values) - min(all unscaled
-    values))/2
-
-  - `rescale` or min-max normalization. This rescales all parameters
-    from (0 to 1). As in the `rescale2` the relative differences are
-    preserved. In this approach:
-
-    \$\$C\_{1}\$\$ = min(all unscaled values)
-
-    \$\$C\_{2}\$\$ = max(all unscaled values) - min(all unscaled values)
-
-  - `mean` or mean normalization. This rescales to center the parameters
-    around the mean but the parameters are from 0 to 1. In this
-    approach:
-
-    \$\$C\_{1}\$\$ = mean(all unscaled values)
-
-    \$\$C\_{2}\$\$ = max(all unscaled values) - min(all unscaled values)
-
-  - `std` or standardization. This standardizes by the mean and standard
-    deviation. In this approach:
-
-    \$\$C\_{1}\$\$ = mean(all unscaled values)
-
-    \$\$C\_{2}\$\$ = sd(all unscaled values)
-
-  - `len` or unit length scaling. This scales the parameters to the unit
-    length. For this approach we use the Euclidean length, that is:
-
-    \$\$C\_{1}\$\$ = 0
-
-    \$\$C\_{2}\$\$ = \$\$\sqrt(v_1^2 + v_2^2 + \cdots + v_n^2)\$\$
-
-  - `constant` which does not perform data normalization. That is
-
-    \$\$C\_{1}\$\$ = 0
-
-    \$\$C\_{2}\$\$ = 1
+  manual): `"rescale2"` scales all parameters to (-1, 1); `"rescale"`
+  (min-max) scales to (0, 1); `"mean"` centers on the mean with range
+  (0, 1); `"std"` standardizes by mean/sd; `"len"` scales to unit
+  (Euclidean) length; `"constant"` performs no normalization (`C1=0`,
+  `C2=1`).
 
 - scaleType:
 
-  The scaling scheme for nlmixr2. The supported types are:
-
-  - `nlmixr2` In this approach the scaling is performed by the following
-    equation:
-
-    \$\$v\_{scaled}\$\$ = (\$\$v\_{current} -
-    v\_{init}\$\$)\*scaleC\[i\] + scaleTo
-
-    The `scaleTo` parameter is specified by the `normType`, and the
-    scales are specified by `scaleC`.
-
-  - `norm` This approach uses the simple scaling provided by the
-    `normType` argument.
-
-  - `mult` This approach does not use the data normalization provided by
-    `normType`, but rather uses multiplicative scaling to a constant
-    provided by the `scaleTo` argument.
-
-    In this case:
-
-    \$\$v\_{scaled}\$\$ =
-    \$\$v\_{current}\$\$/\$\$v\_{init}\$\$\*scaleTo
-
-  - `multAdd` This approach changes the scaling based on the parameter
-    being specified. If a parameter is defined in an exponential block
-    (ie exp(theta)), then it is scaled on a linearly, that is:
-
-    \$\$v\_{scaled}\$\$ = (\$\$v\_{current}-v\_{init}\$\$) + scaleTo
-
-    Otherwise the parameter is scaled multiplicatively.
-
-    \$\$v\_{scaled}\$\$ =
-    \$\$v\_{current}\$\$/\$\$v\_{init}\$\$\*scaleTo
+  The scaling scheme for nlmixr2: `"nlmixr2"` (default) scales as
+  `(current-init)*scaleC[i] + scaleTo`, with `scaleTo` from `normType`
+  and scales from `scaleC`; `"norm"` uses the simple scaling from
+  `normType`; `"mult"` scales multiplicatively as
+  `current/init*scaleTo`; `"multAdd"` scales linearly
+  (`(current-init)+scaleTo`) for parameters in an exponential block
+  (e.g. `exp(theta)`) and multiplicatively otherwise.
 
 - scaleCmax:
 
@@ -233,32 +145,13 @@ n1qn1Control(
 
 - scaleC:
 
-  The scaling constant used with `scaleType=nlmixr2`. When not
-  specified, it is based on the type of parameter that is estimated. The
-  idea is to keep the derivatives similar on a log scale to have similar
-  gradient sizes. Hence parameters like log(exp(theta)) would have a
-  scaling factor of 1 and log(theta) would have a scaling factor of
-  ini_value (to scale by 1/value; ie d/dt(log(ini_value)) = 1/ini_value
-  or scaleC=ini_value)
-
-  - For parameters in an exponential (ie exp(theta)) or parameters
-    specifying powers, boxCox or yeoJohnson transformations , this is 1.
-
-  - For additive, proportional, lognormal error structures, these are
-    given by 0.5\*abs(initial_estimate)
-
-  - Factorials are scaled by abs(1/digamma(initial_estimate+1))
-
-  - parameters in a log scale (ie log(theta)) are transformed by
-    log(abs(initial_estimate))\*abs(initial_estimate)
-
-  These parameter scaling coefficients are chose to try to keep similar
-  slopes among parameters. That is they all follow the slopes
-  approximately on a log-scale.
-
-  While these are chosen in a logical manner, they may not always apply.
-  You can specify each parameters scaling factor by this parameter if
-  you wish.
+  Scaling constant used with `scaleType="nlmixr2"`; when not specified,
+  chosen by parameter type to keep gradient sizes similar on a log
+  scale: \`1\` for exp()-transformed/power/boxCox/ yeoJohnson
+  parameters, \`0.5\*abs(est)\` for additive/proportional/ lognormal
+  error parameters, \`abs(1/digamma(est+1))\` for factorials, and
+  \`log(abs(est))\*abs(est)\` for log-scale parameters. May be set
+  explicitly per parameter if these defaults don't apply well.
 
 - scaleTo:
 
@@ -298,39 +191,19 @@ n1qn1Control(
 
 - addProp:
 
-  specifies the type of additive plus proportional errors, the one where
-  standard deviations add (combined1) or the type where the variances
-  add (combined2).
-
-  The combined1 error type can be described by the following equation:
-
-  \$\$y = f + (a + b\times f^c) \times \varepsilon\$\$
-
-  The combined2 error model can be described by the following equation:
-
-  \$\$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times
-  \varepsilon\$\$
-
-  Where:
-
-  \- y represents the observed value
-
-  \- f represents the predicted value
-
-  \- a is the additive standard deviation
-
-  \- b is the proportional/power standard deviation
-
-  \- c is the power exponent (in the proportional case c=1)
+  Type of additive-plus-proportional error: \`"combined1"\`, where
+  standard deviations add: \$\$y = f + (a + b\times f^c) \times
+  \varepsilon\$\$; or \`"combined2"\`, where variances add: \$\$y = f +
+  \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon\$\$. Here y =
+  observed, f = predicted, a = additive sd, b = proportional/power sd, c
+  = power exponent (1 in the proportional case).
 
 - eventSens:
 
-  How sensitivities of dosing/event parameters (absorption lag time,
-  bioavailability, infusion rate and duration, etc.) are computed.
-  \`"fd"\` uses the legacy finite differences. \`"jump"\` (the default)
-  uses the analytic event ("jump") sensitivities provided by \`rxode2\`,
-  which add accuracy and can speed up the gradient/Hessian by avoiding
-  the extra finite-difference solves for these parameters.
+  Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
+  \`dur\`) sensitivities are computed for THETA/ETA gradients:
+  \`"jump"\` (default) uses rxode2's analytic event sensitivities;
+  \`"fd"\` uses the legacy finite-difference behavior.
 
 - calcTables:
 
@@ -343,21 +216,11 @@ n1qn1Control(
 
 - covMethod:
 
-  Method for calculating covariance. In this discussion, R is the
-  Hessian matrix of the objective function. The S matrix is the sum of
-  individual gradient cross-product (evaluated at the individual
-  empirical Bayes estimates).
-
-  - "`r,s`" Uses the sandwich matrix to calculate the covariance, that
-    is: `solve(R) %*% S %*% solve(R)`
-
-  - "`r`" Uses the Hessian matrix to calculate the covariance as
-    `2 %*% solve(R)`
-
-  - "`s`" Uses the cross-product matrix to calculate the covariance as
-    `4 %*% solve(S)`
-
-  - "" Does not calculate the covariance step.
+  Method for calculating covariance, where R is the Hessian and S the
+  sum of individual gradient cross-products (at the empirical Bayes
+  estimates): `"r,s"` sandwich (`solve(R)%*%S%*%solve(R)`), `"r"`
+  Hessian-based (`2%*%solve(R)`), `"s"` cross-product-based
+  (`4%*%solve(S)`), or `""` to skip the covariance step.
 
 - adjObf:
 
@@ -372,16 +235,10 @@ n1qn1Control(
 
 - sigdig:
 
-  Optimization significant digits. This controls:
-
-  - The tolerance of the inner and outer optimization is `10^-sigdig`
-
-  - The tolerance of the ODE solvers is `0.5*10^(-sigdig-2)`; For the
-    sensitivity equations and steady-state solutions the default is
-    `0.5*10^(-sigdig-1.5)` (sensitivity changes only applicable for
-    liblsoda)
-
-  - The tolerance of the boundary check is `5 * 10 ^ (-sigdig + 1)`
+  Optimization significant digits; controls the inner/outer optimization
+  tolerance (`10^-sigdig`), ODE solver tolerance (`0.5*10^(-sigdig-2)`,
+  or `0.5*10^(-sigdig-1.5)` for sensitivity/steady-state with liblsoda),
+  and boundary check tolerance (`5*10^(-sigdig+1)`).
 
 - sigdigTable:
 
@@ -391,14 +248,11 @@ n1qn1Control(
 
 - boundedTransform:
 
-  boolean indicating if the bounded parameters should by transformed
-  when using a unbounded optimization method to make sure they are in
-  bounds. By default this is \`TRUE\`, which transforms during
-  optimization and back-transforms for the final estimates. When
-  \`FALSE\`, the optimization is performed on the original scale and the
-  bounds are passed to the optimization method. When \`NA\`, the bounded
-  parameters are transformed for the optimization, but the final
-  estimates are not back-transformed.
+  When \`TRUE\` (default), bounded parameters are transformed for
+  unbounded optimization methods and back-transformed for final
+  estimates. \`FALSE\` optimizes on the original scale with bounds
+  passed to the optimizer. \`NA\` transforms for optimization but skips
+  the final back-transform.
 
 - ...:
 
@@ -478,8 +332,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>              setup    optimize preprocess postprocess table     other
-#> elapsed 0.01574587 0.002400877      0.045       0.011 0.024 0.8378533
+#>              setup    optimize covariance preprocess postprocess table compress
+#> elapsed 0.01603349 0.002326714  3.546e-06      0.042       0.012 0.026    0.001
+#>            other
+#> elapsed 1.098636
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

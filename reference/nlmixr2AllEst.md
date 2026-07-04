@@ -16,9 +16,10 @@ List of supported nlmixr2 estimation options (est=...)
 
 ``` r
 nlmixr2AllEst()
-#>  [1] "agq"        "bobyqa"     "fo"         "foce"       "focei"     
-#>  [6] "foi"        "laplace"    "lbfgsb3c"   "n1qn1"      "newuoa"    
-#> [11] "nlm"        "nlme"       "nlminb"     "nls"        "optim"     
-#> [16] "posthoc"    "predict"    "rxSolve"    "saem"       "simulate"  
-#> [21] "simulation" "uobyqa"    
+#>  [1] "agq"         "bobyqa"      "fo"          "foce"        "focei"      
+#>  [6] "foi"         "irlsagq"     "irlsfoce"    "irlsfocei"   "irlslaplace"
+#> [11] "laplace"     "lbfgsb3c"    "muagq"       "mufoce"      "mufocei"    
+#> [16] "mulaplace"   "n1qn1"       "newuoa"      "nlm"         "nlme"       
+#> [21] "nlminb"      "nls"         "optim"       "posthoc"     "predict"    
+#> [26] "rxSolve"     "saem"        "simulate"    "simulation"  "uobyqa"     
 ```

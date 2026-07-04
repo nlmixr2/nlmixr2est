@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">nlmixr2est</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.0.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">6.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -134,101 +134,45 @@ each retry and tolerances are reset afterward.</p></dd>
 
 
 <dt id="arg-usecolor">useColor<a class="anchor" aria-label="anchor" href="#arg-usecolor"></a></dt>
-<dd><p>Logical (or `NULL`) — whether to emit ANSI
-bold/color escapes in the iteration print.  `NULL` (the default)
-defers to [iterPrintControl()]'s default ([crayon::has_color()]).
-Equivalent to `print = iterPrintControl(useColor = ...)`.</p></dd>
+<dd><p>Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].</p></dd>
 
 
 <dt id="arg-printncol">printNcol<a class="anchor" aria-label="anchor" href="#arg-printncol"></a></dt>
-<dd><p>Integer (or `NULL`) — number of parameter columns
-emitted per row before wrapping to a continuation row.  `NULL`
-(the default) defers to [iterPrintControl()]'s default
-(`floor((getOption("width") - 23) / 12)`, which fits an 80-column
-terminal).  Equivalent to `print = iterPrintControl(ncol = ...)`.</p></dd>
+<dd><p>Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.</p></dd>
 
 
 <dt id="arg-print">print<a class="anchor" aria-label="anchor" href="#arg-print"></a></dt>
-<dd><p>Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.</p></dd>
+<dd><p>Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. Equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.</p></dd>
 
 
 <dt id="arg-normtype">normType<a class="anchor" aria-label="anchor" href="#arg-normtype"></a></dt>
-<dd><p>This is the type of parameter
-    normalization/scaling used to get the scaled initial values
-    for nlmixr2.  These are used with <code>scaleType</code> of.</p>
-<p>With the exception of <code>rescale2</code>, these come
-    from
-    <a href="https://en.wikipedia.org/wiki/Feature_scaling" class="external-link">Feature
-    Scaling</a>. The <code>rescale2</code> The rescaling is the same type
-    described in the
-    <a href="http://apmonitor.com/me575/uploads/Main/optimization_book.pdf" class="external-link">OptdesX</a>
-    software manual.</p>
-<p>In general, all all scaling formula can be described by:</p>
-<p>$$v_{scaled}$$ = ($$v_{unscaled}-C_{1}$$)/$$C_{2}$$</p>
-
-<p>Where</p>
-
-<p>The other data normalization approaches follow the following formula</p>
-<p>$$v_{scaled}$$ = ($$v_{unscaled}-C_{1}$$)/$$C_{2}$$</p>
-<ul><li><p><code>rescale2</code> This scales all parameters from (-1 to 1).
-    The relative differences between the parameters are preserved
-    with this approach and the constants are:</p>
-<p>$$C_{1}$$ = (max(all unscaled values)+min(all unscaled values))/2</p>
-<p>$$C_{2}$$ = (max(all unscaled values) - min(all unscaled values))/2</p></li>
-<li><p><code>rescale</code> or min-max normalization. This rescales all
-    parameters from (0 to 1).  As in the <code>rescale2</code> the
-    relative differences are preserved.  In this approach:</p>
-<p>$$C_{1}$$ = min(all unscaled values)</p>
-<p>$$C_{2}$$ = max(all unscaled values) - min(all unscaled values)</p></li>
-<li><p><code>mean</code> or mean normalization.  This rescales to center
-    the parameters around the mean but the parameters are from 0
-    to 1.  In this approach:</p>
-<p>$$C_{1}$$ = mean(all unscaled values)</p>
-<p>$$C_{2}$$ = max(all unscaled values) - min(all unscaled values)</p></li>
-<li><p><code>std</code> or standardization.  This standardizes by the mean
-     and standard deviation.  In this approach:</p>
-<p>$$C_{1}$$ = mean(all unscaled values)</p>
-<p>$$C_{2}$$ = sd(all unscaled values)</p></li>
-<li><p><code>len</code> or unit length scaling.  This scales the
-   parameters to the unit length.  For this approach we use the Euclidean length, that
-   is:</p>
-<p>$$C_{1}$$ = 0</p>
-<p>$$C_{2}$$ = $$\sqrt(v_1^2 + v_2^2 + \cdots + v_n^2)$$</p></li>
-<li><p><code>constant</code> which does not perform data normalization. That is</p>
-<p>$$C_{1}$$ = 0</p>
-<p>$$C_{2}$$ = 1</p></li>
-</ul></dd>
+<dd><p>Parameter normalization/scaling used to get scaled
+initial values for <code>scaleType</code>, of the form
+<code>Vscaled = (Vunscaled-C1)/C2</code> (see
+<a href="https://en.wikipedia.org/wiki/Feature_scaling" class="external-link">Feature Scaling</a>;
+<code>rescale2</code> follows the
+<a href="http://apmonitor.com/me575/uploads/Main/optimization_book.pdf" class="external-link">OptdesX</a>
+manual): <code>"rescale2"</code> scales all parameters to (-1, 1);
+<code>"rescale"</code> (min-max) scales to (0, 1); <code>"mean"</code> centers on
+the mean with range (0, 1); <code>"std"</code> standardizes by mean/sd;
+<code>"len"</code> scales to unit (Euclidean) length; <code>"constant"</code>
+performs no normalization (<code>C1=0</code>, <code>C2=1</code>).</p></dd>
 
 
 <dt id="arg-scaletype">scaleType<a class="anchor" aria-label="anchor" href="#arg-scaletype"></a></dt>
-<dd><p>The scaling scheme for nlmixr2.  The supported types are:</p>
-<ul><li><p><code>nlmixr2</code>  In this approach the scaling is performed by the following equation:</p>
-<p>$$v_{scaled}$$ = ($$v_{current} - v_{init}$$)*scaleC[i] + scaleTo</p>
-<p>The <code>scaleTo</code> parameter is specified by the <code>normType</code>,
-and the scales are specified by <code>scaleC</code>.</p></li>
-<li><p><code>norm</code> This approach uses the simple scaling provided
-    by the <code>normType</code> argument.</p></li>
-<li><p><code>mult</code> This approach does not use the data
-normalization provided by <code>normType</code>, but rather uses
-multiplicative scaling to a constant provided by the <code>scaleTo</code>
-argument.</p>
-<p>In this case:</p>
-<p>$$v_{scaled}$$ = $$v_{current}$$/$$v_{init}$$*scaleTo</p></li>
-<li><p><code>multAdd</code> This approach changes the scaling based on
-the parameter being specified.  If a parameter is defined in an
-exponential block (ie exp(theta)), then it is scaled on a
-linearly, that is:</p>
-<p>$$v_{scaled}$$ = ($$v_{current}-v_{init}$$) + scaleTo</p>
-<p>Otherwise the parameter is scaled multiplicatively.</p>
-<p>$$v_{scaled}$$ = $$v_{current}$$/$$v_{init}$$*scaleTo</p></li>
-</ul></dd>
+<dd><p>The scaling scheme for nlmixr2: <code>"nlmixr2"</code>
+(default) scales as <code>(current-init)*scaleC[i] + scaleTo</code>, with
+<code>scaleTo</code> from <code>normType</code> and scales from <code>scaleC</code>;
+<code>"norm"</code> uses the simple scaling from <code>normType</code>;
+<code>"mult"</code> scales multiplicatively as <code>current/init*scaleTo</code>;
+<code>"multAdd"</code> scales linearly (<code>(current-init)+scaleTo</code>) for
+parameters in an exponential block (e.g. <code>exp(theta)</code>) and
+multiplicatively otherwise.</p></dd>
 
 
 <dt id="arg-scalecmax">scaleCmax<a class="anchor" aria-label="anchor" href="#arg-scalecmax"></a></dt>
@@ -240,28 +184,13 @@ linearly, that is:</p>
 
 
 <dt id="arg-scalec">scaleC<a class="anchor" aria-label="anchor" href="#arg-scalec"></a></dt>
-<dd><p>The scaling constant used with
-    <code>scaleType=nlmixr2</code>.  When not specified, it is based on
-    the type of parameter that is estimated.  The idea is to keep
-    the derivatives similar on a log scale to have similar
-    gradient sizes.  Hence parameters like log(exp(theta)) would
-    have a scaling factor of 1 and log(theta) would have a scaling
-    factor of ini_value (to scale by 1/value; ie
-    d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)</p>
-<p></p><ul><li><p>For parameters in an exponential (ie exp(theta)) or
-   parameters specifying powers, boxCox or yeoJohnson
-   transformations , this is 1.</p></li>
-<li><p>For additive, proportional, lognormal error structures,
-   these are given by 0.5*abs(initial_estimate)</p></li>
-<li><p>Factorials are scaled by abs(1/digamma(initial_estimate+1))</p></li>
-<li><p>parameters in a log scale (ie log(theta)) are transformed
-   by log(abs(initial_estimate))*abs(initial_estimate)</p></li>
-</ul><p>These parameter scaling coefficients are chose to try to keep
-   similar slopes among parameters.  That is they all follow the
-   slopes approximately on a log-scale.</p>
-<p>While these are chosen in a logical manner, they may not always
-   apply.  You can specify each parameters scaling factor by this
-   parameter if you wish.</p></dd>
+<dd><p>Scaling constant used with <code>scaleType="nlmixr2"</code>;
+when not specified, chosen by parameter type to keep gradient sizes
+similar on a log scale: `1` for exp()-transformed/power/boxCox/
+yeoJohnson parameters, `0.5*abs(est)` for additive/proportional/
+lognormal error parameters, `abs(1/digamma(est+1))` for factorials,
+and `log(abs(est))*abs(est)` for log-scale parameters. May be set
+explicitly per parameter if these defaults don't apply well.</p></dd>
 
 
 <dt id="arg-scaleto">scaleTo<a class="anchor" aria-label="anchor" href="#arg-scaleto"></a></dt>
@@ -304,29 +233,20 @@ optimization; Default is `TRUE`.</p></dd>
 
 
 <dt id="arg-addprop">addProp<a class="anchor" aria-label="anchor" href="#arg-addprop"></a></dt>
-<dd><p>specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).</p>
-<p>The combined1 error type can be described by the following equation:</p>
-<p>$$y = f + (a + b\times f^c) \times \varepsilon$$</p>
-<p>The combined2 error model can be described by the following equation:</p>
-<p>$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$</p>
-<p>Where:</p>
-<p>- y represents the observed value</p>
-<p>- f represents the predicted value</p>
-<p>- a  is the additive standard deviation</p>
-<p>- b is the proportional/power standard deviation</p>
-<p>- c is the power exponent (in the proportional case c=1)</p></dd>
+<dd><p>Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+$$y = f + (a + b\times f^c) \times \varepsilon$$;
+or `"combined2"`, where variances add:
+$$y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon$$.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).</p></dd>
 
 
 <dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
-<dd><p>How sensitivities of dosing/event parameters
-(absorption lag time, bioavailability, infusion rate and duration,
-etc.) are computed.  `"fd"` uses the legacy finite
-differences.  `"jump"` (the default) uses the analytic event ("jump")
-sensitivities provided by `rxode2`, which add accuracy and can speed
-up the gradient/Hessian by avoiding the extra finite-difference
-solves for these parameters.</p></dd>
+<dd><p>Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.</p></dd>
 
 
 <dt id="arg-calctables">calcTables<a class="anchor" aria-label="anchor" href="#arg-calctables"></a></dt>
@@ -339,19 +259,12 @@ will calculate tables. By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of individual
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).</p>
-<ul><li><p>"<code>r,s</code>" Uses the sandwich matrix to calculate the
- covariance, that is: <code>solve(R) %*% S %*% solve(R)</code></p></li>
-<li><p>"<code>r</code>" Uses the Hessian matrix to calculate the
- covariance as <code>2 %*% solve(R)</code></p></li>
-<li><p>"<code>s</code>" Uses the cross-product matrix to calculate the
- covariance as <code>4 %*% solve(S)</code></p></li>
-<li><p>"" Does not calculate the covariance step.</p></li>
-</ul></dd>
+<dd><p>Method for calculating covariance, where R is the
+Hessian and S the sum of individual gradient cross-products (at the
+empirical Bayes estimates): <code>"r,s"</code> sandwich
+(<code>solve(R)%*%S%*%solve(R)</code>), <code>"r"</code> Hessian-based
+(<code>2%*%solve(R)</code>), <code>"s"</code> cross-product-based
+(<code>4%*%solve(S)</code>), or <code>""</code> to skip the covariance step.</p></dd>
 
 
 <dt id="arg-adjobf">adjObf<a class="anchor" aria-label="anchor" href="#arg-adjobf"></a></dt>
@@ -366,14 +279,11 @@ function.  By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-sigdig">sigdig<a class="anchor" aria-label="anchor" href="#arg-sigdig"></a></dt>
-<dd><p>Optimization significant digits. This controls:</p>
-<ul><li><p>The tolerance of the inner and outer optimization is <code>10^-sigdig</code></p></li>
-<li><p>The tolerance of the ODE solvers is
- <code>0.5*10^(-sigdig-2)</code>; For the sensitivity equations and
- steady-state solutions the default is <code>0.5*10^(-sigdig-1.5)</code>
- (sensitivity changes only applicable for liblsoda)</p></li>
-<li><p>The tolerance of the boundary check is <code>5 * 10 ^ (-sigdig + 1)</code></p></li>
-</ul></dd>
+<dd><p>Optimization significant digits; controls the inner/outer
+optimization tolerance (<code>10^-sigdig</code>), ODE solver tolerance
+(<code>0.5*10^(-sigdig-2)</code>, or <code>0.5*10^(-sigdig-1.5)</code> for
+sensitivity/steady-state with liblsoda), and boundary check tolerance
+(<code>5*10^(-sigdig+1)</code>).</p></dd>
 
 
 <dt id="arg-sigdigtable">sigdigTable<a class="anchor" aria-label="anchor" href="#arg-sigdigtable"></a></dt>
@@ -383,15 +293,11 @@ If not specified, then it matches the significant digits in the
 
 
 <dt id="arg-boundedtransform">boundedTransform<a class="anchor" aria-label="anchor" href="#arg-boundedtransform"></a></dt>
-<dd><p>boolean indicating if the bounded
-parameters should by transformed when using a unbounded
-optimization method to make sure they are in bounds.  By default
-this is `TRUE`, which transforms during optimization and
-back-transforms for the final estimates.  When `FALSE`, the
-optimization is performed on the original scale and the bounds
-are passed to the optimization method.  When `NA`, the bounded
-parameters are transformed for the optimization, but the final
-estimates are not back-transformed.</p></dd>
+<dd><p>When `TRUE` (default), bounded parameters are
+transformed for unbounded optimization methods and back-transformed
+for final estimates. `FALSE` optimizes on the original scale with
+bounds passed to the optimizer. `NA` transforms for optimization but
+skips the final back-transform.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
@@ -472,8 +378,10 @@ estimates are not back-transformed.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize preprocess postprocess table     other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01574587 0.002400877      0.045       0.011 0.024 0.8378533</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize covariance preprocess postprocess table compress</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01603349 0.002326714  3.546e-06      0.042       0.012 0.026    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.098636</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
