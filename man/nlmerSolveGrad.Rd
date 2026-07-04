@@ -18,14 +18,10 @@ A \code{nobsTot x (ntheta+1)} matrix in the loaded
   \code{d(pred)/d(THETA[i])}.
 }
 \description{
-Unlike the population gradient solver, which applies a single
-\code{theta} to every subject, this takes an \code{nsub x ntheta}
-matrix whose row \code{id} holds that subject's parameter vector
-(\code{phi = beta + b}, as supplied by \code{lme4::nlmer}).  Each
-subject is solved reusing the loaded \code{thetaGrad} model,
-sticky-tolerance recalculation, event finite differences, and jump
-sensitivities.  The nonlinear problem must already be loaded with
-\code{.nlmSetupEnv()}.
+Like the population gradient solver but takes a per-subject
+\code{nsub x ntheta} parameter matrix (\code{phi = beta + b}, as
+supplied by \code{lme4::nlmer}) instead of one shared \code{theta}.
+Requires \code{.nlmSetupEnv()} to already be loaded.
 }
 \details{
 This is an internal function and should not be called

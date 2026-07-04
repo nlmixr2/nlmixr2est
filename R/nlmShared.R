@@ -375,7 +375,7 @@
 #'   with custom values)
 #' @return the assembled nlmixr2 fit (or the raw optimizer result if `returnFlag`)
 #' @author Matthew L. Fidler
-#' @noRd
+#' @export
 .nlmFamilyFitGeneric <- function(env, method, fitModel, getTheta,
                                  controlToFocei, returnFlag,
                                  objective = NULL,
