@@ -1,11 +1,5 @@
 .cloneEnv <- function(env, .seen = NULL) {
-  # `.seen` maps the address of every environment we have started cloning to its
-  # clone.  Without it, an environment graph with a cycle or a shared
-  # environment (e.g. rxode2's `.rx` <-> `.rxModels` compiled-model cache,
-  # reachable via a fit's `meta$.simModelBase`) recurses forever
-  # ("evaluation nested too deeply: infinite recursion").  Returning the clone
-  # already in progress both terminates the recursion and preserves the shared
-  # reference / cycle in the cloned graph.
+  # .seen maps env address -> clone so cycles/shared envs terminate instead of recursing forever.
   if (is.null(.seen)) {
     .seen <- new.env(parent = emptyenv())
   }

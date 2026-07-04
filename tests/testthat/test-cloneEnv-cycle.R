@@ -1,9 +1,5 @@
 test_that(".cloneEnv() handles circular environment references without infinite recursion", {
-  # Regression test: before the cycle guard, .cloneEnv() recursed forever on a
-  # circular environment graph, aborting with
-  #   "evaluation nested too deeply: infinite recursion / options(expressions=)?"
-  # This is the shape of rxode2's .rx <-> .rxModels compiled-model cache that
-  # surfaced when building output for est="saemix".
+  # Regression test: .cloneEnv() used to recurse forever on circular environment graphs.
 
   # a -> b -> a  (two-node cycle)
   .a <- new.env(parent = emptyenv())
@@ -21,8 +17,7 @@ test_that(".cloneEnv() handles circular environment references without infinite 
   expect_true(is.environment(.cl$child))
   expect_false(identical(.cl$child, .b))    # the nested env is cloned too
   expect_equal(.cl$child$val, 7L)
-  # the cycle is rebuilt pointing at the clone (it terminates and the shared
-  # reference is preserved, rather than being duplicated or recursed forever)
+  # cycle is rebuilt pointing at the clone, not duplicated
   expect_identical(.cl$child$parent, .cl)
 
   # a direct self-reference must also terminate
