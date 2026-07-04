@@ -991,18 +991,22 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   ## Event-sensitivity method.  "jump" enables rxode2's analytic dosing-parameter
   ## (alag/F/rate/dur) sensitivities.
   .eventSens <- rxode2::rxGetControl(ui, "eventSens", "jump")
-  ## adjoint inner carries its own dosing-parameter corrections in the sweep, so
-  ## it must not also inject the forward variational jump.
-  if (!is.null(s$..adjSensStates)) .eventSens <- "fd"
+  ## The adjoint inner fills the rx__sens dose-jump analytically via the backward
+  ## sweep (rx__adjDlag/rx__adjDrate/rx__adjdF), so it routes dosing-parameter
+  ## etas through the analytic path (NO finite-difference eventEta flags, like
+  ## "jump") but must NOT also inject the forward variational jump -- compile
+  ## with "fd".  Decouple the two uses of the flag.
+  .adjoint <- !is.null(s$..adjSensStates)
+  .compileEventSens <- if (.adjoint) "fd" else .eventSens
   ## `eventEta`/`eventTheta` flag the parameters that enter a dosing expression
   ## (alag/F/rate/dur).  In the legacy "fd" path inner.cpp computes their
   ## sensitivity by finite differences (predOde) because the analytic `rx__sens`
-  ## states miss the event jump.  Under "jump" rxode2 injects the analytic jump
-  ## into those `rx__sens` states, so the analytic gradient is now correct and
-  ## the finite-difference fallback must be turned OFF -- otherwise the
-  ## jump-corrected sensitivity is computed but never used.  Leaving the flags at
-  ## zero routes every parameter through the analytic innerOde sensitivity.
-  if (!identical(.eventSens, "jump")) {
+  ## states miss the event jump.  Under "jump" (and the adjoint) rxode2/the sweep
+  ## fills those `rx__sens` states analytically, so the analytic gradient is
+  ## correct and the finite-difference fallback must be turned OFF -- otherwise
+  ## the jump-corrected sensitivity is computed but never used.  Leaving the
+  ## flags at zero routes every parameter through the analytic innerOde sensitivity.
+  if (!identical(.eventSens, "jump") && !.adjoint) {
     for (.v in s$..eventVars) {
       .vars <- as.character(get(.v, envir = s))
       .vars <- rxode2::rxGetModel(paste0("rx_lhs=", rxode2::rxFromSE(.vars)))$params
@@ -1023,7 +1027,7 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   pred.opt <- NULL
   ## Build the inner (sensitivity) model with the requested event-sensitivity
   ## method.  "jump" enables rxode2's analytic dosing-parameter sensitivities.
-  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .eventSens)
+  inner <- .toRx(s$..inner, "compiling inner model...", eventSens = .compileEventSens)
   innerOeta <- s$..innerOeta
   .sumProd <- rxode2::rxGetControl(ui, "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(ui, "optExpression", TRUE)
@@ -1179,11 +1183,16 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## the eventEta/eventTheta finite-difference flags, so it must be part of the
   ## cache key -- otherwise a "jump" build would reuse a cached "fd" model.
   .eventSens <- rxode2::rxGetControl(.ui, "eventSens", "jump")
+  ## sensMethod + the base ODE method change the inner model text (adjoint sweep
+  ## lhs, stiff df/dy) too, so they must also be part of the cache key -- else a
+  ## forward build would be reused for an adjoint fit (or vice versa).
+  .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "auto")
+  .rxMethod <- rxode2::rxGetControl(.ui, "rxControl", rxode2::rxControl())$method
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
-                   .eventSens,
+                   .eventSens, .sensMethod, .rxMethod,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
