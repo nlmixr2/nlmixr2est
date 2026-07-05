@@ -96,6 +96,7 @@ lbfgsb3cControl <- function(trace=0,
                             literalFixRes=TRUE,
                             addProp = c("combined2", "combined1"),
                             eventSens = c("jump", "fd"),
+                            sensMethod = c("default", "forward", "adjoint"),
                             calcTables=TRUE, compress=FALSE,
                             covMethod=c("r", ""),
                             adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL, ...) {
@@ -217,6 +218,7 @@ lbfgsb3cControl <- function(trace=0,
 
     addProp=match.arg(addProp),
     eventSens=match.arg(eventSens),
+    sensMethod=match.arg(sensMethod),
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -299,7 +301,8 @@ getValidNlmixrCtl.lbfgsb3c <- function(control) {
                                 ci=.lbfgsb3cControl$ci,
                                 sigdigTable=.lbfgsb3cControl$sigdigTable,
                                 indTolRelax=.lbfgsb3cControl$indTolRelax,
-                                eventSens=.lbfgsb3cControl$eventSens)
+                                eventSens=.lbfgsb3cControl$eventSens,
+                                sensMethod=.lbfgsb3cControl$sensMethod)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

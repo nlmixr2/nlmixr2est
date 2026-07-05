@@ -112,6 +112,12 @@ rxode2.api <- names(rxode2::.rxode2ptrs())
   backports::import(pkgname)
   .iniPtrs()
   .iniS3()
+  ## Global default policy for the ODE parameter sensitivity method, used by the
+  ## nlm-family and focei/foce when a control's `sensMethod` is not set directly
+  ## (i.e. left at "default").  Either "forward" (the default) or "adjoint".
+  if (is.null(getOption("nlmixr2est.adjoint"))) {
+    options(nlmixr2est.adjoint = "forward")
+  }
 }
 
 compiled.rxode2.md5 <- rxode2::rxMd5()

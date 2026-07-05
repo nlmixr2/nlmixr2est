@@ -74,6 +74,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
                          literalFixRes=TRUE,
                          addProp = c("combined2", "combined1"),
                          eventSens = c("jump", "fd"),
+                         sensMethod = c("default", "forward", "adjoint"),
                          calcTables=TRUE, compress=FALSE,
                          covMethod=c("r", "n1qn1", ""),
                          adjObf=TRUE, ci=0.95, sigdig=4, sigdigTable=NULL,
@@ -193,6 +194,7 @@ n1qn1Control <- function(epsilon = (.Machine$double.eps) ^ 0.25,
 
     addProp=match.arg(addProp),
     eventSens=match.arg(eventSens),
+    sensMethod=match.arg(sensMethod),
     calcTables=calcTables,
     compress=compress,
     ci=ci, sigdig=sigdig, sigdigTable=sigdigTable,
@@ -277,7 +279,8 @@ getValidNlmixrCtl.n1qn1 <- function(control) {
                                 ci=.n1qn1Control$ci,
                                 sigdigTable=.n1qn1Control$sigdigTable,
                                 indTolRelax=.n1qn1Control$indTolRelax,
-                                eventSens=.n1qn1Control$eventSens)
+                                eventSens=.n1qn1Control$eventSens,
+                                sensMethod=.n1qn1Control$sensMethod)
   if (assign) env$control <- .foceiControl
   .foceiControl
 }

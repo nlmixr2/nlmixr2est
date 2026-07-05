@@ -133,6 +133,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   eventSens = c("jump", "fd"),
+  sensMethod = c("default", "auto", "forward", "adjoint"),
   boundedTransform = TRUE
 )
 }
@@ -646,6 +647,14 @@ gnlmm was 400.}
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
+
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
+`"default"` (the default) defers to the global option
+`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
+(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
+with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
+the estimated parameters exceed the number of ODE states and `"forward"`
+otherwise.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed
