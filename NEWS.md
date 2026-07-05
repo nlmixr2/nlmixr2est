@@ -59,11 +59,10 @@
 - Added `sensMethod` to the nlm-family controls (`nlmControl()`,
   `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
   and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
-  sensitivities can be computed with the in-engine discrete adjoint
-  (`"adjoint"`), the forward sensitivities (`"forward"`), or automatically
-  (`"auto"`).  When left at `"default"`, the method is taken from the global
-  option `getOption("nlmixr2est.adjoint")`, so the package-wide policy can be
-  set in one place
+  sensitivities can be computed with the forward sensitivities (`"forward"`) or
+  the in-engine discrete adjoint (`"adjoint"`).  When left at `"default"`, the
+  method is taken from the global option `getOption("nlmixr2est.adjoint")`
+  (default `"forward"`), so the package-wide policy can be set in one place
 
 - `fo`/`foi` now force forward sensitivities (adjoint does not apply to the
   eta=0 linearization), and the adjoint base-method restore in the focei family

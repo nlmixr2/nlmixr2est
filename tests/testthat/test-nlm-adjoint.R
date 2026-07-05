@@ -49,12 +49,6 @@ nmTest({
     expect_equal(r("dop853")$sMethodName, "dop853s")
   })
 
-  test_that("sensMethod='auto' picks adjoint when thetas exceed states", {
-    ## 4 estimated thetas, 2 ODE states -> adjoint
-    expect_true(nlmixr2est:::.nlmAdjointResolve(
-      .mkNlmUi(nlmControl(sensMethod = "auto")))$useAdjoint)
-  })
-
   test_that("adjoint thetaGrad emits the same sensitivity columns as forward", {
     fwd <- .mkNlmUi(nlmControl(sensMethod = "forward"))$nlmSensModel$thetaGrad
     fwdStates <- .sensStates(fwd)
@@ -84,15 +78,12 @@ nmTest({
     fwd <- .rf("forward")
     adjExplicit <- .rf("adjoint", "rk4")   # rk4s
     adjStiff <- .rf("adjoint", "ros4")     # ros4s
-    adjAuto <- .rf("auto")
 
     expect_equal(adjExplicit$objf, fwd$objf, tolerance = 1e-4)
     expect_equal(adjStiff$objf, fwd$objf, tolerance = 1e-4)
-    expect_equal(adjAuto$objf, fwd$objf, tolerance = 1e-4)
 
     expect_equal(.est(adjExplicit), .est(fwd), tolerance = 1e-4)
     expect_equal(.est(adjStiff), .est(fwd), tolerance = 1e-4)
-    expect_equal(.est(adjAuto), .est(fwd), tolerance = 1e-4)
   })
 
   test_that("nlminb (gradient family) shares the adjoint wiring", {
@@ -110,7 +101,7 @@ nmTest({
 
   test_that("focei adjoint inner sensitivities match the forward fit", {
     .d <- nlmixr2data::theo_sd
-    ## 3 etas > 2 ODE states so the inner sens auto-resolves to adjoint
+    ## 3 etas, 2 ODE states; the inner sens is requested as adjoint below
     mod <- function() {
       ini({
         tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -215,15 +206,15 @@ nmTest({
     withr::with_options(list(nlmixr2est.adjoint = "forward"), {
       expect_false(.r()$useAdjoint)
     })
-    withr::with_options(list(nlmixr2est.adjoint = "auto"), {
-      ## 4 thetas > 2 states -> auto picks adjoint
-      expect_true(.r()$useAdjoint)
+    ## the package default policy is "forward"
+    withr::with_options(list(nlmixr2est.adjoint = NULL), {
+      expect_false(.r()$useAdjoint)
     })
   })
 
-  test_that("default (auto) nlm fit matches an explicit forward fit", {
+  test_that("default nlm fit matches an explicit forward fit", {
     .d <- nlmixr2data::theo_sd
-    ## 4 thetas > 2 states, so the auto default resolves to adjoint
+    ## the default policy is "forward", so the default resolves to forward
     dft <- .nlmixr(one.cmt, .d, est = "nlm", nlmControl(solveType = "grad", print = 0))
     fwd <- .nlmixr(one.cmt, .d, est = "nlm",
                    nlmControl(sensMethod = "forward", solveType = "grad", print = 0))
