@@ -1041,6 +1041,8 @@ attr(rxUiGet.nlsFormula, "rstudio") <- quote(~nlmixr2est::.nlmixrNlsFunValGrad(D
 #' @export
 nlmixr2Est.nls <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'nls', try 'focei'",
+                                     .var.name=.ui$modelName)
   rxode2::assertRxUiPopulationOnly(.ui, " for the estimation routine 'nls', try 'focei'",
                                    .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'nls'",
