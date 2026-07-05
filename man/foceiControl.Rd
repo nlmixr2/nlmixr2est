@@ -133,7 +133,7 @@ foceiControl(
   agqLow = -Inf,
   agqHi = Inf,
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "auto", "forward", "adjoint"),
+  sensMethod = c("default", "forward", "adjoint"),
   boundedTransform = TRUE
 )
 }
@@ -249,12 +249,14 @@ where the observed information is ill-conditioned.}
 solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
 tight tolerance from \code{sigdig}; supply a number to override it.}
 
-\item{covFull}{for \code{covType="analytic"}, controls the shape of
-\code{fit$cov}.  \code{FALSE} (default) installs only the structural-theta
-block (the NONMEM-matched theta covariance, matching the finite-difference
-\code{fit$cov} shape for backwards compatibility); \code{TRUE} installs the
-full theta + residual sigma + Omega analytic covariance.  The theta standard
-errors are identical either way.}
+\item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
+installs only the structural-theta block (the NONMEM-matched theta covariance,
+matching the historical finite-difference \code{fit$cov} shape for backwards
+compatibility); \code{TRUE} installs the full theta + residual sigma + Omega
+covariance -- assembled analytically for \code{covType="analytic"}, or by
+central finite differences of the objective over the same parameter set for
+\code{covType="fd"} (perturbing Omega on the variance-covariance scale, with a
+Gill-style adaptive step).  The theta standard errors are identical either way.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -652,11 +654,10 @@ uses the legacy finite-difference behavior.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities:
 `"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-the estimated parameters exceed the number of ODE states and `"forward"`
-otherwise.}
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.}
 
 \item{boundedTransform}{When `TRUE` (default), bounded parameters are
 transformed for unbounded optimization methods and back-transformed

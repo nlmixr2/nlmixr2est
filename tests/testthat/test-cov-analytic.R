@@ -100,6 +100,25 @@ test_that("covType='analytic' installs the full analytic covariance on the fit",
   expect_true(all(is.finite(.se)) && all(.se > 0))
 })
 
+test_that("covType='fd' covFull=TRUE installs the full FD covariance matching analytic", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  # the finite-difference covariance over the SAME full parameter set as the analytic
+  # engine: structural + residual thetas plus the Omega variance-covariance elements
+  # (Gill-style adaptive step; Omega perturbed on the variance scale, no Jacobian).
+  fa <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                                foceiControl(print = 0L, covType = "analytic", covFull = TRUE)))
+  ff <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+                                foceiControl(print = 0L, covType = "fd", covFull = TRUE)))
+  # full theta+sigma+Omega cov, same parameter set as analytic
+  expect_setequal(rownames(ff$cov),
+                  c("tka", "tcl", "tv", "add.sd", "om.tka", "om.tcl", "om.tv"))
+  .seF <- sqrt(diag(ff$cov)); .seA <- sqrt(diag(fa$cov))[rownames(ff$cov)]
+  expect_true(all(is.finite(.seF)) && all(.seF > 0))
+  # FD full SEs match the analytic full SEs (finite-difference tolerance)
+  expect_equal(unname(.seF), unname(.seA), tolerance = 0.05)
+})
+
 test_that("covType='fd' (the default) keeps the finite-difference theta covariance", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")

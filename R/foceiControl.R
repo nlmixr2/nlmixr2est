@@ -76,12 +76,15 @@
 #'     solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
 #'     tight tolerance from \code{sigdig}; supply a number to override it.
 #'
-#' @param covFull for \code{covType="analytic"}, controls the shape of
-#'     \code{fit$cov}.  \code{FALSE} (default) installs only the structural-theta
-#'     block (the NONMEM-matched theta covariance, matching the finite-difference
-#'     \code{fit$cov} shape for backwards compatibility); \code{TRUE} installs the
-#'     full theta + residual sigma + Omega analytic covariance.  The theta standard
-#'     errors are identical either way.
+#' @param covFull controls the shape of \code{fit$cov}.  \code{FALSE} (default)
+#'     installs only the structural-theta block (the NONMEM-matched theta
+#'     covariance, matching the historical finite-difference \code{fit$cov} shape
+#'     for backwards compatibility); \code{TRUE} installs the full theta + residual
+#'     sigma + Omega covariance -- assembled analytically for
+#'     \code{covType="analytic"}, or by central finite differences of the objective
+#'     over the same parameter set for \code{covType="fd"} (perturbing Omega on the
+#'     variance-covariance scale, with a Gill-style adaptive step).  The theta
+#'     standard errors are identical either way.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating

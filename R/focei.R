@@ -2338,6 +2338,7 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
     }
     assign("est", est, envir=.ret)
     .foceiInstallAnalyticCov(.ret)
+    .foceiInstallFdFullCov(.ret)
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()
