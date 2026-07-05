@@ -344,6 +344,9 @@ struct focei_options {
   int covGillF;
   int optGillF;
   int mixDeriv;
+  int covFull;       // covFull=TRUE: report the full theta+sigma+Omega covariance
+  int covFdDirect;   // 1 while the FD-full cov perturbs fullTheta/Omega directly:
+                     // updateTheta then skips the unscale + Omega rebuild (below)
   double gradTrim;
   double gradCalcCentralSmall;
   double gradCalcCentralLarge;
@@ -777,9 +780,15 @@ static inline double scalePar(double *x, int i){
 void updateTheta(double *theta){
   // Theta is the acutal theta
   unsigned int j, k;
-  for (k = op_focei.npars; k--;){
-    j=op_focei.fixedTrans[k];
-    op_focei.fullTheta[j] = unscalePar(theta, k);
+  // covFdDirect: the FD-full covariance has already written the natural-scale
+  // op_focei.fullTheta (and op_focei.omegaInv/cholOmegaInv/logDetOmegaInv5 for the
+  // Omega block) itself, so skip the unscale (and the Omega rebuild below) and just
+  // propagate fullTheta into the per-subject solve.
+  if (!op_focei.covFdDirect) {
+    for (k = op_focei.npars; k--;){
+      j=op_focei.fixedTrans[k];
+      op_focei.fullTheta[j] = unscalePar(theta, k);
+    }
   }
   // Update theta parameters in each individual
   rx = getRxSolve_();
@@ -811,7 +820,7 @@ void updateTheta(double *theta){
     std::copy(mixJac.begin(), mixJac.end(), &op_focei.mixProbGrad[0]);
   }
   // Update setOmegaTheta
-  if (op_focei.neta > 0) {
+  if (op_focei.neta > 0 && !op_focei.covFdDirect) {
     NumericVector omegaTheta(op_focei.omegan);
     std::copy(&op_focei.fullTheta[0] + op_focei.ntheta,
               &op_focei.fullTheta[0] + op_focei.ntheta + op_focei.omegan,
@@ -2716,7 +2725,7 @@ void innerOpt() {
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int cores = getOpCores(op);
-  if (op_focei.neta > 0) {
+  if (op_focei.neta > 0 && !op_focei.covFdDirect) {   // covFdDirect: keep the FD-perturbed Omega
     op_focei.omegaInv=getOmegaInv();
     op_focei.logDetOmegaInv5 = getOmegaDet();
   }
@@ -4808,6 +4817,8 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.rmatNorm=as<int>(foceiO["rmatNorm"]);
   op_focei.rmatNormLlik=as<int>(foceiO["rmatNormLlik"]);
   op_focei.covGillF=as<int>(foceiO["covGillF"]);
+  op_focei.covFull = foceiO.containsElementNamed("covFull") ? as<int>(foceiO["covFull"]) : 0;
+  op_focei.covFdDirect = 0;
   op_focei.optGillF=as<int>(foceiO["optGillF"]);
   op_focei.covSmall = as<double>(foceiO["covSmall"]);
   op_focei.gradTrim = as<double>(foceiO["gradTrim"]);
@@ -7020,6 +7031,118 @@ NumericMatrix foceiCalcCov(Environment e){
   return ret;
 }
 
+// covType="fd", covFull=TRUE: the full theta+sigma+Omega covariance by central finite
+// differences of the objective, at the "normal fd seam" (the objective is the same one
+// foceiCalcR differences).  Structural + residual thetas are perturbed on op_focei.fullTheta
+// (natural scale); the Omega block is perturbed on the variance-covariance scale directly --
+// op_focei.omegaInv/cholOmegaInv/logDetOmegaInv5 are set from the perturbed Omega and
+// op_focei.covFdDirect makes updateTheta skip the unscale + Cholesky rebuild -- so the
+// Hessian is natural-scale with no Jacobian (the parameterization rxOmegaVarCovDeriv uses).
+// Enumeration/names come from the R helper .foceiFdFullParams(e); the natural cov
+// solve(0.5*H) is stashed in e[".fdFullCov"] and installed by .foceiInstallFdFullCov.
+void foceiCalcRFdFull(Environment e) {
+  if (op_focei.neta <= 0) return;
+  Function loadNamespace("loadNamespace", R_BaseNamespace);
+  Environment nlmixr2 = loadNamespace("nlmixr2est");
+  if (!nlmixr2.exists(".foceiFdFullParams")) return;
+  Function pf = as<Function>(nlmixr2[".foceiFdFullParams"]);
+  List pl;
+  try {
+    RObject plo = pf(e);
+    if (Rf_isNull(plo)) return;
+    pl = as<List>(plo);
+  } catch (...) { return; }
+  IntegerVector thPos = pl["thPos"];   // 0-based positions in op_focei.fullTheta
+  IntegerVector omA   = pl["omA"];     // 1-based Omega row
+  IntegerVector omB   = pl["omB"];     // 1-based Omega col (a>=b)
+  CharacterVector nm  = pl["names"];
+  int nth = thPos.size(), nom = omA.size(), np = nth + nom;
+  if (np == 0) return;
+
+  // base natural values + saved Omega state (restored on exit)
+  arma::mat Om0 = as<arma::mat>(getOmega());
+  arma::mat omegaInv0 = op_focei.omegaInv, cholOmegaInv0 = op_focei.cholOmegaInv;
+  double logDet0 = op_focei.logDetOmegaInv5;
+  std::vector<double> fth0(op_focei.ntheta);
+  std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, fth0.begin());
+  std::vector<double> x0(np);
+  for (int i = 0; i < nth; ++i) x0[i] = op_focei.fullTheta[thPos[i]];
+  for (int q = 0; q < nom; ++q) x0[nth + q] = Om0(omA[q]-1, omB[q]-1);
+
+  op_focei.covFdDirect = 1;
+  bool ok = true;
+  // set op_focei Omega state (inv/chol/logdet) from a variance-covariance Omega
+  auto setOm = [&](const arma::mat &Om)->bool {
+    arma::mat OmInv;
+    if (!arma::inv_sympd(OmInv, Om)) return false;
+    arma::mat ch;
+    if (!arma::chol(ch, OmInv)) return false;
+    double ld, sgn; arma::log_det(ld, sgn, Om);
+    op_focei.omegaInv = OmInv; op_focei.cholOmegaInv = ch;
+    op_focei.logDetOmegaInv5 = -0.5 * ld;      // 0.5*log|OmInv| = -0.5*log|Om|
+    return true;
+  };
+  // objective at a full natural parameter vector x
+  auto evalAt = [&](const std::vector<double> &x)->double {
+    for (int i = 0; i < nth; ++i) op_focei.fullTheta[thPos[i]] = x[i];
+    arma::mat Om = Om0;
+    for (int q = 0; q < nom; ++q) { Om(omA[q]-1, omB[q]-1) = x[nth+q]; Om(omB[q]-1, omA[q]-1) = x[nth+q]; }
+    if (!setOm(Om)) return NA_REAL;
+    return foceiOfv0(&op_focei.theta[0]);
+  };
+
+  std::vector<double> h(np);
+  double f0 = evalAt(x0);
+  arma::mat H(np, np, arma::fill::zeros);
+  if (!R_FINITE(f0)) ok = false;
+  // Per-parameter adaptive step (Gill-style, the idea foceiCalcR uses for the theta-only
+  // Hessian): grow h until the 2nd-difference stabilizes.  Below the stable region the
+  // difference is round-off-dominated -- which is what makes the off-diagonal Hessian, and
+  // hence the covariance, indefinite; a fixed step cannot balance noise vs truncation over
+  // the wide curvature range of a multi-eta model.  The accepted h[i] is reused for the
+  // off-diagonals.
+  for (int i = 0; ok && i < np; ++i) {
+    double base = std::max(std::fabs(x0[i]), 1e-3);
+    double d2prev = NA_REAL, hi = base * 5e-4, hUse = base * 1.6e-2, d2Use = NA_REAL;
+    for (int s = 0; s < 6; ++s) {
+      std::vector<double> xp = x0, xm = x0; xp[i] += hi; xm[i] -= hi;
+      double fp = evalAt(xp), fm = evalAt(xm);
+      if (R_FINITE(fp) && R_FINITE(fm)) {
+        double d2 = (fp - 2*f0 + fm) / (hi*hi);
+        hUse = hi; d2Use = d2;
+        if (R_FINITE(d2prev) && std::fabs(d2 - d2prev) <= 0.01 * std::fabs(d2)) break;  // stabilized
+        d2prev = d2;
+      }
+      hi *= 2.0;
+    }
+    h[i] = hUse;
+    H(i, i) = d2Use;
+    if (!R_FINITE(H(i, i))) { ok = false; break; }
+  }
+  for (int i = 0; ok && i < np - 1; ++i) for (int j = i+1; ok && j < np; ++j) {
+    std::vector<double> xpp=x0,xpm=x0,xmp=x0,xmm=x0;
+    xpp[i]+=h[i]; xpp[j]+=h[j]; xpm[i]+=h[i]; xpm[j]-=h[j];
+    xmp[i]-=h[i]; xmp[j]+=h[j]; xmm[i]-=h[i]; xmm[j]-=h[j];
+    double a=evalAt(xpp),b=evalAt(xpm),c=evalAt(xmp),d=evalAt(xmm);
+    if (!R_FINITE(a)||!R_FINITE(b)||!R_FINITE(c)||!R_FINITE(d)) { ok=false; break; }
+    H(i,j) = H(j,i) = (a - b - c + d) / (4*h[i]*h[j]);
+  }
+
+  // restore live state
+  std::copy(fth0.begin(), fth0.end(), &op_focei.fullTheta[0]);
+  op_focei.omegaInv = omegaInv0; op_focei.cholOmegaInv = cholOmegaInv0; op_focei.logDetOmegaInv5 = logDet0;
+  op_focei.covFdDirect = 0;
+
+  if (!ok) return;
+  arma::mat cov;
+  if (!arma::inv_sympd(cov, 0.5 * H)) {           // cov = (0.5 H)^{-1} = 2 H^{-1}
+    if (!arma::inv(cov, 0.5 * H)) return;
+  }
+  NumericMatrix covR = wrap(cov);
+  covR.attr("dimnames") = List::create(nm, nm);
+  e[".fdFullCov"] = covR;
+}
+
 void addLlikObs(Environment e) {
   if (op_focei.didLikCalc) {
     rx = getRxSolve_();
@@ -7957,6 +8080,16 @@ Environment foceiFitCpp_(Environment e){
   e["gillRet"] = gillRet;
   wallT0 = focei_wall_clock::now();
   foceiCalcCov(e);
+  // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed
+  // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way.
+  if (op_focei.covFull && op_focei.covMethod != 0 && e.exists("control")) {
+    List _ctlF = as<List>(e["control"]);
+    std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
+      as<std::string>(_ctlF["covType"]) : "fd";
+    if (_covTypeF != "analytic") {
+      try { foceiCalcRFdFull(e); } catch (...) {}
+    }
+  }
   if (op_focei.didPredSolve) {
     warning(_("numerical difficulties solving forward sensitivity inner problem, tried approximating with more inaccurate numeric differences"));
   }
