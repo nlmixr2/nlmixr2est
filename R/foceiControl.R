@@ -80,8 +80,9 @@
 #'     sigma + Omega covariance -- assembled analytically for
 #'     \code{covType="analytic"}, or by central finite differences of the objective
 #'     over the same parameter set for \code{covType="fd"} (perturbing Omega on the
-#'     variance-covariance scale, with a Gill-style adaptive step).  The theta
-#'     standard errors are identical either way.
+#'     variance-covariance scale, with the per-parameter Gill (1983) step and the
+#'     5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
+#'     errors are identical either way.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating

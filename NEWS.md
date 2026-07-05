@@ -39,10 +39,13 @@
   Omega covariance is computed by central finite differences of the objective over the same
   parameter set the analytic engine uses, at the finite-difference covariance seam.  The
   Omega block is perturbed on the variance-covariance scale directly (natural scale, no
-  Cholesky Jacobian), with a Gill-style per-parameter adaptive step so the multi-random-
-  effect Hessian stays positive-definite.  It matches the analytic covariance (and NONMEM
-  `$COV MATRIX=R`) to finite-difference tolerance, handles IOV (the occasion-variance SD is
-  an ordinary theta), and gives users the residual/Omega SEs the theta-only FD cov omits.
+  Cholesky Jacobian).  It reuses the same infrastructure as the theta-only `foceiCalcR`:
+  the per-parameter step is chosen by the Gill-Murray-Saunders-Wright (1983) optimal
+  finite-difference-interval routine (`gill83`), and the Hessian uses the 5-point diagonal /
+  4-point off-diagonal stencils, so the multi-random-effect Hessian stays positive-definite.
+  It matches the analytic covariance (and NONMEM `$COV MATRIX=R`) to finite-difference
+  tolerance, handles IOV (the occasion-variance SD is an ordinary theta), and gives users
+  the residual/Omega SEs the theta-only FD cov omits.
 
 - Fixed the FOCE (`interaction = FALSE`) objective function and empirical-Bayes
   estimates.  The residual variance `R` entering the FOCE inner likelihood must be
