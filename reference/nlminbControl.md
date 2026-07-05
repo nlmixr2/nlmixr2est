@@ -48,6 +48,7 @@ nlminbControl(
   gradTo = 1,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
+  sensMethod = c("default", "auto", "forward", "adjoint"),
   calcTables = TRUE,
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),
@@ -296,6 +297,16 @@ nlminbControl(
   \`"jump"\` (default) uses rxode2's analytic event sensitivities;
   \`"fd"\` uses the legacy finite-difference behavior.
 
+- sensMethod:
+
+  Method used to compute the ODE parameter sensitivities: \`"default"\`
+  (the default) defers to the global option
+  \`getOption("nlmixr2est.adjoint")\`; \`"forward"\` uses the classic
+  variational (forward) sensitivity ODEs; \`"adjoint"\` uses the
+  in-engine discrete adjoint with the matching adjoint (\`s\`) method;
+  \`"auto"\` selects \`"adjoint"\` when the estimated parameters exceed
+  the number of ODE states and \`"forward"\` otherwise.
+
 - calcTables:
 
   This boolean is to determine if the foceiFit will calculate tables. By
@@ -411,10 +422,10 @@ print(fit2)
 #> 
 #> ── Time (sec $time): ──
 #> 
-#>             setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.0147334 0.001749309  3.587e-06      0.042       0.013 0.023    0.012
+#>              setup    optimize covariance preprocess postprocess table compress
+#> elapsed 0.01465123 0.002179211  3.195e-06      0.041       0.013 0.024    0.012
 #>             other
-#> elapsed 0.9595137
+#> elapsed 0.9911664
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

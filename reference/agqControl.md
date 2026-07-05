@@ -795,6 +795,15 @@ agqControl()
 #> $useLinCmt
 #> [1] TRUE
 #> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -851,6 +860,9 @@ agqControl()
 #> 
 #> $eventSens
 #> [1] "jump"
+#> 
+#> $sensMethod
+#> [1] "default"
 #> 
 #> $boundedTransform
 #> [1] TRUE
@@ -1007,6 +1019,28 @@ fit <- nlmixr(one.cmt, theo_sd, est="agq")
 #>  
 #> ℹ parameter labels from comments are typically ignored in non-interactive mode
 #> ℹ Need to run with the source intact to parse comments
+#> → loading into symengine environment...
+#> → pruning branches (`if`/`else`) of full model...
+#> ✔ done
+#> → calculate ∂(f)/∂(η)
+#> → calculate ∂(R²)/∂(η)
+#> → finding duplicate expressions in inner model...
+#> → optimizing duplicate expressions in inner model...
+#> → finding duplicate expressions in EBE model...
+#> → optimizing duplicate expressions in EBE model...
+#> → compiling inner model...
+#>  
+#>  
+#> ✔ done
+#> → finding duplicate expressions in FD model...
+#> → compiling EBE model...
+#>  
+#>  
+#> ✔ done
+#> → compiling events FD model...
+#>  
+#>  
+#> ✔ done
 #> → Calculating residuals/tables
 #> ✔ done
 

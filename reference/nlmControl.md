@@ -28,6 +28,7 @@ nlmControl(
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
   eventSens = c("jump", "fd"),
+  sensMethod = c("default", "auto", "forward", "adjoint"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -185,6 +186,17 @@ nlmControl(
   \`dur\`) sensitivities are computed for THETA/ETA gradients:
   \`"jump"\` (default) uses rxode2's analytic event sensitivities;
   \`"fd"\` uses the legacy finite-difference behavior.
+
+- sensMethod:
+
+  Method used to compute the ODE parameter sensitivities: \`"default"\`
+  (the default) defers to the global option
+  \`getOption("nlmixr2est.adjoint")\`; \`"forward"\` uses the classic
+  variational (forward) sensitivity ODEs; \`"adjoint"\` uses the
+  in-engine discrete adjoint with the matching adjoint (\`s\`) method;
+  \`"auto"\` selects \`"adjoint"\` when the estimated \`THETA\`
+  parameters exceed the number of ODE states and \`"forward"\`
+  otherwise.
 
 - useColor:
 
@@ -414,9 +426,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01566781 0.002455588  3.326e-06       0.04       0.013 0.023    0.001
+#> elapsed 0.01557632 0.001752958  3.256e-06      0.043       0.013 0.024        0
 #>             other
-#> elapsed 0.8878733
+#> elapsed 0.8946675
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

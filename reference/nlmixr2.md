@@ -770,8 +770,8 @@ fitS <- nlmixr(one.cmt, theo_sd, "saem")
 #> → Calculating residuals/tables
 #> ✔ done
 #> → compress origData in nlmixr2 object, save 6584
-#> → compress parHistData in nlmixr2 object, save 9632
-#> → compress phiM in nlmixr2 object, save 453432
+#> → compress parHistData in nlmixr2 object, save 11504
+#> → compress phiM in nlmixr2 object, save 453496
 
 # }
 ```

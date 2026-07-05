@@ -2,6 +2,32 @@
 
 ## nlmixr2est (development version)
 
+- Added `sensMethod` to the nlm-family controls
+  ([`nlmControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlmControl.md),
+  [`nlminbControl()`](https://nlmixr2.github.io/nlmixr2est/reference/nlminbControl.md),
+  [`optimControl()`](https://nlmixr2.github.io/nlmixr2est/reference/optimControl.md),
+  [`n1qn1Control()`](https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.md),
+  [`lbfgsb3cControl()`](https://nlmixr2.github.io/nlmixr2est/reference/lbfgsb3cControl.md))
+  and to
+  [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
+  (focei/foce inner ETA sensitivities); ODE parameter sensitivities can
+  be computed with the forward sensitivities (`"forward"`) or the
+  in-engine discrete adjoint (`"adjoint"`). When left at `"default"`,
+  the method is taken from the global option
+  `getOption("nlmixr2est.adjoint")` (default `"forward"`), so the
+  package-wide policy can be set in one place
+
+- `fo`/`foi` now force forward sensitivities (adjoint does not apply to
+  the eta=0 linearization), and the adjoint base-method restore in the
+  focei family is a strict no-op for forward fits, fixing `fo`/`foi`
+  tables/residuals
+
+- Fix a fit aborting with
+  `initial 'omega' matrix inverse is non-positive definite` when a
+  degenerate fit (e.g. SAEM collapsing an uninformative random-effect
+  variance to 0) leaves a singular omega; the sym-inv-chol setup now
+  nearPD-corrects it so the residual/table diagnostics still run
+
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject
   with no usable observation; such subjects are now dropped before
   estimation and re-inserted into the output with a population `PRED`

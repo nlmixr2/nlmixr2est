@@ -800,6 +800,15 @@ muagqControl()
 #> $useLinCmt
 #> [1] TRUE
 #> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -856,6 +865,9 @@ muagqControl()
 #> 
 #> $eventSens
 #> [1] "jump"
+#> 
+#> $sensMethod
+#> [1] "default"
 #> 
 #> $boundedTransform
 #> [1] TRUE

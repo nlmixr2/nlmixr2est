@@ -822,6 +822,15 @@ nlmeControl()
 #> $useLinCmt
 #> [1] TRUE
 #> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
+#> 
 #> $.zeros
 #> NULL
 #> 
@@ -1329,6 +1338,15 @@ nlmixr2NlmeControl()
 #> 
 #> $useLinCmt
 #> [1] TRUE
+#> 
+#> $file
+#> NULL
+#> 
+#> $chunkSize
+#> NULL
+#> 
+#> $parallel
+#> [1] 0
 #> 
 #> $.zeros
 #> NULL
