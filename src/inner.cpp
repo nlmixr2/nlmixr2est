@@ -7016,113 +7016,136 @@ NumericMatrix foceiCalcCov(Environment e){
   return ret;
 }
 
-// covType="fd", covFull=TRUE: the full theta+sigma+Omega covariance by central finite
-// differences of the objective, at the "normal fd seam" (the objective is the same one
-// foceiCalcR differences).  Structural + residual thetas are perturbed on op_focei.fullTheta
-// (natural scale); the Omega block is perturbed on the variance-covariance scale directly --
-// op_focei.omegaInv/cholOmegaInv/logDetOmegaInv5 are set from the perturbed Omega and
-// op_focei.covFdDirect makes updateTheta skip the unscale + Cholesky rebuild -- so the
-// Hessian is natural-scale with no Jacobian (the parameterization rxOmegaVarCovDeriv uses).
-// Enumeration/names come from the R helper .foceiFdFullParams(e); the natural cov
-// solve(0.5*H) is stashed in e[".fdFullCov"] and installed by .foceiInstallFdFullCov.
-void foceiCalcRFdFull(Environment e) {
-  if (op_focei.neta <= 0) return;
-  Function loadNamespace("loadNamespace", R_BaseNamespace);
-  Environment nlmixr2 = loadNamespace("nlmixr2est");
-  if (!nlmixr2.exists(".foceiFdFullParams")) return;
+// --- covType="fd", covFull=TRUE: full theta+sigma+Omega covariance by central finite
+// differences of the objective, at the "normal fd seam" (the objective is the one
+// foceiCalcR differences).  Structural + residual thetas are perturbed on
+// op_focei.fullTheta (natural scale); the Omega block on the variance-covariance scale
+// directly (op_focei.omegaInv/cholOmegaInv/logDetOmegaInv5 set from the perturbed Omega,
+// op_focei.covFdDirect makes updateTheta skip the unscale + Cholesky rebuild) -- so the
+// Hessian is natural-scale with no Jacobian (the rxOmegaVarCovDeriv parameterization).
+// Split into small helpers below; the orchestrator is foceiCalcRFdFull. ---
+struct FdFullCtx { IntegerVector thPos, omA, omB; arma::mat Om0; int nth = 0, nom = 0; };
+
+// set op_focei Omega state from a variance-covariance Omega; false if it is not PD.
+static bool foceiFdSetOmega(const arma::mat &Om) {
+  arma::mat OmInv, ch;
+  if (!arma::inv_sympd(OmInv, Om) || !arma::chol(ch, OmInv)) return false;
+  double ld, sgn; arma::log_det(ld, sgn, Om);
+  op_focei.omegaInv = OmInv; op_focei.cholOmegaInv = ch;
+  op_focei.logDetOmegaInv5 = -0.5 * ld;       // 0.5*log|OmInv| = -0.5*log|Om|
+  return true;
+}
+
+// objective at a full natural parameter vector x (thetas on fullTheta, Omega on the
+// variance-covariance scale); NA_REAL if the perturbed Omega is not PD.
+static double foceiFdObjAt(const FdFullCtx &c, const std::vector<double> &x) {
+  for (int i = 0; i < c.nth; ++i) op_focei.fullTheta[c.thPos[i]] = x[i];
+  arma::mat Om = c.Om0;
+  for (int q = 0; q < c.nom; ++q) {
+    Om(c.omA[q]-1, c.omB[q]-1) = x[c.nth+q]; Om(c.omB[q]-1, c.omA[q]-1) = x[c.nth+q];
+  }
+  if (!foceiFdSetOmega(Om)) return NA_REAL;
+  return foceiOfv0(&op_focei.theta[0]);
+}
+
+// Gill-style adaptive diagonal 2nd-difference for coordinate i: grow the step until the
+// 2nd-difference stabilizes (below that it is round-off dominated, which makes the
+// off-diagonal Hessian -- and the covariance -- indefinite).  Returns it (or NA_REAL);
+// writes the accepted step to *hOut for reuse on the off-diagonals.
+static double foceiFdDiag(const FdFullCtx &c, int i, const std::vector<double> &x0,
+                          double f0, double *hOut) {
+  double base = std::max(std::fabs(x0[i]), 1e-3);
+  double d2prev = NA_REAL, hi = base * 5e-4, d2Use = NA_REAL;
+  *hOut = base * 1.6e-2;
+  for (int s = 0; s < 6; ++s) {
+    std::vector<double> xp = x0, xm = x0; xp[i] += hi; xm[i] -= hi;
+    double fp = foceiFdObjAt(c, xp), fm = foceiFdObjAt(c, xm);
+    if (R_FINITE(fp) && R_FINITE(fm)) {
+      double d2 = (fp - 2*f0 + fm) / (hi*hi);
+      *hOut = hi; d2Use = d2;
+      if (R_FINITE(d2prev) && std::fabs(d2 - d2prev) <= 0.01 * std::fabs(d2)) break;
+      d2prev = d2;
+    }
+    hi *= 2.0;
+  }
+  return d2Use;
+}
+
+// off-diagonal (i,j) 4-point mixed 2nd-difference with the accepted per-parameter steps h.
+static double foceiFdOffDiag(const FdFullCtx &c, int i, int j, const std::vector<double> &x0,
+                             const std::vector<double> &h) {
+  std::vector<double> xpp=x0,xpm=x0,xmp=x0,xmm=x0;
+  xpp[i]+=h[i]; xpp[j]+=h[j]; xpm[i]+=h[i]; xpm[j]-=h[j];
+  xmp[i]-=h[i]; xmp[j]+=h[j]; xmm[i]-=h[i]; xmm[j]-=h[j];
+  double a=foceiFdObjAt(c,xpp), b=foceiFdObjAt(c,xpm), cc=foceiFdObjAt(c,xmp), d=foceiFdObjAt(c,xmm);
+  if (!R_FINITE(a)||!R_FINITE(b)||!R_FINITE(cc)||!R_FINITE(d)) return NA_REAL;
+  return (a - b - cc + d) / (4*h[i]*h[j]);
+}
+
+// full natural-scale FD Hessian at x0 (f0=obj(x0)); false on any non-finite probe.
+static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, double f0, arma::mat &H) {
+  int np = c.nth + c.nom;
+  H.zeros(np, np);
+  if (!R_FINITE(f0)) return false;
+  std::vector<double> h(np);
+  for (int i = 0; i < np; ++i) {
+    H(i, i) = foceiFdDiag(c, i, x0, f0, &h[i]);
+    if (!R_FINITE(H(i, i))) return false;
+  }
+  for (int i = 0; i < np - 1; ++i) for (int j = i+1; j < np; ++j) {
+    double v = foceiFdOffDiag(c, i, j, x0, h);
+    if (!R_FINITE(v)) return false;
+    H(i, j) = H(j, i) = v;
+  }
+  return true;
+}
+
+// enumeration/names from the R helper .foceiFdFullParams(e); false if nothing to do.
+static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
+  Environment nlmixr2 = Environment::namespace_env("nlmixr2est");
+  if (!nlmixr2.exists(".foceiFdFullParams")) return false;
   Function pf = as<Function>(nlmixr2[".foceiFdFullParams"]);
   List pl;
   try {
     RObject plo = pf(e);
-    if (Rf_isNull(plo)) return;
+    if (Rf_isNull(plo)) return false;
     pl = as<List>(plo);
-  } catch (...) { return; }
-  IntegerVector thPos = pl["thPos"];   // 0-based positions in op_focei.fullTheta
-  IntegerVector omA   = pl["omA"];     // 1-based Omega row
-  IntegerVector omB   = pl["omB"];     // 1-based Omega col (a>=b)
-  CharacterVector nm  = pl["names"];
-  int nth = thPos.size(), nom = omA.size(), np = nth + nom;
-  if (np == 0) return;
+  } catch (...) { return false; }
+  c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
+  c.nth = c.thPos.size(); c.nom = c.omA.size();
+  return (c.nth + c.nom) > 0;
+}
 
-  // base natural values + saved Omega state (restored on exit)
-  arma::mat Om0 = as<arma::mat>(getOmega());
+// Orchestrator: assemble the FD Hessian around the fit, restore live state, install the
+// natural cov solve(0.5*H) in e[".fdFullCov"] (installed as fit$cov by .foceiInstallFdFullCov).
+void foceiCalcRFdFull(Environment e) {
+  if (op_focei.neta <= 0) return;
+  FdFullCtx c; CharacterVector nm;
+  if (!foceiFdParams(e, c, nm)) return;
+  c.Om0 = as<arma::mat>(getOmega());
+  int np = c.nth + c.nom;
+
+  // save live state (restored on exit)
   arma::mat omegaInv0 = op_focei.omegaInv, cholOmegaInv0 = op_focei.cholOmegaInv;
   double logDet0 = op_focei.logDetOmegaInv5;
   std::vector<double> fth0(op_focei.ntheta);
   std::copy(&op_focei.fullTheta[0], &op_focei.fullTheta[0] + op_focei.ntheta, fth0.begin());
   std::vector<double> x0(np);
-  for (int i = 0; i < nth; ++i) x0[i] = op_focei.fullTheta[thPos[i]];
-  for (int q = 0; q < nom; ++q) x0[nth + q] = Om0(omA[q]-1, omB[q]-1);
+  for (int i = 0; i < c.nth; ++i) x0[i] = op_focei.fullTheta[c.thPos[i]];
+  for (int q = 0; q < c.nom; ++q) x0[c.nth + q] = c.Om0(c.omA[q]-1, c.omB[q]-1);
 
   op_focei.covFdDirect = 1;
-  bool ok = true;
-  // set op_focei Omega state (inv/chol/logdet) from a variance-covariance Omega
-  auto setOm = [&](const arma::mat &Om)->bool {
-    arma::mat OmInv;
-    if (!arma::inv_sympd(OmInv, Om)) return false;
-    arma::mat ch;
-    if (!arma::chol(ch, OmInv)) return false;
-    double ld, sgn; arma::log_det(ld, sgn, Om);
-    op_focei.omegaInv = OmInv; op_focei.cholOmegaInv = ch;
-    op_focei.logDetOmegaInv5 = -0.5 * ld;      // 0.5*log|OmInv| = -0.5*log|Om|
-    return true;
-  };
-  // objective at a full natural parameter vector x
-  auto evalAt = [&](const std::vector<double> &x)->double {
-    for (int i = 0; i < nth; ++i) op_focei.fullTheta[thPos[i]] = x[i];
-    arma::mat Om = Om0;
-    for (int q = 0; q < nom; ++q) { Om(omA[q]-1, omB[q]-1) = x[nth+q]; Om(omB[q]-1, omA[q]-1) = x[nth+q]; }
-    if (!setOm(Om)) return NA_REAL;
-    return foceiOfv0(&op_focei.theta[0]);
-  };
-
-  std::vector<double> h(np);
-  double f0 = evalAt(x0);
-  arma::mat H(np, np, arma::fill::zeros);
-  if (!R_FINITE(f0)) ok = false;
-  // Per-parameter adaptive step (Gill-style, the idea foceiCalcR uses for the theta-only
-  // Hessian): grow h until the 2nd-difference stabilizes.  Below the stable region the
-  // difference is round-off-dominated -- which is what makes the off-diagonal Hessian, and
-  // hence the covariance, indefinite; a fixed step cannot balance noise vs truncation over
-  // the wide curvature range of a multi-eta model.  The accepted h[i] is reused for the
-  // off-diagonals.
-  for (int i = 0; ok && i < np; ++i) {
-    double base = std::max(std::fabs(x0[i]), 1e-3);
-    double d2prev = NA_REAL, hi = base * 5e-4, hUse = base * 1.6e-2, d2Use = NA_REAL;
-    for (int s = 0; s < 6; ++s) {
-      std::vector<double> xp = x0, xm = x0; xp[i] += hi; xm[i] -= hi;
-      double fp = evalAt(xp), fm = evalAt(xm);
-      if (R_FINITE(fp) && R_FINITE(fm)) {
-        double d2 = (fp - 2*f0 + fm) / (hi*hi);
-        hUse = hi; d2Use = d2;
-        if (R_FINITE(d2prev) && std::fabs(d2 - d2prev) <= 0.01 * std::fabs(d2)) break;  // stabilized
-        d2prev = d2;
-      }
-      hi *= 2.0;
-    }
-    h[i] = hUse;
-    H(i, i) = d2Use;
-    if (!R_FINITE(H(i, i))) { ok = false; break; }
-  }
-  for (int i = 0; ok && i < np - 1; ++i) for (int j = i+1; ok && j < np; ++j) {
-    std::vector<double> xpp=x0,xpm=x0,xmp=x0,xmm=x0;
-    xpp[i]+=h[i]; xpp[j]+=h[j]; xpm[i]+=h[i]; xpm[j]-=h[j];
-    xmp[i]-=h[i]; xmp[j]+=h[j]; xmm[i]-=h[i]; xmm[j]-=h[j];
-    double a=evalAt(xpp),b=evalAt(xpm),c=evalAt(xmp),d=evalAt(xmm);
-    if (!R_FINITE(a)||!R_FINITE(b)||!R_FINITE(c)||!R_FINITE(d)) { ok=false; break; }
-    H(i,j) = H(j,i) = (a - b - c + d) / (4*h[i]*h[j]);
-  }
+  arma::mat H;
+  bool ok = foceiFdHessian(c, x0, foceiFdObjAt(c, x0), H);
 
   // restore live state
   std::copy(fth0.begin(), fth0.end(), &op_focei.fullTheta[0]);
   op_focei.omegaInv = omegaInv0; op_focei.cholOmegaInv = cholOmegaInv0; op_focei.logDetOmegaInv5 = logDet0;
   op_focei.covFdDirect = 0;
-
   if (!ok) return;
+
   arma::mat cov;
-  if (!arma::inv_sympd(cov, 0.5 * H)) {           // cov = (0.5 H)^{-1} = 2 H^{-1}
-    if (!arma::inv(cov, 0.5 * H)) return;
-  }
+  if (!arma::inv_sympd(cov, 0.5 * H) && !arma::inv(cov, 0.5 * H)) return;   // cov = 2 H^{-1}
   NumericMatrix covR = wrap(cov);
   covR.attr("dimnames") = List::create(nm, nm);
   e[".fdFullCov"] = covR;
