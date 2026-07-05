@@ -9,6 +9,10 @@
   option `getOption("nlmixr2est.adjoint")`, so the package-wide policy can be
   set in one place
 
+- `fo`/`foi` now force forward sensitivities (adjoint does not apply to the
+  eta=0 linearization), and the adjoint base-method restore in the focei family
+  is a strict no-op for forward fits, fixing `fo`/`foi` tables/residuals
+
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and
   re-inserted into the output with a population `PRED` and `NA` individual
