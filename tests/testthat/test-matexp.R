@@ -1,11 +1,6 @@
 nmTest({
-  # Regression tests for matExp() / indLin() inductive-linearization model
-  # estimation.  A hand-written matExp() model that uses indLin() forcing must
-  # order its compartments source-first (like the equivalent ODE), otherwise
-  # default (compartment-1) dosing lands in the wrong compartment and the fit
-  # diverges from the ODE formulation.  Each test fits both the ODE model and
-  # its mathematically-identical matExp() form with *default* dosing (no cmt
-  # column) and asserts the objective and fixed effects agree.
+  # matExp()/indLin() fits with default (compartment-1) dosing must match the
+  # equivalent ODE model; source-first compartment order is the regression
 
   .mkData <- function(model, params, sd = 0.3, nid = 6, seed = 1234) {
     set.seed(seed)
@@ -17,7 +12,7 @@ nmTest({
     names(.dat) <- c("ID", "TIME", "DV")
     .dat$AMT <- 0
     .dat$EVID <- 0
-    # NOTE: dose row deliberately has NO cmt column -> defaults to compartment 1
+    # dose row deliberately lacks cmt so it defaults to compartment 1
     .dose <- data.frame(ID = seq_len(nid), TIME = 0, DV = NA, AMT = 320, EVID = 1)
     .dat <- rbind(.dose, .dat)
     .dat[order(.dat$ID, .dat$TIME, -.dat$EVID), ]
@@ -48,6 +43,37 @@ nmTest({
     for (.met in c("focei", "foce")) {
       .fO <- .nlmixr(odeLin, .dat, est = .met, control = foceiControl(print = 0))
       .fM <- .nlmixr(matLin, .dat, est = .met, control = foceiControl(print = 0))
+      expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
+      expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
+    }
+  })
+
+  test_that("matExp() linear model estimates identically to the ODE (agq/laplace)", {
+    odeLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .dat <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    for (.met in c("agq", "laplace")) {
+      .ctl <- if (.met == "agq") agqControl(print = 0) else laplaceControl(print = 0)
+      .fO <- .nlmixr(odeLin, .dat, est = .met, control = .ctl)
+      .fM <- .nlmixr(matLin, .dat, est = .met, control = .ctl)
       expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
       expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
     }

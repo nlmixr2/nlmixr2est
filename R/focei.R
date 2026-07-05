@@ -259,13 +259,9 @@ is.latex <- function() {
 
 #' Order matExp() compartments source-first from the k_from_to graph
 #'
-#' A hand-written `matExp()` model that also uses `indLin()` registers the
-#' `indLin()` state as compartment 1 during parsing, which reverses it relative
-#' to the equivalent ODE model (whose dosed/source compartment comes first).
-#' That misplaces default (compartment-1) dosing.  This restores a source-first
-#' order via a topological sort of the `k_<from>_<to>` transfer graph so the
-#' generated cmt()/d/dt() declarations -- which set the compiled compartment
-#' numbering the solver and data cmt-mapping use -- match the ODE formulation.
+#' With `indLin()` the forcing state parses as compartment 1, misplacing
+#' default dosing; a topological sort of the `k_<from>_<to>` graph restores
+#' the ODE-equivalent order.
 #'
 #' @param states character vector of compartment names (no "output")
 #' @param kNames character vector of model lhs names (the k_from_to constants)

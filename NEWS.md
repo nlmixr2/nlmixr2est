@@ -75,6 +75,10 @@
   default (compartment-1) dosing; the generated cmt()/d/dt() declarations now
   order compartments source-first from the `k_<from>_<to>` graph.  SAEM also now
   materializes the implied `d/dt()` for these models instead of erroring
+- `matExp()`/`indLin()` models now estimate with the focei family, the nlm
+  family, and SAEM, matching the equivalent ODE model; compartments are
+  ordered source-first from the `k_<from>_<to>` graph so default dosing is
+  placed correctly
 
 - Added `sensMethod` to the nlm-family controls (`nlmControl()`,
   `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
