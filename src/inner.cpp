@@ -7164,6 +7164,10 @@ static bool foceiFdParams(Environment e, FdFullCtx &c, CharacterVector &nm) {
     RObject plo = pf(e);
     if (Rf_isNull(plo)) return false;
     pl = as<List>(plo);
+  } catch (Rcpp::internal::InterruptedException&) {
+    throw;
+  } catch (Rcpp::LongjumpException&) {
+    throw;
   } catch (...) { return false; }
   c.thPos = pl["thPos"]; c.omA = pl["omA"]; c.omB = pl["omB"]; nm = pl["names"];
   c.nth = c.thPos.size(); c.nom = c.omA.size();
@@ -8149,7 +8153,10 @@ Environment foceiFitCpp_(Environment e){
     std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
       as<std::string>(_ctlF["covType"]) : "fd";
     if (_covTypeF != "analytic") {
-      try { foceiCalcRFdFull(e); } catch (...) {}
+      try { foceiCalcRFdFull(e); } 
+      catch (Rcpp::internal::InterruptedException&) { throw; }
+      catch (Rcpp::LongjumpException&) { throw; }
+      catch (...) {}
     }
   }
   if (op_focei.didPredSolve) {
