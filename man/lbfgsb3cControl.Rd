@@ -34,6 +34,7 @@ lbfgsb3cControl(
   literalFixRes = TRUE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
+  sensMethod = c("default", "auto", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", ""),
@@ -165,6 +166,14 @@ sd, c = power exponent (1 in the proportional case).}
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
 `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 uses the legacy finite-difference behavior.}
+
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
+`"default"` (the default) defers to the global option
+`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
+(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
+with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
+the estimated parameters exceed the number of ODE states and `"forward"`
+otherwise.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

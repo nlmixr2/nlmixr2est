@@ -493,6 +493,13 @@
 #'   `"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
 #'   uses the legacy finite-difference behavior.
 #'
+#' @param sensMethod Method used to compute the ODE parameter sensitivities:
+#'   `"default"` (the default) defers to the global option
+#'   `getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+#'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
+#'   `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+#'   (`s`) method.
+#'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
 #'
@@ -667,8 +674,13 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          eventSens = c("jump", "fd"),
+                         sensMethod = c("default", "forward", "adjoint"),
                          boundedTransform=TRUE) { #
   eventSens <- match.arg(eventSens)
+  ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
+  ## solves them with the in-engine discrete adjoint (matching s-method);
+  ## "default" defers to getOption("nlmixr2est.adjoint").
+  sensMethod <- match.arg(sensMethod)
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)
     if (is.null(boundTol)) {
@@ -1207,6 +1219,7 @@ foceiControl <- function(sigdig = 4, #
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
     eventSens=eventSens,
+    sensMethod=sensMethod,
     boundedTransform=boundedTransform
   )
   if (length(etaMat) == 1L && is.na(etaMat)) {

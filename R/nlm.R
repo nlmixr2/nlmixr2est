@@ -29,6 +29,13 @@
 #'   before optimizing.  This only works with
 #'   scaleType="nlmixr2".
 #'
+#' @param sensMethod Method used to compute the ODE parameter sensitivities:
+#'   `"default"` (the default) defers to the global option
+#'   `getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+#'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
+#'   `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+#'   (`s`) method.
+#'
 #' @return nlm control object
 #' @export
 #' @author Matthew L. Fidler
@@ -86,6 +93,8 @@ nlmControl <- function(typsize = NULL,
                        shi21maxHess=20L,
 
                        eventSens=c("jump", "fd"),
+
+                       sensMethod=c("default", "forward", "adjoint"),
 
                        useColor = NULL,
                        printNcol = NULL, #
@@ -206,6 +215,12 @@ nlmControl <- function(typsize = NULL,
   ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
   eventSens <- match.arg(eventSens)
 
+  ## sensMethod: "forward" builds the ODE parameter sensitivities the classic
+  ## (variational) way; "adjoint" solves them with the in-engine discrete
+  ## adjoint (matching s-method); "default" defers to
+  ## getOption("nlmixr2est.adjoint").
+  sensMethod <- match.arg(sensMethod)
+
   .iterPrintControl <- .absorbIterPrintControl(print = print,
                                                printNcol = printNcol,
                                                useColor = useColor,
@@ -258,6 +273,7 @@ nlmControl <- function(typsize = NULL,
                shi21maxHess=as.integer(shi21maxHess),
 
                eventSens=eventSens,
+               sensMethod=sensMethod,
 
                iterPrintControl = .iterPrintControl,
                scaleType=scaleType,
@@ -594,6 +610,115 @@ rxUiGet.nlmHdTheta <- function(x, ...) {
 }
 attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 
+#' Resolve the nlm/focei sensitivity method (forward vs adjoint) + s-method
+#'
+#' Reads `sensMethod` from the control (`"default"` defers to
+#' `getOption("nlmixr2est.adjoint")`).  When the adjoint is selected it maps the
+#' base ODE method to its in-engine discrete-adjoint (`s`) variant (base code +
+#' 200, falling back to `dop853s`) and flags whether that variant needs the
+#' stiff analytic Jacobian.
+#'
+#' @param ui rxode2 UI environment (i.e. `x[[1]]`)
+#' @param nParam number of parameters differentiated by the sensitivities,
+#'   recorded on the returned list.  Defaults to the estimated THETA count (nlm
+#'   family); the focei inner path passes the ETA count instead.
+#' @return list with `useAdjoint`; when TRUE also `sMethodInt`, `sMethodName`,
+#'   `stiff`, `nParam`, `nState`.
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmAdjointResolve <- function(ui, nParam = NULL) {
+  .sensMethod <- rxode2::rxGetControl(ui, "sensMethod", "default")
+  ## "default" (the control default when sensMethod is not specified directly)
+  ## defers to the global policy option so the package-wide default can be
+  ## changed in one place: getOption("nlmixr2est.adjoint").
+  if (identical(.sensMethod, "default")) {
+    .sensMethod <- getOption("nlmixr2est.adjoint", "forward")
+    if (!(.sensMethod %in% c("forward", "adjoint"))) .sensMethod <- "forward"
+  }
+  ## ODE (d/dt) state count -- the adjoint expansion differentiates these; a
+  ## linCmt()/algebraic model reports 0 here (its pseudo-compartments are solved
+  ## analytically, not integrated) so the adjoint does not apply.
+  .nState <- length(rxode2::rxStateOde(ui))
+  # the discrete adjoint only applies to ODE-state sensitivities; models with no
+  # ODE states (e.g. linCmt()/algebraic) fall back to the forward path.
+  if (!identical(.sensMethod, "adjoint") || .nState == 0L) {
+    return(list(useAdjoint = FALSE))
+  }
+  if (is.null(nParam)) {
+    .iniDf <- ui$iniDf
+    nParam <- sum(!.iniDf$fix & !is.na(.iniDf$ntheta))
+  }
+  .sm <- .nlmAdjointSMethod(ui)
+  list(useAdjoint = TRUE, sMethodInt = .sm$sMethodInt, sMethodName = .sm$sMethodName,
+       stiff = .sm$stiff, nParam = nParam, nState = .nState)
+}
+
+#' Map the base ODE method to its in-engine discrete-adjoint (`s`) variant
+#'
+#' Independent of the forward/adjoint decision: given the control's base method,
+#' returns the adjoint `s`-method (base code + 200, falling back to `dop853s`)
+#' and whether it needs the stiff analytic Jacobian.  Used both by
+#' [.nlmAdjointResolve()] and, on the solve side, wherever an already-built
+#' adjoint model (one carrying `rx__adjFX_*`) must be pointed at its s-method.
+#'
+#' @param ui rxode2 UI environment (i.e. `x[[1]]`)
+#' @return list with `sMethodInt`, `sMethodName`, `stiff`.
+#' @author Matthew L. Fidler
+#' @noRd
+.nlmAdjointSMethod <- function(ui) {
+  .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  .baseInt <- suppressWarnings(as.integer(.rxControl$method))
+  if (length(.baseInt) != 1L || is.na(.baseInt)) .baseInt <- 2L # liblsoda
+  .adjIdx <- rxode2::odeMethodToInt(NULL)
+  .adjCodes <- .adjIdx[.adjIdx >= 200L]
+  if (.baseInt >= 200L) {
+    .up <- .baseInt
+  } else {
+    .up <- .baseInt + 200L
+    if (!(.up %in% .adjCodes)) .up <- 200L # no direct variant -> dop853s
+  }
+  .sName <- names(.adjIdx)[match(.up, .adjIdx)][1]
+  list(sMethodInt = .up, sMethodName = .sName,
+       stiff = isTRUE(rxode2::.rxAdjointMethodStiff(.sName)))
+}
+
+#' Build the adjoint replacement for the forward variational sensitivity block
+#'
+#' Runs rxode2's adjoint expansion on the (THETA/ETA-substituted) model and
+#' keeps only the pieces that replace the forward `.sens` lines: the
+#' `rx__sens_<state>_BY_<param>__` output compartments, the analytic `df()/dy()`
+#' Jacobian (stiff `s`-methods only), and the `rx__adj*` sweep lhs.  The base
+#' ODE and dosing modifiers are dropped -- the nlm/focei assembly already emits
+#' those.  Used for both the nlm THETA gradient and the focei inner ETA
+#' sensitivities (same output structure, different `calcSens`).
+#'
+#' A build-time parity guard asserts the emitted sensitivity-column set matches
+#' the forward layout exactly, since the C++ reads those columns by name.
+#'
+#' @param object THETA/ETA-substituted (pruned) model text
+#' @param calcSens the parameter names differentiated by (THETA_n or ETA_n)
+#' @param stiff whether the chosen s-method needs the analytic Jacobian
+#' @return character vector of model lines to splice in place of `.sens`
+#' @author Matthew L. Fidler
+#' @noRd
+.rxAdjointSensLines <- function(object, calcSens, stiff) {
+  .ex <- rxode2::.rxAdjointExpand(object, calcSens, stiff = isTRUE(stiff))
+  .lines <- strsplit(.ex$text, "\n", fixed = TRUE)[[1]]
+  .keep <- grepl("^d/dt\\(rx__sens_", .lines) |
+    grepl("^df\\(", .lines) |
+    grepl("^rx__adj", .lines)
+  .ret <- .lines[.keep]
+  .want <- as.vector(vapply(calcSens, function(.p) {
+    paste0("rx__sens_", .ex$st, "_BY_", .p, "__")
+  }, character(length(.ex$st))))
+  .got <- sub("^d/dt\\((rx__sens_.*__)\\)=.*$", "\\1",
+              .ret[grepl("^d/dt\\(rx__sens_", .ret)])
+  if (!setequal(.got, .want)) {
+    stop("adjoint sensitivity columns do not match the forward layout", call. = FALSE) # nocov
+  }
+  .ret
+}
+
 #' Finalize nlm rxode2 based on symengine saved info
 #'
 #' @param .s Symengine/rxode2 object
@@ -619,6 +744,11 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   if (is.null(.lhs)) .lhs <- character(0)
   .sens <- .s$..sens
   if (is.null(.sens)) .sens <- character(0)
+  # sensMethod="adjoint": swap the forward variational block for the adjoint one
+  # (rx__sens_* output compartments + df/dy + rx__adj* lhs).  The nlm.cpp read
+  # is by-name, so this is transparent to the C++ gradient path; the adjoint
+  # s-method is selected on the solve side (.nlmFitModel).
+  if (!is.null(.s$..adjSens)) .sens <- .s$..adjSens
   # Extract rx_pred_f_ and rx_r_ for censoring support
   .fr <- .nlmGetFRLines(.s)
   .s$..nlmS <- paste(c(
@@ -679,6 +809,14 @@ rxUiGet.nlmEnv <- function(x, ...) {
   .s$params <- rxUiGet.nlmParams(x, ...)
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
+  # When sensMethod resolves to "adjoint", build the adjoint sensitivity block
+  # against the SAME THETA_n parameter names the forward `.rxSens` uses, so the
+  # rx__sens_<state>_BY_THETA_n__ output columns line up name-for-name.
+  .adj <- .nlmAdjointResolve(x[[1]])
+  if (isTRUE(.adj$useAdjoint) && exists("..maxTheta", .s) && .s$..maxTheta > 0L) {
+    .calcSens <- paste0("THETA_", seq_len(.s$..maxTheta), "_")
+    .s$..adjSens <- .rxAdjointSensLines(.nlmPrune(x), .calcSens, .adj$stiff)
+  }
   .rxFinalizeNlm(.s, .sumProd, .optExpression)
   .s$..outer <- NULL
   if (exists("..maxTheta", .s)) {
@@ -730,6 +868,9 @@ rxUiGet.nlmSensModel <- function(x, ...) {
   ## "jump" attaches rxode2's analytic event (alag/F/rate/dur) sensitivities to
   ## the thetaGrad model; nlm has no FD fallback so under "fd" the gradient simply misses the jump.
   .eventSens <- rxode2::rxGetControl(x[[1]], "eventSens", "jump")
+  ## adjoint carries its own dosing-parameter corrections (rx__adjdF/Dlag/Drate)
+  ## in the sweep, so it must NOT also inject the forward variational jump.
+  if (!is.null(.s$..adjSens)) .eventSens <- "fd"
   list(thetaGrad=rxode2::rxode2(.s$..nlmS, eventSens=.eventSens),
        predOnly=rxode2::rxode2(.s$..pred.nolhs),
        eventTheta=.s$.eventTheta)
