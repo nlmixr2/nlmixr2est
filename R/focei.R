@@ -861,10 +861,12 @@ rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
   ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
-  ## d(f)/d(eta)).  The old `rxRepR0_` symbolic freeze only zeroed EXPLICIT etas --
-  ## it left ODE model states live in R and injected a second linCmt call that
-  ## corrupted the gradients.  The eta=0 population R is now supplied in C++
-  ## (getPopR / likInner0).
+  ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++
+  ## (likInner0), not by rewriting the model here.  `foce = "nonmem"` freezes R at
+  ## the eta=0 population value (getPopR); `foce = "foce+"` keeps the live rx_r_ at
+  ## the current eta.  This replaces the old `rxRepR0_` symbolic freeze, which only
+  ## zeroed EXPLICIT etas -- it left ODE model states live in R and injected a
+  ## second linCmt call that corrupted the gradients.
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .foceiInnerAdjSens(x, .s)

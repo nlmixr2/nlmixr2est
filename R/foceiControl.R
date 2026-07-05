@@ -1,4 +1,4 @@
-.foceiControlInternal <- c("genRxControl", "resetEtaSize",
+.foceiControlInternal <- c("genRxControl", "resetEtaSize", "foceType",
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
                            "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
@@ -149,7 +149,6 @@
 #'     high precision sums using the PreciseSums package.  By default
 #'     this is \code{FALSE}.
 #'
-#'
 #' @param optExpression Optimize the rxode2 expression to speed up
 #'     calculation. By default this is turned on.
 #'
@@ -188,6 +187,33 @@
 #'
 #' @param interaction Boolean indicate FOCEi should be used (TRUE)
 #'     instead of FOCE (FALSE)
+#'
+#' @param foce Controls how FOCE (\code{interaction = FALSE}) evaluates the
+#'     residual variance R in the inner objective; ignored for FOCEi.  Either
+#'     \code{"nonmem"} (default) or \code{"foce+"}:
+#'
+#'     \itemize{
+#'
+#'     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
+#'     prediction and holds it constant across the inner optimization, matching
+#'     NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+#'     errors, and an ODE model agrees with its closed-form (\code{linCmt})
+#'     equivalent.  Disadvantage: R ignores the individual (conditional)
+#'     heteroscedasticity, so it can be slightly less accurate than
+#'     \code{"foce+"} for proportional/combined error.
+#'
+#'     \item \code{"foce+"} evaluates R at the current conditional
+#'     \code{eta} (the live variance), keeping the truncated FOCE
+#'     inner gradient.  Advantage: uses the conditional variance and
+#'     is a bit more accurate than NONMEM's FOCE in some cases.
+#'     Disadvantage: does not match NONMEM FOCE and is unsupported by
+#'     \code{covType = "analytic"} (falls back to the
+#'     finite-difference covariance).  This was the FOCE behavior in
+#'     \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
+#'     gradient of \code{eta} like the full \code{focei} method, so it
+#'     is not as accurate as \code{focei}.
+#'
+#'     }
 #'
 #' @param cholSEOpt Boolean indicating if the generalized Cholesky
 #'     should be used while optimizing.
@@ -619,6 +645,7 @@ foceiControl <- function(sigdig = 4, #
                          calcTables = TRUE,#
                          noAbort = TRUE, #
                          interaction = TRUE, #
+                         foce = c("nonmem", "foce+"), #
                          cholSEtol = (.Machine$double.eps)^(1 / 3), #
                          cholAccept = 1e-3, #
                          resetEtaP = 0.15, #
@@ -878,6 +905,11 @@ foceiControl <- function(sigdig = 4, #
     checkmate::assertLogical(interaction, len=1, any.missing=FALSE)
   }
   interaction <- as.integer(interaction)
+
+  foce <- match.arg(foce)
+  ## FOCE (interaction=FALSE) residual-variance choice: 0="nonmem" (eta=0 frozen R),
+  ## 1="foce+" (live conditional R).  Ignored when interaction=TRUE (FOCEi).
+  foceType <- as.integer(foce == "foce+")
 
   checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(cholAccept, lower=0, any.missing=FALSE, len=1)
@@ -1185,6 +1217,8 @@ foceiControl <- function(sigdig = 4, #
     calcTables = calcTables,
     noAbort = noAbort,
     interaction = interaction,
+    foce = foce,
+    foceType = foceType,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),

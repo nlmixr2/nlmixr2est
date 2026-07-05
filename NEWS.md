@@ -12,6 +12,13 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE evaluates the
+  residual variance R: `"nonmem"` (new default) freezes R at the `eta = 0` population
+  prediction to match NONMEM FOCE, while `"foce+"` keeps the live conditional R (the FOCE
+  behavior in nlmixr2est 6.0.1 and earlier), which can be slightly more accurate but does
+  not match NONMEM and falls back to the finite-difference covariance under
+  `covType = "analytic"`.
+
 - Added `foceiControl(covType = "analytic")`, an exact analytic observed-information
   covariance for FOCEI and FOCE fits.  The R-matrix is assembled in closed form -- a data
   term from the analytic 2nd-order sensitivities (rxode2 `.rxSens`) and a log-determinant

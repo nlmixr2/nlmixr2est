@@ -261,6 +261,7 @@ struct focei_options {
   double boundTol;
   int noabort;
   int interaction;
+  int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
   double cholSEtol;
   double hessEps;
   double hessEpsLlik;
@@ -1133,7 +1134,10 @@ double likInner0(double *eta, int id) {
     // iterations and recomputed only when updateTheta() bumps the generation
     // counter -- keeping FOCE at one solve per inner iteration (like FOCEI) plus
     // one eta=0 solve per subject per outer iteration, not two solves every time.
-    if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
+    // Only "nonmem" FOCE freezes R at the eta=0 population value; "foce+"
+    // (foceType==1) keeps the live conditional R and needs no eta=0 solve.
+    if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0 &&
+        op_focei.foceType == 0) {
       if (id >= 0 && id < (int)_foceRPopGen.size()) {
         if (_foceRPopGen[id] != _foceRPopCurGen) {
           getPopR(id, _foceRPopCache[id]);
@@ -1417,8 +1421,10 @@ double likInner0(double *eta, int id) {
           }
           if (dist == rxDistributionNorm) {
             r = lhs[op_focei.neta + 1];
-            // FOCE: use the eta=0 population R (FOCEI keeps the inner rx_r_)
-            if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
+            // "nonmem" FOCE: use the eta=0 population R (FOCEI and "foce+" keep
+            // the live inner rx_r_ evaluated at the current eta)
+            if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0 &&
+                op_focei.foceType == 0) {
               r = rPopVec(k);
             }
             if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
@@ -1458,7 +1464,8 @@ double likInner0(double *eta, int id) {
           } else {
             // Use `a` (=fpm) for the gradient so dose-based etas share the same
             // approach for normal and non-normal log likelihoods; err/r are garbage here.
-            // FOCE: log(R) from the same eta=0 population R (in r); FOCEI keeps lhs
+            // FOCE: log(R) from `r`, which already holds the mode-appropriate R
+            // (eta=0 frozen for "nonmem", live conditional for "foce+"); FOCEI keeps lhs
             if (dist == rxDistributionNorm) {
               if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
                 lnr = _safe_log(r);
@@ -4770,6 +4777,7 @@ NumericVector foceiSetup_(const RObject &obj,
                              as<List>(foceiO["iterPrintControl"]));
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
+  op_focei.foceType=as<int>(foceiO["foceType"]);
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
