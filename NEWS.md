@@ -33,6 +33,20 @@
   rxode2's `rxOmegaVarCovDeriv`).  The augmented-solve tolerance is derived from `sigdig`
   (override with `covSolveTol`).  The default remains `covType = "fd"`.
 
+- Fixed the FOCE (`interaction = FALSE`) objective function and empirical-Bayes
+  estimates.  The residual variance `R` entering the FOCE inner likelihood must be
+  evaluated at the `eta = 0` population prediction and held constant (the truncated
+  Sheiner-Beal inner gradient drops `dR/deta`).  The previous code froze `R`
+  symbolically, which only removed *explicit* `eta` symbols: for ODE models a live
+  model state stayed in `R` (so `R` remained `eta`-dependent), and for `linCmt()`
+  models the freeze injected a second `linCmt`/`linCmtB` call that corrupted the
+  inner sensitivities and stalled the `eta` optimization.  `R` is now supplied at
+  `eta = 0` from the inner model itself, so FOCE with an ODE model agrees with the
+  closed-form (`linCmt`) result and both match the NONMEM FOCE reference (Wang 2007).
+  The `eta = 0` `R` depends only on `theta`, so it is cached across the inner
+  iterations (recomputed once per parameter update), keeping FOCE close to the FOCEI
+  per-iteration cost.
+
 - Fixed the FOCEI `covMethod = "r"` / `"s"` / `"r,s"` standard errors, which were
   inflated by a constant factor (√2 for `"r"`, 2 for `"s"`) because the R- and
   S-matrix covariances used `2*R^{-1}` / `4*S^{-1}` instead of `R^{-1}` / `S^{-1}`;

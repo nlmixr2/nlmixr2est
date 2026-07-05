@@ -115,11 +115,20 @@
     if (is.null(s) || nrow(s) == 0L) return(NULL)      # unmatched subject -> caller falls back to FD
     obs <- s[s$EVID == 0, , drop = FALSE]
     eta0 <- ebes[i, ]
-    # FOCE (interaction=0): nlmixr's stored EBEs do NOT stationarize S_FOCE (the fit
-    # inner problem is a separate nlmixr issue), so re-solve each subject to the FOCE
-    # stationary point before forming R.  No-op for additive/FOCEI (|S_FOCE|~0 -> skip).
+    # CORRECTED FOCE (interaction=0): the variance R0 is frozen at the eta=0 POPULATION
+    # prediction.  Solve the augmented model at eta=0 to get f0 (and its theta-chain a0/A0)
+    # only when R0 actually depends on the prediction (proportional part); additive R0=sa^2
+    # needs no population solve (== FOCEI-add).  The stored EBEs stationarize S_FOCE with
+    # this R0, so the re-solve is ~a no-op (kept for robustness).
+    E0 <- NULL
+    .needF0 <- .foce && isTRUE(ef$foce$dependsF0)
+    if (.needF0) {
+      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
+      if (is.null(E0)) return(NULL)
+    }
     if (.foce) {
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol)
+      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
+                                    f0 = if (is.null(E0)) NULL else E0$f)
       if (is.null(eta0)) return(NULL)
     }
     p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
@@ -133,10 +142,16 @@
         E$A[, d1, d2] <- E$A[, d1, d2] * iovDirScale[d1] * iovDirScale[d2]
       for (d1 in seq_len(ndir)) for (d2 in seq_len(ndir)) for (d3 in seq_len(ndir))
         E$Ath[, d1, d2, d3] <- E$Ath[, d1, d2, d3] * iovDirScale[d1] * iovDirScale[d2] * iovDirScale[d3]
+      if (!is.null(E0)) {                              # population sensitivities share the rescaling
+        E0$a <- sweep(E0$a, 2, iovDirScale, `*`)
+        for (d1 in seq_len(ndir)) for (d2 in seq_len(ndir))
+          E0$A[, d1, d2] <- E0$A[, d1, d2] * iovDirScale[d1] * iovDirScale[d2]
+      }
       ehat <- ehat * etaScale                          # xi_hat = w * eta_hat on occasion etas
     }
     Ri <- tryCatch(.foceiAnalyticSubjectR(E, ehat, Om, ef, neta, nth, nsg, ef$sgVar, omd,
-                                          ndir = ndir, dirTh = dirTh, Oi = Oi, interaction = interaction),
+                                          ndir = ndir, dirTh = dirTh, Oi = Oi, interaction = interaction,
+                                          E0 = E0),
                    error = function(e) NULL)
     if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
     R <- R + Ri
@@ -201,7 +216,7 @@
 
     # converged residual sigma into the error-model evaluator (ef reads initials)
     .valc <- setNames(as.numeric(thVals[ef$sgName]), ef$sgVar)
-    ef$ev <- local({ v <- .valc; function(expr, f, y) eval(expr, c(list(f = f, y = y), as.list(v))) })
+    ef$ev <- local({ v <- .valc; function(expr, f, y, f0 = f) eval(expr, c(list(f = f, y = y, f0 = f0), as.list(v))) })
 
     # scope: fixed structural thetas break the eta<->theta indexing
     if (any(.iniIsFixed(ini, thetaForEta))) return(NULL)
@@ -406,8 +421,31 @@
   pair <- list(); for (i in seq_along(sgVar)) for (j in i:length(sgVar)) { a <- sgVar[i]; b <- sgVar[j]
     pair[[paste0(a, b)]] <- list(rss = DD(rhoE, a, b), rfss = DD(rhoE, "f", a, b), pss = DD(pE, a, b),
       qss = DD(qE, a, b), pssF = DD(pFE, a, b)) }
-  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair,
-       ev = function(e, f, y) eval(e, c(list(f = f, y = y), as.list(val))))
+  # CORRECTED FOCE variance R0 = R at the eta=0 POPULATION prediction (symbol `f0`),
+  # while the residual/numerator keeps the eta-hat prediction `f` (the estimator freezes
+  # R at eta=0: getPopR/likInner0).  Because f0 is a separate symbol, D(.,"f") treats R0
+  # as constant (so q1=1/R0, q2=0, pF1=0, r3=0), and D(.,f0) gives the theta-chain (R0
+  # varies with theta through the population prediction) supplied via a0/A0 in the
+  # subject assembly.  Additive R0=sa^2 has no f0 -> all f0 fields vanish (== FOCEI-add).
+  R0q <- parse(text = gsub("\\bf\\b", "f0", Rstr))[[1]]
+  rho0E <- bquote(0.5 * ((y - f)^2 / .(R0q) + log(.(R0q))))
+  q0E <- bquote(-(y - f) / .(R0q)); pF0E <- bquote(1 / .(R0q))
+  scF <- list(r1 = DD(rho0E, "f"), r2 = DD(rho0E, "f", "f"), r3 = DD(rho0E, "f", "f", "f"),
+              q0 = q0E, q1 = DD(q0E, "f"), q2 = DD(q0E, "f", "f"),
+              pF = pF0E, pF1 = DD(pF0E, "f"), pF2 = DD(pF0E, "f", "f"))
+  perF <- list(); for (s in sgVar) perF[[s]] <- list(rf = DD(rho0E, "f", s), rff = DD(rho0E, "f", "f", s),
+    qs = DD(q0E, s), qsf = DD(q0E, "f", s), psF = DD(pF0E, s), pfF = DD(pF0E, "f", s))
+  pairF <- list(); for (i in seq_along(sgVar)) for (j in i:length(sgVar)) { a <- sgVar[i]; b <- sgVar[j]
+    pairF[[paste0(a, b)]] <- list(rss = DD(rho0E, a, b), rfss = DD(rho0E, "f", a, b),
+      qss = DD(q0E, a, b), pssF = DD(pF0E, a, b)) }
+  f0F <- list(qf0 = DD(q0E, "f0"), qff0 = DD(q0E, "f", "f0"), qf0f0 = DD(q0E, "f0", "f0"),
+              pFf0 = DD(pF0E, "f0"), pFf0f0 = DD(pF0E, "f0", "f0"),
+              rhof0 = DD(rho0E, "f0"), rhof0f0 = DD(rho0E, "f0", "f0"))
+  perf0F <- list(); for (s in sgVar) perf0F[[s]] <- list(qf0s = DD(q0E, "f0", s),
+    pFf0s = DD(pF0E, "f0", s), rhof0s = DD(rho0E, "f0", s))
+  foce <- list(sc = scF, per = perF, pair = pairF, f0 = f0F, perf0 = perf0F, dependsF0 = hasP)
+  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
+       ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
 #' Augmented rxode2 model with state + 1st/2nd-order sensitivities and the
@@ -495,10 +533,10 @@
 #' @noRd
 .foceiAnalyticSubjectR <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
                                    ndir = neta, dirTh = seq_len(nth), Oi = solve(Om),
-                                   interaction = 1L) {
+                                   interaction = 1L, E0 = NULL) {
   if (identical(as.integer(interaction), 0L))
     return(.foceiAnalyticSubjectRfoce(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
-                                      ndir = ndir, dirTh = dirTh, Oi = Oi))
+                                      ndir = ndir, dirTh = dirTh, Oi = Oi, E0 = E0))
   tr <- function(M) sum(diag(M))
   a <- E$a; A <- E$A; Ath <- E$Ath; f <- E$f; y <- E$y
   evf <- function(e) ef$ev(e, f, y)
@@ -605,16 +643,29 @@
 #' [.foceiAnalyticSubjectR].
 #' @noRd
 .foceiAnalyticSubjectRfoce <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
-                                       ndir = neta, dirTh = seq_len(nth), Oi = solve(Om)) {
+                                       ndir = neta, dirTh = seq_len(nth), Oi = solve(Om), E0 = NULL) {
   tr <- function(M) sum(diag(M))
   a <- E$a; A <- E$A; Ath <- E$Ath; f <- E$f; y <- E$y
-  evf <- function(e) ef$ev(e, f, y)
-  rd <- list(r1 = evf(ef$sc$r1), r2 = evf(ef$sc$r2), r3 = evf(ef$sc$r3))   # full rho (Phi)
-  qd <- list(q0 = evf(ef$sc$q0), q1 = evf(ef$sc$q1), q2 = evf(ef$sc$q2))   # FOCE inner gradient coef
-  pf <- list(p = evf(ef$sc$pF), p1 = evf(ef$sc$pF1), p2 = evf(ef$sc$pF2))  # FOCE determinant p = 1/R
+  # CORRECTED FOCE: the variance R0 is frozen at the eta=0 POPULATION prediction f0
+  # (E0$f), with population sensitivities a0/A0 (E0$a/E0$A) supplying R0's theta-chain.
+  # The residual/numerator/inner sensitivities (y-f, f, a, A, Ath) stay at eta-hat.  R0
+  # is eta-independent (dR0/deta=0), so q1=1/R0, q2=0, pF1=0, r3=0; its theta/sigma
+  # derivatives (through f0) enter as a0-chain corrections on the `th` accessors only.
+  .fc <- ef$foce
+  f0 <- if (!is.null(E0)) E0$f else f
+  evf <- function(e) ef$ev(e, f, y, f0)
+  rd <- list(r1 = evf(.fc$sc$r1), r2 = evf(.fc$sc$r2), r3 = evf(.fc$sc$r3))   # full rho (Phi), R0
+  qd <- list(q0 = evf(.fc$sc$q0), q1 = evf(.fc$sc$q1), q2 = evf(.fc$sc$q2))   # FOCE inner gradient coef, R0
+  pf <- list(p = evf(.fc$sc$pF), p1 = evf(.fc$sc$pF1), p2 = evf(.fc$sc$pF2))  # FOCE determinant p = 1/R0
   np <- nth + nsg + omd$nom
   ei <- seq_len(neta); di <- seq_len(ndir); ae <- a[, ei, drop = FALSE]
   .dirOf <- function(p) dirTh[p]
+  # a0-chain (only when the variance depends on the population prediction, i.e. prop part)
+  .cf0 <- isTRUE(.fc$dependsF0) && !is.null(E0)
+  a0 <- if (.cf0) E0$a else NULL; A0 <- if (.cf0) E0$A else NULL
+  fq <- if (.cf0) list(qf0 = evf(.fc$f0$qf0), qff0 = evf(.fc$f0$qff0), qf0f0 = evf(.fc$f0$qf0f0),
+                       pFf0 = evf(.fc$f0$pFf0), pFf0f0 = evf(.fc$f0$pFf0f0),
+                       rhof0 = evf(.fc$f0$rhof0), rhof0f0 = evf(.fc$f0$rhof0f0)) else NULL
 
   # ---- Phi (data) pieces: FULL rho derivatives ----
   H <- Oi; for (l in ei) for (m in ei) H[l, m] <- H[l, m] + sum(rd$r2 * a[, l] * a[, m] + rd$r1 * A[, l, m])  # Phi_etaeta
@@ -643,53 +694,93 @@
 
   typ <- function(p) if (p <= nth) "th" else if (p <= nth + nsg) "sg" else "om"
   sgi <- function(p) sgVar[p - nth]; omc <- function(p) p - nth - nsg
-  perR <- function(p) lapply(ef$per[[sgi(p)]][c("rf", "rff")], evf)                 # rho sigma partials (Phi)
-  perQ <- function(p) list(qs = evf(ef$per[[sgi(p)]]$qs), qsf = evf(ef$per[[sgi(p)]]$qsf))  # FOCE inner sigma
-  perP <- function(p) list(ps = evf(ef$per[[sgi(p)]]$psF), pf = evf(ef$per[[sgi(p)]]$pfF))   # FOCE det sigma
-  pairKey <- function(aa, bb) { s1 <- sgi(aa); s2 <- sgi(bb); if (paste0(s1, s2) %in% names(ef$pair)) paste0(s1, s2) else paste0(s2, s1) }
-  pairR <- function(aa, bb) lapply(ef$pair[[pairKey(aa, bb)]][c("rss", "rfss")], evf)
-  pairQ <- function(aa, bb) list(qss = evf(ef$pair[[pairKey(aa, bb)]]$qss))
-  pairP <- function(aa, bb) list(pss = evf(ef$pair[[pairKey(aa, bb)]]$pssF))
+  perR <- function(p) lapply(.fc$per[[sgi(p)]][c("rf", "rff")], evf)                 # rho sigma partials (Phi), R0
+  perQ <- function(p) list(qs = evf(.fc$per[[sgi(p)]]$qs), qsf = evf(.fc$per[[sgi(p)]]$qsf))  # FOCE inner sigma, R0
+  perP <- function(p) list(ps = evf(.fc$per[[sgi(p)]]$psF), pf = evf(.fc$per[[sgi(p)]]$pfF))   # FOCE det sigma, R0
+  # sigma x population-prediction cross fields (a0-chain of the sigma x theta blocks)
+  PVf0 <- function(p) lapply(.fc$perf0[[sgi(p)]], evf)                               # qf0s, pFf0s, rhof0s
+  pairKey <- function(aa, bb) { s1 <- sgi(aa); s2 <- sgi(bb); if (paste0(s1, s2) %in% names(.fc$pair)) paste0(s1, s2) else paste0(s2, s1) }
+  pairR <- function(aa, bb) lapply(.fc$pair[[pairKey(aa, bb)]][c("rss", "rfss")], evf)
+  pairQ <- function(aa, bb) list(qss = evf(.fc$pair[[pairKey(aa, bb)]]$qss))
+  pairP <- function(aa, bb) list(pss = evf(.fc$pair[[pairKey(aa, bb)]]$pssF))
 
   # ---- data-side accessors (Phi partials) ----
+  # a0-correction to a theta-derivative of q0=Phi_f: d(q0)/d(theta) picks up qf0*a0 (the
+  # population prediction moves with theta); rho_ff0 == qf0.
   McolData <- function(p) { t <- typ(p)                                            # Phi_(eta,p)
-    if (t == "th") return(Ndat[, .dirOf(p)]); if (t == "sg") return(as.numeric(crossprod(ae, perR(p)$rf)))
+    if (t == "th") { v <- Ndat[, .dirOf(p)]
+      if (.cf0) v <- v + as.numeric(crossprod(ae, fq$qf0 * a0[, .dirOf(p)])); return(v) }
+    if (t == "sg") return(as.numeric(crossprod(ae, perR(p)$rf)))
     as.numeric(omd$dOi[[omc(p)]] %*% ehat) }
   d2Phi <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)                          # Phi_(p,p) at fixed eta
-    if (ta == "th" && tb == "th") return(sum(rd$r2 * a[, .dirOf(aa)] * a[, .dirOf(bb)] + rd$r1 * A[, .dirOf(aa), .dirOf(bb)]))
+    if (ta == "th" && tb == "th") { da <- .dirOf(aa); db <- .dirOf(bb)
+      v <- sum(rd$r2 * a[, da] * a[, db] + rd$r1 * A[, da, db])
+      if (.cf0) v <- v + sum(fq$qf0 * (a[, da] * a0[, db] + a0[, da] * a[, db]) +
+                             fq$rhof0f0 * a0[, da] * a0[, db] + fq$rhof0 * A0[, da, db])
+      return(v) }
     if (ta == "om" && tb == "om") return(0.5 * as.numeric(t(ehat) %*% omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat) + 0.5 * omd$d2LD[omc(aa), omc(bb)])
     if (ta == "om" || tb == "om") return(0)
     if (ta == "sg" && tb == "sg") return(sum(pairR(aa, bb)$rss))
-    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa; as.numeric(crossprod(a[, .dirOf(thp)], perR(sg)$rf)) }
+    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa
+    v <- as.numeric(crossprod(a[, .dirOf(thp)], perR(sg)$rf))
+    if (.cf0) v <- v + as.numeric(crossprod(a0[, .dirOf(thp)], PVf0(sg)$rhof0s)); v }
 
-  # ---- EBE-side accessors (S_FOCE partials) ----
+  # ---- EBE-side accessors (S_FOCE partials); S=Phi_eta, so S_p carries the same qf0*a0
+  # theta-chain as McolData; the eta-role indices (contracted with etaP) get no a0 term ----
   McolEBE <- function(p) { t <- typ(p)                                             # S_p
-    if (t == "th") return(Nf[, .dirOf(p)]); if (t == "sg") return(as.numeric(crossprod(ae, perQ(p)$qs)))
+    if (t == "th") { v <- Nf[, .dirOf(p)]
+      if (.cf0) v <- v + as.numeric(crossprod(ae, fq$qf0 * a0[, .dirOf(p)])); return(v) }
+    if (t == "sg") return(as.numeric(crossprod(ae, perQ(p)$qs)))
     as.numeric(omd$dOi[[omc(p)]] %*% ehat) }
-  SmatEBE <- function(p) { t <- typ(p)                                             # S_(p,eta)
-    if (t == "th") { M <- matrix(0, neta, ndir); for (l in ei) for (s in di) M[l, s] <- Tnf[l, .dirOf(p), s]; return(M) }
+  SmatEBE <- function(p) { t <- typ(p)                                             # S_(p,eta), eta-role s
+    if (t == "th") { d <- .dirOf(p); M <- matrix(0, neta, ndir)
+      for (l in ei) for (s in di) M[l, s] <- Tnf[l, d, s]
+      if (.cf0) for (l in ei) for (s in ei)
+        M[l, s] <- M[l, s] + sum(fq$qff0 * a[, s] * a0[, d] * a[, l] + fq$qf0 * a0[, d] * A[, l, s])
+      return(M) }
     if (t == "om") return(omd$dOi[[omc(p)]])
     P <- perQ(p); M <- matrix(0, neta, ndir); for (l in ei) for (s in di) M[l, s] <- sum(P$qsf * a[, s] * a[, l] + P$qs * A[, l, s]); M }
   SvecEBE <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)                       # S_(p,p)
-    if (ta == "th" && tb == "th") return(Tnf[, .dirOf(aa), .dirOf(bb)])
+    if (ta == "th" && tb == "th") { da <- .dirOf(aa); db <- .dirOf(bb); v <- Tnf[, da, db]
+      if (.cf0) { w <- fq$qff0 * (a[, da] * a0[, db] + a0[, da] * a[, db]) + fq$qf0f0 * a0[, da] * a0[, db] + fq$qf0 * A0[, da, db]
+        for (l in ei) v[l] <- v[l] + sum(w * a[, l] + fq$qf0 * (a0[, da] * A[, l, db] + a0[, db] * A[, l, da])) }
+      return(v) }
     if (ta == "om" && tb == "om") return(as.numeric(omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat))
     if (ta == "om" || tb == "om") return(rep(0, neta))
     if (ta == "sg" && tb == "sg") return(as.numeric(crossprod(ae, pairQ(aa, bb)$qss)))
-    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa; SmatEBE(sg)[, .dirOf(thp)] }
+    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa
+    v <- SmatEBE(sg)[, .dirOf(thp)]
+    if (.cf0) v <- v + as.numeric(crossprod(ae, PVf0(sg)$qf0s * a0[, .dirOf(thp)])); v }
 
-  # ---- determinant-side accessors (H~ partials, p = 1/R) ----
+  # ---- determinant-side accessors (H~ partials, p = 1/R0).  dHtD/d2HtDD are eta-role
+  # (pF1=pF2=0), so a theta-derivative of pF=1/R0 adds a pFf0*a0 chain on the `th` blocks. ----
   dHt_p <- function(p) { t <- typ(p)
-    if (t == "th") return(dHtD[[.dirOf(p)]]); if (t == "sg") return(ouAA(perP(p)$ps)); omd$dOi[[omc(p)]] }
+    if (t == "th") { D <- dHtD[[.dirOf(p)]]
+      if (.cf0) { d <- .dirOf(p); for (m in ei) for (n in ei) D[m, n] <- D[m, n] + sum(fq$pFf0 * a0[, d] * a[, m] * a[, n]) }
+      return(D) }
+    if (t == "sg") return(ouAA(perP(p)$ps)); omd$dOi[[omc(p)]] }
   d2HtEtaP <- function(p, l) { t <- typ(p)
-    if (t == "th") return(d2HtDD[[.dirOf(p)]][[l]]); if (t == "om") return(matrix(0, neta, neta))
+    if (t == "th") { D <- d2HtDD[[.dirOf(p)]][[l]]
+      if (.cf0) { d <- .dirOf(p); for (m in ei) for (n in ei)
+        D[m, n] <- D[m, n] + sum(fq$pFf0 * a0[, d] * (A[, m, l] * a[, n] + a[, m] * A[, n, l])) }
+      return(D) }
+    if (t == "om") return(matrix(0, neta, neta))
     P <- perP(p); D <- matrix(0, neta, neta); for (s in ei) for (m in ei)
       D[s, m] <- sum(P$pf * a[, l] * a[, s] * a[, m] + P$ps * (A[, s, l] * a[, m] + a[, s] * A[, m, l])); D }
   d2Ht_pp <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)
-    if (ta == "th" && tb == "th") return(d2HtDD[[.dirOf(aa)]][[.dirOf(bb)]])
+    if (ta == "th" && tb == "th") { da <- .dirOf(aa); db <- .dirOf(bb); D <- d2HtDD[[da]][[db]]
+      if (.cf0) for (m in ei) for (n in ei)
+        D[m, n] <- D[m, n] + sum(fq$pFf0f0 * a0[, da] * a0[, db] * a[, m] * a[, n] + fq$pFf0 * A0[, da, db] * a[, m] * a[, n] +
+          fq$pFf0 * (a0[, da] * A[, m, db] + a0[, db] * A[, m, da]) * a[, n] +
+          fq$pFf0 * (a0[, da] * A[, n, db] + a0[, db] * A[, n, da]) * a[, m])
+      return(D) }
     if (ta == "om" && tb == "om") return(omd$d2Oi[[omc(aa)]][[omc(bb)]])
     if (ta == "om" || tb == "om") return(matrix(0, neta, neta))
     if (ta == "sg" && tb == "sg") return(ouAA(pairP(aa, bb)$pss))
-    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa; d2HtEtaP(sg, .dirOf(thp)) }
+    thp <- if (ta == "th") aa else bb; sg <- if (ta == "th") bb else aa; d <- .dirOf(thp)
+    D <- d2HtEtaP(sg, d)
+    if (.cf0) { P <- PVf0(sg); for (m in ei) for (n in ei) D[m, n] <- D[m, n] + sum(P$pFf0s * a0[, d] * a[, m] * a[, n]) }
+    D }
   Cpe <- function(p, l) 0.5 * (tr(Hti %*% d2HtEtaP(p, l)) - tr(Hti %*% dHt_p(p) %*% Hti %*% dHtD[[l]]))
   Cpp <- function(aa, bb) 0.5 * (tr(Hti %*% d2Ht_pp(aa, bb)) - tr(Hti %*% dHt_p(aa) %*% Hti %*% dHt_p(bb)))
 
@@ -750,12 +841,13 @@
 #' (byte no-op).  `NULL` on a solve/Newton failure -> caller falls back to FD.
 #' @noRd
 .foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, ef, Oi, neta, tol,
-                                  maxit = 30L, skip = 1e-3, conv = 1e-9) {
+                                  maxit = 30L, skip = 1e-3, conv = 1e-9, f0 = NULL) {
   ei <- seq_len(neta)
+  .sc <- if (is.null(ef$foce)) ef$sc else ef$foce$sc   # R0 (eta=0 variance) inner pieces
   .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
     E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
     if (is.null(E)) return(NULL)
-    q0 <- ef$ev(ef$sc$q0, E$f, y); q1 <- ef$ev(ef$sc$q1, E$f, y)
+    q0 <- ef$ev(.sc$q0, E$f, y, f0); q1 <- ef$ev(.sc$q1, E$f, y, f0)
     S <- as.numeric(Oi %*% eta); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
     Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
     list(S = S, Hf = Hf)
