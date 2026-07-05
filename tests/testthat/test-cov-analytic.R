@@ -262,7 +262,7 @@ test_that(".omegaBlocks uses the declared block, not converged values", {
   # one block, so its covariance parameter is not silently dropped from the cov
   Om <- diag(3); Om[2, 3] <- Om[3, 2] <- 1e-12
   idf <- data.frame(neta1 = c(1, 2, 3, 2), neta2 = c(1, 2, 3, 3))
-  blk <- nlmixr2est:::.omegaBlocks(Om, idf)
+  blk <- nlmixr2est:::.omegaBlocks(Om, idf) # nolint: undesirable_operator_linter.
   expect_length(blk, 2L)
   expect_true(any(vapply(blk, function(b) all(c(2L, 3L) %in% b), logical(1))))
 })
