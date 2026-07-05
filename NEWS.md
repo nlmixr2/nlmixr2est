@@ -67,6 +67,15 @@
   discrete adjoint (`"adjoint"`) using the matching `s`-method, or pick it
   automatically (`"auto"`) when estimated thetas exceed ODE states, matching
   the forward result
+- Matrix-exponential / inductive-linearization models (`matExp()` with optional
+  `indLin()` forcing) now estimate with the focei family (focei/foce/foi/posthoc),
+  the nlm family (nlm/nlminb/...), and SAEM, matching the equivalent ODE model.
+  A hand-written `matExp()` model that used `indLin()` previously registered the
+  forcing state as compartment 1, reversing it relative to the ODE and misplacing
+  default (compartment-1) dosing; the generated cmt()/d/dt() declarations now
+  order compartments source-first from the `k_<from>_<to>` graph.  SAEM also now
+  materializes the implied `d/dt()` for these models instead of erroring
+
 - Added `sensMethod` to the nlm-family controls (`nlmControl()`,
   `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
   and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter

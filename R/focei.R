@@ -257,6 +257,46 @@ is.latex <- function() {
   setdiff(rxode2stateOde(x), "output")
 }
 
+#' Order matExp() compartments source-first from the k_from_to graph
+#'
+#' A hand-written `matExp()` model that also uses `indLin()` registers the
+#' `indLin()` state as compartment 1 during parsing, which reverses it relative
+#' to the equivalent ODE model (whose dosed/source compartment comes first).
+#' That misplaces default (compartment-1) dosing.  This restores a source-first
+#' order via a topological sort of the `k_<from>_<to>` transfer graph so the
+#' generated cmt()/d/dt() declarations -- which set the compiled compartment
+#' numbering the solver and data cmt-mapping use -- match the ODE formulation.
+#'
+#' @param states character vector of compartment names (no "output")
+#' @param kNames character vector of model lhs names (the k_from_to constants)
+#' @return `states` reordered source-first; unchanged when no graph is available
+#' @noRd
+.rxMatExpStateOrder <- function(states, kNames) {
+  if (length(states) < 2L) return(states)
+  .from <- character(0)
+  .to <- character(0)
+  for (.k in kNames) {
+    .m <- regmatches(.k, regexec("^k[_.]([^_.]+)[_.]([^_.]+)$", .k))[[1L]]
+    if (length(.m) == 3L && .m[2L] %in% states && .m[3L] %in% states) {
+      .from <- c(.from, .m[2L])
+      .to <- c(.to, .m[3L])
+    }
+  }
+  if (length(.from) == 0L) return(states)
+  .indeg <- stats::setNames(integer(length(states)), states)
+  for (.t in .to) .indeg[.t] <- .indeg[.t] + 1L
+  .ord <- character(0)
+  .rem <- states
+  while (length(.rem) > 0L) {
+    .ready <- .rem[.indeg[.rem] == 0L]
+    .pick <- if (length(.ready) > 0L) .ready[1L] else .rem[1L]
+    .ord <- c(.ord, .pick)
+    .rem <- setdiff(.rem, .pick)
+    for (.t in .to[.from == .pick]) .indeg[.t] <- .indeg[.t] - 1L
+  }
+  .ord
+}
+
 .rxInjectMatExpDdt <- function(s) {
   .mv <- rxode2::rxModelVars(s)
   if (!is.list(.mv$indLin) || length(.mv$indLin) != 4L) {
@@ -266,6 +306,7 @@ is.latex <- function() {
   if (length(.states) == 0L) {
     return(invisible(FALSE))
   }
+  .states <- .rxMatExpStateOrder(.states, ls(envir = s, all.names = TRUE))
   rxode2::.rxInjectMatExpOdes(s)
   .ddt <- stats::setNames(rep("0", length(.states)), .states)
   for (.p in ls(envir = s, all.names = TRUE)) {
@@ -371,6 +412,10 @@ rxUiGet.foceiCmtPreModel <- function(x, ...) {
   .ui <- x[[1]]
   .state <- .rxode2stateOdeNoOutput(.ui$mv0)
   if (length(.state) == 0) return("")
+  .mv <- .ui$mv0
+  if (is.list(.mv$indLin) && length(.mv$indLin) == 4L) {
+    .state <- .rxMatExpStateOrder(.state, .mv$lhs)
+  }
   paste(paste0("cmt(", .state, ")"), collapse="\n")
 }
 attr(rxUiGet.foceiCmtPreModel, "rstudio") <- ""
