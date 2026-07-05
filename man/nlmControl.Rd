@@ -27,7 +27,7 @@ nlmControl(
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "auto", "forward", "adjoint"),
+  sensMethod = c("default", "forward", "adjoint"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -148,11 +148,10 @@ uses the legacy finite-difference behavior.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities:
 `"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-the estimated `THETA` parameters exceed the number of ODE states and
-`"forward"` otherwise.}
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.}
 
 \item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
 iteration print. `NULL` (default) defers to [crayon::has_color()].}

@@ -1,5 +1,10 @@
 # nlmixr2est (development version)
 
+- `matExp()`/`indLin()` models now estimate with the focei family, the nlm
+  family, and SAEM, matching the equivalent ODE model; compartments are
+  ordered source-first from the `k_<from>_<to>` graph so default dosing is
+  placed correctly
+
 - Added `sensMethod` to the nlm-family controls (`nlmControl()`,
   `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
   and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
