@@ -312,15 +312,28 @@ attr(rxUiGet.saemParams, "rstudio") <- "params(tka)"
 rxUiGet.saemModel <- function(x, ...) {
   .s <- rxUiGet.loadPruneSaem(x, ...)
 
+  # matExp() models carry no d/dt(): materialize it from the k_from_to rate
+  # constants (source-first order) and emit the model LHS (which defines those
+  # constants) ahead of the d/dt() lines so the derivatives can resolve them.
+  # The LHS is suppressed ('~') so it adds no output column.
+  .isMatExp <- isTRUE(.rxInjectMatExpDdt(.s))
+
   .prd <- get("rx_pred_", envir = .s)
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.prd))
   ## .lhs0 <- .s$..lhs0
   ## if (is.null(.lhs0)) .lhs0 <- ""
   .ddt <- .s$..ddt
   if (is.null(.ddt)) .ddt <- ""
+  .preLhs <- character(0)
+  if (.isMatExp) {
+    .lhs <- .s$..lhs
+    if (is.null(.lhs)) .lhs <- character(0)
+    .preLhs <- sub("^([^=]+)=", "\\1~", .lhs)
+  }
   .ret <- paste(c(
     #.s$..stateInfo["state"],
     #.lhs0,
+    .preLhs,
     .ddt,
     .prd,
     #.s$..stateInfo["statef"],
