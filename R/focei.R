@@ -778,8 +778,11 @@ attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
-  ## Take etas from rx_r
-  eval(parse(text = rxode2::rxRepR0_(.s$..maxEta)))
+  ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
+  ## d(f)/d(eta)).  The old `rxRepR0_` symbolic freeze only zeroed EXPLICIT etas --
+  ## it left ODE model states live in R and injected a second linCmt call that
+  ## corrupted the gradients.  The eta=0 population R is now supplied in C++
+  ## (getPopR / likInner0).
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .rxFinalizeInner(.s, .sumProd, .optExpression)

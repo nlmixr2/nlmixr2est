@@ -503,6 +503,15 @@ static inline void resetEtaSelective(focei_ind *fInd, int neta) {
 
 focei_ind *inds_focei = NULL;
 
+// FOCE eta=0 population-R cache.  rPop depends only on theta, so it is constant
+// across the whole inner optimization and only needs recomputing when theta
+// changes.  Keyed by subject id (getRxNsubAndMix).  The generation counter is
+// bumped in updateTheta() (single-threaded, before the parallel inner region)
+// and only read inside that region, so no locking is needed.
+static std::vector<arma::vec> _foceRPopCache;
+static std::vector<long> _foceRPopGen;
+static long _foceRPopCurGen = 0;
+
 // Parameter table
 std::vector<int> niter;
 std::vector<int> iterType;
@@ -820,6 +829,9 @@ void updateTheta(double *theta){
     // op_focei.estStr=sc + un + ex;
     std::copy(&theta[0], &theta[0] + op_focei.npars, &op_focei.theta[0]);
   }
+  // Theta moved -> invalidate the FOCE eta=0 population-R cache (rPop is a
+  // function of theta only).  Bumped even for FOCEI (cache simply unused there).
+  _foceRPopCurGen++;
 }
 
 arma::mat cholSE__(arma::mat A, double tol);
@@ -1032,6 +1044,47 @@ arma::vec calcGradCentral(arma::vec &grMH, arma::vec &f0,
   ret.zeros();
   return ret;
 }
+// FOCE (interaction==0): R must enter the inner likelihood at the eta=0
+// population prediction, held constant (the truncated Sheiner-Beal gradient
+// drops dR/deta, so eta-dependent R destabilizes the optimizer).  Solve the
+// inner model at eta=0 and read rx_r_ (lhs[neta+1]) per obs into rPop in the
+// likInner0 observation k-order.  Call BEFORE the inner solve (this overwrites
+// ind->solve; the inner solve re-establishes it).
+static void getPopR(int id, arma::vec &rPop) {
+  int _rxId = getRxId(id); // base subject index for rxode2
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  rx_solving_options *op = getSolvingOptions(rx);
+  int nObsMax = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+  if ((int)rPop.n_elem < nObsMax) rPop.set_size(nObsMax);
+  EtaRestoreGuard etaGuard(id); // restore the trial eta on any exit path
+  arma::vec zeroEta(op_focei.neta, arma::fill::zeros);
+  updateEta(zeroEta.memptr(), id); // eta = 0 -> population prediction
+  // innerOde (not predOde): the pred model shares a global linCmt solver
+  // pointer with the inner model, so solving it here would corrupt the next
+  // inner linCmt gradient.  At eta=0 the inner model's states are population,
+  // so its rx_r_ is the genuine eta=0 R for both ODE and linCmt.
+  setIndSolve(ind, -1);
+  innerOde(_rxId); // solve the inner model at eta=0
+  iniSubjectE(_rxId, 1, ind, op, rx, rxInner.update_inis);
+  int kk, k = 0;
+  double curT;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      continue;
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      rPop(k) = lhs[op_focei.neta + 1]; // inner-model rx_r_ at eta=0
+      k++;
+      if (k >= nObsMax) break;
+    }
+  }
+}
+
 double likInner0(double *eta, int id) {
   rx = getRxSolve_();
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
@@ -1057,12 +1110,29 @@ double likInner0(double *eta, int id) {
   } else {
     recalc = true;
   }
+  arma::vec rPopVec;  // FOCE: per-obs eta=0 population R (empty for FOCEI)
   if (recalc){
     if (op_focei.mixIdxN != 0) {
       setIndMixest(ind, getRxMixFromId(id));
     }
     for (j = op_focei.neta; j--;){
       setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
+    }
+    // FOCE: capture eta=0 population R before the inner solve overwrites
+    // ind->solve.  rPop is a function of theta only, so it is cached across inner
+    // iterations and recomputed only when updateTheta() bumps the generation
+    // counter -- keeping FOCE at one solve per inner iteration (like FOCEI) plus
+    // one eta=0 solve per subject per outer iteration, not two solves every time.
+    if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
+      if (id >= 0 && id < (int)_foceRPopGen.size()) {
+        if (_foceRPopGen[id] != _foceRPopCurGen) {
+          getPopR(id, _foceRPopCache[id]);
+          _foceRPopGen[id] = _foceRPopCurGen;
+        }
+        rPopVec = _foceRPopCache[id];
+      } else {
+        getPopR(id, rPopVec); // cache not sized (defensive); recompute directly
+      }
     }
     // Reset the sticky-recalc counter only if this subject hasn't exhausted its
     // retry budget yet; otherwise subsequent calls keep short-circuiting the
@@ -1337,6 +1407,10 @@ double likInner0(double *eta, int id) {
           }
           if (dist == rxDistributionNorm) {
             r = lhs[op_focei.neta + 1];
+            // FOCE: use the eta=0 population R (FOCEI keeps the inner rx_r_)
+            if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
+              r = rPopVec(k);
+            }
             if (r <= sqrt(std::numeric_limits<double>::epsilon())) {
               r = 1.0;
             }
@@ -1374,7 +1448,14 @@ double likInner0(double *eta, int id) {
           } else {
             // Use `a` (=fpm) for the gradient so dose-based etas share the same
             // approach for normal and non-normal log likelihoods; err/r are garbage here.
-            if (dist == rxDistributionNorm) lnr =_safe_log(lhs[op_focei.neta + 1]);
+            // FOCE: log(R) from the same eta=0 population R (in r); FOCEI keeps lhs
+            if (dist == rxDistributionNorm) {
+              if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
+                lnr = _safe_log(r);
+              } else {
+                lnr = _safe_log(lhs[op_focei.neta + 1]);
+              }
+            }
             else lnr = 0;
             // fInd->r(k, 0) = lhs[op_focei.neta+1];
             // B(k, 0) = 2.0/lhs[op_focei.neta+1];
@@ -3966,6 +4047,11 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
 
   if (inds_focei != NULL) R_Free(inds_focei);
   inds_focei = R_Calloc(getRxNsubAndMix(rx), focei_ind);
+  // Size the FOCE eta=0 population-R cache alongside inds_focei (single-threaded
+  // here); gen = -1 forces a compute on each subject's first inner call.
+  _foceRPopCache.assign(getRxNsubAndMix(rx), arma::vec());
+  _foceRPopGen.assign(getRxNsubAndMix(rx), -1L);
+  _foceRPopCurGen = 0;
   RObject etaMat0s = transpose(etaMat0);
   double *etaMat0d = REAL(etaMat0s);
   {

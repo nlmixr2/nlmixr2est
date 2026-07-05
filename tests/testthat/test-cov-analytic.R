@@ -429,13 +429,19 @@ test_that("FOCE (interaction=FALSE) additive analytic cov equals the FOCEI analy
   expect_equal(unname(seF), unname(seI), tolerance = 0.01)
 })
 
-test_that("FOCE (interaction=FALSE) combined analytic cov re-solves EBEs and matches gold FD", {
+test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-FOCE gold FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # nlmixr's stored FOCE-combined EBEs do NOT satisfy S_FOCE=0 (an estimation-side
-  # inconsistency), so the analytic path re-solves each subject's EBE before forming R.
-  # The FOCE (interaction-free) objective differs from FOCEI -> different SEs, and the
-  # analytic theta SEs match a direct finite-difference of the nlmixr2 FOCE objective.
+  # CORRECTED FOCE: the estimator freezes the residual variance R0 at the eta=0
+  # POPULATION prediction (getPopR); the analytic path builds q0=-(y-f)/R0, p=1/R0 and
+  # their theta-chain from an eta=0 augmented solve.  Validation is against a FULLY
+  # INDEPENDENT finite-difference Hessian of the corrected-FOCE objective
+  # (Phi(R0) + 0.5 log|H~_FOCE|, R0 at the eta=0 prediction, EBEs re-solved to
+  # S_FOCE = sum(-(y-f)/R0 . a) + Omega^-1 eta = 0).  The FOCE objective differs from
+  # FOCEI, so the covariances differ.  NB: for this model+data the corrected FOCE
+  # observed information is indefinite (one negative eigenvalue), so a couple of SEs
+  # are NaN in BOTH the analytic and the gold FD -- the correctness criterion is that
+  # the analytic R MATRIX reproduces the gold-FD Hessian, not that it is invertible.
   theo <- nlmixr2data::theo_sd
   fitF <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
             foceiControl(print = 0L, covMethod = "", interaction = FALSE)))
@@ -443,13 +449,11 @@ test_that("FOCE (interaction=FALSE) combined analytic cov re-solves EBEs and mat
             foceiControl(print = 0L, covMethod = "")))
   rF <- foceiCovAnalytic(fitF); rI <- foceiCovAnalytic(fitI)
   expect_false(is.null(rF)); expect_identical(rF$method, "analytic")
-  .th <- c("tka", "tcl", "tv")
-  expect_true(all(is.finite(rF$se[.th])) && all(rF$se[.th] > 0))
   # FOCE combined != FOCEI combined (the interaction term is non-zero for prop error)
-  expect_false(isTRUE(all.equal(unname(rF$se[.th]), unname(rI$se[.th]), tolerance = 1e-3)))
+  expect_false(isTRUE(all.equal(unname(rF$R), unname(rI$R), tolerance = 1e-2)))
 
-  # gold standard: FD Hessian of the nlmixr2 FOCE objective (Phi + 0.5 log|H~_FOCE|,
-  # p=1/R), EBEs re-solved to S_FOCE=0 at each perturbed parameter vector.
+  # gold standard: central-FD Hessian of the CORRECTED FOCE objective (R0 = eta=0
+  # population variance), EBEs re-solved to S_FOCE=0 at each perturbed parameter vector.
   ui <- fitF$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
   am <- .foceiAnalyticAugModelDirs(ui, etav)
   thNames <- names(fitF$theta)
@@ -462,36 +466,48 @@ test_that("FOCE (interaction=FALSE) combined analytic cov re-solves EBEs and mat
   subj <- lapply(seq_along(ids), function(i) {
     s <- byId[[as.character(idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
     list(s = s, times = obs$TIME, y = obs$DV, eta0 = eta0m[i, ]) })
-  .fa <- function(th, eta, s, times) .foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-11)
+  .fa <- function(th, eta, s, times) .foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
   objFOCE <- function(psi) {
     th <- thBase; th[iTh] <- psi[1:5]; sa <- psi[4]; sp <- psi[5]
     Om <- Om0; diag(Om) <- psi[6:8]; Oi <- solve(Om); ldOm <- log(det(Om)); tot <- 0
     for (sj in subj) {
-      y <- sj$y; s <- sj$s; times <- sj$times; eta <- sj$eta0
-      for (it in 1:60) {
+      y <- sj$y; s <- sj$s; times <- sj$times
+      E0 <- .fa(th, rep(0, neta), s, times); if (is.null(E0)) return(NA_real_)
+      R0 <- sa^2 + sp^2 * E0$f^2                       # eta=0 population variance (fixed in eta)
+      eta <- sj$eta0
+      for (it in 1:100) {
         E <- .fa(th, eta, s, times); if (is.null(E)) return(NA_real_)
-        f <- E$f; R <- sa^2 + sp^2 * f^2; Rp <- 2 * sp^2 * f
-        q0 <- (f - y) / R; q0f <- 1/R - (f - y) * Rp / R^2
+        q0 <- -(y - E$f) / R0
         S <- as.numeric(Oi %*% eta); for (l in 1:neta) S[l] <- S[l] + sum(q0 * E$a[, l])
-        if (max(abs(S)) < 1e-11) break
-        Hf <- Oi; for (l in 1:neta) for (m in 1:neta) Hf[l, m] <- Hf[l, m] + sum(q0f * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
+        if (max(abs(S)) < 1e-12) break
+        Hf <- Oi; for (l in 1:neta) for (m in 1:neta) Hf[l, m] <- Hf[l, m] + sum((1/R0) * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
         eta <- eta - solve(Hf, S)
       }
-      E <- .fa(th, eta, s, times); f <- E$f; R <- sa^2 + sp^2 * f^2
-      Phi <- 0.5 * sum((y - f)^2 / R + log(R)) + 0.5 * as.numeric(t(eta) %*% Oi %*% eta) + 0.5 * ldOm
-      Ht <- Oi; for (l in 1:neta) for (m in 1:neta) Ht[l, m] <- Ht[l, m] + sum((1/R) * E$a[, l] * E$a[, m])
+      E <- .fa(th, eta, s, times); f <- E$f
+      Phi <- 0.5 * sum((y - f)^2 / R0 + log(R0)) + 0.5 * as.numeric(t(eta) %*% Oi %*% eta) + 0.5 * ldOm
+      Ht <- Oi; for (l in 1:neta) for (m in 1:neta) Ht[l, m] <- Ht[l, m] + sum((1/R0) * E$a[, l] * E$a[, m])
       tot <- tot + Phi + 0.5 * log(det(Ht))
     }
     tot
   }
   psi0 <- c(as.numeric(fitF$theta[c("tka", "tcl", "tv", "add.sd", "prop.sd")]), diag(Om0))
-  np <- length(psi0); h <- pmax(abs(psi0), 1) * 1e-4; H <- matrix(0, np, np); f0 <- objFOCE(psi0)
+  np <- length(psi0); h <- pmax(abs(psi0), 0.5) * 5e-5; H <- matrix(0, np, np); f0 <- objFOCE(psi0)
   for (i in 1:np) { ei <- numeric(np); ei[i] <- h[i]
     H[i, i] <- (objFOCE(psi0 + 2*ei) - 2*f0 + objFOCE(psi0 - 2*ei)) / (4 * h[i]^2) }
   for (i in 1:(np-1)) for (j in (i+1):np) { ei <- numeric(np); ei[i] <- h[i]; ej <- numeric(np); ej[j] <- h[j]
     H[i, j] <- H[j, i] <- (objFOCE(psi0+ei+ej) - objFOCE(psi0+ei-ej) - objFOCE(psi0-ei+ej) + objFOCE(psi0-ei-ej)) / (4 * h[i] * h[j]) }
-  seG <- sqrt(diag(solve(H)))[1:3]
-  # analytic FOCE theta SEs match the gold FD to ~1e-4 (the prior FD-min covMethod="r"
-  # path is degenerate for this objective and is not a valid reference here)
-  expect_equal(unname(rF$se[.th]), unname(seG), tolerance = 5e-3)
+  pn <- c("tka", "tcl", "tv", "add.sd", "prop.sd", "om.tka", "om.tcl", "om.tv")
+  dimnames(H) <- list(pn, pn); Ran <- rF$R[pn, pn]
+  # the analytic observed-information R reproduces the gold-FD Hessian: exact on every
+  # numerically significant entry (rel < 3e-4 on entries above 1% of the matrix norm;
+  # tiny entries carry only central-FD roundoff).
+  big <- abs(H) > 0.01 * max(abs(H))
+  expect_lt(max(abs(Ran[big] - H[big]) / abs(H[big])), 3e-4)
+  # and the whole matrix agrees to central-FD accuracy
+  expect_lt(max(abs(Ran - H) / (abs(H) + 1e-6)), 3e-3)
+  # finite SEs (the identified directions) match the gold FD
+  seA <- suppressWarnings(sqrt(diag(solve(Ran)))); seG <- suppressWarnings(sqrt(diag(solve(H))))
+  fin <- is.finite(seA) & is.finite(seG)
+  expect_gt(sum(fin), 4L)                              # most directions are identified
+  expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
 })
