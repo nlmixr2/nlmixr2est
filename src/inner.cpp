@@ -7048,6 +7048,39 @@ static double foceiFdObjAt(const FdFullCtx &c, const std::vector<double> &x) {
   return foceiOfv0(&op_focei.theta[0]);
 }
 
+// gill83 callback (plain function pointer -> file-static context): the objective at the
+// perturbed natural parameter vector.  Same role as gill83fnF for the theta gradient.
+static const FdFullCtx *g_fdGillCtx = nullptr;
+static void foceiFdGill83fn(double *fp, double *theta, int, int) {
+  const FdFullCtx &c = *g_fdGillCtx;
+  std::vector<double> x(theta, theta + c.nth + c.nom);
+  *fp = foceiFdObjAt(c, x);
+}
+
+// Per-parameter finite-difference step for coordinate i via the Gill-Murray-Saunders-
+// Wright (1983) optimal-interval routine gill83 -- the SAME infrastructure foceiCalcR uses
+// for the theta gradient/Hessian steps (it grows the step until the 2nd-difference
+// condition error sits in [0.001, 0.1]).  Returns the accepted central step `hphif`, or
+// NA_REAL if gill83 fails (caller falls back to a step-doubling search).
+static double foceiFdGillStep(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0) {
+  g_fdGillCtx = &c;
+  std::vector<double> xg = x0;                       // gill83 perturbs then restores this
+  double hf, hphif, df, df2, ef;
+  int gret = gill83(&hf, &hphif, &df, &df2, &ef, xg.data(), i,
+                    op_focei.gillRtol, op_focei.gillK, op_focei.gillStep, op_focei.gillFtol,
+                    -1, foceiFdGill83fn, 0, f0);
+  return (gret == 1 && R_FINITE(hphif) && hphif > 0) ? hphif : NA_REAL;
+}
+
+// 5-point central diagonal 2nd-difference at step `e` (the foceiCalcR stencil).
+static double foceiFdDiag5(const FdFullCtx &c, int i, const std::vector<double> &x0, double f0, double e) {
+  std::vector<double> xp2=x0,xp1=x0,xm1=x0,xm2=x0;
+  xp2[i]+=2*e; xp1[i]+=e; xm1[i]-=e; xm2[i]-=2*e;
+  double f1=foceiFdObjAt(c,xp2), f2=foceiFdObjAt(c,xp1), f3=foceiFdObjAt(c,xm1), f4=foceiFdObjAt(c,xm2);
+  if (!R_FINITE(f1)||!R_FINITE(f2)||!R_FINITE(f3)||!R_FINITE(f4)) return NA_REAL;
+  return (-f1 + 16*f2 - 30*f0 + 16*f3 - f4) / (12*e*e);
+}
+
 // Gill-style adaptive diagonal 2nd-difference for coordinate i: grow the step until the
 // 2nd-difference stabilizes (below that it is round-off dominated, which makes the
 // off-diagonal Hessian -- and the covariance -- indefinite).  Returns it (or NA_REAL);
@@ -7082,14 +7115,20 @@ static double foceiFdOffDiag(const FdFullCtx &c, int i, int j, const std::vector
   return (a - b - cc + d) / (4*h[i]*h[j]);
 }
 
-// full natural-scale FD Hessian at x0 (f0=obj(x0)); false on any non-finite probe.
+// full natural-scale FD Hessian at x0 (f0=obj(x0)), mirroring foceiCalcR: a Gill-optimal
+// per-parameter step (gill83) with the 5-point diagonal and 4-point off-diagonal stencils.
+// If gill83 fails for a coordinate, fall back to the step-doubling diagonal.  Returns false
+// on any non-finite probe.
 static bool foceiFdHessian(const FdFullCtx &c, const std::vector<double> &x0, double f0, arma::mat &H) {
   int np = c.nth + c.nom;
   H.zeros(np, np);
   if (!R_FINITE(f0)) return false;
   std::vector<double> h(np);
   for (int i = 0; i < np; ++i) {
-    H(i, i) = foceiFdDiag(c, i, x0, f0, &h[i]);
+    double e = foceiFdGillStep(c, i, x0, f0);
+    double d2 = R_FINITE(e) ? foceiFdDiag5(c, i, x0, f0, e) : NA_REAL;
+    if (R_FINITE(d2)) { h[i] = e; H(i, i) = d2; }
+    else              { H(i, i) = foceiFdDiag(c, i, x0, f0, &h[i]); }   // step-doubling fallback
     if (!R_FINITE(H(i, i))) return false;
   }
   for (int i = 0; i < np - 1; ++i) for (int j = i+1; j < np; ++j) {

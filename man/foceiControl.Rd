@@ -255,8 +255,9 @@ matching the historical finite-difference \code{fit$cov} shape for backwards
 compatibility); \code{TRUE} installs the full theta + residual sigma + Omega
 covariance -- assembled analytically for \code{covType="analytic"}, or by
 central finite differences of the objective over the same parameter set for
-\code{covType="fd"} (perturbing Omega on the variance-covariance scale, with a
-Gill-style adaptive step).  The theta standard errors are identical either way.}
+\code{covType="fd"} (perturbing Omega on the variance-covariance scale, with the
+per-parameter Gill (1983) step and the 5-point/4-point stencils that
+\code{foceiCalcR} uses).  The theta standard errors are identical either way.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
