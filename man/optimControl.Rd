@@ -50,7 +50,7 @@ optimControl(
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("auto", "forward", "adjoint"),
+  sensMethod = c("default", "auto", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "optim", ""),
@@ -255,11 +255,12 @@ sd, c = power exponent (1 in the proportional case).}
 uses the legacy finite-difference behavior.}
 
 \item{sensMethod}{Method used to compute the ODE parameter sensitivities:
-`"auto"` (default) selects `"adjoint"` when the number of estimated `THETA`
-parameters exceeds the number of ODE states (where the adjoint is cheaper)
-and `"forward"` otherwise; `"forward"` always uses the classic variational
-(forward) sensitivity ODEs; `"adjoint"` always solves them with the
-in-engine discrete adjoint using the matching adjoint (`s`) method.}
+`"default"` (the default) defers to the global option
+`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
+(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
+with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
+the estimated parameters exceed the number of ODE states and `"forward"`
+otherwise.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}

@@ -4,9 +4,10 @@
   `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
   and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
   sensitivities can be computed with the in-engine discrete adjoint
-  (`"adjoint"`) using the matching `s`-method.  The default is `"auto"`, which
-  uses the adjoint when the differentiated parameters exceed the ODE states and
-  the forward sensitivities otherwise, matching the forward result
+  (`"adjoint"`), the forward sensitivities (`"forward"`), or automatically
+  (`"auto"`).  When left at `"default"`, the method is taken from the global
+  option `getOption("nlmixr2est.adjoint")`, so the package-wide policy can be
+  set in one place
 
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and

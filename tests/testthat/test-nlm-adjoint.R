@@ -195,13 +195,30 @@ nmTest({
     expect_equal(adj$objf, fwd$objf, tolerance = 1e-2)
   })
 
-  test_that("default sensMethod is 'auto' across the nlm family", {
-    expect_equal(nlmControl()$sensMethod, "auto")
-    expect_equal(foceiControl()$sensMethod, "auto")
-    expect_equal(nlminbControl()$sensMethod, "auto")
-    expect_equal(optimControl()$sensMethod, "auto")
-    expect_equal(n1qn1Control()$sensMethod, "auto")
-    expect_equal(lbfgsb3cControl()$sensMethod, "auto")
+  test_that("default sensMethod is 'default' across the nlm family", {
+    expect_equal(nlmControl()$sensMethod, "default")
+    expect_equal(foceiControl()$sensMethod, "default")
+    expect_equal(nlminbControl()$sensMethod, "default")
+    expect_equal(optimControl()$sensMethod, "default")
+    expect_equal(n1qn1Control()$sensMethod, "default")
+    expect_equal(lbfgsb3cControl()$sensMethod, "default")
+  })
+
+  test_that("'default' sensMethod defers to getOption('nlmixr2est.adjoint')", {
+    .r <- function() {
+      .ui <- .mkNlmUi(nlmControl())  # sensMethod = "default"
+      nlmixr2est:::.nlmAdjointResolve(.ui)
+    }
+    withr::with_options(list(nlmixr2est.adjoint = "adjoint"), {
+      expect_true(.r()$useAdjoint)          # theo 1-cmt: 2 states, adjoint applies
+    })
+    withr::with_options(list(nlmixr2est.adjoint = "forward"), {
+      expect_false(.r()$useAdjoint)
+    })
+    withr::with_options(list(nlmixr2est.adjoint = "auto"), {
+      ## 4 thetas > 2 states -> auto picks adjoint
+      expect_true(.r()$useAdjoint)
+    })
   })
 
   test_that("default (auto) nlm fit matches an explicit forward fit", {
