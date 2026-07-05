@@ -53,6 +53,22 @@
   invisible()
 }
 
+#' Emit the reason the analytic (covType="analytic") observed-information R-matrix
+#' is unavailable for this model and return `NULL` so the caller drops to the
+#' finite-difference Hessian.  Only reached in opted-in paths -- the native
+#' `.foceiCalcRanalytic` hook checks `covType=="analytic"` first and
+#' `foceiCovAnalytic` is an explicit call -- so nothing prints for the default
+#' `covType="fd"`.  Kept as a plain `message()` (informational, not a warning):
+#' falling back to FD is a valid result, not an error.
+#' @param reason short human-readable phrase naming the out-of-scope feature
+#' @return `NULL`, invisibly usable as `return(.foceiAnalyticFallback(...))`
+#' @noRd
+.foceiAnalyticFallback <- function(reason) {
+  message("covType=\"analytic\": ", reason,
+          " is out of analytic-covariance scope; using the finite-difference covariance instead")
+  NULL
+}
+
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
 #' eta (ETA_i_) plus one per non-mu-ref structural theta (THETA_j_); a mu-ref theta
 #' reuses its eta's direction (so a fully mu-ref model has ndir == neta).  Sigma and
@@ -65,12 +81,13 @@
                            !(thRows$name %in% iovVars), , drop = FALSE]
   thStruct <- thStructRows$name
   nth <- length(thStruct)
-  if (nth == 0L) return(NULL)
+  if (nth == 0L) return(.foceiAnalyticFallback("a model with no estimated structural (fixed-effect) parameter"))
   etaDirs <- paste0("ETA_", seq_len(neta), "_")
   dirTh <- integer(nth); nonMuTheta <- character(0)
   for (p in seq_len(nth)) {
     .mt <- which(thetaForEta == thStruct[p])        # eta(s) this theta mu-references
-    if (length(.mt) > 1L) return(NULL)              # shared by >1 eta -> summing routes NYI, fall back to FD
+    if (length(.mt) > 1L)                           # shared by >1 eta -> summing routes NYI, fall back to FD
+      return(.foceiAnalyticFallback("a structural parameter mu-referenced by more than one random effect"))
     k <- if (length(.mt) == 1L) .mt else NA_integer_
     if (!is.na(k)) {
       dirTh[p] <- k                                 # reuse eta k's direction (free)
@@ -134,6 +151,13 @@
     p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
     E <- .foceiAnalyticSolveSubjectFD3(am, p, s, obs$TIME, tol = solveTol)
     if (is.null(E)) return(NULL)                       # solve failure -> caller falls back to FD
+    # near-zero-prediction guard for a vanishing residual variance (pure proportional
+    # R = sp^2 f^2 -> 0): the 1/R observed-information terms blow up, so drop to FD.
+    if (isTRUE(ef$canVanish)) {
+      .fa <- abs(E$f)
+      if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
+        return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction"))
+    }
     E$y <- obs$DV
     ehat <- eta0
     if (rescale) {
@@ -169,23 +193,26 @@
     ui <- get("ui", e)
     # covType="analytic" opt-in; anything else keeps the finite-difference Hessian
     if (!identical(rxode2::rxGetControl(ui, "covType", "fd"), "analytic")) return(NULL)
-    if (!.hasRxSens()) return(NULL)
+    if (!.hasRxSens()) return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
     # bounded thetas are estimated on a transformed scale and the pre-final Jacobian
     # hook corrects env$cov to the natural scale; an analytic install would overwrite
     # that with the internal-scale cov -> bow out to the (Jacobian-correct) FD path.
-    if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+    if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L)
+      return(.foceiAnalyticFallback("a bounded parameter transform"))
     # scope: the analytic observed information is FOCEI-only (conditional, with the
     # interaction term) and a single Gaussian endpoint; anything else -> FD.
-    if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)             # FO/FOI
+    if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
+      return(.foceiAnalyticFallback("the FO/FOI method"))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
-    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)                  # AGQ quadrature
+    if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
+      return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
 
     ini <- ui$iniDf
     .map <- .foceiEtaThetaMap(ui)
     etaNames <- .map$etaNames; neta <- length(etaNames)
-    if (neta == 0L) return(NULL)
+    if (neta == 0L) return(.foceiAnalyticFallback("a model with no random effects"))
     thetaForEta <- .map$thetaForEta
 
     # IOV (inter-occasion variability): nlmixr rewrites `v ~ .. | occ` BEFORE the fit
@@ -198,7 +225,8 @@
     # only the SD-scale IOV predictor (abs(v)*occ-eta) is implemented; var/logsd/logvar
     # use a different predictor + chain rule -> bow out to FD.
     if (length(iovVars) > 0L &&
-          !identical(rxode2::rxGetControl(ui, "iovXform", "sd"), "sd")) return(NULL)
+          !identical(rxode2::rxGetControl(ui, "iovXform", "sd"), "sd"))
+      return(.foceiAnalyticFallback("IOV with a non-SD parameterization"))
     occEta <- lapply(iovVars, function(v) grep(paste0("^rx\\.", gsub(".", "\\.", v, fixed = TRUE), "\\."), etaNames))
     occEtaAll <- sort(unique(unlist(occEta)))
     naEta <- which(is.na(thetaForEta))
@@ -219,7 +247,8 @@
     ef$ev <- local({ v <- .valc; function(expr, f, y, f0 = f) eval(expr, c(list(f = f, y = y, f0 = f0), as.list(v))) })
 
     # scope: fixed structural thetas break the eta<->theta indexing
-    if (any(.iniIsFixed(ini, thetaForEta))) return(NULL)
+    if (any(.iniIsFixed(ini, thetaForEta)))
+      return(.foceiAnalyticFallback("a fixed mu-referenced structural parameter"))
     keep <- !.iniIsFixed(ini, ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]  # drop fixed sigma
 
     Om <- get("omega", e)
@@ -231,7 +260,8 @@
     iovGroups <- vector("list", length(iovVars))
     for (g in seq_along(iovVars)) {
       w <- iovW[g]; oe <- occEta[[g]]
-      if (length(oe) == 0L || !is.finite(w) || w <= 0) return(NULL)   # unidentified/zero IOV -> FD
+      if (length(oe) == 0L || !is.finite(w) || w <= 0)                # unidentified/zero IOV -> FD
+        return(.foceiAnalyticFallback("an unidentified or zero IOV variance"))
       for (j in oe) Om[j, j] <- w^2
       etaScale[oe] <- w
       iovGroups[[g]] <- list(idx = oe, w = w)
@@ -270,7 +300,8 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) return(NULL)  # censored -> FD
+    if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE))               # censored -> FD
+      return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
 
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
@@ -381,23 +412,29 @@
 .foceiAnalyticErrFull <- function(ui) {
   # single Gaussian endpoint only: multiple endpoints pool error rows against one
   # rx_pred_ (the wrong likelihood)
-  if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L) return(NULL)
+  if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L)
+    return(.foceiAnalyticFallback("a model with multiple modeled endpoints"))
   ini <- ui$iniDf; er <- ini[!is.na(ini$err), , drop = FALSE]
   # whitelist: only additive / proportional error; any other rider (lnorm,
   # propT/propF, or a DV/variance transform boxCox / yeoJohnson / pow) is out of scope
-  if (!all(er$err %in% c("add", "prop"))) return(NULL)
+  if (!all(er$err %in% c("add", "prop")))
+    return(.foceiAnalyticFallback("a residual error other than additive/proportional (e.g. lnorm, propT/propF, or a boxCox/yeoJohnson/pow transform)"))
   # model-declared addProp wins; the control applies only when the model says "default"
   addPr <- as.character(ui$predDf$addProp)
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
     addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"), error = function(e) "combined2")
   }
-  if (identical(addPr, "combined1")) return(NULL)
+  if (identical(addPr, "combined1"))
+    return(.foceiAnalyticFallback("combined1 additive+proportional error"))
   addN <- er$name[er$err == "add"]; propN <- er$name[er$err == "prop"]
   hasA <- length(addN) == 1L; hasP <- length(propN) == 1L
-  if (!hasA && !hasP) return(NULL)
-  # pure proportional error has variance sp^2 f^2 -> 0 as f -> 0, so the observed
-  # information (1/R terms) blows up near zero predictions; leave it to the FD cov.
-  if (hasP && !hasA) return(NULL)
+  if (!hasA && !hasP)
+    return(.foceiAnalyticFallback("a model with no additive or proportional residual error"))
+  # pure proportional error has variance sp^2 f^2, which vanishes as f -> 0 and makes
+  # the observed information (1/R terms) blow up near zero predictions.  It IS in scope
+  # (canVanish flags it); the assembly guards against a near-zero prediction and only
+  # then drops to the FD cov.
+  canVanish <- hasP && !hasA
   Rstr <- if (hasA && hasP) "sa^2+sp^2*f^2" else if (hasP) "sp^2*f^2" else "sa^2"
   Rq <- parse(text = Rstr)[[1]]
   rhoE <- bquote(0.5 * ((y - f)^2 / .(Rq) + log(.(Rq))))
@@ -444,7 +481,7 @@
   perf0F <- list(); for (s in sgVar) perf0F[[s]] <- list(qf0s = DD(q0E, "f0", s),
     pFf0s = DD(pF0E, "f0", s), rhof0s = DD(rho0E, "f0", s))
   foce <- list(sc = scF, per = perF, pair = pairF, f0 = f0F, perf0 = perf0F, dependsF0 = hasP)
-  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
+  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce, canVanish = canVanish,
        ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
@@ -873,27 +910,34 @@
 #' @noRd
 foceiCovAnalytic <- function(fit) {
   ui <- fit$finalUi
-  if (!.hasRxSens()) return(NULL)            # need rxExpandSens2_ + symengine
-  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)             # FO/FOI
+  if (!.hasRxSens())
+    return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
+    return(.foceiAnalyticFallback("the FO/FOI method"))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
-  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)                  # AGQ
+  if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
+    return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
   # IOV is out of scope; derive the flag from THIS fit, not the process-global
   # .uiIovEnv (which reflects the LAST-preprocessed model).  An occasion (IOV) eta
   # carries a non-"id" `condition` -- the same signal .uiApplyIov keys on.
   .idf0 <- ui$iniDf
-  if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err))) return(NULL)  # IOV
-  if (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) return(NULL) # censored
+  if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err)))            # IOV
+    return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
+  if (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE))               # censored
+    return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
   ef <- .foceiAnalyticErrFull(ui)
-  if (is.null(ef)) return(NULL)                     # unsupported error model -> fallback
+  if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
 
   ini <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)                    # theta <-> eta pairing
   etaNames <- .map$etaNames
   neta <- length(etaNames)
-  if (neta == 0L) return(NULL)
+  if (neta == 0L) return(.foceiAnalyticFallback("a model with no random effects"))
   thetaForEta <- .map$thetaForEta
-  if (anyNA(thetaForEta)) return(NULL)             # non-mu-ref eta -> out of scope
-  if (any(.iniIsFixed(ini, thetaForEta))) return(NULL)  # fixed structural theta breaks eta indexing
+  # a non-mu-ref (orphan) eta is in scope: it keeps its own ETA_i_ sensitivity direction
+  # and an eta-named Omega variance (matching the production hook); no theta maps to it.
+  if (any(.iniIsFixed(ini, thetaForEta)))          # fixed structural theta breaks eta indexing
+    return(.foceiAnalyticFallback("a fixed mu-referenced structural parameter"))
   keep <- !.iniIsFixed(ini, ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]  # drop fixed sigma
   Om <- fit$omega
   pairs <- .foceiOmegaPairs(Om, ini)               # free Omega lower-triangle (declared blocks)
@@ -920,7 +964,8 @@ foceiCovAnalytic <- function(fit) {
   if (is.null(R)) return(NULL)
   cov <- tryCatch(solve(R), error = function(e) NULL)
   if (is.null(cov)) return(NULL)
-  nm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, thetaForEta))
+  onm <- ifelse(is.na(thetaForEta), etaNames, thetaForEta)   # orphan (non-mu-ref) eta named by the eta
+  nm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
        R = R, params = nm, method = "analytic")

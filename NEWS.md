@@ -17,11 +17,13 @@
   term from the analytic 2nd-order sensitivities (rxode2 `.rxSens`) and a log-determinant
   term whose 3rd-order tensor is recovered by Shi (2021) central differences of those
   sensitivities (keeping the augmented ODE at O(ndir^2)) -- matching NONMEM
-  `$COV MATRIX=R`.  It is computed while the optimizer is live and covers mu-referenced,
-  covariate, and other non-mu-referenced structural parameters as well as SD-scale
-  inter-occasion variability; any fit outside its scope (FO, `nAGQ > 1`, censoring,
-  pure-proportional or DV-transformed error, bounded-parameter transforms, a structural
-  theta shared by two etas, or a non-SD `iovXform`) warns and falls back to the
+  `$COV MATRIX=R`.  It is computed while the optimizer is live and covers additive,
+  proportional, and combined error, and mu-referenced, covariate, and other
+  non-mu-referenced structural parameters (and non-mu-referenced etas) as well as
+  SD-scale inter-occasion variability; any fit outside its scope (FO, `nAGQ > 1`,
+  censoring, DV-transformed error, bounded-parameter transforms, a structural theta
+  shared by two etas, or a non-SD `iovXform` -- and a pure-proportional variance that
+  vanishes at a near-zero prediction) emits a message and falls back to the
   finite-difference Hessian.  FOCE (interaction off) uses the general total-derivative
   Hessian and re-solves the FOCE empirical-Bayes estimates to the FOCE inner stationarity
   before assembly (FOCE reduces to the FOCEI result for additive error).  It defaults to

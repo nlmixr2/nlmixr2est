@@ -55,17 +55,19 @@
 #' @param covType covariance R-matrix (Hessian) source, \code{"fd"} (default) or
 #'     \code{"analytic"}.  \code{"analytic"} uses the exact analytic
 #'     observed-information R-matrix and can additionally return the residual and
-#'     Omega standard errors.  It applies to FOCEI and FOCE fits with additive or
-#'     combined additive-plus-proportional error, and covers mu-referenced,
-#'     covariate, and other non-mu-referenced structural parameters as well as
-#'     SD-scale inter-occasion variability.  It defaults to \code{covMethod = "r"}
-#'     (the observed-information \eqn{R^{-1}}, computed even when \code{covMethod =
-#'     ""}); an explicit \code{covMethod = "r,s"} or \code{"s"} is honored, with the
-#'     analytic R feeding the native finite-difference sandwich / S-matrix.  It warns
-#'     and falls back to the finite-difference Hessian for anything out of scope (FO,
-#'     \code{nAGQ > 1}, censoring, pure-proportional or DV-transformed error,
-#'     bounded-parameter transforms, a structural theta shared by two etas, or non-SD
-#'     \code{iovXform}).
+#'     Omega standard errors.  It applies to FOCEI and FOCE fits with additive,
+#'     proportional, or combined additive-plus-proportional error, and covers
+#'     mu-referenced, covariate, and other non-mu-referenced structural parameters
+#'     (and non-mu-referenced etas) as well as SD-scale inter-occasion variability.
+#'     It defaults to \code{covMethod = "r"} (the observed-information \eqn{R^{-1}},
+#'     computed even when \code{covMethod = ""}); an explicit \code{covMethod = "r,s"}
+#'     or \code{"s"} is honored, with the analytic R feeding the native
+#'     finite-difference sandwich / S-matrix.  It emits a message and falls back to
+#'     the finite-difference Hessian for anything out of scope (FO, \code{nAGQ > 1},
+#'     censoring, DV-transformed error, bounded-parameter transforms, a structural
+#'     theta shared by two etas, or non-SD \code{iovXform}) -- and, for a
+#'     pure-proportional variance that vanishes at a near-zero model prediction,
+#'     where the observed information is ill-conditioned.
 #'
 #' @param covSolveTol absolute/relative ODE tolerance for the augmented-sensitivity
 #'     solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
