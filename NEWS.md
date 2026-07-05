@@ -68,6 +68,11 @@
   eta=0 linearization), and the adjoint base-method restore in the focei family
   is a strict no-op for forward fits, fixing `fo`/`foi` tables/residuals
 
+- Fix a fit aborting with `initial 'omega' matrix inverse is non-positive
+  definite` when a degenerate fit (e.g. SAEM collapsing an uninformative
+  random-effect variance to 0) leaves a singular omega; the sym-inv-chol setup
+  now nearPD-corrects it so the residual/table diagnostics still run
+
 - Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
   usable observation; such subjects are now dropped before estimation and
   re-inserted into the output with a population `PRED` and `NA` individual

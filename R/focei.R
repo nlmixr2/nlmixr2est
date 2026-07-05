@@ -1374,6 +1374,14 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
   } else {
     .om0 <- ui$omega
     .diagXform <- rxode2::rxGetControl(ui, "diagXform", "sqrt")
+    # A degenerate fit can collapse an uninformative random-effect variance to
+    # exactly 0 (e.g. SAEM with very few subjects), leaving a singular omega
+    # whose inverse/chol fails when building the sym-inv-chol env and aborts the
+    # whole fit at the residual/table step.  nearPD the omega in that case so
+    # post-fit diagnostics still run; the reported fit omega is left unchanged.
+    if (inherits(try(chol(.om0), silent=TRUE), "try-error")) {
+      .om0 <- nmNearPD(.om0)
+    }
     env$rxInv <- rxode2::rxSymInvCholCreate(mat = .om0, diag.xform = .diagXform)
     env$xType <- env$rxInv$xType
     .om0a <- .om0
