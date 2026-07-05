@@ -173,6 +173,24 @@ test_that("covType='analytic' with pure proportional error near a zero predictio
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))
 })
 
+test_that("covType='analytic' falls back to FD for foce=\"foce+\"", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  # the analytic R is derived for the eta=0 frozen-R "nonmem" FOCE objective; the
+  # live-R "foce+" objective is out of scope -> valid FD theta cov, not the full analytic
+  pp <- function() {
+    ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
+          eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+      linCmt() ~ add(add.sd) })
+  }
+  fit <- suppressWarnings(suppressMessages(nlmixr(pp, nlmixr2data::theo_sd, "foce",
+                                                  foceiControl(print = 0L, foce = "foce+",
+                                                               covType = "analytic"))))
+  expect_true(is.matrix(fit$cov))
+  expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
+})
+
 # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
 # zero at every observation, so pure proportional error is genuinely in analytic scope.
 .cov_wang_prop <- function() {

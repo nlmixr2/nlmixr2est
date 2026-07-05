@@ -204,6 +204,11 @@
     if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
       return(.foceiAnalyticFallback("the FO/FOI method"))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
+    # the analytic R is derived for the eta=0 frozen-R ("nonmem") FOCE objective;
+    # "foce+" (live conditional R) is a different objective -> FD.
+    if (interaction == 0L &&
+          as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) != 0L)
+      return(.foceiAnalyticFallback("foce = \"foce+\" (analytic covariance is derived for foce = \"nonmem\")"))
     if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)

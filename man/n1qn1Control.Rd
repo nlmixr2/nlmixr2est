@@ -174,8 +174,8 @@ will calculate tables. By default this is \code{TRUE}}
 Hessian and S the sum of individual gradient cross-products (at the
 empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
-(\code{2\%*\%solve(R)}), \code{"s"} cross-product-based
-(\code{4\%*\%solve(S)}), or \code{""} to skip the covariance step.}
+(\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+\code{""} to skip the covariance step.}
 
 \item{adjObf}{is a boolean to indicate if the objective function
 should be adjusted to be closer to NONMEM's default objective

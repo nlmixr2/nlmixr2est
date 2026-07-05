@@ -51,6 +51,7 @@ foceiControl(
   calcTables = TRUE,
   noAbort = TRUE,
   interaction = TRUE,
+  foce = c("nonmem", "foce+"),
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
@@ -250,14 +251,15 @@ solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
 tight tolerance from \code{sigdig}; supply a number to override it.}
 
 \item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
-installs only the structural-theta block (the NONMEM-matched theta covariance,
-matching the historical finite-difference \code{fit$cov} shape for backwards
-compatibility); \code{TRUE} installs the full theta + residual sigma + Omega
-covariance -- assembled analytically for \code{covType="analytic"}, or by
-central finite differences of the objective over the same parameter set for
-\code{covType="fd"} (perturbing Omega on the variance-covariance scale, with the
-per-parameter Gill (1983) step and the 5-point/4-point stencils that
-\code{foceiCalcR} uses).  The theta standard errors are identical either way.}
+installs only the structural-theta block (the NONMEM-matched theta
+covariance, matching the historical finite-difference \code{fit$cov} shape
+for backwards compatibility); \code{TRUE} installs the full theta + residual
+sigma + Omega covariance -- assembled analytically for
+\code{covType="analytic"}, or by central finite differences of the objective
+over the same parameter set for \code{covType="fd"} (perturbing Omega on the
+variance-covariance scale, with the per-parameter Gill (1983) step and the
+5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
+errors are identical either way.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -335,6 +337,30 @@ evaluation if it runs into troubles.  (default TRUE)}
 
 \item{interaction}{Boolean indicate FOCEi should be used (TRUE)
 instead of FOCE (FALSE)}
+
+\item{foce}{Controls how FOCE (\code{interaction = FALSE}) evaluates the
+    residual variance R in the inner objective; ignored for FOCEi.  Either
+    \code{"nonmem"} (default) or \code{"foce+"}:
+
+    \itemize{
+
+    \item \code{"nonmem"} freezes R at the \code{eta = 0} population
+    prediction and holds it constant across the inner optimization, matching
+    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+    errors, and an ODE model agrees with its closed-form (\code{linCmt})
+    equivalent.  Disadvantage: R ignores the individual (conditional)
+    heteroscedasticity, so it can be slightly less accurate than
+    \code{"foce+"} for proportional/combined error.
+
+    \item \code{"foce+"} evaluates R at the current conditional \code{eta}
+    (the live variance), keeping the truncated FOCE inner gradient.
+    Advantage: uses the conditional variance and is a bit more accurate than
+    NONMEM's FOCE in some cases.  Disadvantage: does not match NONMEM FOCE and
+    is unsupported by \code{covType = "analytic"} (falls back to the
+    finite-difference covariance).  This was the FOCE behavior in
+    \pkg{nlmixr2est} 6.0.1 and earlier.
+
+    }}
 
 \item{cholSEtol}{tolerance for Generalized Cholesky
 Decomposition.  Defaults to suggested (.Machine$double.eps)^(1/3)}
