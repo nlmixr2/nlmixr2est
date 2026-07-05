@@ -133,11 +133,12 @@ test_that("covType='analytic' falls back to the finite-difference cov out of sco
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
 })
 
-test_that("covType='analytic' with pure proportional error falls back to FD safely", {
+test_that("covType='analytic' with pure proportional error near a zero prediction falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # pure proportional error is out of analytic scope (1/R blows up near f=0); it must
-  # bow out before touching the augmented solve and give a valid FD cov, never crash
+  # pure proportional error IS in analytic scope, but its variance sp^2 f^2 vanishes as
+  # f -> 0.  theo_sd is oral, so the predicted concentration is ~0 at the pre-dose time:
+  # the near-zero-prediction guard must catch it and give a valid FD cov, never crash.
   pm <- function() {
     ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
           eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; prop.sd <- 0.2 })
@@ -151,6 +152,60 @@ test_that("covType='analytic' with pure proportional error falls back to FD safe
                                                   foceiControl(print = 0L, covType = "analytic"))))
   expect_true(is.matrix(fit$cov))
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))
+})
+
+# Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
+# zero at every observation, so pure proportional error is genuinely in analytic scope.
+.cov_wang_prop <- function() {
+  ini({ tke <- log(0.5); eta.ke ~ 0.04; prop.sd <- sqrt(0.1) })
+  model({ ke <- exp(tke + eta.ke); d/dt(ipre) <- -ke * ipre; ipre ~ prop(prop.sd) })
+}
+.cov_wang_data <- function() {
+  d <- nlmixr2data::Wang2007; d$DV <- d$Y
+  dose <- d[d$Time == 0, ]; dose$EVID <- 101; dose$AMT <- 10
+  dat <- rbind(dose, data.frame(d, EVID = 0, AMT = 0))
+  dat[order(dat$ID, -dat$EVID, dat$Time), ]
+}
+
+test_that("covType='analytic' handles pure proportional error away from zero (FOCEI and FOCE)", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  dat <- .cov_wang_data()
+  for (est in c("focei", "foce")) {
+    fit <- suppressMessages(nlmixr(.cov_wang_prop, dat, est,
+                                   foceiControl(print = 0L, covType = "analytic", covFull = TRUE)))
+    r <- foceiCovAnalytic(fit)
+    expect_false(is.null(r))                                   # in scope, not an FD fallback
+    expect_identical(r$method, "analytic")
+    expect_setequal(r$params, c("tke", "prop.sd", "om.tke"))
+    expect_true(all(is.finite(r$se)) && all(r$se > 0))
+    # the full analytic cov is installed on the fit (om. row present)
+    expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+    # analytic SEs match a Richardson finite-difference of the objective (validated to
+    # ~1e-4 vs numDeriv); the reference values are the converged plateau / NONMEM MATRIX=R
+    .ref <- if (est == "focei") c(tke = 0.09234, prop.sd = 0.007446, om.tke = 0.03684)
+            else                c(tke = 0.09065, prop.sd = 0.007624, om.tke = 0.03624)
+    expect_equal(unname(r$se[names(.ref)]), unname(.ref), tolerance = 0.01)
+  }
+})
+
+test_that("covType='analytic' emits an informative message when it falls back to FD", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  # an lnorm error is out of scope; with covType="analytic" the fallback to the FD cov
+  # is announced (message, not warning) so the user knows why they did not get analytic
+  lm <- function() {
+    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- 1.5; cl <- exp(tcl + eta.cl); v <- 31.5
+      d/dt(depot)  <- -ka * depot
+      d/dt(center) <-  ka * depot - cl / v * center
+      cp <- center / v
+      cp ~ lnorm(add.sd) })
+  }
+  expect_message(
+    suppressWarnings(nlmixr(lm, nlmixr2data::theo_sd, "focei",
+                            foceiControl(print = 0L, covType = "analytic"))),
+    "covType=\"analytic\".*finite-difference")
 })
 
 test_that("covType='analytic' handles a non-mu-referenced covariate coefficient", {
