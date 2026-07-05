@@ -48,7 +48,7 @@ nlminbControl(
   gradTo = 1,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "auto", "forward", "adjoint"),
+  sensMethod = c("default", "forward", "adjoint"),
   calcTables = TRUE,
   compress = TRUE,
   covMethod = c("r", "nlminb", ""),
@@ -301,11 +301,10 @@ nlminbControl(
 
   Method used to compute the ODE parameter sensitivities: \`"default"\`
   (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\`; \`"forward"\` uses the classic
-  variational (forward) sensitivity ODEs; \`"adjoint"\` uses the
-  in-engine discrete adjoint with the matching adjoint (\`s\`) method;
-  \`"auto"\` selects \`"adjoint"\` when the estimated parameters exceed
-  the number of ODE states and \`"forward"\` otherwise.
+  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
+  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
+  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
+  adjoint (\`s\`) method.
 
 - calcTables:
 
@@ -423,9 +422,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01465123 0.002179211  3.195e-06      0.041       0.013 0.024    0.012
-#>             other
-#> elapsed 0.9911664
+#> elapsed 0.01588359 0.002177935  3.685e-06       0.04       0.013 0.025    0.014
+#>            other
+#> elapsed 1.002935
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

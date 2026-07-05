@@ -81,7 +81,7 @@
 <span>  gradTo <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  addProp <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"combined2"</span>, <span class="st">"combined1"</span><span class="op">)</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
-<span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"auto"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
+<span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  compress <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r"</span>, <span class="st">"nlminb"</span>, <span class="st">""</span><span class="op">)</span>,</span>
@@ -346,11 +346,10 @@ uses the legacy finite-difference behavior.</p></dd>
 <dt id="arg-sensmethod">sensMethod<a class="anchor" aria-label="anchor" href="#arg-sensmethod"></a></dt>
 <dd><p>Method used to compute the ODE parameter sensitivities:
 `"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-the estimated parameters exceed the number of ODE states and `"forward"`
-otherwise.</p></dd>
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.</p></dd>
 
 
 <dt id="arg-calctables">calcTables<a class="anchor" aria-label="anchor" href="#arg-calctables"></a></dt>
@@ -471,9 +470,9 @@ If not specified, then it matches the significant digits in the
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01465123 0.002179211  3.195e-06      0.041       0.013 0.024    0.012</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.9911664</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01588359 0.002177935  3.685e-06       0.04       0.013 0.025    0.014</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>            other</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 1.002935</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

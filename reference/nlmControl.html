@@ -61,7 +61,7 @@
 <span>  hessErr <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  shi21maxHess <span class="op">=</span> <span class="fl">20L</span>,</span>
 <span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
-<span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"auto"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
+<span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
 <span>  useColor <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  printNcol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
@@ -231,11 +231,10 @@ uses the legacy finite-difference behavior.</p></dd>
 <dt id="arg-sensmethod">sensMethod<a class="anchor" aria-label="anchor" href="#arg-sensmethod"></a></dt>
 <dd><p>Method used to compute the ODE parameter sensitivities:
 `"default"` (the default) defers to the global option
-`getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-(forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-the estimated `THETA` parameters exceed the number of ODE states and
-`"forward"` otherwise.</p></dd>
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.</p></dd>
 
 
 <dt id="arg-usecolor">useColor<a class="anchor" aria-label="anchor" href="#arg-usecolor"></a></dt>
@@ -473,9 +472,9 @@ skips the final back-transform.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01557632 0.001752958  3.256e-06      0.043       0.013 0.024        0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01589152 0.001118265  3.735e-06       0.04       0.012 0.024    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8946675</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.8789865</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>

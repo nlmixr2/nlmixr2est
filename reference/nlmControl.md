@@ -28,7 +28,7 @@ nlmControl(
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "auto", "forward", "adjoint"),
+  sensMethod = c("default", "forward", "adjoint"),
   useColor = NULL,
   printNcol = NULL,
   print = 1L,
@@ -191,12 +191,10 @@ nlmControl(
 
   Method used to compute the ODE parameter sensitivities: \`"default"\`
   (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\`; \`"forward"\` uses the classic
-  variational (forward) sensitivity ODEs; \`"adjoint"\` uses the
-  in-engine discrete adjoint with the matching adjoint (\`s\`) method;
-  \`"auto"\` selects \`"adjoint"\` when the estimated \`THETA\`
-  parameters exceed the number of ODE states and \`"forward"\`
-  otherwise.
+  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
+  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
+  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
+  adjoint (\`s\`) method.
 
 - useColor:
 
@@ -426,9 +424,9 @@ print(fit2)
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01557632 0.001752958  3.256e-06      0.043       0.013 0.024        0
+#> elapsed 0.01589152 0.001118265  3.735e-06       0.04       0.012 0.024    0.001
 #>             other
-#> elapsed 0.8946675
+#> elapsed 0.8789865
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 

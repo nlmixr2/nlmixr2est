@@ -51,7 +51,7 @@ optimControl(
   returnOptim = FALSE,
   addProp = c("combined2", "combined1"),
   eventSens = c("jump", "fd"),
-  sensMethod = c("default", "auto", "forward", "adjoint"),
+  sensMethod = c("default", "forward", "adjoint"),
   calcTables = TRUE,
   compress = FALSE,
   covMethod = c("r", "optim", ""),
@@ -337,11 +337,10 @@ optimControl(
 
   Method used to compute the ODE parameter sensitivities: \`"default"\`
   (the default) defers to the global option
-  \`getOption("nlmixr2est.adjoint")\`; \`"forward"\` uses the classic
-  variational (forward) sensitivity ODEs; \`"adjoint"\` uses the
-  in-engine discrete adjoint with the matching adjoint (\`s\`) method;
-  \`"auto"\` selects \`"adjoint"\` when the estimated parameters exceed
-  the number of ODE states and \`"forward"\` otherwise.
+  \`getOption("nlmixr2est.adjoint")\` (itself \`"forward"\` by default);
+  \`"forward"\` uses the classic variational (forward) sensitivity ODEs;
+  \`"adjoint"\` uses the in-engine discrete adjoint with the matching
+  adjoint (\`s\`) method.
 
 - calcTables:
 
@@ -467,10 +466,10 @@ fit2
 #> 
 #> ── Time (sec value$time): ──
 #> 
-#>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01475781 0.002004372  3.727e-06      0.041       0.013 0.025    0.001
-#>             other
-#> elapsed 0.7982341
+#>              setup   optimize covariance preprocess postprocess table compress
+#> elapsed 0.01692579 0.00207351  3.715e-06      0.044       0.012 0.025    0.001
+#>            other
+#> elapsed 0.809997
 #> 
 #> ── (value$parFixed or value$parFixedDf): ──
 #> 
