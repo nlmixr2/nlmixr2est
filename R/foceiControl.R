@@ -495,11 +495,10 @@
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities:
 #'   `"default"` (the default) defers to the global option
-#'   `getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-#'   (forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-#'   with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-#'   the estimated parameters exceed the number of ODE states and `"forward"`
-#'   otherwise.
+#'   `getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+#'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
+#'   `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+#'   (`s`) method.
 #'
 #' @inheritParams rxode2::rxSolve
 #' @inheritParams minqa::bobyqa
@@ -675,12 +674,12 @@ foceiControl <- function(sigdig = 4, #
                          agqLow=-Inf,
                          agqHi=Inf,
                          eventSens = c("jump", "fd"),
-                         sensMethod = c("default", "auto", "forward", "adjoint"),
+                         sensMethod = c("default", "forward", "adjoint"),
                          boundedTransform=TRUE) { #
   eventSens <- match.arg(eventSens)
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
-  ## "auto" picks adjoint when estimated thetas exceed ODE states.
+  ## "default" defers to getOption("nlmixr2est.adjoint").
   sensMethod <- match.arg(sensMethod)
   if (!is.null(sigdig)) {
     checkmate::assertNumeric(sigdig, lower=1, finite=TRUE, any.missing=TRUE, len=1)

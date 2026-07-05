@@ -1186,7 +1186,7 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## sensMethod + the base ODE method change the inner model text (adjoint sweep
   ## lhs, stiff df/dy) too, so they must also be part of the cache key -- else a
   ## forward build would be reused for an adjoint fit (or vice versa).
-  .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "auto")
+  .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "default")
   .rxMethod <- rxode2::rxGetControl(.ui, "rxControl", rxode2::rxControl())$method
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),

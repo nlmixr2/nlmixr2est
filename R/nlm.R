@@ -31,11 +31,10 @@
 #'
 #' @param sensMethod Method used to compute the ODE parameter sensitivities:
 #'   `"default"` (the default) defers to the global option
-#'   `getOption("nlmixr2est.adjoint")`; `"forward"` uses the classic variational
-#'   (forward) sensitivity ODEs; `"adjoint"` uses the in-engine discrete adjoint
-#'   with the matching adjoint (`s`) method; `"auto"` selects `"adjoint"` when
-#'   the estimated `THETA` parameters exceed the number of ODE states and
-#'   `"forward"` otherwise.
+#'   `getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+#'   `"forward"` uses the classic variational (forward) sensitivity ODEs;
+#'   `"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+#'   (`s`) method.
 #'
 #' @return nlm control object
 #' @export
@@ -95,7 +94,7 @@ nlmControl <- function(typsize = NULL,
 
                        eventSens=c("jump", "fd"),
 
-                       sensMethod=c("default", "auto", "forward", "adjoint"),
+                       sensMethod=c("default", "forward", "adjoint"),
 
                        useColor = NULL,
                        printNcol = NULL, #
@@ -218,8 +217,8 @@ nlmControl <- function(typsize = NULL,
 
   ## sensMethod: "forward" builds the ODE parameter sensitivities the classic
   ## (variational) way; "adjoint" solves them with the in-engine discrete
-  ## adjoint (matching s-method); "auto" picks adjoint when there are more
-  ## estimated thetas than ODE states (where the adjoint is cheaper).
+  ## adjoint (matching s-method); "default" defers to
+  ## getOption("nlmixr2est.adjoint").
   sensMethod <- match.arg(sensMethod)
 
   .iterPrintControl <- .absorbIterPrintControl(print = print,
@@ -613,16 +612,15 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
 
 #' Resolve the nlm/focei sensitivity method (forward vs adjoint) + s-method
 #'
-#' Reads `sensMethod` from the control.  For `"auto"` it selects the adjoint
-#' when the number of estimated THETA parameters exceeds the number of ODE
-#' states (where the adjoint is cheaper) and forward otherwise.  When the
-#' adjoint is selected it maps the base ODE method to its in-engine
-#' discrete-adjoint (`s`) variant (base code + 200, falling back to `dop853s`)
-#' and flags whether that variant needs the stiff analytic Jacobian.
+#' Reads `sensMethod` from the control (`"default"` defers to
+#' `getOption("nlmixr2est.adjoint")`).  When the adjoint is selected it maps the
+#' base ODE method to its in-engine discrete-adjoint (`s`) variant (base code +
+#' 200, falling back to `dop853s`) and flags whether that variant needs the
+#' stiff analytic Jacobian.
 #'
 #' @param ui rxode2 UI environment (i.e. `x[[1]]`)
-#' @param nParam number of parameters differentiated by the sensitivities used
-#'   for the `"auto"` decision.  Defaults to the estimated THETA count (nlm
+#' @param nParam number of parameters differentiated by the sensitivities,
+#'   recorded on the returned list.  Defaults to the estimated THETA count (nlm
 #'   family); the focei inner path passes the ETA count instead.
 #' @return list with `useAdjoint`; when TRUE also `sMethodInt`, `sMethodName`,
 #'   `stiff`, `nParam`, `nState`.
@@ -634,24 +632,21 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
   ## defers to the global policy option so the package-wide default can be
   ## changed in one place: getOption("nlmixr2est.adjoint").
   if (identical(.sensMethod, "default")) {
-    .sensMethod <- getOption("nlmixr2est.adjoint", "adjoint")
-    if (!(.sensMethod %in% c("auto", "forward", "adjoint"))) .sensMethod <- "adjoint"
+    .sensMethod <- getOption("nlmixr2est.adjoint", "forward")
+    if (!(.sensMethod %in% c("forward", "adjoint"))) .sensMethod <- "forward"
   }
   ## ODE (d/dt) state count -- the adjoint expansion differentiates these; a
   ## linCmt()/algebraic model reports 0 here (its pseudo-compartments are solved
   ## analytically, not integrated) so the adjoint does not apply.
   .nState <- length(rxode2::rxStateOde(ui))
-  if (is.null(nParam)) {
-    .iniDf <- ui$iniDf
-    nParam <- sum(!.iniDf$fix & !is.na(.iniDf$ntheta))
-  }
-  if (identical(.sensMethod, "auto")) {
-    .sensMethod <- if (nParam > .nState && .nState > 0L) "adjoint" else "forward"
-  }
   # the discrete adjoint only applies to ODE-state sensitivities; models with no
   # ODE states (e.g. linCmt()/algebraic) fall back to the forward path.
   if (!identical(.sensMethod, "adjoint") || .nState == 0L) {
     return(list(useAdjoint = FALSE))
+  }
+  if (is.null(nParam)) {
+    .iniDf <- ui$iniDf
+    nParam <- sum(!.iniDf$fix & !is.na(.iniDf$ntheta))
   }
   .sm <- .nlmAdjointSMethod(ui)
   list(useAdjoint = TRUE, sMethodInt = .sm$sMethodInt, sMethodName = .sm$sMethodName,
