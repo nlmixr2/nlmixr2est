@@ -2262,23 +2262,33 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   ## solves -- which use the pred-only model (no rx__adjFX_*) -- are not run on
   ## the raw discrete-adjoint s-method (which would hit the hard guard).  When a
   ## residual step re-solves the adjoint model, R-level rxSolve re-upgrades it.
-  .restoreBaseMethod <- function(.c) {
-    if (!is.null(.c) && !is.null(.c$rxControl) &&
-          isTRUE(as.integer(.c$rxControl$method) >= 200L)) {
-      .c$rxControl$method <- as.integer(.c$rxControl$method) - 200L
-    }
-    .c
+  ## Only touch the stored controls when an adjoint (s) method (>= 200) is
+  ## actually present -- for forward fits (fo/foi and forward focei) this block
+  ## must be a strict no-op so it does not perturb where foceiControl0 gets
+  ## stored downstream (writing .env$control here otherwise breaks fo/foi tables).
+  .needsRestore <- function(.c) {
+    !is.null(.c) && !is.null(.c$rxControl) &&
+      isTRUE(as.integer(.c$rxControl$method) >= 200L)
   }
-  .control <- .restoreBaseMethod(.control)
-  if (is.environment(.env)) {
-    if (!is.null(.env$control)) .env$control <- .restoreBaseMethod(.env$control)
-    .env$rxControl <- .control$rxControl
-    if (exists("foceiControl0", envir=.env, inherits=FALSE)) {
-      assign("foceiControl0", .restoreBaseMethod(get("foceiControl0", envir=.env)), envir=.env)
+  if (.needsRestore(.control) ||
+        (is.environment(.env) && .needsRestore(.env$control)) ||
+        (is.environment(.ret0) && .needsRestore(.ret0$control))) {
+    .restoreBaseMethod <- function(.c) {
+      if (.needsRestore(.c)) {
+        .c$rxControl$method <- as.integer(.c$rxControl$method) - 200L
+      }
+      .c
     }
-  }
-  if (is.environment(.ret0) && !is.null(.ret0$control)) {
-    .ret0$control <- .restoreBaseMethod(.ret0$control)
+    .control <- .restoreBaseMethod(.control)
+    if (is.environment(.env)) {
+      if (!is.null(.env$control)) .env$control <- .restoreBaseMethod(.env$control)
+      if (exists("foceiControl0", envir=.env, inherits=FALSE)) {
+        assign("foceiControl0", .restoreBaseMethod(get("foceiControl0", envir=.env)), envir=.env)
+      }
+    }
+    if (is.environment(.ret0) && !is.null(.ret0$control)) {
+      .ret0$control <- .restoreBaseMethod(.ret0$control)
+    }
   }
   .ret <- nlmixrWithTiming("postprocess", {
     .ret <- .ret0
