@@ -109,7 +109,8 @@
 #' @noRd
 .foceiAnalyticAssembleR <- function(ui, th, ebes, ids, data, Om, ef, neta, nth, nsg, omd,
                                     dirs, dirTh, ndir, startedEnv = NULL, solveTol = 1e-10,
-                                    iovDirScale = NULL, etaScale = NULL, interaction = 1L) {
+                                    iovDirScale = NULL, etaScale = NULL, interaction = 1L,
+                                    foceType = 0L) {
   am <- .foceiAnalyticAugModelDirs(ui, dirs)
   if (is.null(am) || am$ndir != ndir) return(NULL)
   np <- nth + nsg + omd$nom
@@ -133,20 +134,21 @@
     if (is.null(s) || nrow(s) == 0L) return(NULL)      # unmatched subject -> caller falls back to FD
     obs <- s[s$EVID == 0, , drop = FALSE]
     eta0 <- ebes[i, ]
-    # CORRECTED FOCE (interaction=0): the variance R0 is frozen at the eta=0 POPULATION
-    # prediction.  Solve the augmented model at eta=0 to get f0 (and its theta-chain a0/A0)
-    # only when R0 actually depends on the prediction (proportional part); additive R0=sa^2
-    # needs no population solve (== FOCEI-add).  The stored EBEs stationarize S_FOCE with
-    # this R0, so the re-solve is ~a no-op (kept for robustness).
+    # CORRECTED FOCE (interaction=0, foceType=0): the variance R0 is frozen at the eta=0
+    # POPULATION prediction.  Solve the augmented model at eta=0 to get f0 (and its
+    # theta-chain a0/A0) only when R0 actually depends on the prediction (proportional
+    # part); additive R0=sa^2 needs no population solve (== FOCEI-add).  The stored EBEs
+    # stationarize S_FOCE with this R0, so the re-solve is ~a no-op (kept for robustness).
+    # "foce+" (foceType=1) keeps the live conditional R and never needs the eta=0 solve.
     E0 <- NULL
-    .needF0 <- .foce && isTRUE(ef$foce$dependsF0)
+    .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$foce$dependsF0)
     if (.needF0) {
       E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
       if (is.null(E0)) return(NULL)
     }
     if (.foce) {
       eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
-                                    f0 = if (is.null(E0)) NULL else E0$f)
+                                    f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
       if (is.null(eta0)) return(NULL)
     }
     p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
@@ -176,7 +178,7 @@
     }
     Ri <- tryCatch(.foceiAnalyticSubjectR(E, ehat, Om, ef, neta, nth, nsg, ef$sgVar, omd,
                                           ndir = ndir, dirTh = dirTh, Oi = Oi, interaction = interaction,
-                                          E0 = E0),
+                                          E0 = E0, foceType = foceType),
                    error = function(e) NULL)
     if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
     R <- R + Ri
@@ -207,16 +209,14 @@
     .normModel <- rxode2::rxModelVars(ui)$model["normModel"]
     if (grepl("\\b(tad|podo|tafd|tlast|tfirst|dosenum)\\s*\\(", .normModel))
       return(.foceiAnalyticFallback("a dose-history function (tad/podo/tafd/tlast/tfirst/dosenum)"))
-    # scope: the analytic observed information is FOCEI-only (conditional, with the
-    # interaction term) and a single Gaussian endpoint; anything else -> FD.
+    # scope: conditional methods only (FOCEI and both FOCE variance modes) with a
+    # single Gaussian endpoint; FO/FOI and anything else -> FD.
     if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
       return(.foceiAnalyticFallback("the FO/FOI method"))
     interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
-    # the analytic R is derived for the eta=0 frozen-R ("nonmem") FOCE objective;
-    # "foce+" (live conditional R) is a different objective -> FD.
-    if (interaction == 0L &&
-          as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) != 0L)
-      return(.foceiAnalyticFallback("foce = \"foce+\" (analytic covariance is derived for foce = \"nonmem\")"))
+    # foceType picks the FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R);
+    # it only matters when interaction=0 (FOCEI always uses the live conditional R).
+    foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
     if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
@@ -324,7 +324,7 @@
                                      dirs = dirs, dirTh = dirTh, ndir = ndir,
                                      startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
                                      iovDirScale = iovDirScale, etaScale = etaScale,
-                                     interaction = interaction)
+                                     interaction = interaction, foceType = foceType)
     if (is.null(Rfull)) return(NULL)
     dimnames(Rfull) <- list(fullNm, fullNm)
 
@@ -454,9 +454,12 @@
   rhoE <- bquote(0.5 * ((y - f)^2 / .(Rq) + log(.(Rq))))
   pE <- bquote(1 / .(Rq) + 0.5 * (.(D(Rq, "f")) / .(Rq))^2)
   # FOCE (interaction=0) pieces: the inner problem drops dR/deta, so its gradient
-  # coefficient is the least-squares part only, qE = drho/df with R frozen = -(y-f)/R
+  # coefficient is the least-squares part only, qE = drho/df = -(y-f)/R
   # (q'=dq/df, q''=d2q/df2 build the FOCE inner Hessian Hf and its 3-tensor); the FOCE
   # Laplace determinant curvature is pFE = 1/R (no 0.5*(R'/R)^2 interaction term).
+  # R here is written in the live prediction f, so D(, "f") carries the dR/df chain:
+  # these are the "foce+" (live conditional R) pieces; the "nonmem" frozen-R0 variants
+  # are built below with the separate f0 symbol.
   qE <- bquote(-(y - f) / .(Rq))
   pFE <- bquote(1 / .(Rq))
   DD <- function(e, ...) { for (v in c(...)) e <- D(e, v); e }
@@ -495,7 +498,12 @@
   perf0F <- list(); for (s in sgVar) perf0F[[s]] <- list(qf0s = DD(q0E, "f0", s),
     pFf0s = DD(pF0E, "f0", s), rhof0s = DD(rho0E, "f0", s))
   foce <- list(sc = scF, per = perF, pair = pairF, f0 = f0F, perf0 = perf0F, dependsF0 = hasP)
-  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce, canVanish = canVanish,
+  # "foce+" (foceType=1, live conditional R): the same truncated inner gradient and
+  # determinant, but R follows the eta-hat prediction, so the live-R sc/per/pair pieces
+  # apply as-is and there is no f0 population solve/chain.
+  focePlus <- list(sc = sc, per = per, pair = pair, dependsF0 = FALSE)
+  list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
+       focePlus = focePlus, canVanish = canVanish,
        ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
@@ -584,10 +592,11 @@
 #' @noRd
 .foceiAnalyticSubjectR <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
                                    ndir = neta, dirTh = seq_len(nth), Oi = solve(Om),
-                                   interaction = 1L, E0 = NULL) {
+                                   interaction = 1L, E0 = NULL, foceType = 0L) {
   if (identical(as.integer(interaction), 0L))
     return(.foceiAnalyticSubjectRfoce(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
-                                      ndir = ndir, dirTh = dirTh, Oi = Oi, E0 = E0))
+                                      ndir = ndir, dirTh = dirTh, Oi = Oi, E0 = E0,
+                                      foceType = foceType))
   tr <- function(M) sum(diag(M))
   a <- E$a; A <- E$A; Ath <- E$Ath; f <- E$f; y <- E$y
   evf <- function(e) ef$ev(e, f, y)
@@ -694,15 +703,18 @@
 #' [.foceiAnalyticSubjectR].
 #' @noRd
 .foceiAnalyticSubjectRfoce <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, omd,
-                                       ndir = neta, dirTh = seq_len(nth), Oi = solve(Om), E0 = NULL) {
+                                       ndir = neta, dirTh = seq_len(nth), Oi = solve(Om), E0 = NULL,
+                                       foceType = 0L) {
   tr <- function(M) sum(diag(M))
   a <- E$a; A <- E$A; Ath <- E$Ath; f <- E$f; y <- E$y
-  # CORRECTED FOCE: the variance R0 is frozen at the eta=0 POPULATION prediction f0
-  # (E0$f), with population sensitivities a0/A0 (E0$a/E0$A) supplying R0's theta-chain.
-  # The residual/numerator/inner sensitivities (y-f, f, a, A, Ath) stay at eta-hat.  R0
-  # is eta-independent (dR0/deta=0), so q1=1/R0, q2=0, pF1=0, r3=0; its theta/sigma
-  # derivatives (through f0) enter as a0-chain corrections on the `th` accessors only.
-  .fc <- ef$foce
+  # CORRECTED FOCE (foceType=0): the variance R0 is frozen at the eta=0 POPULATION
+  # prediction f0 (E0$f), with population sensitivities a0/A0 (E0$a/E0$A) supplying R0's
+  # theta-chain.  The residual/numerator/inner sensitivities (y-f, f, a, A, Ath) stay at
+  # eta-hat.  R0 is eta-independent (dR0/deta=0), so q1=1/R0, q2=0, pF1=0, r3=0; its
+  # theta/sigma derivatives (through f0) enter as a0-chain corrections on the `th`
+  # accessors only.  "foce+" (foceType=1) keeps the live conditional R: the live-R
+  # pieces carry the dR/df chain through f's own sensitivities, so no f0 solve/chain.
+  .fc <- if (identical(as.integer(foceType), 1L)) ef$focePlus else ef$foce
   f0 <- if (!is.null(E0)) E0$f else f
   evf <- function(e) ef$ev(e, f, y, f0)
   rd <- list(r1 = evf(.fc$sc$r1), r2 = evf(.fc$sc$r2), r3 = evf(.fc$sc$r3))   # full rho (Phi), R0
@@ -892,9 +904,11 @@
 #' (byte no-op).  `NULL` on a solve/Newton failure -> caller falls back to FD.
 #' @noRd
 .foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, ef, Oi, neta, tol,
-                                  maxit = 30L, skip = 1e-3, conv = 1e-9, f0 = NULL) {
+                                  maxit = 30L, skip = 1e-3, conv = 1e-9, f0 = NULL,
+                                  foceType = 0L) {
   ei <- seq_len(neta)
-  .sc <- if (is.null(ef$foce)) ef$sc else ef$foce$sc   # R0 (eta=0 variance) inner pieces
+  # inner-gradient pieces: live R for "foce+" (foceType=1), frozen eta=0 R0 otherwise
+  .sc <- if (identical(as.integer(foceType), 1L) || is.null(ef$foce)) ef$sc else ef$foce$sc
   .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
     E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
     if (is.null(E)) return(NULL)
@@ -930,6 +944,8 @@
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
     return(.foceiAnalyticFallback("the FO/FOI method"))
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))                   # 1 FOCEI / 0 FOCE
+  # FOCE variance mode (0 "nonmem" frozen R0, 1 "foce+" live R); FOCEI ignores it
+  foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
   if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L)
     return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
   # IOV is out of scope; derive the flag from THIS fit, not the process-global
@@ -975,7 +991,8 @@
 
   R <- .foceiAnalyticAssembleR(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, ef, neta, nth, nsg, omd,
                                dirs = dirs, dirTh = dirTh, ndir = ndir,
-                               solveTol = .foceiAnalyticSolveTol(ui), interaction = interaction)
+                               solveTol = .foceiAnalyticSolveTol(ui), interaction = interaction,
+                               foceType = foceType)
   if (is.null(R)) return(NULL)
   cov <- tryCatch(solve(R), error = function(e) NULL)
   if (is.null(cov)) return(NULL)

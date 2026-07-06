@@ -9,6 +9,9 @@ test_that("foceiControl() deparse", {
   expect_equal(rxUiDeparse.foceiControl(foceiControl(eventType="forward"), "ctl"),
                quote(ctl <- foceiControl(eventType = "forward")))
 
+  expect_equal(rxUiDeparse.foceiControl(foceiControl(warm="save"), "ctl"),
+               quote(ctl <- foceiControl(warm = "save")))
+
   expect_equal(rxUiDeparse.foceiControl(foceiControl(), "ctl"),
                quote(ctl <- foceiControl()))
 

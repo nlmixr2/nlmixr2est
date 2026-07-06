@@ -182,22 +182,22 @@ test_that("covMethod='analytic' with pure proportional error near a zero predict
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))
 })
 
-test_that("covMethod='analytic' falls back to FD for foce=\"foce+\"", {
+test_that("foce+ (live-R) additive analytic R equals the FOCEI analytic R at the same theta", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # the analytic R is derived for the eta=0 frozen-R "nonmem" FOCE objective; the
-  # live-R "foce+" objective is out of scope -> valid FD theta cov, not the full analytic
-  pp <- function() {
-    ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
-          eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
-    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
-      linCmt() ~ add(add.sd) })
-  }
-  fit <- suppressWarnings(suppressMessages(nlmixr(pp, nlmixr2data::theo_sd, "foce",
-                                                  foceiControl(print = 0L, foce = "foce+",
-                                                               covMethod = "analytic"))))
-  expect_true(is.matrix(fit$cov))
-  expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
+  # additive error: R = sa^2 is constant, so live vs frozen R and the FOCEI interaction
+  # term all coincide -- the foce+ analytic R must reproduce FOCEI's.  maxOuterIterations=0
+  # evaluates both at the identical initial theta, so the comparison is tight (the only
+  # slack is the inner EBE tolerance).
+  fitP <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+            foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                         interaction = FALSE, foce = "foce+"))))
+  fitI <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
+            foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L))))
+  rP <- foceiCovAnalytic(fitP); rI <- foceiCovAnalytic(fitI)
+  expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
+  expect_false(is.null(rI))
+  expect_lt(max(abs(rP$R - rI$R) / (abs(rI$R) + 1e-8)), 1e-3)
 })
 
 # Wang 2007 monoexponential IV bolus: predictions 10*exp(-ke*t) are bounded away from
@@ -480,17 +480,22 @@ test_that("covMethod='analytic' handles SD-scale IOV and falls back for other io
   expect_false(any(grepl("^om\\.", rownames(fVAR$cov))))       # theta-only FD cov
 })
 
-test_that("foceiControl(covMethod=) resolves to the right code, defaults to analytic ('r')", {
-  # covMethod folds the R-matrix source and formula into one token: "r,s"/"r"/"s" pick
-  # the finite-difference formula, "" skips the covariance, and the default (and
-  # explicit "analytic") select the exact analytic observed-information R-matrix.
-  expect_identical(foceiControl(covMethod = "s")$covMethod, 3L)
+test_that("covMethod selects the analytic-vs-FD seam and the reporting formula", {
+  # covType was folded into covMethod: "analytic" is the exact observed-information R
+  # (reported with the "r" formula, so covMethod=2L) carried to the solver as the internal
+  # covType="analytic"; the finite-difference formulas keep covType="fd"; "" skips cov.
+  expect_silent(.ca <- foceiControl(covMethod = "analytic"))
+  expect_identical(.ca$covMethod, 2L)
+  expect_identical(.ca$covType, "analytic")
   expect_identical(foceiControl(covMethod = "r,s")$covMethod, 1L)
   expect_identical(foceiControl(covMethod = "r")$covMethod, 2L)
-  expect_identical(foceiControl(covMethod = "")$covMethod, 0L)
-  expect_silent(.cd <- foceiControl(covMethod = "analytic"))     # default -> "r", no warning
+  expect_identical(foceiControl(covMethod = "s")$covMethod, 3L)
+  expect_identical(foceiControl(covMethod = "r")$covType, "fd")
+  expect_identical(foceiControl(covMethod = "")$covMethod, 0L)  # "" skips the covariance step
+  # analytic is the default
+  .cd <- foceiControl()
   expect_identical(.cd$covMethod, 2L)
-  expect_identical(foceiControl()$covMethod, .cd$covMethod)      # "analytic" is the default
+  expect_identical(.cd$covType, "analytic")
 })
 
 test_that("covMethod='analytic' covFull=FALSE respects skipCov (matches the FD shape)", {
@@ -612,4 +617,87 @@ test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-
   fin <- is.finite(seA) & is.finite(seG)
   expect_gt(sum(fin), 4L)                              # most directions are identified
   expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
+})
+
+test_that("foce+ (foce='foce+') combined analytic cov matches the live-R gold FD", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  # foce+ keeps the LIVE conditional variance R = R(f(theta, eta-hat)) in the objective
+  # while the inner problem still drops dR/deta (truncated gradient).  Validation is
+  # against a fully independent central-FD Hessian of the live-R foce+ objective
+  # (Phi(R) + 0.5 log|H~_FOCE|, EBEs re-solved to S = sum(-(y-f)/R . a) + Omega^-1 eta = 0
+  # with R live inside the Newton).  Combined error makes foce+ differ from both
+  # "nonmem" FOCE (frozen R0) and FOCEI (interaction term).
+  theo <- nlmixr2data::theo_sd
+  fitP <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
+            foceiControl(print = 0L, covMethod = "", interaction = FALSE, foce = "foce+")))
+  rP <- foceiCovAnalytic(fitP)
+  expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
+
+  ui <- fitP$finalUi; neta <- 3L; etav <- paste0("ETA_", 1:neta, "_")
+  am <- .foceiAnalyticAugModelDirs(ui, etav)
+  thNames <- names(fitP$theta)
+  thBase <- setNames(as.numeric(fitP$theta[thNames]), paste0("THETA_", seq_along(thNames), "_"))
+  iTh <- match(c("tka", "tcl", "tv", "add.sd", "prop.sd"), thNames)
+  Om0 <- fitP$omega
+  byId <- split(fitP$dataSav, as.character(fitP$dataSav$ID))
+  ids <- fitP$eta$ID; idCode <- as.integer(ids)
+  eta0m <- as.matrix(fitP$eta[, c("eta.ka", "eta.cl", "eta.v")])
+  subj <- lapply(seq_along(ids), function(i) {
+    s <- byId[[as.character(idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
+    list(s = s, times = obs$TIME, y = obs$DV, eta0 = eta0m[i, ]) })
+  .fa <- function(th, eta, s, times) .foceiAnalyticSolveFA(am, c(th, setNames(eta, etav)), s, times, tol = 1e-12)
+  objFOCEP <- function(psi) {
+    th <- thBase; th[iTh] <- psi[1:5]; sa <- psi[4]; sp <- psi[5]
+    Om <- Om0; diag(Om) <- psi[6:8]; Oi <- solve(Om); ldOm <- log(det(Om)); tot <- 0
+    for (sj in subj) {
+      y <- sj$y; s <- sj$s; times <- sj$times
+      eta <- sj$eta0
+      for (it in 1:100) {
+        E <- .fa(th, eta, s, times); if (is.null(E)) return(NA_real_)
+        R <- sa^2 + sp^2 * E$f^2                          # live conditional variance
+        q0 <- -(y - E$f) / R
+        q1 <- 1 / R + (y - E$f) * (2 * sp^2 * E$f) / R^2  # dq0/df with live R
+        S <- as.numeric(Oi %*% eta); for (l in 1:neta) S[l] <- S[l] + sum(q0 * E$a[, l])
+        if (max(abs(S)) < 1e-12) break
+        Hf <- Oi; for (l in 1:neta) for (m in 1:neta) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
+        eta <- eta - solve(Hf, S)
+      }
+      E <- .fa(th, eta, s, times); f <- E$f
+      R <- sa^2 + sp^2 * f^2
+      Phi <- 0.5 * sum((y - f)^2 / R + log(R)) + 0.5 * as.numeric(t(eta) %*% Oi %*% eta) + 0.5 * ldOm
+      Ht <- Oi; for (l in 1:neta) for (m in 1:neta) Ht[l, m] <- Ht[l, m] + sum((1 / R) * E$a[, l] * E$a[, m])
+      tot <- tot + Phi + 0.5 * log(det(Ht))
+    }
+    tot
+  }
+  psi0 <- c(as.numeric(fitP$theta[c("tka", "tcl", "tv", "add.sd", "prop.sd")]), diag(Om0))
+  np <- length(psi0); h <- pmax(abs(psi0), 0.5) * 5e-5; H <- matrix(0, np, np); f0 <- objFOCEP(psi0)
+  for (i in 1:np) { ei <- numeric(np); ei[i] <- h[i]
+    H[i, i] <- (objFOCEP(psi0 + 2*ei) - 2*f0 + objFOCEP(psi0 - 2*ei)) / (4 * h[i]^2) }
+  for (i in 1:(np-1)) for (j in (i+1):np) { ei <- numeric(np); ei[i] <- h[i]; ej <- numeric(np); ej[j] <- h[j]
+    H[i, j] <- H[j, i] <- (objFOCEP(psi0+ei+ej) - objFOCEP(psi0+ei-ej) - objFOCEP(psi0-ei+ej) + objFOCEP(psi0-ei-ej)) / (4 * h[i] * h[j]) }
+  pn <- c("tka", "tcl", "tv", "add.sd", "prop.sd", "om.eta.ka", "om.eta.cl", "om.eta.v")
+  dimnames(H) <- list(pn, pn); Ran <- rP$R[pn, pn]
+  # exact on every numerically significant entry (entries below 1% of the matrix norm
+  # sit at ~1e-7 of it and carry only central-FD roundoff, so they get a norm-scaled bound)
+  big <- abs(H) > 0.01 * max(abs(H))
+  expect_lt(max(abs(Ran[big] - H[big]) / abs(H[big])), 3e-4)
+  expect_lt(max(abs(Ran - H)), 1e-5 * max(abs(H)))
+  # finite SEs (the identified directions) match the gold FD
+  seA <- suppressWarnings(sqrt(diag(solve(Ran)))); seG <- suppressWarnings(sqrt(diag(solve(H))))
+  fin <- is.finite(seA) & is.finite(seG)
+  expect_gt(sum(fin), 4L)                              # most directions are identified
+  expect_equal(unname(seA[fin]), unname(seG[fin]), tolerance = 5e-3)
+})
+
+test_that("est='focep' installs the full analytic covariance", {
+  skip_on_cran()
+  skip_if_not_installed("nlmixr2data")
+  fit <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focep",
+            focepControl(print = 0L, covMethod = "analytic", covFull = TRUE))))
+  expect_identical(fit$covMethod, "analytic")
+  expect_true(any(grepl("^om\\.", rownames(fit$cov))))
+  .se <- sqrt(diag(fit$cov))
+  expect_true(all(is.finite(.se)) && all(.se > 0))
 })

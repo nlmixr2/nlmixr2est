@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- The analytic covariance (`covMethod = "analytic"`) now supports `foce = "foce+"`
+  (the live conditional residual variance), including the `focep` method; previously
+  it fell back to the finite-difference covariance.
+
 - The FOCEI `covType` control was removed; the analytic-vs-finite-difference R-matrix
   choice is now part of `foceiControl(covMethod = c("analytic", "r,s", "r", "s", ""))`,
   with `"analytic"` (the exact observed-information R-matrix) the default.
@@ -110,6 +114,12 @@
   inflated by a constant factor (√2 for `"r"`, 2 for `"s"`) because the R- and
   S-matrix covariances used `2*R^{-1}` / `4*S^{-1}` instead of `R^{-1}` / `S^{-1}`;
   they now match NONMEM `$COV` (#666).
+
+- Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
+  warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
+  in the inner problem (including `ll()`/`dnorm()` models with
+  finite-difference Hessians), `"save"` keeps the prior behavior
+
 - `matExp()`/`indLin()` models now estimate with the focei family, the nlm
   family, and SAEM, matching the equivalent ODE model; compartments are
   ordered source-first from the `k_<from>_<to>` graph so default dosing is

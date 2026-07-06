@@ -129,6 +129,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -1L,
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -348,12 +349,10 @@ instead of FOCE (FALSE)}
     \code{eta} (the live variance), keeping the truncated FOCE
     inner gradient.  Advantage: uses the conditional variance and
     is a bit more accurate than NONMEM's FOCE in some cases.
-    Disadvantage: does not match NONMEM FOCE and is unsupported by
-    \code{covMethod = "analytic"} (falls back to the
-    finite-difference covariance).  This was the FOCE behavior in
-    \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
-    gradient of \code{eta} like the full \code{focei} method, so it
-    is not as accurate as \code{focei}.
+    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+    use the gradient of \code{eta} like the full \code{focei}
+    method, so it is not as accurate as \code{focei}.
 
     }}
 
@@ -655,6 +654,12 @@ first zero gradient.}
 for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
+
+\item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
+`"calc"` (default) warm-starts each inner problem with the eta
+Hessian calculated for the objective function at the same starting
+eta, calculating it at the starting point when unavailable;
+`"save"` uses the classic self-initialized Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
