@@ -469,6 +469,12 @@
 #'   etas sampled from omega are each evaluated and the best (by inner
 #'   objective) is used.
 #'
+#' @param warm Seeding of the n1qn1 inner-optimization Hessian:
+#'   `"calc"` (default) warm-starts each inner problem with the eta
+#'   Hessian calculated for the objective function at the same starting
+#'   eta, calculating it at the starting point when unavailable;
+#'   `"save"` uses the classic self-initialized Hessian.
+#'
 #' @param nAGQ Number of Gauss-Hermite adaptive quadrature points. `0`
 #'   disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
 #'   ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
@@ -670,6 +676,7 @@ foceiControl <- function(sigdig = 4, #
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
                          mceta=-1L,
+                         warm=c("calc", "save"),
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
@@ -967,6 +974,12 @@ foceiControl <- function(sigdig = 4, #
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
   }
+  if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
+    warm <- as.integer(warm)
+  } else {
+    .warmIdx <- c("calc" = 1L, "save" = 0L)
+    warm <- setNames(.warmIdx[match.arg(warm)], NULL)
+  }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
   } else {
@@ -1215,6 +1228,7 @@ foceiControl <- function(sigdig = 4, #
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta),
+    warm=warm,
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
@@ -1263,6 +1277,9 @@ foceiControl <- function(sigdig = 4, #
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
       paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x == "warm") {
+      .warmIdx <- c("calc" = 1L, "save" = 0L)
+      paste0("warm=", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
       paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))

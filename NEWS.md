@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
+  warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
+  in the inner problem, `"save"` keeps the prior behavior
+
 - `matExp()`/`indLin()` models now estimate with the focei family, the nlm
   family, and SAEM, matching the equivalent ODE model; compartments are
   ordered source-first from the `k_<from>_<to>` graph so default dosing is
