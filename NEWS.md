@@ -12,6 +12,10 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- The SAEM iteration history (`parHistData`) now records the off-diagonal `Omega`
+  covariances of declared blocks (`cov.<eta>.<eta>`), alongside the existing diagonal
+  variances and residual parameters.
+
 - SAEM now reports a full theta + residual + Omega covariance by default
   (`saemControl(covFull = TRUE)`): the linearized-FIM (`covMethod = "linFim"`) variance block
   (Omega variances/covariances and residual error parameters) is added to the structural-theta

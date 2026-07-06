@@ -584,13 +584,43 @@ rxUiGet.saemParHistEtaNames <- function(x, ...) {
 #attr(rxUiGet.saemParHistEtaNames, "desc") <- "Get the parameter history eta names"
 attr(rxUiGet.saemParHistEtaNames, "rstudio") <- "V(ka)"
 
+#' Off-diagonal Omega covariances recorded in the SAEM iteration history
+#'
+#' Returns the estimated (non-fixed) off-diagonal Omega elements, mapped to the eta
+#' order used by `Gamma2_phi1` (0-indexed row/col pairs for the C++ layer), and their
+#' `cov.<eta>.<eta>` names (matching the covariance-matrix naming).
+#' @return list(pairs = integer matrix (row, col), names = character)
+#' @noRd
+#' @export
+rxUiGet.saemParHistOmegaOffInfo <- function(x, ...) {
+  .ui <- x[[1]]
+  .idf <- .ui$iniDf
+  .etaN <- rxUiGet.saemEtaNames(x, ...)                 # phi1 / Gamma2_phi1 order
+  .diag <- .idf[!is.na(.idf$neta1) & .idf$neta1 == .idf$neta2, , drop = FALSE]
+  .num2name <- stats::setNames(.diag$name, .diag$neta1)
+  .off <- .idf[!is.na(.idf$neta1) & .idf$neta1 != .idf$neta2 & !.idf$fix, , drop = FALSE]
+  if (nrow(.off) == 0L) {
+    return(list(pairs = matrix(integer(0), ncol = 2L), names = character(0)))
+  }
+  .pi <- match(.num2name[as.character(.off$neta1)], .etaN)
+  .pj <- match(.num2name[as.character(.off$neta2)], .etaN)
+  .hi <- pmax(.pi, .pj); .lo <- pmin(.pi, .pj)
+  .ord <- order(.hi, .lo)
+  .hi <- .hi[.ord]; .lo <- .lo[.ord]
+  list(pairs = cbind(.hi - 1L, .lo - 1L),
+       names = paste0("cov.", .etaN[.hi], ".", .etaN[.lo]))
+}
+attr(rxUiGet.saemParHistOmegaOffInfo, "rstudio") <- "off-diagonal omega history"
+
 #' @export
 rxUiGet.saemParHistNames <- function(x, ...) {
   #join_cols(join_cols(Plambda, Gamma2_phi1.diag()), vcsig2).t();
   .plambda <- rxUiGet.saemParamsToEstimate(x, ...)
   .plambda <- .plambda[!rxUiGet.saemFixed(x, ...)]
   .ui <- x[[1]]
-  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...), rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
+  c(.plambda, rxUiGet.saemParHistEtaNames(x, ...),
+    rxUiGet.saemParHistOmegaOffInfo(x, ...)$names,
+    rxUiGet.saemParHistResNames(x, ...), .ui$mixProbs)
 }
 attr(rxUiGet.saemParHistNames, "rstudio") <- c("ka", "add.sd")
 

@@ -85,4 +85,39 @@ nmTest({
     expect_true(is.finite(fF$parFixedDf["add.sd", "SE"]))
     expect_gt(fF$parFixedDf["add.sd", "SE"], 0)
   })
+
+  test_that("SAEM iteration history records off-diagonal Omega covariances", {
+    # block-Omega model: the off-diagonal covariance trajectory (cov.<eta>.<eta>) is
+    # recorded in parHistData, named consistently with the covariance matrix, and its
+    # final value matches the fitted Omega off-diagonal.
+    blk <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.3; prop.sd <- 0.1
+        eta.ka ~ 0.6
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) + prop(prop.sd)
+      })
+    }
+    f <- .nlmixr(blk, theo_sd, est = "saem",
+                 control = saemControl(nBurn = 150, nEm = 200, print = 0, seed = 1L,
+                                       covMethod = "linFim"))
+    ph <- f$parHistData
+    expect_true("cov.eta.v.eta.cl" %in% names(ph))
+    expect_equal(ph[["cov.eta.v.eta.cl"]][nrow(ph)],
+                 unname(f$omega["eta.cl", "eta.v"]), tolerance = 0.05)
+
+    # a diagonal-Omega model must not gain any covariance columns (no regression)
+    diagM <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+            eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd) })
+    }
+    fd <- .nlmixr(diagM, theo_sd, est = "saem",
+                  control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L))
+    expect_false(any(grepl("^cov\\.", names(fd$parHistData))))
+  })
 })
