@@ -76,8 +76,8 @@
 
 #' Name the Omega variance/covariance rows of the covariance matrix
 #' @param pairs matrix of eta-index pairs, each row c(a, b)
-#' @param onm per-eta display name (the mu-referenced theta, or the eta name)
-#' @return character vector, `om.<name>` (variance) / `cov.<name>.<name>` (covariance)
+#' @param onm per-eta display name (the random-effect / eta name)
+#' @return character vector, `om.<eta>` (variance) / `cov.<eta>.<eta>` (covariance)
 #' @noRd
 .foceiOmegaCovNames <- function(pairs, onm) {
   apply(pairs, 1, function(.pr) if (.pr[1] == .pr[2]) paste0("om.", onm[.pr[1]])

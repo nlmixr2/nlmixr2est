@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- The analytic covariance now reports `fit$covMethod` as `"analytic"` (instead of `"r"`),
+  and its Omega variance/covariance rows are named by the random effect -- `om.eta.cl` /
+  `cov.eta.cl.eta.v` -- rather than by the mu-referenced theta (`om.tcl`).
+
 - Residual (error-model) parameters are now part of the focei-family covariance: their
   standard errors are estimated alongside the structural thetas (`skipCov` no longer skips
   them; only fixed, IOV, and mlogit-scale mixture-probability thetas are skipped).
