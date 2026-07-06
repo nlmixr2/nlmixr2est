@@ -390,6 +390,36 @@ rxUiGet.saemResMod <- function(x, ...) {
 attr(rxUiGet.saemResMod, "rstudio") <- c(1L, 2L)
 
 #' @export
+rxUiGet.saemArActive <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .iniDf <- .ui$iniDf
+  vapply(seq_along(.predDf$cond), function(i) {
+    if (!is.na(.predDf$ar[i])) return(1L)
+    if (isTRUE(any(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i]))) return(1L)
+    0L
+  }, integer(1), USE.NAMES=FALSE)
+}
+attr(rxUiGet.saemArActive, "rstudio") <- 0L
+
+#' @export
+rxUiGet.saemArCor <- function(x, ...) {
+  .ui <- x[[1]]
+  .predDf <- .ui$predDf
+  .iniDf <- .ui$iniDf
+  vapply(seq_along(.predDf$cond), function(i) {
+    if (!is.na(.predDf$ar[i])) {
+      .v <- suppressWarnings(as.numeric(.predDf$ar[i]))
+      if (!is.na(.v)) return(.v)
+    }
+    .w <- which(.iniDf$err == "ar" & .iniDf$condition == .predDf$cond[i])
+    if (length(.w) == 1L) return(.iniDf$est[.w])
+    0.0
+  }, numeric(1), USE.NAMES=FALSE)
+}
+attr(rxUiGet.saemArCor, "rstudio") <- 0.0
+
+#' @export
 rxUiGet.saemModNumEst <- function(x, ...) {
   .resMod <- rxUiGet.saemResMod(x, ...)
   vapply(.resMod, function(i) {
@@ -772,6 +802,8 @@ rxUiGet.saemModelList <- function(x, ...) {
     .mod$covars <- .covars
   }
   .mod$res.mod <- rxUiGet.saemResMod(x, ...)
+  .mod$arActive <- rxUiGet.saemArActive(x, ...)
+  .mod$arCor <- rxUiGet.saemArCor(x, ...)
   .mod$log.eta <- rxUiGet.saemLogEta(x, ...)
   .mod$ares    <- rxUiGet.saemAres(x, ...)
   .mod$bres    <- rxUiGet.saemBres(x, ...)
