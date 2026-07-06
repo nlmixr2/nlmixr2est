@@ -104,6 +104,7 @@
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
+                       parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
                        DEBUG = 0,
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
@@ -590,6 +591,7 @@
     distribution = distribution,
     parHistThetaKeep=parHistThetaKeep,
     parHistOmegaKeep=parHistOmegaKeep,
+    parHistOmegaOffPairs=parHistOmegaOffPairs,
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
@@ -632,7 +634,8 @@
   nMix <- max(1L, length(mixProb))
   cfg$nMix <- nMix
   cfg$mixProb <- mixProb
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) +
+                                        nrow(parHistOmegaOffPairs) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

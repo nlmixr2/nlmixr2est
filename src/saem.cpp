@@ -843,6 +843,10 @@ public:
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+    // off-diagonal Omega covariances recorded in the iteration history: 0-indexed
+    // (row, col) pairs into Gamma2_phi1, appended after the diagonal variances
+    parHistOmegaOffPairs = x.containsElementNamed("parHistOmegaOffPairs") ?
+      as<umat>(x["parHistOmegaOffPairs"]) : umat(0, 2);
 
     obs_subject.set_size(ntotal);
     for (int i = 0; i < N; i++) {
@@ -856,7 +860,7 @@ public:
     // Set up the shared scale.h iteration-print struct (scaleTypeNone; xform
     // sub-list wired via scaleAttachXform, same path as other estimators).
     scaleNames = as<CharacterVector>(x["parHistNames"]);
-    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + parHistOmegaOffPairs.n_rows + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
     scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleSetup(&scale,
@@ -2629,6 +2633,13 @@ public:
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
+      if (parHistOmegaOffPairs.n_rows > 0) {                    // off-diagonal Omega covariances
+        vec offv(parHistOmegaOffPairs.n_rows);
+        for (unsigned int p = 0; p < parHistOmegaOffPairs.n_rows; ++p) {
+          offv(p) = Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 1));
+        }
+        pl = join_cols(pl, offv);
+      }
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       if (nMix > 1) {
@@ -2742,6 +2753,7 @@ private:
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
+  umat parHistOmegaOffPairs;
 
   // SA (stochastic-approximation) covariance phase
   int nSaCov;

@@ -231,6 +231,10 @@
                         fixedOmegaValues=ui$saemModelOmegaFixedValues,
                         parHistThetaKeep=ui$saemParHistThetaKeep,
                         parHistOmegaKeep=ui$saemParHistOmegaKeep,
+                        parHistOmegaOffPairs={
+                          .oi <- ui$saemParHistOmegaOffInfo
+                          if (is.null(.oi)) matrix(integer(0), ncol=2L) else .oi$pairs
+                        },
                         seed=rxode2::rxGetControl(ui, "seed", 99),
                         DEBUG=rxode2::rxGetControl(ui, "DEBUG", 0),
                         tol=rxode2::rxGetControl(ui, "tol", 1e-6),
