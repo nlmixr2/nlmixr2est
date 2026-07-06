@@ -114,6 +114,13 @@ typical fitting.}
  Kuhn & Lavielle 2005).  Always includes every estimated population parameter
  (theta, the \code{Omega} diagonal variances, and residual).
 
+ For both \code{fim} and \code{sa} the simulation-based Fisher information covers the
+ structural theta, the \code{Omega} diagonal variances, and additive residual error.
+ Off-diagonal \code{Omega} covariances and proportional/combined residual error are not
+ estimated reliably by the simulation FIM (the complete-data correction is unstable when
+ between-subject variability dominates the residual), so those variance-block standard
+ errors are spliced in from the linearized FIM (\code{linFim}).
+
  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 
  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}

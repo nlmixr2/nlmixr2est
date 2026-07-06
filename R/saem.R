@@ -563,6 +563,38 @@
   if (any(!is.finite(.ev)) || min(.ev) <= 0) return(NULL)
   .cov
 }
+#' Splice the linearized-FIM variance block into a fim/sa covariance
+#'
+#' The analytic (simulation) FIM reliably covers theta + diagonal Omega + additive
+#' residuals, but not off-diagonal Omega covariances or proportional/combined residual
+#' error (the complete-data Louis correction is unstable when BSV dominates).  For those
+#' models this keeps the simulation-based structural-theta block and takes the full
+#' variance block (all Omega variances/covariances + residual parameters) from linFim's
+#' `calc.COV` (blocB), which handles them correctly via the marginal covariance.  Models
+#' the analytic FIM already covers in full are returned unchanged.
+#' @param .cov analytic fim/sa covariance (theta + whatever variance params it covers)
+#' @param env saem fit environment
+#' @return covariance with the linFim variance block spliced in, or `.cov` unchanged
+#' @noRd
+.saemSpliceLinFimVar <- function(.cov, env) {
+  if (!isTRUE(rxode2::rxGetControl(env$ui, "covFull", TRUE))) return(.cov)
+  .saem <- env$saem
+  attr(.saem, "env") <- env
+  .cm <- suppressWarnings(tryCatch(calc.COV(.saem), error = function(e) NULL))
+  if (is.null(.cm) || inherits(.cm, "try-error")) return(.cov)
+  .vc <- attr(.cm, "varCov")
+  if (is.null(.vc) || !is.matrix(.vc) || !all(is.finite(.vc))) return(.cov)
+  .vn <- colnames(.vc)
+  if (all(.vn %in% rownames(.cov))) return(.cov)     # analytic already covers the variance block
+  # keep the simulation structural-theta block; take the whole variance block from linFim
+  .rn <- rownames(.cov)
+  .th <- .rn[!(.rn %in% .vn) & !grepl("^om\\.|^cov\\.", .rn)]
+  .fn <- c(.th, .vn)
+  .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+  if (length(.th) > 0L) .full[.th, .th] <- .cov[.th, .th, drop = FALSE]
+  .full[.vn, .vn] <- .vc
+  .full
+}
 
 #' Calculate the covariance term
 #'
@@ -578,7 +610,12 @@
     # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
     .H <- if (identical(.cm, "sa")) env$saem$HaSa else env$saem$Ha
     .cov <- NULL
-    nlmixrWithTiming("covariance", {.cov <- .saemFimToCov(.H, env)})
+    nlmixrWithTiming("covariance", {
+      .cov <- .saemFimToCov(.H, env)
+      # off-diagonal Omega / proportional-combined residuals are not reliably in the
+      # analytic FIM; splice those from linFim's variance block (blocB).
+      if (!is.null(.cov)) .cov <- .saemSpliceLinFimVar(.cov, env)
+    })
     if (!is.null(.cov)) {
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset

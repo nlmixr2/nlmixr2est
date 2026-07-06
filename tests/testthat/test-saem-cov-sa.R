@@ -120,4 +120,33 @@ nmTest({
                   control = saemControl(nBurn = 100, nEm = 120, print = 0, seed = 1L))
     expect_false(any(grepl("^cov\\.", names(fd$parHistData))))
   })
+
+  test_that("fim/sa splice linFim's variance block for off-diagonal Omega / combined residuals", {
+    # The analytic FIM cannot reliably do off-diagonal Omega or non-additive residuals;
+    # those variance params are spliced from linFim's blocB.  On a block-Omega model the
+    # sa covariance must include cov.<eta>.<eta>, and every variance-block SE must equal
+    # linFim's varCov computed on the same fit (theta stays simulation-based).
+    blk <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6
+        eta.cl + eta.v ~ c(0.3, 0.05, 0.1)
+      })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+    fS <- .nlmixr(blk, theo_sd, est = "saem",
+                  control = saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L,
+                                        covMethod = "sa", nSaCov = 1000))
+    skip_if_not(identical(fS$covMethod, "sa"))   # near-singular fits legitimately fall back
+    expect_true("cov.eta.v.eta.cl" %in% rownames(fS$cov))
+    .saem <- fS$saem
+    attr(.saem, "env") <- fS$env
+    .vc <- attr(suppressWarnings(calc.COV(.saem)), "varCov")
+    .vn <- colnames(.vc)
+    expect_equal(unname(sqrt(diag(fS$cov[.vn, .vn]))),
+                 unname(sqrt(diag(.vc))), tolerance = 1e-6)
+  })
 })
