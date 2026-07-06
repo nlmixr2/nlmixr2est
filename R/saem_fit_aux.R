@@ -412,8 +412,10 @@ calc.COV <- function(fit0) {
   X <- do.call("rbind", lapply(.parts, `[[`, "x"))
   ret <- .nlmixr2RobustCov(X)
   if (.doVar) {
+    # the variance block is an optional add-on to the (existing) theta cov; keep it
+    # silent so a near-singular block at degenerate settings never pollutes $runInfo
     .blocB <- Reduce(`+`, lapply(.parts, `[[`, "b"))
-    .varCov <- tryCatch(solve(.blocB), error = function(e) NULL)
+    .varCov <- suppressWarnings(tryCatch(solve(.blocB), error = function(e) NULL))
     if (!is.null(.varCov) && all(is.finite(.varCov))) {
       .vn <- c(.resNames, .omNames)
       dimnames(.varCov) <- list(.vn, .vn)

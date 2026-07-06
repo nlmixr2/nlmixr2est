@@ -921,6 +921,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (!is.environment(.env) || !exists(".saemFullCov", envir = .env, inherits = FALSE)) return(invisible())
   .full <- get(".saemFullCov", envir = .env)
   if (!is.matrix(.full) || !all(is.finite(.full))) return(invisible())
+  .full <- 0.5 * (.full + t(.full))                          # exact symmetry (avoids eig_sym warnings)
   .ev <- suppressWarnings(eigen(.full, symmetric = TRUE, only.values = TRUE)$values)
   if (any(diag(.full) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible())  # keep theta-only
   .env$cov <- .full
@@ -1003,6 +1004,15 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
     # the theta-dimensioned fit table has been built.
     .saemInstallFullCov(.ret)
+    # The shared output finalization can leave a stale "failed" covMethod label even
+    # when the SAEM covariance actually succeeded (a valid finite PD $cov exists);
+    # restore the intended method in that case.
+    .rEnv <- if (rxode2::rxIs(.ret, "nlmixr2FitData")) .ret$env else .ret
+    if (is.environment(.rEnv) && identical(.rEnv$covMethod, "failed") &&
+          is.matrix(.rEnv$cov) && all(is.finite(.rEnv$cov)) && all(diag(.rEnv$cov) > 0)) {
+      .cm <- tryCatch(rxode2::rxGetControl(.ui, "covMethod", "linFim"), error = function(e) "linFim")
+      .rEnv$covMethod <- if (.cm %in% c("linFim", "fim", "sa")) .cm else "linFim"
+    }
     # For mixture models: post-correct me/mn/mu in the assembled fit table
     # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
     if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
