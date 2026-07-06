@@ -126,13 +126,13 @@ test_that("covType='fd' covFull=TRUE installs the full FD covariance matching an
   expect_equal(unname(.seF), unname(.seA), tolerance = 0.05)
 })
 
-test_that("covType='fd' (the default) keeps the finite-difference theta covariance", {
+test_that("covType='fd' covFull=FALSE keeps the finite-difference theta covariance", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
   fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-                                 foceiControl(print = 0L, covType = "fd")))
-  # FD cov is theta-only (residual/Omega are skipCov'd): no Omega/residual rows, and
-  # it is a valid, finite, positive covariance -- not the full analytic matrix
+                                 foceiControl(print = 0L, covType = "fd", covFull = FALSE)))
+  # FD covFull=FALSE cov is theta-only (residual/Omega are skipCov'd): no Omega/residual
+  # rows, and it is a valid, finite, positive covariance -- not the full analytic matrix
   expect_true(is.matrix(fit$cov))
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))
   expect_true(all(is.finite(diag(fit$cov))) && all(diag(fit$cov) > 0))
@@ -324,20 +324,21 @@ test_that("covType='analytic' handles a non-mu-referenced eta (orphan Omega vari
 test_that("covFull controls fit$cov shape without changing the theta SEs", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # covFull=TRUE installs the full theta+sigma+Omega cov; covFull=FALSE (default)
-  # installs only the structural-theta block.  The theta SEs are identical either way.
+  # covFull=TRUE installs the full theta+sigma+Omega cov; covFull=FALSE installs the
+  # theta block (structural + residual, i.e. the non-skipped thetas), no Omega.  The
+  # theta SEs are identical either way.
   fitT <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                   foceiControl(print = 0L, covType = "analytic", covFull = TRUE)))
   fitF <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                   foceiControl(print = 0L, covType = "analytic", covFull = FALSE)))
   fitD <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                   foceiControl(print = 0L, covType = "analytic")))
-  .th <- c("tka", "tcl", "tv")
-  # covFull=TRUE is the full 7x7 matrix; covFull=FALSE is theta-only
+  .th <- c("tka", "tcl", "tv", "add.sd")   # non-skipped thetas: structural + residual
+  # covFull=TRUE adds the Omega block; covFull=FALSE is the theta block (no Omega)
   expect_true(any(grepl("^om\\.", rownames(fitT$cov))))
-  expect_false(any(grepl("^om\\.|add.sd", rownames(fitF$cov))))
+  expect_false(any(grepl("^om\\.", rownames(fitF$cov))))
   expect_setequal(rownames(fitF$cov), .th)
-  expect_setequal(rownames(fitD$cov), .th)   # default is theta-only (backwards compatible)
+  expect_true(any(grepl("^om\\.", rownames(fitD$cov))))   # default is now covFull=TRUE (the full cov)
   # identical theta SEs, and covFull=FALSE is exactly the theta submatrix of the full cov
   expect_equal(sqrt(diag(fitF$cov))[.th], sqrt(diag(fitT$cov))[.th])
   expect_equal(unname(fitF$cov[.th, .th]), unname(fitT$cov[.th, .th]))
@@ -498,7 +499,7 @@ test_that("covType='analytic' covFull=FALSE respects skipCov (matches the FD sha
   fitA <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
               foceiControl(print = 0L, covType = "analytic", covFull = FALSE, skipCov = c(FALSE, FALSE, TRUE, TRUE)))))
   fitF <- suppressWarnings(suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
-              foceiControl(print = 0L, covType = "fd", covMethod = "r", skipCov = c(FALSE, FALSE, TRUE, TRUE)))))
+              foceiControl(print = 0L, covType = "fd", covFull = FALSE, covMethod = "r", skipCov = c(FALSE, FALSE, TRUE, TRUE)))))
   expect_setequal(rownames(fitA$cov), rownames(fitF$cov))
   expect_false("tv" %in% rownames(fitA$cov))                   # skipCov'd theta excluded, not widened
 })
