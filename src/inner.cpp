@@ -1918,11 +1918,10 @@ void warmZm(focei_ind *fInd, int id) {
       }
     }
   }
-  // FD Hessians (needOptimHess) optimize their step (etahh) once on the first
-  // calcEtaHessian call per subject; calculating here (e.g. at eta=0) would
-  // move that reference point and change every downstream Hessian, so llik
-  // models only reuse Hessians saved by LikInner2.
-  if (!etaMatch && !op_focei.needOptimHess) {
+  // For FD Hessians (needOptimHess) this optimizes the shi21 step (etahh) at
+  // the starting eta (e.g. eta=0) instead of the EBE mode, shifting downstream
+  // Hessians by FD error; the warm-start speedup is worth that small shift.
+  if (!etaMatch) {
     double f = likInner0(fInd->eta, id);
     if (!ISNA(f)) {
       rx = getRxSolve_();
