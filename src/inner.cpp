@@ -146,6 +146,13 @@ struct focei_options {
   int predNeq;
   int eventType;
 
+  // Index of rx_pred_ in the inner model's lhs.  Normally 0, but an AR(1)
+  // endpoint emits lag()-referenced defs (the residual/time the lag needs as
+  // real lhs) ahead of rx_pred_, so it shifts.  The d(f)/d(eta), rx_r_ and
+  // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
+  int predOffset;
+  int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
+
   unsigned int neta;
   unsigned int ntheta;
   unsigned int npars;
@@ -974,12 +981,12 @@ arma::mat grabRFmatFromInner(int id, bool predSolve) {
     fInd->nObs++;
     if (predSolve) {
       rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      retF(k) = lhs[0];
-      retR(k) = lhs[1];
+      retF(k) = lhs[op_focei.predNoLhsOffset];
+      retR(k) = lhs[op_focei.predNoLhsOffset + 1];
     } else {
       rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      retF(k) = lhs[0];
-      retR(k) = lhs[op_focei.neta + 1];
+      retF(k) = lhs[op_focei.predOffset];
+      retR(k) = lhs[op_focei.predOffset + op_focei.neta + 1];
     }
     k++;
     if (k >= getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind)) {
@@ -1388,7 +1395,12 @@ double likInner0(double *eta, int id) {
           // Need to calculate for advan sensitivities
           if (predSolve) {
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-            lhs[op_focei.neta + 1] = lhs[1];
+            // Normalize the predNoLhs layout into the inner offset layout so the
+            // shared reads below use op_focei.predOffset uniformly.
+            double _pf = lhs[op_focei.predNoLhsOffset];
+            double _pr = lhs[op_focei.predNoLhsOffset + 1];
+            lhs[op_focei.predOffset] = _pf;
+            lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           }
           else {
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
@@ -1396,12 +1408,16 @@ double likInner0(double *eta, int id) {
         } else if (getIndEvid(ind, kk) == 0) {
           if (predSolve) {
             rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-            lhs[op_focei.neta + 1] = lhs[1];
+            // Normalize the predNoLhs layout into the inner offset layout.
+            double _pf = lhs[op_focei.predNoLhsOffset];
+            double _pr = lhs[op_focei.predNoLhsOffset + 1];
+            lhs[op_focei.predOffset] = _pf;
+            lhs[op_focei.predOffset + op_focei.neta + 1] = _pr;
           } else {
             rxInner.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
           }
 
-          f = lhs[0]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
+          f = lhs[op_focei.predOffset]; // TBS is performed in the rxode2 rx_pred_ statement. This allows derivatives of TBS to be propagated
           dv = tbs(dv0);
           if (ISNA(f) || std::isnan(f) || std::isinf(f)) {
             return NA_REAL;
@@ -1422,12 +1438,12 @@ double likInner0(double *eta, int id) {
           if (hasRxCens(rx)) cens = getIndCens(ind, kk);
           fInd->tbsLik+=tbsL(dv0);
           // fInd->err(k, 0) = lhs[0] - getIndDv(ind, k); // pred-dv
-          if (ISNA(lhs[op_focei.neta + 1])){
+          if (ISNA(lhs[op_focei.predOffset + op_focei.neta + 1])){
             return NA_REAL;
             //throw std::runtime_error("bad solve");
           }
           if (dist == rxDistributionNorm) {
-            r = lhs[op_focei.neta + 1];
+            r = lhs[op_focei.predOffset + op_focei.neta + 1];
             // "nonmem" FOCE: use the eta=0 population R (FOCEI and "foce+" keep
             // the live inner rx_r_ evaluated at the current eta)
             if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0 &&
@@ -1464,7 +1480,7 @@ double likInner0(double *eta, int id) {
               if (predSolve || op_focei.etaFD[i]==1) {
                 a(k, i) = etaGradF(k, i);
               } else {
-                a(k, i) = lhs[i+1];
+                a(k, i) = lhs[op_focei.predOffset + i + 1];
               }
             }
             // Ci = fpm %*% omega %*% t(fpm) + Vi; Vi=diag(r)
@@ -1477,7 +1493,7 @@ double likInner0(double *eta, int id) {
               if (op_focei.interaction == 0 && op_focei.neta > 0 && op_focei.fo == 0) {
                 lnr = _safe_log(r);
               } else {
-                lnr = _safe_log(lhs[op_focei.neta + 1]);
+                lnr = _safe_log(lhs[op_focei.predOffset + op_focei.neta + 1]);
               }
             }
             else lnr = 0;
@@ -1497,8 +1513,8 @@ double likInner0(double *eta, int id) {
                     rp = etaGradR(k, i);
                   }
                 } else {
-                  fpm = a(k, i) = lhs[i + 1]; // Almquist uses different a (see eq #15)
-                  rp  = (dist == rxDistributionNorm)*lhs[i + op_focei.neta + 2];
+                  fpm = a(k, i) = lhs[op_focei.predOffset + i + 1]; // Almquist uses different a (see eq #15)
+                  rp  = (dist == rxDistributionNorm)*lhs[op_focei.predOffset + i + op_focei.neta + 2];
                 }
                 if (fpm == 0.0) {
                   a(k, i) = fpm = sqrt(DBL_EPSILON);
@@ -1536,7 +1552,7 @@ double likInner0(double *eta, int id) {
                 if (predSolve || op_focei.etaFD[i]==1) {
                   a(k, i) = fpm = etaGradF(k, i);
                 } else {
-                  a(k, i) = fpm = lhs[i + 1];
+                  a(k, i) = fpm = lhs[op_focei.predOffset + i + 1];
                 }
                 if (dist == rxDistributionNorm) {
                   double lpCur = -0.5 * err * fpm * B(k, 0);
@@ -4026,6 +4042,12 @@ static inline void foceiSetupTheta_(List mvi,
   if (alloc){
     rxUpdateFuns(as<SEXP>(mvi["trans"]), &rxInner);
     foceiSetupTrans_(as<CharacterVector>(mvi["params"]));
+    // Locate rx_pred_ in the inner lhs (AR(1) lag defs may precede it).
+    op_focei.predOffset = 0;
+    CharacterVector innerLhs = as<CharacterVector>(mvi["lhs"]);
+    for (int il = 0; il < innerLhs.size(); ++il) {
+      if (as<std::string>(innerLhs[il]) == "rx_pred_") { op_focei.predOffset = il; break; }
+    }
   } else if (!op_focei.alloc){
     stop("FOCEi problem not allocated\nThis can happen when symengine<->nlmixr2 interaction is not working correctly.");
   }
@@ -7940,6 +7962,12 @@ Environment foceiFitCpp_(Environment e){
           List mvp = rxode2::rxModelVars_(noLhs);
           rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
           op_focei.canDoFD = true;
+          // Locate rx_pred_ in the predNoLhs lhs (AR(1) lag defs may precede it).
+          op_focei.predNoLhsOffset = 0;
+          CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
+          for (int il = 0; il < predLhs.size(); ++il) {
+            if (as<std::string>(predLhs[il]) == "rx_pred_") { op_focei.predNoLhsOffset = il; break; }
+          }
         } else {
           stop(_("focei cannot be run without rxode2 'predNoLhs'"));
         }
