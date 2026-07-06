@@ -968,8 +968,18 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # It is emitted suppressed ('~' not '=') so it does not add output columns.
   # Other models keep the LHS after the prediction (some error-model LHS depend
   # on rx_pred_).
-  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
-  .postLhs <- if (.isMatExp) character(0) else .lhs
+  # variables referenced inside lag()/history functions must be defined BEFORE
+  # rx_pred_ (which references them), unlike the other error-model lhs which may
+  # depend on rx_pred_ and stay after it
+  .lagDefs <- character(0)
+  .restLhs <- .lhs
+  if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
+    .isLag <- grepl(paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")="), .lhs)
+    .lagDefs <- .lhs[.isLag]
+    .restLhs <- .lhs[!.isLag]
+  }
+  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else .lagDefs
+  .postLhs <- if (.isMatExp) character(0) else .restLhs
   .s$..pred <- paste(c(
     .s$..stateInfo["state"],
     .lhs0,
