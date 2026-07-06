@@ -159,9 +159,18 @@ will calculate tables. By default this is \code{TRUE}}
 
 \item{compress}{Should the object have compressed items}
 
-\item{covMethod}{Method for calculating covariance, where R is the
-Hessian and S the sum of individual gradient cross-products (at the
-empirical Bayes estimates): \code{"r,s"} sandwich
+\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
 \code{""} to skip the covariance step.}

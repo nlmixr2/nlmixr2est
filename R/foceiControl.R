@@ -7,7 +7,11 @@
                            "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
                            "foceiMuGroupCovBounded",
-                           "foceiMuGroupCovData", "foceiMuGroupTol", "foceiMuGroupMaxCycles")
+                           "foceiMuGroupCovData", "foceiMuGroupTol",
+                           "foceiMuGroupMaxCycles",
+                           # derived from covMethod ("analytic" vs the finite-difference
+                           # formulas); kept internal so a built control round-trips.
+                           "covType")
 
 #' Control Options for FOCEi
 #'
@@ -45,42 +49,35 @@
 #'     derivatives while calculating the covariance components
 #'     (Hessian and S).
 #'
-#' @param covMethod Method for calculating covariance, where R is the
-#'     Hessian and S the sum of individual gradient cross-products (at the
-#'     empirical Bayes estimates): \code{"r,s"} sandwich
+#' @param covMethod Method for calculating the covariance.  \code{"analytic"} (the
+#'     default) uses the exact analytic observed-information R-matrix (reported as
+#'     \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+#'     errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+#'     error, mu-referenced/covariate/other structural parameters (and
+#'     non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+#'     message and falls back to the finite-difference Hessian for anything out of
+#'     scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+#'     transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+#'     pure-proportional variance that vanishes at a near-zero prediction).  The
+#'     finite-difference methods use R (the Hessian) and S (the sum of individual
+#'     gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 #'     (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 #'     (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
 #'     \code{""} to skip the covariance step.
 #'
-#' @param covType covariance R-matrix (Hessian) source, \code{"fd"} (default) or
-#'     \code{"analytic"}.  \code{"analytic"} uses the exact analytic
-#'     observed-information R-matrix and can additionally return the residual and
-#'     Omega standard errors.  It applies to FOCEI and FOCE fits with additive,
-#'     proportional, or combined additive-plus-proportional error, and covers
-#'     mu-referenced, covariate, and other non-mu-referenced structural parameters
-#'     (and non-mu-referenced etas) as well as SD-scale inter-occasion variability.
-#'     It defaults to \code{covMethod = "r"} (the observed-information \eqn{R^{-1}},
-#'     computed even when \code{covMethod = ""}); an explicit \code{covMethod = "r,s"}
-#'     or \code{"s"} is honored, with the analytic R feeding the native
-#'     finite-difference sandwich / S-matrix.  It emits a message and falls back to
-#'     the finite-difference Hessian for anything out of scope (FO, \code{nAGQ > 1},
-#'     censoring, DV-transformed error, bounded-parameter transforms, a structural
-#'     theta shared by two etas, or non-SD \code{iovXform}) -- and, for a
-#'     pure-proportional variance that vanishes at a near-zero model prediction,
-#'     where the observed information is ill-conditioned.
-#'
-#' @param covSolveTol absolute/relative ODE tolerance for the augmented-sensitivity
-#'     solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
-#'     tight tolerance from \code{sigdig}; supply a number to override it.
+#' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
+#'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+#'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+#'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
 #'
 #' @param covFull controls the shape of \code{fit$cov}.  \code{FALSE} (default)
 #'     installs only the structural-theta block (the NONMEM-matched theta
 #'     covariance, matching the historical finite-difference \code{fit$cov} shape
 #'     for backwards compatibility); \code{TRUE} installs the full theta + residual
 #'     sigma + Omega covariance -- assembled analytically for
-#'     \code{covType="analytic"}, or by central finite differences of the objective
-#'     over the same parameter set for \code{covType="fd"} (perturbing Omega on the
-#'     variance-covariance scale, with the per-parameter Gill (1983) step and the
+#'     \code{covMethod="analytic"}, or by central finite differences of the objective
+#'     over the same parameter set for the finite-difference methods (perturbing Omega
+#'     on the variance-covariance scale, with the per-parameter Gill (1983) step and the
 #'     5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
 #'     errors are identical either way.
 #'
@@ -207,7 +204,7 @@
 #'     inner gradient.  Advantage: uses the conditional variance and
 #'     is a bit more accurate than NONMEM's FOCE in some cases.
 #'     Disadvantage: does not match NONMEM FOCE and is unsupported by
-#'     \code{covType = "analytic"} (falls back to the
+#'     \code{covMethod = "analytic"} (falls back to the
 #'     finite-difference covariance).  This was the FOCE behavior in
 #'     \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
 #'     gradient of \code{eta} like the full \code{focei} method, so it
@@ -615,8 +612,7 @@ foceiControl <- function(sigdig = 4, #
                          derivMethod = c("switch", "forward", "central"), #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
-                         covMethod = c("r,s", "r", "s", ""), #
-                         covType = c("analytic", "fd"), #
+                         covMethod = c("analytic", "r,s", "r", "s", ""), #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
                          # norm of weights = 1/0.225
@@ -966,34 +962,34 @@ foceiControl <- function(sigdig = 4, #
     covDerivMethod <- match.arg(covDerivMethod)
     covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
-  .covMethodMissing <- missing(covMethod)
+  # covMethod folds in the R-matrix (Hessian) source: "analytic" (the default) uses the
+  # exact analytic observed-information R-matrix, reported with the observed-information
+  # "r" formula; "r,s"/"r"/"s" use the finite-difference Hessian with that formula; ""
+  # skips the covariance step.  The analytic-vs-finite-difference choice is carried to the
+  # solver as the (internal, derived) covType string, which also travels via ... so a
+  # built control round-trips.
+  covType <- "fd"
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
+    .ct <- list(...)$covType
+    if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
   } else if (rxode2::rxIs(covMethod, "character")) {
     if (all(covMethod == "")) {
       covMethod <- 0L
     } else {
       covMethod <- match.arg(covMethod)
-      .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-      covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
+      if (identical(covMethod, "analytic")) {
+        covType <- "analytic"
+        covMethod <- 2L
+      } else {
+        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+        covMethod <- setNames(.covMethodIdx[covMethod], NULL)
+      }
     }
   }
-  covType <- match.arg(covType)
   if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
                                                       finite = TRUE, any.missing = FALSE)
   checkmate::assertFlag(covFull)
-  # covType="analytic" seams the analytic R-matrix into the R step.  Default to "r"
-  # (the observed-information R^-1); an explicit "r,s"/"s" is honored -- the analytic R
-  # then feeds the native finite-difference sandwich / S-matrix.  A missing method or ""
-  # uses "r" so a covariance is always produced.
-  if (identical(covType, "analytic")) {
-    if (.covMethodMissing) {
-      covMethod <- 2L
-    } else if (identical(covMethod, 0L)) {
-      warning("covType=\"analytic\" computes a covariance; using \"r\" instead of \"\"", call. = FALSE)
-      covMethod <- 2L
-    }
-  }
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
@@ -1352,12 +1348,24 @@ foceiControl <- function(sigdig = 4, #
     .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
-  if (length(.w) == 0 && length(.outerOpt) == 0) {
+  # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
+  # derived internal covType) into a single token; covType is never deparsed on its own.
+  .covMethodStr <- function(o) {
+    if (identical(o$covType, "analytic")) return("analytic")
+    if (identical(as.integer(o$covMethod), 0L)) return("")
+    .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+    names(.idx)[match(as.integer(o$covMethod), .idx)]
+  }
+  .covTok <- character(0)
+  if (!identical(.covMethodStr(object), .covMethodStr(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(.covMethodStr(object)))
+  }
+  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
   }
   .n <- names(.ret)[.w]
-  .n <- .n[.n != "outerOpt"]
-  .retD <- c(vapply(.n, function(x) {
+  .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
+  .retD <- c(.covTok, vapply(.n, function(x) {
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
