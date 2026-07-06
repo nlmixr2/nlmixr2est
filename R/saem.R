@@ -717,6 +717,9 @@
           }
         }
       } else {
+        # non-"linFim" covMethod (0L/"r"/"s"/"r,s"): no calc.COV refinement, use the
+        # linearized-FIM Hessian directly (mirrors the calc.COV-failure fallback above).
+        .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
         .tmp <- try(chol(.covm), silent = TRUE)
         .addCov <- TRUE
         .sqrtm <- FALSE

@@ -1365,7 +1365,16 @@ foceiControl <- function(sigdig = 4, #
   }
   .n <- names(.ret)[.w]
   .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
-  .retD <- c(.covTok, vapply(.n, function(x) {
+  if (length(.covTok) > 0) {
+    .n <- c(.n, "covMethod")
+  }
+  # preserve the formal-argument declaration order (names(.ret)) so the covMethod
+  # token lands in its natural position instead of always first
+  .n <- .n[order(match(.n, names(.ret)))]
+  .retD <- c(vapply(.n, function(x) {
+    if (x == "covMethod") {
+      return(.covTok)
+    }
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
