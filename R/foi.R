@@ -106,6 +106,7 @@ nmObjGetControl.foi <- function(x, ...) {
 #'@export
 nlmixr2Est.foi <- function(env, ...) {
   .ui <- env$ui
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
   rxode2::assertRxUiRandomOnIdOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'foi'", .var.name=.ui$modelName)

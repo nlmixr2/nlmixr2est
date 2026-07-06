@@ -499,6 +499,14 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .lhs <- .s$..lhs
     if (is.null(.lhs)) .lhs <- character(0)
   }
+  # variables referenced by lag()/history functions (eg the AR(1) residual) are
+  # not part of rx_pred_ itself; include their definitions so the history
+  # reference resolves in the compiled model
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
+    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
@@ -506,6 +514,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     #.lhs0,
     .lhs,
     .ddt,
+    .lagDefs,
     .prd,
     .fr$f_line,
     .fr$r_line,

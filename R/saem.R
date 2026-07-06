@@ -383,6 +383,12 @@
     if (length(.w) == 1) {
       .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
     }
+    # AR(1) autocorrelation estimated by the whitened M-step in src/saem.cpp
+    .w <- which(vapply(.tmp$err, function(x) any(x == "ar"),
+                       logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1 && !is.null(.saem$arCor)) {
+      .theta[paste(.tmp$name[.w])] <- .saem$arCor[i]
+    }
   }
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
