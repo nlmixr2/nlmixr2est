@@ -12,6 +12,10 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- Added the `focep`, `mufocep`, and `irlsfocep` estimation methods -- the `foce`,
+  `mufoce`, and `irlsfoce` methods with `foce = "foce+"` forced (the live conditional
+  residual variance R).
+
 - Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE evaluates the
   residual variance R: `"nonmem"` (new default) freezes R at the `eta = 0` population
   prediction to match NONMEM FOCE, while `"foce+"` keeps the live conditional R (the FOCE
