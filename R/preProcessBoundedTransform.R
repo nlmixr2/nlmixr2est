@@ -39,8 +39,10 @@
 
     # Skip fixed params
     if (.thetaDf$fix[i]) next
-    # Skip residual error params (have non-NA err column)
-    if (!is.na(.thetaDf$err[i])) next
+    # Skip residual error params (have non-NA err column), EXCEPT the
+    # autoregressive correlation ar() which has finite [0,1) bounds and must be
+    # kept in range by the unbounded optimizer (via an expit transform)
+    if (!is.na(.thetaDf$err[i]) && !identical(.thetaDf$err[i], "ar")) next
     # Skip synthetic IOV helper thetas; their dedicated back-transform/finalize
     # path is handled in R/iov.R and should not be rewrapped here.
     if (!is.na(.thetaDf$backTransform[i]) &&
