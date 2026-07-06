@@ -12,6 +12,14 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- The FOCEI `covType` control was removed; the analytic-vs-finite-difference R-matrix
+  choice is now part of `foceiControl(covMethod = c("analytic", "r,s", "r", "s", ""))`,
+  with `"analytic"` (the exact observed-information R-matrix) the default.
+
+- `foceiControl(covSolveTol=)` now also tightens the ODE solves behind the
+  finite-difference covariance methods (previously it only applied to the analytic
+  augmented-sensitivity solves).
+
 - The SAEM iteration history (`parHistData`) now records the off-diagonal `Omega`
   covariances of declared blocks (`cov.<eta>.<eta>`), alongside the existing diagonal
   variances and residual parameters.
