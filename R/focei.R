@@ -648,6 +648,58 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 
+#' Add the exact AR(1) lagged-residual term to the inner d(ll)/d(eta)
+#'
+#' The whitened conditional log-likelihood couples the current record to the
+#' previous residual e_{i-1} = rx_arEp_<var> (= lag0(rx_arE_<var>)), whose
+#' eta-dependence symengine drops.  The missing analytic term is
+#'   HdEta_n -= D(rx_pred_, rx_arEp_<var>) * lag0(d(rx_pred_f_)/d(eta_n), 1)
+#' since d(rx_arEp)/deta = lag0(d(rx_arE)/deta) = -lag0(d(pred_struct)/deta) and
+#' pred_struct = rx_pred_f_ (identity DV transform).  rxode2 keeps rx_arEp_<var>
+#' symbolic, so D(rx_pred_, rx_arEp_<var>) = Dmean*phi is an ordinary symbol
+#' derivative (no differentiation through lag0(), which would trip symengine's
+#' finite-difference path and poison the evaluator).  The structural-prediction
+#' eta-sensitivities are emitted ahead of rx_pred_ (real lhs, lag()-referenced)
+#' so they do not shift the FOCEi column block.  Single AR endpoint, identity DV
+#' transform only; a no-op otherwise.
+#' @noRd
+#' @author Matthew L. Fidler
+#' Must run BEFORE the main d(f)/d(eta) apply (which rxFromSE-s the llik HdEta and
+#' poisons later get()/[[/$read for AR endpoints).  All symbolic work happens
+#' here while the evaluator is clean; the (clean) S_n Basics are rxFromSE-d first,
+#' ..arEtaSens is assign()-ed onto .s (writes are poison-safe), and the DmeanPhi
+#' Basic (contains lag0()/llik*(), so its rxFromSE poisons) is done LAST.  Only a
+#' plain character vector (the per-eta correction text) is returned, so the caller
+#' never needs a poisoned $/[[.
+#' @noRd
+.rxFoceiArEtaCorrect <- function(.s, .grd) {
+  .vars <- ls(envir = .s)
+  .arEp <- .vars[grepl("^rx_arEp_", .vars)]
+  if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) return(NULL)
+  # assign() returns its value invisibly, so eval() of an "assign(..envir=.s)"
+  # string yields the symengine Basic directly -- exactly how the FEta apply
+  # avoids get() (get() is masked by symengine in this context).  NB: keep the
+  # temp name neutral (no trailing "_", no "Dmean" substring).
+  .dmpBasic <- eval(parse(text = paste0("assign(\"rxArDmpVar\", with(.s, D(rx_pred_, ",
+                                        .arEp, ")), envir=.s)")))
+  # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline; these do
+  # not poison the evaluator.
+  .snNames <- character(nrow(.grd))
+  .snText <- character(nrow(.grd))
+  for (.n in seq_len(nrow(.grd))) {
+    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+    .snBasic <- eval(parse(text = .calc))
+    .snNames[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
+    .snText[.n] <- rxode2::rxFromSE(.snBasic)
+  }
+  assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
+  # DmeanPhi contains lag0()/llik*(), so its rxFromSE poisons later get()/[[ --
+  # do it LAST; only vectorized base ops (paste0) follow.
+  .dmeanPhi <- rxode2::rxFromSE(.dmpBasic)
+  # d(rx_arEp)/deta = -lag0(d(pred_struct)/deta); missing term = -DmeanPhi*lag0(S_n)
+  paste0("-(", .dmeanPhi, ")*lag0(", .snNames, ",1)")
+}
+
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
@@ -662,6 +714,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .malert("calculate \u2202(f)/\u2202(\u03B7)")
   } else {
     .malert("calculate d(f)/d(eta)")
+  }
+  # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
+  # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
+  # text (a plain vector) and stores ..arEtaSens on .s.
+  .arCorr <- NULL
+  if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
+    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
   }
   rxode2::rxProgress(dim(.grd)[1])
   on.exit({
@@ -687,6 +746,11 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   }
   if (.any.zero) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
+  }
+  if (!is.null(.arCorr)) {
+    # .arCorr is a plain vector computed before the apply; appending it needs no
+    # poisoned $/[[ read.
+    .ret <- paste0(.ret, .arCorr)
   }
   .s$..HdEta <- .ret
   .s$..pred.minus.dv <- .predMinusDv
@@ -750,6 +814,11 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
     .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
   }
+  # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
+  # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
+  # rx_pred_ so the FOCEi column block stays contiguous.
+  .arEtaSens <- .s$..arEtaSens
+  if (is.null(.arEtaSens)) .arEtaSens <- character(0)
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -759,6 +828,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .hi,
     .low,
     .lagDefs,
+    .arEtaSens,
     .prd,
     .s$..HdEta,
     .r,
@@ -777,6 +847,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .hi,
     .low,
     .lagDefs,
+    .arEtaSens,
     .prd,
     .s$..HdEta,
     .r,
