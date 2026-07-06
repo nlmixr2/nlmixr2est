@@ -12,7 +12,8 @@ saemControl(
   nu = c(2, 2, 2),
   print = 1L,
   trace = 0,
-  covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
+  covMethod = c("linFim", "fim", "sa", "r,s", "r", "s", ""),
+  covFull = TRUE,
   calcTables = TRUE,
   logLik = FALSE,
   nnodesGq = 3,
@@ -101,6 +102,11 @@ typical fitting.}
 
  "\code{fim}" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.
 
+ "\code{sa}" Use the online batch-means stochastic-approximation covariance
+ estimated from the SAEM parameter-iterate trajectory over the cooling phase
+ (Jiang et al. 2025, see references).  Derivative-free and always includes
+ every population parameter (theta, omega, and residual).
+
  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 
  "\code{r}" Uses the Hessian matrix to calculate the covariance as \eqn{2\times R^-1}
@@ -108,6 +114,13 @@ typical fitting.}
  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
 
  "" Does not calculate the covariance step.}
+
+\item{covFull}{Boolean (default \code{TRUE}) indicating the covariance
+should include every estimated population parameter -- the structural and
+residual thetas plus the \code{Omega} variance/covariance elements -- named
+\code{om.<eta>} / \code{cov.<eta>.<eta>}.  When \code{FALSE} the legacy
+structural-theta-only covariance is reported.  Ignored by
+\code{covMethod="sa"}, which is always full.}
 
 \item{calcTables}{This boolean is to determine if the foceiFit
 will calculate tables. By default this is \code{TRUE}}
@@ -318,6 +331,11 @@ List of options to be used in \code{\link{nlmixr2}} fit for
 }
 \description{
 Control Options for SAEM
+}
+\references{
+Jiang L, Roy A, Balasubramanian K, Davis D, Drusvyatskiy D, Na S (2025).
+"Online Covariance Estimation in Nonsmooth Stochastic Approximation."
+arXiv:2502.05305. \doi{10.48550/arXiv.2502.05305}
 }
 \seealso{
 Other Estimation control:
