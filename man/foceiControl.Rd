@@ -129,6 +129,7 @@ foceiControl(
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
   mceta = -1L,
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
@@ -653,6 +654,12 @@ first zero gradient.}
 for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
+
+\item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
+`"calc"` (default) warm-starts each inner problem with the eta
+Hessian calculated for the objective function at the same starting
+eta, calculating it at the starting point when unavailable;
+`"save"` uses the classic self-initialized Hessian.}
 
 \item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
 disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with

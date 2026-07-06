@@ -119,6 +119,8 @@ struct focei_options {
   bool mGthetaGrad = false;
   // n1qn1 specific vectors
   double *gZm = NULL;
+  double *gZmH = NULL;
+  double *gZmEta = NULL;
   double *gG = NULL;
   double *gVar = NULL;
   double *gX = NULL;
@@ -210,6 +212,7 @@ struct focei_options {
 
   int nsim;
   unsigned int nzm;
+  int warm; // 1 = seed zm from calculated eta Hessian, 0 = classic behavior
 
   int imp;
   // int printInner;
@@ -467,6 +470,10 @@ struct focei_ind {
 
   int mode; // 1 = dont use zm, 2 = use zm.
   double *zm;
+  // warm="calc": packed lower-triangle eta Hessian + the eta it was computed at
+  double *zmH;
+  double *zmEta;
+  int zmValid;
   double *var;
   double *x;
   unsigned int uzm;
@@ -1810,6 +1817,13 @@ double LikInner2(double *eta, int likId, int id) {
       std::copy(H.begin(), H.end(),
                 op_focei.gH + id*op_focei.neta*op_focei.neta);
     }
+    if (op_focei.warm == 1 && fInd->zmH != NULL) {
+      // Save the calculated Hessian to warm-start the next n1qn1 inner problem
+      vec hPack = H.elem(lowerTri(H, true));
+      std::copy(hPack.begin(), hPack.end(), fInd->zmH);
+      std::copy(&eta[0], &eta[0] + op_focei.neta, fInd->zmEta);
+      fInd->zmValid = 1;
+    }
     // - sum(log(H.diag()));
     double logH0diag = 0.0;
     for (unsigned int j = H0.n_rows; j--;){
@@ -1888,6 +1902,51 @@ double LikInner2(double *eta, int likId, int id) {
     fInd->lik[likId] = -2*lik;
   }
   return lik;
+}
+
+// warm="calc": seed n1qn1's zm with the eta Hessian calculated at the starting
+// eta; when no Hessian was calculated at this eta, calculate it here.
+void warmZm(focei_ind *fInd, int id) {
+  std::fill(&fInd->zm[0], &fInd->zm[0] + op_focei.nzm, 0.0);
+  int neta = op_focei.neta;
+  bool etaMatch = fInd->zmValid == 1;
+  if (etaMatch) {
+    for (int j = neta; j--;) {
+      if (fInd->zmEta[j] != fInd->eta[j]) {
+        etaMatch = false;
+        break;
+      }
+    }
+  }
+  // FD Hessians (needOptimHess) optimize their step (etahh) once on the first
+  // calcEtaHessian call per subject; calculating here (e.g. at eta=0) would
+  // move that reference point and change every downstream Hessian, so llik
+  // models only reuse Hessians saved by LikInner2.
+  if (!etaMatch && !op_focei.needOptimHess) {
+    double f = likInner0(fInd->eta, id);
+    if (!ISNA(f)) {
+      rx = getRxSolve_();
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      mat H(neta, neta, fill::zeros);
+      mat H0(neta, neta, fill::zeros);
+      if (calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0)) {
+        vec hPack = H.elem(lowerTri(H, true));
+        std::copy(hPack.begin(), hPack.end(), fInd->zmH);
+        std::copy(&fInd->eta[0], &fInd->eta[0] + neta, fInd->zmEta);
+        fInd->zmValid = 1;
+        etaMatch = true;
+      }
+    }
+  }
+  if (etaMatch) {
+    // n1qn1 mode=2 reads the packed lower-triangle Hessian from zm
+    std::copy(&fInd->zmH[0], &fInd->zmH[0] + neta*(neta+1)/2, &fInd->zm[0]);
+    fInd->mode = 2;
+    fInd->uzm = 1;
+  } else {
+    fInd->mode = 1;
+    fInd->uzm = 1;
+  }
 }
 
 extern "C" double innerOptimF(int n, double *x, void *ex){
@@ -2059,7 +2118,8 @@ static inline int innerOpt1(int id, int likId) {
     }
   }
   if (n1qn1Inner) {
-    updateZm(fInd);
+    if (op_focei.warm == 1) warmZm(fInd, id);
+    else updateZm(fInd);
     std::fill_n(&fInd->var[0], fop->neta, 0.1);
   }
   int npar = fop->neta;
@@ -2099,6 +2159,7 @@ static inline int innerOpt1(int id, int likId) {
         fInd->mode = 1;
         fInd->uzm = 1;
         op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+        if (op_focei.warm == 1) mode = 1;
         std::fill_n(fInd->x, fop->neta, op_focei.etaNudge);
         //nF = fInd->nInnerF;
         fInd->badSolve = 0;
@@ -2123,6 +2184,7 @@ static inline int innerOpt1(int id, int likId) {
           fInd->mode = 1;
           fInd->uzm = 1;
           op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+          if (op_focei.warm == 1) mode = 1;
           std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge);
           nF = fInd->nInnerF;
           fInd->badSolve = 0;
@@ -2146,6 +2208,7 @@ static inline int innerOpt1(int id, int likId) {
             fInd->mode = 1;
             fInd->uzm = 1;
             op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+            if (op_focei.warm == 1) mode = 1;
             std::fill_n(fInd->x, fop->neta, -op_focei.etaNudge2);
             nF = fInd->nInnerF;
             fInd->badSolve = 0;
@@ -2169,6 +2232,7 @@ static inline int innerOpt1(int id, int likId) {
               fInd->mode = 1;
               fInd->uzm = 1;
               op_focei.didHessianReset.store(1, std::memory_order_relaxed);
+              if (op_focei.warm == 1) mode = 1;
               std::fill_n(fInd->x, fop->neta, +op_focei.etaNudge2);
               nF = fInd->nInnerF;
               fInd->badSolve = 0;
@@ -4034,6 +4098,9 @@ static inline void foceiSetupNoEta_(){
     fInd->c = NULL;
     fInd->B = NULL;
     fInd->zm = NULL;
+    fInd->zmH = NULL;
+    fInd->zmEta = NULL;
+    fInd->zmValid = 0;
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
     jj+= op_focei.npars;
     fInd->mode = 1;
@@ -4093,7 +4160,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       nall_mix * nall_mix +
       op_focei.neta * 6 +
       2 * op_focei.neta * op_focei.neta * nsub_mix +
-      nall_mix,
+      nall_mix +
+      // gZmH (packed lower-tri Hessian) + gZmEta per subject for warm="calc"
+      nsub_mix * ((size_t)op_focei.neta * (op_focei.neta + 1) / 2 + op_focei.neta),
       double);
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
@@ -4116,6 +4185,8 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gH       = op_focei.gB + getRxNallAndMix(rx); //[op_focei.neta*op_focei.neta*getRxNsub(rx)]
   op_focei.llikObsFull = op_focei.gH + op_focei.neta*op_focei.neta*getRxNsubAndMix(rx); // [getRxNall(rx)]
   op_focei.gVid     = op_focei.llikObsFull + getRxNallAndMix(rx);
+  op_focei.gZmH     = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[neta*(neta+1)/2 * nsub]
+  op_focei.gZmEta   = op_focei.gZmH + (size_t)(op_focei.neta*(op_focei.neta+1)/2)*getRxNsubAndMix(rx); //[neta*nsub]
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -4209,6 +4280,10 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
     fInd->zm = &op_focei.gZm[ii];
     ii+= (op_focei.neta+1) * (op_focei.neta + 2) / 2 +
       6*(op_focei.neta + 1)+1;
+
+    fInd->zmH = op_focei.gZmH + (size_t)i*(op_focei.neta*(op_focei.neta+1)/2);
+    fInd->zmEta = op_focei.gZmEta + (size_t)i*op_focei.neta;
+    fInd->zmValid = 0;
 
     fInd->thetaGrad = &op_focei.gthetaGrad[jj];
     jj+= op_focei.npars;
@@ -4338,6 +4413,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.maxOuterIterations = as<int>(foceiO["maxOuterIterations"]);
   op_focei.maxInnerIterations = as<int>(foceiO["maxInnerIterations"]);
   op_focei.mceta = as<int>(foceiO["mceta"]);
+  op_focei.warm = foceiO.containsElementNamed("warm") ? as<int>(foceiO["warm"]) : 0;
   op_focei.maxOdeRecalc = as<int>(foceiO["maxOdeRecalc"]);
   op_focei.objfRecalN=0;
   op_focei.odeRecalcFactor = as<double>(foceiO["odeRecalcFactor"]);
