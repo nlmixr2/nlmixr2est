@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- Added the `focep`, `mufocep`, and `irlsfocep` estimation methods -- the `foce`,
+  `mufoce`, and `irlsfoce` methods with `foce = "foce+"` forced (the live conditional
+  residual variance R).
+
 - Added `foceiControl(foce = c("nonmem", "foce+"))` to choose how FOCE evaluates the
   residual variance R: `"nonmem"` (new default) freezes R at the `eta = 0` population
   prediction to match NONMEM FOCE, while `"foce+"` keeps the live conditional R (the FOCE

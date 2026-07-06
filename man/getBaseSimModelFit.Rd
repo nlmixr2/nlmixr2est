@@ -4,6 +4,7 @@
 \alias{getBaseSimModelFit}
 \alias{getBaseSimModelFit.focei}
 \alias{getBaseSimModelFit.foce}
+\alias{getBaseSimModelFit.focep}
 \alias{getBaseSimModelFit.fo}
 \alias{getBaseSimModelFit.foi}
 \alias{getBaseSimModelFit.posthoc}
@@ -15,6 +16,8 @@ getBaseSimModelFit(x)
 \method{getBaseSimModelFit}{focei}(x)
 
 \method{getBaseSimModelFit}{foce}(x)
+
+\method{getBaseSimModelFit}{focep}(x)
 
 \method{getBaseSimModelFit}{fo}(x)
 

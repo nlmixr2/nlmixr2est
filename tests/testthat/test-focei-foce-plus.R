@@ -43,4 +43,17 @@ nmTest({
              foceiControl(print = 0L, calcTables = FALSE, covMethod = "", foce = "foce+"))))
     expect_equal(fn$objective, fp$objective, tolerance = 1e-4)
   })
+
+  test_that("focep/mufocep/irlsfocep equal foce with foce=\"foce+\"", {
+    ref <- suppressWarnings(suppressMessages(
+      nlmixr(one.cmt, d, "foce",
+             foceiControl(print = 0L, calcTables = FALSE, covMethod = "", foce = "foce+"))))
+    for (est in c("focep", "mufocep", "irlsfocep")) {
+      fit <- suppressWarnings(suppressMessages(
+        nlmixr(one.cmt, d, est,
+               foceiControl(print = 0L, calcTables = FALSE, covMethod = ""))))
+      expect_true(is.finite(fit$objective))
+      expect_equal(fit$objective, ref$objective, tolerance = 1e-3)
+    }
+  })
 })
