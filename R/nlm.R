@@ -499,6 +499,14 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .lhs <- .s$..lhs
     if (is.null(.lhs)) .lhs <- character(0)
   }
+  # variables referenced by lag()/history functions (eg the AR(1) residual) are
+  # not part of rx_pred_ itself; include their definitions so the history
+  # reference resolves in the compiled model
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
+    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
@@ -506,6 +514,7 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     #.lhs0,
     .lhs,
     .ddt,
+    .lagDefs,
     .prd,
     .fr$f_line,
     .fr$r_line,
@@ -1052,6 +1061,16 @@ nlmixr2Est.nlm <- function(env, ...) {
   rxode2::warnRxBounded(.ui, " which are ignored in 'nlm'",
                         .var.name=.ui$modelName)
   .nlmFamilyControl(env, ...)
+  if (rxode2::rxHasAr(.ui)) {
+    # the AR(1) log-likelihood uses lag() which the symengine sensitivity model
+    # cannot differentiate; force finite-difference gradients (solveType="fun")
+    .control <- nmObjGetControl.nlm(list(env))
+    if (!is.null(.control$solveType) && .control$solveType != 1L) {
+      .control$solveType <- 1L
+      nmObjHandleControlObject.nlmControl(.control, env)
+      .minfo("'ar()' residual: using finite-difference gradients (solveType='fun') for 'nlm'")
+    }
+  }
   on.exit({if (exists("control", envir=.ui)) rm("control", envir=.ui)}, add=TRUE)
   .nlmFamilyFit(env,  ...)
 }
