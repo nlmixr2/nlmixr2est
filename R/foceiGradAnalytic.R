@@ -73,7 +73,7 @@
     for (l in ei) dHtStar <- dHtStar + etaP[l, p] * dHtD[[l]]
     g[p] <- 2 * dPhi_p(p) + tr(Hti %*% dHtStar)      # d(OFV_i)/dp
   }
-  g
+  list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
 #' Per-subject first-derivative (outer-gradient) contribution for FOCE
@@ -142,7 +142,7 @@
     # d(OFV_i)/dp = 2 (dPhi/dp|explicit + 0.5 tr(Ht^-1 dHt/dp|explicit) + (Phi_eta + Cen).eta_p)
     g[p] <- 2 * (dPhiExplicit(p) + 0.5 * tr(Hti %*% dHt_p(p)) + sum((gPhi + Cen) * etaP[, p]))
   }
-  g
+  list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
 #' Shared core: analytic natural-scale outer gradient of the FOCEI objective
@@ -165,6 +165,7 @@
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   g <- numeric(np)
+  etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
   for (i in seq_along(ids)) {
     s <- .byId[[as.character(.idCode[i])]]
     if (is.null(s) || nrow(s) == 0L) return(NULL)
@@ -197,11 +198,12 @@
       else .foceiAnalyticSubjectGrad(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
                                      dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi),
       error = function(e) NULL)
-    if (is.null(gi) || !all(is.finite(gi))) return(NULL)
-    g <- g + gi
+    if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
+    g <- g + gi$g
+    etaPList[[i]] <- gi$etaP
   }
   names(g) <- c(thStruct, ef$sgName, omNames)
-  g
+  list(g = g, etaP = etaPList, ids = ids)
 }
 
 #' Common scope gates + error/direction/omega setup shared by the live and
@@ -256,9 +258,11 @@
     th <- setNames(as.numeric(thVals), paste0("THETA_", seq_along(thVals), "_"))
     ebes <- as.matrix(fit$eta[, st$etaNames, drop = FALSE])
     if (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) return(NULL)
-    .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
-                           st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
-                           interaction = st$interaction, foceType = st$foceType)
+    .r <- .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
+                                 st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
+                                 interaction = st$interaction, foceType = st$foceType)
+    if (is.null(.r)) return(NULL)
+    .r$g                                              # named natural-scale gradient (validation/tests)
   }, error = function(e) NULL)
 }
 
@@ -319,9 +323,9 @@
 #' @noRd
 .foceiCalcGradAnalytic <- function(e) {
   tryCatch({
-    g <- .foceiAnalyticGradFocei(e)
-    if (is.null(g) || !all(is.finite(g))) return(NULL)
-    gn <- names(g)
+    .r <- .foceiAnalyticGradFocei(e)
+    if (is.null(.r) || is.null(.r$g) || !all(is.finite(.r$g))) return(NULL)
+    g <- .r$g; gn <- names(g)
     # op_focei parameter order is fullTheta = [non-fixed thetas by ntheta order |
     # omega Cholesky params] (inner.cpp fullTheta layout).  Map the named
     # natural-scale gradient onto that order; the C++ hook length-checks against
@@ -329,8 +333,20 @@
     thNames <- get("thetaNames", e)
     thOrder <- thNames[thNames %in% gn]                 # non-fixed structural+sigma thetas, in order
     omIdx <- grep("^om\\.chol\\.", gn)
-    gvec <- c(g[thOrder], g[omIdx])
+    parOrder <- c(match(thOrder, gn), omIdx)            # gradient/etaP column order -> npars order
+    gvec <- g[parOrder]
     if (anyNA(gvec) || !all(is.finite(gvec))) return(NULL)
+    # Stash the per-subject d eta*/d p (etaP), columns reordered to the npars order,
+    # for the C++ Eq-48 extrapolation (mceta=-2/-1).  neta x npars x nsub array,
+    # aligned to etaObf$ID order (same as the fit's per-subject solve order).
+    .etaP <- .r$etaP
+    if (length(.etaP) > 0L && !any(vapply(.etaP, is.null, logical(1)))) {
+      .neta <- nrow(.etaP[[1]]); .np <- length(parOrder); .ns <- length(.etaP)
+      .arr <- array(NA_real_, c(.neta, .np, .ns))
+      for (i in seq_len(.ns)) .arr[, , i] <- .etaP[[i]][, parOrder, drop = FALSE]
+      if (all(is.finite(.arr))) assign(".foceiGradEtaP", .arr, envir = e)
+      else if (exists(".foceiGradEtaP", e, inherits = FALSE)) rm(".foceiGradEtaP", envir = e)
+    }
     as.numeric(gvec)
   }, error = function(e) NULL)
 }
