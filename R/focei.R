@@ -1386,7 +1386,7 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                              .iniDf$err[i] %in% c("add",
                                                   "lnorm", "logitNorm", "probitNorm",
                                                   "prop", "propT", "propF",
-                                                  "pow", "powF", "powT")) {
+                                                  "pow", "powF", "powT", "ar")) {
                          .low <- .iniDf$est[i] * 0.001
                        }
                        .low
@@ -1567,7 +1567,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .env <- new.env(parent=emptyenv())
   .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
   .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow", "ar"))]
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
