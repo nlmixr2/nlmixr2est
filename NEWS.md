@@ -141,7 +141,8 @@
   materializes the implied `d/dt()` for these models instead of erroring
 - Added `foceiControl(warm=c("calc", "save"))`; `"calc"` (new default)
   warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
-  in the inner problem, `"save"` keeps the prior behavior
+  in the inner problem (including `ll()`/`dnorm()` models with
+  finite-difference Hessians), `"save"` keeps the prior behavior
 
 - `matExp()`/`indLin()` models now estimate with the focei family, the nlm
   family, and SAEM, matching the equivalent ODE model; compartments are
