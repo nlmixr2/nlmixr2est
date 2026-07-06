@@ -7,9 +7,11 @@
   residual SEs are surfaced in the parameter table.  `covFull = FALSE` keeps the legacy
   structural-theta-only covariance.
 
-- Added `saemControl(covMethod = "sa")`, an online batch-means stochastic-approximation
-  covariance (Jiang et al. 2025); the estimator is in place but currently falls back to
-  `"linFim"` pending a dedicated cooling-gain phase.
+- Added `saemControl(covMethod = "sa")`, a stochastic-approximation Fisher Information
+  covariance (Kuhn & Lavielle 2005, as used by Monolix): a dedicated post-estimation phase
+  (`nSaCov` iterations) holds the parameters at the converged estimate and Monte-Carlo
+  averages the Louis observed-information into a converged full theta + Omega + residual
+  covariance.
 
 - The analytic covariance now reports `fit$covMethod` as `"analytic"` (instead of `"r"`),
   and its Omega variance/covariance rows are named by the random effect -- `om.eta.cl` /
