@@ -66,6 +66,13 @@ struct nlmOptions {
   std::atomic<int> naZero{0};
   std::atomic<int> naGrad{0};
   int hasFR=0; // 1 if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2])
+  // Index of rx_pred_ in each model's lhs.  The gradient (thetaGrad) model emits
+  // the intermediate parameter assignments (eg ka/cl/v needed by the sensitivity
+  // ODEs) as leading lhs, so rx_pred_ is not lhs[0]; the sensitivity columns and
+  // rx_pred_f_/rx_r_ follow contiguously.  Located by name at setup so the reads
+  // stay correct regardless of how many intermediates precede rx_pred_.
+  int predOffset=0; // rx_pred_ index in the predOnly model (rxPred)
+  int gradOffset=0; // rx_pred_ index in the thetaGrad model (rxInner)
   scaling scale;
   bool loaded=false;
 };
@@ -104,19 +111,29 @@ RObject nlmSetup(Environment e) {
   // Check if predOnly model has rx_pred_f_ (lhs[1]) and rx_r_ (lhs[2]) for censoring support
   CharacterVector predLhs = as<CharacterVector>(mvp["lhs"]);
   nlmOp.hasFR = 0;
+  nlmOp.predOffset = 0;
   for (int i = 0; i < predLhs.size(); ++i) {
     std::string lhsName = as<std::string>(predLhs[i]);
     if (lhsName == "rx_pred_f_" || lhsName == "rx_r_") nlmOp.hasFR++;
+    if (lhsName == "rx_pred_") nlmOp.predOffset = i;
   }
   nlmOp.hasFR = (nlmOp.hasFR == 2) ? 1 : 0;
   resetCensFlag();
 
   nlmOp.solveType = as<int>(control["solveType"]);
   RObject model;
+  nlmOp.gradOffset = 0;
   if (e.exists("thetaGrad")) {
     model = e["thetaGrad"];
     List mv = rxode2::rxModelVars_(model);
     rxUpdateFuns(as<SEXP>(mv["trans"]), &rxInner);
+    // rx_pred_ is preceded by the intermediate parameter assignments the
+    // sensitivity ODEs need; locate it by name (the sensitivity columns and
+    // rx_pred_f_/rx_r_ follow contiguously).
+    CharacterVector gradLhs = as<CharacterVector>(mv["lhs"]);
+    for (int i = 0; i < gradLhs.size(); ++i) {
+      if (as<std::string>(gradLhs[i]) == "rx_pred_") { nlmOp.gradOffset = i; break; }
+    }
   } else {
     if (nlmOp.solveType != solveType_nls_pred) {
       nlmOp.solveType = solveType_pred;
@@ -388,11 +405,12 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
-      if (ISNA(lhs[0])) {
+      int po = nlmOp.predOffset; // rx_pred_ index (intermediates may precede it)
+      if (ISNA(lhs[po])) {
         nlmOp.naZero.store(1, std::memory_order_relaxed);
-        lhs[0] = 0.0;
+        lhs[po] = 0.0;
       }
-      double val = lhs[0];
+      double val = lhs[po];
       if (nlmOp.hasFR && (hasRxCens(rx) || hasRxLimit(rx))) {
         int yj = getIndYj(ind), dist = 0, yj0 = 0;
         _splitYj(&yj, &dist, &yj0);
@@ -406,8 +424,8 @@ void nlmSolveFid(double *retD, int nobs, arma::vec &theta, int id) {
             if (ISNA(limiti)) limiti = R_NegInf;
           }
           if (censi != 0 || (R_FINITE(limiti) && !ISNA(limiti))) {
-            double f = lhs[1]; // rx_pred_f_
-            double r = lhs[2]; // rx_r_
+            double f = lhs[po + 1]; // rx_pred_f_
+            double r = lhs[po + 2]; // rx_r_
             double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
             val = -ll;
           }
@@ -490,17 +508,20 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
           hasCensObs = (censi != 0) || (R_FINITE(limiti) && !ISNA(limiti));
         }
       }
-      for (int kk = 0; kk < getOpNlhs(op); ++kk) {
-        if (kk > nlmOp.ntheta) break; // skip rx_pred_f_ and rx_r_ lhs values
-        if (ISNA(lhs[kk])) {
-          lhs[kk] = 0.0;
+      // rx_pred_ is at lhs[gradOffset]; the ntheta sensitivity columns follow
+      // contiguously, then rx_pred_f_ and rx_r_.  ret column 0 is the objective
+      // and columns 1..ntheta are the theta gradients (offset only the lhs read).
+      int go = nlmOp.gradOffset;
+      for (int kk = 0; kk <= (int)nlmOp.ntheta; ++kk) {
+        if (ISNA(lhs[go + kk])) {
+          lhs[go + kk] = 0.0;
           nlmOp.naZero.store(1, std::memory_order_relaxed);
         }
         if (kk == 0) {
-          double val = lhs[0];
+          double val = lhs[go];
           if (hasCensObs) {
-            double f = lhs[nlmOp.ntheta + 1]; // rx_pred_f_
-            double r = lhs[nlmOp.ntheta + 2]; // rx_r_
+            double f = lhs[go + nlmOp.ntheta + 1]; // rx_pred_f_
+            double r = lhs[go + nlmOp.ntheta + 2]; // rx_r_
             if (!ISNA(f) && !ISNA(r)) {
               double ll = doCensNormal1((double)censi, dvi, limiti, -val, f, r, 0);
               val = -ll;
@@ -510,7 +531,7 @@ arma::mat nlmSolveGradId(arma::vec &theta, int id) {
         } else if (hasCensObs) {
           ret(k, kk) = R_NaN; // force finite differences for censored observations
         } else {
-          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[kk], &theta[0], kk-1);
+          ret(k, kk) = scaleAdjustGradScale(&(nlmOp.scale), lhs[go + kk], &theta[0], kk-1);
         }
       }
       k++;
