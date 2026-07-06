@@ -34,6 +34,10 @@
   errors).  The mu Fisher information is now added, so `fim` inverts to a valid positive
   definite full theta + Omega + residual covariance.
 
+- `covMethod = "fim"`/`"sa"` now report off-diagonal `Omega` covariances and
+  proportional/combined residual standard errors by splicing them from the linearized-FIM
+  variance block (the analytic simulation FIM keeps the structural-theta block).
+
 - The analytic covariance now reports `fit$covMethod` as `"analytic"` (instead of `"r"`),
   and its Omega variance/covariance rows are named by the random effect -- `om.eta.cl` /
   `cov.eta.cl.eta.v` -- rather than by the mu-referenced theta (`om.tcl`).
