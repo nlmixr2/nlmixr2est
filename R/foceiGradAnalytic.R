@@ -223,9 +223,19 @@
 #'   to fall back to the finite-difference gradient
 #' @noRd
 .foceiCalcGradAnalytic <- function(e) {
-  # TODO(phase-1): map the natural-scale gradient (.foceiAnalyticGradFocei) onto
-  # the op_focei npars vector (theta/sigma direct, Omega on the Cholesky scale).
-  # Returns NULL until the mapping + FOCE path land, so the C++ hook falls back to
-  # the finite-difference gradient.
-  NULL
+  tryCatch({
+    g <- .foceiAnalyticGradFocei(e)
+    if (is.null(g) || !all(is.finite(g))) return(NULL)
+    gn <- names(g)
+    # op_focei parameter order is fullTheta = [non-fixed thetas by ntheta order |
+    # omega Cholesky params] (inner.cpp fullTheta layout).  Map the named
+    # natural-scale gradient onto that order; the C++ hook length-checks against
+    # op_focei.npars and falls back to FD on any mismatch.
+    thNames <- get("thetaNames", e)
+    thOrder <- thNames[thNames %in% gn]                 # non-fixed structural+sigma thetas, in order
+    omIdx <- grep("^om\\.chol\\.", gn)
+    gvec <- c(g[thOrder], g[omIdx])
+    if (anyNA(gvec) || !all(is.finite(gvec))) return(NULL)
+    as.numeric(gvec)
+  }, error = function(e) NULL)
 }
