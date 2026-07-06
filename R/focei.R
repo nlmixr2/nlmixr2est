@@ -454,6 +454,19 @@ rxGetDistributionFoceiLines <- function(line) {
   nlmixr2global$rxPredLlik
 }
 
+#' Get the AR(1) norm-form inner-model option
+#'
+#' TRUE only during the focei/foce/ebe norm inner-model build, so ar() endpoints
+#' emit the Gaussian mean/variance (exact-Hessian) form.  Never set for
+#' simulation or nlm.
+#'
+#' @return logical
+#' @author Matthew L. Fidler
+#' @noRd
+.getRxArNormOption <- function() {
+  isTRUE(nlmixr2global$rxArNorm)
+}
+
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
@@ -461,7 +474,8 @@ rxGetDistributionFoceiLines.norm <- function(line) {
   .errNum <- line[[3]]
   if (rxode2hasLlik()) {
     rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                                 rxPredLlik=.getRxPredLlikOption())
+                                                 rxPredLlik=.getRxPredLlikOption(),
+                                                 arNorm=.getRxArNormOption())
   } else {
     rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
   }
@@ -648,42 +662,33 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 
-#' Add the exact AR(1) lagged-residual term to the inner d(ll)/d(eta)
+#' Add the exact AR(1) lagged-residual term to the inner d(f)/d(eta)
 #'
-#' The whitened conditional log-likelihood couples the current record to the
-#' previous residual e_{i-1} = rx_arEp_<var> (= lag0(rx_arE_<var>)), whose
-#' eta-dependence symengine drops.  The missing analytic term is
-#'   HdEta_n -= D(rx_pred_, rx_arEp_<var>) * lag0(d(rx_pred_f_)/d(eta_n), 1)
-#' since d(rx_arEp)/deta = lag0(d(rx_arE)/deta) = -lag0(d(pred_struct)/deta) and
-#' pred_struct = rx_pred_f_ (identity DV transform).  rxode2 keeps rx_arEp_<var>
-#' symbolic, so D(rx_pred_, rx_arEp_<var>) = Dmean*phi is an ordinary symbol
-#' derivative (no differentiation through lag0(), which would trip symengine's
-#' finite-difference path and poison the evaluator).  The structural-prediction
-#' eta-sensitivities are emitted ahead of rx_pred_ (real lhs, lag()-referenced)
-#' so they do not shift the FOCEi column block.  Single AR endpoint, identity DV
-#' transform only; a no-op otherwise.
+#' In the norm form rx_pred_ is the conditional MEAN = pred + phi*e_{i-1} with
+#' e_{i-1} = rx_arEp_<var> (= lag0(rx_arE_<var>)), whose eta-dependence symengine
+#' drops.  Because the mean is linear in e_{i-1}, D(rx_pred_, rx_arEp_) = phi =
+#' rx_arPhi_<var> exactly, so the missing analytic term is simply
+#'   d(f)/deta_n -= rx_arPhi_<var> * lag0(d(rx_pred_f_)/d(eta_n), 1)
+#' (since d(rx_arEp)/deta = -lag0(d(pred_struct)/deta), pred_struct = rx_pred_f_,
+#' identity DV transform).  No symengine derivative of rx_pred_ is needed -- phi
+#' is the known rx_arPhi_ symbol -- so nothing poisons the evaluator.  The
+#' structural-prediction eta-sensitivities are emitted ahead of rx_pred_ (real
+#' lhs, lag()-referenced) so they do not shift the FOCEi column block.  Single AR
+#' endpoint, identity DV transform only; a no-op otherwise.
 #' @noRd
 #' @author Matthew L. Fidler
-#' Must run BEFORE the main d(f)/d(eta) apply (which rxFromSE-s the llik HdEta and
-#' poisons later get()/[[/$read for AR endpoints).  All symbolic work happens
-#' here while the evaluator is clean; the (clean) S_n Basics are rxFromSE-d first,
-#' ..arEtaSens is assign()-ed onto .s (writes are poison-safe), and the DmeanPhi
-#' Basic (contains lag0()/llik*(), so its rxFromSE poisons) is done LAST.  Only a
-#' plain character vector (the per-eta correction text) is returned, so the caller
-#' never needs a poisoned $/[[.
-#' @noRd
 .rxFoceiArEtaCorrect <- function(.s, .grd) {
   .vars <- ls(envir = .s)
   .arEp <- .vars[grepl("^rx_arEp_", .vars)]
   if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) return(NULL)
-  # assign() returns its value invisibly, so eval() of an "assign(..envir=.s)"
-  # string yields the symengine Basic directly -- exactly how the FEta apply
-  # avoids get() (get() is masked by symengine in this context).  NB: keep the
-  # temp name neutral (no trailing "_", no "Dmean" substring).
-  .dmpBasic <- eval(parse(text = paste0("assign(\"rxArDmpVar\", with(.s, D(rx_pred_, ",
+  # D(rx_pred_, rx_arEp_) = phi in the norm form (mean is linear in e_prev), so
+  # this yields the phi expression directly (expanded over kept lag symbols).
+  # assign() returns its value; eval() of the "assign(..envir=.s)" string yields
+  # the Basic (get() is masked here).  Keep the temp name neutral (no trailing
+  # "_", no "Dmean" substring).
+  .phiBasic <- eval(parse(text = paste0("assign(\"rxArDmpVar\", with(.s, D(rx_pred_, ",
                                         .arEp, ")), envir=.s)")))
-  # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline; these do
-  # not poison the evaluator.
+  # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline.
   .snNames <- character(nrow(.grd))
   .snText <- character(nrow(.grd))
   for (.n in seq_len(nrow(.grd))) {
@@ -693,11 +698,11 @@ attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
     .snText[.n] <- rxode2::rxFromSE(.snBasic)
   }
   assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
-  # DmeanPhi contains lag0()/llik*(), so its rxFromSE poisons later get()/[[ --
-  # do it LAST; only vectorized base ops (paste0) follow.
-  .dmeanPhi <- rxode2::rxFromSE(.dmpBasic)
-  # d(rx_arEp)/deta = -lag0(d(pred_struct)/deta); missing term = -DmeanPhi*lag0(S_n)
-  paste0("-(", .dmeanPhi, ")*lag0(", .snNames, ",1)")
+  # phi contains lag0()/lag(), so its rxFromSE poisons later get()/[[ -- do it
+  # LAST; only vectorized base ops (paste0) follow.
+  .phi <- rxode2::rxFromSE(.phiBasic)
+  # d(rx_arEp)/deta = -lag0(d(pred_struct)/deta); missing term = -phi*lag0(S_n)
+  paste0("-(", .phi, ")*lag0(", .snNames, ",1)")
 }
 
 #' @export
@@ -1237,16 +1242,16 @@ rxUiGet.focei <- function(x, ...) {
   .ui <- x[[1]]
   # For t/cauchy/dnorm, predOnly model
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(nlmixr2global$rxPredLlik <- FALSE)
+  # ar() endpoints emit the whitened residual in Gaussian norm (mean/variance)
+  # form so the exact eta-Hessian is used (not the llik path).
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
-        isTRUE(rxode2::rxHasAr(.ui))) {
-    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
-    # so they need the explicit-likelihood inner model even though the endpoint
-    # distribution stays "norm".
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1267,16 +1272,14 @@ rxUiGet.focei <- function(x, ...) {
 rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(nlmixr2global$rxPredLlik <- FALSE)
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
-        isTRUE(rxode2::rxHasAr(.ui))) {
-    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
-    # so they need the explicit-likelihood inner model even though the endpoint
-    # distribution stays "norm".
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1298,16 +1301,14 @@ rxUiGet.foce <- function(x, ...) {
 rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(  nlmixr2global$rxPredLlik <- FALSE)
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
-        isTRUE(rxode2::rxHasAr(.ui))) {
-    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
-    # so they need the explicit-likelihood inner model even though the endpoint
-    # distribution stays "norm".
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1502,7 +1503,18 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                        }
                        .low
                      }, numeric(1), USE.NAMES=FALSE)
-    .upper <- .iniDf$upper[.w]
+    .upper <- vapply(.w,
+                     function(i) {
+                       .up <- .iniDf$upper[i]
+                       # ar() correlation is [0, 1): keep the optimizer strictly
+                       # below 1 so the whitened variance R*(1-cor^(2dt)) never
+                       # hits 0 (cor==1 floors the log term -> spurious spike,
+                       # collapsing the residual sd).
+                       if (identical(.iniDf$err[i], "ar") && (is.na(.up) || .up >= 1)) {
+                         .up <- 1 - 1e-4
+                       }
+                       .up
+                     }, numeric(1), USE.NAMES=FALSE)
     env$thetaIni <- ui$thetaIniMix
     env$mixIdx <- ui$thetaMixIndex
     env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
@@ -1590,6 +1602,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     if (is.na(.scaleC[.ini$ntheta[.i]])) {
       if (any(.ini$err[.i] == c("boxCox", "yeoJohnson", "pow2", "tbs", "tbsYj"))) {
         .scaleC[.ini$ntheta[.i]] <- 1
+      } else if (identical(.ini$err[.i], "ar")) {
+        # ar() correlation gets its own (tuned) scaleC factor of the initial
+        # estimate -- finer than the 0.5 used for sd-like residual parameters
+        # (0.4 gave the closest cor recovery / best objf on the AR(1) test).
+        .scaleC[.ini$ntheta[.i]] <- getOption("rxode2.arScaleCFact", 0.4) * abs(.ini$est[.i])
       } else if (any(.ini$err[.i] == c("prop", "add", "norm", "dnorm", "logn", "dlogn", "lnorm", "dlnorm"))) {
         .scaleC[.ini$ntheta[.i]] <- 0.5 * abs(.ini$est[.i])
       }
