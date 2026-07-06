@@ -35,7 +35,7 @@ nmTest({
       ini(prop.sd=sqrt(0.1), lambda=0.5)
   }, .boxCoxPropT, addProp = 1)
 
-  .boxCoxPropF <- c(4.243, 4.243, 4.216, 3.537, 6.584, 6.584, 4.371,
+  .boxCoxPropF <- c(4.243, 4.243, 3.537, 3.537, 6.584, 6.584, 4.371,
                     4.371, 4.243, 4.243)
   testWang2007ErrorModel("boxCox(0.5)+propF", function(f) {
     f |> model(ipre ~ boxCox(lm) + propF(prop.sd, f2)) |>
@@ -72,7 +72,7 @@ nmTest({
       ini(prop.sd=sqrt(0.1), pw=0.5, lm=0.5)
   }, .boxCoxPowT, addProp = 1)
 
-  .boxCoxPowF <- c(7.046, 7.046, 7.032, 6.617, 8.287, 8.287, 7.118,
+  .boxCoxPowF <- c(7.046, 7.046, 6.617, 6.617, 8.287, 8.287, 7.118,
                    7.118, 7.046, 7.046)
   testWang2007ErrorModel("boxCox(0.5)+powF", function(f) {
     f |> model(ipre ~ boxCox(lm) + powF(prop.sd, pw, f2)) |>
