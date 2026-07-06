@@ -31,7 +31,7 @@ nmTest({
     }
 
     ctl <- saemControl(nBurn = 30, nEm = 30, nmc = 3, print = 0, seed = 1L,
-                       covMethod = "linFim")
+                       covMethod = "linFim", covFull = FALSE)  # theta-block drop=FALSE regression
 
     fit <- .nlmixr(one.cmt.cov, d, est = "saem", control = ctl)
 
