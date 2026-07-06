@@ -591,6 +591,9 @@ public:
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
+  // Final per-endpoint estimated AR(1) correlation (0 for non-AR endpoints).
+  vec get_arCor() { return arCor; }
+
   // Reset the AR(1) M-step accumulators (called with the statr reset each iter).
   void arResetMstep() {
     for (int b = 0; b < nendpnt; ++b) {
@@ -3506,6 +3509,7 @@ SEXP saem_fit(SEXP xSEXP) {
   }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
+    Named("arCor") = saem.get_arCor(),
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
