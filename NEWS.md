@@ -12,6 +12,15 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- Added `foceiControl(fast = TRUE)` to compute the FOCEI outer (population)
+  gradient analytically from Almquist (2015) sensitivity equations instead of by
+  finite differences; out-of-scope models fall back to the finite-difference
+  gradient.  Under `fast`, the outer optimizer defaults to `"lbfgsb3c"`; pairing
+  it with a derivative-free `outerOpt` reverts to `fast = FALSE`.
+
+- The default outer optimizer (`foceiControl(outerOpt=)`) is now `"nlminb"` for
+  the finite-difference methods (and `"lbfgsb3c"` when `fast = TRUE`).
+
 - The analytic covariance (`covMethod = "analytic"`) now supports `foce = "foce+"`
   (the live conditional residual variance), including the `focep` method; previously
   it fell back to the finite-difference covariance.
