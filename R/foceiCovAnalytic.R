@@ -471,7 +471,8 @@
              pF = pFE, pF1 = DD(pFE, "f"), pF2 = DD(pFE, "f", "f"))
   per <- list(); for (s in sgVar) per[[s]] <- list(rf = DD(rhoE, "f", s), rff = DD(rhoE, "f", "f", s),
     ps = DD(pE, s), pf = DD(pE, "f", s),
-    qs = DD(qE, s), qsf = DD(qE, "f", s), psF = DD(pFE, s), pfF = DD(pFE, "f", s))
+    qs = DD(qE, s), qsf = DD(qE, "f", s), psF = DD(pFE, s), pfF = DD(pFE, "f", s),
+    rs = DD(rhoE, s))   # pure d(rho)/d(sigma): first-derivative (outer-gradient) sigma term
   pair <- list(); for (i in seq_along(sgVar)) for (j in i:length(sgVar)) { a <- sgVar[i]; b <- sgVar[j]
     pair[[paste0(a, b)]] <- list(rss = DD(rhoE, a, b), rfss = DD(rhoE, "f", a, b), pss = DD(pE, a, b),
       qss = DD(qE, a, b), pssF = DD(pFE, a, b)) }
@@ -488,7 +489,8 @@
               q0 = q0E, q1 = DD(q0E, "f"), q2 = DD(q0E, "f", "f"),
               pF = pF0E, pF1 = DD(pF0E, "f"), pF2 = DD(pF0E, "f", "f"))
   perF <- list(); for (s in sgVar) perF[[s]] <- list(rf = DD(rho0E, "f", s), rff = DD(rho0E, "f", "f", s),
-    qs = DD(q0E, s), qsf = DD(q0E, "f", s), psF = DD(pF0E, s), pfF = DD(pF0E, "f", s))
+    qs = DD(q0E, s), qsf = DD(q0E, "f", s), psF = DD(pF0E, s), pfF = DD(pF0E, "f", s),
+    rs = DD(rho0E, s))   # pure d(rho)/d(sigma) for the FOCE first-derivative sigma term
   pairF <- list(); for (i in seq_along(sgVar)) for (j in i:length(sgVar)) { a <- sgVar[i]; b <- sgVar[j]
     pairF[[paste0(a, b)]] <- list(rss = DD(rho0E, a, b), rfss = DD(rho0E, "f", a, b),
       qss = DD(q0E, a, b), pssF = DD(pF0E, a, b)) }
