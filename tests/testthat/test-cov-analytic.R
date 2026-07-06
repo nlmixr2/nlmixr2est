@@ -54,7 +54,15 @@ test_that("block Omega is handled analytically, with off-diagonal covariance SEs
       cp ~ add(add.sd)
     })
   }
-  fit <- suppressMessages(nlmixr(blk, nlmixr2data::theo_sd, "focei",
+  # theo_sd alone (12 subjects) does not identify the off-diagonal covariance:
+  # its full observed information is genuinely indefinite (the exact analytic R and
+  # a finite-difference R agree on a small negative eigenvalue), so cov(eta.cl,eta.v)
+  # has a negative variance and a NaN SE under BOTH methods.  Replicate the data so
+  # the block is estimable and the full covariance is positive-definite -- then the
+  # analytic engine yields a real off-diagonal covariance SE.
+  d0 <- nlmixr2data::theo_sd
+  dat <- do.call(rbind, lapply(1:4, function(k) { .x <- d0; .x$ID <- .x$ID + (k - 1) * 100; .x }))
+  fit <- suppressMessages(nlmixr(blk, dat, "focei",
                                  foceiControl(print = 0L, covMethod = "")))
   r <- foceiCovAnalytic(fit)
   expect_false(is.null(r))
