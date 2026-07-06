@@ -739,6 +739,17 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
   # output columns -- extra output columns shift the column layout the FOCEi C++
   # reads and corrupt the inner objective.
   .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
+  # Variables referenced by lag()/history functions (eg the AR(1) residual and
+  # its time) cannot be inlined -- lag() needs them as real lhs so the previous
+  # record's value is stored.  Emit their definitions ahead of rx_pred_ (they
+  # reference the structural prediction, which precedes them).  These add output
+  # columns, so rx_pred_ is no longer lhs[0]; the FOCEi C++ locates rx_pred_ by
+  # name (op_focei.predOffset) and offsets its reads.
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
+    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+  }
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
@@ -747,6 +758,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .lambda,
     .hi,
     .low,
+    .lagDefs,
     .prd,
     .s$..HdEta,
     .r,
@@ -764,6 +776,7 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .lambda,
     .hi,
     .low,
+    .lagDefs,
     .prd,
     .s$..HdEta,
     .r,
@@ -1152,7 +1165,11 @@ rxUiGet.focei <- function(x, ...) {
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
+        isTRUE(rxode2::rxHasAr(.ui))) {
+    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
+    # so they need the explicit-likelihood inner model even though the endpoint
+    # distribution stays "norm".
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -1178,7 +1195,11 @@ rxUiGet.foce <- function(x, ...) {
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
+        isTRUE(rxode2::rxHasAr(.ui))) {
+    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
+    # so they need the explicit-likelihood inner model even though the endpoint
+    # distribution stays "norm".
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
@@ -1205,7 +1226,11 @@ rxUiGet.ebe <- function(x, ...) {
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
-  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
+  if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm")) ||
+        isTRUE(rxode2::rxHasAr(.ui))) {
+    # ar() endpoints emit a whitened conditional log-likelihood (encoded dnorm),
+    # so they need the explicit-likelihood inner model even though the endpoint
+    # distribution stays "norm".
     nlmixr2global$rxPredLlik <- TRUE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
