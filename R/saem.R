@@ -479,6 +479,65 @@
   class(.ph) <- .cls
   assign("parHistData", .ph, envir=env)
 }
+#' Online batch-means stochastic-approximation covariance for SAEM
+#'
+#' The averaged SAEM parameter iterates are asymptotically normal, so the
+#' asymptotic covariance is estimated directly from the recorded cooling-phase
+#' iterate trajectory (`saem$par_hist`) by the online batch-means estimator of
+#' Jiang, Roy, Balasubramanian, Davis, Drusvyatskiy & Na (2025).  It is
+#' derivative-free and inherently full -- theta + Omega (diagonal) variance +
+#' residual -- since every one of those is an iterated parameter recorded on its
+#' reported scale.  Off-diagonal Omega covariances are not in `par_hist`, so a
+#' declared block gets only its diagonal variances here.
+#' @param env saem fit environment
+#' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
+#' @noRd
+.saemSaCov <- function(env) {
+  .ui <- env$ui
+  .saem <- env$saem
+  .ph <- .saem$par_hist
+  if (is.null(.ph) || !is.matrix(.ph)) return(NULL)
+  .nm <- as.character(.ui$saemParHistNames)
+  if (ncol(.ph) < length(.nm)) return(NULL)
+  .ph <- .ph[, seq_along(.nm), drop = FALSE]
+  colnames(.ph) <- .nm
+  # drop mixture-probability columns -- not part of the parameter covariance
+  .mix <- .ui$mixProbs
+  if (length(.mix) > 0L) .ph <- .ph[, !(.nm %in% .mix), drop = FALSE]
+  # cooling / smoothing phase = the second SAEM phase (nEm iterations after nBurn)
+  .niter <- tryCatch(env$saemControl$mcmc$niter, error = function(e) NULL)  # c(nBurn, nEm)
+  .N <- nrow(.ph)
+  .nBurn <- if (length(.niter) >= 1L && is.finite(.niter[1])) as.integer(.niter[1]) else as.integer(floor(.N / 2))
+  .cool <- if (.N > .nBurn && .nBurn >= 0L) seq.int(.nBurn + 1L, .N) else seq_len(.N)
+  X <- .ph[.cool, , drop = FALSE]
+  .n <- nrow(X)
+  if (.n < 20L || ncol(X) == 0L) return(NULL)           # too few cooling iterations to be meaningful
+  Xc <- sweep(X, 2, colMeans(X))                        # centered iterates
+  # increasing block schedule a_m = floor(C m^beta) (Jiang et al. 2025, Remark 1)
+  .C <- suppressWarnings(as.numeric(rxode2::rxGetControl(.ui, "covSaBlock", 1)))
+  if (!is.finite(.C) || .C < 1) .C <- 1
+  .beta <- 2
+  .breaks <- unique(pmin(.n, floor(.C * (seq_len(.n))^.beta)))
+  .breaks <- c(0L, .breaks[.breaks >= 1L])
+  if (utils::tail(.breaks, 1L) != .n) .breaks <- c(.breaks, .n)
+  .breaks <- unique(.breaks)
+  .Sig <- matrix(0, ncol(X), ncol(X))
+  for (.i in seq_len(length(.breaks) - 1L)) {
+    .idx <- seq.int(.breaks[.i] + 1L, .breaks[.i + 1L])
+    .Sm <- colSums(Xc[.idx, , drop = FALSE])
+    .Sig <- .Sig + tcrossprod(.Sm)
+  }
+  # Sigmahat = sum_m S_m S_m' / n estimates the limiting cov of sqrt(n)*(xbar - x*);
+  # the covariance of the averaged estimate xbar is Sigmahat / n.
+  .cov <- .Sig / (.n * .n)
+  # name: theta as-is; V(<eta>) -> om.<eta> (diagonal Omega variance); residual as-is
+  .rn <- colnames(X)
+  .isV <- grepl("^V\\(", .rn)
+  .rn[.isV] <- paste0("om.", sub("^V\\((.*)\\)$", "\\1", .rn[.isV]))
+  dimnames(.cov) <- list(.rn, .rn)
+  .cov
+}
+
 #' Calculate the covariance term
 #'
 #' @param env saem environment
@@ -486,6 +545,15 @@
 #' @author Matthew L. Fidler
 #' @noRd
 .saemCalcCov <- function(env) {
+  .ui <- env$ui
+  if (identical(rxode2::rxGetControl(.ui, "covMethod", "linFim"), "sa")) {
+    # The online batch-means SA covariance (.saemSaCov) is implemented but requires a
+    # dedicated slow-decaying-gain phase to match the estimate covariance -- SAEM's
+    # default gain schedule collapses the cooling trajectory and underestimates it.
+    # Until that phase is wired up, fall back to the linearized FIM.
+    message("covMethod=\"sa\" (online batch-means) is not yet available; using the linearized FIM")
+    rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
+  }
   nlmixrWithTiming("covariance", {
     .ui <- env$ui
     .saem <- env$saem
@@ -596,7 +664,22 @@
           .cov <- .tmp
         }
         attr(.cov, "dimnames") <- list(.tn, .tn)
-        .cov <- .cov[.ini, .ini, drop = FALSE]
+        .thCov <- .cov[.ini, .ini, drop = FALSE]           # structural-theta block
+        # covFull: assemble the full theta + residual + Omega block-diagonal cov
+        # (calc.COV attaches the variance block as "varCov").  The shared output
+        # finalization expects a theta-dimensioned cov, so stash the full matrix and
+        # install it AFTER the fit is built (.saemInstallFullCov), mirroring focei.
+        .vc <- attr(.covm, "varCov")
+        .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
+        if (.covFull && !is.null(.vc) && is.matrix(.vc) && all(is.finite(.vc))) {
+          .vn <- colnames(.vc)
+          .fn <- c(.ini, .vn)
+          .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+          .full[.ini, .ini] <- .thCov
+          .full[.vn, .vn] <- .vc
+          assign(".saemFullCov", .full, envir = env)
+        }
+        .cov <- .thCov
       }
     }
     if (.addCov) {
@@ -823,6 +906,55 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   invisible()
 }
 
+#' Install the stashed full SAEM covariance (theta + residual + Omega) on the fit
+#'
+#' The shared output finalization expects a theta-dimensioned covariance, so
+#' `.saemCalcCov` stashes the full named matrix in `.saemFullCov` and installs the
+#' structural-theta block for finalization.  This swaps in the full matrix as
+#' `fit$cov` afterward (PD-guarded) and refreshes the parameter table, mirroring
+#' focei's `.foceiInstallAnalyticCov`.
+#' @param fit saem fit (or its environment)
+#' @return nothing, called for side effects
+#' @noRd
+.saemInstallFullCov <- function(fit) {
+  .env <- fit
+  if (rxode2::rxIs(fit, "nlmixr2FitData")) .env <- fit$env
+  if (!is.environment(.env) || !exists(".saemFullCov", envir = .env, inherits = FALSE)) return(invisible())
+  .full <- get(".saemFullCov", envir = .env)
+  if (!is.matrix(.full) || !all(is.finite(.full))) return(invisible())
+  .ev <- suppressWarnings(eigen(.full, symmetric = TRUE, only.values = TRUE)$values)
+  if (any(diag(.full) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible())  # keep theta-only
+  .env$cov <- .full
+  # a valid PD full cov installed: report the intended method (the shared finalization
+  # can leave a stale "failed" label even when the SAEM covariance succeeded)
+  .m <- tryCatch(rxode2::rxGetControl(.env$ui, "covMethod", "linFim"), error = function(e) "linFim")
+  .env$covMethod <- if (identical(.m, "sa")) "sa" else "linFim"
+  # surface the residual (error-model theta) SEs in the parameter table from the full
+  # cov -- these are theta rows with a missing SE (Omega variances are reported as BSV,
+  # with their SEs available in $cov).
+  if (exists("parFixedDf", envir = .env, inherits = FALSE)) {
+    .pf <- .env$parFixedDf
+    .se <- sqrt(diag(.full))
+    .ci <- tryCatch(as.numeric(rxode2::rxGetControl(.env$ui, "ci", 0.95)), error = function(e) 0.95)
+    .qn <- stats::qnorm(1 - (1 - .ci) / 2)
+    for (.n in rownames(.pf)) {
+      if (.n %in% names(.se) && "SE" %in% names(.pf) &&
+            (is.na(.pf[.n, "SE"]) || !is.finite(.pf[.n, "SE"]) || .pf[.n, "SE"] < 1e-100)) {
+        .s <- .se[[.n]]; .e <- .pf[.n, "Estimate"]
+        .pf[.n, "SE"] <- .s
+        if ("%RSE" %in% names(.pf)) .pf[.n, "%RSE"] <- abs(.s / .e) * 100
+        if (all(c("CI Lower", "CI Upper", "Back-transformed") %in% names(.pf)) &&
+              isTRUE(all.equal(unname(.pf[.n, "Back-transformed"]), unname(.e)))) {
+          .pf[.n, "CI Lower"] <- .e - .qn * .s
+          .pf[.n, "CI Upper"] <- .e + .qn * .s
+        }
+      }
+    }
+    .env$parFixedDf <- .pf
+  }
+  invisible()
+}
+
 #' Fit the saem family of models
 #'
 #' @param env Environment from nlmixr2Est
@@ -869,6 +1001,9 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .ret$est <- "saem"
     .saemControlToFoceiControl(.ret)
     .ret <- nlmixr2CreateOutputFromUi(.ret$ui, data=.ret$origData, control=.ret$control, table=.ret$table, env=.ret, est="saem")
+    # covFull/sa: swap in the stashed full theta+residual+Omega covariance now that
+    # the theta-dimensioned fit table has been built.
+    .saemInstallFullCov(.ret)
     # For mixture models: post-correct me/mn/mu in the assembled fit table
     # (mirrors the .mixFixTable call in .foceiFamilyReturn for FOCEi fits)
     if (inherits(.ret, "nlmixr2FitData") && length(.ui$mixProbs) > 0L) {
