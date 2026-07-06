@@ -25,8 +25,7 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("r,s", "r", "s", ""),
-  covType = c("analytic", "fd"),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
   covSolveTol = NULL,
   covFull = TRUE,
   hessEps = (.Machine$double.eps)^(1/3),
@@ -222,42 +221,35 @@ differences.}
 derivatives while calculating the covariance components
 (Hessian and S).}
 
-\item{covMethod}{Method for calculating covariance, where R is the
-Hessian and S the sum of individual gradient cross-products (at the
-empirical Bayes estimates): \code{"r,s"} sandwich
+\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
 (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
 \code{""} to skip the covariance step.}
 
-\item{covType}{covariance R-matrix (Hessian) source, \code{"fd"} (default) or
-\code{"analytic"}.  \code{"analytic"} uses the exact analytic
-observed-information R-matrix and can additionally return the residual and
-Omega standard errors.  It applies to FOCEI and FOCE fits with additive,
-proportional, or combined additive-plus-proportional error, and covers
-mu-referenced, covariate, and other non-mu-referenced structural parameters
-(and non-mu-referenced etas) as well as SD-scale inter-occasion variability.
-It defaults to \code{covMethod = "r"} (the observed-information \eqn{R^{-1}},
-computed even when \code{covMethod = ""}); an explicit \code{covMethod = "r,s"}
-or \code{"s"} is honored, with the analytic R feeding the native
-finite-difference sandwich / S-matrix.  It emits a message and falls back to
-the finite-difference Hessian for anything out of scope (FO, \code{nAGQ > 1},
-censoring, DV-transformed error, bounded-parameter transforms, a structural
-theta shared by two etas, or non-SD \code{iovXform}) -- and, for a
-pure-proportional variance that vanishes at a near-zero model prediction,
-where the observed information is ill-conditioned.}
-
-\item{covSolveTol}{absolute/relative ODE tolerance for the augmented-sensitivity
-solves behind \code{covType="analytic"}.  \code{NULL} (default) derives a
-tight tolerance from \code{sigdig}; supply a number to override it.}
+\item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
+the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+derives a tight tolerance from \code{sigdig}; supply a number to override it.}
 
 \item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
 installs only the structural-theta block (the NONMEM-matched theta
 covariance, matching the historical finite-difference \code{fit$cov} shape
 for backwards compatibility); \code{TRUE} installs the full theta + residual
 sigma + Omega covariance -- assembled analytically for
-\code{covType="analytic"}, or by central finite differences of the objective
-over the same parameter set for \code{covType="fd"} (perturbing Omega on the
-variance-covariance scale, with the per-parameter Gill (1983) step and the
+\code{covMethod="analytic"}, or by central finite differences of the objective
+over the same parameter set for the finite-difference methods (perturbing Omega
+on the variance-covariance scale, with the per-parameter Gill (1983) step and the
 5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
 errors are identical either way.}
 
@@ -357,7 +349,7 @@ instead of FOCE (FALSE)}
     inner gradient.  Advantage: uses the conditional variance and
     is a bit more accurate than NONMEM's FOCE in some cases.
     Disadvantage: does not match NONMEM FOCE and is unsupported by
-    \code{covType = "analytic"} (falls back to the
+    \code{covMethod = "analytic"} (falls back to the
     finite-difference covariance).  This was the FOCE behavior in
     \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
     gradient of \code{eta} like the full \code{focei} method, so it
