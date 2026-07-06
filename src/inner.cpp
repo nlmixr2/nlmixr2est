@@ -3650,6 +3650,8 @@ static inline double dUnscaleParDx(int i) {
   }
 }
 
+static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
+
 // Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
 // the gate is live.  Returns true on success (g filled), false to fall back to
 // the finite-difference gradient.  theta is the current scaled optimizer point.
@@ -3661,7 +3663,11 @@ static bool analyticOuterGrad(double *theta, double *g) {
   Environment _nlmixr2est = Environment::namespace_env("nlmixr2est");
   Function _agf = as<Function>(_nlmixr2est[".foceiCalcGradAnalytic"]);
   RObject _res = _agf(op_foceiFitEnv);
-  if (Rf_isNull(_res)) return false;
+  // The augmented-sensitivity solves replaced the fit's global solve; restore it
+  // so the next foceiOfv0 (objective/inner solve) reads the fit, not the last
+  // augmented subject.  A failed restore -> fall back to FD (which re-solves).
+  bool _restored = restoreFitSolve_();
+  if (Rf_isNull(_res) || !_restored) return false;
   NumericVector _gv = as<NumericVector>(_res);
   if ((int)_gv.size() != (int)op_focei.npars) return false;
   for (int i = 0; i < (int)op_focei.npars; i++) {
@@ -4735,10 +4741,14 @@ NumericVector foceiSetup_(const RObject &obj,
     // Don't force cores=1: the user-requested core count must propagate to
     // rxSolve_ so per-thread buffers are sized correctly (parallelization
     // itself is managed in innerOpt()).
-    // stash the solve args only for covType="analytic" (the sole reader); avoids
-    // retaining the model/dataset for the session on every finite-difference fit
-    if (foceiO.containsElementNamed("covType") &&
-        as<std::string>(foceiO["covType"]) == "analytic") {
+    // stash the solve args for covType="analytic" and fast (both replace the fit's
+    // global solve with augmented-sensitivity solves and need restoreFitSolve_);
+    // avoids retaining the model/dataset for the session on every plain FD fit
+    bool _needSolveArgs =
+      (foceiO.containsElementNamed("covType") &&
+       as<std::string>(foceiO["covType"]) == "analytic") ||
+      (foceiO.containsElementNamed("fast") && as<int>(foceiO["fast"]) != 0);
+    if (_needSolveArgs) {
       storeCovSolveArgs_(obj, rxControl, params, data);
     }
     rxode2::rxSolve_(obj, rxControl,
