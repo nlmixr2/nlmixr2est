@@ -12,6 +12,14 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- Residual (error-model) parameters are now part of the focei-family covariance: their
+  standard errors are estimated alongside the structural thetas (`skipCov` no longer skips
+  them; only fixed, IOV, and mlogit-scale mixture-probability thetas are skipped).
+
+- `foceiCovAnalytic()` now caches its result on the fit and installs the covariance as
+  `fit$cov`, so repeated calls and `getVarCov()` reuse it instead of recomputing the
+  augmented sensitivity solve every time.
+
 - Added the `focep`, `mufocep`, and `irlsfocep` estimation methods -- the `foce`,
   `mufoce`, and `irlsfoce` methods with `foce = "foce+"` forced (the live conditional
   residual variance R).

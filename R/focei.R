@@ -1647,7 +1647,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
   } else {
     .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
     .skipCov <- rep(FALSE, .maxTheta)
-    .skipCov[which(!is.na(.theta$err))] <- TRUE
+    # residual (error-model) thetas are now part of the covariance -- their standard
+    # errors are estimated alongside the structural thetas (all theta parameters are
+    # included).  Only fixed, IOV, and (mlogit-scale) mixture-probability thetas skip.
     .skipCov[.theta$fix] <- TRUE
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE

@@ -295,9 +295,10 @@
     onm <- ifelse(is.na(thetaForEta), etaNames, thetaForEta)   # orphan (non-mu-ref) eta named by the eta
     fullNm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm), iovVars)  # full natural-scale order
 
-    # cov-param order (op_focei) -> theta-block position (thStruct order)
-    idx <- match(covParams, thStruct)
-    if (anyNA(idx)) return(NULL)
+    # op_focei cov-params (non-skipped structural + residual thetas) must all live in
+    # the full natural-scale cov (structural thetas in `thStruct`, residual sigmas in
+    # `ef$sgName`); the R.0 / covFull=FALSE block is taken from it by name below.
+    if (!all(covParams %in% fullNm)) return(NULL)
 
     th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
     etav <- paste0("ETA_", seq_len(neta), "_")
@@ -323,15 +324,15 @@
     .covNat <- tryCatch(solve(Rfull), error = function(e) NULL)
     if (is.null(.covNat)) return(NULL)
     dimnames(.covNat) <- list(fullNm, fullNm)
-    # the theta-block R (op_focei cov-param order) decides success; the native
-    # covR = Rinv path (issue #666 fix) reports these SEs directly.
-    .ct <- .covNat[seq_len(nth), seq_len(nth), drop = FALSE][idx, idx, drop = FALSE]
+    # the op_focei cov-param block (structural + residual thetas, by name) decides
+    # success; the native covR = Rinv path (issue #666 fix) reports these SEs directly.
+    .ct <- .covNat[covParams, covParams, drop = FALSE]
     .R0 <- tryCatch(solve(.ct), error = function(e) NULL)
     if (is.null(.R0)) return(NULL)   # inversion failed -> FD, and do NOT leave a stale .analyticCov
     assign(".analyticCov", .covNat, envir = e)           # stash only after the deciding inversion
-    # covFull=FALSE installs only the native cov-theta block: respect skipCov so the
-    # shape matches covType="fd" (do NOT widen to skipped structural thetas).
-    assign(".analyticThetaNames", thStruct[thStruct %in% covParams], envir = e)
+    # covFull=FALSE installs the non-skipped theta block (structural + residual),
+    # matching the covType="fd" shape (skipCov drops only fixed/IOV/mixProb thetas).
+    assign(".analyticThetaNames", covParams, envir = e)
     .R0
   }, error = function(e) NULL)
 }
@@ -908,12 +909,13 @@
   eta
 }
 
-#' Full analytic FOCEI covariance (theta + sigma + Omega) for a fitted object, or
-#' `NULL` when out of scope / the augmented solve fails.  Standalone test oracle.
+#' Compute the full analytic FOCEI covariance (theta + sigma + Omega) for a fitted
+#' object, or `NULL` when out of scope / the augmented solve fails.  The cached,
+#' env-installing entry point is [foceiCovAnalytic]; this is the raw compute.
 #' @param fit a fitted nlmixr2 focei object
 #' @return list(cov, se, R, params, method) or `NULL`
 #' @noRd
-foceiCovAnalytic <- function(fit) {
+.foceiCovAnalyticCalc <- function(fit) {
   ui <- fit$finalUi
   if (!.hasRxSens())
     return(.foceiAnalyticFallback("an rxode2 without symbolic sensitivities (needs rxExpandSens2_ + symengine)"))
@@ -974,4 +976,28 @@ foceiCovAnalytic <- function(fit) {
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
        R = R, params = nm, method = "analytic")
+}
+
+#' Full analytic FOCEI covariance (theta + sigma + Omega) for a fitted object, or
+#' `NULL` when out of scope / the augmented solve fails.
+#'
+#' The result is cached on the fit environment (`.covAnalytic`) and its `$cov` is
+#' installed as the fit's `$cov` on the first call, so repeated calls -- and
+#' `getVarCov()` -- return the stored covariance instead of recomputing the
+#' augmented sensitivity solve every time.
+#' @param fit a fitted nlmixr2 focei object
+#' @return list(cov, se, R, params, method) or `NULL`
+#' @noRd
+foceiCovAnalytic <- function(fit) {
+  .env <- fit
+  if (rxode2::rxIs(fit, "nlmixr2FitData")) .env <- fit$env
+  if (exists(".covAnalytic", envir = .env, inherits = FALSE)) {
+    return(get(".covAnalytic", envir = .env))
+  }
+  .ret <- .foceiCovAnalyticCalc(fit)
+  assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
+  if (!is.null(.ret) && is.matrix(.ret$cov)) {
+    .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
+  }
+  .ret
 }
