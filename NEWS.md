@@ -6,6 +6,11 @@
   gradient.  Under `fast`, the outer optimizer defaults to `"lbfgsb3c"`; pairing
   it with a derivative-free `outerOpt` reverts to `fast = FALSE`.
 
+- The analytic gradient/covariance augmented model now carries modeled dosing
+  parameters (`f()`, `lag()`/`alag()`, `rate()`, `dur()`) and their second-order
+  dose-based ("jump") sensitivities via rxode2's `eventSens = "jump"`; previously
+  such models produced an incorrect (dose-unscaled) augmented solve.
+
 - The default outer optimizer (`foceiControl(outerOpt=)`) is now `"nlminb"` for
   the finite-difference methods (and `"lbfgsb3c"` when `fast = TRUE`).
 

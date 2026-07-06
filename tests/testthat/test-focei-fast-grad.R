@@ -103,6 +103,38 @@ test_that("fast=TRUE fit matches the finite-difference fit", {
   expect_equal(unname(fixef(fF)), unname(fixef(f0)), tolerance = 1e-2)
 })
 
+test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  d <- nlmixr2data::theo_sd
+  # bioavailability f() and absorption lag() modeled on theta/eta: the outer gradient
+  # (and its EBE derivative) needs the dose-based second-order jump sensitivities.
+  mDose <- function() {
+    ini({ tka <- 0.3; tcl <- 1.1; tv <- 3.3; tf <- 0.1; tl <- -1.5
+          eta.ka ~ 0.4; eta.cl ~ 0.2; eta.f ~ 0.1; add.sd <- 0.6 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            fdepot <- exp(tf + eta.f); ld <- exp(tl)
+            d/dt(depot) <- -ka * depot; f(depot) <- fdepot; lag(depot) <- ld
+            d/dt(center) <- ka * depot - cl / v * center; cp <- center / v; cp ~ add(add.sd) })
+  }
+  ph <- suppressMessages(suppressWarnings(nlmixr2(mDose, d, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                     maxOuterIterations = 0L, maxInnerIterations = 300L))))
+  g <- .foceiGradAnalyticCalc(ph)
+  expect_false(is.null(g))                                    # jump sensitivities keep it in scope
+  base <- fixef(ph)
+  ofvAt <- function(nm, val) {
+    ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+    suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   maxInnerIterations = 300L))))$objf
+  }
+  h <- 1e-3
+  fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+  expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
+})
+
 test_that("out-of-scope model (linCmt) falls back to the finite-difference gradient", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
