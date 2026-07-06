@@ -377,6 +377,12 @@
     if (length(.w) == 1) {
       .theta[paste(.tmp$name[.w])] <- .resMat[i, 4]
     }
+    # AR(1) autocorrelation estimated by the whitened M-step in src/saem.cpp
+    .w <- which(vapply(.tmp$err, function(x) any(x == "ar"),
+                       logical(1), USE.NAMES=FALSE))
+    if (length(.w) == 1 && !is.null(.saem$arCor)) {
+      .theta[paste(.tmp$name[.w])] <- .saem$arCor[i]
+    }
   }
   if (length(.ui$mixProbs) > 0 && !is.null(.saem$mixProb)) {
     .estMix <- .saem$mixProb[seq_along(.ui$mixProbs)]
@@ -892,12 +898,6 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
-  # The whitened-conditional AR(1) E-step/M-step is implemented in src/saem.cpp
-  # (arWhiten/arResk/arUpdateCor), but the saem estimation model currently drops
-  # ar1.cor before the C++ (only a late reporting config sees it), so the M-step
-  # never estimates the correlation.  Keep ar() gated off until that model-flow
-  # plumbing is fixed, so users do not get a silently-ignored "AR" fit.
-  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
