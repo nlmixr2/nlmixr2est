@@ -19,7 +19,6 @@
 
 test_that("foceiCov returns the full theta+sigma+Omega analytic covariance", {
   skip_on_cran()
-  skip_if_not_installed("nlmixr2data")
   fit <- suppressMessages(nlmixr(.cov_one_cmt, nlmixr2data::theo_sd, "focei",
                                  foceiControl(print = 0L, covMethod = "")))
   r <- foceiCovAnalytic(fit)
