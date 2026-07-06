@@ -61,6 +61,37 @@ test_that("analytic outer gradient matches central differences (theta + sigma)",
   expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
 })
 
+test_that("FOCE (nonmem) analytic gradient matches central differences", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # add+prop so the frozen-R0 depends on the population prediction (exercises the
+  # nonmem a0-chain) while staying > 0 (no vanishing-variance guard)
+  offAP <- function() {
+    ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+          add.sd <- 0.4; prop.sd <- 0.15 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) + prop(prop.sd) })
+  }
+  d <- nlmixr2data::theo_sd
+  ph <- suppressMessages(nlmixr2(offAP, d, "foce",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                     maxOuterIterations = 0L, maxInnerIterations = 300L)))
+  g <- .foceiGradAnalyticCalc(ph)
+  expect_false(is.null(g))
+  base <- fixef(ph)
+  ofvAt <- function(nm, val) {
+    ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+    suppressMessages(suppressWarnings(nlmixr2(ui2, d, "foce",
+      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   maxInnerIterations = 300L))))$objf
+  }
+  h <- 1e-3
+  fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+  expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
+})
+
 test_that("fast=TRUE fit matches the finite-difference fit", {
   skip_on_cran()
   skip_on_ci()
