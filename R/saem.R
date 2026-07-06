@@ -892,6 +892,11 @@ nlmixr2Est.saem <- function(env, ...) {
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'saem'",
                              .var.name=.ui$modelName)
   rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
+  # saem's Gaussian residual E-step/M-step assume conditionally-independent
+  # residuals, so ar() would be silently ignored (its correlation never enters
+  # the likelihood).  Reject it until the whitened-conditional E-step + numeric
+  # correlation M-step are implemented.
+  rxode2::assertRxUiNoAutoregressive(.ui, " for the estimation routine 'saem'", .var.name=.ui$modelName)
   rxode2::warnRxBounded(.ui, " which are ignored in 'saem'", .var.name=.ui$modelName)
   if (length(.ui$mixProbs) > 0) {
     message("mixture SAEM computation scales with the number of sub-populations")
