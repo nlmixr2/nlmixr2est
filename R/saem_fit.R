@@ -615,6 +615,21 @@
   .t <- cumsum(c(0L, rep(.obs_counts, cfg$nmc))) # N*nmc + 1 entries
   cfg$ix_idM <- cbind(.t[-length(.t)], .t[-1] - 1L) # c-index of obs records of each subject
 
+  # AR(1) autocorrelated residuals (continuous-time): for each observation (in
+  # the original 1-chain order the E-step uses) find the previous same-subject-
+  # same-endpoint observation (time order = record order for sorted data) and the
+  # time gap to it, so the whitened conditional likelihood can carry the previous
+  # residual.  arActive/arCor default off; the model sets them when it has ar()
+  # (currently gated off by the saem opt-out assert).
+  .arTime <- cfg$evt[cfg$evt[, "EVID"] == 0, "TIME"]
+  .arGrp <- paste0(.s_id, "_", cfg$ix_endpnt)
+  .arPos <- ave(seq_along(.arGrp), .arGrp,
+                FUN = function(.v) c(NA_integer_, utils::head(.v, -1L))) # prev 1-based orig idx
+  cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L)                  # 0-based, -1 = first
+  cfg$arDt <- ifelse(is.na(.arPos), 0, .arTime - .arTime[.arPos])
+  cfg$arActive <- as.integer(if (is.null(model$arActive)) rep(0L, cfg$nendpnt) else model$arActive)
+  cfg$arCor <- as.double(if (is.null(model$arCor)) rep(0, cfg$nendpnt) else model$arCor)
+
   cfg$ares <- rep(10, cfg$nendpnt)
   cfg$bres <- rep(1, cfg$nendpnt)
   cfg$cres <- rep(1, cfg$nendpnt)
