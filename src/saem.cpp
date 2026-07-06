@@ -795,6 +795,11 @@ public:
     ix_idM=as<umat>(x["ix_idM"]);
     res_offset=as<uvec>(x["res_offset"]);
     addProp=as<uvec>(x["addProp"]);
+    arCor=as<vec>(x["arCor"]);
+    arActive=as<uvec>(x["arActive"]);
+    arPrev=as<arma::ivec>(x["arPrev"]);
+    arDt=as<vec>(x["arDt"]);
+    hasAr = (int)accu(arActive);
     hasFixedObsTransform = true;
     for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
       if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
@@ -2810,6 +2815,17 @@ private:
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
 
   uvec obs_subject;
+
+  // AR(1) autocorrelated residuals (continuous-time; phi = cor^dt).  arActive[b]
+  // flags an endpoint with ar(); arCor[b] is its correlation (stochastic-approx
+  // updated in the M-step).  Per-observation (ORIGINAL order, one chain) arPrev
+  // is the previous same-subject-same-endpoint observation index in time order
+  // (-1 = first of its subject/endpoint) and arDt the time gap to it.
+  vec arCor;
+  uvec arActive;
+  arma::ivec arPrev;
+  vec arDt;
+  int hasAr;
 
   int DEBUG;
   std::vector< std::string > phiMFile;
