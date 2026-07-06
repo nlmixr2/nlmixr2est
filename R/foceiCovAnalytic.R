@@ -200,6 +200,13 @@
     # that with the internal-scale cov -> bow out to the (Jacobian-correct) FD path.
     if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L)
       return(.foceiAnalyticFallback("a bounded parameter transform"))
+    # dose-history functions (tad/podo/tafd/tlast/tfirst/dosenum) read per-event dose
+    # bookkeeping that the augmented symbolic-sensitivity model cannot differentiate
+    # through; letting the augmented solve start and then fail mid-build can corrupt
+    # the fit's global solve state, so bow out before ever attempting the solve.
+    .normModel <- rxode2::rxModelVars(ui)$model["normModel"]
+    if (grepl("\\b(tad|podo|tafd|tlast|tfirst|dosenum)\\s*\\(", .normModel))
+      return(.foceiAnalyticFallback("a dose-history function (tad/podo/tafd/tlast/tfirst/dosenum)"))
     # scope: the analytic observed information is FOCEI-only (conditional, with the
     # interaction term) and a single Gaussian endpoint; anything else -> FD.
     if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE))))
