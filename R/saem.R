@@ -742,6 +742,15 @@
         } else {
           .cov <- .tmp
         }
+        if (!identical(dim(.cov), c(.nth, .nth))) {
+          # A degenerate calc.COV (e.g. all parameters unidentified) can make the
+          # chol/sqrtm fallback chain silently collapse to the wrong size (unlike
+          # calc.COV itself, which is already dimension-checked above); fall back
+          # to the linearized-FIM inverse, which is always exactly nth x nth.
+          .cov <- tryCatch(rxode2::rxInv(.saem$Ha[1:.nth, 1:.nth, drop = FALSE]),
+                            error = function(e) matrix(NA_real_, .nth, .nth))
+          .calcCov <- FALSE
+        }
         attr(.cov, "dimnames") <- list(.tn, .tn)
         .thCov <- .cov[.ini, .ini, drop = FALSE]           # structural-theta block
         # covFull: assemble the full theta + residual + Omega block-diagonal cov
