@@ -216,12 +216,6 @@
   if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
   .normModel <- rxode2::rxModelVars(ui)$model["normModel"]
   if (grepl("\\b(tad|podo|tafd|tlast|tfirst|dosenum)\\s*\\(", .normModel)) return(NULL)
-  # Modeled dosing modifiers (bioavailability f(), dur(), rate(), lag()/alag()) need
-  # the second-order jump (event/dosing) sensitivities, which .foceiAnalyticAugModelDirs
-  # does not yet carry into the augmented model (it emits only d/dt + sensitivity
-  # compartments, dropping the dosing modifiers) -> fall back to FD.  Phase 5 hooks up
-  # rxode2's jump sensitivities and removes this guard.
-  if (grepl("(^|;|\\n)\\s*(f|dur|rate|alag|lag)\\s*\\(", .normModel)) return(NULL)
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L

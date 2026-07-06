@@ -541,9 +541,22 @@
     .fL2 <- vapply(seq_len(nrow(.P2)), function(.r)
       paste0("f2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r]))), character(1))
     .baseOde <- vapply(.st, function(.x) paste0("d/dt(", .x, ")=", .toRx(get(paste0("rx__d_dt_", .x, "__"), .s))), character(1))
-    .modTxt <- paste(c(.baseOde, .s1, .s2, paste0("predf=", .toRx(.pred)), .fL1, .fL2), collapse = "\n")
+    # Dosing modifiers (bioavailability f(), lag()/alag(), rate(), dur()) live in the
+    # pruned env as rx_<mod>_<state>_ and are NOT part of rx__d_dt_*.  Emit them so the
+    # augmented model doses correctly AND so eventSens="jump" (below) fills the analytic
+    # dose-parameter ("jump") sensitivities for the rx__sens_* compartments -- otherwise
+    # a modeled dosing parameter's sensitivity is silently zero.
+    .dosVars <- grep("^rx_(f|lag|alag|rate|dur)_.+_$", ls(envir = .s, all.names = TRUE), value = TRUE)
+    .dose <- vapply(.dosVars, function(.v) {
+      .m <- regmatches(.v, regexec("^rx_(f|lag|alag|rate|dur)_(.+)_$", .v))[[1]]
+      .fun <- if (.m[2L] == "lag") "alag" else .m[2L]     # rxode2 stores lag() as alag()
+      paste0(.fun, "(", .m[3L], ")=", .toRx(get(.v, envir = .s)))
+    }, character(1))
+    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("predf=", .toRx(.pred)), .fL1, .fL2), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
-    list(augMod = rxode2::rxode2(.modTxt), dirs = dirs, ndir = length(dirs), st = .st, P2 = .P2)
+    # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
+    # (forward variational jumps at dose times) for the sensitivity compartments.
+    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), st = .st, P2 = .P2)
   }, error = function(e) NULL)
 }
 
