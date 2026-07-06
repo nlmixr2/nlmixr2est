@@ -560,6 +560,37 @@ public:
     user_fn = f;
   }
 
+  // Continuous-time AR(1) whitening of a residual/SD pair, in place.  e and g are
+  // indexed in the original 1-chain observation order (length ntotal).  For each
+  // AR endpoint obs with a previous same-subject-same-endpoint record:
+  //   phi_i = cor^dt_i, eps_i = e_i - phi_i*e_{prev}, gstar_i = g_i*sqrt(1-phi_i^2).
+  // The first record of each subject/endpoint (arPrev<0) is left marginal.  The
+  // previous residual is the RAW (pre-whitening) residual, so snapshot e first.
+  void arWhiten(vec &e, vec &g) {
+    if (!hasAr) return;
+    vec e0 = e;
+    for (arma::uword i = 0; i < e.n_elem; ++i) {
+      int b = (int)ix_endpnt(i);
+      if (!arActive(b)) continue;
+      arma::sword p = arPrev(i);
+      if (p < 0) continue;
+      double phi = std::pow(arCor(b), arDt(i));
+      double om = 1.0 - phi*phi;
+      if (om < 1e-8) om = 1e-8;
+      e(i) = e0(i) - phi*e0((arma::uword)p);
+      g(i) *= std::sqrt(om);
+    }
+  }
+
+  // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
+    vec e = yt - ft;
+    vec gg = g;
+    arWhiten(e, gg);
+    return 0.5*(e/gg)%(e/gg) + log(gg);
+  }
+
   mat get_resMat() {
     mat m(nendpnt,4);
     m.col(0) = ares;
@@ -1055,7 +1086,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1262,7 +1293,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              cur_DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1535,7 +1566,7 @@ public:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = indio + (arma::uword)k * stride;
-            DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                      DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -2853,7 +2884,7 @@ private:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
-              DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                        DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -2952,7 +2983,7 @@ private:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
-            DYFm(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                      DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -3054,7 +3085,7 @@ private:
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
-          DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+          DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
           for (int j = ntotal; j--;) {
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                    DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
