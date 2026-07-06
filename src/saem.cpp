@@ -657,7 +657,7 @@ public:
       for (int i = 0; i < (int)y_cur.size(); i++) {
         int idx_orig = ix_sorting(y_offset(b) + i);
         int i_subj = obs_subject(idx_orig);
-        double w = mixWeights(i_subj, weightCol);
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
         double r_ji = _arRorig(idx_orig);
         arma::sword p = arPrev(idx_orig);
         double contrib;
@@ -693,7 +693,8 @@ public:
         double r_ji_sq = r_ji * r_ji;
         if (r_ji_sq > xmax) r_ji_sq = xmax;
         else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-        resk += mixWeights(i_subj, weightCol) * r_ji_sq;
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
+        resk += w * r_ji_sq;
       }
     }
     return resk;
@@ -1765,7 +1766,10 @@ public:
               }
             }
 
-            if (res_mod(b) <= rmProp) {
+            if (arActive(b)) {
+              // AR(1): whitened SSR + accumulate residual pairs for arUpdateCor
+              resk = arResk(b, f_cur, y_cur, -1);
+            } else if (res_mod(b) <= rmProp) {
               resk = dot(resid, resid);
               if (resk > xmax) {
                 resk = xmax;
