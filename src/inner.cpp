@@ -272,6 +272,7 @@ struct focei_options {
   int noabort;
   int interaction;
   int foceType; // FOCE residual-variance R: 0 = "nonmem" (eta=0 frozen R), 1 = "foce+" (live conditional R)
+  int fast;     // analytic ("fast") outer gradient + Eq-48 eta extrapolation
   double cholSEtol;
   double hessEps;
   double hessEpsLlik;
@@ -3283,6 +3284,13 @@ static inline double phiB(double f, double fn, double h){
 double gillF=NA_REAL;
 int gillThetaN=0;
 Environment gillRfnE_;
+// Fit environment + gate for the analytic ("fast") outer gradient.  The gate is
+// TRUE only while the outer optimizer's gradient callback is live (set in
+// foceiOuter around the optimizer switch), so foceiS's own numericGrad use and
+// the exported foceiNumericGrad are unaffected.
+Environment op_foceiFitEnv;
+bool op_foceiFitEnvSet = false;
+bool op_foceiUseAnalyticGrad = false;
 Environment baseEnv = Environment::base_env();
 Function doCall = baseEnv["do.call"];
 Function gillRfn_ = baseEnv["invisible"];
@@ -3624,10 +3632,52 @@ int mixGrad(double *theta, double *g, int cpar) {
 }
 
 
+// d(unscalePar)/d(x_i): the finite-difference outer gradient is d(OFV)/d(scaled
+// par), so an analytic d(OFV)/d(theta) must be multiplied by this factor to land
+// in the same optimizer scale.  Mirrors the linear coefficient of unscalePar().
+static inline double dUnscaleParDx(int i) {
+  double scaleTo = op_focei.scaleTo, C = getScaleC(i);
+  switch (op_focei.scaleType) {
+  case 1: return op_focei.c2;
+  case 2: return C;
+  case 3: return (op_focei.scaleTo != 0) ? op_focei.initPar[i]/scaleTo : 1.0;
+  case 4:
+    if (op_focei.scaleTo > 0) {
+      return (op_focei.xPar[i] == 1) ? 1.0 : op_focei.initPar[i]/scaleTo;
+    }
+    return 1.0;
+  default: return 1.0;
+  }
+}
+
+// Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
+// the gate is live.  Returns true on success (g filled), false to fall back to
+// the finite-difference gradient.  theta is the current scaled optimizer point.
+static bool analyticOuterGrad(double *theta, double *g) {
+  if (!op_foceiUseAnalyticGrad || !op_foceiFitEnvSet) return false;
+  op_focei.calcGrad = 1;
+  // Ensure the inner solutions (eta*) and omega are current at this theta.
+  foceiOfv0(theta);
+  Environment _nlmixr2est = Environment::namespace_env("nlmixr2est");
+  Function _agf = as<Function>(_nlmixr2est[".foceiCalcGradAnalytic"]);
+  RObject _res = _agf(op_foceiFitEnv);
+  if (Rf_isNull(_res)) return false;
+  NumericVector _gv = as<NumericVector>(_res);
+  if ((int)_gv.size() != (int)op_focei.npars) return false;
+  for (int i = 0; i < (int)op_focei.npars; i++) {
+    if (!R_finite(_gv[i])) return false;
+    g[i] = _gv[i] * dUnscaleParDx(i);
+  }
+  return true;
+}
+
 void numericGrad(double *theta, double *g){
   op_focei.mixDeriv=0;
   op_focei.reducedTol2=0;
   op_focei.curGill=0;
+  if (analyticOuterGrad(theta, g)) {
+    return;
+  }
   if (op_focei.shi21maxOuter != 0 && op_focei.nF == 1) {
     clock_t t = clock() - op_focei.t0;
     int finalSlow = (op_focei.scale.every == 1) &&
@@ -4900,6 +4950,7 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.noabort=as<int>(foceiO["noAbort"]);
   op_focei.interaction=as<int>(foceiO["interaction"]);
   op_focei.foceType=as<int>(foceiO["foceType"]);
+  op_focei.fast=foceiO.containsElementNamed("fast") ? as<int>(foceiO["fast"]) : 0;
   op_focei.cholSEtol=as<double>(foceiO["cholSEtol"]);
   op_focei.hessEps=as<double>(foceiO["hessEps"]);
   op_focei.hessEpsLlik=as<double>(foceiO["hessEpsLlik"]);
@@ -5482,6 +5533,12 @@ Environment foceiOuter(Environment e){
       }
     }
 
+    // Enable the analytic outer gradient only for the duration of the outer
+    // optimizer's gradient callbacks; foceiS's own numericGrad use runs later
+    // (in foceiFitCpp_) with the gate cleared.
+    op_foceiFitEnv = e;
+    op_foceiFitEnvSet = true;
+    op_foceiUseAnalyticGrad = (op_focei.fast != 0);
     switch(op_focei.outerOpt){
     case 0:
       foceiLbfgsb(e);
@@ -5492,6 +5549,7 @@ Environment foceiOuter(Environment e){
     case -1:
       foceiCustomFun(e);
     }
+    op_foceiUseAnalyticGrad = false;
   } else {
     NumericVector x(op_focei.npars);
     for (unsigned int k = op_focei.npars; k--;){

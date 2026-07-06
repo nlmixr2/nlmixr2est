@@ -81,6 +81,17 @@
 #'     5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
 #'     errors are identical either way.
 #'
+#' @param fast When \code{TRUE}, compute the outer (population) gradient
+#'     analytically from Almquist (2015) sensitivity equations instead of by
+#'     finite differences, and use the Eq-48 random-effect extrapolation for the
+#'     next inner-problem starting values.  Requires an analytic-scope model
+#'     (single additive/proportional Gaussian endpoint); out-of-scope models fall
+#'     back to the finite-difference gradient with a message.  When unspecified,
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+#'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+#'     \code{foceif}) default this to \code{TRUE}.
+#'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating
 #'     the Hessian on the unscaled parameter space.
@@ -619,6 +630,7 @@ foceiControl <- function(sigdig = 4, #
                          covMethod = c("analytic", "r,s", "r", "s", ""), #
                          covSolveTol = NULL, #
                          covFull = TRUE, #
+                         fast = FALSE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          hessEps =(.Machine$double.eps)^(1/3),
@@ -657,8 +669,8 @@ foceiControl <- function(sigdig = 4, #
                          cholSECov = FALSE, #
                          fo = FALSE, #
                          covTryHarder = FALSE, #
-                         outerOpt = c("lbfgsb3c",
-                                      "nlminb",
+                         outerOpt = c("nlminb",
+                                      "lbfgsb3c",
                                       "bobyqa",
                                       "L-BFGS-B",
                                       "mma",
@@ -996,6 +1008,7 @@ foceiControl <- function(sigdig = 4, #
   if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
                                                       finite = TRUE, any.missing = FALSE)
   checkmate::assertFlag(covFull)
+  checkmate::assertFlag(fast)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
@@ -1016,6 +1029,12 @@ foceiControl <- function(sigdig = 4, #
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
+    # mode-dependent default when the user did not specify outerOpt: base methods
+    # use nlminb, fast methods use the gradient-friendly lbfgsb3c.  An explicit
+    # outerOpt (a single string) skips this.
+    if (missing(outerOpt)) {
+      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "nlminb"
+    }
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
@@ -1055,6 +1074,14 @@ foceiControl <- function(sigdig = 4, #
   } else if (is(outerOpt, "function")) {
     outerOptFun <- outerOpt
     outerOpt <- -1L
+  }
+  # A derivative-free outer optimizer never consumes the analytic 'fast' gradient,
+  # so computing it is wasted work: downgrade to fast=FALSE with a warning.
+  if (isTRUE(fast) && .outerOptTxt %in% c("bobyqa", "uobyqa", "newuoa")) {
+    warning("outerOpt='", .outerOptTxt,
+            "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
+            call.=FALSE)
+    fast <- FALSE
   }
   if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
     innerOpt <- as.integer(innerOpt)
@@ -1208,6 +1235,7 @@ foceiControl <- function(sigdig = 4, #
     covType = covType,
     covSolveTol = covSolveTol,
     covFull = covFull,
+    fast = fast,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),
