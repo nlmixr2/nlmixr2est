@@ -2527,24 +2527,27 @@ public:
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
       DDb=-D11/nmc-D2/nmc;
+      // d2logk omits the deterministic mu-block complete Hessian (-M'Omega^{-1}M), leaving
+      // DDa's fixed-effect block equal to -Var[score] (indefinite -> solve(Ha) yields NaN
+      // SEs for covMethod="fim").  Add that block (= CGamma2, the mu Fisher information the
+      // M-step forms) so DDa = -E[Hessian] - Var[score] is the true observed information.
+      {
+        unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
+        if (nl1 > 0) DDa.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
+        if (nl0 > 0) DDa.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
+      }
       L=L+pash(kiter)*(D1/nmc-L);
       Ha=Ha+pash(kiter)*(DDa- Ha);
       Hb=Hb+pash(kiter)*(DDb- Hb);
-      // SA covariance phase: theta is frozen (pas==pash==0 above), so DDa is a Monte-Carlo
-      // draw of the Louis observed information at theta_hat.  d2logk omits the deterministic
-      // mu-block complete Hessian (-M'Omega^{-1}M), leaving DDa's fixed-effect block equal
-      // to -Var[score] (indefinite); add that block (= CGamma2, the mu Fisher info the M-step
-      // uses) so DDc = -E[Hessian] - Var[score] is the true observed information.  Then
-      // Monte-Carlo average (after a short burn-in) into HaSa; the covariance is solve(HaSa).
+      // SA covariance phase (covMethod="sa"): theta is frozen (pas==pash==0 above), so the
+      // now-corrected DDa is a Monte-Carlo draw of the observed information at theta_hat.
+      // Monte-Carlo average it (after a short burn-in) into HaSa; the covariance is
+      // solve(HaSa).
       if (nSaCov > 0 && kiter >= (unsigned int)niter) {
         unsigned int cc = kiter - (unsigned int)niter;
         if (cc >= (unsigned int)(0.1 * nSaCov)) {
-          mat DDc = DDa;
-          unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
-          if (nl1 > 0) DDc.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
-          if (nl0 > 0) DDc.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
           covCount++;
-          HaSa += (DDc - HaSa) / (double)covCount;
+          HaSa += (DDa - HaSa) / (double)covCount;
         }
       }
       cube phi2 = phi%phi;

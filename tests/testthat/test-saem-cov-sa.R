@@ -46,4 +46,43 @@ nmTest({
     expect_true(is.finite(fS$parFixedDf["add.sd", "SE"]))
     expect_gt(fS$parFixedDf["add.sd", "SE"], 0)
   })
+
+  test_that("SAEM covMethod='fim' inverts the (mu-block-corrected) estimation-phase FIM", {
+    # Regression: the shared per-iteration integrand omits the deterministic mu-block
+    # complete Hessian, so before the correction Ha's theta block was indefinite and
+    # covMethod='fim' produced NaN SEs.  With the correction fim is a valid PD full
+    # covariance agreeing with the linearized FIM.
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    ctlL <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "linFim")
+    ctlF <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "fim")
+
+    fL <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlL)
+    fF <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlF)
+
+    expect_equal(fF$covMethod, "fim")
+    expect_true(is.matrix(fF$cov) && nrow(fF$cov) >= 4L)
+    expect_true(all(is.finite(fF$cov)))
+    expect_true(min(eigen(fF$cov, symmetric = TRUE, only.values = TRUE)$values) > 0)
+    expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v", "add.sd") %in% rownames(fF$cov)))
+
+    .cmn <- intersect(rownames(fF$cov), rownames(fL$cov))
+    expect_equal(unname(sqrt(diag(fF$cov))[.cmn]),
+                 unname(sqrt(diag(fL$cov))[.cmn]), tolerance = 0.25)
+
+    expect_true(is.finite(fF$parFixedDf["add.sd", "SE"]))
+    expect_gt(fF$parFixedDf["add.sd", "SE"], 0)
+  })
 })

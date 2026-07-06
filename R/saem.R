@@ -500,13 +500,26 @@
 #' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
 #' @noRd
 .saemSaCov <- function(env) {
+  .saemFimToCov(env$saem$HaSa, env)
+}
+#' Invert a SAEM Fisher Information Matrix into a reported-scale covariance
+#'
+#' Shared by `covMethod="sa"` (converged FIM `saem$HaSa`) and `covMethod="fim"`
+#' (the estimation-phase FIM `saem$Ha`).  Both are the observed information in
+#' (theta, log-Omega-variance, log-sigma2) coordinates; this inverts and maps them
+#' to the reported scale via a delta-method Jacobian.  The result is required to be
+#' positive definite (a noisy/indefinite FIM returns `NULL` so the caller can fall
+#' back to the linearized FIM).
+#' @param .H Fisher information matrix (nb_param x nb_param)
+#' @param env saem fit environment
+#' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
+#' @noRd
+.saemFimToCov <- function(.H, env) {
   .ui <- env$ui
   .saem <- env$saem
-  .H <- .saem$HaSa
   if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
         !all(is.finite(.H)) || all(.H == 0)) return(NULL)
-  # covariance = inverse of the converged Louis FIM, in
-  # (theta, log-Omega-variance, log-sigma2) coordinates
+  # covariance = inverse of the FIM, in (theta, log-Omega-variance, log-sigma2) coords
   .C <- suppressWarnings(tryCatch(solve(.H), error = function(e) NULL))
   if (is.null(.C) || !all(is.finite(.C))) return(NULL)
   .np <- nrow(.C)
@@ -514,7 +527,7 @@
   .nth <- length(.tn)
   if (.nth == 0L || .np < .nth) return(NULL)
   .idf <- .ui$iniDf
-  # structural theta block (natural scale; HaSa[1:nth] rows are .tn, as in fim)
+  # structural theta block (natural scale; H[1:nth] rows are .tn)
   .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
   if (length(.ui$mixProbs) > 0) .ini <- .ini[!(.ini %in% .ui$mixProbs)]
   .ini <- .ini[.ini %in% .tn]
@@ -539,6 +552,11 @@
   }
   .cov <- outer(.jac, .jac) * .C[.idx, .idx, drop = FALSE]   # delta method to reported scale
   dimnames(.cov) <- list(.nm, .nm)
+  # require a valid (finite, PD) covariance; otherwise let the caller fall back
+  if (!all(is.finite(.cov))) return(NULL)
+  .ev <- suppressWarnings(tryCatch(eigen(0.5 * (.cov + t(.cov)), symmetric = TRUE,
+                                         only.values = TRUE)$values, error = function(e) NA_real_))
+  if (any(!is.finite(.ev)) || min(.ev) <= 0) return(NULL)
   .cov
 }
 
@@ -550,11 +568,13 @@
 #' @noRd
 .saemCalcCov <- function(env) {
   .ui <- env$ui
-  if (identical(rxode2::rxGetControl(.ui, "covMethod", "linFim"), "sa")) {
-    # stochastic-approximation (Louis) FIM covariance from the dedicated fixed-theta
-    # cov phase (.saemSaCov inverts saem$HaSa)
+  .cm <- rxode2::rxGetControl(.ui, "covMethod", "linFim")
+  if (.cm %in% c("sa", "fim")) {
+    # Both invert a SAEM observed-information matrix (.saemFimToCov): "sa" uses the
+    # converged fixed-theta FIM (saem$HaSa), "fim" the estimation-phase FIM (saem$Ha).
+    .H <- if (identical(.cm, "sa")) env$saem$HaSa else env$saem$Ha
     .cov <- NULL
-    nlmixrWithTiming("covariance", {.cov <- .saemSaCov(env)})
+    nlmixrWithTiming("covariance", {.cov <- .saemFimToCov(.H, env)})
     if (!is.null(.cov)) {
       # finalization needs a structural-theta cov; stash the full matrix and install
       # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
@@ -563,11 +583,11 @@
       .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
       env$cov <- .cov[.rn[.keep], .rn[.keep], drop = FALSE]
       assign(".saemFullCov", .cov, envir = env)
-      assign(".saemCovMethod", "sa", envir = env)
-      env$covMethod <- "sa"
+      assign(".saemCovMethod", .cm, envir = env)
+      env$covMethod <- .cm
       return(invisible())
     }
-    message("SA covariance could not be computed; using the linearized FIM")
+    message(sprintf("covMethod=\"%s\" could not be computed; using the linearized FIM", .cm))
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
   nlmixrWithTiming("covariance", {
@@ -950,7 +970,7 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   } else {
     tryCatch(rxode2::rxGetControl(.env$ui, "covMethod", "linFim"), error = function(e) "linFim")
   }
-  .env$covMethod <- if (identical(.m, "sa")) "sa" else "linFim"
+  .env$covMethod <- if (.m %in% c("sa", "fim")) .m else "linFim"
   # surface the residual (error-model theta) SEs in the parameter table from the full
   # cov -- these are theta rows with a missing SE (Omega variances are reported as BSV,
   # with their SEs available in $cov).
@@ -1032,7 +1052,13 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
     .rEnv <- if (rxode2::rxIs(.ret, "nlmixr2FitData")) .ret$env else .ret
     if (is.environment(.rEnv) && identical(.rEnv$covMethod, "failed") &&
           is.matrix(.rEnv$cov) && all(is.finite(.rEnv$cov)) && all(diag(.rEnv$cov) > 0)) {
-      .cm <- tryCatch(rxode2::rxGetControl(.ui, "covMethod", "linFim"), error = function(e) "linFim")
+      # the control covMethod is reset to its default during finalization, so prefer the
+      # label recorded by .saemCalcCov (.saemCovMethod) when present.
+      .cm <- if (exists(".saemCovMethod", envir = .rEnv, inherits = FALSE)) {
+        get(".saemCovMethod", envir = .rEnv)
+      } else {
+        tryCatch(rxode2::rxGetControl(.ui, "covMethod", "linFim"), error = function(e) "linFim")
+      }
       .rEnv$covMethod <- if (.cm %in% c("linFim", "fim", "sa")) .cm else "linFim"
     }
     # For mixture models: post-correct me/mn/mu in the assembled fit table

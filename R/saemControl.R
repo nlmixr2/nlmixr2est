@@ -43,7 +43,10 @@
 #'
 #'  "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
 #'
-#'  "\code{fim}" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.
+#'  "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM
+#'  estimation to calculate the covariance.  Like \code{sa} it inverts the observed
+#'  information to a full theta + \code{Omega} diagonal + residual covariance, but
+#'  uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.
 #'
 #'  "\code{sa}" Use the stochastic-approximation Fisher Information Matrix.  After
 #'  estimation, a dedicated covariance phase (\code{nSaCov} iterations) holds the

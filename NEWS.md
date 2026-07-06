@@ -25,6 +25,11 @@
   averages the Louis observed-information into a converged full theta + Omega + residual
   covariance.
 
+- Fixed `covMethod = "fim"`: the SAEM Fisher information omitted the deterministic mu-block
+  complete Hessian, leaving its fixed-effect block indefinite (`fim` produced NaN standard
+  errors).  The mu Fisher information is now added, so `fim` inverts to a valid positive
+  definite full theta + Omega + residual covariance.
+
 - The analytic covariance now reports `fit$covMethod` as `"analytic"` (instead of `"r"`),
   and its Omega variance/covariance rows are named by the random effect -- `om.eta.cl` /
   `cov.eta.cl.eta.v` -- rather than by the mu-referenced theta (`om.tcl`).
