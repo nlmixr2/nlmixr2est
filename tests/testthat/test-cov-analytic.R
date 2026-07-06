@@ -25,7 +25,7 @@ test_that("foceiCov returns the full theta+sigma+Omega analytic covariance", {
   expect_false(is.null(r))
   expect_identical(r$method, "analytic")
   # every population parameter present: 3 theta + 1 sigma + 3 Omega variances
-  expect_setequal(r$params, c("tka", "tcl", "tv", "add.sd", "om.tka", "om.tcl", "om.tv"))
+  expect_setequal(r$params, c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v"))
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
   # structural-theta SEs match NONMEM $COV MATRIX=R (0.19180/0.08352/0.04661)
   expect_equal(unname(r$se[c("tka", "tcl", "tv")]),
@@ -88,7 +88,7 @@ test_that("single random-effect model is handled analytically (no sapply collaps
                                  foceiControl(print = 0L, covMethod = "")))
   r <- foceiCovAnalytic(fit)
   expect_false(is.null(r))
-  expect_setequal(r$params, c("tcl", "add.sd", "om.tcl"))
+  expect_setequal(r$params, c("tcl", "add.sd", "om.eta.cl"))
   expect_true(all(is.finite(r$se)) && all(r$se > 0))
 })
 
@@ -100,7 +100,7 @@ test_that("covType='analytic' installs the full analytic covariance on the fit",
   # covFull=TRUE swaps in the full theta+sigma+Omega cov (7x7), not the theta-only FD cov
   expect_true(is.matrix(fit$cov))
   expect_setequal(rownames(fit$cov),
-                  c("tka", "tcl", "tv", "add.sd", "om.tka", "om.tcl", "om.tv"))
+                  c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v"))
   .se <- sqrt(diag(fit$cov))
   expect_equal(unname(.se[c("tka", "tcl", "tv")]),
                c(0.18868, 0.08351, 0.04617), tolerance = 0.03)
@@ -119,7 +119,7 @@ test_that("covType='fd' covFull=TRUE installs the full FD covariance matching an
                                 foceiControl(print = 0L, covType = "fd", covFull = TRUE)))
   # full theta+sigma+Omega cov, same parameter set as analytic
   expect_setequal(rownames(ff$cov),
-                  c("tka", "tcl", "tv", "add.sd", "om.tka", "om.tcl", "om.tv"))
+                  c("tka", "tcl", "tv", "add.sd", "om.eta.ka", "om.eta.cl", "om.eta.v"))
   .seF <- sqrt(diag(ff$cov)); .seA <- sqrt(diag(fa$cov))[rownames(ff$cov)]
   expect_true(all(is.finite(.seF)) && all(.seF > 0))
   # FD full SEs match the analytic full SEs (finite-difference tolerance)
@@ -221,14 +221,14 @@ test_that("covType='analytic' handles pure proportional error away from zero (FO
     r <- foceiCovAnalytic(fit)
     expect_false(is.null(r))                                   # in scope, not an FD fallback
     expect_identical(r$method, "analytic")
-    expect_setequal(r$params, c("tke", "prop.sd", "om.tke"))
+    expect_setequal(r$params, c("tke", "prop.sd", "om.eta.ke"))
     expect_true(all(is.finite(r$se)) && all(r$se > 0))
     # the full analytic cov is installed on the fit (om. row present)
     expect_true(any(grepl("^om\\.", rownames(fit$cov))))
     # analytic SEs match a Richardson finite-difference of the objective (validated to
     # ~1e-4 vs numDeriv); the reference values are the converged plateau / NONMEM MATRIX=R
-    .ref <- if (est == "focei") c(tke = 0.09234, prop.sd = 0.007446, om.tke = 0.03684)
-            else                c(tke = 0.09065, prop.sd = 0.007624, om.tke = 0.03624)
+    .ref <- if (est == "focei") c(tke = 0.09234, prop.sd = 0.007446, om.eta.ke = 0.03684)
+            else                c(tke = 0.09065, prop.sd = 0.007624, om.eta.ke = 0.03624)
     expect_equal(unname(r$se[names(.ref)]), unname(.ref), tolerance = 0.01)
   }
 })
@@ -596,7 +596,7 @@ test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-
     H[i, i] <- (objFOCE(psi0 + 2*ei) - 2*f0 + objFOCE(psi0 - 2*ei)) / (4 * h[i]^2) }
   for (i in 1:(np-1)) for (j in (i+1):np) { ei <- numeric(np); ei[i] <- h[i]; ej <- numeric(np); ej[j] <- h[j]
     H[i, j] <- H[j, i] <- (objFOCE(psi0+ei+ej) - objFOCE(psi0+ei-ej) - objFOCE(psi0-ei+ej) + objFOCE(psi0-ei-ej)) / (4 * h[i] * h[j]) }
-  pn <- c("tka", "tcl", "tv", "add.sd", "prop.sd", "om.tka", "om.tcl", "om.tv")
+  pn <- c("tka", "tcl", "tv", "add.sd", "prop.sd", "om.eta.ka", "om.eta.cl", "om.eta.v")
   dimnames(H) <- list(pn, pn); Ran <- rF$R[pn, pn]
   # the analytic observed-information R reproduces the gold-FD Hessian: exact on every
   # numerically significant entry (rel < 3e-4 on entries above 1% of the matrix norm;

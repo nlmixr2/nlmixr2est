@@ -39,6 +39,7 @@
     return(invisible())
   }
   .ret$cov <- .cov                       # analytic-tier cov already carries dimnames
+  .ret$covMethod <- "analytic"           # report the analytic observed information (not "r")
   # covFull=TRUE swaps in a larger matrix than C++ foceiFinalizeTables saw, so its
   # condition numbers (computed from the theta-only native cov) are stale -- recompute.
   if (.full && exists("objDf", envir = .ret, inherits = FALSE)) {
@@ -292,7 +293,7 @@
     nsg <- length(ef$sgVar)
     # om-param order matches .omegaVarCovDeriv: ordinary Omega elements THEN the IOV
     # shared-variance params (reported on the SD scale as `v`, matching the theta name).
-    onm <- ifelse(is.na(thetaForEta), etaNames, thetaForEta)   # orphan (non-mu-ref) eta named by the eta
+    onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
     fullNm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm), iovVars)  # full natural-scale order
 
     # op_focei cov-params (non-skipped structural + residual thetas) must all live in
@@ -971,7 +972,7 @@
   if (is.null(R)) return(NULL)
   cov <- tryCatch(solve(R), error = function(e) NULL)
   if (is.null(cov)) return(NULL)
-  onm <- ifelse(is.na(thetaForEta), etaNames, thetaForEta)   # orphan (non-mu-ref) eta named by the eta
+  onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
   nm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
@@ -998,6 +999,7 @@ foceiCovAnalytic <- function(fit) {
   assign(".covAnalytic", .ret, envir = .env)   # cache (incl. NULL) -- do not recompute
   if (!is.null(.ret) && is.matrix(.ret$cov)) {
     .env$cov <- .ret$cov                        # install so getVarCov()/$cov reuse it
+    .env$covMethod <- "analytic"                # report the analytic observed information
   }
   .ret
 }

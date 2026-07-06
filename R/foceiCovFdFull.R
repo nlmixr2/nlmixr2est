@@ -26,7 +26,7 @@
     return(list(thPos = thPos, omA = integer(0), omB = integer(0), names = thNames))
   }
   map <- .foceiEtaThetaMap(ui)
-  onm <- ifelse(is.na(map$thetaForEta), map$etaNames, map$thetaForEta)
+  onm <- map$etaNames                                          # Omega named by the eta
   omNames <- .foceiOmegaCovNames(pairs, onm)
   list(thPos = thPos, omA = as.integer(pairs[, 1]), omB = as.integer(pairs[, 2]),
        names = c(thNames, omNames))
