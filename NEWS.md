@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- The analytic covariance (`covMethod = "analytic"`) now supports `foce = "foce+"`
+  (the live conditional residual variance), including the `focep` method; previously
+  it fell back to the finite-difference covariance.
+
 - The FOCEI `covType` control was removed; the analytic-vs-finite-difference R-matrix
   choice is now part of `foceiControl(covMethod = c("analytic", "r,s", "r", "s", ""))`,
   with `"analytic"` (the exact observed-information R-matrix) the default.

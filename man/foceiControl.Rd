@@ -348,12 +348,10 @@ instead of FOCE (FALSE)}
     \code{eta} (the live variance), keeping the truncated FOCE
     inner gradient.  Advantage: uses the conditional variance and
     is a bit more accurate than NONMEM's FOCE in some cases.
-    Disadvantage: does not match NONMEM FOCE and is unsupported by
-    \code{covMethod = "analytic"} (falls back to the
-    finite-difference covariance).  This was the FOCE behavior in
-    \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
-    gradient of \code{eta} like the full \code{focei} method, so it
-    is not as accurate as \code{focei}.
+    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+    use the gradient of \code{eta} like the full \code{focei}
+    method, so it is not as accurate as \code{focei}.
 
     }}
 

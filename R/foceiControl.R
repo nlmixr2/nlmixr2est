@@ -205,12 +205,10 @@
 #'     \code{eta} (the live variance), keeping the truncated FOCE
 #'     inner gradient.  Advantage: uses the conditional variance and
 #'     is a bit more accurate than NONMEM's FOCE in some cases.
-#'     Disadvantage: does not match NONMEM FOCE and is unsupported by
-#'     \code{covMethod = "analytic"} (falls back to the
-#'     finite-difference covariance).  This was the FOCE behavior in
-#'     \pkg{nlmixr2est} 6.0.1 and earlier. This does not use the
-#'     gradient of \code{eta} like the full \code{focei} method, so it
-#'     is not as accurate as \code{focei}.
+#'     Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+#'     behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+#'     use the gradient of \code{eta} like the full \code{focei}
+#'     method, so it is not as accurate as \code{focei}.
 #'
 #'     }
 #'
@@ -898,7 +896,8 @@ foceiControl <- function(sigdig = 4, #
 
   foce <- match.arg(foce)
   ## FOCE (interaction=FALSE) residual-variance choice: 0="nonmem" (eta=0 frozen R),
-  ## 1="foce+" (live conditional R).  Ignored when interaction=TRUE (FOCEi).
+  ## 1="foce+" (live conditional R; also covMethod="analytic" via ef$focePlus).
+  ## Ignored when interaction=TRUE (FOCEi).
   foceType <- as.integer(foce == "foce+")
 
   checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
