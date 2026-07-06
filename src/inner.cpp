@@ -4261,6 +4261,31 @@ static bool restoreFitSolve_() {
   }
 }
 
+// RAII: tighten the ODE solve tolerances to covSolveTol for the covariance-step
+// finite-difference solves, restoring the fit's tolerances on exit.  No-op unless the
+// user set foceiControl(covSolveTol=); the analytic R-matrix applies covSolveTol on its
+// own augmented solves (.foceiAnalyticSolveTol).
+struct CovSolveTolGuard {
+  bool active = false;
+  double savAtol = NA_REAL, savRtol = NA_REAL;
+  CovSolveTolGuard(Environment e) {
+    if (!e.exists("control")) return;
+    List ctl = as<List>(e["control"]);
+    if (!ctl.containsElementNamed("covSolveTol")) return;
+    RObject cst = ctl["covSolveTol"];
+    if (cst.isNULL() || Rf_length(cst) < 1) return;
+    double tol = as<double>(cst);
+    if (!R_FINITE(tol) || tol <= 0) return;
+    rxGetSolveAtolRtol(&savAtol, &savRtol);
+    if (!R_FINITE(savAtol) || !R_FINITE(savRtol)) return;   // no live solve to retune
+    rxSetSolveAtolRtol(tol, tol);
+    active = true;
+  }
+  ~CovSolveTolGuard() {
+    if (active) rxSetSolveAtolRtol(savAtol, savRtol);
+  }
+};
+
 // [[Rcpp::export]]
 NumericVector foceiSetup_(const RObject &obj,
                           const RObject &data,
@@ -8132,18 +8157,22 @@ Environment foceiFitCpp_(Environment e){
   gillRet.attr("class") = "factor";
   e["gillRet"] = gillRet;
   wallT0 = focei_wall_clock::now();
-  foceiCalcCov(e);
-  // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed
-  // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way.
-  if (op_focei.covFull && op_focei.covMethod != 0 && e.exists("control")) {
-    List _ctlF = as<List>(e["control"]);
-    std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
-      as<std::string>(_ctlF["covType"]) : "fd";
-    if (_covTypeF != "analytic") {
-      try { foceiCalcRFdFull(e); } 
-      catch (Rcpp::internal::InterruptedException&) { throw; }
-      catch (Rcpp::LongjumpException&) { throw; }
-      catch (...) {}
+  {
+    // covSolveTol tightens the finite-difference cov solves (R/S + full-cov FD)
+    CovSolveTolGuard _covTolGuard(e);
+    foceiCalcCov(e);
+    // covType="fd" + covFull=TRUE: the full theta+sigma+Omega FD covariance (installed
+    // by .foceiInstallFdFullCov).  covType="analytic" fills the full cov its own way.
+    if (op_focei.covFull && op_focei.covMethod != 0 && e.exists("control")) {
+      List _ctlF = as<List>(e["control"]);
+      std::string _covTypeF = _ctlF.containsElementNamed("covType") ?
+        as<std::string>(_ctlF["covType"]) : "fd";
+      if (_covTypeF != "analytic") {
+        try { foceiCalcRFdFull(e); }
+        catch (Rcpp::internal::InterruptedException&) { throw; }
+        catch (Rcpp::LongjumpException&) { throw; }
+        catch (...) {}
+      }
     }
   }
   if (op_focei.didPredSolve) {
