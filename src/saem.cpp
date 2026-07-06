@@ -592,6 +592,110 @@ public:
     return 0.5*(e/gg)%(e/gg) + log(gg);
   }
 
+  // Reset the AR(1) M-step accumulators (called with the statr reset each iter).
+  void arResetMstep() {
+    for (int b = 0; b < nendpnt; ++b) {
+      arPairR[b].clear(); arPairP[b].clear();
+      arPairDt[b].clear(); arPairW[b].clear();
+      arFirstSSR[b] = 0.0; arNobs[b] = 0;
+    }
+  }
+
+  // AR(1) correlation M-step for endpoint b: grid-search the profiled negative
+  // log-likelihood g(cor) = n*log(WSSR(cor)) + sum w*log(1-phi^2) over cor in
+  // [0, ~1), then take a stochastic-approximation step toward the maximizer.
+  // WSSR(cor) = firstSSR + sum w*eps(cor)^2/(1-phi^2), eps = r_i - cor^dt*r_prev.
+  void arUpdateCor(int b, int kiter, const vec &pas) {
+    const double double_xmin = 1.0e-200;
+    size_t np = arPairR[b].size();
+    if (np == 0 || arNobs[b] == 0) return;
+    double best = std::numeric_limits<double>::infinity();
+    double corHat = arCor(b);
+    for (int gi = 0; gi <= 99; ++gi) {
+      double c = gi*0.0099;
+      double wssr = arFirstSSR[b];
+      double logdet = 0.0;
+      for (size_t j = 0; j < np; ++j) {
+        double phi = std::pow(c, arPairDt[b][j]);
+        double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+        double eps = arPairR[b][j] - phi*arPairP[b][j];
+        wssr += arPairW[b][j]*eps*eps/om;
+        logdet += arPairW[b][j]*std::log(om);
+      }
+      if (wssr < double_xmin) wssr = double_xmin;
+      double g = arNobs[b]*std::log(wssr) + logdet;
+      if (g < best) { best = g; corHat = c; }
+    }
+    arCor(b) = arCor(b) + pas(kiter)*(corHat - arCor(b));
+    if (arCor(b) < 0.0) arCor(b) = 0.0;
+    if (arCor(b) > 0.999) arCor(b) = 0.999;
+  }
+
+  // One endpoint's residual SSR contribution for one MCMC chain / mixture
+  // component (weightCol into mixWeights).  Independent path = original sum of
+  // standardized r^2.  AR path accumulates the whitened SSR (eps^2/(1-phi^2))
+  // and stores the (r, r_prev, dt, w) pairs + first-obs SSR for arUpdateCor.
+  double arResk(int b, const vec &f_cur, const vec &y_cur, int weightCol) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    double resk = 0.0;
+    if (arActive(b)) {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        _arRorig(idx_orig) = r_ji;
+      }
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double w = mixWeights(i_subj, weightCol);
+        double r_ji = _arRorig(idx_orig);
+        arma::sword p = arPrev(idx_orig);
+        double contrib;
+        if (p < 0) {
+          contrib = r_ji*r_ji;
+          arFirstSSR[b] += w*contrib;
+        } else {
+          double phi = std::pow(arCor(b), arDt(idx_orig));
+          double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+          double rp = _arRorig((arma::uword)p);
+          double eps = r_ji - phi*rp;
+          contrib = eps*eps/om;
+          arPairR[b].push_back(r_ji); arPairP[b].push_back(rp);
+          arPairDt[b].push_back(arDt(idx_orig)); arPairW[b].push_back(w);
+        }
+        arNobs[b] += 1;
+        if (contrib > xmax) contrib = xmax;
+        else if (contrib < double_xmin) contrib = double_xmin;
+        resk += w * contrib;
+      }
+    } else {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        double r_ji_sq = r_ji * r_ji;
+        if (r_ji_sq > xmax) r_ji_sq = xmax;
+        else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
+        resk += mixWeights(i_subj, weightCol) * r_ji_sq;
+      }
+    }
+    return resk;
+  }
+
   mat get_resMat() {
     mat m(nendpnt,4);
     m.col(0) = ares;
@@ -864,6 +968,7 @@ public:
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
+    _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
       if (res_mod(b) == rmAdd) {
@@ -1047,6 +1152,7 @@ public:
       for (int b = 0; b < nendpnt; b++) {
         statr[b] = 0.0;
       }
+      arResetMstep();
       double resk = 0.0;
       vec D1 = zeros<vec>(nb_param);
       mat D11 = zeros<mat>(nb_param, nb_param);
@@ -1232,22 +1338,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, mHyp) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1508,22 +1599,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, jMix) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1952,6 +2028,10 @@ public:
       }
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
+        // AR(1): update the correlation from this iteration's residual pairs
+        // (grid-search profile likelihood + stochastic approximation).  statrese
+        // already holds the whitened SSR, so sig2 below is the marginal variance.
+        if (arActive(b)) arUpdateCor(b, kiter, pas);
         double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
         int offsetR = res_offset[b];
         _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
@@ -2857,6 +2937,13 @@ private:
   arma::ivec arPrev;
   vec arDt;
   int hasAr;
+  // M-step scratch: residual indexed by original obs (_arRorig), and per-endpoint
+  // (r_i, r_prev, dt, weight) pairs + first-obs SSR accumulated over MCMC chains,
+  // used by the AR(1) correlation grid-search M-step (arUpdateCor).
+  vec _arRorig;
+  std::vector<double> arPairR[MAXENDPNT], arPairP[MAXENDPNT], arPairDt[MAXENDPNT], arPairW[MAXENDPNT];
+  double arFirstSSR[MAXENDPNT];
+  int arNobs[MAXENDPNT];
 
   int DEBUG;
   std::vector< std::string > phiMFile;
