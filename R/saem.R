@@ -241,6 +241,8 @@
                         odeRecalcFactor=rxode2::rxGetControl(ui, "odeRecalcFactor", 10^0.5),
                         maxOdeRecalc=rxode2::rxGetControl(ui, "maxOdeRecalc", 10^0.5),
                         indTolRelax=rxode2::rxGetControl(ui, "indTolRelax", TRUE),
+                        nSaCov=if (identical(rxode2::rxGetControl(ui, "covMethod", "linFim"), "sa"))
+                                 as.integer(rxode2::rxGetControl(ui, "nSaCov", 500L)) else 0L,
                         nres=ui$saemModNumEst,
                         perSa=rxode2::rxGetControl(ui, "perSa", 0.75),
                         perNoCor=rxode2::rxGetControl(ui, "perNoCor", 0.75),
@@ -479,62 +481,64 @@
   class(.ph) <- .cls
   assign("parHistData", .ph, envir=env)
 }
-#' Online batch-means stochastic-approximation covariance for SAEM
+#' Stochastic-approximation (Louis) FIM covariance for SAEM
 #'
-#' The averaged SAEM parameter iterates are asymptotically normal, so the
-#' asymptotic covariance is estimated directly from the recorded cooling-phase
-#' iterate trajectory (`saem$par_hist`) by the online batch-means estimator of
-#' Jiang, Roy, Balasubramanian, Davis, Drusvyatskiy & Na (2025).  It is
-#' derivative-free and inherently full -- theta + Omega (diagonal) variance +
-#' residual -- since every one of those is an iterated parameter recorded on its
-#' reported scale.  Off-diagonal Omega covariances are not in `par_hist`, so a
-#' declared block gets only its diagonal variances here.
+#' After the estimation iterations, a dedicated covariance phase (`nSaCov`
+#' iterations, `src/saem.cpp`) holds the parameters at the converged estimate
+#' (gain frozen at 0) and keeps resimulating the individual parameters from their
+#' conditional distribution p(phi|y,theta_hat).  The per-iteration Louis
+#' observed-information integrand is Monte-Carlo averaged into `saem$HaSa`, giving
+#' a converged Fisher information decoupled from the cooling schedule (Monolix's
+#' "stochastic approximation" standard errors; Kuhn & Lavielle 2005).  Its inverse
+#' is the covariance in (theta, log-Omega-variance, log-sigma2) coordinates; a
+#' delta-method Jacobian maps it to the reported scale.
+#'
+#' The complete-data score currently carries only the diagonal Omega (log-variance)
+#' and a single residual variance, so a declared Omega block gets its diagonal
+#' variances here and only single-endpoint additive residual SEs are surfaced.
 #' @param env saem fit environment
 #' @return named full covariance matrix `c(theta, om.<eta>, residual)`, or `NULL`
 #' @noRd
 .saemSaCov <- function(env) {
   .ui <- env$ui
   .saem <- env$saem
-  .ph <- .saem$par_hist
-  if (is.null(.ph) || !is.matrix(.ph)) return(NULL)
-  .nm <- as.character(.ui$saemParHistNames)
-  if (ncol(.ph) < length(.nm)) return(NULL)
-  .ph <- .ph[, seq_along(.nm), drop = FALSE]
-  colnames(.ph) <- .nm
-  # drop mixture-probability columns -- not part of the parameter covariance
-  .mix <- .ui$mixProbs
-  if (length(.mix) > 0L) .ph <- .ph[, !(.nm %in% .mix), drop = FALSE]
-  # cooling / smoothing phase = the second SAEM phase (nEm iterations after nBurn)
-  .niter <- tryCatch(env$saemControl$mcmc$niter, error = function(e) NULL)  # c(nBurn, nEm)
-  .N <- nrow(.ph)
-  .nBurn <- if (length(.niter) >= 1L && is.finite(.niter[1])) as.integer(.niter[1]) else as.integer(floor(.N / 2))
-  .cool <- if (.N > .nBurn && .nBurn >= 0L) seq.int(.nBurn + 1L, .N) else seq_len(.N)
-  X <- .ph[.cool, , drop = FALSE]
-  .n <- nrow(X)
-  if (.n < 20L || ncol(X) == 0L) return(NULL)           # too few cooling iterations to be meaningful
-  Xc <- sweep(X, 2, colMeans(X))                        # centered iterates
-  # increasing block schedule a_m = floor(C m^beta) (Jiang et al. 2025, Remark 1)
-  .C <- suppressWarnings(as.numeric(rxode2::rxGetControl(.ui, "covSaBlock", 1)))
-  if (!is.finite(.C) || .C < 1) .C <- 1
-  .beta <- 2
-  .breaks <- unique(pmin(.n, floor(.C * (seq_len(.n))^.beta)))
-  .breaks <- c(0L, .breaks[.breaks >= 1L])
-  if (utils::tail(.breaks, 1L) != .n) .breaks <- c(.breaks, .n)
-  .breaks <- unique(.breaks)
-  .Sig <- matrix(0, ncol(X), ncol(X))
-  for (.i in seq_len(length(.breaks) - 1L)) {
-    .idx <- seq.int(.breaks[.i] + 1L, .breaks[.i + 1L])
-    .Sm <- colSums(Xc[.idx, , drop = FALSE])
-    .Sig <- .Sig + tcrossprod(.Sm)
+  .H <- .saem$HaSa
+  if (is.null(.H) || !is.matrix(.H) || nrow(.H) == 0L ||
+        !all(is.finite(.H)) || all(.H == 0)) return(NULL)
+  # covariance = inverse of the converged Louis FIM, in
+  # (theta, log-Omega-variance, log-sigma2) coordinates
+  .C <- suppressWarnings(tryCatch(solve(.H), error = function(e) NULL))
+  if (is.null(.C) || !all(is.finite(.C))) return(NULL)
+  .np <- nrow(.C)
+  .tn <- .ui$saemParamsToEstimate[!.ui$saemFixed]
+  .nth <- length(.tn)
+  if (.nth == 0L || .np < .nth) return(NULL)
+  .idf <- .ui$iniDf
+  # structural theta block (natural scale; HaSa[1:nth] rows are .tn, as in fim)
+  .ini <- .idf[is.na(.idf$err) & !is.na(.idf$ntheta) & !.idf$fix, "name"]
+  if (length(.ui$mixProbs) > 0) .ini <- .ini[!(.ini %in% .ui$mixProbs)]
+  .ini <- .ini[.ini %in% .tn]
+  .idx <- match(.ini, .tn); .nm <- .ini; .jac <- rep(1, length(.ini))
+  # diagonal Omega block: log-variance -> variance, d(var)/d(log var) = var
+  .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
+  .omVar <- tryCatch(diag(as.matrix(.saem$Gamma2_phi1)), error = function(e) NULL)
+  .nEta <- length(.etaN)
+  if (.nEta > 0L && !is.null(.omVar) && length(.omVar) >= .nEta &&
+        .np >= .nth + .nEta) {
+    .idx <- c(.idx, .nth + seq_len(.nEta))
+    .nm <- c(.nm, paste0("om.", .etaN))
+    .jac <- c(.jac, .omVar[seq_len(.nEta)])
   }
-  # Sigmahat = sum_m S_m S_m' / n estimates the limiting cov of sqrt(n)*(xbar - x*);
-  # the covariance of the averaged estimate xbar is Sigmahat / n.
-  .cov <- .Sig / (.n * .n)
-  # name: theta as-is; V(<eta>) -> om.<eta> (diagonal Omega variance); residual as-is
-  .rn <- colnames(X)
-  .isV <- grepl("^V\\(", .rn)
-  .rn[.isV] <- paste0("om.", sub("^V\\((.*)\\)$", "\\1", .rn[.isV]))
-  dimnames(.cov) <- list(.rn, .rn)
+  # single additive residual: log-sigma2 -> reported SD, d(sd)/d(log sigma2) = 0.5 sd
+  .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
+  if (nrow(.ri) == 1L && .np == .nth + .nEta + 1L && !grepl("prop|pow", .ri$err)) {
+    .ares <- tryCatch(.saem$resMat[1, 1], error = function(e) NA_real_)
+    if (is.finite(.ares) && .ares > 0) {
+      .idx <- c(.idx, .np); .nm <- c(.nm, .ri$name); .jac <- c(.jac, 0.5 * .ares)
+    }
+  }
+  .cov <- outer(.jac, .jac) * .C[.idx, .idx, drop = FALSE]   # delta method to reported scale
+  dimnames(.cov) <- list(.nm, .nm)
   .cov
 }
 
@@ -547,11 +551,23 @@
 .saemCalcCov <- function(env) {
   .ui <- env$ui
   if (identical(rxode2::rxGetControl(.ui, "covMethod", "linFim"), "sa")) {
-    # The online batch-means SA covariance (.saemSaCov) is implemented but requires a
-    # dedicated slow-decaying-gain phase to match the estimate covariance -- SAEM's
-    # default gain schedule collapses the cooling trajectory and underestimates it.
-    # Until that phase is wired up, fall back to the linearized FIM.
-    message("covMethod=\"sa\" (online batch-means) is not yet available; using the linearized FIM")
+    # stochastic-approximation (Louis) FIM covariance from the dedicated fixed-theta
+    # cov phase (.saemSaCov inverts saem$HaSa)
+    .cov <- NULL
+    nlmixrWithTiming("covariance", {.cov <- .saemSaCov(env)})
+    if (!is.null(.cov)) {
+      # finalization needs a structural-theta cov; stash the full matrix and install
+      # it after the fit is built (.saemInstallFullCov).  The control covMethod is reset
+      # to its default during finalization, so record the intended label separately.
+      .rn <- rownames(.cov)
+      .keep <- !grepl("^om\\.|^cov\\.", .rn) & !(.rn %in% .ui$iniDf$name[!is.na(.ui$iniDf$err)])
+      env$cov <- .cov[.rn[.keep], .rn[.keep], drop = FALSE]
+      assign(".saemFullCov", .cov, envir = env)
+      assign(".saemCovMethod", "sa", envir = env)
+      env$covMethod <- "sa"
+      return(invisible())
+    }
+    message("SA covariance could not be computed; using the linearized FIM")
     rxode2::rxAssignControlValue(.ui, "covMethod", "linFim")
   }
   nlmixrWithTiming("covariance", {
@@ -926,8 +942,14 @@ nmObjGetFoceiControl.saem <- function(x, ...) {
   if (any(diag(.full) <= 0) || !all(is.finite(.ev)) || min(.ev) <= 0) return(invisible())  # keep theta-only
   .env$cov <- .full
   # a valid PD full cov installed: report the intended method (the shared finalization
-  # can leave a stale "failed" label even when the SAEM covariance succeeded)
-  .m <- tryCatch(rxode2::rxGetControl(.env$ui, "covMethod", "linFim"), error = function(e) "linFim")
+  # can leave a stale "failed" label even when the SAEM covariance succeeded).  The
+  # control covMethod is reset to its default during finalization, so prefer the label
+  # recorded by .saemCalcCov (.saemCovMethod) when present.
+  .m <- if (exists(".saemCovMethod", envir = .env, inherits = FALSE)) {
+    get(".saemCovMethod", envir = .env)
+  } else {
+    tryCatch(rxode2::rxGetControl(.env$ui, "covMethod", "linFim"), error = function(e) "linFim")
+  }
   .env$covMethod <- if (identical(.m, "sa")) "sa" else "linFim"
   # surface the residual (error-model theta) SEs in the parameter table from the full
   # cov -- these are theta rows with a missing SE (Omega variances are reported as BSV,

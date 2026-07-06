@@ -45,10 +45,13 @@
 #'
 #'  "\code{fim}" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.
 #'
-#'  "\code{sa}" Use the online batch-means stochastic-approximation covariance
-#'  estimated from the SAEM parameter-iterate trajectory over the cooling phase
-#'  (Jiang et al. 2025, see references).  Derivative-free and always includes
-#'  every population parameter (theta, omega, and residual).
+#'  "\code{sa}" Use the stochastic-approximation Fisher Information Matrix.  After
+#'  estimation, a dedicated covariance phase (\code{nSaCov} iterations) holds the
+#'  parameters at the converged estimate and keeps resimulating the individual
+#'  parameters, Monte-Carlo averaging the Louis observed-information integrand into a
+#'  converged FIM decoupled from the cooling schedule (the approach used by Monolix;
+#'  Kuhn & Lavielle 2005).  Always includes every estimated population parameter
+#'  (theta, the \code{Omega} diagonal variances, and residual).
 #'
 #'  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 #'
@@ -64,6 +67,13 @@
 #'   \code{om.<eta>} / \code{cov.<eta>.<eta>}.  When \code{FALSE} the legacy
 #'   structural-theta-only covariance is reported.  Ignored by
 #'   \code{covMethod="sa"}, which is always full.
+#'
+#' @param nSaCov Number of iterations in the dedicated stochastic-approximation
+#'   covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+#'   iterations run at the converged estimate (parameters frozen) and only
+#'   resimulate the individual parameters to build the observed Fisher
+#'   information; a larger value gives a less noisy covariance.  Ignored by other
+#'   covariance methods.
 #'
 #' @param logLik boolean indicating that log-likelihood should be
 #'     calculate by Gaussian quadrature.
@@ -201,6 +211,10 @@
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
 #' @references
+#' Kuhn E, Lavielle M (2005). "Maximum likelihood estimation in nonlinear mixed
+#' effects models." Computational Statistics & Data Analysis, 49(4), 1020-1038.
+#' \doi{10.1016/j.csda.2004.07.002}
+#'
 #' Jiang L, Roy A, Balasubramanian K, Davis D, Drusvyatskiy D, Na S (2025).
 #' "Online Covariance Estimation in Nonsmooth Stochastic Approximation."
 #' arXiv:2502.05305. \doi{10.48550/arXiv.2502.05305}
@@ -215,6 +229,7 @@ saemControl <- function(seed = 99,
                         trace = 0, # nolint
                         covMethod = c("linFim", "fim", "sa", "r,s", "r", "s", ""),
                         covFull = TRUE,
+                        nSaCov = 500L,
                         calcTables = TRUE,
                         logLik = FALSE,
                         nnodesGq = 3,
@@ -398,6 +413,7 @@ saemControl <- function(seed = 99,
     ci=ci,
     covMethod=.covMethod,
     covFull=covFull,
+    nSaCov=as.integer(nSaCov),
     logLik=logLik,
     calcTables=calcTables,
     muRefCov=muRefCov,

@@ -625,6 +625,9 @@ public:
   mat get_par_hist() {
     return par_hist;
   }
+  mat get_HaSa() {
+    return HaSa;
+  }
 
   vec get_mixProb() {
     return mixProb;
@@ -672,6 +675,18 @@ public:
     rmcmc = as<double>(x["rmcmc"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
+    // SA (stochastic-approximation) covariance phase: after the niter estimation
+    // iterations, run nSaCov extra iterations with the gain frozen at zero so the
+    // parameters stay at the converged estimate (theta_hat).  Only the MCMC E-step
+    // resimulates phi ~ p(phi|y,theta_hat); the per-iteration Louis observed-information
+    // integrand (DDa) is Monte-Carlo averaged into HaSa, giving a converged Fisher
+    // information decoupled from the cooling schedule (cf. Monolix "stochastic
+    // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
+    nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
+    if (nSaCov > 0) {
+      pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
+      pash = join_cols(pash, zeros<vec>(nSaCov));
+    }
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -939,7 +954,17 @@ public:
         }
       }
     }
-    for (unsigned int kiter=0; kiter<(unsigned int)(niter); kiter++) {
+    if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
+      // entering the SA covariance phase: snapshot the converged estimate so it can be
+      // restored afterward (the cov-phase iterations fluctuate the parameters).
+      if (nSaCov > 0 && kiter == (unsigned int)niter) {
+        _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
+        _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
+        _savMprior_phi0 = mprior_phi0; _savAres = ares; _savBres = bres; _savCres = cres;
+        _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
+        if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
+      }
       gamma2_phi1=Gamma2_phi1.diag();
       IGamma2_phi1=inv_sympd(Gamma2_phi1);
       D1Gamma21=LCOV1*IGamma2_phi1;
@@ -1011,7 +1036,7 @@ public:
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
@@ -1378,7 +1403,7 @@ public:
             phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
           }
         }
-        phiFile << phiM_weighted;
+        if (kiter < (unsigned int)niter) phiFile << phiM_weighted;
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
         }
@@ -1575,7 +1600,7 @@ public:
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -2505,6 +2530,23 @@ public:
       L=L+pash(kiter)*(D1/nmc-L);
       Ha=Ha+pash(kiter)*(DDa- Ha);
       Hb=Hb+pash(kiter)*(DDb- Hb);
+      // SA covariance phase: theta is frozen (pas==pash==0 above), so DDa is a Monte-Carlo
+      // draw of the Louis observed information at theta_hat.  d2logk omits the deterministic
+      // mu-block complete Hessian (-M'Omega^{-1}M), leaving DDa's fixed-effect block equal
+      // to -Var[score] (indefinite); add that block (= CGamma2, the mu Fisher info the M-step
+      // uses) so DDc = -E[Hessian] - Var[score] is the true observed information.  Then
+      // Monte-Carlo average (after a short burn-in) into HaSa; the covariance is solve(HaSa).
+      if (nSaCov > 0 && kiter >= (unsigned int)niter) {
+        unsigned int cc = kiter - (unsigned int)niter;
+        if (cc >= (unsigned int)(0.1 * nSaCov)) {
+          mat DDc = DDa;
+          unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
+          if (nl1 > 0) DDc.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
+          if (nl0 > 0) DDc.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
+          covCount++;
+          HaSa += (DDc - HaSa) / (double)covCount;
+        }
+      }
       cube phi2 = phi%phi;
       mat sphi1 = sum(phi ,2);
       mat sphi2 = sum(phi2,2);
@@ -2592,18 +2634,28 @@ public:
         vec mixP = mixProb.head(nMix - 1);
         pl = join_cols(pl, mixP);
       }
-      par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function; scale.showOfv was
-      // set to 0 in inits() so the Function Val column is suppressed and
-      // the `f` argument is ignored at print time (passing NA_REAL just
-      // to satisfy the signature).  scalePrintFun increments its own
-      // counter, gates printing on (cn % every == 0), and runs the
-      // user-interrupt check internally.
-      scalePrintFun(&scale, pl.memptr(), NA_REAL);
-      // One summary line per printed iteration for any ODE-solve warnings
-      // accumulated since the last flush (see inner.cpp foceiOfvOptim).
-      nmFlushRxSolveWarn(5);
+      if (kiter < (unsigned int)niter) {
+        par_hist.row(kiter) = pl.t();
+        // saem has no per-iteration objective function; scale.showOfv=0 so the
+        // `f` argument is ignored here.  scalePrintFun gates printing on
+        // (cn % every == 0) and runs the user-interrupt check internally.
+        scalePrintFun(&scale, pl.memptr(), NA_REAL);
+        // One summary line per printed iteration for any ODE-solve warnings
+        // accumulated since the last flush (see inner.cpp foceiOfvOptim).
+        nmFlushRxSolveWarn(5);
+      }
+      // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
+      // above; nothing is recorded to par_hist and no printing happens.
     }//kiter
+    // restore the converged estimate after the SA covariance phase (the reported fit
+    // must be the converged value, not a cov-phase iterate)
+    if (nSaCov > 0) {
+      Plambda = _savPlambda; Gamma2_phi1 = _savGamma2_phi1; Gamma2_phi0 = _savGamma2_phi0;
+      Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
+      mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
+      lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
+    }
     phiFile.close();
   }
 
@@ -2693,6 +2745,14 @@ private:
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
+
+  // SA (stochastic-approximation) covariance phase
+  int nSaCov;
+  mat HaSa;                      // converged Louis FIM (nb_param x nb_param) at theta_hat
+  int covCount;                  // averaged cov-phase iterations
+  // saved converged state, restored after the cov phase so the fit is unperturbed
+  vec _savPlambda, _savAres, _savBres, _savCres, _savLres, _savVcsig2, _savMixProb;
+  mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
 
@@ -3391,6 +3451,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = wrap(saem.get_mixProb()),

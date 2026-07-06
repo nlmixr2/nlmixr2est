@@ -1,0 +1,49 @@
+nmTest({
+  test_that("SAEM covMethod='sa' (stochastic-approximation Louis FIM) full covariance", {
+    # The dedicated fixed-theta cov phase must (a) leave the estimate unperturbed,
+    # (b) produce a PD full theta + Omega + residual covariance, and (c) agree with
+    # the linearized FIM.
+
+    one.cmt <- function() {
+      ini({
+        tka <- 0.45; tcl <- 1; tv <- 3.45; add.sd <- 0.7
+        eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1
+      })
+      model({
+        ka <- exp(tka + eta.ka)
+        cl <- exp(tcl + eta.cl)
+        v  <- exp(tv + eta.v)
+        linCmt() ~ add(add.sd)
+      })
+    }
+
+    ctlL <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "linFim")
+    ctlS <- saemControl(nBurn = 200, nEm = 300, print = 0, seed = 1L, covMethod = "sa",
+                        nSaCov = 1000)
+
+    fL <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlL)
+    fS <- .nlmixr(one.cmt, theo_sd, est = "saem", control = ctlS)
+
+    # (a) the cov phase is frozen at theta_hat -- the reported estimate is unchanged
+    expect_equal(unname(fS$theta), unname(fL$theta), tolerance = 1e-6)
+
+    # (b) full PD covariance, method label preserved
+    expect_equal(fS$covMethod, "sa")
+    expect_true(is.matrix(fS$cov) && nrow(fS$cov) >= 4L)
+    expect_true(all(is.finite(fS$cov)))
+    expect_true(min(eigen(fS$cov, symmetric = TRUE, only.values = TRUE)$values) > 0)
+
+    # Omega diagonal and residual rows are present and named on the eta
+    expect_true(all(c("om.eta.ka", "om.eta.cl", "om.eta.v", "add.sd") %in% rownames(fS$cov)))
+
+    # (c) SA and linFim SEs agree (different estimators -> allow Monte-Carlo tolerance)
+    .cmn <- intersect(rownames(fS$cov), rownames(fL$cov))
+    .seS <- sqrt(diag(fS$cov))[.cmn]
+    .seL <- sqrt(diag(fL$cov))[.cmn]
+    expect_equal(unname(.seS), unname(.seL), tolerance = 0.25)
+
+    # residual SE surfaced in the parameter table
+    expect_true(is.finite(fS$parFixedDf["add.sd", "SE"]))
+    expect_gt(fS$parFixedDf["add.sd", "SE"], 0)
+  })
+})
