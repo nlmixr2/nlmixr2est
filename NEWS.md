@@ -12,6 +12,11 @@
   reported in `$runInfo` and appears in the output with a population prediction
   and `NA` individual values, and the SAEM-specific guard in `.configsaem()` is
   removed (#687).
+- Censored (M2/M3/M4/BLQ) observations now use the exact censored second derivative
+  for the FOCEI inner Laplace Hessian (`foceiControl(censOption = "laplace")`, the new
+  default); `censOption = "gauss"` keeps the historic uncensored Gauss-Newton curvature.
+  Non-censored fits are unchanged.  The option is shared with `saemControl`/`nlmControl`.
+
 - Added `foceiControl(fast = TRUE)` to compute the FOCEI outer (population)
   gradient analytically from Almquist (2015) sensitivity equations instead of by
   finite differences; out-of-scope models fall back to the finite-difference
