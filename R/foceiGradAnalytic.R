@@ -76,6 +76,73 @@
   list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
+#' (f,R) FOCEI per-subject outer gradient: the general form that reads the residual
+#' variance R and its sensitivities (aR/AR) from the solve, treating the transformed
+#' prediction f and the variance R as INDEPENDENT solved quantities.  The rho(f,R,y)
+#' partials are model-independent closed forms, so ANY variance structure works.  A
+#' residual sigma is a pseudo-direction with df/dsigma=0 and dR/dsigma=E$Rsig; the
+#' omega block uses the estimation-scale dOiEst/tr28.  `dirTh` maps each structural
+#' theta param to its direction column; `sigCol` maps each sigma param to its E$Rsig
+#' column.  Reduces exactly to `.foceiAnalyticSubjectGrad` when R=R(f).
+#' @noRd
+.foceiAnalyticSubjectGradFR <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
+                                        ndir, Oi = solve(Om)) {
+  tr <- function(M) sum(diag(M))
+  f <- E$f; y <- E$y; R <- E$R; a <- E$a; A <- E$A; aR <- E$aR; AR <- E$AR
+  Rsig <- E$Rsig; RsigDir <- E$RsigDir
+  res <- y - f
+  rf <- -res / R; rR <- 0.5 * (1 / R - res^2 / R^2)                     # rho_f, rho_R
+  rff <- 1 / R; rfR <- res / R^2; rRR <- 0.5 * (-1 / R^2 + 2 * res^2 / R^3)  # rho_ff/_fR/_RR
+  eff <- 1 / R; eRR <- 0.5 / R^2                                        # E[rho_ff], E[rho_RR] at y=f
+  nom <- length(dOiEst); np <- nth + nsg + nom
+  ei <- seq_len(neta); di <- seq_len(ndir)
+  # exact inner Hessian H (eta x eta) and N (eta x direction) via the (f,R) contraction
+  H <- Oi; N <- matrix(0, neta, ndir)
+  for (l in ei) {
+    for (m in ei) H[l, m] <- H[l, m] + sum(rff * a[, l] * a[, m] + rfR * (a[, l] * aR[, m] + aR[, l] * a[, m]) +
+                                             rRR * aR[, l] * aR[, m] + rf * A[, l, m] + rR * AR[, l, m])
+    for (d in di) N[l, d] <- sum(rff * a[, l] * a[, d] + rfR * (a[, l] * aR[, d] + aR[, l] * a[, d]) +
+                                   rRR * aR[, l] * aR[, d] + rf * A[, l, d] + rR * AR[, l, d])
+  }
+  HiM <- solve(H)
+  # eta x sigma block (df/dsigma=0): Nsg[l,k]
+  Nsg <- matrix(0, neta, nsg)
+  if (nsg > 0L) for (l in ei) for (k in seq_len(nsg)) { .c <- sigCol[k]
+    Nsg[l, k] <- sum(rfR * a[, l] * Rsig[, .c] + rRR * aR[, l] * Rsig[, .c] + rR * RsigDir[, l, .c]) }
+  # Laplace determinant Hessian Ht = Oi + sum(E[rho_ff] a a + E[rho_RR] aR aR)
+  Ht <- Oi; for (l in ei) for (m in ei) Ht[l, m] <- Ht[l, m] + sum(eff * a[, l] * a[, m] + eRR * aR[, l] * aR[, m])
+  Hti <- solve(Ht)
+  # dHt/d(direction s) (moving mode s=eta AND explicit theta columns): de_ff/ds=-aR_s/R^2
+  dHtD <- lapply(di, function(s) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum(-aR[, s] / R^2 * a[, l] * a[, m] + eff * (A[, l, s] * a[, m] + a[, l] * A[, m, s]) +
+                     -aR[, s] / R^3 * aR[, l] * aR[, m] + eRR * (AR[, l, s] * aR[, m] + aR[, l] * AR[, m, s])); D })
+  # dHt/dsigma_k (df/dsigma=0 so no d2f term)
+  dHtSg <- if (nsg > 0L) lapply(seq_len(nsg), function(k) { .c <- sigCol[k]; D <- matrix(0, neta, neta)
+    for (l in ei) for (m in ei)
+      D[l, m] <- sum(-Rsig[, .c] / R^2 * a[, l] * a[, m] - Rsig[, .c] / R^3 * aR[, l] * aR[, m] +
+                       eRR * (RsigDir[, l, .c] * aR[, m] + aR[, l] * RsigDir[, m, .c])); D }) else list()
+  typ <- function(p) if (p <= nth) "th" else if (p <= nth + nsg) "sg" else "om"
+  omc <- function(p) p - nth - nsg
+  Mcol <- function(p) { t <- typ(p)
+    if (t == "th") return(N[, dirTh[p]]); if (t == "sg") return(Nsg[, p - nth])
+    as.numeric(dOiEst[[omc(p)]] %*% ehat) }
+  dHt_p <- function(p) { t <- typ(p)
+    if (t == "th") return(dHtD[[dirTh[p]]]); if (t == "sg") return(dHtSg[[p - nth]])
+    dOiEst[[omc(p)]] }
+  dPhi_p <- function(p) { t <- typ(p)
+    if (t == "th") return(sum(rf * a[, dirTh[p]] + rR * aR[, dirTh[p]]))
+    if (t == "sg") return(sum(rR * Rsig[, sigCol[p - nth]]))
+    0.5 * as.numeric(t(ehat) %*% dOiEst[[omc(p)]] %*% ehat) - tr28[omc(p)] }
+  etaP <- vapply(seq_len(np), function(p) as.numeric(-HiM %*% Mcol(p)), numeric(neta))
+  if (neta == 1L) etaP <- matrix(etaP, nrow = 1L)
+  g <- numeric(np)
+  for (p in seq_len(np)) {
+    dHtStar <- dHt_p(p); for (l in ei) dHtStar <- dHtStar + etaP[l, p] * dHtD[[l]]
+    g[p] <- 2 * dPhi_p(p) + tr(Hti %*% dHtStar)
+  }
+  list(g = g, etaP = etaP)
+}
+
 #' C++/Armadillo port of `.foceiAnalyticSubjectGrad`: evaluates the per-observation
 #' error coefficients in R (cheap, vectorized) and does the O(neta^2*nobs) tensor
 #' contractions in `foceiSubjectGradFocei_`.  Same signature/return as the R oracle.
@@ -226,7 +293,7 @@
                                    startedEnv = NULL, am = NULL) {
   neta <- ncol(ebes); Oi <- solve(Om)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
-  nsg <- length(ef$sgVar); nom <- length(dOiEst); np <- nth + nsg + nom
+  nom <- length(dOiEst)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
   # The augmented model depends only on the model + direction set (fixed for a
@@ -234,6 +301,16 @@
   # gradient (~63%), so the live path passes a cached `am` (built once per fit).
   if (is.null(am)) am <- .foceiAnalyticAugModelDirs(ui, dirs)
   if (is.null(am) || am$ndir != ndir) return(NULL)
+  # FOCEI (interaction=1) uses the general (f,R) assembly: the sigma set is EVERY
+  # error parameter the variance depends on (am$sigTh), which covers any variance
+  # structure.  FOCE keeps the current symbolic (add/prop) sigma set for now.
+  .sigTh <- am$sigTh
+  .sgNameFR <- if (length(.sigTh)) ui$iniDf$name[match(.sigTh, ui$iniDf$ntheta)] else character(0)
+  # FOCE still uses the symbolic add/prop machinery; a non-add/prop variance (foceiOnly)
+  # is only supported by the FOCEI (f,R) path -> FOCE bails to the finite-difference gradient.
+  if (.foce && isTRUE(ef$foceiOnly)) return(NULL)
+  if (.foce) { nsg <- length(ef$sgVar); sgNames <- ef$sgName } else { nsg <- length(.sigTh); sgNames <- .sgNameFR }
+  np <- nth + nsg + nom
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
@@ -278,14 +355,14 @@
       if (.foce) .foceiAnalyticSubjectGradFoce(E, etaSolve[i, ], Om, ef, neta, nth, nsg, ef$sgVar,
                                                dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi,
                                                E0 = E0List[[i]], foceType = foceType)
-      else .foceiAnalyticSubjectGradCpp(E, etaSolve[i, ], Om, ef, neta, nth, nsg, ef$sgVar,
-                                        dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi),
+      else .foceiAnalyticSubjectGradFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
+                                       dOiEst, tr28, ndir = ndir, Oi = Oi),
       error = function(e) NULL)
     if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
     g <- g + gi$g
     etaPList[[i]] <- gi$etaP
   }
-  names(g) <- c(thStruct, ef$sgName, omNames)
+  names(g) <- c(thStruct, sgNames, omNames)
   list(g = g, etaP = etaPList, ids = ids)
 }
 
