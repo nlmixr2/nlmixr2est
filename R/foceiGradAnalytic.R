@@ -222,9 +222,13 @@
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  # foce+ (foceType=1, live conditional R): the structural-theta live-R total
-  # derivative is not yet correct (the moving-mode gPhi/dHt contraction disagrees
-  # with finite differences); fall back to FD until fixed.
+  # foce+ (foceType=1, live conditional R): the inner optimizer uses the
+  # interaction-free gradient (eps*a/R) while the objective/likelihood uses the
+  # LIVE R (which depends on eta), so its function and gradient are inconsistent
+  # and the EBE does not stationarize S_FOCE=0 (observed max|S_FOCE|~1 even at a
+  # converged fit).  The analytic gradient assumes a clean S_FOCE=0 stationary
+  # point (as the covariance does), so it cannot match the finite-difference
+  # gradient of that ill-defined EBE -- keep foce+ on the FD gradient.
   if (interaction == 0L && foceType == 1L) return(NULL)
   if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
