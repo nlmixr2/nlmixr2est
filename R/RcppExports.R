@@ -39,6 +39,10 @@ foceiSubjectGradFoceFR_ <- function(a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, Oi
     .Call(`_nlmixr2est_foceiSubjectGradFoceFR_`, a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp)
 }
 
+foceiGradAllFoceFR_ <- function(a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllFoceFR_`, a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores)
+}
+
 foceiSubjectRFR_ <- function(a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
     .Call(`_nlmixr2est_foceiSubjectRFR_`, a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
 }

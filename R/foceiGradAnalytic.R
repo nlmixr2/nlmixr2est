@@ -420,19 +420,41 @@
   g <- numeric(np)
   etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
   if (.foce) {
-    # FOCE gradient still assembles per-subject in R (no C++ FOCE gradient kernel yet).
-    for (i in seq_along(ids)) {
-      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
+    # FOCE: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFoceFR_).  The frozen
+    # R0 sensitivities are resolved per subject in R (nonmem: aRe=0, aRc/R0/R0sig from the
+    # eta=0 solve E0; foce+ / additive nonmem: all from the eta-hat solve E) then batched.
+    nsub <- length(ids); nobsAll <- integer(nsub)
+    .fpG <- identical(as.integer(foceType), 1L) || is.null(E0List[[1L]])   # uniform across subjects
+    for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
       if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
-      E$y <- obs$DV
-      gi <- tryCatch(.foceiAnalyticSubjectGradFoceFRCpp(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
-                                                        dOiEst, tr28, ndir = ndir, Oi = Oi,
-                                                        E0 = E0List[[i]], foceType = foceType),
-                     error = function(e) NULL)
-      if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
-      g <- g + gi$g; etaPList[[i]] <- gi$etaP
+      nobsAll[i] <- length(E$f)
     }
+    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))
+    aB <- matrix(0, totObs, ndir); aReB <- matrix(0, totObs, ndir); aRcB <- matrix(0, totObs, ndir)
+    AB <- array(0, c(totObs, ndir, ndir)); R0B <- numeric(totObs); R0sigB <- matrix(0, totObs, nsg)
+    fB <- numeric(totObs); yB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; E0 <- E0List[[i]]; rows <- (off[i] + 1L):off[i + 1L]
+      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
+      aB[rows, ] <- E$a; AB[rows, , ] <- E$A; fB[rows] <- E$f; yB[rows] <- obs$DV
+      if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR
+        if (nsg > 0L) R0sigB[rows, ] <- E$Rsig }
+      else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR                       # aReB stays 0 (frozen)
+        if (nsg > 0L) R0sigB[rows, ] <- E0$Rsig }
+      ehatB[i, ] <- etaSolve[i, ]
+    }
+    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
+    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
+    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
+    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, fB, yB, R0B, ehatB, as.integer(off),
+                                         Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                                         neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
+                                         as.integer(.fpG), ncores), error = function(e) NULL)
+    if (is.null(.res) || !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
+    g <- .res$g
+    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
   } else {
     # FOCEI: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFR_), removing the
     # per-subject R<->C++ round-trip.  Sensitivities are concatenated over observations.
