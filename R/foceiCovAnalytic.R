@@ -141,14 +141,14 @@
     # stationarize S_FOCE with this R0, so the re-solve is ~a no-op (kept for robustness).
     # "foce+" (foceType=1) keeps the live conditional R and never needs the eta=0 solve.
     E0 <- NULL
-    .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$foce$dependsF0)
+    .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
     if (.needF0) {
       E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
       if (is.null(E0)) return(NULL)
     }
     if (.foce) {
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
-                                    f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
+      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
       if (is.null(eta0)) return(NULL)
     }
     p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
@@ -453,10 +453,13 @@
   # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
   # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
   .isAddProp <- all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
+  # R0 (FOCE nonmem frozen variance) needs the eta=0 population solve only when R depends
+  # on the prediction (any non-additive error term); pure additive R is constant.
+  .dependsF0 <- !all(er$err == "add")
   if (!.isAddProp)
     return(list(sgVar = character(0), sgName = sgNameAll, sc = NULL, per = NULL, pair = NULL,
                 foce = NULL, focePlus = NULL, foceiOnly = TRUE, canVanish = canVanish,
-                ev = function(e, f, y, f0 = f) NULL))
+                dependsF0 = .dependsF0, ev = function(e, f, y, f0 = f) NULL))
   addN <- er$name[er$err == "add"]; propN <- er$name[er$err == "prop"]
   hasA <- length(addN) == 1L; hasP <- length(propN) == 1L
   if (!hasA && !hasP)
@@ -517,7 +520,7 @@
   # apply as-is and there is no f0 population solve/chain.
   focePlus <- list(sc = sc, per = per, pair = pair, dependsF0 = FALSE)
   list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
-       focePlus = focePlus, foceiOnly = FALSE, canVanish = canVanish,
+       focePlus = focePlus, foceiOnly = FALSE, canVanish = canVanish, dependsF0 = .dependsF0,
        ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
@@ -1029,16 +1032,19 @@
 #' stored eta is already stationary (|S_FOCE| < `skip`) -> returns `eta0` unchanged
 #' (byte no-op).  `NULL` on a solve/Newton failure -> caller falls back to FD.
 #' @noRd
-.foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, ef, Oi, neta, tol,
-                                  maxit = 30L, skip = 1e-3, conv = 1e-9, f0 = NULL,
+.foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, R0, Oi, neta, tol,
+                                  maxit = 30L, skip = 1e-3, conv = 1e-9,
                                   foceType = 0L) {
   ei <- seq_len(neta)
-  # inner-gradient pieces: live R for "foce+" (foceType=1), frozen eta=0 R0 otherwise
-  .sc <- if (identical(as.integer(foceType), 1L) || is.null(ef$foce)) ef$sc else ef$foce$sc
+  # interaction-free FOCE inner gradient/curvature from (f,R0): q0 = -(y-f)/R0, q1 = 1/R0.
+  # foce+ (foceType=1) uses the live conditional R at the trial eta; nonmem freezes R0 at
+  # the eta=0 population value passed in.  Works for ANY variance structure (no symbolic ef).
+  .fp <- identical(as.integer(foceType), 1L) || is.null(R0)
   .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
     E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
     if (is.null(E)) return(NULL)
-    q0 <- ef$ev(.sc$q0, E$f, y, f0); q1 <- ef$ev(.sc$q1, E$f, y, f0)
+    R0e <- if (.fp) E$R else R0
+    q0 <- -(y - E$f) / R0e; q1 <- 1 / R0e
     S <- as.numeric(Oi %*% eta); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
     Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
     list(S = S, Hf = Hf)
