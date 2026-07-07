@@ -229,6 +229,25 @@
                       neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol))
 }
 
+#' C++/Armadillo port of `.foceiAnalyticSubjectGradFoceFR` (FOCE (f,R) outer gradient).
+#' Resolves the frozen-R0 sensitivities (eta-block aRe: 0 for nonmem, live E$aR for foce+;
+#' parameter columns aRc: E0$aR for nonmem, live E$aR for foce+; R0sig likewise) and calls
+#' the kernel.  Matches `.foceiAnalyticSubjectGradFoceFR` exactly.
+#' @noRd
+.foceiAnalyticSubjectGradFoceFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
+                                               ndir, Oi = solve(Om), E0 = NULL, foceType = 0L) {
+  nobs <- length(E$f); nom <- length(dOiEst)
+  .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
+  if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; R0sig <- E$Rsig }
+  else { R0 <- E0$R; aRe <- matrix(0, nobs, ndir); aRc <- E0$aR; R0sig <- E0$Rsig }
+  if (is.null(R0sig)) R0sig <- matrix(0, nobs, nsg)
+  dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
+  if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
+  foceiSubjectGradFoceFR_(E$a, E$A, aRe, aRc, R0sig, E$f, E$y, R0, as.numeric(ehat), Oi,
+                          dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                          neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol), as.integer(.fp))
+}
+
 #' Per-subject first-derivative (outer-gradient) contribution for FOCE
 #' (interaction=0).  Unlike FOCEI, the EBE eta* stationarizes the interaction-free
 #' inner problem S_FOCE = sum(q a) + Omega^-1 eta = 0 (NOT the full Laplace
@@ -407,9 +426,9 @@
       E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
       if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
       E$y <- obs$DV
-      gi <- tryCatch(.foceiAnalyticSubjectGradFoceFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
-                                                     dOiEst, tr28, ndir = ndir, Oi = Oi,
-                                                     E0 = E0List[[i]], foceType = foceType),
+      gi <- tryCatch(.foceiAnalyticSubjectGradFoceFRCpp(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
+                                                        dOiEst, tr28, ndir = ndir, Oi = Oi,
+                                                        E0 = E0List[[i]], foceType = foceType),
                      error = function(e) NULL)
       if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
       g <- g + gi$g; etaPList[[i]] <- gi$etaP
