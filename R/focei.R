@@ -2257,6 +2257,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
+    # a log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
+    # machinery (its inner Hessian is a finite-difference of the inner gradient), so
+    # the analytic outer gradient does not apply -- downgrade fast so the fit reports
+    # it and skips building the augmented `..outer` model.
+    if (isTRUE(.control$fast)) {
+      .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+      .control$fast <- FALSE
+    }
   }
   assign("control", .control, envir=.ui)
 }
