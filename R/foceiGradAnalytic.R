@@ -189,7 +189,7 @@
     as.data.frame(rxode2::rxSolve(am$augMod, params = pars, events = data,
                                   returnType = "data.frame", atol = tol, rtol = tol)),
     warning = function(w) invokeRestart("muffleWarning")), error = function(e) NULL)
-  if (is.null(.sol) || !all(c("predf", paste0("f1_", dirs)) %in% names(.sol))) return(NULL)
+  if (is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", dirs)) %in% names(.sol))) return(NULL)
   .idcol <- if ("id" %in% names(.sol)) .sol$id else .sol$ID
   .byIdSol <- split(seq_len(nrow(.sol)), as.character(.idcol))
   # rxode2 may label the solve id by the input ID or renumber 1..nsub; accept either.
@@ -202,14 +202,15 @@
     .di <- .di[.di$time %in% obsTimes[[i]], , drop = FALSE]
     if (nrow(.di) != length(obsTimes[[i]])) return(NULL)
     no <- nrow(.di)
-    a <- matrix(vapply(dirs, function(q) .di[[paste0("f1_", q)]], numeric(no)), no, nd)
+    a <- matrix(vapply(dirs, function(q) .di[[paste0("rx_f1_", q)]], numeric(no)), no, nd)
     A <- array(0, c(no, nd, nd))
     for (r in seq_len(nrow(am$P2))) {
       .ii <- match(am$P2$i[r], dirs); .jj <- match(am$P2$j[r], dirs)
-      .v2 <- .di[[paste0("f2_", am$P2$i[r], "_", am$P2$j[r])]]
+      .v2 <- .di[[paste0("rx_f2_", am$P2$i[r], "_", am$P2$j[r])]]
       A[, .ii, .jj] <- .v2; A[, .jj, .ii] <- .v2
     }
-    Es[[i]] <- list(f = .di$predf, a = a, A = A)
+    Es[[i]] <- list(f = .di$rx_predf_, a = a, A = A)
+    if (isTRUE(am$hasRvar)) Es[[i]] <- c(Es[[i]], .foceiReadRvar(.di, am, no))
   }
   Es
 }

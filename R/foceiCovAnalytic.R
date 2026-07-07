@@ -524,6 +524,11 @@
     if (length(.s1) == 0L) return(NULL)
     .s2 <- rxode2::.rxSens(.s, dirs, dirs)          # 2nd order: the expensive expansion
     .pred <- get("rx_pred_", .s)
+    # residual variance rx_r_ (any structure) with its own 1st/2nd sensitivity chains,
+    # exactly like the prediction -- so R and dR/ddir, d2R/ddir2 come from the SOLVE
+    # (matching the inner ODE model's d(R)/d(eta)); the assembly then treats the
+    # transformed prediction f and the variance R as independent solved quantities.
+    .rvar <- tryCatch(get("rx_r_", .s), error = function(e) NULL)
     .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
     .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
     .toRx <- function(.l) rxode2::rxFromSE(.l)
@@ -534,9 +539,22 @@
     # the dominant model-build cost); the reader mirrors A[,i,j]=A[,j,i].
     .P2 <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)
     .P2 <- .P2[match(.P2$i, dirs) <= match(.P2$j, dirs), , drop = FALSE]
-    .fL1 <- vapply(dirs, function(.p) paste0("f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1))
+    .fL1 <- vapply(dirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1))
     .fL2 <- vapply(seq_len(nrow(.P2)), function(.r)
-      paste0("f2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r]))), character(1))
+      paste0("rx_f2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r]))), character(1))
+    # Variance rx_r_ and its 1st/2nd direction sensitivities.  The `rx_..._` naming
+    # matters: rxode2 keeps a constant assignment to an `rx_<name>_` variable as a
+    # real lhs output column (like the inner model's rx__sens_*), whereas a plainly
+    # named `x = <constant>` would be parsed as an initial value and drop out of the
+    # solve.  So a constant sensitivity (e.g. d(R)/d(eta)=0 for additive error) still
+    # comes back as a column of that constant -- no special-casing needed.
+    .rvarL <- character(0)
+    if (!is.null(.rvar)) {
+      .rL1 <- vapply(dirs, function(.p) paste0("rx_rvar1_", .p, "=", .toRx(.g1(.rvar, .p))), character(1))
+      .rL2 <- vapply(seq_len(nrow(.P2)), function(.r)
+        paste0("rx_rvar2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.rvar, .P2$i[.r], .P2$j[.r]))), character(1))
+      .rvarL <- c(paste0("rx_rvarf_=", .toRx(.rvar)), .rL1, .rL2)
+    }
     .baseOde <- vapply(.st, function(.x) paste0("d/dt(", .x, ")=", .toRx(get(paste0("rx__d_dt_", .x, "__"), .s))), character(1))
     # Dosing modifiers (bioavailability f(), lag()/alag(), rate(), dur()) live in the
     # pruned env as rx_<mod>_<state>_ and are NOT part of rx__d_dt_*.  Emit them so the
@@ -549,7 +567,7 @@
       .fun <- if (.m[2L] == "lag") "alag" else .m[2L]     # rxode2 stores lag() as alag()
       paste0(.fun, "(", .m[3L], ")=", .toRx(get(.v, envir = .s)))
     }, character(1))
-    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("predf=", .toRx(.pred)), .fL1, .fL2), collapse = "\n")
+    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
@@ -558,9 +576,18 @@
       .modTxt <- tryCatch(rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model"),
                           error = function(e) .modTxt)
     }
+    # Declare the theta/eta inputs AND the model covariates up front (param()) so the
+    # solve parameter order is fixed and positional.  Reuse .uiGetThetaEtaParams -- the
+    # SAME theta/eta/covariate ordering the inner sensitivity model uses -- so the
+    # augmented outer/analytic model's parameter order matches the inner problem
+    # exactly (thetas in ntheta order, etas in neta order, then covariates).
+    .param <- .uiGetThetaEtaParams(ui, TRUE)          # params(THETA[1], .., ETA[1], .., covs)
+    .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
+    .modTxt <- paste(.param, .modTxt, sep = "\n")
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
     # (forward variational jumps at dose times) for the sensitivity compartments.
-    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), st = .st, P2 = .P2)
+    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs),
+         st = .st, P2 = .P2, hasRvar = !is.null(.rvar))
   }, error = function(e) NULL)
 }
 
@@ -902,16 +929,35 @@
     error = function(e) NULL)
   if (is.null(.d)) return(NULL); .d <- .d[.d$time %in% times, , drop = FALSE]
   if (nrow(.d) == 0L || nrow(.d) != length(times) ||
-        !all(c("predf", paste0("f1_", dirs)) %in% names(.d))) return(NULL)
+        !all(c("rx_predf_", paste0("rx_f1_", dirs)) %in% names(.d))) return(NULL)
   no <- nrow(.d)
-  a <- matrix(vapply(dirs, function(q) .d[[paste0("f1_", q)]], numeric(no)), no, nd)
+  a <- matrix(vapply(dirs, function(q) .d[[paste0("rx_f1_", q)]], numeric(no)), no, nd)
   A <- array(0, c(no, nd, nd))
   for (r in seq_len(nrow(aug$P2))) {                   # only i<=j emitted -> mirror to i>j
     .ii <- match(aug$P2$i[r], dirs); .jj <- match(aug$P2$j[r], dirs)
-    .v2 <- .d[[paste0("f2_", aug$P2$i[r], "_", aug$P2$j[r])]]
+    .v2 <- .d[[paste0("rx_f2_", aug$P2$i[r], "_", aug$P2$j[r])]]
     A[, .ii, .jj] <- .v2; A[, .jj, .ii] <- .v2
   }
-  list(f = .d$predf, a = a, A = A)
+  .out <- list(f = .d$rx_predf_, a = a, A = A)
+  if (isTRUE(aug$hasRvar)) .out <- c(.out, .foceiReadRvar(.d, aug, no))
+  .out
+}
+
+#' Read the residual variance R and its 1st/2nd direction sensitivities (aR, AR)
+#' from an augmented solve (rx_rvarf_ / rx_rvar1_<dir> / rx_rvar2_<i>_<j>).  The
+#' `rx_..._` naming keeps even constant sensitivities as real output columns, so
+#' every piece is read directly from the solve.
+#' @noRd
+.foceiReadRvar <- function(.d, aug, no) {
+  dirs <- aug$dirs; nd <- length(dirs); P2 <- aug$P2
+  aR <- matrix(vapply(dirs, function(q) .d[[paste0("rx_rvar1_", q)]], numeric(no)), no, nd)
+  AR <- array(0, c(no, nd, nd))
+  for (r in seq_len(nrow(P2))) {
+    .ii <- match(P2$i[r], dirs); .jj <- match(P2$j[r], dirs)
+    .v2 <- .d[[paste0("rx_rvar2_", P2$i[r], "_", P2$j[r])]]
+    AR[, .ii, .jj] <- .v2; AR[, .jj, .ii] <- .v2
+  }
+  list(R = .d$rx_rvarf_, aR = aR, AR = AR)
 }
 
 #' Re-solve one subject's EBE to the FOCE inner stationary point S_FOCE = sum(q a)
