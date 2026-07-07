@@ -6,6 +6,11 @@
   gradient.  Under `fast`, the outer optimizer defaults to `"lbfgsb3c"`; pairing
   it with a derivative-free `outerOpt` reverts to `fast = FALSE`.
 
+- The analytic `fast` outer gradient now solves every subject's augmented
+  sensitivity model in one OpenMP-threaded rxode2 population solve (for both the
+  FOCEI and FOCE families) instead of one R solve per subject, which previously
+  dominated the gradient cost.
+
 - Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
   `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`, `irlsfocepf`, `irlsfoceif` --
   each equivalent to its base method with `foceiControl(fast = TRUE)` as the
