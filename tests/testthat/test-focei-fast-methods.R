@@ -32,6 +32,26 @@ test_that("all nine *f methods are registered and default to fast=TRUE", {
   expect_false(isTRUE(.ctl$fast))
 })
 
+test_that("mu-referenced families use the analytic gradient (fast matches FD)", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  d <- nlmixr2data::theo_sd
+  # mu-referenced covariate coefficient cl.wt (regression-updated); the analytic
+  # gradient must exclude it from the outer optimizer's parameter set (A1b).
+  mc <- function() {
+    ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; cl.wt <- 0.01; eta.ka ~ 0.3; eta.cl ~ 0.1; add.sd <- 0.7 })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + cl.wt * (WT - 70)); v <- exp(tv)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) })
+  }
+  for (est in c("mufocei", "irlsfocei", "mufoce")) {
+    f0 <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = FALSE))))
+    fF <- suppressMessages(suppressWarnings(nlmixr2(mc, d, est, foceiControl(print = 0L, covMethod = "", fast = TRUE))))
+    expect_equal(fF$objf, f0$objf, tolerance = 0.05, info = est)
+  }
+})
+
 test_that("est='foceif' equals est='focei' + fast=TRUE", {
   skip_on_cran()
   skip_on_ci()
