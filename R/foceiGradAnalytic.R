@@ -319,13 +319,19 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(st$neta), "]"), drop = FALSE])
     data <- get("dataSav", e)
     if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) return(NULL)
-    # The augmented model is the persistent `..outer` sibling of the inner model:
-    # built once via rxUiGet.foceiOuter (independent of theta/eta/omega) and cached
-    # on the fit env, so every outer-gradient call reuses it.
+    # The augmented model is the persistent `..outer` sibling of the inner model.
+    # Prefer the copy built at model-setup time and qs2-cached in foceiModel$outer
+    # (reconstruct am from the top-level compiled model + outerMeta); fall back to
+    # building it via rxUiGet.foceiOuter.  Cached on the fit env either way.
     am <- if (exists(".foceiGradAug", e, inherits = FALSE)) get(".foceiGradAug", e) else NULL
     if (is.null(am)) {
-      am <- ui$foceiOuter
-      if (!is.null(am)) assign(".foceiGradAug", am, envir = e)
+      .fm <- tryCatch(ui$foceiModel, error = function(e) NULL)
+      if (!is.null(.fm) && inherits(.fm$outer, "rxode2") && !is.null(.fm$outerMeta)) {
+        am <- c(list(augMod = .fm$outer), .fm$outerMeta)
+      } else {
+        am <- ui$foceiOuter
+      }
+      if (!is.null(am) && inherits(am$augMod, "rxode2")) assign(".foceiGradAug", am, envir = e)
     }
     .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
                            st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
