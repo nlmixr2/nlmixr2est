@@ -356,6 +356,8 @@
     }
     Es[[i]] <- list(f = .di$rx_predf_, a = a, A = A)
     if (isTRUE(am$hasRvar)) Es[[i]] <- c(Es[[i]], .foceiReadRvar(.di, am, no))
+    if (isTRUE(am$hasTrans))                        # both-sides transform: DV -> tbs(DV) scale
+      Es[[i]]$trans <- list(yj = .di$rx_tyj_, lambda = .di$rx_tlambda_, low = .di$rx_tlow_, hi = .di$rx_thi_)
   }
   Es
 }
@@ -437,7 +439,7 @@
     for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; E0 <- E0List[[i]]; rows <- (off[i] + 1L):off[i + 1L]
       obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
-      aB[rows, ] <- E$a; AB[rows, , ] <- E$A; fB[rows] <- E$f; yB[rows] <- obs$DV
+      aB[rows, ] <- E$a; AB[rows, , ] <- E$A; fB[rows] <- E$f; yB[rows] <- .foceiAnalyticTbsY(obs$DV, E$trans)
       if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR
         if (nsg > 0L) R0sigB[rows, ] <- E$Rsig }
       else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR                       # aReB stays 0 (frozen)
@@ -474,7 +476,7 @@
       E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
       obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
       aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
-      fB[rows] <- E$f; yB[rows] <- obs$DV; RB[rows] <- E$R
+      fB[rows] <- E$f; yB[rows] <- .foceiAnalyticTbsY(obs$DV, E$trans); RB[rows] <- E$R
       if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
       ehatB[i, ] <- etaSolve[i, ]
     }

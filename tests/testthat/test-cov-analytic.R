@@ -238,15 +238,17 @@ test_that("covMethod='analytic' handles pure proportional error away from zero (
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # an lnorm error is out of scope; with covMethod="analytic" the fallback to the FD cov
-  # is announced (message, not warning) so the user knows why they did not get analytic
+  # an estimated boxCox lambda is out of scope (the DV-transform lambda chain is not ported);
+  # with covMethod="analytic" the fallback to the FD cov is announced (message, not warning)
+  # so the user knows why they did not get analytic.  (lnorm and fixed-lambda transforms ARE
+  # in scope -- the DV is retransformed onto the rx_pred_ scale.)
   lm <- function() {
-    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7 })
+    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7; lambda <- 1 })
     model({ ka <- 1.5; cl <- exp(tcl + eta.cl); v <- 31.5
       d/dt(depot)  <- -ka * depot
       d/dt(center) <-  ka * depot - cl / v * center
       cp <- center / v
-      cp ~ lnorm(add.sd) })
+      cp ~ add(add.sd) + boxCox(lambda) })
   }
   expect_message(
     suppressWarnings(nlmixr(lm, nlmixr2data::theo_sd, "focei",
