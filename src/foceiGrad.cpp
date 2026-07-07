@@ -138,6 +138,7 @@ Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f
 static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
                                 const arma::mat& aR, const arma::cube& AR,
                                 const arma::mat& Rsig, const arma::cube& RsigDir,
+                                const arma::mat& dvSens,
                                 const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                                 const arma::vec& ehat, const arma::mat& Oi,
                                 const arma::cube& dOiEst, const arma::vec& tr28,
@@ -147,6 +148,10 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
+  // DV-transform chain (estimated boxCox/yeoJohnson lambda): a lambda DIRECTION also
+  // moves the DV (y'=tbs(DV,lambda)), so the residual pred sensitivity is a-dvSens
+  // (dvSens=dy'/dlambda, nonzero only in the lambda column; the determinant keeps pred a).
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
   // per-observation rho(f,R,y) partials
   vec res = yv - fv;
   vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
@@ -166,9 +171,11 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
     }
     for (int d = 0; d < ndir; d++) {
       double s = 0.0;
-      for (int o = 0; o < nobs; o++)
-        s += rff[o] * a(o, l) * a(o, d) + rfR[o] * (a(o, l) * aR(o, d) + aR(o, l) * a(o, d)) +
+      for (int o = 0; o < nobs; o++) {
+        double ad = hasDv ? a(o, d) - dvSens(o, d) : a(o, d);  // residual pred sensitivity
+        s += rff[o] * a(o, l) * ad + rfR[o] * (a(o, l) * aR(o, d) + aR(o, l) * ad) +
           rRR[o] * aR(o, l) * aR(o, d) + rf[o] * A(o, l, d) + rR[o] * AR(o, l, d);
+      }
       N(l, d) = s;
     }
   }
@@ -224,7 +231,8 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
     mat dHtStar; double dPhi;
     if (pp < nth) {
       int d = dirTh[pp] - 1; dHtStar = dHtD[d];
-      double s = 0.0; for (int o = 0; o < nobs; o++) s += rf[o] * a(o, d) + rR[o] * aR(o, d);
+      double s = 0.0; for (int o = 0; o < nobs; o++)
+        s += rf[o] * (hasDv ? a(o, d) - dvSens(o, d) : a(o, d)) + rR[o] * aR(o, d);
       dPhi = s;
     } else if (pp < nth + nsg) {
       int c = sigCol[pp - nth] - 1; dHtStar = dHtSg[pp - nth];
@@ -245,13 +253,14 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
 Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A,
                                const arma::mat& aR, const arma::cube& AR,
                                const arma::mat& Rsig, const arma::cube& RsigDir,
+                               const arma::mat& dvSens,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                                const arma::vec& ehat, const arma::mat& Oi,
                                const arma::cube& dOiEst, const arma::vec& tr28,
                                int neta, int nth, int nsg, int nom,
                                const arma::ivec& dirTh, const arma::ivec& sigCol) {
   vec g; mat etaP;
-  foceiGradSubjectFR_(a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, ehat, Oi, dOiEst, tr28,
+  foceiGradSubjectFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, fv, yv, Rv, ehat, Oi, dOiEst, tr28,
                       neta, nth, nsg, nom, dirTh, sigCol, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
 }
@@ -264,6 +273,7 @@ Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A,
 Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
                            const arma::mat& aR, const arma::cube& AR,
                            const arma::mat& Rsig, const arma::cube& RsigDir,
+                           const arma::mat& dvSens,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::mat& ehat, const arma::ivec& obsOffset,
                            const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
@@ -275,6 +285,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
   mat gmat(np, nsub, fill::zeros);
   cube etaPall(neta, np, nsub, fill::zeros);
   const bool hasSig = (Rsig.n_cols > 0);
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
@@ -282,8 +293,9 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
     cube Ai = A.rows(o0, o1), ARi = AR.rows(o0, o1);
     mat Rsigi = hasSig ? mat(Rsig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     cube RsigDiri = hasSig ? cube(RsigDir.rows(o0, o1)) : cube(o1 - o0 + 1, ndir, 0);
+    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     vec gi; mat etaPi;
-    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, fv.subvec(o0, o1), yv.subvec(o0, o1),
+    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, fv.subvec(o0, o1), yv.subvec(o0, o1),
                         Rv.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
                         neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
     gmat.col(i) = gi; etaPall.slice(i) = etaPi;
@@ -301,7 +313,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
 // Shared core (called from the single-subject export and the batched OpenMP driver).
 static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
                                     const arma::mat& aRe, const arma::mat& aRc,
-                                    const arma::mat& R0sig,
+                                    const arma::mat& R0sig, const arma::mat& dvSens,
                                     const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                     const arma::vec& ehat, const arma::mat& Oi,
                                     const arma::cube& dOiEst, const arma::vec& tr28,
@@ -311,6 +323,9 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
+  // DV-transform chain: a lambda direction also moves y'=tbs(DV,lambda); the residual
+  // pred sensitivity is a-dvSens (dvSens=dy'/dlambda, lambda column only).
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
   vec res = yv - fv;
   vec rho_f = -res / R0v, rho_R = 0.5 * (1.0 / R0v - square(res) / square(R0v));
   vec q0 = rho_f, q1 = 1.0 / R0v;
@@ -322,7 +337,8 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
     for (int m = 0; m < neta; m++) { double sh = 0.0, st = 0.0;
       for (int o = 0; o < nobs; o++) { sh += q1[o] * a(o, l) * a(o, m) + q0[o] * A(o, l, m); st += a(o, l) * a(o, m) * iR[o]; }
       Hf(l, m) += sh; Ht(l, m) += st; }
-    for (int d = 0; d < ndir; d++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += q1[o] * a(o, l) * a(o, d) + q0[o] * A(o, l, d); Nf(l, d) = s; }
+    for (int d = 0; d < ndir; d++) { double s = 0.0; for (int o = 0; o < nobs; o++) {
+      double ad = hasDv ? a(o, d) - dvSens(o, d) : a(o, d); s += q1[o] * a(o, l) * ad + q0[o] * A(o, l, d); } Nf(l, d) = s; }
   }
   mat HfInv = inv(Hf), Hti = inv(Ht);
   std::vector<mat> dHtD(ndir);
@@ -346,7 +362,7 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
     if (t == 1) { int c = sigCol[p - nth] - 1; return ouRc(-R0sig.col(c) % iR2); }
     return dOiEst.slice(p - nth - nsg); };
   auto dPhiExplicit = [&](int p) -> double { int t = typ(p);
-    if (t == 0) { int d = dirTh[p] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * a(o, d) + rho_R[o] * aRc(o, d); return s; }
+    if (t == 0) { int d = dirTh[p] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * (hasDv ? a(o, d) - dvSens(o, d) : a(o, d)) + rho_R[o] * aRc(o, d); return s; }
     if (t == 1) { int c = sigCol[p - nth] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_R[o] * R0sig(o, c); return s; }
     int k = p - nth - nsg; return 0.5 * as_scalar(ehat.t() * dOiEst.slice(k) * ehat) - tr28[k]; };
   mat etaP(neta, np, fill::zeros);
@@ -364,14 +380,14 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
 // [[Rcpp::export]]
 Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
                                    const arma::mat& aRe, const arma::mat& aRc,
-                                   const arma::mat& R0sig,
+                                   const arma::mat& R0sig, const arma::mat& dvSens,
                                    const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                    const arma::vec& ehat, const arma::mat& Oi,
                                    const arma::cube& dOiEst, const arma::vec& tr28,
                                    int neta, int nth, int nsg, int nom,
                                    const arma::ivec& dirTh, const arma::ivec& sigCol, int fp) {
   vec g; mat etaP;
-  foceiGradSubjectFoceFR_(a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, Oi, dOiEst, tr28,
+  foceiGradSubjectFoceFR_(a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, Oi, dOiEst, tr28,
                           neta, nth, nsg, nom, dirTh, sigCol, fp, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
 }
@@ -383,6 +399,7 @@ Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
 // [[Rcpp::export]]
 Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
                                const arma::mat& aRe, const arma::mat& aRc, const arma::mat& R0sig,
+                               const arma::mat& dvSens,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                const arma::mat& ehat, const arma::ivec& obsOffset,
                                const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
@@ -390,17 +407,20 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
                                const arma::ivec& dirTh, const arma::ivec& sigCol, int fp, int ncores) {
   const int nsub = (int)ehat.n_rows;
   const int np = nth + nsg + nom;
+  const int ndir = (int)a.n_cols;
   mat gmat(np, nsub, fill::zeros);
   cube etaPall(neta, np, nsub, fill::zeros);
   const bool hasSig = (R0sig.n_cols > 0);
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
     mat ai = a.rows(o0, o1), aRei = aRe.rows(o0, o1), aRci = aRc.rows(o0, o1);
     cube Ai = A.rows(o0, o1);
     mat R0sigi = hasSig ? mat(R0sig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     vec gi; mat etaPi;
-    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, fv.subvec(o0, o1), yv.subvec(o0, o1),
+    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, fv.subvec(o0, o1), yv.subvec(o0, o1),
                             R0v.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
                             neta, nth, nsg, nom, dirTh, sigCol, fp, gi, etaPi);
     gmat.col(i) = gi; etaPall.slice(i) = etaPi;

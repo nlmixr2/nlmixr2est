@@ -11,6 +11,11 @@
   FOCEI and FOCE families) instead of one R solve per subject, which previously
   dominated the gradient cost.
 
+- The analytic `fast` outer gradient now supports a both-sides transform with an
+  estimated boxCox/yeoJohnson lambda: lambda enters as a prediction-sensitivity
+  direction plus the DV-transform residual chain and the transform Jacobian.  The
+  analytic covariance still falls back to finite differences for an estimated lambda.
+
 - Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
   `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`, `irlsfocepf`, `irlsfoceif` --
   each equivalent to its base method with `foceiControl(fast = TRUE)` as the

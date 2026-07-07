@@ -92,6 +92,48 @@ test_that("FOCE (nonmem) analytic gradient matches central differences", {
   expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
 })
 
+test_that("estimated boxCox/yeoJohnson lambda: analytic gradient matches central differences", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # both-sides transform with an ESTIMATED lambda: lambda is a theta-like direction
+  # (df'/dlambda) plus the DV-transform residual chain (dy'/dlambda) and the -2 log|J|
+  # Jacobian.  Off initials so every gradient (incl. lambda) is large-signal.
+  d <- nlmixr2data::theo_sd
+  mkBox <- function() {
+    ini({ tka <- 0.15; tcl <- 1.25; tv <- 3.15; eta.ka ~ 0.5; eta.cl ~ 0.25; eta.v ~ 0.1
+          add.sd <- 0.75; lambda <- c(-1, 0.7, 2) })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) + boxCox(lambda) })
+  }
+  mkYj <- function() {
+    ini({ tka <- 0.15; tcl <- 1.25; tv <- 3.15; eta.ka ~ 0.5; eta.cl ~ 0.25; eta.v ~ 0.1
+          add.sd <- 0.75; lambda <- c(-1, 0.7, 2) })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) + yeoJohnson(lambda) })
+  }
+  chk <- function(mk, est) {
+    ph <- suppressMessages(nlmixr2(mk, d, est,
+          foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                       maxOuterIterations = 0L, maxInnerIterations = 300L)))
+    g <- .foceiGradAnalyticCalc(ph)
+    expect_false(is.null(g))
+    base <- fixef(ph)
+    ofvAt <- function(nm, val) {
+      ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+      suppressMessages(suppressWarnings(nlmixr2(ui2, d, est,
+        foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                     maxInnerIterations = 300L))))$objf
+    }
+    h <- 1e-3
+    fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+    expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
+  }
+  chk(mkBox, "focei"); chk(mkYj, "focei"); chk(mkYj, "foce")
+})
+
 test_that("analytic outer gradient matches FD for a covariate model", {
   skip_on_cran()
   skip_on_ci()

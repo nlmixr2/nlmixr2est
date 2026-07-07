@@ -199,6 +199,47 @@ SEXP _nlmixr2est_powerL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
   return retS;
 }
 
+// Shared arg-extraction + per-obs apply for the transform derivative wrappers
+// (dy'/dlambda, d2y'/dlambda2, d log|J|/dlambda).  Same (x,lambda,yj,low,hi)
+// contract as _nlmixr2est_powerD; returns a length-`len` vector of fn() per obs.
+static SEXP _nlmixr2estPowerApply(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS,
+                                  double (*fn)(double, double, int, double, double)) {
+  int t = TYPEOF(xS);
+  int len = Rf_length(xS);
+  if (t != REALSXP) Rf_errorcall(R_NilValue, _("'x' must be a real number"));
+  double *x = REAL(xS);
+  if (len != Rf_length(lambdaS) || len != Rf_length(yjS) ||
+      len != Rf_length(lowS) || len != Rf_length(hiS))
+    Rf_errorcall(R_NilValue, _("all arguments must be the same length"));
+  if (TYPEOF(lambdaS) != REALSXP) Rf_errorcall(R_NilValue, _("'lambda' must be a real number"));
+  double *lambda = REAL(lambdaS);
+  if (TYPEOF(yjS) != INTSXP) Rf_errorcall(R_NilValue, _("'yj' must be an integer number"));
+  int *yj = INTEGER(yjS);
+  if (TYPEOF(hiS) != REALSXP) Rf_errorcall(R_NilValue, _("'hi' must be a real number"));
+  double *hi = REAL(hiS);
+  if (TYPEOF(lowS) != REALSXP) Rf_errorcall(R_NilValue, _("'low' must be a real number"));
+  double *low = REAL(lowS);
+  rxProtectGuard;
+  SEXP retS = rxP(Rf_allocVector(REALSXP, len));
+  double *ret = REAL(retS);
+  for (int i = len; i--;) ret[i] = fn(x[i], lambda[i], yj[i], low[i], hi[i]);
+  rxUPAll();
+  return retS;
+}
+
+// dy'/dlambda (transform value lambda-derivative), per observation
+SEXP _nlmixr2est_powerDLambda(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
+  return _nlmixr2estPowerApply(xS, lambdaS, yjS, lowS, hiS, _powerDLambda);
+}
+// d2y'/dlambda2, per observation
+SEXP _nlmixr2est_powerDLambda2(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
+  return _nlmixr2estPowerApply(xS, lambdaS, yjS, lowS, hiS, _powerDLambda2);
+}
+// d log|dy'/dDV| / dlambda (Jacobian lambda-derivative), per observation
+SEXP _nlmixr2est_powerDL(SEXP xS, SEXP lambdaS, SEXP yjS, SEXP lowS, SEXP hiS) {
+  return _nlmixr2estPowerApply(xS, lambdaS, yjS, lowS, hiS, _powerDL);
+}
+
 SEXP getDfSubsetVars(SEXP ipred, SEXP lhs) {
   int type = TYPEOF(lhs);
   if (type != STRSXP) return R_NilValue;

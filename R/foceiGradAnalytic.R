@@ -218,13 +218,13 @@
 #' C++ from f/y/R).  Same signature/return as the R FR assembler.
 #' @noRd
 .foceiAnalyticSubjectGradFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
-                                           ndir, Oi = solve(Om)) {
+                                           ndir, Oi = solve(Om), dvSens = matrix(0, length(E$f), 0L)) {
   nom <- length(dOiEst); nobs <- length(E$f)
   dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
   Rsig <- if (is.null(E$Rsig)) matrix(0, nobs, 0L) else E$Rsig
   RsigDir <- if (is.null(E$RsigDir)) array(0, c(nobs, ndir, 0L)) else E$RsigDir
-  foceiSubjectGradFR_(E$a, E$A, E$aR, E$AR, Rsig, RsigDir, E$f, E$y, E$R,
+  foceiSubjectGradFR_(E$a, E$A, E$aR, E$AR, Rsig, RsigDir, dvSens, E$f, E$y, E$R,
                       as.numeric(ehat), Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                       neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol))
 }
@@ -235,7 +235,8 @@
 #' the kernel.  Matches `.foceiAnalyticSubjectGradFoceFR` exactly.
 #' @noRd
 .foceiAnalyticSubjectGradFoceFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
-                                               ndir, Oi = solve(Om), E0 = NULL, foceType = 0L) {
+                                               ndir, Oi = solve(Om), E0 = NULL, foceType = 0L,
+                                               dvSens = matrix(0, length(E$f), 0L)) {
   nobs <- length(E$f); nom <- length(dOiEst)
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
   if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; R0sig <- E$Rsig }
@@ -243,7 +244,7 @@
   if (is.null(R0sig)) R0sig <- matrix(0, nobs, nsg)
   dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-  foceiSubjectGradFoceFR_(E$a, E$A, aRe, aRc, R0sig, E$f, E$y, R0, as.numeric(ehat), Oi,
+  foceiSubjectGradFoceFR_(E$a, E$A, aRe, aRc, R0sig, dvSens, E$f, E$y, R0, as.numeric(ehat), Oi,
                           dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                           neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol), as.integer(.fp))
 }
@@ -373,6 +374,7 @@
                                    startedEnv = NULL, am = NULL) {
   neta <- ncol(ebes); Oi <- solve(Om)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
+  lamDir <- .dir$lamDir; lamNames <- .dir$lamNames; lamIdx <- .dir$lamIdx
   nom <- length(dOiEst)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
@@ -435,6 +437,8 @@
     totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))
     aB <- matrix(0, totObs, ndir); aReB <- matrix(0, totObs, ndir); aRcB <- matrix(0, totObs, ndir)
     AB <- array(0, c(totObs, ndir, ndir)); R0B <- numeric(totObs); R0sigB <- matrix(0, totObs, nsg)
+    dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
+    jacSum <- setNames(numeric(length(lamNames)), lamNames)
     fB <- numeric(totObs); yB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
     for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; E0 <- E0List[[i]]; rows <- (off[i] + 1L):off[i + 1L]
@@ -444,13 +448,17 @@
         if (nsg > 0L) R0sigB[rows, ] <- E$Rsig }
       else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR                       # aReB stays 0 (frozen)
         if (nsg > 0L) R0sigB[rows, ] <- E0$Rsig }
+      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
+        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+        jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
+      }
       ehatB[i, ] <- etaSolve[i, ]
     }
     dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
     if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, fB, yB, R0B, ehatB, as.integer(off),
+    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, dvSensB, fB, yB, R0B, ehatB, as.integer(off),
                                          Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                                          neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
                                          as.integer(.fpG), ncores), error = function(e) NULL)
@@ -471,6 +479,8 @@
     AB <- array(0, c(totObs, ndir, ndir)); ARB <- array(0, c(totObs, ndir, ndir))
     fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs)
     RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
+    dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
+    jacSum <- setNames(numeric(length(lamNames)), lamNames)
     ehatB <- matrix(0, nsub, neta)
     for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
@@ -478,13 +488,17 @@
       aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
       fB[rows] <- E$f; yB[rows] <- .foceiAnalyticTbsY(obs$DV, E$trans); RB[rows] <- E$R
       if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
+      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
+        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+        jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
+      }
       ehatB[i, ] <- etaSolve[i, ]
     }
     dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
     if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, fB, yB, RB, ehatB, as.integer(off),
+    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, dvSensB, fB, yB, RB, ehatB, as.integer(off),
                                      Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                                      neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)), ncores),
                      error = function(e) NULL)
@@ -493,6 +507,7 @@
     for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
   }
   names(g) <- c(thStruct, sgNames, omNames)
+  if (length(lamNames)) g[lamNames] <- g[lamNames] - 2 * jacSum   # transform Jacobian -2 log|dy'/dDV|
   list(g = g, etaP = etaPList, ids = ids)
 }
 
@@ -534,6 +549,9 @@
   keep <- !.iniIsFixed(ini, ef$sgName); ef$sgVar <- ef$sgVar[keep]; ef$sgName <- ef$sgName[keep]
   .dir <- .foceiAnalyticDirections(ini, thetaForEta, ef$sgName, neta)
   if (is.null(.dir)) return(NULL)
+  # multiple estimated lambdas (per-endpoint) need an endpoint->lambda DV mapping not yet
+  # wired; keep those on FD.  A single estimated lambda is the ported case.
+  if (length(.dir$lamNames) > 1L) return(NULL)
   .oe <- .foceiEstOmegaDeriv(ui, Om); if (is.null(.oe)) return(NULL)
   list(ef = ef, dir = .dir, dOiEst = .oe$dOi, tr28 = .oe$tr28, omNames = .oe$names,
        neta = neta, etaNames = etaNames, interaction = interaction, foceType = foceType)
