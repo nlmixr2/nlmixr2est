@@ -70,6 +70,19 @@
   NULL
 }
 
+#' Transform the observed DV onto the rx_pred_ (transformed) scale for a both-sides
+#' transform, using the solved per-observation transform parameters `trans`
+#' (lambda/yj/low/hi, each length nobs).  Runs the SAME C++ transform the inner problem
+#' uses (`_nlmixr2est_powerD` == `tbs()`), which requires all arguments the same length --
+#' the per-observation vectors already are, so a multi-endpoint mix of transforms is
+#' handled directly.  Returns `dv` unchanged when `trans` is NULL.
+#' @noRd
+.foceiAnalyticTbsY <- function(dv, trans) {
+  if (is.null(trans)) return(dv)
+  .Call(`_nlmixr2est_powerD`, as.double(dv), as.double(trans$lambda),
+        as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
+}
+
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
 #' eta (ETA_i_) plus one per non-mu-ref structural theta (THETA_j_); a mu-ref theta
 #' reuses its eta's direction (so a fully mu-ref model has ndir == neta).  Sigma and
@@ -156,7 +169,7 @@
       if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
         if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
           return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
-      E$y <- obs$DV
+      E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
       Elist[[i]] <- E; E0list[[i]] <- E0; eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
     }
     .fpG <- identical(as.integer(foceType), 1L) || is.null(E0list[[1L]])
@@ -198,7 +211,7 @@
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
-    E$y <- obs$DV
+    E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
     Elist[[i]] <- E; nobsAll[i] <- length(E$f)
   }
   totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll)); nd2 <- ndirCov * ndirCov
@@ -286,7 +299,7 @@
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction"))
     }
-    E$y <- obs$DV
+    E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
     ehat <- eta0
     if (rescale) {
       E$a <- sweep(E$a, 2, iovDirScale, `*`)           # a_B = a_A / w on occasion directions
@@ -562,18 +575,29 @@
   # against the dataset, so the (f,R) path handles them -- but the single-endpoint
   # symbolic add/prop machinery (one rx_pred_) does not, so force the general path.
   .multiEndpoint <- !is.null(ui$predDf) && nrow(ui$predDf) > 1L
-  # both-sides transforms (lnorm/boxCox/yeoJohnson) need the DV transformed to match
-  # rx_pred_; handled in a later stage, untransformed only for now
+  ini <- ui$iniDf
+  # Both-sides transforms: rx_pred_ is already the transformed prediction and rx_r_ the
+  # transformed-scale variance, so the analytic path only transforms the DV to that scale
+  # (y' = tbs(DV), via the C++ _powerD in the assemblers).  Exact for a STATIC transform
+  # (lnorm, or a FIXED boxCox/yeoJohnson lambda): the transform Jacobian -2 log|dy'/dy| is
+  # then constant (or linear in a fixed lambda) and drops out of the observed information.
+  # An ESTIMATED lambda additionally makes the DV move with the parameter (a dy'/dlambda
+  # chain in the residual) which is not yet ported, so fall back to FD.
   .trans <- as.character(ui$predDf$transform)
-  if (!all(.trans == "untransformed"))
-    return(.foceiAnalyticFallback(paste0("a both-sides transform (", paste(unique(.trans), collapse = ","), ")")))
-  ini <- ui$iniDf; er <- ini[!is.na(ini$err), , drop = FALSE]
+  if (!all(.trans == "untransformed")) {
+    .lamRows <- ini[!is.na(ini$err) & ini$err %in% c("boxCox", "yeoJohnson"), , drop = FALSE]
+    if (any(!.lamRows$fix))
+      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda (the DV-transform chain is not yet ported)"))
+  }
+  er <- ini[!is.na(ini$err), , drop = FALSE]
   if (nrow(er) == 0L)
     return(.foceiAnalyticFallback("a model with no residual error"))
   sgNameAll <- er$name                               # ALL error params (excluded from directions)
   # pure proportional / power error (no additive floor) vanishes as f -> 0, making the
   # 1/R observed-information terms blow up near zero predictions; the assembly guards it.
-  canVanish <- !("add" %in% er$err)
+  # lnorm is additive on the transformed (log) scale (R = sd^2 constant), so it never
+  # vanishes even though the transformed prediction crosses zero.
+  canVanish <- !any(er$err %in% c("add", "lnorm"))
   # model-declared addProp wins; the control applies only when the model says "default"
   addPr <- as.character(ui$predDf$addProp)
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
@@ -585,7 +609,10 @@
   # symbolic add/prop error machinery below and only supports the combined2 sum-of-
   # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
   # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
-  .isAddProp <- !.multiEndpoint && all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
+  # a both-sides transform is never the plain-scale symbolic add/prop machinery: force the
+  # general (f,R) path (rx_pred_/rx_r_ carry the transform; only the DV is retransformed).
+  .isAddProp <- !.multiEndpoint && all(.trans == "untransformed") &&
+    all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
   # R0 (FOCE nonmem frozen variance) needs the eta=0 population solve only when R depends
   # on the prediction (any non-additive error term); pure additive R is constant.
   .dependsF0 <- !all(er$err == "add")
@@ -812,7 +839,8 @@
   }
   .out <- c(list(f = E0$f, a = E0$a, A = E0$A, Ath = Ath),
             if (.hasR) list(R = E0$R, aR = E0$aR, AR = E0$AR, AthR = AthR,
-                            Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2) else NULL)
+                            Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2) else NULL,
+            if (!is.null(E0$trans)) list(trans = E0$trans) else NULL)
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) return(NULL)
   .out
 }
@@ -1440,8 +1468,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
     E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
     if (is.null(E)) return(NULL)
+    yt <- .foceiAnalyticTbsY(y, E$trans)               # DV -> rx_pred_ (transformed) scale; no-op if untransformed
     R0e <- if (.fp) E$R else R0
-    q0 <- -(y - E$f) / R0e; q1 <- 1 / R0e
+    q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
     S <- as.numeric(Oi %*% eta); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
     Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
     list(S = S, Hf = Hf)
