@@ -25,8 +25,17 @@
 
 - The analytic `fast` outer gradient now supports a both-sides transform with an
   estimated boxCox/yeoJohnson lambda: lambda enters as a prediction-sensitivity
-  direction plus the DV-transform residual chain and the transform Jacobian.  The
-  analytic covariance still falls back to finite differences for an estimated lambda.
+  direction plus the DV-transform residual chain and the transform Jacobian.
+
+- `covMethod="analytic"` now supports an estimated boxCox/yeoJohnson lambda for FOCEI,
+  FOCE, and foce+ (the observed-information carries the DV-transform 2nd-order chain).
+
+- Fixed the analytic FOCE/foce+ covariance silently falling back to the finite-difference
+  Hessian: the per-subject eta=0 solve list dropped its NULL foce+ slots (`list[[i]] <-
+  NULL` shrinks the list), so foce+ (and some FOCE) covariances went out of bounds.
+
+- Fixed the general `(f,R)` analytic covariance (multi-endpoint / non-add-prop variance /
+  both-sides transform) reporting `covMethod="r"` instead of `"analytic"`.
 
 - Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
   `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`, `irlsfocepf`, `irlsfoceif` --

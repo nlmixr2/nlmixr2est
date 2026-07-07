@@ -622,7 +622,8 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
 // Shared core (called from the single-subject export and the batched OpenMP driver).
 static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                                const arma::mat& aRe, const arma::mat& aRc,
-                               const arma::cube& ARe, const arma::cube& ARc,
+                               const arma::cube& ARe, const arma::cube& ARc, const arma::mat& dvSens,
+                               const arma::mat& dvSens2,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                const arma::vec& ehat, const arma::mat& Oi,
                                const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
@@ -635,6 +636,14 @@ static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, c
   vec q0 = rf, q1 = rff;                              // interaction-free inner
   vec iR = 1.0 / R0v, iR2 = square(iR), iR3 = pow(iR, 3);
   auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
+  // DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual pred sensitivity
+  // ra = a - dy'/dlambda enters the RHO/inner data terms (Nf, Tnf, d2Phi, Smat/SvecEBE); the
+  // lambda-lambda 2nd derivative carries d2y'/dlambda2.  The frozen-R0 determinant and the
+  // 3rd-order Ath stay pure.  All-zero (no-op) for non-transform models.  Same DV correction
+  // for nonmem-FOCE and foce+ (the DV moves the residual identically; only R0/aRe/aRc differ).
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
+  auto ra = [&](int o, int d) { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); };
+  auto dvY = [&](int o, int d) { return hasDv ? dvSens2(o, d) : 0.0; };  // d2y'/dlambda2 (lambda col)
   // ---- Phi (data) tensors: H = Phi_etaeta, gPhi = Phi_eta (aRe eta-block) ----
   mat H = Oi;
   for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
@@ -648,11 +657,12 @@ static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, c
   mat Hf = Oi; mat Nf(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
     for (int m = 0; m < neta; m++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o] * a(o, l) * a(o, m) + q0[o] * A(o, l, m); Hf(l, m) += v; }
-    for (int d = 0; d < ndir; d++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o] * a(o, l) * a(o, d) + q0[o] * A(o, l, d); Nf(l, d) = v; } }
+    for (int d = 0; d < ndir; d++) { double v = 0.0; for (int o = 0; o < nobs; o++) v += q1[o] * a(o, l) * ra(o, d) + q0[o] * A(o, l, d); Nf(l, d) = v; } }
   mat HfInv = inv(Hf);
   cube Tnf(neta, ndir, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) { double v = 0.0;
-    for (int o = 0; o < nobs; o++) v += q1[o] * (A(o, l, s) * a(o, t) + A(o, l, t) * a(o, s) + A(o, s, t) * a(o, l)) + q0[o] * Ai(Ath, o, l, s, t);
+    for (int o = 0; o < nobs; o++) { double Yst = (s == t) ? dvY(o, s) : 0.0;
+      v += q1[o] * (A(o, l, s) * ra(o, t) + A(o, l, t) * ra(o, s) + A(o, s, t) * a(o, l) - Yst * a(o, l)) + q0[o] * Ai(Ath, o, l, s, t); }
     Tnf(l, s, t) = v; }
   // ---- determinant Ht = Oi + sum(a a / R0) (interaction-free) + its derivatives ----
   mat Ht = Oi; for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
@@ -689,14 +699,16 @@ static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, c
     if (!isDir(aa) && !isDir(bb)) return 0.5 * as_scalar(ehat.t() * d2Oi.slice(omc(aa) * nom + omc(bb)) * ehat) + 0.5 * d2LD(omc(aa), omc(bb));
     if (!isDir(aa) || !isDir(bb)) return 0.0;
     int da = dOf(aa), db = dOf(bb); double v = 0.0;
-    for (int o = 0; o < nobs; o++) v += rff[o] * a(o, da) * a(o, db) + rf[o] * A(o, da, db) + rfR[o] * (a(o, da) * aRc(o, db) + aRc(o, da) * a(o, db)) +
-      rRR[o] * aRc(o, da) * aRc(o, db) + rR[o] * ARc(o, da, db);
+    for (int o = 0; o < nobs; o++) { double rada = ra(o, da), radb = ra(o, db);
+      v += rff[o] * rada * radb + rf[o] * A(o, da, db) + rfR[o] * (rada * aRc(o, db) + aRc(o, da) * radb) +
+        rRR[o] * aRc(o, da) * aRc(o, db) + rR[o] * ARc(o, da, db);
+      if (da == db) v += -rf[o] * dvY(o, da); }        // (r/R0) d2y'/dlambda2, lambda-lambda only
     return v; };
   auto SmatEBE = [&](int p) -> mat { mat M(neta, ndir, fill::zeros);
     if (!isDir(p)) { M.cols(0, neta - 1) = dOi.slice(omc(p)); return M; }
     int d = dOf(p);
     for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) { double v = Tnf(l, d, s);
-      for (int o = 0; o < nobs; o++) v += -aRc(o, d) * iR2[o] * a(o, s) * a(o, l) + (res[o] * iR2[o]) * aRc(o, d) * A(o, l, s);
+      for (int o = 0; o < nobs; o++) v += -aRc(o, d) * iR2[o] * ra(o, s) * a(o, l) + (res[o] * iR2[o]) * aRc(o, d) * A(o, l, s);
       M(l, s) = v; }
     return M; };
   auto SvecEBE = [&](int aa, int bb) -> vec { vec v(neta, fill::zeros);
@@ -705,7 +717,7 @@ static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, c
     if (!ta || !tb) return v;
     int da = dOf(aa), db = dOf(bb);
     for (int l = 0; l < neta; l++) { double s = Tnf(l, da, db);
-      for (int o = 0; o < nobs; o++) { double w = -(a(o, da) * aRc(o, db) + aRc(o, da) * a(o, db)) * iR2[o] +
+      for (int o = 0; o < nobs; o++) { double w = -(ra(o, da) * aRc(o, db) + aRc(o, da) * ra(o, db)) * iR2[o] +
           (res[o] * iR2[o]) * ARc(o, da, db) - 2.0 * res[o] * aRc(o, da) * aRc(o, db) * iR3[o];
         s += w * a(o, l) + (res[o] * iR2[o]) * (aRc(o, da) * A(o, l, db) + aRc(o, db) * A(o, l, da)); }
       v[l] = s; }
@@ -745,11 +757,12 @@ static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, c
 arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                                const arma::mat& aRe, const arma::mat& aRc,
                                const arma::cube& ARe, const arma::cube& ARc,
+                               const arma::mat& dvSens, const arma::mat& dvSens2,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                const arma::vec& ehat, const arma::mat& Oi,
                                const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
                                int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
-  return foceiRSubjectFoceFR_(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD,
+  return foceiRSubjectFoceFR_(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD,
                               neta, ndir, ndirP, nom, dirP);
 }
 
@@ -759,19 +772,23 @@ arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const ar
 // [[Rcpp::export]]
 arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aRe, const arma::mat& aRc,
-                           const arma::cube& ARe, const arma::cube& ARc,
+                           const arma::cube& ARe, const arma::cube& ARc, const arma::mat& dvSens,
+                           const arma::mat& dvSens2,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                            const arma::mat& ehat, const arma::ivec& obsOffset,
                            const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
                            int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP, int ncores) {
   const int nsub = (int)ehat.n_rows;
   const int np = ndirP + nom;
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   cube Rall(np, np, nsub, fill::zeros);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     Rall.slice(i) = foceiRSubjectFoceFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
-                                         aRe.rows(o0, o1), aRc.rows(o0, o1), ARe.rows(o0, o1), ARc.rows(o0, o1),
+                                         aRe.rows(o0, o1), aRc.rows(o0, o1), ARe.rows(o0, o1), ARc.rows(o0, o1), dvi, dv2i,
                                          fv.subvec(o0, o1), yv.subvec(o0, o1), R0v.subvec(o0, o1),
                                          ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
                                          neta, ndir, ndirP, nom, dirP);

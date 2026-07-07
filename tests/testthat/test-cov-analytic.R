@@ -235,6 +235,34 @@ test_that("covMethod='analytic' handles pure proportional error away from zero (
   }
 })
 
+test_that("estimated boxCox lambda: analytic cov (FOCEI/FOCE/foce+) matches the s estimator", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  mBox <- function() {
+    ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.5; eta.cl ~ 0.08; eta.v ~ 0.05
+          add.sd <- 0.7; lambda <- c(-2, 0.9, 3) })
+    model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ add(add.sd) + boxCox(lambda) })
+  }
+  d <- nlmixr2data::theo_sd
+  chk <- function(est, ctlExtra = list()) {
+    ctlA <- do.call(foceiControl, c(list(print = 0L, covMethod = "analytic", covFull = TRUE, fast = TRUE), ctlExtra))
+    ctlS <- do.call(foceiControl, c(list(print = 0L, covMethod = "s", covFull = TRUE, fast = TRUE), ctlExtra))
+    fitA <- suppressMessages(nlmixr2(mBox, d, est, ctlA))
+    fitS <- suppressMessages(nlmixr2(mBox, d, est, ctlS))
+    expect_identical(fitA$covMethod, "analytic")       # analytic ran (not an FD fallback)
+    seA <- sqrt(diag(fitA$cov)); seS <- sqrt(diag(fitS$cov))
+    nm <- c("tka", "tcl", "tv", "add.sd", "lambda")     # theta/sigma/lambda block (DV-affected)
+    expect_true(all(is.finite(seA[nm])) && all(seA[nm] > 0))
+    expect_equal(unname(seA[nm]), unname(seS[nm]), tolerance = 0.05)
+  }
+  chk("focei")
+  chk("foce")
+  chk("foce", list(foce = "foce+"))                    # focep: residual at the posthoc eta
+})
+
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
