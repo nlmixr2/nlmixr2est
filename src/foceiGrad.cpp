@@ -582,8 +582,8 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
 // live E$aR/E$AR for foce+) and aRc/ARc the parameter columns (E0's dR0/ddir, d2R0/ddir2 for
 // nonmem, the same live E for foce+).  Ath is reshaped as in foceiSubjectRFR_; a sigma
 // direction has a=A=Ath=0 (only aRc/ARc).
-// [[Rcpp::export]]
-arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+// Shared core (called from the single-subject export and the batched OpenMP driver).
+static arma::mat foceiRSubjectFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                                const arma::mat& aRe, const arma::mat& aRc,
                                const arma::cube& ARe, const arma::cube& ARc,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
@@ -700,5 +700,45 @@ arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const ar
       as_scalar(etaP.col(aa).t() * Cee * etaP.col(bb)) + dot(Cen, e2);
     R(aa, bb) = R(bb, aa) = dat + ld;
   }
+  return R;
+}
+
+// Single-subject export (oracle / R fallback): thin wrapper over foceiRSubjectFoceFR_.
+// [[Rcpp::export]]
+arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                               const arma::mat& aRe, const arma::mat& aRc,
+                               const arma::cube& ARe, const arma::cube& ARc,
+                               const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                               const arma::vec& ehat, const arma::mat& Oi,
+                               const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
+                               int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
+  return foceiRSubjectFoceFR_(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD,
+                              neta, ndir, ndirP, nom, dirP);
+}
+
+// Batched (f,R) FOCE observed-information R summed over ALL subjects in one OpenMP call.
+// aRe/aRc/ARe/ARc are the per-subject frozen-R0 sensitivities resolved in R (from E/E0),
+// concatenated over observations (obsOffset[i]..obsOffset[i+1]-1 are subject i's rows).
+// [[Rcpp::export]]
+arma::mat foceiRAllFoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                           const arma::mat& aRe, const arma::mat& aRc,
+                           const arma::cube& ARe, const arma::cube& ARc,
+                           const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                           const arma::mat& ehat, const arma::ivec& obsOffset,
+                           const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
+                           int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP, int ncores) {
+  const int nsub = (int)ehat.n_rows;
+  const int np = ndirP + nom;
+  cube Rall(np, np, nsub, fill::zeros);
+#pragma omp parallel for num_threads(ncores)
+  for (int i = 0; i < nsub; i++) {
+    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    Rall.slice(i) = foceiRSubjectFoceFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
+                                         aRe.rows(o0, o1), aRc.rows(o0, o1), ARe.rows(o0, o1), ARc.rows(o0, o1),
+                                         fv.subvec(o0, o1), yv.subvec(o0, o1), R0v.subvec(o0, o1),
+                                         ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
+                                         neta, ndir, ndirP, nom, dirP);
+  }
+  mat R = sum(Rall, 2);
   return R;
 }

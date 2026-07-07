@@ -136,9 +136,13 @@
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   R <- matrix(0, np, np)
   if (.foce) {
-    # FOCE cov assembles per-subject (the C++ FOCE cov loop is not batched yet); the nonmem
-    # eta=0 population solve + EBE re-solve are inherently per-subject anyway.
-    for (i in seq_along(ids)) {
+    # FOCE cov: the per-subject eta=0 population solve + EBE re-solve + 3rd-order Shi FD3 stay
+    # in R (inherently per-subject), then ONE OpenMP C++ call (foceiRAllFoceFR_) sums the
+    # observed information over subjects.  The frozen-R0 sensitivities are resolved per subject
+    # (nonmem: aRe/ARe=0, aRc/ARc/R0 from E0; foce+: all from the eta-hat solve E).
+    nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
+    eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
+    for (i in seq_len(nsub)) {
       s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
       obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
       E0 <- NULL
@@ -153,12 +157,34 @@
         if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
           return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
       E$y <- obs$DV
-      Ri <- tryCatch(.foceiAnalyticSubjectRfoceFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
-                                                     ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
-                     error = function(e) NULL)
-      if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
-      R <- R + Ri
+      Elist[[i]] <- E; E0list[[i]] <- E0; eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
     }
+    .fpG <- identical(as.integer(foceType), 1L) || is.null(E0list[[1L]])
+    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll)); nd2 <- ndirCov * ndirCov
+    aB <- matrix(0, totObs, ndirCov); aReB <- matrix(0, totObs, ndirCov); aRcB <- matrix(0, totObs, ndirCov)
+    AB <- array(0, c(totObs, ndirCov, ndirCov)); AReB <- array(0, c(totObs, ndirCov, ndirCov)); ARcB <- array(0, c(totObs, ndirCov, ndirCov))
+    AthB <- array(0, c(totObs, neta, nd2))
+    fB <- numeric(totObs); yB <- numeric(totObs); R0B <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
+    for (i in seq_len(nsub)) {
+      E <- Elist[[i]]; E0 <- E0list[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
+      aB[rows, ] <- E$a; AB[rows, , ] <- E$A; AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2))
+      fB[rows] <- E$f; yB[rows] <- E$y
+      if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR; AReB[rows, , ] <- E$AR; ARcB[rows, , ] <- E$AR }
+      else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR; ARcB[rows, , ] <- E0$AR }   # aReB/AReB stay 0 (frozen)
+      ehatB[i, ] <- eta0list[[i]]
+    }
+    nom <- omd$nom
+    dOiC <- array(0, c(neta, neta, max(nom, 1L)))
+    if (nom > 0L) for (k in seq_len(nom)) dOiC[, , k] <- omd$dOi[[k]]
+    d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
+    if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
+    d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
+    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
+    R <- tryCatch(foceiRAllFoceFR_(aB, AB, AthB, aReB, aRcB, AReB, ARcB, fB, yB, R0B, ehatB, as.integer(off),
+                                   Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
+                  error = function(e) NULL)
+    if (is.null(R) || !all(is.finite(R))) return(NULL)
     return(R)
   }
   # FOCEI: per-subject FD3 (3rd-order Shi) solves collected in R, then ONE OpenMP C++ call
