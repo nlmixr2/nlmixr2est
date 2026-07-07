@@ -180,13 +180,16 @@
 #' @noRd
 .foceiAnalyticGradCore <- function(ui, th, ebes, ids, data, Om, ef, .dir, dOiEst, tr28,
                                    omNames, solveTol, interaction = 1L, foceType = 0L,
-                                   startedEnv = NULL) {
+                                   startedEnv = NULL, am = NULL) {
   neta <- ncol(ebes); Oi <- solve(Om)
   thStruct <- .dir$thStruct; dirs <- .dir$dirs; dirTh <- .dir$dirTh; ndir <- .dir$ndir; nth <- .dir$nth
   nsg <- length(ef$sgVar); nom <- length(dOiEst); np <- nth + nsg + nom
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
-  am <- .foceiAnalyticAugModelDirs(ui, dirs)
+  # The augmented model depends only on the model + direction set (fixed for a
+  # fit), NOT on theta/eta/omega; the symbolic .rxSens build dominates each
+  # gradient (~63%), so the live path passes a cached `am` (built once per fit).
+  if (is.null(am)) am <- .foceiAnalyticAugModelDirs(ui, dirs)
   if (is.null(am) || am$ndir != ndir) return(NULL)
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
@@ -316,12 +319,55 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(st$neta), "]"), drop = FALSE])
     data <- get("dataSav", e)
     if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) return(NULL)
+    # The augmented model is the persistent `..outer` sibling of the inner model:
+    # built once via rxUiGet.foceiOuter (independent of theta/eta/omega) and cached
+    # on the fit env, so every outer-gradient call reuses it.
+    am <- if (exists(".foceiGradAug", e, inherits = FALSE)) get(".foceiGradAug", e) else NULL
+    if (is.null(am)) {
+      am <- ui$foceiOuter
+      if (!is.null(am)) assign(".foceiGradAug", am, envir = e)
+    }
     .foceiAnalyticGradCore(ui, th, ebes, etaObf$ID, data, Om, st$ef, st$dir,
                            st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
                            interaction = st$interaction, foceType = st$foceType,
-                           startedEnv = e)
+                           startedEnv = e, am = am)
   }, error = function(e) NULL)
 }
+
+#' Direction set for the augmented outer-gradient model, computed from the UI
+#' alone (does not depend on theta/eta values): one direction per eta plus one per
+#' non-mu-referenced structural theta.  `NULL` if out of analytic scope.
+#' @noRd
+.foceiOuterDirs <- function(ui) {
+  if (!.hasRxSens()) return(NULL)
+  if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
+  if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
+  ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
+  .map <- .foceiEtaThetaMap(ui); neta <- length(.map$etaNames)
+  if (neta == 0L) return(NULL)
+  if (length(.uiIovEnv$iovVars) > 0L) return(NULL)
+  .foceiAnalyticDirections(ui$iniDf, .map$thetaForEta, ef$sgName, neta)
+}
+
+#' Build the augmented outer-gradient sensitivity model (compiled model + `dirs` +
+#' `P2`) for a UI.  This is the persistent `..outer` sibling of the inner model:
+#' it depends only on the model + direction set (NOT theta/eta/omega), so it is
+#' built once during model setup (via `rxUiGet.foceiModel`/`foceModel`, which
+#' qs2-cache the whole model list) and reused across every outer-gradient call.
+#' Callable independently as `ui$foceiOuter`.  `NULL` when out of analytic scope
+#' (the gradient then falls back to finite differences).
+#' @export
+rxUiGet.foceiOuter <- function(x, ...) {
+  .ui <- x[[1]]
+  if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
+  interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
+  foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
+  if (interaction == 0L && foceType == 1L) return(NULL)              # foce+ stays on FD
+  if (as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) > 1L) return(NULL)
+  .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
+  .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
+}
+attr(rxUiGet.foceiOuter, "rstudio") <- emptyenv()
 
 #' Estimation-scale (Cholesky) Omega-inverse derivatives for the outer gradient's
 #' Omega block, from rxode2's `rxSymInvCholEnvCalculate` (rxSymInv.R d.omegaInv /
