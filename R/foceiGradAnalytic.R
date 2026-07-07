@@ -143,6 +143,76 @@
   list(g = g, etaP = etaP)
 }
 
+#' (f,R) FOCE per-subject outer gradient: the general form for any variance structure.
+#' FOCE evaluates the focep error structure with the variance frozen -- for `foceType=0`
+#' ("nonmem") R0 and its sensitivities come from the eta=0 population solve `E0` with the
+#' eta-direction sensitivities zeroed (frozen w.r.t. eta); for `foceType=1` ("foce+") R0
+#' is the live conditional variance from the eta-hat solve `E`.  The inner problem is
+#' interaction-free (S_FOCE = sum(q0 a) + Omega^-1 eta, q0 = -(y-f)/R0), so the envelope
+#' shortcut fails and the gradient carries the moving mode via etaP = -Hf^-1 dS/dp.
+#' @noRd
+.foceiAnalyticSubjectGradFoceFR <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
+                                            ndir, Oi = solve(Om), E0 = NULL, foceType = 0L) {
+  tr <- function(M) sum(diag(M))
+  f <- E$f; y <- E$y; a <- E$a; A <- E$A
+  ei <- seq_len(neta); di <- seq_len(ndir)
+  .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
+  # variance source R0.  aRe drives the ETA-BLOCK (gPhi/dHtD/Ht): for foce+ it is the
+  # live dR/ddir; for nonmem it is 0 (R0 frozen w.r.t. eta -- and w.r.t. the eta-hat f,
+  # since R0 uses the separate eta=0 population prediction).  aRc drives the PARAMETER
+  # COLUMNS (dR0/dtheta the theta-chain): live dR/ddir for foce+, else the eta=0 solve's
+  # dR0/ddir -- NOT zeroed, so a mu-referenced theta (whose direction is an eta direction)
+  # still gets its frozen-R0 theta sensitivity.
+  if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; R0sig <- E$Rsig }
+  else { R0 <- E0$R; aRe <- matrix(0, nrow(a), ndir); aRc <- E0$aR; R0sig <- E0$Rsig }
+  res <- y - f
+  rho_f <- -res / R0; rho_R <- 0.5 * (1 / R0 - res^2 / R0^2)
+  q0 <- -res / R0; q1 <- 1 / R0                                  # interaction-free inner gradient/curv
+  nom <- length(dOiEst); np <- nth + nsg + nom
+  ae <- a[, ei, drop = FALSE]
+  # Phi_eta (nonzero at the FOCE eta*): rho_f df/deta + rho_R dR0/deta (aRe=0 for nonmem)
+  gPhi <- as.numeric(Oi %*% ehat)
+  for (l in ei) gPhi[l] <- gPhi[l] + sum(rho_f * a[, l] + rho_R * aRe[, l])
+  # FOCE inner Hessian Hf (interaction-free), its Nf, and the determinant Ht = Oi + sum(a a/R0)
+  Hf <- Oi; Nf <- matrix(0, neta, ndir); Ht <- Oi
+  for (l in ei) {
+    for (m in ei) { Hf[l, m] <- Hf[l, m] + sum(q1 * a[, l] * a[, m] + q0 * A[, l, m])
+      Ht[l, m] <- Ht[l, m] + sum(a[, l] * a[, m] / R0) }
+    for (d in di) Nf[l, d] <- sum(q1 * a[, l] * a[, d] + q0 * A[, l, d])
+  }
+  HfInv <- solve(Hf); Hti <- solve(Ht)
+  # dHt/d(direction s) eta-block moving mode: d(1/R0)/ds a a + 1/R0 (A a + a A); aRe=0 (nonmem)
+  dHtD <- lapply(di, function(s) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum(-aRe[, s] / R0^2 * a[, l] * a[, m] + (A[, l, s] * a[, m] + a[, l] * A[, m, s]) / R0); D })
+  Cen <- vapply(ei, function(l) 0.5 * tr(Hti %*% dHtD[[l]]), numeric(1))
+  typ <- function(p) if (p <= nth) "th" else if (p <= nth + nsg) "sg" else "om"
+  omc <- function(p) p - nth - nsg
+  # explicit dHt/dtheta a0-chain for nonmem (aRe=0 -> not already in dHtD): -aRc/R0^2 a a
+  ouRc <- function(v) { M <- matrix(0, neta, neta); for (l in ei) for (m in ei) M[l, m] <- sum(v * a[, l] * a[, m]); M }
+  # dS_FOCE/dp for etaP = -Hf^-1 S_p: th adds the R0-theta chain (res/R0^2) dR0/dtheta a
+  McolEBE <- function(p) { t <- typ(p)
+    if (t == "th") { d <- dirTh[p]; return(Nf[, d] + as.numeric(crossprod(ae, (res / R0^2) * aRc[, d]))) }
+    if (t == "sg") return(as.numeric(crossprod(ae, (res / R0^2) * R0sig[, sigCol[p - nth]])))
+    as.numeric(dOiEst[[omc(p)]] %*% ehat) }
+  # explicit dHt/dp: th -> dHtD[dir] (+ a0-chain for nonmem); sg -> -R0sig/R0^2 a a; om -> dOmega^-1
+  dHt_p <- function(p) { t <- typ(p)
+    if (t == "th") { d <- dirTh[p]; D <- dHtD[[d]]
+      if (!.fp) D <- D + ouRc(-aRc[, d] / R0^2); return(D) }
+    if (t == "sg") return(ouRc(-R0sig[, sigCol[p - nth]] / R0^2))
+    dOiEst[[omc(p)]] }
+  # explicit dPhi/dp (fixed eta): rho_f df/dp + rho_R dR0/dp (columns use aRc)
+  dPhiExplicit <- function(p) { t <- typ(p)
+    if (t == "th") { d <- dirTh[p]; return(sum(rho_f * a[, d] + rho_R * aRc[, d])) }
+    if (t == "sg") return(sum(rho_R * R0sig[, sigCol[p - nth]]))
+    0.5 * as.numeric(t(ehat) %*% dOiEst[[omc(p)]] %*% ehat) - tr28[omc(p)] }
+  etaP <- vapply(seq_len(np), function(p) as.numeric(-HfInv %*% McolEBE(p)), numeric(neta))
+  if (neta == 1L) etaP <- matrix(etaP, nrow = 1L)
+  g <- numeric(np)
+  for (p in seq_len(np))
+    g[p] <- 2 * (dPhiExplicit(p) + 0.5 * tr(Hti %*% dHt_p(p)) + sum((gPhi + Cen) * etaP[, p]))
+  list(g = g, etaP = etaP)
+}
+
 #' C++/Armadillo port of `.foceiAnalyticSubjectGrad`: evaluates the per-observation
 #' error coefficients in R (cheap, vectorized) and does the O(neta^2*nobs) tensor
 #' contractions in `foceiSubjectGradFocei_`.  Same signature/return as the R oracle.
@@ -303,13 +373,11 @@
   if (is.null(am) || am$ndir != ndir) return(NULL)
   # FOCEI (interaction=1) uses the general (f,R) assembly: the sigma set is EVERY
   # error parameter the variance depends on (am$sigTh), which covers any variance
-  # structure.  FOCE keeps the current symbolic (add/prop) sigma set for now.
+  # Both FOCEI and FOCE assemble over am$sigTh (every error param the variance depends on)
+  # via the (f,R) path, so any variance structure works for both.
   .sigTh <- am$sigTh
   .sgNameFR <- if (length(.sigTh)) ui$iniDf$name[match(.sigTh, ui$iniDf$ntheta)] else character(0)
-  # FOCE still uses the symbolic add/prop machinery; a non-add/prop variance (foceiOnly)
-  # is only supported by the FOCEI (f,R) path -> FOCE bails to the finite-difference gradient.
-  if (.foce && isTRUE(ef$foceiOnly)) return(NULL)
-  if (.foce) { nsg <- length(ef$sgVar); sgNames <- ef$sgName } else { nsg <- length(.sigTh); sgNames <- .sgNameFR }
+  nsg <- length(.sigTh); sgNames <- .sgNameFR
   np <- nth + nsg + nom
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
@@ -328,13 +396,13 @@
       s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
       obs <- s[s$EVID == 0, , drop = FALSE]
       E0 <- NULL
-      if (identical(as.integer(foceType), 0L) && isTRUE(ef$foce$dependsF0)) {
+      if (identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)) {
         E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
         if (is.null(E0)) return(NULL)
       }
       E0List[[i]] <- E0
-      eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
-                                    f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
+      eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav,
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
       if (is.null(eta0)) return(NULL)
       etaSolve[i, ] <- eta0
     }
@@ -352,9 +420,9 @@
     }
     E$y <- obs$DV
     gi <- tryCatch(
-      if (.foce) .foceiAnalyticSubjectGradFoce(E, etaSolve[i, ], Om, ef, neta, nth, nsg, ef$sgVar,
-                                               dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi,
-                                               E0 = E0List[[i]], foceType = foceType)
+      if (.foce) .foceiAnalyticSubjectGradFoceFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
+                                                 dOiEst, tr28, ndir = ndir, Oi = Oi,
+                                                 E0 = E0List[[i]], foceType = foceType)
       else .foceiAnalyticSubjectGradFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
                                        dOiEst, tr28, ndir = ndir, Oi = Oi),
       error = function(e) NULL)
