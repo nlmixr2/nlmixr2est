@@ -213,31 +213,20 @@
   list(g = g, etaP = etaP)
 }
 
-#' C++/Armadillo port of `.foceiAnalyticSubjectGrad`: evaluates the per-observation
-#' error coefficients in R (cheap, vectorized) and does the O(neta^2*nobs) tensor
-#' contractions in `foceiSubjectGradFocei_`.  Same signature/return as the R oracle.
+#' C++/Armadillo port of `.foceiAnalyticSubjectGradFR`: does the O(neta^2*nobs) (f,R)
+#' tensor contractions in `foceiSubjectGradFR_` (the rho(f,R,y) partials are computed in
+#' C++ from f/y/R).  Same signature/return as the R FR assembler.
 #' @noRd
-.foceiAnalyticSubjectGradCpp <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, dOiEst, tr28,
-                                         ndir = neta, dirTh = seq_len(nth), Oi = solve(Om)) {
-  a <- E$a; A <- E$A; f <- E$f; y <- E$y
-  nobs <- length(f)
-  # A constant (f-independent) derivative -- e.g. d2rho/df2 = 1/sa^2 for a pure
-  # additive error -- evaluates to a length-1 scalar; the C++ kernel indexes every
-  # coefficient per observation, so recycle each to length nobs.
-  .n <- function(e) rep_len(as.numeric(ef$ev(e, f, y)), nobs)
-  r1 <- .n(ef$sc$r1); r2 <- .n(ef$sc$r2); pp <- .n(ef$sc$p); p1 <- .n(ef$sc$p1)
-  perRf <- matrix(0, nobs, nsg); perPs <- matrix(0, nobs, nsg); perRs <- matrix(0, nobs, nsg)
-  if (nsg > 0L) for (j in seq_len(nsg)) {
-    perRf[, j] <- .n(ef$per[[sgVar[j]]]$rf)
-    perPs[, j] <- .n(ef$per[[sgVar[j]]]$ps)
-    perRs[, j] <- .n(ef$per[[sgVar[j]]]$rs)
-  }
-  nom <- length(dOiEst)
+.foceiAnalyticSubjectGradFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
+                                           ndir, Oi = solve(Om)) {
+  nom <- length(dOiEst); nobs <- length(E$f)
   dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-  foceiSubjectGradFocei_(a, A, r1, r2, pp, p1, perRf, perPs, perRs, as.numeric(ehat), Oi,
-                         dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
-                         neta, nth, nsg, nom, as.integer(dirTh))
+  Rsig <- if (is.null(E$Rsig)) matrix(0, nobs, 0L) else E$Rsig
+  RsigDir <- if (is.null(E$RsigDir)) array(0, c(nobs, ndir, 0L)) else E$RsigDir
+  foceiSubjectGradFR_(E$a, E$A, E$aR, E$AR, Rsig, RsigDir, E$f, E$y, E$R,
+                      as.numeric(ehat), Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                      neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol))
 }
 
 #' Per-subject first-derivative (outer-gradient) contribution for FOCE
@@ -423,8 +412,8 @@
       if (.foce) .foceiAnalyticSubjectGradFoceFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
                                                  dOiEst, tr28, ndir = ndir, Oi = Oi,
                                                  E0 = E0List[[i]], foceType = foceType)
-      else .foceiAnalyticSubjectGradFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
-                                       dOiEst, tr28, ndir = ndir, Oi = Oi),
+      else .foceiAnalyticSubjectGradFRCpp(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
+                                          dOiEst, tr28, ndir = ndir, Oi = Oi),
       error = function(e) NULL)
     if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
     g <- g + gi$g
