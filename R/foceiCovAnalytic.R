@@ -83,6 +83,34 @@
         as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
 }
 
+#' Per-observation transform value lambda-derivative dy'/dlambda of the DV
+#' (`d tbs(DV,lambda)/dlambda`), used to build the residual DV-transform chain
+#' when lambda is estimated.  Same per-obs `trans` contract as `.foceiAnalyticTbsY`.
+#' @noRd
+.foceiAnalyticDvSensLambda <- function(dv, trans) {
+  if (is.null(trans)) return(rep(0, length(dv)))
+  .Call(`_nlmixr2est_powerDLambda`, as.double(dv), as.double(trans$lambda),
+        as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
+}
+
+#' Per-observation d2 tbs(DV,lambda)/dlambda2 (DV second lambda-derivative).
+#' @noRd
+.foceiAnalyticDvSensLambda2 <- function(dv, trans) {
+  if (is.null(trans)) return(rep(0, length(dv)))
+  .Call(`_nlmixr2est_powerDLambda2`, as.double(dv), as.double(trans$lambda),
+        as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
+}
+
+#' Per-observation d log|dy'/dDV| / dlambda -- the transform Jacobian's
+#' lambda-derivative, the extra term the OFV gradient's lambda column carries
+#' (-2 * sum over obs); it cancels in the observed-information covariance.
+#' @noRd
+.foceiAnalyticJacLambda <- function(dv, trans) {
+  if (is.null(trans)) return(rep(0, length(dv)))
+  .Call(`_nlmixr2est_powerDL`, as.double(dv), as.double(trans$lambda),
+        as.integer(trans$yj), as.double(trans$low), as.double(trans$hi))
+}
+
 #' Scope-relevant structural thetas + sensitivity direction map: one direction per
 #' eta (ETA_i_) plus one per non-mu-ref structural theta (THETA_j_); a mu-ref theta
 #' reuses its eta's direction (so a fully mu-ref model has ndir == neta).  Sigma and
@@ -111,6 +139,24 @@
     }
   }
   dirs <- c(etaDirs, nonMuTheta)
+  # Estimated boxCox/yeoJohnson lambda is an error parameter that (unlike an ordinary
+  # sigma with df/dsigma=0) has a NONZERO prediction sensitivity df'/dlambda=rxTBSdL(f,
+  # lambda), so it enters as its OWN theta-like direction (appended to the theta block):
+  # the kernels then handle its pred + variance sensitivities exactly like a theta, and
+  # the DV-transform residual chain (dy'/dlambda) + the -2 log|J| Jacobian are applied on
+  # top (in the driver / kernel).  Fixed lambda is filtered out here (static transform).
+  .lamRows <- ini[ini$name %in% sgName & !is.na(ini$err) &
+                    ini$err %in% c("boxCox", "yeoJohnson") & !.iniIsFixed(ini, ini$name), , drop = FALSE]
+  lamNames <- character(0); lamDir <- integer(0)
+  if (nrow(.lamRows) > 0L) {
+    .lamRows <- .lamRows[order(.lamRows$ntheta), , drop = FALSE]
+    for (r in seq_len(nrow(.lamRows))) {
+      dirs <- c(dirs, paste0("THETA_", .lamRows$ntheta[r], "_"))
+      lamNames <- c(lamNames, .lamRows$name[r]); lamDir <- c(lamDir, length(dirs))
+    }
+    thStruct <- c(thStruct, lamNames); dirTh <- c(dirTh, lamDir); nth <- nth + length(lamNames)
+  }
+  lamIdx <- if (length(lamNames)) seq(nth - length(lamNames) + 1L, nth) else integer(0)  # 1-based theta-block positions
   # (f,R) covariance: fold the residual-error parameters (sigmas) into the DIRECTION set.
   # The NONMEM sigma (the unit N(0,1) residual variate) is FIXED to 1, so the estimated
   # error parameters enter ONLY through the weight/variance rx_r_ and NOT through the
@@ -121,12 +167,13 @@
   # block needs) with no special-casing.  NOTE: if the FOCEI methods are ever generalized so
   # the residual sigma itself is estimated (not fixed to 1), that estimated sigma would enter
   # the variance multiplicatively (R -> R*sigma^2) and would need its own chain here.
-  .sgRows <- thRows[thRows$name %in% sgName, , drop = FALSE]
+  .sgRows <- thRows[thRows$name %in% sgName & !(thRows$name %in% lamNames), , drop = FALSE]
   dirSg <- if (nrow(.sgRows) > 0L) seq_len(nrow(.sgRows)) + length(dirs) else integer(0)
   dirsCov <- c(dirs, if (nrow(.sgRows) > 0L) paste0("THETA_", .sgRows$ntheta, "_") else character(0))
   list(thStruct = thStruct, thStructRows = thStructRows, dirs = dirs,
        dirTh = dirTh, ndir = length(dirs), nth = nth,
        dirsCov = dirsCov, ndirCov = length(dirsCov), sgName = .sgRows$name,
+       lamNames = lamNames, lamDir = lamDir, lamIdx = lamIdx,
        dirP = c(dirTh, dirSg))                          # every non-Omega param -> a direction
 }
 
@@ -356,6 +403,11 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
+    # Estimated boxCox/yeoJohnson lambda: the analytic GRADIENT carries the DV-transform
+    # chain, but the observed-information cov's lambda 2nd-order terms are not yet ported,
+    # so keep the covariance on FD for now.
+    if (isTRUE(ef$estLam))
+      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda in the covariance (DV-transform 2nd-order terms not yet ported)"))
     # Both FOCEI and FOCE use the general (f,R) cov path for a general (foceiOnly)
     # variance structure; add/prop keeps the fast symbolic assembly.
 
@@ -582,12 +634,14 @@
   # (lnorm, or a FIXED boxCox/yeoJohnson lambda): the transform Jacobian -2 log|dy'/dy| is
   # then constant (or linear in a fixed lambda) and drops out of the observed information.
   # An ESTIMATED lambda additionally makes the DV move with the parameter (a dy'/dlambda
-  # chain in the residual) which is not yet ported, so fall back to FD.
+  # chain in the residual): the GRADIENT carries it (lambda is a theta-like direction with
+  # df'/dlambda plus the residual DV chain and the -2 log|J| Jacobian term); the cov path
+  # gates estimated lambda separately (its 2nd-order lambda terms are not yet ported).
   .trans <- as.character(ui$predDf$transform)
+  .estLam <- FALSE
   if (!all(.trans == "untransformed")) {
     .lamRows <- ini[!is.na(ini$err) & ini$err %in% c("boxCox", "yeoJohnson"), , drop = FALSE]
-    if (any(!.lamRows$fix))
-      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda (the DV-transform chain is not yet ported)"))
+    .estLam <- any(!.lamRows$fix)
   }
   er <- ini[!is.na(ini$err), , drop = FALSE]
   if (nrow(er) == 0L)
@@ -619,7 +673,7 @@
   if (!.isAddProp)
     return(list(sgVar = character(0), sgName = sgNameAll, sc = NULL, per = NULL, pair = NULL,
                 foce = NULL, focePlus = NULL, foceiOnly = TRUE, canVanish = canVanish,
-                dependsF0 = .dependsF0, ev = function(e, f, y, f0 = f) NULL))
+                dependsF0 = .dependsF0, estLam = .estLam, ev = function(e, f, y, f0 = f) NULL))
   addN <- er$name[er$err == "add"]; propN <- er$name[er$err == "prop"]
   hasA <- length(addN) == 1L; hasP <- length(propN) == 1L
   if (!hasA && !hasP)
@@ -681,6 +735,7 @@
   focePlus <- list(sc = sc, per = per, pair = pair, dependsF0 = FALSE)
   list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
        focePlus = focePlus, foceiOnly = FALSE, canVanish = canVanish, dependsF0 = .dependsF0,
+       estLam = .estLam,
        ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
