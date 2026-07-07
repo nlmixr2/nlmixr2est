@@ -425,15 +425,16 @@
 #' propT/propF, a DV transform, combined1, or pure proportional) -> FD fallback.
 #' @noRd
 .foceiAnalyticErrFull <- function(ui) {
-  # single Gaussian endpoint only: multiple endpoints pool error rows against one
-  # rx_pred_ (the wrong likelihood)  [multi-endpoint is a later stage]
-  if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L)
-    return(.foceiAnalyticFallback("a model with multiple modeled endpoints"))
+  # Multiple modeled endpoints: rx_pred_ and rx_r_ are single dvid-conditional
+  # expressions that already select the right endpoint per observation when solved
+  # against the dataset, so the (f,R) path handles them -- but the single-endpoint
+  # symbolic add/prop machinery (one rx_pred_) does not, so force the general path.
+  .multiEndpoint <- !is.null(ui$predDf) && nrow(ui$predDf) > 1L
   # both-sides transforms (lnorm/boxCox/yeoJohnson) need the DV transformed to match
   # rx_pred_; handled in a later stage, untransformed only for now
   .trans <- as.character(ui$predDf$transform)
-  if (length(.trans) != 1L || !identical(.trans, "untransformed"))
-    return(.foceiAnalyticFallback(paste0("a both-sides transform (", paste(.trans, collapse = ","), ")")))
+  if (!all(.trans == "untransformed"))
+    return(.foceiAnalyticFallback(paste0("a both-sides transform (", paste(unique(.trans), collapse = ","), ")")))
   ini <- ui$iniDf; er <- ini[!is.na(ini$err), , drop = FALSE]
   if (nrow(er) == 0L)
     return(.foceiAnalyticFallback("a model with no residual error"))
@@ -452,7 +453,7 @@
   # symbolic add/prop error machinery below and only supports the combined2 sum-of-
   # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
   # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
-  .isAddProp <- all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
+  .isAddProp <- !.multiEndpoint && all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
   # R0 (FOCE nonmem frozen variance) needs the eta=0 population solve only when R depends
   # on the prediction (any non-additive error term); pure additive R is constant.
   .dependsF0 <- !all(er$err == "add")

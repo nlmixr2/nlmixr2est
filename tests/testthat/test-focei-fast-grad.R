@@ -126,6 +126,39 @@ test_that("analytic outer gradient matches FD for a covariate model", {
   expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
 })
 
+test_that("analytic outer gradient matches FD for a multiple-endpoint model", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # two modeled endpoints (PK cp + PD pca): rx_pred_/rx_r_ are single dvid-conditional
+  # expressions, so solving against the dataset selects each endpoint's prediction and
+  # variance per observation -- the (f,R) path handles both endpoints' sigmas
+  d <- nlmixr2data::warfarin
+  pkpd <- function() {
+    ini({ tka <- 0.5; tcl <- -2; tv <- 2; emax <- 2; ec50 <- 1; add.pk <- 1; add.pd <- 3; eta.cl ~ 0.1 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; pca <- emax * cp / (ec50 + cp)
+            cp ~ add(add.pk) | cp
+            pca ~ add(add.pd) | pca })
+  }
+  ph <- suppressMessages(suppressWarnings(nlmixr2(pkpd, d, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                     maxOuterIterations = 0L, maxInnerIterations = 100L))))
+  g <- .foceiGradAnalyticCalc(ph)
+  expect_false(is.null(g))
+  base <- fixef(ph)
+  ofvAt <- function(nm, val) {
+    ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+    suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   maxInnerIterations = 100L))))$objf
+  }
+  h <- 1e-3
+  fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+  expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
+})
+
 test_that("fast=TRUE fit matches the finite-difference fit", {
   skip_on_cran()
   skip_on_ci()
