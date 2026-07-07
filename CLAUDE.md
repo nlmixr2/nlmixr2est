@@ -54,6 +54,24 @@ Core numerical work is in C++17 with RcppArmadillo/RcppEigen:
 - `nearPD.cpp` -- nearest positive-definite matrix
 - `uninformativeEtas.cpp`, `shrink.cpp` -- ETA diagnostics
 
+### Registering C/C++ (`.Call`) routines -- `src/init.c` is MANUAL
+
+`src/init.c` hand-maintains the `R_registerRoutines` `callMethods[]` table (Rcpp's
+generated `R_init_nlmixr2est` in `RcppExports.cpp` is NOT used -- init.c owns
+`R_init_nlmixr2est`). Each `.Call` entry lists an explicit prototype and a
+HARDCODED argument count, e.g. `{"_nlmixr2est_foo", (DL_FUNC) &_nlmixr2est_foo, 5}`.
+So when you add a `[[Rcpp::export]]` function OR change an existing one's argument
+count, you MUST do BOTH:
+1. `Rcpp::compileAttributes(".")` -- regenerates `src/RcppExports.cpp` +
+   `R/RcppExports.R`; and
+2. hand-edit `src/init.c` -- add/update the forward `SEXP ...(SEXP, ...)` prototype
+   AND the `callMethods[]` entry's arg count.
+
+Skipping step 2 gives a runtime `.Call` error like `Incorrect number of arguments
+(N), expecting M for '_nlmixr2est_foo'` (the loaded registration table still has the
+old arity), NOT a compile error -- so it survives a clean rebuild. A header change
+still needs `rm -f src/*.o src/*.so` before rebuilding.
+
 ### Post-fit objects
 
 Fit results are `nlmixr2FitData` objects (a data frame subclass). Post-fit accessors use `nmObjGet` S3 dispatch (`R/nmObjGet.R`, `R/nmObjHandle.R`). Residuals are added lazily via `addCwres()` and `addNpde()`.
