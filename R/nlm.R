@@ -92,6 +92,8 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
+                       censOption=c("laplace", "gauss"),
+
                        eventSens=c("jump", "fd"),
 
                        sensMethod=c("default", "forward", "adjoint"),
@@ -210,6 +212,13 @@ nlmControl <- function(typsize = NULL,
   } else {
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
+  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "laplace" (exact, default)
+  # or "gauss" (historic Gauss-Newton); shared with focei/saem.
+  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+    censOption <- as.integer(censOption)
+  } else {
+    censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
+  }
 
   ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
   ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
@@ -271,6 +280,7 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+               censOption=censOption,
 
                eventSens=eventSens,
                sensMethod=sensMethod,

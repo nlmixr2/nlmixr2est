@@ -51,6 +51,7 @@ saemControl(
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
+  censOption = c("laplace", "gauss"),
   ...
 )
 }
@@ -343,6 +344,12 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     sign) but still not reliable -- it often settles at a safety-floor
     value rather than the true variance. Prefer `"parallel"` unless
     specifically evaluating this method.}
+
+\item{censOption}{Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations.  \code{"laplace"} (the default) uses the exact
+censored second derivative of the objective (a proper Laplace inner Hessian
+and analytic covariance); \code{"gauss"} keeps the historic uncensored
+Gauss-Newton curvature.  Shared with \code{saemControl}/\code{nlmControl}.}
 
 \item{...}{Other arguments to control SAEM.}
 }
