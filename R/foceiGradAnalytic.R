@@ -236,49 +236,48 @@
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
-  # FOCEI (interaction=1): the EBEs are fixed (no per-subject re-solve), so solve
-  # every subject in ONE rxode2 population solve (C++ + OpenMP) rather than looping
-  # one R solve per subject (which dominates the gradient cost).
-  .EsAll <- NULL
-  if (!.foce) {
-    .obsT <- lapply(seq_along(ids), function(i) {
-      .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0]
-    })
-    .EsAll <- .foceiAnalyticSolveAll(am, th, ebes, .idCode, data, .obsT, solveTol)
-    if (is.null(.EsAll)) return(NULL)
+  .obsT <- lapply(seq_along(ids), function(i) {
+    .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0]
+  })
+  # FOCE: the per-subject EBE re-solve (Newton) + optional eta=0 population solve are
+  # inherently per-subject; collect the re-solved etas (and E0) here.  FOCEI EBEs are
+  # fixed.  The FINAL a/A solve is then batched for ALL subjects in one rxode2
+  # population solve (C++ + OpenMP), which otherwise dominates the gradient cost.
+  etaSolve <- ebes
+  E0List <- vector("list", length(ids))
+  if (.foce) {
+    for (i in seq_along(ids)) {
+      s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
+      obs <- s[s$EVID == 0, , drop = FALSE]
+      E0 <- NULL
+      if (identical(as.integer(foceType), 0L) && isTRUE(ef$foce$dependsF0)) {
+        E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
+        if (is.null(E0)) return(NULL)
+      }
+      E0List[[i]] <- E0
+      eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
+                                    f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
+      if (is.null(eta0)) return(NULL)
+      etaSolve[i, ] <- eta0
+    }
   }
+  .EsAll <- .foceiAnalyticSolveAll(am, th, etaSolve, .idCode, data, .obsT, solveTol)
+  if (is.null(.EsAll)) return(NULL)
   g <- numeric(np)
   etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
   for (i in seq_along(ids)) {
-    s <- .byId[[as.character(.idCode[i])]]
-    if (is.null(s) || nrow(s) == 0L) return(NULL)
-    obs <- s[s$EVID == 0, , drop = FALSE]
-    eta0 <- ebes[i, ]
-    # FOCE "nonmem" (foceType=0) with a prediction-dependent R0: solve the eta=0
-    # population model for f0 (and its theta-chain a0), then re-solve the FOCE EBE
-    # (the stored EBE stationarizes S_FOCE with this R0).  foce+ keeps live R.
-    E0 <- NULL
-    if (.foce && identical(as.integer(foceType), 0L) && isTRUE(ef$foce$dependsF0)) {
-      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-      if (is.null(E0)) return(NULL)
-    }
-    if (.foce) {
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav, ef, Oi, neta, solveTol,
-                                    f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
-      if (is.null(eta0)) return(NULL)
-    }
-    E <- if (.foce) .foceiAnalyticSolveFA(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol)
-         else .EsAll[[i]]                                 # from the one population solve
-    if (is.null(E)) return(NULL)
+    obs <- .byId[[as.character(.idCode[i])]]
+    obs <- obs[obs$EVID == 0, , drop = FALSE]
+    E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) {
       .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL)
     }
     E$y <- obs$DV
     gi <- tryCatch(
-      if (.foce) .foceiAnalyticSubjectGradFoce(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
+      if (.foce) .foceiAnalyticSubjectGradFoce(E, etaSolve[i, ], Om, ef, neta, nth, nsg, ef$sgVar,
                                                dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi,
-                                               E0 = E0, foceType = foceType)
-      else .foceiAnalyticSubjectGradCpp(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
+                                               E0 = E0List[[i]], foceType = foceType)
+      else .foceiAnalyticSubjectGradCpp(E, etaSolve[i, ], Om, ef, neta, nth, nsg, ef$sgVar,
                                         dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi),
       error = function(e) NULL)
     if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
