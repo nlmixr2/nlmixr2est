@@ -217,7 +217,10 @@
         if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
           return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
       E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
-      Elist[[i]] <- E; E0list[[i]] <- E0; eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
+      # E0 is NULL for foce+ (foceType=1, no eta=0 population solve); `E0list[[i]] <- NULL`
+      # would DELETE the slot and shrink the list (later E0list[[i]] out of bounds -> the
+      # whole cov silently falls back to FD).  `E0list[i] <- list(E0)` keeps the NULL slot.
+      Elist[[i]] <- E; E0list[i] <- list(E0); eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
     }
     .fpG <- identical(as.integer(foceType), 1L) || is.null(E0list[[1L]])
     totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll)); nd2 <- ndirCov * ndirCov
@@ -225,12 +228,19 @@
     AB <- array(0, c(totObs, ndirCov, ndirCov)); AReB <- array(0, c(totObs, ndirCov, ndirCov)); ARcB <- array(0, c(totObs, ndirCov, ndirCov))
     AthB <- array(0, c(totObs, neta, nd2))
     fB <- numeric(totObs); yB <- numeric(totObs); R0B <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
+    dvSensB <- if (length(lamDir)) matrix(0, totObs, ndirCov) else matrix(0, totObs, 0L)
+    dvSens2B <- dvSensB
     for (i in seq_len(nsub)) {
       E <- Elist[[i]]; E0 <- E0list[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
       aB[rows, ] <- E$a; AB[rows, , ] <- E$A; AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2))
       fB[rows] <- E$f; yB[rows] <- E$y
       if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR; AReB[rows, , ] <- E$AR; ARcB[rows, , ] <- E$AR }
       else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR; ARcB[rows, , ] <- E0$AR }   # aReB/AReB stay 0 (frozen)
+      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
+        s <- .byId[[as.character(.idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
+        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+        dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+      }
       ehatB[i, ] <- eta0list[[i]]
     }
     nom <- omd$nom
@@ -241,7 +251,7 @@
     d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    R <- tryCatch(foceiRAllFoceFR_(aB, AB, AthB, aReB, aRcB, AReB, ARcB, fB, yB, R0B, ehatB, as.integer(off),
+    R <- tryCatch(foceiRAllFoceFR_(aB, AB, AthB, aReB, aRcB, AReB, ARcB, dvSensB, dvSens2B, fB, yB, R0B, ehatB, as.integer(off),
                                    Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
                   error = function(e) NULL)
     if (is.null(R) || !all(is.finite(R))) return(NULL)
@@ -410,11 +420,9 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
-    # Estimated boxCox/yeoJohnson lambda: FOCEI observed-information cov carries the
-    # DV-transform 2nd-order chain (dy'/dlambda residual split + d2y'/dlambda2); the FOCE
-    # frozen-R0 cov variant is not yet ported, so keep FOCE on FD for an estimated lambda.
-    if (isTRUE(ef$estLam) && interaction == 0L)
-      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda in the FOCE covariance (DV-transform 2nd-order terms not yet ported)"))
+    # Estimated boxCox/yeoJohnson lambda: both the FOCEI and FOCE (nonmem / foce+)
+    # observed-information cov carry the DV-transform 2nd-order chain (dy'/dlambda residual
+    # split in the rho DATA terms + d2y'/dlambda2 in the lambda-lambda block).
     # Both FOCEI and FOCE use the general (f,R) cov path for a general (foceiOnly)
     # variance structure; add/prop keeps the fast symbolic assembly.
 
@@ -1134,7 +1142,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' kernel.  Matches `.foceiAnalyticSubjectRfoceFR` exactly.
 #' @noRd
 .foceiAnalyticSubjectRfoceFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir,
-                                            Oi = solve(Om), E0 = NULL, foceType = 0L) {
+                                            Oi = solve(Om), E0 = NULL, foceType = 0L,
+                                            dvSens = matrix(0, length(E$f), 0L),
+                                            dvSens2 = matrix(0, length(E$f), 0L)) {
   nobs <- length(E$f); nom <- omd$nom
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
   if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; ARc <- E$AR; ARe <- E$AR }
@@ -1145,7 +1155,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
   if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
-  foceiSubjectRfoceFR_(E$a, E$A, AthC, aRe, aRc, ARe, ARc, E$f, E$y, R0, as.numeric(ehat), Oi,
+  foceiSubjectRfoceFR_(E$a, E$A, AthC, aRe, aRc, ARe, ARc, dvSens, dvSens2, E$f, E$y, R0, as.numeric(ehat), Oi,
                        dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
 }
 

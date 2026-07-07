@@ -51,12 +51,12 @@ foceiRAllFR_ <- function(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, fv, yv, Rv, e
     .Call(`_nlmixr2est_foceiRAllFR_`, a, A, Ath, aR, AR, AthR, dvSens, dvSens2, fv, yv, Rv, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
-foceiSubjectRfoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
-    .Call(`_nlmixr2est_foceiSubjectRfoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
+foceiSubjectRfoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
+    .Call(`_nlmixr2est_foceiSubjectRfoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
 }
 
-foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores) {
-    .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
+foceiRAllFoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores) {
+    .Call(`_nlmixr2est_foceiRAllFoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, dvSens, dvSens2, fv, yv, R0v, ehat, obsOffset, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP, ncores)
 }
 
 freeFocei <- function() {
