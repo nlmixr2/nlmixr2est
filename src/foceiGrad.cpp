@@ -292,6 +292,73 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
 }
 
+// (f,R) FOCE per-subject outer gradient (oracle: .foceiAnalyticSubjectGradFoceFR).  The
+// inner problem is interaction-free (q0=-(y-f)/R0, q1=1/R0) with a frozen variance R0: the
+// eta-block (gPhi/Hf/Ht/dHtD) uses aRe (0 for nonmem, live E$aR for foce+) and the parameter
+// columns use aRc (E0's dR0/ddir for nonmem, live E$aR for foce+).  The determinant is the
+// Gauss-Newton Ht=Omega^-1+sum(a a/R0).  `fp` = foce+ (1) vs nonmem (0): nonmem adds the
+// aRc a0-chain to dHt/dtheta (dHtD used aRe=0 there).  No 3rd-order tensor (gradient only).
+// [[Rcpp::export]]
+Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
+                                   const arma::mat& aRe, const arma::mat& aRc,
+                                   const arma::mat& R0sig,
+                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                                   const arma::vec& ehat, const arma::mat& Oi,
+                                   const arma::cube& dOiEst, const arma::vec& tr28,
+                                   int neta, int nth, int nsg, int nom,
+                                   const arma::ivec& dirTh, const arma::ivec& sigCol, int fp) {
+  const int nobs = (int)a.n_rows;
+  const int ndir = (int)a.n_cols;
+  const int np = nth + nsg + nom;
+  vec res = yv - fv;
+  vec rho_f = -res / R0v, rho_R = 0.5 * (1.0 / R0v - square(res) / square(R0v));
+  vec q0 = rho_f, q1 = 1.0 / R0v;
+  vec iR = 1.0 / R0v, iR2 = square(iR);
+  vec gPhi = Oi * ehat;
+  for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * a(o, l) + rho_R[o] * aRe(o, l); gPhi[l] += s; }
+  mat Hf = Oi, Ht = Oi, Nf(neta, ndir, fill::zeros);
+  for (int l = 0; l < neta; l++) {
+    for (int m = 0; m < neta; m++) { double sh = 0.0, st = 0.0;
+      for (int o = 0; o < nobs; o++) { sh += q1[o] * a(o, l) * a(o, m) + q0[o] * A(o, l, m); st += a(o, l) * a(o, m) * iR[o]; }
+      Hf(l, m) += sh; Ht(l, m) += st; }
+    for (int d = 0; d < ndir; d++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += q1[o] * a(o, l) * a(o, d) + q0[o] * A(o, l, d); Nf(l, d) = s; }
+  }
+  mat HfInv = inv(Hf), Hti = inv(Ht);
+  std::vector<mat> dHtD(ndir);
+  for (int s = 0; s < ndir; s++) { mat D(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
+      for (int o = 0; o < nobs; o++) v += -aRe(o, s) * iR2[o] * a(o, l) * a(o, m) + (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * iR[o];
+      D(l, m) = v; }
+    dHtD[s] = D; }
+  vec Cen(neta); for (int l = 0; l < neta; l++) Cen[l] = 0.5 * trace(Hti * dHtD[l]);
+  auto ouRc = [&](const arma::vec& v) { mat M(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += v[o] * a(o, l) * a(o, m); M(l, m) = s; } return M; };
+  auto typ = [&](int p) { return p < nth ? 0 : (p < nth + nsg ? 1 : 2); };
+  auto McolEBE = [&](int p) -> vec { int t = typ(p);
+    if (t == 0) { int d = dirTh[p] - 1; vec r = Nf.col(d);
+      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * (res[o] * iR2[o]) * aRc(o, d); r[l] += s; } return r; }
+    if (t == 1) { int c = sigCol[p - nth] - 1; vec r(neta);
+      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * (res[o] * iR2[o]) * R0sig(o, c); r[l] = s; } return r; }
+    return vec(dOiEst.slice(p - nth - nsg) * ehat); };
+  auto dHt_p = [&](int p) -> mat { int t = typ(p);
+    if (t == 0) { int d = dirTh[p] - 1; mat D = dHtD[d]; if (!fp) D += ouRc(-aRc.col(d) % iR2); return D; }
+    if (t == 1) { int c = sigCol[p - nth] - 1; return ouRc(-R0sig.col(c) % iR2); }
+    return dOiEst.slice(p - nth - nsg); };
+  auto dPhiExplicit = [&](int p) -> double { int t = typ(p);
+    if (t == 0) { int d = dirTh[p] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * a(o, d) + rho_R[o] * aRc(o, d); return s; }
+    if (t == 1) { int c = sigCol[p - nth] - 1; double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_R[o] * R0sig(o, c); return s; }
+    int k = p - nth - nsg; return 0.5 * as_scalar(ehat.t() * dOiEst.slice(k) * ehat) - tr28[k]; };
+  mat etaP(neta, np, fill::zeros);
+  for (int p = 0; p < np; p++) etaP.col(p) = -HfInv * McolEBE(p);
+  vec g(np, fill::zeros);
+  for (int p = 0; p < np; p++) {
+    double v = dPhiExplicit(p) + 0.5 * trace(Hti * dHt_p(p));
+    for (int l = 0; l < neta; l++) v += (gPhi[l] + Cen[l]) * etaP(l, p);
+    g[p] = 2.0 * v;
+  }
+  return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
+}
+
 // (f,R) FOCEI per-subject observed-information R (oracle: .foceiAnalyticSubjectRFR).
 // Analytic 1st/2nd-order sensitivities a/A (prediction) + aR/AR (variance); the 3rd-order
 // tensors Ath/AthR come from Shi-FD and are passed reshaped to cubes (nobs, ndir, ndir*ndir):
