@@ -298,15 +298,16 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
 // columns use aRc (E0's dR0/ddir for nonmem, live E$aR for foce+).  The determinant is the
 // Gauss-Newton Ht=Omega^-1+sum(a a/R0).  `fp` = foce+ (1) vs nonmem (0): nonmem adds the
 // aRc a0-chain to dHt/dtheta (dHtD used aRe=0 there).  No 3rd-order tensor (gradient only).
-// [[Rcpp::export]]
-Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
-                                   const arma::mat& aRe, const arma::mat& aRc,
-                                   const arma::mat& R0sig,
-                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
-                                   const arma::vec& ehat, const arma::mat& Oi,
-                                   const arma::cube& dOiEst, const arma::vec& tr28,
-                                   int neta, int nth, int nsg, int nom,
-                                   const arma::ivec& dirTh, const arma::ivec& sigCol, int fp) {
+// Shared core (called from the single-subject export and the batched OpenMP driver).
+static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
+                                    const arma::mat& aRe, const arma::mat& aRc,
+                                    const arma::mat& R0sig,
+                                    const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                                    const arma::vec& ehat, const arma::mat& Oi,
+                                    const arma::cube& dOiEst, const arma::vec& tr28,
+                                    int neta, int nth, int nsg, int nom,
+                                    const arma::ivec& dirTh, const arma::ivec& sigCol, int fp,
+                                    arma::vec& g_out, arma::mat& etaP_out) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -356,7 +357,56 @@ Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
     for (int l = 0; l < neta; l++) v += (gPhi[l] + Cen[l]) * etaP(l, p);
     g[p] = 2.0 * v;
   }
+  g_out = g; etaP_out = etaP;
+}
+
+// Single-subject export (oracle / R fallback): thin wrapper over foceiGradSubjectFoceFR_.
+// [[Rcpp::export]]
+Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
+                                   const arma::mat& aRe, const arma::mat& aRc,
+                                   const arma::mat& R0sig,
+                                   const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                                   const arma::vec& ehat, const arma::mat& Oi,
+                                   const arma::cube& dOiEst, const arma::vec& tr28,
+                                   int neta, int nth, int nsg, int nom,
+                                   const arma::ivec& dirTh, const arma::ivec& sigCol, int fp) {
+  vec g; mat etaP;
+  foceiGradSubjectFoceFR_(a, A, aRe, aRc, R0sig, fv, yv, R0v, ehat, Oi, dOiEst, tr28,
+                          neta, nth, nsg, nom, dirTh, sigCol, fp, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
+}
+
+// Batched (f,R) FOCE outer gradient over ALL subjects in one OpenMP-parallel C++ call.
+// aRe/aRc/R0sig are the per-subject frozen-R0 sensitivities resolved in R (from E/E0),
+// concatenated over observations (obsOffset[i]..obsOffset[i+1]-1 are subject i's rows);
+// ehat is nsub x neta.  Returns the summed gradient g (np) and per-subject etaP cube.
+// [[Rcpp::export]]
+Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
+                               const arma::mat& aRe, const arma::mat& aRc, const arma::mat& R0sig,
+                               const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
+                               const arma::mat& ehat, const arma::ivec& obsOffset,
+                               const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
+                               int neta, int nth, int nsg, int nom,
+                               const arma::ivec& dirTh, const arma::ivec& sigCol, int fp, int ncores) {
+  const int nsub = (int)ehat.n_rows;
+  const int np = nth + nsg + nom;
+  mat gmat(np, nsub, fill::zeros);
+  cube etaPall(neta, np, nsub, fill::zeros);
+  const bool hasSig = (R0sig.n_cols > 0);
+#pragma omp parallel for num_threads(ncores)
+  for (int i = 0; i < nsub; i++) {
+    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    mat ai = a.rows(o0, o1), aRei = aRe.rows(o0, o1), aRci = aRc.rows(o0, o1);
+    cube Ai = A.rows(o0, o1);
+    mat R0sigi = hasSig ? mat(R0sig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    vec gi; mat etaPi;
+    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, fv.subvec(o0, o1), yv.subvec(o0, o1),
+                            R0v.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
+                            neta, nth, nsg, nom, dirTh, sigCol, fp, gi, etaPi);
+    gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+  }
+  vec g = sum(gmat, 1);
+  return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
 }
 
 // (f,R) FOCEI per-subject observed-information R (oracle: .foceiAnalyticSubjectRFR).
