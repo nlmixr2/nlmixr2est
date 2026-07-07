@@ -28,6 +28,7 @@ foceiControl(
   covMethod = c("analytic", "r,s", "r", "s", ""),
   covSolveTol = NULL,
   covFull = TRUE,
+  fast = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
@@ -62,7 +63,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("nlminb", "lbfgsb3c", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "Rvmmin", "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -128,7 +129,7 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L,
+  mceta = -2L,
   warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
@@ -253,6 +254,17 @@ over the same parameter set for the finite-difference methods (perturbing Omega
 on the variance-covariance scale, with the per-parameter Gill (1983) step and the
 5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
 errors are identical either way.}
+
+\item{fast}{When \code{TRUE}, compute the outer (population) gradient
+analytically from Almquist (2015) sensitivity equations instead of by
+finite differences, and use the Eq-48 random-effect extrapolation for the
+next inner-problem starting values.  Requires an analytic-scope model
+(single additive/proportional Gaussian endpoint); out-of-scope models fall
+back to the finite-difference gradient with a message.  When unspecified,
+the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+\code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+\code{foceif}) default this to \code{TRUE}.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -650,7 +662,14 @@ switches to the gradient-free bobyqa method; `NA` only does so for the
 first zero gradient.}
 
 \item{mceta}{Monte Carlo sampling for the best initial ETA estimate
-(based on `omega`): `-1` (default) uses the last eta; `0` uses eta=0
+(based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+accepting the extrapolated eta only when it is within the standardized-eta
+reset bound (else keeping the last eta, or resetting to 0 when that is also
+out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+the better; both `-2` and `-1` fall back to keeping the last eta when no
+analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
 for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 etas sampled from omega are each evaluated and the best (by inner
 objective) is used.}
