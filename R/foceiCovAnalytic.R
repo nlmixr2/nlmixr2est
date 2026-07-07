@@ -184,7 +184,7 @@
 #' @noRd
 .foceiAnalyticAssembleRFR <- function(ui, th, ebes, ids, data, Om, ef, neta, ndirP, dirP, omd,
                                       dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10,
-                                      interaction = 1L, foceType = 0L) {
+                                      interaction = 1L, foceType = 0L, lamDir = integer(0)) {
   am <- .foceiAnalyticAugModelDirs(ui, dirsCov)
   if (is.null(am) || am$ndir != ndirCov || !isTRUE(am$hasRvar)) return(NULL)
   np <- ndirP + omd$nom; Oi <- solve(Om)
@@ -266,11 +266,18 @@
   AB <- array(0, c(totObs, ndirCov, ndirCov)); ARB <- array(0, c(totObs, ndirCov, ndirCov))
   AthB <- array(0, c(totObs, neta, nd2)); AthRB <- array(0, c(totObs, neta, nd2))
   fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
+  dvSensB <- if (length(lamDir)) matrix(0, totObs, ndirCov) else matrix(0, totObs, 0L)
+  dvSens2B <- dvSensB
   for (i in seq_len(nsub)) {
     E <- Elist[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
     aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
     AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2)); AthRB[rows, , ] <- array(E$AthR, c(no, neta, nd2))
     fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R; ehatB[i, ] <- ebes[i, ]
+    if (length(lamDir)) {                              # DV-transform chain (estimated lambda)
+      s <- .byId[[as.character(.idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
+      dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+      dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+    }
   }
   nom <- omd$nom
   dOiC <- array(0, c(neta, neta, max(nom, 1L)))
@@ -280,7 +287,7 @@
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
   ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
   if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-  R <- tryCatch(foceiRAllFR_(aB, AB, AthB, aRB, ARB, AthRB, fB, yB, RB, ehatB, as.integer(off),
+  R <- tryCatch(foceiRAllFR_(aB, AB, AthB, aRB, ARB, AthRB, dvSensB, dvSens2B, fB, yB, RB, ehatB, as.integer(off),
                              Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
                 error = function(e) NULL)
   if (is.null(R) || !all(is.finite(R))) return(NULL)
@@ -403,11 +410,11 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
-    # Estimated boxCox/yeoJohnson lambda: the analytic GRADIENT carries the DV-transform
-    # chain, but the observed-information cov's lambda 2nd-order terms are not yet ported,
-    # so keep the covariance on FD for now.
-    if (isTRUE(ef$estLam))
-      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda in the covariance (DV-transform 2nd-order terms not yet ported)"))
+    # Estimated boxCox/yeoJohnson lambda: FOCEI observed-information cov carries the
+    # DV-transform 2nd-order chain (dy'/dlambda residual split + d2y'/dlambda2); the FOCE
+    # frozen-R0 cov variant is not yet ported, so keep FOCE on FD for an estimated lambda.
+    if (isTRUE(ef$estLam) && interaction == 0L)
+      return(.foceiAnalyticFallback("an estimated boxCox/yeoJohnson lambda in the FOCE covariance (DV-transform 2nd-order terms not yet ported)"))
     # Both FOCEI and FOCE use the general (f,R) cov path for a general (foceiOnly)
     # variance structure; add/prop keeps the fast symbolic assembly.
 
@@ -490,11 +497,16 @@
     # om-param order matches .omegaVarCovDeriv: ordinary Omega elements THEN the IOV
     # shared-variance params (reported on the SD scale as `v`, matching the theta name).
     onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
-    fullNm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm), iovVars)  # full natural-scale order
+    # R matrix param order = dirP = [dirTh (structural thetas THEN estimated-lambda) | dirSg
+    # (sigmas)] then Omega.  An estimated boxCox/yeoJohnson lambda is a theta-like DIRECTION
+    # (already in thStruct/dirTh), so it must NOT be re-listed as a sigma -- use the direction
+    # set's sigma names (.dir$sgName, lambda-excluded), not ef$sgName, to avoid a duplicate
+    # name that would make fullNm longer than Rfull.
+    fullNm <- c(thStruct, .dir$sgName, .foceiOmegaCovNames(pairs, onm), iovVars)  # full natural-scale order
 
     # op_focei cov-params (non-skipped structural + residual thetas) must all live in
-    # the full natural-scale cov (structural thetas in `thStruct`, residual sigmas in
-    # `ef$sgName`); the R.0 / covFull=FALSE block is taken from it by name below.
+    # the full natural-scale cov (structural thetas + estimated lambda in `thStruct`, residual
+    # sigmas in `.dir$sgName`); the R.0 / covFull=FALSE block is taken from it by name below.
     if (!all(covParams %in% fullNm)) return(NULL)
 
     th <- setNames(as.numeric(thVals[thNames]), paste0("THETA_", seq_along(thNames), "_"))
@@ -517,7 +529,7 @@
       .foceiAnalyticAssembleRFR(ui, th, ebes, ids, data, Om, ef, neta, length(.dir$dirP), .dir$dirP, omd,
                                 dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
                                 startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
-                                interaction = interaction, foceType = foceType)
+                                interaction = interaction, foceType = foceType, lamDir = .dir$lamDir)
     else .foceiAnalyticAssembleR(ui, th, ebes, ids, data, Om, ef, neta, nth, nsg, omd,
                                  dirs = dirs, dirTh = dirTh, ndir = ndir,
                                  startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
@@ -1140,7 +1152,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' C++/Armadillo port of `.foceiAnalyticSubjectRFR` (FOCEI (f,R) observed information).
 #' Reshapes the 3rd-order Ath/AthR tensors and the Omega derivative lists for the kernel.
 #' @noRd
-.foceiAnalyticSubjectRFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir, Oi = solve(Om)) {
+.foceiAnalyticSubjectRFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir, Oi = solve(Om),
+                                        dvSens = matrix(0, length(E$f), 0L),
+                                        dvSens2 = matrix(0, length(E$f), 0L)) {
   nobs <- length(E$f); nom <- omd$nom
   # Ath/AthR are [obs, neta, ndir, ndir] (eta axis first); reshape to (obs, neta, ndir^2)
   # so the kernel reads Ath(o, l, s + t*ndir) with l over the etas.
@@ -1150,7 +1164,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
   if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
-  foceiSubjectRFR_(E$a, E$A, AthC, E$aR, E$AR, AthRC, E$f, E$y, E$R, as.numeric(ehat), Oi,
+  foceiSubjectRFR_(E$a, E$A, AthC, E$aR, E$AR, AthRC, dvSens, dvSens2, E$f, E$y, E$R, as.numeric(ehat), Oi,
                    dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
 }
 
