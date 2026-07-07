@@ -98,8 +98,56 @@
     }
   }
   dirs <- c(etaDirs, nonMuTheta)
+  # (f,R) covariance: fold the residual-error parameters (sigmas) into the DIRECTION set.
+  # The NONMEM sigma (the unit N(0,1) residual variate) is FIXED to 1, so the estimated
+  # error parameters enter ONLY through the weight/variance rx_r_ and NOT through the
+  # prediction -- i.e. a sigma direction has df/dsigma=0 (a=A=Ath=0) and only carries the
+  # variance sensitivities dR/dsigma (aR/AR/AthR).  Treating each sigma as its own direction
+  # therefore lets the SAME 1st/2nd-order solve + Shi-FD 3rd-order machinery supply every
+  # sigma derivative (including the 3rd-order mixed sigma-direction terms the determinant
+  # block needs) with no special-casing.  NOTE: if the FOCEI methods are ever generalized so
+  # the residual sigma itself is estimated (not fixed to 1), that estimated sigma would enter
+  # the variance multiplicatively (R -> R*sigma^2) and would need its own chain here.
+  .sgRows <- thRows[thRows$name %in% sgName, , drop = FALSE]
+  dirSg <- if (nrow(.sgRows) > 0L) seq_len(nrow(.sgRows)) + length(dirs) else integer(0)
+  dirsCov <- c(dirs, if (nrow(.sgRows) > 0L) paste0("THETA_", .sgRows$ntheta, "_") else character(0))
   list(thStruct = thStruct, thStructRows = thStructRows, dirs = dirs,
-       dirTh = dirTh, ndir = length(dirs), nth = nth)
+       dirTh = dirTh, ndir = length(dirs), nth = nth,
+       dirsCov = dirsCov, ndirCov = length(dirsCov), sgName = .sgRows$name,
+       dirP = c(dirTh, dirSg))                          # every non-Omega param -> a direction
+}
+
+#' Sum the per-subject general (f,R) observed-information R over subjects (FOCEI).
+#' Builds the augmented model over the covariance direction set (etas + non-mu thetas +
+#' SIGMA thetas), Shi-FDs the 3rd-order tensors (Ath + AthR), and assembles via
+#' `.foceiAnalyticSubjectRFR`.  Handles any variance structure; `NULL` on failure.
+#' @noRd
+.foceiAnalyticAssembleRFR <- function(ui, th, ebes, ids, data, Om, ef, neta, ndirP, dirP, omd,
+                                      dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10) {
+  am <- .foceiAnalyticAugModelDirs(ui, dirsCov)
+  if (is.null(am) || am$ndir != ndirCov || !isTRUE(am$hasRvar)) return(NULL)
+  np <- ndirP + omd$nom; Oi <- solve(Om)
+  .byId <- split(data, as.character(data$ID))
+  .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
+  if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
+  R <- matrix(0, np, np)
+  for (i in seq_along(ids)) {
+    s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
+    obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
+    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, paste0("ETA_", seq_len(neta), "_"))),
+                                       s, obs$TIME, tol = solveTol, withR = TRUE)
+    if (is.null(E)) return(NULL)
+    if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
+      if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
+        return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
+    E$y <- obs$DV
+    Ri <- tryCatch(.foceiAnalyticSubjectRFR(E, eta0, Om, neta, ndirP, dirP, omd,
+                                            ndir = ndirCov, Oi = Oi, interaction = 1L),
+                   error = function(e) NULL)
+    if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
+    R <- R + Ri
+  }
+  R
 }
 
 #' Sum the per-subject analytic observed-information R (theta+sigma+Omega) over
@@ -218,10 +266,10 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
-    # the analytic covariance still uses the symbolic add/prop machinery; a general
-    # variance structure (foceiOnly) is not yet ported to the (f,R) cov path -> FD cov
-    if (isTRUE(ef$foceiOnly))
-      return(.foceiAnalyticFallback("a residual variance structure not yet supported by the analytic covariance"))
+    # FOCEI uses the general (f,R) cov path (any variance structure).  FOCE still uses
+    # the symbolic add/prop machinery, so a general variance (foceiOnly) FOCE cov -> FD.
+    if (interaction == 0L && isTRUE(ef$foceiOnly))
+      return(.foceiAnalyticFallback("a general residual variance structure with FOCE (analytic cov not yet ported)"))
 
     ini <- ui$iniDf
     .map <- .foceiEtaThetaMap(ui)
@@ -321,11 +369,19 @@
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
     # the C++ hook skips its finite-difference fallback if the assembly then fails.
-    Rfull <- .foceiAnalyticAssembleR(ui, th, ebes, ids, data, Om, ef, neta, nth, nsg, omd,
-                                     dirs = dirs, dirTh = dirTh, ndir = ndir,
-                                     startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
-                                     iovDirScale = iovDirScale, etaScale = etaScale,
-                                     interaction = interaction, foceType = foceType)
+    # FOCEI with a general (non-add/prop / multi-endpoint) variance uses the (f,R) cov
+    # (any structure, sigmas as directions); add/prop FOCEI keeps the fast symbolic
+    # assembly until the (f,R) cov is ported to C++ (the R version is correct but slow).
+    # FOCE and IOV keep the symbolic add/prop assembly.
+    Rfull <- if (interaction == 1L && length(iovVars) == 0L && isTRUE(ef$foceiOnly))
+      .foceiAnalyticAssembleRFR(ui, th, ebes, ids, data, Om, ef, neta, length(.dir$dirP), .dir$dirP, omd,
+                                dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
+                                startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui))
+    else .foceiAnalyticAssembleR(ui, th, ebes, ids, data, Om, ef, neta, nth, nsg, omd,
+                                 dirs = dirs, dirTh = dirTh, ndir = ndir,
+                                 startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
+                                 iovDirScale = iovDirScale, etaScale = etaScale,
+                                 interaction = interaction, foceType = foceType)
     if (is.null(Rfull)) return(NULL)
     dimnames(Rfull) <- list(fullNm, fullNm)
 
@@ -646,33 +702,152 @@
 #' `NULL` on failure.  (`rxode2::rxExpandSens3_` would give `Ath` analytically but
 #' at O(ndir^3) augmented-model compile cost; the Shi FD keeps it at O(ndir^2).)
 #' @noRd
-.foceiAnalyticSolveSubjectFD3 <- function(aug, params, ev, times, .fdEps = 7e-7, tol = 1e-10) {
+.foceiAnalyticSolveSubjectFD3 <- function(aug, params, ev, times, .fdEps = 7e-7, tol = 1e-10, withR = FALSE) {
   dirs <- aug$dirs; nd <- length(dirs)
   # base solve (f, a, A) via the shared helper; this tier adds the 3rd-order Ath by
   # Shi-differencing A.
   E0 <- .foceiAnalyticSolveFA(aug, params, ev, times, tol = tol); if (is.null(E0)) return(NULL)
-  nobs <- length(E0$f); f0 <- as.vector(E0$A)
+  nobs <- length(E0$f)
+  # 3rd-order sensitivities of BOTH the prediction (Ath) and the variance (AthR), by
+  # Shi-differencing the analytic 2nd-order A / AR from the SAME stencil -- the (f,R)
+  # covariance needs d3R/ddir3 alongside d3f/ddir3, just as the current add/prop cov
+  # Shi-differences A to get Ath.  Only A is differenced when the model has no rx_r_
+  # sensitivities (hasRvar false).
+  # only the (f,R) cov path (withR=TRUE) needs the 3rd-order variance tensor AthR; the
+  # symbolic add/prop cov uses R=R(f) and Shi-differences A alone, so it skips AR here.
+  .hasR <- isTRUE(withR) && !is.null(E0$AR); nA <- nobs * nd * nd
+  f0 <- if (.hasR) c(as.vector(E0$A), as.vector(E0$AR)) else as.vector(E0$A)
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
   # strips names, so re-attach names(params) before mapping back through the solve.
   Aflat <- function(.tt) { E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
-    if (is.null(E) || !all(is.finite(E$A))) return(NULL); as.vector(E$A) }
-  Ath <- array(0, c(nobs, nd, nd, nd))
+    if (is.null(E) || !all(is.finite(E$A))) return(NULL)
+    if (.hasR) { if (!all(is.finite(E$AR))) return(NULL); c(as.vector(E$A), as.vector(E$AR)) } else as.vector(E$A) }
+  Ath <- array(0, c(nobs, nd, nd, nd)); AthR <- if (.hasR) array(0, c(nobs, nd, nd, nd)) else NULL
   for (d in seq_len(nd)) {
     idx <- match(dirs[d], names(params))                # this direction's coordinate in params
     if (is.na(idx)) return(NULL)
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps)  # C++ shi21Central
     if (is.null(sc$gr) || !all(is.finite(sc$gr))) return(NULL)
-    Ath[, , , d] <- array(sc$gr, c(nobs, nd, nd))
+    Ath[, , , d] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
+    if (.hasR) AthR[, , , d] <- array(sc$gr[nA + seq_len(nA)], c(nobs, nd, nd))
   }
   # symmetrize over the 3 tensor axes (obs axis 1 held): average the 6 aperm
   # permutations of the tensor axes.  aperm uses the INVERSE-permutation convention,
   # so these are order() of the six S3 permutations -- summed in the same order as the
   # old triple loop (bit-identical).
   pr <- list(c(1,2,3,4), c(1,2,4,3), c(1,3,2,4), c(1,4,2,3), c(1,3,4,2), c(1,4,3,2))
-  S <- Reduce(`+`, lapply(pr, function(p) aperm(Ath, p))) / 6
-  .out <- list(f = E0$f, a = E0$a, A = E0$A, Ath = S)
+  .sym <- function(T) Reduce(`+`, lapply(pr, function(p) aperm(T, p))) / 6
+  .out <- c(list(f = E0$f, a = E0$a, A = E0$A, Ath = .sym(Ath)),
+            if (.hasR) list(R = E0$R, aR = E0$aR, AR = E0$AR, AthR = .sym(AthR),
+                            Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2) else NULL)
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) return(NULL)
   .out
+}
+
+#' Per-subject observed-information R in the general (f,R) form: the prediction f and
+#' the variance R are independent solved quantities with sensitivities a/A/Ath and
+#' aR/AR/AthR (Ath/AthR by Shi-FD, as the add/prop cov FD-differences A -> Ath).  Every
+#' non-Omega parameter (structural theta AND residual sigma) is a DIRECTION; a sigma
+#' direction has a=A=Ath=0 (f is sigma-independent) so only its variance sensitivities
+#' contribute, and no separate sigma machinery is needed.  The rho(f,R,y) partials up to
+#' 3rd order are model-independent closed forms.  `dirP` maps each non-Omega param to its
+#' direction; Omega params follow, using `omd`.  Reduces to `.foceiAnalyticSubjectR` when
+#' R=R(f).  FOCE (interaction=0) delegates to the frozen-R0 variant.
+#' @noRd
+.foceiAnalyticSubjectRFR <- function(E, ehat, Om, neta, ndirP, dirP, omd,
+                                     ndir = neta, Oi = solve(Om), interaction = 1L,
+                                     E0 = NULL, foceType = 0L) {
+  if (identical(as.integer(interaction), 0L))
+    return(.foceiAnalyticSubjectRfoceFR(E, ehat, Om, neta, ndirP, dirP, omd,
+                                        ndir = ndir, Oi = Oi, E0 = E0, foceType = foceType))
+  tr <- function(M) sum(diag(M))
+  f <- E$f; y <- E$y; R <- E$R; a <- E$a; A <- E$A; Ath <- E$Ath
+  aR <- E$aR; AR <- E$AR; AthR <- E$AthR
+  res <- y - f
+  rf <- -res / R; rR <- 0.5 * (1 / R - res^2 / R^2)
+  rff <- 1 / R; rfR <- res / R^2; rRR <- 0.5 * (-1 / R^2 + 2 * res^2 / R^3)
+  rffR <- -1 / R^2; rfRR <- -2 * res / R^3; rRRR <- 0.5 * (2 / R^3 - 6 * res^2 / R^4)  # rfff = 0
+  iR <- 1 / R; iR2 <- iR^2; iR3 <- iR^3; iR4 <- iR^4
+  nom <- omd$nom; np <- ndirP + nom
+  ei <- seq_len(neta); di <- seq_len(ndir)
+  # (f,R) 2nd total derivative of the density w.r.t. two directions da, db
+  Gdd <- function(da, db) sum(rff * a[, da] * a[, db] + rfR * (a[, da] * aR[, db] + aR[, da] * a[, db]) +
+                                rRR * aR[, da] * aR[, db] + rf * A[, da, db] + rR * AR[, da, db])
+  H <- Oi; for (l in ei) for (m in ei) H[l, m] <- H[l, m] + Gdd(l, m)
+  HiM <- solve(H)
+  N <- matrix(0, neta, ndir); for (l in ei) for (d in di) N[l, d] <- Gdd(l, d)
+  # exact 3rd total derivative Tn[l,s,t] = d2(Phi_l)/ddir_s ddir_t, Phi_l = rf a_l + rR aR_l
+  Tn <- array(0, c(neta, ndir, ndir))
+  for (l in ei) for (s in di) for (t in di) {
+    us  <- rff * a[, s] + rfR * aR[, s]; ut <- rff * a[, t] + rfR * aR[, t]
+    ust <- rffR * (a[, s] * aR[, t] + aR[, s] * a[, t]) + rfRR * aR[, s] * aR[, t] + rff * A[, s, t] + rfR * AR[, s, t]
+    ws  <- rfR * a[, s] + rRR * aR[, s]; wt <- rfR * a[, t] + rRR * aR[, t]
+    wst <- rffR * a[, s] * a[, t] + rfRR * (a[, s] * aR[, t] + aR[, s] * a[, t]) + rRRR * aR[, s] * aR[, t] +
+      rfR * A[, s, t] + rRR * AR[, s, t]
+    Tn[l, s, t] <- sum(ust * a[, l] + us * A[, l, t] + ut * A[, l, s] + rf * Ath[, l, s, t] +
+                         wst * aR[, l] + ws * AR[, l, t] + wt * AR[, l, s] + rR * AthR[, l, s, t])
+  }
+  # Laplace determinant Ht = Oi + sum(a a / R + 0.5 aR aR / R^2) and its 1st/2nd
+  # direction derivatives (the interaction-free E[rho_fR]=0 split into f- and R-quadratics)
+  Ht <- Oi; for (l in ei) for (m in ei) Ht[l, m] <- Ht[l, m] + sum(a[, l] * a[, m] * iR + 0.5 * aR[, l] * aR[, m] * iR2)
+  Hti <- solve(Ht)
+  dHtD <- lapply(di, function(s) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum((A[, l, s] * a[, m] + a[, l] * A[, m, s]) * iR - a[, l] * a[, m] * aR[, s] * iR2 +
+                     0.5 * (AR[, l, s] * aR[, m] + aR[, l] * AR[, m, s]) * iR2 - aR[, l] * aR[, m] * aR[, s] * iR3); D })
+  d2HtDD <- lapply(di, function(s) lapply(di, function(t) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum(
+      (Ath[, l, s, t] * a[, m] + A[, l, s] * A[, m, t] + A[, l, t] * A[, m, s] + a[, l] * Ath[, m, s, t]) * iR -
+        (A[, l, s] * a[, m] + a[, l] * A[, m, s]) * aR[, t] * iR2 -
+        (A[, l, t] * a[, m] + a[, l] * A[, m, t]) * aR[, s] * iR2 - a[, l] * a[, m] * AR[, s, t] * iR2 +
+        2 * a[, l] * a[, m] * aR[, s] * aR[, t] * iR3 +
+        0.5 * (AthR[, l, s, t] * aR[, m] + AR[, l, s] * AR[, m, t] + AR[, l, t] * AR[, m, s] + aR[, l] * AthR[, m, s, t]) * iR2 -
+        (AR[, l, s] * aR[, m] + aR[, l] * AR[, m, s]) * aR[, t] * iR3 -
+        (AR[, l, t] * aR[, m] + aR[, l] * AR[, m, t]) * aR[, s] * iR3 - aR[, l] * aR[, m] * AR[, s, t] * iR3 +
+        3 * aR[, l] * aR[, m] * aR[, s] * aR[, t] * iR4); D }))
+  Cen <- vapply(ei, function(l) 0.5 * tr(Hti %*% dHtD[[l]]), numeric(1))
+  Cee <- matrix(0, neta, neta); for (s in ei) for (t in ei)
+    Cee[s, t] <- 0.5 * (tr(Hti %*% d2HtDD[[s]][[t]]) - tr(Hti %*% dHtD[[s]] %*% Hti %*% dHtD[[t]]))
+  typ <- function(p) if (p <= ndirP) "dir" else "om"
+  dOf <- function(p) dirP[p]; omc <- function(p) p - ndirP
+  Mcol <- function(p) if (typ(p) == "dir") N[, dOf(p)] else as.numeric(omd$dOi[[omc(p)]] %*% ehat)
+  dHt_p <- function(p) if (typ(p) == "dir") dHtD[[dOf(p)]] else omd$dOi[[omc(p)]]
+  d2HtEtaP <- function(p, l) if (typ(p) == "dir") d2HtDD[[dOf(p)]][[l]] else matrix(0, neta, neta)
+  d2Ht_pp <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)
+    if (ta == "dir" && tb == "dir") return(d2HtDD[[dOf(aa)]][[dOf(bb)]])
+    if (ta == "om" && tb == "om") return(omd$d2Oi[[omc(aa)]][[omc(bb)]])
+    matrix(0, neta, neta) }
+  Smat <- function(p) { if (typ(p) == "om") return(omd$dOi[[omc(p)]])
+    M <- matrix(0, neta, ndir); for (l in ei) for (s in di) M[l, s] <- Tn[l, dOf(p), s]; M }
+  Svec <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)
+    if (ta == "dir" && tb == "dir") return(Tn[, dOf(aa), dOf(bb)])
+    if (ta == "om" && tb == "om") return(as.numeric(omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat))
+    rep(0, neta) }
+  d2Phi <- function(aa, bb) { ta <- typ(aa); tb <- typ(bb)
+    if (ta == "dir" && tb == "dir") return(Gdd(dOf(aa), dOf(bb)))
+    if (ta == "om" && tb == "om") return(0.5 * as.numeric(t(ehat) %*% omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat) + 0.5 * omd$d2LD[omc(aa), omc(bb)])
+    0 }
+  .Mcols <- lapply(1:np, Mcol)
+  etaP <- matrix(vapply(1:np, function(p) as.numeric(-HiM %*% .Mcols[[p]]), numeric(neta)), nrow = neta)
+  eta2 <- function(aa, bb) { b <- Svec(aa, bb) + Smat(aa)[, ei, drop = FALSE] %*% etaP[, bb] + Smat(bb)[, ei, drop = FALSE] %*% etaP[, aa]
+    for (l in ei) b[l] <- b[l] + as.numeric(t(etaP[, aa]) %*% Tn[l, ei, ei] %*% etaP[, bb]); as.numeric(-HiM %*% b) }
+  Cpe <- function(p, l) 0.5 * (tr(Hti %*% d2HtEtaP(p, l)) - tr(Hti %*% dHt_p(p) %*% Hti %*% dHtD[[l]]))
+  Cpp <- function(aa, bb) 0.5 * (tr(Hti %*% d2Ht_pp(aa, bb)) - tr(Hti %*% dHt_p(aa) %*% Hti %*% dHt_p(bb)))
+  .CpeRow <- lapply(1:np, function(p) vapply(ei, function(l) Cpe(p, l), numeric(1)))
+  R <- matrix(0, np, np)
+  for (aa in 1:np) for (bb in aa:np) {
+    dat <- d2Phi(aa, bb) - as.numeric(t(.Mcols[[aa]]) %*% HiM %*% .Mcols[[bb]])
+    ld <- Cpp(aa, bb) + sum(.CpeRow[[aa]] * etaP[, bb]) + sum(.CpeRow[[bb]] * etaP[, aa]) +
+          as.numeric(t(etaP[, aa]) %*% Cee %*% etaP[, bb]) + sum(Cen * eta2(aa, bb))
+    R[aa, bb] <- R[bb, aa] <- dat + ld
+  }
+  R
+}
+
+#' (f,R) FOCE per-subject observed-information R (interaction=0).  TODO: port.
+#' @noRd
+.foceiAnalyticSubjectRfoceFR <- function(E, ehat, Om, neta, ndirP, dirP, omd,
+                                         ndir = neta, Oi = solve(Om), E0 = NULL, foceType = 0L) {
+  NULL
 }
 
 #' Per-subject observed-information R over structural theta, sigma and Omega, from
