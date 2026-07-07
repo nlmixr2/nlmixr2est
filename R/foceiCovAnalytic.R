@@ -215,7 +215,7 @@
       E$a <- sweep(E$a, 2, iovDirScale, `*`)           # a_B = a_A / w on occasion directions
       for (d1 in seq_len(ndir)) for (d2 in seq_len(ndir))
         E$A[, d1, d2] <- E$A[, d1, d2] * iovDirScale[d1] * iovDirScale[d2]
-      for (d1 in seq_len(ndir)) for (d2 in seq_len(ndir)) for (d3 in seq_len(ndir))
+      for (d1 in seq_len(neta)) for (d2 in seq_len(ndir)) for (d3 in seq_len(ndir))  # Ath is [obs,neta,ndir,ndir]
         E$Ath[, d1, d2, d3] <- E$Ath[, d1, d2, d3] * iovDirScale[d1] * iovDirScale[d2] * iovDirScale[d3]
       if (!is.null(E0)) {                              # population sensitivities share the rescaling
         E0$a <- sweep(E0$a, 2, iovDirScale, `*`)
@@ -708,13 +708,16 @@
   # Shi-differencing A.
   E0 <- .foceiAnalyticSolveFA(aug, params, ev, times, tol = tol); if (is.null(E0)) return(NULL)
   nobs <- length(E0$f)
-  # 3rd-order sensitivities of BOTH the prediction (Ath) and the variance (AthR), by
-  # Shi-differencing the analytic 2nd-order A / AR from the SAME stencil -- the (f,R)
-  # covariance needs d3R/ddir3 alongside d3f/ddir3, just as the current add/prop cov
-  # Shi-differences A to get Ath.  Only A is differenced when the model has no rx_r_
-  # sensitivities (hasRvar false).
-  # only the (f,R) cov path (withR=TRUE) needs the 3rd-order variance tensor AthR; the
-  # symbolic add/prop cov uses R=R(f) and Shi-differences A alone, so it skips AR here.
+  # 3rd-order sensitivities Ath = d3f/(deta ddir ddir') and (f,R cov) AthR the same for R,
+  # by Shi-differencing the analytic 2nd-order A / AR.  The cov assembly only ever reads
+  # these with the FIRST index an ETA (Tn[l,s,t], d2HtDD both have l,m in the eta set), so
+  # only the eta directions need to be Shi-differenced -- the theta/sigma "slices" are never
+  # used.  This is O(neta) solves instead of O(ndir): the returned tensors are
+  # [obs, neta, ndir, ndir] with the eta (differencing) axis first.  A is symmetric in its
+  # last two axes, so d(A)/deta is too -- no cross-axis symmetrization is needed.
+  # withR=TRUE (the (f,R) cov) also differences AR; the symbolic add/prop cov (R=R(f)) skips it.
+  .etaDir <- which(grepl("^ETA_[0-9]+_$", dirs)); neta <- length(.etaDir)
+  if (neta == 0L) return(NULL)
   .hasR <- isTRUE(withR) && !is.null(E0$AR); nA <- nobs * nd * nd
   f0 <- if (.hasR) c(as.vector(E0$A), as.vector(E0$AR)) else as.vector(E0$A)
   # shi21CentralWrap differences the closure at a perturbed full-param vector; it
@@ -722,23 +725,17 @@
   Aflat <- function(.tt) { E <- .foceiAnalyticSolveFA(aug, setNames(.tt, names(params)), ev, times, tol = tol)
     if (is.null(E) || !all(is.finite(E$A))) return(NULL)
     if (.hasR) { if (!all(is.finite(E$AR))) return(NULL); c(as.vector(E$A), as.vector(E$AR)) } else as.vector(E$A) }
-  Ath <- array(0, c(nobs, nd, nd, nd)); AthR <- if (.hasR) array(0, c(nobs, nd, nd, nd)) else NULL
-  for (d in seq_len(nd)) {
-    idx <- match(dirs[d], names(params))                # this direction's coordinate in params
+  Ath <- array(0, c(nobs, neta, nd, nd)); AthR <- if (.hasR) array(0, c(nobs, neta, nd, nd)) else NULL
+  for (li in seq_len(neta)) {
+    idx <- match(dirs[.etaDir[li]], names(params))       # this eta's coordinate in params
     if (is.na(idx)) return(NULL)
     sc <- shi21CentralWrap(Aflat, params, f0, idx, .fdEps)  # C++ shi21Central
     if (is.null(sc$gr) || !all(is.finite(sc$gr))) return(NULL)
-    Ath[, , , d] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
-    if (.hasR) AthR[, , , d] <- array(sc$gr[nA + seq_len(nA)], c(nobs, nd, nd))
+    Ath[, li, , ] <- array(sc$gr[seq_len(nA)], c(nobs, nd, nd))
+    if (.hasR) AthR[, li, , ] <- array(sc$gr[nA + seq_len(nA)], c(nobs, nd, nd))
   }
-  # symmetrize over the 3 tensor axes (obs axis 1 held): average the 6 aperm
-  # permutations of the tensor axes.  aperm uses the INVERSE-permutation convention,
-  # so these are order() of the six S3 permutations -- summed in the same order as the
-  # old triple loop (bit-identical).
-  pr <- list(c(1,2,3,4), c(1,2,4,3), c(1,3,2,4), c(1,4,2,3), c(1,3,4,2), c(1,4,3,2))
-  .sym <- function(T) Reduce(`+`, lapply(pr, function(p) aperm(T, p))) / 6
-  .out <- c(list(f = E0$f, a = E0$a, A = E0$A, Ath = .sym(Ath)),
-            if (.hasR) list(R = E0$R, aR = E0$aR, AR = E0$AR, AthR = .sym(AthR),
+  .out <- c(list(f = E0$f, a = E0$a, A = E0$A, Ath = Ath),
+            if (.hasR) list(R = E0$R, aR = E0$aR, AR = E0$AR, AthR = AthR,
                             Rsig = E0$Rsig, RsigDir = E0$RsigDir, Rsig2 = E0$Rsig2) else NULL)
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) return(NULL)
   .out
@@ -855,7 +852,9 @@
 #' @noRd
 .foceiAnalyticSubjectRFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir, Oi = solve(Om)) {
   nobs <- length(E$f); nom <- omd$nom
-  AthC <- array(E$Ath, c(nobs, ndir, ndir * ndir)); AthRC <- array(E$AthR, c(nobs, ndir, ndir * ndir))
+  # Ath/AthR are [obs, neta, ndir, ndir] (eta axis first); reshape to (obs, neta, ndir^2)
+  # so the kernel reads Ath(o, l, s + t*ndir) with l over the etas.
+  AthC <- array(E$Ath, c(nobs, neta, ndir * ndir)); AthRC <- array(E$AthR, c(nobs, neta, ndir * ndir))
   dOiC <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiC[, , k] <- omd$dOi[[k]]
   d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
