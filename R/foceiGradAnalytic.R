@@ -76,6 +76,33 @@
   list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
+#' C++/Armadillo port of `.foceiAnalyticSubjectGrad`: evaluates the per-observation
+#' error coefficients in R (cheap, vectorized) and does the O(neta^2*nobs) tensor
+#' contractions in `foceiSubjectGradFocei_`.  Same signature/return as the R oracle.
+#' @noRd
+.foceiAnalyticSubjectGradCpp <- function(E, ehat, Om, ef, neta, nth, nsg, sgVar, dOiEst, tr28,
+                                         ndir = neta, dirTh = seq_len(nth), Oi = solve(Om)) {
+  a <- E$a; A <- E$A; f <- E$f; y <- E$y
+  nobs <- length(f)
+  # A constant (f-independent) derivative -- e.g. d2rho/df2 = 1/sa^2 for a pure
+  # additive error -- evaluates to a length-1 scalar; the C++ kernel indexes every
+  # coefficient per observation, so recycle each to length nobs.
+  .n <- function(e) rep_len(as.numeric(ef$ev(e, f, y)), nobs)
+  r1 <- .n(ef$sc$r1); r2 <- .n(ef$sc$r2); pp <- .n(ef$sc$p); p1 <- .n(ef$sc$p1)
+  perRf <- matrix(0, nobs, nsg); perPs <- matrix(0, nobs, nsg); perRs <- matrix(0, nobs, nsg)
+  if (nsg > 0L) for (j in seq_len(nsg)) {
+    perRf[, j] <- .n(ef$per[[sgVar[j]]]$rf)
+    perPs[, j] <- .n(ef$per[[sgVar[j]]]$ps)
+    perRs[, j] <- .n(ef$per[[sgVar[j]]]$rs)
+  }
+  nom <- length(dOiEst)
+  dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
+  if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
+  foceiSubjectGradFocei_(a, A, r1, r2, pp, p1, perRf, perPs, perRs, as.numeric(ehat), Oi,
+                         dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                         neta, nth, nsg, nom, as.integer(dirTh))
+}
+
 #' Per-subject first-derivative (outer-gradient) contribution for FOCE
 #' (interaction=0).  Unlike FOCEI, the EBE eta* stationarizes the interaction-free
 #' inner problem S_FOCE = sum(q a) + Omega^-1 eta = 0 (NOT the full Laplace
@@ -195,8 +222,8 @@
       if (.foce) .foceiAnalyticSubjectGradFoce(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
                                                dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi,
                                                E0 = E0, foceType = foceType)
-      else .foceiAnalyticSubjectGrad(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
-                                     dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi),
+      else .foceiAnalyticSubjectGradCpp(E, eta0, Om, ef, neta, nth, nsg, ef$sgVar,
+                                        dOiEst, tr28, ndir = ndir, dirTh = dirTh, Oi = Oi),
       error = function(e) NULL)
     if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
     g <- g + gi$g
