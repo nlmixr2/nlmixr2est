@@ -438,6 +438,7 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
 // Shared core (called from the single-subject export and the batched OpenMP driver).
 static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                           const arma::mat& dvSens, const arma::mat& dvSens2,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
                            const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
@@ -450,12 +451,22 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
   vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
   vec iR = 1.0 / Rv, iR2 = square(iR), iR3 = pow(iR, 3), iR4 = pow(iR, 4);
   auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
+  // DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual pred sensitivity
+  // ra = a - dy'/dlambda (dvSens, lambda column only) enters the RHO residual terms; the
+  // lambda-lambda 2nd derivative also carries d2y'/dlambda2 (dvSens2).  The determinant
+  // (Gauss-Newton, no residual) and the eta-block keep the pure pred a.  All-zero (no-op)
+  // for non-transform models; the 3rd-order Ath/AthR are DV-free (the DV has no eta chain).
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
+  auto ra = [&](int o, int d) { return hasDv ? a(o, d) - dvSens(o, d) : a(o, d); };
+  auto dvY = [&](int o, int d) { return hasDv ? dvSens2(o, d) : 0.0; };  // d2y'/dlambda2 (lambda col)
   // Gdd: (f,R) 2nd total derivative of the density between two directions
   auto Gdd = [&](int da, int db) {
     double s = 0.0;
-    for (int o = 0; o < nobs; o++)
-      s += rff[o] * a(o, da) * a(o, db) + rfR[o] * (a(o, da) * aR(o, db) + aR(o, da) * a(o, db)) +
+    for (int o = 0; o < nobs; o++) {
+      s += rff[o] * ra(o, da) * ra(o, db) + rfR[o] * (ra(o, da) * aR(o, db) + aR(o, da) * ra(o, db)) +
         rRR[o] * aR(o, da) * aR(o, db) + rf[o] * A(o, da, db) + rR[o] * AR(o, da, db);
+      if (da == db) s += -rf[o] * dvY(o, da);         // (r/R) d2y'/dlambda2, lambda-lambda only
+    }
     return s;
   };
   mat H = Oi; for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) H(l, m) += Gdd(l, m);
@@ -466,12 +477,13 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
   for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) {
     double v = 0.0;
     for (int o = 0; o < nobs; o++) {
-      double us = rff[o] * a(o, s) + rfR[o] * aR(o, s), ut = rff[o] * a(o, t) + rfR[o] * aR(o, t);
-      double ust = rffR[o] * (a(o, s) * aR(o, t) + aR(o, s) * a(o, t)) + rfRR[o] * aR(o, s) * aR(o, t) +
-        rff[o] * A(o, s, t) + rfR[o] * AR(o, s, t);
-      double ws = rfR[o] * a(o, s) + rRR[o] * aR(o, s), wt = rfR[o] * a(o, t) + rRR[o] * aR(o, t);
-      double wst = rffR[o] * a(o, s) * a(o, t) + rfRR[o] * (a(o, s) * aR(o, t) + aR(o, s) * a(o, t)) +
-        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) + rRR[o] * AR(o, s, t);
+      double ras = ra(o, s), rat = ra(o, t), Yst = (s == t) ? dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
+      double us = rff[o] * ras + rfR[o] * aR(o, s), ut = rff[o] * rat + rfR[o] * aR(o, t);
+      double ust = rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
+        rff[o] * A(o, s, t) - rff[o] * Yst + rfR[o] * AR(o, s, t);
+      double ws = rfR[o] * ras + rRR[o] * aR(o, s), wt = rfR[o] * rat + rRR[o] * aR(o, t);
+      double wst = rffR[o] * ras * rat + rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
+        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) - rfR[o] * Yst + rRR[o] * AR(o, s, t);
       v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + rf[o] * Ai(Ath, o, l, s, t) +
         wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + rR[o] * Ai(AthR, o, l, s, t);
     }
@@ -560,11 +572,12 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
 // [[Rcpp::export]]
 arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                           const arma::mat& dvSens, const arma::mat& dvSens2,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
                            const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
                            int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
-  return foceiRSubjectFR_(a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD,
+  return foceiRSubjectFR_(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD,
                           neta, ndir, ndirP, nom, dirP);
 }
 
@@ -574,18 +587,22 @@ arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::
 // [[Rcpp::export]]
 arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                        const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                       const arma::mat& dvSens, const arma::mat& dvSens2,
                        const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                        const arma::mat& ehat, const arma::ivec& obsOffset,
                        const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
                        int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP, int ncores) {
   const int nsub = (int)ehat.n_rows;
   const int np = ndirP + nom;
+  const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
   cube Rall(np, np, nsub, fill::zeros);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     Rall.slice(i) = foceiRSubjectFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
-                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1),
+                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1), dvi, dv2i,
                                      fv.subvec(o0, o1), yv.subvec(o0, o1), Rv.subvec(o0, o1),
                                      ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
                                      neta, ndir, ndirP, nom, dirP);
