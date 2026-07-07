@@ -172,6 +172,48 @@
   list(g = g, etaP = etaP)                            # etaP = d eta*/d p (Almquist Eq 46/48)
 }
 
+#' Solve the augmented model for ALL subjects in one rxode2 population solve
+#' (internally C++ + OpenMP-threaded), instead of one R solve per subject -- the
+#' per-subject solve loop otherwise dominates the gradient (~87%).  Per-subject
+#' etas travel as an ID-keyed params data.frame.  Returns a per-subject list of
+#' `list(f, a, A)` (same shape as `.foceiAnalyticSolveFA`), or `NULL` on failure.
+#' FOCEI only (interaction=1, EBEs at the stored values -- no per-subject re-solve).
+#' @noRd
+.foceiAnalyticSolveAll <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10) {
+  dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
+  etav <- paste0("ETA_", seq_len(neta), "_")
+  pars <- data.frame(ID = ids)
+  for (k in seq_len(neta)) pars[[etav[k]]] <- ebes[, k]
+  for (.nm in names(thv)) pars[[.nm]] <- thv[[.nm]]
+  .sol <- tryCatch(withCallingHandlers(
+    as.data.frame(rxode2::rxSolve(am$augMod, params = pars, events = data,
+                                  returnType = "data.frame", atol = tol, rtol = tol)),
+    warning = function(w) invokeRestart("muffleWarning")), error = function(e) NULL)
+  if (is.null(.sol) || !all(c("predf", paste0("f1_", dirs)) %in% names(.sol))) return(NULL)
+  .idcol <- if ("id" %in% names(.sol)) .sol$id else .sol$ID
+  .byIdSol <- split(seq_len(nrow(.sol)), as.character(.idcol))
+  # rxode2 may label the solve id by the input ID or renumber 1..nsub; accept either.
+  Es <- vector("list", length(ids))
+  for (i in seq_along(ids)) {
+    .ri <- .byIdSol[[as.character(ids[i])]]
+    if (is.null(.ri)) .ri <- .byIdSol[[as.character(i)]]
+    if (is.null(.ri)) return(NULL)
+    .di <- .sol[.ri, , drop = FALSE]
+    .di <- .di[.di$time %in% obsTimes[[i]], , drop = FALSE]
+    if (nrow(.di) != length(obsTimes[[i]])) return(NULL)
+    no <- nrow(.di)
+    a <- matrix(vapply(dirs, function(q) .di[[paste0("f1_", q)]], numeric(no)), no, nd)
+    A <- array(0, c(no, nd, nd))
+    for (r in seq_len(nrow(am$P2))) {
+      .ii <- match(am$P2$i[r], dirs); .jj <- match(am$P2$j[r], dirs)
+      .v2 <- .di[[paste0("f2_", am$P2$i[r], "_", am$P2$j[r])]]
+      A[, .ii, .jj] <- .v2; A[, .jj, .ii] <- .v2
+    }
+    Es[[i]] <- list(f = .di$predf, a = a, A = A)
+  }
+  Es
+}
+
 #' Shared core: analytic natural-scale outer gradient of the FOCEI objective
 #' (OFV = -2*logLik) over structural theta + residual sigma + Omega (Cholesky
 #' scale), summed over subjects.  Gathering (theta/eta/data/omega) is done by the
@@ -194,6 +236,17 @@
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
+  # FOCEI (interaction=1): the EBEs are fixed (no per-subject re-solve), so solve
+  # every subject in ONE rxode2 population solve (C++ + OpenMP) rather than looping
+  # one R solve per subject (which dominates the gradient cost).
+  .EsAll <- NULL
+  if (!.foce) {
+    .obsT <- lapply(seq_along(ids), function(i) {
+      .s <- .byId[[as.character(.idCode[i])]]; .s$TIME[.s$EVID == 0]
+    })
+    .EsAll <- .foceiAnalyticSolveAll(am, th, ebes, .idCode, data, .obsT, solveTol)
+    if (is.null(.EsAll)) return(NULL)
+  }
   g <- numeric(np)
   etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
   for (i in seq_along(ids)) {
@@ -214,8 +267,8 @@
                                     f0 = if (is.null(E0)) NULL else E0$f, foceType = foceType)
       if (is.null(eta0)) return(NULL)
     }
-    p <- c(th, setNames(eta0, etav))
-    E <- .foceiAnalyticSolveFA(am, p, s, obs$TIME, tol = solveTol)   # f, a (1st), A (2nd); no Ath
+    E <- if (.foce) .foceiAnalyticSolveFA(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol)
+         else .EsAll[[i]]                                 # from the one population solve
     if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) {
       .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL)
