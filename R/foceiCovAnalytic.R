@@ -555,6 +555,35 @@
         paste0("rx_rvar2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.rvar, .P2$i[.r], .P2$j[.r]))), character(1))
       .rvarL <- c(paste0("rx_rvarf_=", .toRx(.rvar)), .rL1, .rL2)
     }
+    # Residual-variance sigma sensitivities: for each error parameter the variance R
+    # depends on (an error-model theta appearing in rx_r_), emit dR/dsigma
+    # (rx_rsig_<n>_), its direction sensitivity d2R/(dsigma ddir) (rx_rsig1_<n>_<dir>)
+    # and the sigma-pair 2nd derivative d2R/(dsigma dsigma') (rx_rsig2_<n>_<n'>).  In
+    # the (f,R) assembly a sigma is a pseudo-direction with df/dsigma=0 and dR/dsigma
+    # from here, so every parameter contracts through the same rho(f,R) machinery.
+    .sigTh <- integer(0); .sigL <- character(0)
+    if (!is.null(.rvar)) {
+      .rvarStr <- as.character(.rvar)
+      .erTh <- ui$iniDf$ntheta[!is.na(ui$iniDf$err)]
+      .frTh <- suppressWarnings(unique(as.integer(sub("THETA_([0-9]+)_", "\\1",
+        regmatches(.rvarStr, gregexpr("THETA_[0-9]+_", .rvarStr))[[1]]))))
+      .sigTh <- sort(intersect(.erTh, .frTh))
+      for (.n in .sigTh) {
+        .sg <- paste0("THETA_", .n, "_"); .dRs <- .Dn(.rvar, .sg)
+        .sigL <- c(.sigL, paste0("rx_rsig_", .n, "_=", .toRx(.dRs)),
+          vapply(dirs, function(.p) paste0("rx_rsig1_", .n, "_", .p, "=", .toRx(.g1(.dRs, .p))), character(1)),
+          vapply(.sigTh[.sigTh >= .n], function(.n2)
+            paste0("rx_rsig2_", .n, "_", .n2, "=", .toRx(.Dn(.dRs, paste0("THETA_", .n2, "_")))), character(1)))
+      }
+    }
+    # Transform-of-both-sides parameters (rx_yj_/rx_lambda_/rx_low_/rx_hi_): emit copies
+    # so the DV can be transformed in R (y = tbs(DV)) the same way the inner model does.
+    .tvarL <- character(0); .hasTrans <- FALSE
+    for (.tv in c("yj", "lambda", "low", "hi")) {
+      .tval <- tryCatch(get(paste0("rx_", .tv, "_"), .s), error = function(e) NULL)
+      if (!is.null(.tval)) .tvarL <- c(.tvarL, paste0("rx_t", .tv, "_=", .toRx(.tval)))
+    }
+    .hasTrans <- length(.tvarL) > 0L && !identical(as.character(ui$predDf$transform), "untransformed")
     .baseOde <- vapply(.st, function(.x) paste0("d/dt(", .x, ")=", .toRx(get(paste0("rx__d_dt_", .x, "__"), .s))), character(1))
     # Dosing modifiers (bioavailability f(), lag()/alag(), rate(), dur()) live in the
     # pruned env as rx_<mod>_<state>_ and are NOT part of rx__d_dt_*.  Emit them so the
@@ -567,7 +596,7 @@
       .fun <- if (.m[2L] == "lag") "alag" else .m[2L]     # rxode2 stores lag() as alag()
       paste0(.fun, "(", .m[3L], ")=", .toRx(get(.v, envir = .s)))
     }, character(1))
-    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL), collapse = "\n")
+    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
@@ -587,7 +616,7 @@
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
     # (forward variational jumps at dose times) for the sensitivity compartments.
     list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs),
-         st = .st, P2 = .P2, hasRvar = !is.null(.rvar))
+         st = .st, P2 = .P2, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans)
   }, error = function(e) NULL)
 }
 
@@ -957,7 +986,24 @@
     .v2 <- .d[[paste0("rx_rvar2_", P2$i[r], "_", P2$j[r])]]
     AR[, .ii, .jj] <- .v2; AR[, .jj, .ii] <- .v2
   }
-  list(R = .d$rx_rvarf_, aR = aR, AR = AR)
+  .out <- list(R = .d$rx_rvarf_, aR = aR, AR = AR)
+  # sigma pseudo-directions: dR/dsigma (Rsig), d2R/(dsigma ddir) (RsigDir), and
+  # d2R/(dsigma dsigma') (Rsig2), keyed by the error-parameter theta indices sigTh.
+  .sig <- aug$sigTh
+  if (length(.sig) > 0L) {
+    .out$Rsig <- matrix(vapply(.sig, function(n) .d[[paste0("rx_rsig_", n, "_")]], numeric(no)), no, length(.sig))
+    .out$RsigDir <- array(vapply(.sig, function(n)
+      vapply(dirs, function(q) .d[[paste0("rx_rsig1_", n, "_", q)]], numeric(no)), matrix(0, no, nd)),
+      c(no, nd, length(.sig)))
+    .Rs2 <- array(0, c(no, length(.sig), length(.sig)))
+    for (a in seq_along(.sig)) for (b in seq_along(.sig)[seq_along(.sig) >= a]) {
+      .v <- .d[[paste0("rx_rsig2_", .sig[a], "_", .sig[b])]]; .Rs2[, a, b] <- .v; .Rs2[, b, a] <- .v
+    }
+    .out$Rsig2 <- .Rs2
+  }
+  if (isTRUE(aug$hasTrans))
+    .out$trans <- list(yj = .d$rx_tyj_, lambda = .d$rx_tlambda_, low = .d$rx_tlow_, hi = .d$rx_thi_)
+  .out
 }
 
 #' Re-solve one subject's EBE to the FOCE inner stationary point S_FOCE = sum(q a)
