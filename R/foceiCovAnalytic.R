@@ -123,10 +123,14 @@
 #' `.foceiAnalyticSubjectRFR`.  Handles any variance structure; `NULL` on failure.
 #' @noRd
 .foceiAnalyticAssembleRFR <- function(ui, th, ebes, ids, data, Om, ef, neta, ndirP, dirP, omd,
-                                      dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10) {
+                                      dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10,
+                                      interaction = 1L, foceType = 0L) {
   am <- .foceiAnalyticAugModelDirs(ui, dirsCov)
   if (is.null(am) || am$ndir != ndirCov || !isTRUE(am$hasRvar)) return(NULL)
   np <- ndirP + omd$nom; Oi <- solve(Om)
+  etav <- paste0("ETA_", seq_len(neta), "_")
+  .foce <- identical(as.integer(interaction), 0L)      # FOCE re-solves EBEs to S_FOCE=0
+  .fp <- identical(as.integer(foceType), 1L)           # foce+ keeps the live conditional R
   .byId <- split(data, as.character(data$ID))
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
@@ -134,16 +138,34 @@
   for (i in seq_along(ids)) {
     s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
     obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
-    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, paste0("ETA_", seq_len(neta), "_"))),
+    # FOCE (nonmem): freeze the variance R0 at the eta=0 population solve (E0 carries R0
+    # and its theta-chain aR0/AR0); re-solve the EBEs so they stationarize S_FOCE.  foce+
+    # (foceType=1) keeps the live conditional R and needs no eta=0 solve.
+    E0 <- NULL
+    if (.foce && !.fp) {
+      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
+      if (is.null(E0)) return(NULL)
+    }
+    if (.foce) {
+      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
+      if (is.null(eta0)) return(NULL)
+    }
+    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)),
                                        s, obs$TIME, tol = solveTol, withR = TRUE)
     if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
     E$y <- obs$DV
-    Ri <- tryCatch(.foceiAnalyticSubjectRFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
-                                               ndir = ndirCov, Oi = Oi),
-                   error = function(e) NULL)
+    Ri <- if (.foce)
+      tryCatch(.foceiAnalyticSubjectRfoceFR(E, eta0, Om, neta, ndirP, dirP, omd,
+                                            ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
+               error = function(e) NULL)
+    else
+      tryCatch(.foceiAnalyticSubjectRFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
+                                           ndir = ndirCov, Oi = Oi),
+               error = function(e) NULL)
     if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
     R <- R + Ri
   }
@@ -266,10 +288,8 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
-    # FOCEI uses the general (f,R) cov path (any variance structure).  FOCE still uses
-    # the symbolic add/prop machinery, so a general variance (foceiOnly) FOCE cov -> FD.
-    if (interaction == 0L && isTRUE(ef$foceiOnly))
-      return(.foceiAnalyticFallback("a general residual variance structure with FOCE (analytic cov not yet ported)"))
+    # Both FOCEI and FOCE use the general (f,R) cov path for a general (foceiOnly)
+    # variance structure; add/prop keeps the fast symbolic assembly.
 
     ini <- ui$iniDf
     .map <- .foceiEtaThetaMap(ui)
@@ -373,10 +393,11 @@
     # (any structure, sigmas as directions); add/prop FOCEI keeps the fast symbolic
     # assembly until the (f,R) cov is ported to C++ (the R version is correct but slow).
     # FOCE and IOV keep the symbolic add/prop assembly.
-    Rfull <- if (interaction == 1L && length(iovVars) == 0L && isTRUE(ef$foceiOnly))
+    Rfull <- if (length(iovVars) == 0L && isTRUE(ef$foceiOnly))
       .foceiAnalyticAssembleRFR(ui, th, ebes, ids, data, Om, ef, neta, length(.dir$dirP), .dir$dirP, omd,
                                 dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
-                                startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui))
+                                startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
+                                interaction = interaction, foceType = foceType)
     else .foceiAnalyticAssembleR(ui, th, ebes, ids, data, Om, ef, neta, nth, nsg, omd,
                                  dirs = dirs, dirTh = dirTh, ndir = ndir,
                                  startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
@@ -840,12 +861,122 @@
   R
 }
 
-#' (f,R) FOCE per-subject observed-information R (interaction=0).  TODO: port.
+#' (f,R) FOCE per-subject observed-information R (interaction=0).  The inner problem is
+#' interaction-free (S_FOCE = sum(q0 a) + Omega^-1 eta, q0=-(y-f)/R0, q1=1/R0), so the
+#' EBE does not stationarize the full Laplace objective and the general non-envelope form
+#' R_ab = F_ab + F_aeta eta_b + F_beta eta_a + eta_a' F_etaeta eta_b + F_eta eta_ab is used.
+#' R0 is frozen at the eta=0 population variance (nonmem, from E0) or the live conditional
+#' variance (foce+, from E); its theta-chain enters the parameter columns via aRc/ARc
+#' (dR0/ddir, d2R0/ddir2 from E0), with the eta-block frozen (aRe=0 for nonmem).  Ath is
+#' the eta-hat prediction 3rd-order tensor [obs, neta, ndir, ndir].  Sigmas are directions
+#' (a=A=Ath=0).  Reduces to `.foceiAnalyticSubjectRfoce` on add/prop.
 #' @noRd
 .foceiAnalyticSubjectRfoceFR <- function(E, ehat, Om, neta, ndirP, dirP, omd,
                                          ndir = neta, Oi = solve(Om), E0 = NULL, foceType = 0L) {
-  NULL
+  tr <- function(M) sum(diag(M))
+  f <- E$f; y <- E$y; a <- E$a; A <- E$A; Ath <- E$Ath
+  ei <- seq_len(neta); di <- seq_len(ndir); nobs <- length(f)
+  .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
+  # frozen variance R0 and its sensitivities.  aRe drives the eta-block (0 for nonmem --
+  # R0 is eta-independent -- live E$aR for foce+); aRc drives the parameter columns
+  # (E0's full dR0/ddir for nonmem, live E$aR for foce+), so a mu-referenced theta (whose
+  # direction is an eta) keeps its frozen-R0 theta sensitivity.
+  if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; ARc <- E$AR }
+  else { R0 <- E0$R; aRe <- matrix(0, nobs, ndir); aRc <- E0$aR; ARc <- E0$AR }
+  res <- y - f
+  rf <- -res / R0; rR <- 0.5 * (1 / R0 - res^2 / R0^2)
+  rff <- 1 / R0; rfR <- res / R0^2; rRR <- 0.5 * (-1 / R0^2 + 2 * res^2 / R0^3)
+  q0 <- rf; q1 <- 1 / R0; iR <- 1 / R0; iR2 <- iR^2; iR3 <- iR^3
+  nom <- omd$nom; np <- ndirP + nom
+  ae <- a[, ei, drop = FALSE]
+  isD <- function(p) p <= ndirP; dOf <- function(p) dirP[p]; omc <- function(p) p - ndirP
+  # ---- Phi (data) tensors: H=Phi_etaeta, gPhi=Phi_eta (aRe eta-block) ----
+  gPhi <- as.numeric(Oi %*% ehat); for (l in ei) gPhi[l] <- gPhi[l] + sum(rf * a[, l] + rR * aRe[, l])
+  H <- Oi; for (l in ei) for (m in ei)
+    H[l, m] <- H[l, m] + sum(rff * a[, l] * a[, m] + rfR * (a[, l] * aRe[, m] + aRe[, l] * a[, m]) +
+                              rRR * aRe[, l] * aRe[, m] + rf * A[, l, m] + rR * E_ARelm(E, l, m, .fp))
+  # ---- FOCE inner (EBE) tensors: interaction-free q-based Hf/Nf/Tnf ----
+  Hf <- Oi; Nf <- matrix(0, neta, ndir)
+  for (l in ei) { for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * a[, l] * a[, m] + q0 * A[, l, m])
+    for (d in di) Nf[l, d] <- sum(q1 * a[, l] * a[, d] + q0 * A[, l, d]) }
+  HfInv <- solve(Hf)
+  Tnf <- array(0, c(neta, ndir, ndir)); for (l in ei) for (s in di) for (t in di)
+    Tnf[l, s, t] <- sum(q1 * (A[, l, s] * a[, t] + A[, l, t] * a[, s] + A[, s, t] * a[, l]) + q0 * Ath[, l, s, t])
+  # ---- determinant Ht = Oi + sum(a a / R0) (interaction-free) + its derivatives ----
+  # dHtDir/d2HtDir are parameterized by the R0-sensitivity of each direction: the eta-block
+  # uses aRe (frozen, 0 for nonmem), the parameter columns use aRc (E0's dR0/ddir), so a
+  # mu-referenced theta keeps its frozen-R0 chain.  ARv is d2R0 for the pair (0 unless both
+  # indices carry a live R0 dependence).
+  Ht <- Oi; for (l in ei) for (m in ei) Ht[l, m] <- Ht[l, m] + sum(a[, l] * a[, m] * iR); Hti <- solve(Ht)
+  ARblk <- function(s, t) if (.fp) E$AR[, s, t] else rep(0, nobs)   # d2R0/(dir_s dir_t), eta-block
+  dHtDir <- function(s, aRvS) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum((A[, l, s] * a[, m] + a[, l] * A[, m, s]) * iR - a[, l] * a[, m] * aRvS[, s] * iR2); D }
+  d2HtDir <- function(s, t, aRvS, aRvT, ARv) { D <- matrix(0, neta, neta); for (l in ei) for (m in ei)
+    D[l, m] <- sum((Ath[, l, s, t] * a[, m] + A[, l, s] * A[, m, t] + A[, l, t] * A[, m, s] + a[, l] * Ath[, m, s, t]) * iR -
+      (A[, l, s] * a[, m] + a[, l] * A[, m, s]) * aRvT[, t] * iR2 -
+      (A[, l, t] * a[, m] + a[, l] * A[, m, t]) * aRvS[, s] * iR2 - a[, l] * a[, m] * ARv * iR2 +
+      2 * a[, l] * a[, m] * aRvS[, s] * aRvT[, t] * iR3); D }
+  dHtE <- lapply(ei, function(l) dHtDir(l, aRe))                    # eta-block dHt/deta_l
+  d2HtEE <- lapply(ei, function(s) lapply(ei, function(t) d2HtDir(s, t, aRe, aRe, ARblk(s, t))))
+  Cen <- vapply(ei, function(l) 0.5 * tr(Hti %*% dHtE[[l]]), numeric(1))
+  Cee <- matrix(0, neta, neta); for (s in ei) for (t in ei)
+    Cee[s, t] <- 0.5 * (tr(Hti %*% d2HtEE[[s]][[t]]) - tr(Hti %*% dHtE[[s]] %*% Hti %*% dHtE[[t]]))
+  dHtP <- function(p) if (isD(p)) dHtDir(dOf(p), aRc) else omd$dOi[[omc(p)]]  # parameter dHt/dp
+  # ---- R0 theta-chains for the parameter accessors (aRc/ARc); sigma is a direction ----
+  chQ <- function(d) (res / R0^2) * aRc[, d]                       # d(q0)/dtheta via R0
+  # Phi_(eta,p) and S_p share the (res/R0^2) aRc chain (q0 = Phi_f for FOCE)
+  McolData <- function(p) { if (!isD(p)) return(as.numeric(omd$dOi[[omc(p)]] %*% ehat))
+    d <- dOf(p); Nf[, d] + as.numeric(crossprod(ae, chQ(d))) }
+  McolEBE <- McolData
+  d2Phi <- function(aa, bb) { if (!isD(aa) && !isD(bb))
+      return(0.5 * as.numeric(t(ehat) %*% omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat) + 0.5 * omd$d2LD[omc(aa), omc(bb)])
+    if (!isD(aa) || !isD(bb)) return(0)
+    da <- dOf(aa); db <- dOf(bb)
+    sum(rff * a[, da] * a[, db] + rf * A[, da, db] + rfR * (a[, da] * aRc[, db] + aRc[, da] * a[, db]) +
+          rRR * aRc[, da] * aRc[, db] + rR * ARc[, da, db]) }
+  # S_(p,eta) row (SmatEBE): Tnf plus the theta chain -aRc/R0^2 a a + (res/R0^2) aRc A
+  SmatEBE <- function(p) { if (!isD(p)) return(omd$dOi[[omc(p)]])
+    d <- dOf(p); M <- matrix(0, neta, ndir); for (l in ei) for (s in di)
+      M[l, s] <- Tnf[l, d, s] + sum(-aRc[, d] * iR2 * a[, s] * a[, l] + (res * iR2) * aRc[, d] * A[, l, s]); M }
+  # S_(p,p') vector (SvecEBE): Tnf + the combined 2nd-order R0 chain (R0'A0 cancels)
+  SvecEBE <- function(aa, bb) { ta <- isD(aa); tb <- isD(bb)
+    if (!ta && !tb) return(as.numeric(omd$d2Oi[[omc(aa)]][[omc(bb)]] %*% ehat))
+    if (!ta || !tb) return(rep(0, neta))
+    da <- dOf(aa); db <- dOf(bb); v <- Tnf[, da, db]
+    w <- -(a[, da] * aRc[, db] + aRc[, da] * a[, db]) * iR2 + (res * iR2) * ARc[, da, db] - 2 * res * aRc[, da] * aRc[, db] * iR3
+    for (l in ei) v[l] <- v[l] + sum(w * a[, l] + (res * iR2) * (aRc[, da] * A[, l, db] + aRc[, db] * A[, l, da])); v }
+  # determinant d2Ht/(deta_l dp) uses aRc for the theta-direction, aRe for the eta; the mixed
+  # d2R0/(deta dtheta) is 0 for nonmem (R0 frozen w.r.t. eta) and E$AR for foce+.
+  d2HtEtaP <- function(p, l) { if (!isD(p)) return(matrix(0, neta, neta))
+    d <- dOf(p); d2HtDir(d, l, aRc, aRe, if (.fp) E$AR[, d, l] else rep(0, nobs)) }
+  d2Ht_pp <- function(aa, bb) { ta <- isD(aa); tb <- isD(bb)
+    if (ta && tb) return(d2HtDir(dOf(aa), dOf(bb), aRc, aRc, ARc[, dOf(aa), dOf(bb)]))
+    if (!ta && !tb) return(omd$d2Oi[[omc(aa)]][[omc(bb)]])
+    matrix(0, neta, neta) }
+  Cpe <- function(p, l) 0.5 * (tr(Hti %*% d2HtEtaP(p, l)) - tr(Hti %*% dHtP(p) %*% Hti %*% dHtE[[l]]))
+  Cpp <- function(aa, bb) 0.5 * (tr(Hti %*% d2Ht_pp(aa, bb)) -
+    tr(Hti %*% dHtP(aa) %*% Hti %*% dHtP(bb)))
+  .McD <- lapply(1:np, McolData)
+  etaP <- matrix(vapply(1:np, function(p) as.numeric(-HfInv %*% McolEBE(p)), numeric(neta)), nrow = neta)
+  eta2 <- function(aa, bb) { b <- SvecEBE(aa, bb) + SmatEBE(aa)[, ei, drop = FALSE] %*% etaP[, bb] +
+      SmatEBE(bb)[, ei, drop = FALSE] %*% etaP[, aa]
+    for (l in ei) b[l] <- b[l] + as.numeric(t(etaP[, aa]) %*% Tnf[l, ei, ei] %*% etaP[, bb]); as.numeric(-HfInv %*% b) }
+  .CpeRow <- lapply(1:np, function(p) vapply(ei, function(l) Cpe(p, l), numeric(1)))
+  R <- matrix(0, np, np)
+  for (aa in 1:np) for (bb in aa:np) {
+    e_ab <- eta2(aa, bb)
+    dat <- d2Phi(aa, bb) + sum(.McD[[aa]] * etaP[, bb]) + sum(.McD[[bb]] * etaP[, aa]) +
+           as.numeric(t(etaP[, aa]) %*% H %*% etaP[, bb]) + sum(gPhi * e_ab)
+    ld <- Cpp(aa, bb) + sum(.CpeRow[[aa]] * etaP[, bb]) + sum(.CpeRow[[bb]] * etaP[, aa]) +
+          as.numeric(t(etaP[, aa]) %*% Cee %*% etaP[, bb]) + sum(Cen * e_ab)
+    R[aa, bb] <- R[bb, aa] <- dat + ld
+  }
+  R
 }
+
+#' d2R0/(deta_l deta_m) for the FOCE eta-block H: 0 (nonmem, R0 frozen) or live E$AR (foce+).
+#' @noRd
+E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 
 #' C++/Armadillo port of `.foceiAnalyticSubjectRFR` (FOCEI (f,R) observed information).
 #' Reshapes the 3rd-order Ath/AthR tensors and the Omega derivative lists for the kernel.
