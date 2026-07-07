@@ -533,7 +533,14 @@
 #'   first zero gradient.
 #'
 #' @param mceta Monte Carlo sampling for the best initial ETA estimate
-#'   (based on `omega`): `-1` (default) uses the last eta; `0` uses eta=0
+#'   (based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+#'   extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+#'   when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+#'   accepting the extrapolated eta only when it is within the standardized-eta
+#'   reset bound (else keeping the last eta, or resetting to 0 when that is also
+#'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+#'   the better; both `-2` and `-1` fall back to keeping the last eta when no
+#'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
 #'   for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 #'   etas sampled from omega are each evaluated and the best (by inner
 #'   objective) is used.
@@ -748,7 +755,7 @@ foceiControl <- function(sigdig = 4, #
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
-                         mceta=-1L,
+                         mceta=-2L,
                          warm=c("calc", "save"),
                          nAGQ=0,
                          agqLow=-Inf,
@@ -1211,7 +1218,7 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
