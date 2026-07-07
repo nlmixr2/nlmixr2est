@@ -446,16 +446,13 @@
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
     addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"), error = function(e) "combined2")
   }
-  # combined1 additive+proportional variance (sa+sp*f)^2 is NOT reflected in the model's
-  # rx_r_ (loadPruneSens always emits the combined2 sum-of-variances form), so the
-  # augmented solve cannot represent it -> keep it on the finite-difference gradient.
-  if (identical(addPr, "combined1"))
-    return(.foceiAnalyticFallback("combined1 additive+proportional error"))
-  # The (f,R) FOCEI path reads R and dR/dsigma from the solve, so ANY (combined2-form)
-  # variance structure is in scope.  FOCE still needs the symbolic add/prop error
-  # machinery below; for other structures return a minimal `ef` (foceiOnly=TRUE) so FOCE
-  # bails to FD while FOCEI runs.
-  .isAddProp <- all(er$err %in% c("add", "prop"))
+  # The (f,R) FOCEI path reads R and dR/dsigma from the model's own rx_r_ via the solve,
+  # so ANY variance structure is in scope -- including combined1 (sa+sp*f)^2, which rx_r_
+  # carries directly ((add + pred*prop)^2, the weight squared).  FOCE still needs the
+  # symbolic add/prop error machinery below and only supports the combined2 sum-of-
+  # variances form; for anything else return a minimal `ef` (foceiOnly=TRUE) so FOCE and
+  # the analytic covariance bail to FD while FOCEI runs the (f,R) path.
+  .isAddProp <- all(er$err %in% c("add", "prop")) && !identical(addPr, "combined1")
   if (!.isAddProp)
     return(list(sgVar = character(0), sgName = sgNameAll, sc = NULL, per = NULL, pair = NULL,
                 foce = NULL, focePlus = NULL, foceiOnly = TRUE, canVanish = canVanish,
