@@ -551,6 +551,13 @@
     }, character(1))
     .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, paste0("predf=", .toRx(.pred)), .fL1, .fL2), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
+    # Optimize common subexpressions (as the inner model does): the augmented model
+    # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
+    # prediction chains, so rxOptExpr materially shrinks the per-solve work.
+    if (isTRUE(rxode2::rxGetControl(ui, "optExpression", TRUE))) {
+      .modTxt <- tryCatch(rxode2::rxOptExpr(.modTxt, "FOCEi outer gradient model"),
+                          error = function(e) .modTxt)
+    }
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
     # (forward variational jumps at dose times) for the sensitivity compartments.
     list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), st = .st, P2 = .P2)

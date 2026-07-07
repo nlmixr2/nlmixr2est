@@ -1213,12 +1213,17 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
                            "compiling Llik EBE model...",
                            "compiling EBE model..."))
   }
+  # Augmented outer-gradient model (fast=TRUE): built here, once, with the compiled
+  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
+  # it; the direction metadata travels separately in `outerMeta`.
+  .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
-    outer = .toRx(s$..outer),
+    outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
+    outerMeta = if (is.null(.outerAm)) NULL else .outerAm[c("dirs", "ndir", "st", "P2")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
@@ -1341,11 +1346,16 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## forward build would be reused for an adjoint fit (or vice versa).
   .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "default")
   .rxMethod <- rxode2::rxGetControl(.ui, "rxControl", rxode2::rxControl())$method
+  ## fast=TRUE adds the augmented outer-gradient model (foceiModelList$outer), so it
+  ## must key the cache -- else a non-fast build (outer=NULL) would be reused for a
+  ## fast fit (foceType too, since foce+ has no outer model).
+  .fast <- isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))
+  .foceType <- rxode2::rxGetControl(.ui, "foceType", 0L)
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
-                   .eventSens, .sensMethod, .rxMethod,
+                   .eventSens, .sensMethod, .rxMethod, .fast, .foceType,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
