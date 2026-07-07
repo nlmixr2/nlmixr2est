@@ -14,6 +14,14 @@
 - The default outer optimizer (`foceiControl(outerOpt=)`) is now `"nlminb"` for
   the finite-difference methods (and `"lbfgsb3c"` when `fast = TRUE`).
 
+- `foceiControl(mceta=)` now defaults to `-2`: when the analytic gradient supplies
+  the EBE sensitivity (`fast = TRUE`), the next inner-problem starting eta is the
+  Almquist (2015) Eq-48 extrapolation `eta* + (d eta*/d theta)(theta_new - theta_old)`,
+  accepted only within the standardized-eta reset bound (else the last eta, or 0
+  when that is also out of bound).  `mceta = -1` jumps between the extrapolation and
+  eta=0.  Both fall back to keeping the last eta when no analytic sensitivity is
+  available (`fast = FALSE`), so the default is behavior-preserving there.
+
 - The analytic covariance (`covMethod = "analytic"`) now supports `foce = "foce+"`
   (the live conditional residual variance), including the `focep` method; previously
   it fell back to the finite-difference covariance.

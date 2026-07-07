@@ -398,6 +398,14 @@ struct focei_options {
   int nEstOmega=0;
   int mceta= -1; // number of mc samples of ETA
 
+  // Almquist Eq-48 warm-start extrapolation (fast=TRUE): per-subject d eta*/d(theta)
+  // in the SCALED optimizer parameterization (etaP columns pre-multiplied by
+  // dUnscaleParDx), the scaled theta snapshot at gradient time, and a validity flag.
+  double *getaP = NULL;      // [neta * npars * nsub], indexed by id
+  double *etaPTheta = NULL;  // [npars] scaled theta at the last analytic-gradient call
+  int etaPValid = 0;
+  size_t getaPn = 0;         // allocated element count (realloc guard)
+
   // Pre-drawn ETA samples for mceta >= 1 (neta x (mceta-1) x nsub); filled
   // serially before the parallel for-loop so workers avoid R API calls.
   arma::cube mcetaSamples;
@@ -520,6 +528,27 @@ static inline void resetEtaSelective(focei_ind *fInd, int neta) {
   }
 }
 
+// Standardized-eta "p-value" bound test (the same criterion that drives the inner
+// eta reset): eta is in bound when |chol(Omega^-1) eta|_j < resetEtaSize AND
+// |eta/SD_j| < resetEtaSize for every non-mu-ref-protected j.  Used by the Eq-48
+// warm-start extrapolation to decide whether to accept the extrapolated eta.
+static inline bool etaInBound(double *eta) {
+  if (!R_FINITE(op_focei.resetEtaSize) || op_focei.resetEtaSize <= 0) return true;
+  arma::mat em(op_focei.neta, 1);
+  for (int j = 0; j < op_focei.neta; j++) em(j, 0) = eta[j];
+  arma::mat r1 = op_focei.cholOmegaInv * em;
+  for (unsigned int j = 0; j < r1.n_rows; j++) {
+    if (isMuRefCovProtected(j)) continue;
+    if (std::fabs(r1(j, 0)) >= op_focei.resetEtaSize) return false;
+  }
+  arma::mat r2 = op_focei.eta1SD % em;
+  for (unsigned int j = 0; j < r2.n_rows; j++) {
+    if (isMuRefCovProtected(j)) continue;
+    if (std::fabs(r2(j, 0)) >= op_focei.resetEtaSize) return false;
+  }
+  return true;
+}
+
 focei_ind *inds_focei = NULL;
 
 // FOCE eta=0 population-R cache.  rPop depends only on theta, so it is constant
@@ -561,6 +590,13 @@ extern "C" void rxOptionsFreeFocei() {
   if (op_focei.gthetaGrad != NULL && op_focei.mGthetaGrad) R_Free(op_focei.gthetaGrad);
   op_focei.gthetaGrad = NULL;
   op_focei.mGthetaGrad = false;
+
+  // Eq-48 warm-start buffers (standalone, not part of the contiguous per-subject block)
+  if (op_focei.getaP != NULL) R_Free(op_focei.getaP);
+  op_focei.getaP = NULL; op_focei.getaPn = 0;
+  if (op_focei.etaPTheta != NULL) R_Free(op_focei.etaPTheta);
+  op_focei.etaPTheta = NULL;
+  op_focei.etaPValid = 0;
 
   if (op_focei.muGroupTheta != NULL) R_Free(op_focei.muGroupTheta);
   op_focei.muGroupTheta = NULL; op_focei.muGroupEta = NULL;
@@ -2058,7 +2094,44 @@ static inline int innerOpt1(int id, int likId) {
   // Use eta
   // Convert Zm to Hessian, if applicable.
   mat etaMat(fop->neta, 1, fill::zeros);
-  if (op_focei.mceta == -1) {
+  if (op_focei.mceta == -2 || op_focei.mceta == -1) {
+    // Almquist Eq-48 warm-start: extrapolate the next starting eta from the last
+    // analytic gradient's EBE sensitivity, eta^0 = eta*_s + (d eta*/d theta)
+    // (theta_now - theta_grad) (scaled space).  Only when the analytic gradient
+    // supplied etaP (fast=TRUE) and this is a real inner solve (not a gradient
+    // perturbation or the cov/linearization step); otherwise fall through keeping
+    // the last eta (the legacy mceta=-1 behavior).
+    if (!op_focei.calcGrad && op_focei.etaPValid && op_focei.getaP != NULL &&
+        op_focei.maxInnerIterations > 0) {
+      double *etaP_i = &op_focei.getaP[(size_t)id * op_focei.neta * op_focei.npars];
+      std::vector<double> etaNew(op_focei.neta);
+      for (int j = 0; j < op_focei.neta; j++) etaNew[j] = fInd->eta[j];
+      for (int k = 0; k < (int)op_focei.npars; k++) {
+        double dth = op_focei.theta[k] - op_focei.etaPTheta[k];
+        if (dth == 0.0) continue;
+        for (int j = 0; j < op_focei.neta; j++)
+          etaNew[j] += etaP_i[(size_t)j + (size_t)op_focei.neta * k] * dth;
+      }
+      if (op_focei.mceta == -2) {
+        // etaNew in bound -> start there (warmZm re-seeds the Hessian at etaNew);
+        // else keep eta*_s -- the standardized-eta reset below zeros it when eta*_s
+        // is itself out of bound (the "both out of bound -> reset to zero" case).
+        if (etaInBound(&etaNew[0])) {
+          std::copy(etaNew.begin(), etaNew.end(), &fInd->eta[0]);
+        }
+      } else {
+        // mceta == -1: jump from etaNew to zero -- keep whichever gives the better
+        // (lower -logLik) inner objective.
+        double fNew = likInner0(&etaNew[0], id);
+        std::fill(&fInd->tryEta[0], &fInd->tryEta[0] + op_focei.neta, 0.0);
+        double fZero = likInner0(fInd->tryEta, id);
+        if (R_FINITE(fNew) && (!R_FINITE(fZero) || fNew <= fZero)) {
+          std::copy(etaNew.begin(), etaNew.end(), &fInd->eta[0]);
+        } else {
+          std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
+        }
+      }
+    }
   } else if (op_focei.mceta == 0) {
     // always reset to zero
     std::fill(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, 0.0);
@@ -3651,6 +3724,42 @@ static inline double dUnscaleParDx(int i) {
 
 static bool restoreFitSolve_();   // defined below (with covSolveArgs_)
 
+// Read the per-subject etaP (neta x npars x nsub) the R analytic gradient stashed
+// on the fit env (.foceiGradEtaP) into op_focei.getaP, converting each column to
+// the SCALED optimizer parameterization (x dUnscaleParDx) so the Eq-48 step
+// (op_focei.theta - etaPTheta) is in the same space.  Snapshots the scaled theta
+// and sets etaPValid.  No-op (etaPValid=0) unless mceta is an Eq-48 mode.
+static void loadAnalyticEtaP(double *theta) {
+  op_focei.etaPValid = 0;
+  if (op_focei.mceta != -2 && op_focei.mceta != -1) return;
+  if (!op_foceiFitEnv.exists(".foceiGradEtaP")) return;
+  RObject _epO = op_foceiFitEnv[".foceiGradEtaP"];
+  if (Rf_isNull(_epO)) return;
+  NumericVector _ep(_epO);
+  int neta = op_focei.neta, npars = (int)op_focei.npars;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  size_t need = (size_t)neta * npars * nsub;
+  if (need == 0 || (size_t)_ep.size() != need) return;
+  if (op_focei.getaP == NULL || op_focei.getaPn != need) {
+    if (op_focei.getaP != NULL) R_Free(op_focei.getaP);
+    op_focei.getaP = R_Calloc(need, double);
+    op_focei.getaPn = need;
+  }
+  if (op_focei.etaPTheta == NULL) op_focei.etaPTheta = R_Calloc(npars, double);
+  for (int k = 0; k < npars; k++) {
+    double sc = dUnscaleParDx(k);
+    for (int i = 0; i < nsub; i++) {
+      for (int j = 0; j < neta; j++) {
+        size_t idx = (size_t)j + (size_t)neta * ((size_t)k + (size_t)npars * i);
+        op_focei.getaP[idx] = _ep[idx] * sc;
+      }
+    }
+  }
+  std::copy(theta, theta + npars, op_focei.etaPTheta);
+  op_focei.etaPValid = 1;
+}
+
 // Analytic ("fast") outer gradient hook: fill g from .foceiCalcGradAnalytic when
 // the gate is live.  Returns true on success (g filled), false to fall back to
 // the finite-difference gradient.  theta is the current scaled optimizer point.
@@ -3673,6 +3782,9 @@ static bool analyticOuterGrad(double *theta, double *g) {
     if (!R_finite(_gv[i])) return false;
     g[i] = _gv[i] * dUnscaleParDx(i);
   }
+  // Stash the per-subject EBE sensitivity etaP (Almquist Eq 46) that the R gradient
+  // computed, for the Eq-48 warm-start extrapolation at the next outer step.
+  loadAnalyticEtaP(theta);
   return true;
 }
 

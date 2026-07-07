@@ -135,6 +135,24 @@ test_that("modeled dosing parameters (f/lag) use jump sensitivities and match FD
   expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.02)
 })
 
+test_that("mceta=-2 (Eq-48) is the default and all fast mceta modes agree", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  expect_equal(foceiControl()$mceta, -2L)                    # new global default
+  d <- nlmixr2data::theo_sd
+  ofv <- vapply(c(-2L, -1L, 0L), function(mc)
+    suppressMessages(nlmixr2(.fast_one_cmt, d, "focei",
+      foceiControl(print = 0L, covMethod = "", fast = TRUE, mceta = mc)))$objf, numeric(1))
+  # Eq-48 extrapolation / jump / reset must all reach the same optimum
+  expect_equal(ofv[1], ofv[2], tolerance = 0.02)
+  expect_equal(ofv[1], ofv[3], tolerance = 0.02)
+  # mceta=-2 with fast=FALSE degrades to keep-last-eta (no analytic sensitivity) and fits
+  f <- suppressMessages(nlmixr2(.fast_one_cmt, d, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = FALSE, mceta = -2L)))
+  expect_true(is.finite(f$objf))
+})
+
 test_that("out-of-scope model (linCmt) falls back to the finite-difference gradient", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
