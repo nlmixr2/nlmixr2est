@@ -101,3 +101,30 @@ shutdown signal"):
 
 - **R Style**: All variable and function names in R must be in `camelCase` (e.g., `simData`, `fitSaem`, `oneCompartmentMix`). Do not use `snake_case` or `dot.case` for R objects.
 - **C++ Style**: Follow Rcpp/Armadillo conventions. Use `snake_case` or `camelCase` as appropriate.
+
+## Generating rxode2 model text (augmented/inner/outer models)
+
+When emitting rxode2 model text programmatically (e.g. the augmented sensitivity
+models in `R/foceiCovAnalytic.R` / `R/foceiGradAnalytic.R`, or the inner/pred
+models in `R/focei.R`):
+
+- **Name every generated output variable `rx_<name>_`** (leading `rx_`, trailing
+  `_`), matching the inner model's `rx_pred_` / `rx__sens_..._` convention. Two
+  reasons: (1) the user can define a model variable with any plain name (e.g.
+  `rvar`, `predf`, `f1`), so an un-prefixed generated name can collide and silently
+  corrupt the model; (2) **rxode2 parses a top-level `x = <constant>` as an initial
+  value** (x becomes a parameter, dropping out of the solve columns) UNLESS the name
+  is of the `rx_<name>_` form -- those keep a constant assignment as a real lhs
+  output column. So a constant sensitivity (e.g. `d(R)/d(eta)=0` for additive error)
+  comes back as a column of that constant, no special-casing needed. Use
+  `rx_predf_`, `rx_f1_<dir>`, `rx_rvarf_`, etc. -- never `predf`, `f1_...`, `rvar`,
+  `rxPredF` (a plain `rxFoo` without the trailing `_` is still parsed as an init).
+- **Use `=` only for a variable you will read back** (an output column of the
+  solve). Use `~` (suppressed assignment) for any intermediate you compute but do
+  NOT output -- extra `=` output columns shift the positional column layout and add
+  solve overhead.
+- **Declare the theta/eta inputs AND the model covariates (`ui$allCovs`) with
+  `param(...)`** so the solve parameter order is fixed and positional (values are
+  keyed by name, but pinning order keeps the input layout stable across builds).
+  Covariates are supplied from the event data at solve time but must still be
+  declared in `param(...)`.

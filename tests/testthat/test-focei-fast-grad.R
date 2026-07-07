@@ -92,6 +92,40 @@ test_that("FOCE (nonmem) analytic gradient matches central differences", {
   expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
 })
 
+test_that("analytic outer gradient matches FD for a covariate model", {
+  skip_on_cran()
+  skip_on_ci()
+  skip_if_not_installed("nlmixr2data")
+  # a covariate (wtCl*WT) in the structural model: exercises the covariate direction
+  # and the param() covariate declaration in the augmented outer model
+  set.seed(1)
+  d <- do.call(rbind, lapply(1:12, function(i)
+    data.frame(ID = i, TIME = c(0, .5, 1, 2, 4, 8), EVID = c(101, 0, 0, 0, 0, 0),
+               AMT = c(100, 0, 0, 0, 0, 0), DV = c(NA, 8, 9, 7, 4, 1) + rnorm(6, 0, .3),
+               WT = runif(1, 50, 90))))
+  covm <- function() {
+    ini({ tka <- 0.2; tcl <- 1.2; tv <- 3.2; wtCl <- 0.01; eta.cl ~ 0.3; prop.sd <- 0.2 })
+    model({ ka <- exp(tka); cl <- exp(tcl + eta.cl + wtCl * WT); v <- exp(tv)
+            d/dt(depot) <- -ka * depot; d/dt(center) <- ka * depot - cl / v * center
+            cp <- center / v; cp ~ prop(prop.sd) })
+  }
+  ph <- suppressMessages(suppressWarnings(nlmixr2(covm, d, "focei",
+        foceiControl(print = 0L, covMethod = "", fast = TRUE,
+                     maxOuterIterations = 0L, maxInnerIterations = 200L))))
+  g <- .foceiGradAnalyticCalc(ph)
+  expect_false(is.null(g))
+  base <- fixef(ph)
+  ofvAt <- function(nm, val) {
+    ui2 <- do.call(rxode2::ini, c(list(ph$finalUi), setNames(list(val), nm)))
+    suppressMessages(suppressWarnings(nlmixr2(ui2, d, "focei",
+      foceiControl(print = 0L, covMethod = "", maxOuterIterations = 0L,
+                   maxInnerIterations = 200L))))$objf
+  }
+  h <- 1e-3
+  fd <- vapply(names(base), function(nm) (ofvAt(nm, base[nm] + h) - ofvAt(nm, base[nm] - h)) / (2 * h), numeric(1))
+  expect_equal(unname(g[names(base)]), unname(fd), tolerance = 0.01)
+})
+
 test_that("fast=TRUE fit matches the finite-difference fit", {
   skip_on_cran()
   skip_on_ci()
