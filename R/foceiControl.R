@@ -114,6 +114,12 @@
 #'   Hessians used for the covariance step/final likelihood: "central"
 #'   (more accurate, used here) or "forward".
 #'
+#' @param censOption Treatment of the second derivative for censored
+#'   (M2/M3/M4/BLQ) observations.  \code{"laplace"} (the default) uses the exact
+#'   censored second derivative of the objective (a proper Laplace inner Hessian
+#'   and analytic covariance); \code{"gauss"} keeps the historic uncensored
+#'   Gauss-Newton curvature.  Shared with \code{saemControl}/\code{nlmControl}.
+#'
 #' @param shi21maxOuter The maximum number of steps for the
 #'   optimization of the forward-difference step size.  When not zero,
 #'   use this instead of Gill differences.
@@ -639,6 +645,7 @@ foceiControl <- function(sigdig = 4, #
                          hessEpsLlik =(.Machine$double.eps)^(1/3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
+                         censOption = c("laplace", "gauss"),
                          eventType = c("central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
@@ -951,6 +958,14 @@ foceiControl <- function(sigdig = 4, #
     .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
+  # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
+  # "laplace" (default) uses the exact censored 2nd derivative (a proper Laplace); "gauss"
+  # keeps the historic uncensored Gauss-Newton curvature.  Shared with saem/nlm.
+  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+    censOption <- as.integer(censOption)
+  } else {
+    censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
+  }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
@@ -1257,6 +1272,7 @@ foceiControl <- function(sigdig = 4, #
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType=optimHessType,
     optimHessCovType=optimHessCovType,
+    censOption=censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),

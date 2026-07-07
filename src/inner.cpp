@@ -129,6 +129,12 @@ struct focei_options {
   double *ga = NULL;
   double *gB = NULL;
   double *gc = NULL;
+  // per-observation censored inner-Hessian coefficients (rho_ff/rho_fR/rho_RR): the
+  // EXACT censored 2nd derivative for the Laplace determinant; normal obs carry the
+  // Gauss-Newton 1/r, 0, 0.5/r^2 (so calcEtaHessian reduces bit-identically there).
+  double *gcHff = NULL;
+  double *gcHfr = NULL;
+  double *gcHrr = NULL;
   double *gH = NULL;
   double *gVid = NULL;
 
@@ -389,6 +395,7 @@ struct focei_options {
   bool needOptimHess = false;
   int optimHessType = 1;
   int optimHessCovType = 1;
+  int censOption = 1;   // 1 laplace (exact censored 2nd deriv) / 0 gauss (historic Gauss-Newton)
   double smatPer;
   std::atomic<bool> didLikCalc{false};
   bool zeroGradFirstReset= false;
@@ -475,6 +482,9 @@ struct focei_ind {
   double *a;
   double *B;
   double *c;
+  double *cHff;   // per-obs censored inner-Hessian coeffs (rho_ff/rho_fR/rho_RR)
+  double *cHfr;
+  double *cHrr;
   double *lp;// = mat(neta,1);
 
   double *g;
@@ -1540,6 +1550,21 @@ double likInner0(double *eta, int id) {
             // FIXME faster initialization via copy or elm
             // RSprintf("id: %d k: %d j: %d\n", id, k, j);
             B(k, 0) = 2.0/_safe_zero(r);
+            // per-obs censored inner-Hessian coefficients (rho_ff/rho_fR/rho_RR) for the
+            // exact censored Laplace determinant; normal obs get the Gauss-Newton values
+            // (1/r, 0, 0.5/r^2) so calcEtaHessian reduces bit-identically to the old form.
+            {
+              int isCensObs = (cens != 0) || (R_FINITE(limit) && !ISNA(limit));
+              if (isCensObs && dist == rxDistributionNorm && op_focei.censOption == 1) {
+                double _cp[9]; for (int _i = 0; _i < 9; _i++) _cp[_i] = 0.0;
+                censNormalPartials((double)cens, dv, limit, f, r, 2, _cp);
+                fInd->cHff[k] = _cp[2]; fInd->cHfr[k] = _cp[3]; fInd->cHrr[k] = _cp[4];
+              } else {
+                // gauss (historic) or a normal obs: uncensored Gauss-Newton curvature
+                fInd->cHff[k] = 1.0/_safe_zero(r); fInd->cHfr[k] = 0.0;
+                fInd->cHrr[k] = 0.5/_safe_zero(r*r);
+              }
+            }
             if (op_focei.interaction == 1) {
               for (i = op_focei.neta; i--; ) {
                 if (predSolve || op_focei.etaFD[i]==1) {
@@ -1785,14 +1810,22 @@ bool calcEtaHessian(double *eta, int likId, int id,
     // Note that since the gradient includes omegaInv*etam,
     // op_focei.omegaInv(k, l) shouldn't be added.
   } else if (op_focei.interaction) {
-    arma::mat a(fInd->a, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
-    arma::mat B(fInd->B, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), 1, false, true);
-    arma::mat c(fInd->c, getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind), op_focei.neta, false, true);
+    int nO = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+    arma::mat a(fInd->a, nO, op_focei.neta, false, true);
+    arma::mat B(fInd->B, nO, 1, false, true);
+    arma::mat c(fInd->c, nO, op_focei.neta, false, true);
+    // per-obs exact-Laplace inner-Hessian coefficients (rho_ff/rho_fR/rho_RR); normal
+    // obs carry the Gauss-Newton 1/r, 0, 0.5/r^2 so this reduces bit-identically to the
+    // old 0.5*(a*B*a + c*c) form.  rp = dr/deta = c*r = c*(2/B).
+    arma::vec cHff(fInd->cHff, nO, false, true), cHfr(fInd->cHfr, nO, false, true), cHrr(fInd->cHrr, nO, false, true);
+    arma::vec r2 = 2.0 / B.col(0);   // r per obs (= 2/B)
     for (k = op_focei.neta; k--;){
+      arma::vec rpk = c.col(k) % r2;
       for (l = k+1; l--;){
-        // tmp = fInd->a.col(l) %  fInd->B % fInd->a.col(k);
-        H(k, l) = 0.5*sum(a.col(l) % B % a.col(k) +
-                          c.col(l) % c.col(k)) +
+        arma::vec rpl = c.col(l) % r2;
+        H(k, l) = sum(cHff % a.col(l) % a.col(k) +
+                      cHfr % (a.col(l) % rpk + rpl % a.col(k)) +
+                      cHrr % rpl % rpk) +
           op_focei.omegaInv(k, l);
         if (!R_finite(H(k, l))) {
           return false;
@@ -1802,13 +1835,12 @@ bool calcEtaHessian(double *eta, int likId, int id,
     }
   } else {
     arma::mat a(fInd->a, fInd->nObs, op_focei.neta, false, true);
-    // std::copy(&fInd->a[0], &fInd->a[0]+a.size(), a.begin());
-    arma::mat B(fInd->B, fInd->nObs, 1, false, true);
-    // std::copy(&fInd->B[0], &fInd->B[0]+B.size(), B.begin());
+    // FOCE (no interaction): frozen variance -> only the prediction curvature enters
+    // the inner Hessian; censored obs use rho_ff^cens (cHff), normal use 1/r.
+    arma::vec cHff(fInd->cHff, fInd->nObs, false, true);
     for (k = op_focei.neta; k--;){
       for (l = k+1; l--;) {
-        // tmp = a.col(l) %  B % a.col(k);
-        H(k, l) = 0.5*sum(a.col(l) % B % a.col(k)) +
+        H(k, l) = sum(cHff % a.col(l) % a.col(k)) +
           op_focei.omegaInv(k, l);
         if (!R_finite(H(k, l))) {
             return false;
@@ -4351,7 +4383,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
       2 * op_focei.neta * op_focei.neta * nsub_mix +
       nall_mix +
       // gZmH (packed lower-tri Hessian) + gZmEta per subject for warm="calc"
-      nsub_mix * ((size_t)op_focei.neta * (op_focei.neta + 1) / 2 + op_focei.neta),
+      nsub_mix * ((size_t)op_focei.neta * (op_focei.neta + 1) / 2 + op_focei.neta) +
+      // per-obs censored inner-Hessian coefficients gcHff/gcHfr/gcHrr
+      3 * nall_mix,
       double);
   }
   op_focei.etaLower =  op_focei.etaUpper + op_focei.neta;
@@ -4376,6 +4410,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
   op_focei.gVid     = op_focei.llikObsFull + getRxNallAndMix(rx);
   op_focei.gZmH     = op_focei.gVid + (size_t)getRxNallAndMix(rx)*getRxNallAndMix(rx); //[neta*(neta+1)/2 * nsub]
   op_focei.gZmEta   = op_focei.gZmH + (size_t)(op_focei.neta*(op_focei.neta+1)/2)*getRxNsubAndMix(rx); //[neta*nsub]
+  op_focei.gcHff    = op_focei.gZmEta + (size_t)op_focei.neta*getRxNsubAndMix(rx); //[nall_mix]
+  op_focei.gcHfr    = op_focei.gcHff + getRxNallAndMix(rx); //[nall_mix]
+  op_focei.gcHrr    = op_focei.gcHfr + getRxNallAndMix(rx); //[nall_mix]
   // Could use .zeros() but since I used Calloc, they are already zero.
   // Yet not doing it causes the theta reset error.
   op_focei.etaM     = mat(op_focei.neta, 1, arma::fill::zeros);
@@ -4462,6 +4499,9 @@ static inline void foceiSetupEta_(NumericMatrix etaMat0){
                            getIndNevid2(ind));
 
     fInd->B = &op_focei.gB[iB];
+    fInd->cHff = &op_focei.gcHff[iB];
+    fInd->cHfr = &op_focei.gcHfr[iB];
+    fInd->cHrr = &op_focei.gcHrr[iB];
     iB += (getIndNallTimes(ind) -
            getIndNdoses(ind) -
            getIndNevid2(ind));
@@ -5082,6 +5122,9 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.optimHessCovType=as<int>(foceiO["optimHessCovType"]);
   op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
+  // censOption: 1 "laplace" (exact censored 2nd deriv, default) / 0 "gauss" (historic
+  // uncensored Gauss-Newton).  Tolerate an older control missing the field (-> laplace).
+  op_focei.censOption = foceiO.containsElementNamed("censOption") ? as<int>(foceiO["censOption"]) : 1;
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);
