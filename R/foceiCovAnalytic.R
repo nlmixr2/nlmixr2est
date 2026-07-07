@@ -141,8 +141,8 @@
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
     E$y <- obs$DV
-    Ri <- tryCatch(.foceiAnalyticSubjectRFR(E, eta0, Om, neta, ndirP, dirP, omd,
-                                            ndir = ndirCov, Oi = Oi, interaction = 1L),
+    Ri <- tryCatch(.foceiAnalyticSubjectRFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
+                                               ndir = ndirCov, Oi = Oi),
                    error = function(e) NULL)
     if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
     R <- R + Ri
@@ -848,6 +848,21 @@
 .foceiAnalyticSubjectRfoceFR <- function(E, ehat, Om, neta, ndirP, dirP, omd,
                                          ndir = neta, Oi = solve(Om), E0 = NULL, foceType = 0L) {
   NULL
+}
+
+#' C++/Armadillo port of `.foceiAnalyticSubjectRFR` (FOCEI (f,R) observed information).
+#' Reshapes the 3rd-order Ath/AthR tensors and the Omega derivative lists for the kernel.
+#' @noRd
+.foceiAnalyticSubjectRFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir, Oi = solve(Om)) {
+  nobs <- length(E$f); nom <- omd$nom
+  AthC <- array(E$Ath, c(nobs, ndir, ndir * ndir)); AthRC <- array(E$AthR, c(nobs, ndir, ndir * ndir))
+  dOiC <- array(0, c(neta, neta, max(nom, 1L)))
+  if (nom > 0L) for (k in seq_len(nom)) dOiC[, , k] <- omd$dOi[[k]]
+  d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
+  if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
+  d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
+  foceiSubjectRFR_(E$a, E$A, AthC, E$aR, E$AR, AthRC, E$f, E$y, E$R, as.numeric(ehat), Oi,
+                   dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
 }
 
 #' Per-subject observed-information R over structural theta, sigma and Omega, from

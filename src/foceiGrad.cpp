@@ -242,3 +242,130 @@ Rcpp::List foceiSubjectGradFR_(const arma::mat& a,        // nobs x ndir (d f / 
   }
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
 }
+
+// (f,R) FOCEI per-subject observed-information R (oracle: .foceiAnalyticSubjectRFR).
+// Analytic 1st/2nd-order sensitivities a/A (prediction) + aR/AR (variance); the 3rd-order
+// tensors Ath/AthR come from Shi-FD and are passed reshaped to cubes (nobs, ndir, ndir*ndir):
+// Ath[o,l,s,t] == Ath(o, l, s + t*ndir).  Every non-Omega param is a direction (dirP,
+// 1-based); a residual sigma direction has a=A=Ath=0.  Omega derivatives: dOi
+// (neta,neta,nom), d2Oi (neta,neta,nom*nom) with slice a*nom+b, d2LD (nom,nom).
+// [[Rcpp::export]]
+arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                           const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                           const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                           const arma::vec& ehat, const arma::mat& Oi,
+                           const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
+                           int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
+  const int nobs = (int)a.n_rows;
+  const int np = ndirP + nom;
+  vec res = yv - fv;
+  vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
+  vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
+  vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
+  vec iR = 1.0 / Rv, iR2 = square(iR), iR3 = pow(iR, 3), iR4 = pow(iR, 4);
+  auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
+  // Gdd: (f,R) 2nd total derivative of the density between two directions
+  auto Gdd = [&](int da, int db) {
+    double s = 0.0;
+    for (int o = 0; o < nobs; o++)
+      s += rff[o] * a(o, da) * a(o, db) + rfR[o] * (a(o, da) * aR(o, db) + aR(o, da) * a(o, db)) +
+        rRR[o] * aR(o, da) * aR(o, db) + rf[o] * A(o, da, db) + rR[o] * AR(o, da, db);
+    return s;
+  };
+  mat H = Oi; for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) H(l, m) += Gdd(l, m);
+  mat HiM = inv(H);
+  mat N(neta, ndir, fill::zeros); for (int l = 0; l < neta; l++) for (int d = 0; d < ndir; d++) N(l, d) = Gdd(l, d);
+  // Tn[l,s,t] = d2(rf a_l + rR aR_l)/ddir_s ddir_t  -> cube(neta, ndir, ndir), Tn(l,s,t)=Tn.slice(t)(l,s)
+  cube Tn(neta, ndir, ndir, fill::zeros);
+  for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) {
+    double v = 0.0;
+    for (int o = 0; o < nobs; o++) {
+      double us = rff[o] * a(o, s) + rfR[o] * aR(o, s), ut = rff[o] * a(o, t) + rfR[o] * aR(o, t);
+      double ust = rffR[o] * (a(o, s) * aR(o, t) + aR(o, s) * a(o, t)) + rfRR[o] * aR(o, s) * aR(o, t) +
+        rff[o] * A(o, s, t) + rfR[o] * AR(o, s, t);
+      double ws = rfR[o] * a(o, s) + rRR[o] * aR(o, s), wt = rfR[o] * a(o, t) + rRR[o] * aR(o, t);
+      double wst = rffR[o] * a(o, s) * a(o, t) + rfRR[o] * (a(o, s) * aR(o, t) + aR(o, s) * a(o, t)) +
+        rRRR[o] * aR(o, s) * aR(o, t) + rfR[o] * A(o, s, t) + rRR[o] * AR(o, s, t);
+      v += ust * a(o, l) + us * A(o, l, t) + ut * A(o, l, s) + rf[o] * Ai(Ath, o, l, s, t) +
+        wst * aR(o, l) + ws * AR(o, l, t) + wt * AR(o, l, s) + rR[o] * Ai(AthR, o, l, s, t);
+    }
+    Tn(l, s, t) = v;
+  }
+  // determinant Ht = Oi + sum(a a / R + 0.5 aR aR / R^2); dHtD / d2HtDD by (f,R) chain
+  mat Ht = Oi;
+  for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) {
+    double v = 0.0; for (int o = 0; o < nobs; o++) v += a(o, l) * a(o, m) * iR[o] + 0.5 * aR(o, l) * aR(o, m) * iR2[o];
+    Ht(l, m) += v;
+  }
+  mat Hti = inv(Ht);
+  std::vector<mat> dHtD(ndir);
+  for (int s = 0; s < ndir; s++) { mat D(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
+      for (int o = 0; o < nobs; o++)
+        v += (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * iR[o] - a(o, l) * a(o, m) * aR(o, s) * iR2[o] +
+          0.5 * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * iR2[o] - aR(o, l) * aR(o, m) * aR(o, s) * iR3[o];
+      D(l, m) = v; }
+    dHtD[s] = D; }
+  std::vector<std::vector<mat> > d2HtDD(ndir, std::vector<mat>(ndir));
+  for (int s = 0; s < ndir; s++) for (int t = 0; t < ndir; t++) { mat D(neta, neta, fill::zeros);
+    for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double v = 0.0;
+      for (int o = 0; o < nobs; o++)
+        v += (Ai(Ath, o, l, s, t) * a(o, m) + A(o, l, s) * A(o, m, t) + A(o, l, t) * A(o, m, s) + a(o, l) * Ai(Ath, o, m, s, t)) * iR[o] -
+          (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) * aR(o, t) * iR2[o] -
+          (A(o, l, t) * a(o, m) + a(o, l) * A(o, m, t)) * aR(o, s) * iR2[o] - a(o, l) * a(o, m) * AR(o, s, t) * iR2[o] +
+          2.0 * a(o, l) * a(o, m) * aR(o, s) * aR(o, t) * iR3[o] +
+          0.5 * (Ai(AthR, o, l, s, t) * aR(o, m) + AR(o, l, s) * AR(o, m, t) + AR(o, l, t) * AR(o, m, s) + aR(o, l) * Ai(AthR, o, m, s, t)) * iR2[o] -
+          (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s)) * aR(o, t) * iR3[o] -
+          (AR(o, l, t) * aR(o, m) + aR(o, l) * AR(o, m, t)) * aR(o, s) * iR3[o] - aR(o, l) * aR(o, m) * AR(o, s, t) * iR3[o] +
+          3.0 * aR(o, l) * aR(o, m) * aR(o, s) * aR(o, t) * iR4[o];
+      D(l, m) = v; }
+    d2HtDD[s][t] = D; }
+  vec Cen(neta); for (int l = 0; l < neta; l++) Cen[l] = 0.5 * trace(Hti * dHtD[l]);
+  mat Cee(neta, neta, fill::zeros);
+  for (int s = 0; s < neta; s++) for (int t = 0; t < neta; t++)
+    Cee(s, t) = 0.5 * (trace(Hti * d2HtDD[s][t]) - trace(Hti * dHtD[s] * Hti * dHtD[t]));
+  auto isDir = [&](int p) { return p < ndirP; };
+  auto dOf = [&](int p) { return dirP[p] - 1; };
+  auto omc = [&](int p) { return p - ndirP; };
+  auto Mcol = [&](int p) { vec r(neta);
+    if (isDir(p)) r = N.col(dOf(p)); else r = dOi.slice(omc(p)) * ehat; return r; };
+  auto dHt_p = [&](int p) -> mat { if (isDir(p)) return dHtD[dOf(p)]; return dOi.slice(omc(p)); };
+  auto d2HtEtaP = [&](int p, int l) -> mat { if (isDir(p)) return d2HtDD[dOf(p)][l]; return zeros<mat>(neta, neta); };
+  auto d2Ht_pp = [&](int aa, int bb) -> mat {
+    if (isDir(aa) && isDir(bb)) return d2HtDD[dOf(aa)][dOf(bb)];
+    if (!isDir(aa) && !isDir(bb)) return d2Oi.slice(omc(aa) * nom + omc(bb));
+    return zeros<mat>(neta, neta); };
+  auto Smat = [&](int p) { mat M(neta, ndir, fill::zeros);
+    if (!isDir(p)) { M.cols(0, neta - 1) = dOi.slice(omc(p)); return M; }
+    for (int l = 0; l < neta; l++) for (int s = 0; s < ndir; s++) M(l, s) = Tn(l, dOf(p), s); return M; };
+  auto Svec = [&](int aa, int bb) { vec v(neta, fill::zeros);
+    if (isDir(aa) && isDir(bb)) { for (int l = 0; l < neta; l++) v[l] = Tn(l, dOf(aa), dOf(bb)); return v; }
+    if (!isDir(aa) && !isDir(bb)) { v = d2Oi.slice(omc(aa) * nom + omc(bb)) * ehat; return v; }
+    return v; };
+  auto d2Phi = [&](int aa, int bb) {
+    if (isDir(aa) && isDir(bb)) return Gdd(dOf(aa), dOf(bb));
+    if (!isDir(aa) && !isDir(bb)) return 0.5 * as_scalar(ehat.t() * d2Oi.slice(omc(aa) * nom + omc(bb)) * ehat) + 0.5 * d2LD(omc(aa), omc(bb));
+    return 0.0; };
+  std::vector<vec> Mcols(np); for (int p = 0; p < np; p++) Mcols[p] = Mcol(p);
+  mat etaP(neta, np); for (int p = 0; p < np; p++) etaP.col(p) = -HiM * Mcols[p];
+  auto eta2 = [&](int aa, int bb) {
+    mat SmA = Smat(aa).cols(0, neta - 1), SmB = Smat(bb).cols(0, neta - 1);
+    vec b = Svec(aa, bb) + SmA * etaP.col(bb) + SmB * etaP.col(aa);
+    for (int l = 0; l < neta; l++) { double acc = 0.0;
+      for (int s = 0; s < neta; s++) for (int t = 0; t < neta; t++) acc += etaP(s, aa) * Tn(l, s, t) * etaP(t, bb);
+      b[l] += acc; }
+    return vec(-HiM * b); };
+  auto Cpe = [&](int p, int l) { return 0.5 * (trace(Hti * d2HtEtaP(p, l)) - trace(Hti * dHt_p(p) * Hti * dHtD[l])); };
+  auto Cpp = [&](int aa, int bb) { return 0.5 * (trace(Hti * d2Ht_pp(aa, bb)) - trace(Hti * dHt_p(aa) * Hti * dHt_p(bb))); };
+  std::vector<vec> CpeRow(np);
+  for (int p = 0; p < np; p++) { vec r(neta); for (int l = 0; l < neta; l++) r[l] = Cpe(p, l); CpeRow[p] = r; }
+  mat R(np, np, fill::zeros);
+  for (int aa = 0; aa < np; aa++) for (int bb = aa; bb < np; bb++) {
+    double dat = d2Phi(aa, bb) - as_scalar(Mcols[aa].t() * HiM * Mcols[bb]);
+    vec e2 = eta2(aa, bb);
+    double ld = Cpp(aa, bb) + dot(CpeRow[aa], etaP.col(bb)) + dot(CpeRow[bb], etaP.col(aa)) +
+      as_scalar(etaP.col(aa).t() * Cee * etaP.col(bb)) + dot(Cen, e2);
+    R(aa, bb) = R(bb, aa) = dat + ld;
+  }
+  return R;
+}
