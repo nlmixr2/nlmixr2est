@@ -18,6 +18,11 @@
   gradient.  Under `fast`, the outer optimizer defaults to `"lbfgsb3c"`; pairing
   it with a derivative-free `outerOpt` reverts to `fast = FALSE`.
 
+- Added the `*f` convenience estimation methods -- `focef`, `focepf`, `foceif`,
+  `mufocef`, `mufocepf`, `mufoceif`, `irlsfocef`, `irlsfocepf`, `irlsfoceif` --
+  each equivalent to its base method with `foceiControl(fast = TRUE)` as the
+  default (the analytic outer gradient + Eq-48 warm-start).
+
 - The analytic gradient/covariance augmented model now carries modeled dosing
   parameters (`f()`, `lag()`/`alag()`, `rate()`, `dur()`) and their second-order
   dose-based ("jump") sensitivities via rxode2's `eventSens = "jump"`; previously
