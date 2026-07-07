@@ -40,6 +40,7 @@ SEXP _nlmixr2est_foceiSubjectRfoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, 
 SEXP _nlmixr2est_foceiGradAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiGradAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiRAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
 SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -184,6 +185,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_foceiGradAllFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFR_, 21},
   {"_nlmixr2est_foceiSubjectGradFoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFoceFR_, 19},
   {"_nlmixr2est_foceiGradAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFoceFR_, 21},
+  {"_nlmixr2est_foceiRAllFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFR_, 21},
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
   {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},

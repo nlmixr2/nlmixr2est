@@ -135,40 +135,69 @@
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
   R <- matrix(0, np, np)
-  for (i in seq_along(ids)) {
-    s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-    obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
-    # FOCE (nonmem): freeze the variance R0 at the eta=0 population solve (E0 carries R0
-    # and its theta-chain aR0/AR0); re-solve the EBEs so they stationarize S_FOCE.  foce+
-    # (foceType=1) keeps the live conditional R and needs no eta=0 solve.
-    E0 <- NULL
-    if (.foce && !.fp) {
-      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-      if (is.null(E0)) return(NULL)
-    }
-    if (.foce) {
+  if (.foce) {
+    # FOCE cov assembles per-subject (the C++ FOCE cov loop is not batched yet); the nonmem
+    # eta=0 population solve + EBE re-solve are inherently per-subject anyway.
+    for (i in seq_along(ids)) {
+      s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
+      obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
+      E0 <- NULL
+      if (!.fp) { E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
+        if (is.null(E0)) return(NULL) }
       eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
                                     if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
       if (is.null(eta0)) return(NULL)
+      E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+      if (is.null(E)) return(NULL)
+      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
+        if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
+          return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
+      E$y <- obs$DV
+      Ri <- tryCatch(.foceiAnalyticSubjectRfoceFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
+                                                     ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
+                     error = function(e) NULL)
+      if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
+      R <- R + Ri
     }
-    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)),
-                                       s, obs$TIME, tol = solveTol, withR = TRUE)
+    return(R)
+  }
+  # FOCEI: per-subject FD3 (3rd-order Shi) solves collected in R, then ONE OpenMP C++ call
+  # (foceiRAllFR_) sums the observed information over subjects -- no per-subject R<->C++ round-trip.
+  nsub <- length(ids); Elist <- vector("list", nsub); nobsAll <- integer(nsub)
+  for (i in seq_len(nsub)) {
+    s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
+    obs <- s[s$EVID == 0, , drop = FALSE]
+    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
     if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
     E$y <- obs$DV
-    Ri <- if (.foce)
-      tryCatch(.foceiAnalyticSubjectRfoceFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
-                                               ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
-               error = function(e) NULL)
-    else
-      tryCatch(.foceiAnalyticSubjectRFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
-                                           ndir = ndirCov, Oi = Oi),
-               error = function(e) NULL)
-    if (is.null(Ri) || !all(is.finite(Ri))) return(NULL)
-    R <- R + Ri
+    Elist[[i]] <- E; nobsAll[i] <- length(E$f)
   }
+  totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll)); nd2 <- ndirCov * ndirCov
+  aB <- matrix(0, totObs, ndirCov); aRB <- matrix(0, totObs, ndirCov)
+  AB <- array(0, c(totObs, ndirCov, ndirCov)); ARB <- array(0, c(totObs, ndirCov, ndirCov))
+  AthB <- array(0, c(totObs, neta, nd2)); AthRB <- array(0, c(totObs, neta, nd2))
+  fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
+  for (i in seq_len(nsub)) {
+    E <- Elist[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
+    aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
+    AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2)); AthRB[rows, , ] <- array(E$AthR, c(no, neta, nd2))
+    fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R; ehatB[i, ] <- ebes[i, ]
+  }
+  nom <- omd$nom
+  dOiC <- array(0, c(neta, neta, max(nom, 1L)))
+  if (nom > 0L) for (k in seq_len(nom)) dOiC[, , k] <- omd$dOi[[k]]
+  d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
+  if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
+  d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
+  ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+  if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
+  R <- tryCatch(foceiRAllFR_(aB, AB, AthB, aRB, ARB, AthRB, fB, yB, RB, ehatB, as.integer(off),
+                             Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
+                error = function(e) NULL)
+  if (is.null(R) || !all(is.finite(R))) return(NULL)
   R
 }
 

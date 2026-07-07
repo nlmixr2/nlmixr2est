@@ -415,8 +415,8 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
 // Ath[o,l,s,t] == Ath(o, l, s + t*ndir).  Every non-Omega param is a direction (dirP,
 // 1-based); a residual sigma direction has a=A=Ath=0.  Omega derivatives: dOi
 // (neta,neta,nom), d2Oi (neta,neta,nom*nom) with slice a*nom+b, d2LD (nom,nom).
-// [[Rcpp::export]]
-arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+// Shared core (called from the single-subject export and the batched OpenMP driver).
+static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
@@ -533,6 +533,44 @@ arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::
       as_scalar(etaP.col(aa).t() * Cee * etaP.col(bb)) + dot(Cen, e2);
     R(aa, bb) = R(bb, aa) = dat + ld;
   }
+  return R;
+}
+
+// Single-subject export (oracle / R fallback): thin wrapper over foceiRSubjectFR_.
+// [[Rcpp::export]]
+arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                           const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                           const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                           const arma::vec& ehat, const arma::mat& Oi,
+                           const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
+                           int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
+  return foceiRSubjectFR_(a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD,
+                          neta, ndir, ndirP, nom, dirP);
+}
+
+// Batched (f,R) FOCEI observed-information R summed over ALL subjects in one OpenMP call.
+// Sensitivities (incl. the 3rd-order Ath/AthR, already Shi-FD'd per subject) are concatenated
+// over observations (obsOffset[i]..obsOffset[i+1]-1 are subject i's rows); ehat is nsub x neta.
+// [[Rcpp::export]]
+arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
+                       const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
+                       const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                       const arma::mat& ehat, const arma::ivec& obsOffset,
+                       const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
+                       int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP, int ncores) {
+  const int nsub = (int)ehat.n_rows;
+  const int np = ndirP + nom;
+  cube Rall(np, np, nsub, fill::zeros);
+#pragma omp parallel for num_threads(ncores)
+  for (int i = 0; i < nsub; i++) {
+    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    Rall.slice(i) = foceiRSubjectFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
+                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1),
+                                     fv.subvec(o0, o1), yv.subvec(o0, o1), Rv.subvec(o0, o1),
+                                     ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
+                                     neta, ndir, ndirP, nom, dirP);
+  }
+  mat R = sum(Rall, 2);
   return R;
 }
 
