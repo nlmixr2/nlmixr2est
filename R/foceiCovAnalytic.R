@@ -159,8 +159,8 @@
         return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
     E$y <- obs$DV
     Ri <- if (.foce)
-      tryCatch(.foceiAnalyticSubjectRfoceFR(E, eta0, Om, neta, ndirP, dirP, omd,
-                                            ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
+      tryCatch(.foceiAnalyticSubjectRfoceFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
+                                               ndir = ndirCov, Oi = Oi, E0 = E0, foceType = foceType),
                error = function(e) NULL)
     else
       tryCatch(.foceiAnalyticSubjectRFRCpp(E, eta0, Om, neta, ndirP, dirP, omd,
@@ -977,6 +977,27 @@
 #' d2R0/(deta_l deta_m) for the FOCE eta-block H: 0 (nonmem, R0 frozen) or live E$AR (foce+).
 #' @noRd
 E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
+
+#' C++/Armadillo port of `.foceiAnalyticSubjectRfoceFR` (FOCE (f,R) observed information).
+#' Resolves the frozen-R0 sensitivities (eta-block aRe/ARe: 0 for nonmem, live E for foce+;
+#' parameter columns aRc/ARc: E0 for nonmem, live E for foce+), reshapes Ath, and calls the
+#' kernel.  Matches `.foceiAnalyticSubjectRfoceFR` exactly.
+#' @noRd
+.foceiAnalyticSubjectRfoceFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir,
+                                            Oi = solve(Om), E0 = NULL, foceType = 0L) {
+  nobs <- length(E$f); nom <- omd$nom
+  .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
+  if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; ARc <- E$AR; ARe <- E$AR }
+  else { R0 <- E0$R; aRe <- matrix(0, nobs, ndir); aRc <- E0$aR; ARc <- E0$AR; ARe <- array(0, c(nobs, ndir, ndir)) }
+  AthC <- array(E$Ath, c(nobs, neta, ndir * ndir))
+  dOiC <- array(0, c(neta, neta, max(nom, 1L)))
+  if (nom > 0L) for (k in seq_len(nom)) dOiC[, , k] <- omd$dOi[[k]]
+  d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
+  if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
+  d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
+  foceiSubjectRfoceFR_(E$a, E$A, AthC, aRe, aRc, ARe, ARc, E$f, E$y, R0, as.numeric(ehat), Oi,
+                       dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
+}
 
 #' C++/Armadillo port of `.foceiAnalyticSubjectRFR` (FOCEI (f,R) observed information).
 #' Reshapes the 3rd-order Ath/AthR tensors and the Omega derivative lists for the kernel.

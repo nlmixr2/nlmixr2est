@@ -171,6 +171,36 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// foceiSubjectRfoceFR_
+arma::mat foceiSubjectRfoceFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath, const arma::mat& aRe, const arma::mat& aRc, const arma::cube& ARe, const arma::cube& ARc, const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v, const arma::vec& ehat, const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD, int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP);
+RcppExport SEXP _nlmixr2est_foceiSubjectRfoceFR_(SEXP aSEXP, SEXP ASEXP, SEXP AthSEXP, SEXP aReSEXP, SEXP aRcSEXP, SEXP AReSEXP, SEXP ARcSEXP, SEXP fvSEXP, SEXP yvSEXP, SEXP R0vSEXP, SEXP ehatSEXP, SEXP OiSEXP, SEXP dOiSEXP, SEXP d2OiSEXP, SEXP d2LDSEXP, SEXP netaSEXP, SEXP ndirSEXP, SEXP ndirPSEXP, SEXP nomSEXP, SEXP dirPSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::mat& >::type a(aSEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type A(ASEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type Ath(AthSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type aRe(aReSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type aRc(aRcSEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type ARe(AReSEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type ARc(ARcSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type fv(fvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type yv(yvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type R0v(R0vSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type ehat(ehatSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type Oi(OiSEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type dOi(dOiSEXP);
+    Rcpp::traits::input_parameter< const arma::cube& >::type d2Oi(d2OiSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type d2LD(d2LDSEXP);
+    Rcpp::traits::input_parameter< int >::type neta(netaSEXP);
+    Rcpp::traits::input_parameter< int >::type ndir(ndirSEXP);
+    Rcpp::traits::input_parameter< int >::type ndirP(ndirPSEXP);
+    Rcpp::traits::input_parameter< int >::type nom(nomSEXP);
+    Rcpp::traits::input_parameter< const arma::ivec& >::type dirP(dirPSEXP);
+    rcpp_result_gen = Rcpp::wrap(foceiSubjectRfoceFR_(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP));
+    return rcpp_result_gen;
+END_RCPP
+}
 // freeFocei
 void freeFocei();
 RcppExport SEXP _nlmixr2est_freeFocei() {

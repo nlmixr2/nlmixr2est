@@ -35,6 +35,10 @@ foceiSubjectRFR_ <- function(a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi,
     .Call(`_nlmixr2est_foceiSubjectRFR_`, a, A, Ath, aR, AR, AthR, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
 }
 
+foceiSubjectRfoceFR_ <- function(a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {
+    .Call(`_nlmixr2est_foceiSubjectRfoceFR_`, a, A, Ath, aRe, aRc, ARe, ARc, fv, yv, R0v, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
