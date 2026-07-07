@@ -213,14 +213,18 @@
 .foceiAnalyticGradSetup <- function(ui, thVals, Om) {
   if (!isTRUE(rxode2::rxGetControl(ui, "fast", FALSE))) return(NULL)
   if (!.hasRxSens()) return(NULL)
+  # bounded parameter transforms are corrected on a different (natural) scale
   if (!is.null(ui$boundedTransforms) && length(ui$boundedTransforms) > 0L) return(NULL)
-  .normModel <- rxode2::rxModelVars(ui)$model["normModel"]
-  if (grepl("\\b(tad|podo|tafd|tlast|tfirst|dosenum)\\s*\\(", .normModel)) return(NULL)
+  # tad/podo/tafd/tlast/tfirst/dosenum are functions of time and the dose record
+  # only (no eta/theta dependence), so rxode2 treats them as zero-derivative
+  # constants in the sensitivity expansion (.rxToSEDualVarFunction) -- they no
+  # longer need to force the finite-difference fallback.
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  # foce+ (foceType=1, live conditional R) analytic gradient is a later phase; its
-  # structural-theta live-R chain is not yet correct -> fall back to FD for now.
+  # foce+ (foceType=1, live conditional R): the structural-theta live-R total
+  # derivative is not yet correct (the moving-mode gPhi/dHt contraction disagrees
+  # with finite differences); fall back to FD until fixed.
   if (interaction == 0L && foceType == 1L) return(NULL)
   if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
