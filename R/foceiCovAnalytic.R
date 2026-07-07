@@ -218,6 +218,10 @@
       return(.foceiAnalyticFallback("adaptive Gaussian quadrature (nAGQ > 1)"))
     ef <- .foceiAnalyticErrFull(ui)
     if (is.null(ef)) return(NULL)
+    # the analytic covariance still uses the symbolic add/prop machinery; a general
+    # variance structure (foceiOnly) is not yet ported to the (f,R) cov path -> FD cov
+    if (isTRUE(ef$foceiOnly))
+      return(.foceiAnalyticFallback("a residual variance structure not yet supported by the analytic covariance"))
 
     ini <- ui$iniDf
     .map <- .foceiEtaThetaMap(ui)
@@ -422,30 +426,44 @@
 #' @noRd
 .foceiAnalyticErrFull <- function(ui) {
   # single Gaussian endpoint only: multiple endpoints pool error rows against one
-  # rx_pred_ (the wrong likelihood)
+  # rx_pred_ (the wrong likelihood)  [multi-endpoint is a later stage]
   if (!is.null(ui$predDf) && nrow(ui$predDf) != 1L)
     return(.foceiAnalyticFallback("a model with multiple modeled endpoints"))
+  # both-sides transforms (lnorm/boxCox/yeoJohnson) need the DV transformed to match
+  # rx_pred_; handled in a later stage, untransformed only for now
+  .trans <- as.character(ui$predDf$transform)
+  if (length(.trans) != 1L || !identical(.trans, "untransformed"))
+    return(.foceiAnalyticFallback(paste0("a both-sides transform (", paste(.trans, collapse = ","), ")")))
   ini <- ui$iniDf; er <- ini[!is.na(ini$err), , drop = FALSE]
-  # whitelist: only additive / proportional error; any other rider (lnorm,
-  # propT/propF, or a DV/variance transform boxCox / yeoJohnson / pow) is out of scope
-  if (!all(er$err %in% c("add", "prop")))
-    return(.foceiAnalyticFallback("a residual error other than additive/proportional (e.g. lnorm, propT/propF, or a boxCox/yeoJohnson/pow transform)"))
+  if (nrow(er) == 0L)
+    return(.foceiAnalyticFallback("a model with no residual error"))
+  sgNameAll <- er$name                               # ALL error params (excluded from directions)
+  # pure proportional / power error (no additive floor) vanishes as f -> 0, making the
+  # 1/R observed-information terms blow up near zero predictions; the assembly guards it.
+  canVanish <- !("add" %in% er$err)
   # model-declared addProp wins; the control applies only when the model says "default"
   addPr <- as.character(ui$predDf$addProp)
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
     addPr <- tryCatch(rxode2::rxGetControl(ui, "addProp", "combined2"), error = function(e) "combined2")
   }
+  # combined1 additive+proportional variance (sa+sp*f)^2 is NOT reflected in the model's
+  # rx_r_ (loadPruneSens always emits the combined2 sum-of-variances form), so the
+  # augmented solve cannot represent it -> keep it on the finite-difference gradient.
   if (identical(addPr, "combined1"))
     return(.foceiAnalyticFallback("combined1 additive+proportional error"))
+  # The (f,R) FOCEI path reads R and dR/dsigma from the solve, so ANY (combined2-form)
+  # variance structure is in scope.  FOCE still needs the symbolic add/prop error
+  # machinery below; for other structures return a minimal `ef` (foceiOnly=TRUE) so FOCE
+  # bails to FD while FOCEI runs.
+  .isAddProp <- all(er$err %in% c("add", "prop"))
+  if (!.isAddProp)
+    return(list(sgVar = character(0), sgName = sgNameAll, sc = NULL, per = NULL, pair = NULL,
+                foce = NULL, focePlus = NULL, foceiOnly = TRUE, canVanish = canVanish,
+                ev = function(e, f, y, f0 = f) NULL))
   addN <- er$name[er$err == "add"]; propN <- er$name[er$err == "prop"]
   hasA <- length(addN) == 1L; hasP <- length(propN) == 1L
   if (!hasA && !hasP)
     return(.foceiAnalyticFallback("a model with no additive or proportional residual error"))
-  # pure proportional error has variance sp^2 f^2, which vanishes as f -> 0 and makes
-  # the observed information (1/R terms) blow up near zero predictions.  It IS in scope
-  # (canVanish flags it); the assembly guards against a near-zero prediction and only
-  # then drops to the FD cov.
-  canVanish <- hasP && !hasA
   Rstr <- if (hasA && hasP) "sa^2+sp^2*f^2" else if (hasP) "sp^2*f^2" else "sa^2"
   Rq <- parse(text = Rstr)[[1]]
   rhoE <- bquote(0.5 * ((y - f)^2 / .(Rq) + log(.(Rq))))
@@ -502,7 +520,7 @@
   # apply as-is and there is no f0 population solve/chain.
   focePlus <- list(sc = sc, per = per, pair = pair, dependsF0 = FALSE)
   list(sgVar = sgVar, sgName = sgName, sc = sc, per = per, pair = pair, foce = foce,
-       focePlus = focePlus, canVanish = canVanish,
+       focePlus = focePlus, foceiOnly = FALSE, canVanish = canVanish,
        ev = function(e, f, y, f0 = f) eval(e, c(list(f = f, y = y, f0 = f0), as.list(val))))
 }
 
@@ -1069,6 +1087,8 @@
     return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
+  if (isTRUE(ef$foceiOnly))                         # general variance not yet in the (f,R) cov path
+    return(.foceiAnalyticFallback("a residual variance structure not yet supported by the analytic covariance"))
 
   ini <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)                    # theta <-> eta pairing
