@@ -27,6 +27,10 @@ foceiSubjectGradFocei_ <- function(a, A, r1, r2, p, p1, perRf, perPs, perRs, eha
     .Call(`_nlmixr2est_foceiSubjectGradFocei_`, a, A, r1, r2, p, p1, perRf, perPs, perRs, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh)
 }
 
+foceiSubjectGradFR_ <- function(a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol) {
+    .Call(`_nlmixr2est_foceiSubjectGradFR_`, a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol)
+}
+
 freeFocei <- function() {
     invisible(.Call(`_nlmixr2est_freeFocei`))
 }
