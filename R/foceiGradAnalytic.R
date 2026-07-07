@@ -400,24 +400,54 @@
   if (is.null(.EsAll)) return(NULL)
   g <- numeric(np)
   etaPList <- vector("list", length(ids))            # per-subject d eta*/d p (Eq 48)
-  for (i in seq_along(ids)) {
-    obs <- .byId[[as.character(.idCode[i])]]
-    obs <- obs[obs$EVID == 0, , drop = FALSE]
-    E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
-    if (isTRUE(ef$canVanish)) {
-      .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL)
+  if (.foce) {
+    # FOCE gradient still assembles per-subject in R (no C++ FOCE gradient kernel yet).
+    for (i in seq_along(ids)) {
+      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
+      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
+      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
+      E$y <- obs$DV
+      gi <- tryCatch(.foceiAnalyticSubjectGradFoceFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
+                                                     dOiEst, tr28, ndir = ndir, Oi = Oi,
+                                                     E0 = E0List[[i]], foceType = foceType),
+                     error = function(e) NULL)
+      if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
+      g <- g + gi$g; etaPList[[i]] <- gi$etaP
     }
-    E$y <- obs$DV
-    gi <- tryCatch(
-      if (.foce) .foceiAnalyticSubjectGradFoceFR(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
-                                                 dOiEst, tr28, ndir = ndir, Oi = Oi,
-                                                 E0 = E0List[[i]], foceType = foceType)
-      else .foceiAnalyticSubjectGradFRCpp(E, etaSolve[i, ], Om, neta, nth, nsg, dirTh, seq_len(nsg),
-                                          dOiEst, tr28, ndir = ndir, Oi = Oi),
-      error = function(e) NULL)
-    if (is.null(gi) || !all(is.finite(gi$g)) || !all(is.finite(gi$etaP))) return(NULL)
-    g <- g + gi$g
-    etaPList[[i]] <- gi$etaP
+  } else {
+    # FOCEI: assemble ALL subjects in ONE OpenMP C++ call (foceiGradAllFR_), removing the
+    # per-subject R<->C++ round-trip.  Sensitivities are concatenated over observations.
+    nsub <- length(ids); nobsAll <- integer(nsub)
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; if (is.null(E)) return(NULL)
+      if (isTRUE(ef$canVanish)) { .fa <- abs(E$f); if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa)) return(NULL) }
+      nobsAll[i] <- length(E$f)
+    }
+    totObs <- sum(nobsAll); off <- c(0L, cumsum(nobsAll))       # 0-based per-subject row offsets
+    aB <- matrix(0, totObs, ndir); aRB <- matrix(0, totObs, ndir)
+    AB <- array(0, c(totObs, ndir, ndir)); ARB <- array(0, c(totObs, ndir, ndir))
+    fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs)
+    RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
+    ehatB <- matrix(0, nsub, neta)
+    for (i in seq_len(nsub)) {
+      E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
+      obs <- .byId[[as.character(.idCode[i])]]; obs <- obs[obs$EVID == 0, , drop = FALSE]
+      aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
+      fB[rows] <- E$f; yB[rows] <- obs$DV; RB[rows] <- E$R
+      if (nsg > 0L) { RsigB[rows, ] <- E$Rsig; RsigDirB[rows, , ] <- E$RsigDir }
+      ehatB[i, ] <- etaSolve[i, ]
+    }
+    dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
+    if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
+    ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
+    if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
+    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, fB, yB, RB, ehatB, as.integer(off),
+                                     Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
+                                     neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)), ncores),
+                     error = function(e) NULL)
+    if (is.null(.res) || !all(is.finite(.res$g)) || !all(is.finite(.res$etaP))) return(NULL)
+    g <- .res$g
+    for (i in seq_len(nsub)) etaPList[[i]] <- .res$etaP[, , i]
   }
   names(g) <- c(thStruct, sgNames, omNames)
   list(g = g, etaP = etaPList, ids = ids)

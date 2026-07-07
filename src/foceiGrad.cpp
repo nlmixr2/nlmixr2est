@@ -10,6 +10,7 @@
 //
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
+#include "rxomp.h"
 using namespace arma;
 
 // [[Rcpp::export]]
@@ -132,21 +133,17 @@ Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f
 // prediction sensitivities, aR/AR the variance sensitivities, and a residual sigma is a
 // pseudo-direction (df/dsigma=0, dR/dsigma=Rsig).  The rho(f,R,y) partials are
 // model-independent closed forms computed here from f/y/R, so ANY variance structure works.
-// [[Rcpp::export]]
-Rcpp::List foceiSubjectGradFR_(const arma::mat& a,        // nobs x ndir (d f / d dir)
-                               const arma::cube& A,        // nobs x ndir x ndir
-                               const arma::mat& aR,        // nobs x ndir (d R / d dir)
-                               const arma::cube& AR,       // nobs x ndir x ndir
-                               const arma::mat& Rsig,      // nobs x nsg (d R / d sigma)
-                               const arma::cube& RsigDir,  // nobs x ndir x nsg (d2 R / d dir d sigma)
-                               const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, // nobs
-                               const arma::vec& ehat,      // neta
-                               const arma::mat& Oi,        // neta x neta
-                               const arma::cube& dOiEst,   // neta x neta x nom
-                               const arma::vec& tr28,      // nom
-                               int neta, int nth, int nsg, int nom,
-                               const arma::ivec& dirTh,    // nth (1-based direction per theta)
-                               const arma::ivec& sigCol) { // nsg (1-based Rsig column per sigma)
+// Shared per-subject core, called both from the single-subject export (oracle) and the
+// batched OpenMP driver foceiGradAllFR_; writes g_out (np) and etaP_out (neta x np).
+static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
+                                const arma::mat& aR, const arma::cube& AR,
+                                const arma::mat& Rsig, const arma::cube& RsigDir,
+                                const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                                const arma::vec& ehat, const arma::mat& Oi,
+                                const arma::cube& dOiEst, const arma::vec& tr28,
+                                int neta, int nth, int nsg, int nom,
+                                const arma::ivec& dirTh, const arma::ivec& sigCol,
+                                arma::vec& g_out, arma::mat& etaP_out) {
   const int nobs = (int)a.n_rows;
   const int ndir = (int)a.n_cols;
   const int np = nth + nsg + nom;
@@ -240,7 +237,59 @@ Rcpp::List foceiSubjectGradFR_(const arma::mat& a,        // nobs x ndir (d f / 
     for (int l = 0; l < neta; l++) dHtStar += etaP(l, pp) * dHtD[l];
     g[pp] = 2.0 * dPhi + trace(Hti * dHtStar);
   }
+  g_out = g; etaP_out = etaP;
+}
+
+// Single-subject export (oracle / R fallback): thin wrapper over foceiGradSubjectFR_.
+// [[Rcpp::export]]
+Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A,
+                               const arma::mat& aR, const arma::cube& AR,
+                               const arma::mat& Rsig, const arma::cube& RsigDir,
+                               const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                               const arma::vec& ehat, const arma::mat& Oi,
+                               const arma::cube& dOiEst, const arma::vec& tr28,
+                               int neta, int nth, int nsg, int nom,
+                               const arma::ivec& dirTh, const arma::ivec& sigCol) {
+  vec g; mat etaP;
+  foceiGradSubjectFR_(a, A, aR, AR, Rsig, RsigDir, fv, yv, Rv, ehat, Oi, dOiEst, tr28,
+                      neta, nth, nsg, nom, dirTh, sigCol, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
+}
+
+// Batched (f,R) FOCEI outer gradient over ALL subjects in one OpenMP-parallel C++ call:
+// removes the per-subject R<->C++ round-trip.  Sensitivities are concatenated over
+// observations (obsOffset[i]..obsOffset[i+1]-1 are subject i's rows); ehat is nsub x neta.
+// Returns the summed gradient g (np) and the per-subject etaP as a cube (neta x np x nsub).
+// [[Rcpp::export]]
+Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
+                           const arma::mat& aR, const arma::cube& AR,
+                           const arma::mat& Rsig, const arma::cube& RsigDir,
+                           const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                           const arma::mat& ehat, const arma::ivec& obsOffset,
+                           const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
+                           int neta, int nth, int nsg, int nom,
+                           const arma::ivec& dirTh, const arma::ivec& sigCol, int ncores) {
+  const int nsub = (int)ehat.n_rows;
+  const int np = nth + nsg + nom;
+  const int ndir = (int)a.n_cols;
+  mat gmat(np, nsub, fill::zeros);
+  cube etaPall(neta, np, nsub, fill::zeros);
+  const bool hasSig = (Rsig.n_cols > 0);
+#pragma omp parallel for num_threads(ncores)
+  for (int i = 0; i < nsub; i++) {
+    int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
+    mat ai = a.rows(o0, o1), aRi = aR.rows(o0, o1);
+    cube Ai = A.rows(o0, o1), ARi = AR.rows(o0, o1);
+    mat Rsigi = hasSig ? mat(Rsig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    cube RsigDiri = hasSig ? cube(RsigDir.rows(o0, o1)) : cube(o1 - o0 + 1, ndir, 0);
+    vec gi; mat etaPi;
+    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, fv.subvec(o0, o1), yv.subvec(o0, o1),
+                        Rv.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
+                        neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
+    gmat.col(i) = gi; etaPall.slice(i) = etaPi;
+  }
+  vec g = sum(gmat, 1);
+  return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaPall);
 }
 
 // (f,R) FOCEI per-subject observed-information R (oracle: .foceiAnalyticSubjectRFR).
