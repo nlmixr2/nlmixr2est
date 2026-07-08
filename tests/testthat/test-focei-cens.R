@@ -62,6 +62,9 @@ nmTest({
   test_that("censoring changes results - saem", {
     f.saem2 <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "saem")))
     ct(f.saem2, "M2 censoring")
+    # censOption is inert for SAEM (no Laplace inner Hessian) -> censoring text stays PLAIN
+    expect_equal(as.character(f.saem2$censInformation), "M2 censoring")
+    expect_no_match(as.character(f.saem2$censInformation), "\\((laplace|gauss)\\)")
   })
 
 

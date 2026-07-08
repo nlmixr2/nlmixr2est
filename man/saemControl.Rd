@@ -51,7 +51,7 @@ saemControl(
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
-  censOption = c("laplace", "gauss"),
+  censOption = c("gauss", "laplace"),
   ...
 )
 }
@@ -346,10 +346,13 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.}
     specifically evaluating this method.}
 
 \item{censOption}{Treatment of the second derivative for censored
-(M2/M3/M4/BLQ) observations.  \code{"laplace"} (the default) uses the exact
-censored second derivative of the objective (a proper Laplace inner Hessian
-and analytic covariance); \code{"gauss"} keeps the historic uncensored
-Gauss-Newton curvature.  Shared with \code{saemControl}/\code{nlmControl}.}
+(M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+\code{"laplace"} uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+\code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.}
 
 \item{...}{Other arguments to control SAEM.}
 }

@@ -33,7 +33,7 @@ foceiControl(
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
-  censOption = c("laplace", "gauss"),
+  censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
@@ -284,10 +284,13 @@ Hessians used for the covariance step/final likelihood: "central"
 (more accurate, used here) or "forward".}
 
 \item{censOption}{Treatment of the second derivative for censored
-(M2/M3/M4/BLQ) observations.  \code{"laplace"} (the default) uses the exact
-censored second derivative of the objective (a proper Laplace inner Hessian
-and analytic covariance); \code{"gauss"} keeps the historic uncensored
-Gauss-Newton curvature.  Shared with \code{saemControl}/\code{nlmControl}.}
+(M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+\code{"laplace"} uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+\code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
