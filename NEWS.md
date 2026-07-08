@@ -24,6 +24,13 @@
   finite-difference Hessian that already reflects censoring), so their censoring text stays
   plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
 
+- The mu-referenced FOCEI families (`mufocei`/`irlsfocei`/`mufoce`/`mufocep`/...) now
+  compute their covariance on the full corresponding `focei`/`foce`/`focep` model at the
+  converged estimates instead of the mu->phi reduced model used during estimation, fixing
+  incorrect standard errors on the mu-referenced/covariate ("linear") parameters (the
+  sandwich `covMethod="r,s"` was the most affected).  Applies to `analytic` and the
+  finite-difference covariances alike.
+
 - The analytic `fast` gradient and `covMethod="analytic"` now cover `matExp()` /
   `indLin()` (matrix-exponential / inductive-linearization) models for FOCEI, FOCE,
   and foce+ (and their mu/irls families), matching the equivalent ODE fit; an

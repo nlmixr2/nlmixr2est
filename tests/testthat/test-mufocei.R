@@ -1,4 +1,62 @@
 nmTest({
+  test_that("mu/irls covariance matches the full base focei model (linCmt/ODE/matExp)", {
+    # The mu/irls covariance step bails and is recomputed on the full base model
+    # (muModel="none"); the reported SEs -- including the mu-ref/covariate ("linear")
+    # parameters -- must match the equivalent plain focei fit, not the mu->phi reduction.
+    theo_sd2 <- nlmixr2data::theo_sd
+    theo_sd2$logWT <- log(theo_sd2$WT / 70)
+
+    modLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; allo.cl <- 0.75
+            eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + allo.cl * logWT); v <- exp(tv)
+        linCmt() ~ add(add.sd) })
+    }
+    modOde <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; allo.cl <- 0.75
+            eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + allo.cl * logWT); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.sd) })
+    }
+    # non-covariate matExp: exercises the full corresponding model on the matrix-
+    # exponential path (the covariate coefficient is dropped so the comparison is clean)
+    matNoCov <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl + eta.cl) / exp(tv)
+        cp <- central / exp(tv); cp ~ add(add.sd) })
+    }
+
+    .chk <- function(mfun, muEst, muCtl, hasCov = TRUE) {
+      .fB <- .nlmixr(mfun, theo_sd2, "focei", foceiControl(print = 0, covMethod = "r,s"))
+      .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0, covMethod = "r,s"))
+      .sB <- sqrt(diag(.fB$cov)); .sM <- sqrt(diag(.fM$cov))
+      # the mu fit takes a real covariance (not the bailed empty one): finite SEs
+      expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
+      # well-identified structural thetas match the plain focei fit closely.  tcl was
+      # the ~8.5x-wrong parameter under the mu->phi reduction; it now matches.
+      .th <- intersect(c("tka", "tcl", "tv", "add.sd"), names(.sB))
+      expect_equal(unname(.sM[.th]), unname(.sB[.th]), tolerance = 0.1)
+      if (hasCov) {
+        # covariate ("linear") coefficient: finite SE and the right order of magnitude
+        # (the bug made it ~8x off; focei's optimizer and the mu regression converge the
+        # weakly-identified allo.cl to slightly different points, so allow a factor of 2)
+        expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["allo.cl", "SE"]))))
+        .r <- as.numeric(.sM["allo.cl"]) / as.numeric(.sB["allo.cl"])
+        expect_true(is.finite(.r) && .r > 0.5 && .r < 2)
+      }
+    }
+
+    for (.est in c("mufocei", "irlsfocei")) {
+      .ctl <- if (.est == "mufocei") mufoceiControl else irlsfoceiControl
+      .chk(modLin, .est, .ctl)                 # linCmt covariate
+      .chk(modOde, .est, .ctl)                 # ODE covariate
+      .chk(matNoCov, .est, .ctl, hasCov = FALSE)  # matExp -- full corresponding model
+    }
+  })
+
   test_that("mufocei recovers comparable estimates to plain focei", {
     # Local model/fits (not the shared helper-zzz-fits.R cache): this test
     # is specifically about the mu-referenced FOCEI restart-loop engine
