@@ -48,7 +48,14 @@ arma::mat getSimMatById(arma::Col<int>& idLoc, arma::vec &sim, unsigned int& id,
 arma::mat decorrelateNpdeEigenMat(arma::mat& varsim, unsigned int& warn) {
   arma::vec eigval;
   arma::mat eigvec;
-  arma::eig_sym(eigval, eigvec, varsim, "std");
+  // This is the bool-returning form of eig_sym(): on failure (e.g. a non-finite
+  // varsim from a degenerate fit) it leaves eigval/eigvec empty and returns
+  // false, which would silently yield a 0x0 decorrelation matrix and later abort
+  // the NPDE matrix multiply. Treat failure as an exception so decorrelateNpdeMat
+  // falls through to its cholSE__/diagonal fallbacks.
+  if (!arma::eig_sym(eigval, eigvec, varsim, "std")) {
+    throw std::runtime_error("eig_sym failed");
+  }
   eigval = sqrt(eigval);
   arma::mat iEigVec;
   try{
@@ -438,16 +445,31 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
 #endif
     for (int _curid = 0; _curid < _nid; ++_curid) {
       unsigned int curid = (unsigned int)_curid;
-      calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
-                                         lambda, yj, hi, low);
-      npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
-      npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
-      pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;
-      pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
-      epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
-      dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
-      eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
-      warn[curid] = idInfo.warn;
+      // A C++ exception must never escape this OMP region -- doing so calls
+      // std::terminate() and aborts R. Any per-subject numerical failure (e.g. a
+      // degenerate simulated covariance) is caught here and that subject's npde
+      // is set NA instead.
+      try {
+        calcNpdeInfoId idInfo = calcNpdeId(idLoc, sim, dvt, evid, cens, limit, censMethod, doLimit, curid, K, tolChol, ties, ru, ru2, ru3,
+                                           lambda, yj, hi, low);
+        npde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npde;
+        npd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.npd;
+        pde(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd;
+        pd(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.pd2;
+        epred(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.epred;
+        dvf(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.yobs;
+        eres(span(idLoc[curid], idLoc[curid+1]-1)) = idInfo.eres;
+        warn[curid] = idInfo.warn;
+      } catch (...) {
+        npde(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        npd(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        pde(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        pd(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        epred(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        dvf(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        eres(span(idLoc[curid], idLoc[curid+1]-1)).fill(NA_REAL);
+        warn[curid] = NPDE_NPD;
+      }
     }
   }
   std::string sCholPinv = "";

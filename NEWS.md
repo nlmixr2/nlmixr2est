@@ -240,6 +240,9 @@
   warm-starts each `n1qn1` inner optimization from the eta Hessian calculated
   in the inner problem (including `ll()`/`dnorm()` models with
   finite-difference Hessians), `"save"` keeps the prior behavior
+- Computing NPDE for a fit with a degenerate simulated covariance (e.g. a
+  residual SD estimated near zero) no longer aborts the R session; the affected
+  subject's NPDE is set to `NA` instead
 
 - `matExp()`/`indLin()` models now estimate with the focei family, the nlm
   family, and SAEM, matching the equivalent ODE model; compartments are
