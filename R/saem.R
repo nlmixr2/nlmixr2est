@@ -213,6 +213,17 @@
   .model <- ui$saemModelList
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  ## Delay differential equation models need a dense-output solver so delay()
+  ## history is RECORDED (dense=TRUE) and interpolated; the SAEM default
+  ## (liblsoda/lsoda) does neither, which mis-evaluates delay() throughout the fit
+  ## and yields a non-finite covariance linearization.  Mirror rxode2::rxSolve()'s
+  ## hasDelay enforcement here so the SAEM solve and the covariance dopred both use
+  ## the dense dop853 path.
+  if (isTRUE(rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$flags[["hasDelay"]] == 1L)) {
+    .rxControl$method <- 0L  # dop853 (dense; no analytic Jacobian required)
+    .rxControl$stiff2 <- 0L
+    .rxControl$dense <- TRUE # record dense history for delay() interpolation
+  }
   .ue <- .uninformativeEtas(ui,
                             handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
                             data=data,
@@ -668,8 +679,15 @@
         env$covMethod <- "none"
       } else if (.calcCov) {
         .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
-        .covm <- try(calc.COV(.saem))
+        ## the FIM linearization (calc.COV) can be ill-conditioned / non-symmetric
+        ## (e.g. some delay differential equation models); fail silently and fall
+        ## back to the SAEM information matrix rather than aborting the whole fit.
+        .covm <- try(calc.COV(.saem), silent = TRUE)
         .doIt <- !inherits(.covm, "try-error")
+        if (!.doIt) {
+          warning("SAEM covariance by linearization failed; using the SAEM information matrix",
+                  call. = FALSE)
+        }
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
         if (.doIt) {
           # .covm may have NA rows/columns for ill-identified parameters;
@@ -755,26 +773,36 @@
           # calc.COV itself, which is already dimension-checked above); fall back
           # to the linearized-FIM inverse, which is always exactly nth x nth.
           .cov <- tryCatch(rxode2::rxInv(.saem$Ha[1:.nth, 1:.nth, drop = FALSE]),
-                            error = function(e) matrix(NA_real_, .nth, .nth))
+                            error = function(e) NULL)
           .calcCov <- FALSE
         }
-        attr(.cov, "dimnames") <- list(.tn, .tn)
-        .thCov <- .cov[.ini, .ini, drop = FALSE]           # structural-theta block
-        # covFull: assemble the full theta + residual + Omega block-diagonal cov
-        # (calc.COV attaches the variance block as "varCov").  The shared output
-        # finalization expects a theta-dimensioned cov, so stash the full matrix and
-        # install it AFTER the fit is built (.saemInstallFullCov), mirroring focei.
-        .vc <- attr(.covm, "varCov")
-        .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
-        if (.covFull && !is.null(.vc) && is.matrix(.vc) && all(is.finite(.vc))) {
-          .vn <- colnames(.vc)
-          .fn <- c(.ini, .vn)
-          .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
-          .full[.ini, .ini] <- .thCov
-          .full[.vn, .vn] <- .vc
-          assign(".saemFullCov", .full, envir = env)
+        if (is.null(.cov) || !identical(dim(.cov), c(.nth, .nth))) {
+          ## A degenerate covariance the linearized-FIM fallback cannot recover
+          ## (e.g. .nlmixr2CholPartial() collapsed a non-finite FIM to 0x0) must
+          ## not crash the labeling below; treat it as a covariance failure and
+          ## continue without one.
+          .addCov <- FALSE
+          .cov <- NULL
+          warning("covariance matrix could not be calculated", call. = FALSE)
+        } else {
+          attr(.cov, "dimnames") <- list(.tn, .tn)
+          .thCov <- .cov[.ini, .ini, drop = FALSE]           # structural-theta block
+          # covFull: assemble the full theta + residual + Omega block-diagonal cov
+          # (calc.COV attaches the variance block as "varCov").  The shared output
+          # finalization expects a theta-dimensioned cov, so stash the full matrix and
+          # install it AFTER the fit is built (.saemInstallFullCov), mirroring focei.
+          .vc <- attr(.covm, "varCov")
+          .covFull <- isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
+          if (.covFull && !is.null(.vc) && is.matrix(.vc) && all(is.finite(.vc))) {
+            .vn <- colnames(.vc)
+            .fn <- c(.ini, .vn)
+            .full <- matrix(0, length(.fn), length(.fn), dimnames = list(.fn, .fn))
+            .full[.ini, .ini] <- .thCov
+            .full[.vn, .vn] <- .vc
+            assign(".saemFullCov", .full, envir = env)
+          }
+          .cov <- .thCov
         }
-        .cov <- .thCov
       }
     }
     if (.addCov) {
