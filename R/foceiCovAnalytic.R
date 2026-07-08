@@ -1595,8 +1595,6 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
-  if (isTRUE(ef$foceiOnly))                         # general variance not yet in the (f,R) cov path
-    return(.foceiAnalyticFallback("a residual variance structure not yet supported by the analytic covariance"))
 
   ini <- ui$iniDf
   .map <- .foceiEtaThetaMap(ui)                    # theta <-> eta pairing
@@ -1628,7 +1626,18 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   ebes <- as.matrix(fit$eta[, etaNames, drop = FALSE])
   nsg <- length(ef$sgVar)
 
-  R <- .foceiAnalyticAssembleR(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, ef, neta, nth, nsg, omd,
+  # FOCEI with a general (non-add/prop, multi-endpoint, or estimated-lambda) variance uses the
+  # (f,R) cov (sigmas as directions), matching the live covType="analytic" hook; add/prop keeps
+  # the fast symbolic assembly.  (IOV already bowed out above.)  An estimated boxCox/yeoJohnson
+  # lambda sits in thStruct as a theta-like direction, so name the sigma block with the
+  # lambda-excluded .dir$sgName (matching the live hook's fullNm).
+  R <- if (isTRUE(ef$foceiOnly))
+    .foceiAnalyticAssembleRFR(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, ef, neta,
+                              length(.dir$dirP), .dir$dirP, omd,
+                              dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
+                              solveTol = .foceiAnalyticSolveTol(ui),
+                              interaction = interaction, foceType = foceType, lamDir = .dir$lamDir)
+  else .foceiAnalyticAssembleR(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, ef, neta, nth, nsg, omd,
                                dirs = dirs, dirTh = dirTh, ndir = ndir,
                                solveTol = .foceiAnalyticSolveTol(ui), interaction = interaction,
                                foceType = foceType)
@@ -1636,7 +1645,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   cov <- tryCatch(solve(R), error = function(e) NULL)
   if (is.null(cov)) return(NULL)
   onm <- etaNames                                            # Omega named by the eta (om.eta.cl)
-  nm <- c(thStruct, ef$sgName, .foceiOmegaCovNames(pairs, onm))
+  nm <- c(thStruct, .dir$sgName, .foceiOmegaCovNames(pairs, onm))
   dimnames(R) <- dimnames(cov) <- list(nm, nm)
   list(cov = cov, se = setNames(suppressWarnings(sqrt(diag(cov))), nm),  # NaN flags non-PD
        R = R, params = nm, method = "analytic")
