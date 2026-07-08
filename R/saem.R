@@ -679,8 +679,15 @@
         env$covMethod <- "none"
       } else if (.calcCov) {
         .covm <- .saem$Ha[1:.nth, 1:.nth, drop = FALSE]
-        .covm <- try(calc.COV(.saem))
+        ## the FIM linearization (calc.COV) can be ill-conditioned / non-symmetric
+        ## (e.g. some delay differential equation models); fail silently and fall
+        ## back to the SAEM information matrix rather than aborting the whole fit.
+        .covm <- try(calc.COV(.saem), silent = TRUE)
         .doIt <- !inherits(.covm, "try-error")
+        if (!.doIt) {
+          warning("SAEM covariance by linearization failed; using the SAEM information matrix",
+                  call. = FALSE)
+        }
         if (.doIt && dim(.covm)[1] != .nth) .doIt <- FALSE
         if (.doIt) {
           # .covm may have NA rows/columns for ill-identified parameters;
