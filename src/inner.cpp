@@ -427,6 +427,7 @@ struct focei_options {
   // by foceiSetupScale(). scale.save=0 since focei records history separately.
   scaling scale;
   bool isSaem = false;
+  bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
 };
 
 focei_options op_focei;
@@ -4622,9 +4623,14 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.adjLik = as<bool>(foceiO["adjLik"]);
   op_focei.badSolveObjfAdj=fabs(as<double>(foceiO["badSolveObjfAdj"]));
   if (foceiO.containsElementNamed("est") && TYPEOF(foceiO["est"]) == STRSXP) {
-    op_focei.isSaem = (as<std::string>(foceiO["est"]) == "saem");
+    std::string estStr = as<std::string>(foceiO["est"]);
+    op_focei.isSaem = (estStr == "saem");
+    op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
+                      estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
+                      estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
   } else {
     op_focei.isSaem = false;
+    op_focei.isNlm = false;
   }
 
   op_focei.zeroGrad = false;
@@ -7685,12 +7691,14 @@ void foceiFinalizeTables(Environment e){
   {
     // censInformation text; when censoring is present, note the 2nd-derivative treatment
     // (censOption: "laplace" = exact censored Hessian, "gauss" = historic Gauss-Newton) so
-    // it is clear which was used.
+    // it is clear which was used.  Only the FOCEI-family conditional methods use censOption --
+    // SAEM and the NLM family bow out (censOption is inert there), so their text stays plain.
     RObject ciR = censEstGetFactor();
     IntegerVector ci = as<IntegerVector>(ciR);
     CharacterVector lvls = as<CharacterVector>(ci.attr("levels"));
     std::string ciStr = as<std::string>(lvls[ci[0] - 1]);
-    if (ci[0] > 1) ciStr += (op_focei.censOption == 1 ? " (laplace)" : " (gauss)");
+    if (ci[0] > 1 && !op_focei.isSaem && !op_focei.isNlm)
+      ciStr += (op_focei.censOption == 1 ? " (laplace)" : " (gauss)");
     e["censInformation"] = ciStr;
   }
   resetCensFlag();

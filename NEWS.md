@@ -19,7 +19,10 @@
   second-derivative treatment.  `"gauss"` (the default) keeps the historic uncensored
   Gauss-Newton curvature, matching common PMx tools; `"laplace"` uses the exact
   censored second derivative for the inner Laplace Hessian and analytic covariance.
-  Non-censored fits are unchanged.  The option is shared with `saemControl`/`nlmControl`.
+  Non-censored fits are unchanged.  The option is accepted by `saemControl`/`nlmControl`
+  for a uniform interface but is inert there (SAEM has no Laplace inner Hessian; NLM uses a
+  finite-difference Hessian that already reflects censoring), so their censoring text stays
+  plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
 
 - The analytic `fast` gradient now covers censored M2/M3/M4 observations for FOCEI
   (both `censOption` values) and FOCE (default `censOption="gauss"`); the FOCE EBE is
