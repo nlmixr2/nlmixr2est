@@ -583,14 +583,15 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    # Censored data (M2/M3/M4) is OUT OF SCOPE for the analytic observed-information cov: any
-    # censored/BLOQ observation (CENS != 0 or a finite LIMIT) falls back to the finite-difference
-    # cov.  Censoring remains fully supported in the analytic outer GRADIENT -- only the cov's
-    # censored determinant is deliberately not carried here.
+    # Censored data (M2/M3/M4): the analytic observed-information cov carries the censored
+    # determinant partials through the general (f,R) path (AssembleRFR), matching the exact
+    # censored analytic outer gradient.  Any censored/BLOQ observation (CENS != 0 or a finite
+    # LIMIT) routes to that path (and uses the same batched FD3 solve as the uncensored (f,R) cov).
     .hasCensD <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
       (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-    if (.hasCensD)
-      return(.foceiAnalyticFallback("censored observations (analytic cov gated to FD)"))
+    # only the laplace censored determinant stays on the FD cov; gauss (default) is analytic
+    if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
+      return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
 
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
