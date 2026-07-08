@@ -153,6 +153,84 @@
   return(.env$cov)
 }
 
+#' Recompute a mu-referenced (lin/irls) fit's covariance on the full base model
+#'
+#' The estimation-time covariance step bails for mu-referenced-FOCEI-family fits
+#' (muModel = "lin"/"irls") -- see `foceiCalcCov()` in `src/inner.cpp` -- because
+#' the mu->phi reduced parameterization used during estimation yields incorrect
+#' standard errors on the mu-referenced/linear parameters.  This recomputes the
+#' covariance at the converged estimates with `muModel = "none"`, i.e. on the full
+#' corresponding focei/foce/focep model (all structural thetas as ordinary
+#' parameters), and installs it.  No-op for non-mu fits or when no covariance was
+#' requested.  Must run before the fit env is compressed (needs `etaMat`).
+#' @param .ret assembled fit environment
+#' @return invisibly TRUE if the covariance was recomputed and installed
+#' @noRd
+.foceiRecomputeMuCov <- function(fit, est) {
+  # only the mu-referenced (lin/irls) families (mufocei/irlsfocei/mufoce/mufocep/...)
+  if (!grepl("^(mu|irls)", est)) return(NULL)
+  .control <- tryCatch(fit$foceiControl, error = function(e) NULL)
+  if (is.null(.control)) return(NULL)
+  .cm <- .control$covMethod
+  if (is.null(.cm) || identical(as.integer(.cm), 0L)) return(NULL)
+  # deep-copy the UI (an environment) so the nested re-fit cannot mutate THIS fit's UI
+  .ui <- tryCatch(rxode2::rxUiDecompress(unserialize(serialize(fit$ui, NULL))),
+                  error = function(e) NULL)
+  if (is.null(.ui)) return(NULL)
+  .baseEst <- sub("^(mu|irls)", "", est)     # mufocei->focei, mufoce->foce, mufocep->focep
+  .control$muModel <- "none"                 # recompute on the full (non-reduced) model
+  # drop the mu-group wiring so the recompute treats every structural theta as an
+  # ordinary parameter (nothing excluded/re-profiled by the mu machinery)
+  for (.mn in grep("^foceiMu", names(.control), value = TRUE)) .control[[.mn]] <- NULL
+  # Re-fit through the FULL nlmixr2() path (preprocessing hooks matter -- the leaner
+  # nlmixr2CreateOutputFromUi posthoc cov is not faithful) with maxOuterIterations=0 so
+  # it stays at the converged estimates and only recomputes the covariance.  This must
+  # run on the COMPLETED fit (post mu-finalization); mid-assembly it corrupts the outer
+  # mu-covariate fit's rewriting state.
+  .control$est <- .baseEst
+  .control$maxOuterIterations <- 0L
+  .control$boundTol <- 0
+  .control$calcTables <- FALSE
+  .control$skipCov <- NULL                   # recompute skipCov for the full model (keep mu thetas)
+  .em <- tryCatch(fit$etaMat, error = function(e) NULL)
+  if (!is.null(.em)) .control$etaMat <- .em
+  # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
+  .savedMuRef <- .muRefTrans$cur
+  on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)
+  .fit2 <- try(suppressMessages(suppressWarnings(
+    nlmixr2(.ui, data = getData(fit), est = .baseEst, control = .control))), silent = TRUE)
+  if (inherits(.fit2, "try-error") || is.null(.fit2$cov)) return(NULL)
+  .env2 <- .fit2$env
+  # The base-model re-fit rendered a correct parameter table (SEs computed from its
+  # cov) for the SAME parameters at the SAME estimates, so carry its cov + already-
+  # rendered tables (popDf/popDfSig/parFixed/se + skipCov and cov diagnostics) over --
+  # the mu fit's own popDf$SE is empty (its cov step bailed) and .updateParFixed only
+  # reformats it, it does not recompute SEs from the cov matrix.
+  .extras <- list()
+  for (.n in c("covR", "covS", "covRS", "Rinv", "Sinv", "R", "S", "covLvl", "skipCov",
+               "eigenCov", "eigenVecCov", "conditionNumberCov", "covList",
+               "popDf", "popDfSig", "parFixedDf", "parFixed", "se")) {
+    if (exists(.n, envir = .env2, inherits = FALSE)) .extras[[.n]] <- get(.n, envir = .env2)
+  }
+  list(cov = .fit2$cov, covMethod = .fit2$covMethod, extras = .extras)
+}
+
+#' Install the full-model mu covariance onto a completed mu/irls fit (post-fit).
+#' @param fit completed nlmixr2 fit (object or its env)
+#' @param est estimation method string
+#' @return invisibly TRUE if installed
+#' @noRd
+.foceiInstallMuCov <- function(fit, est) {
+  .r <- tryCatch(.foceiRecomputeMuCov(fit, est), error = function(e) NULL)
+  if (is.null(.r)) return(invisible(FALSE))
+  .env <- if (is.environment(fit)) fit else tryCatch(fit$env, error = function(e) NULL)
+  if (!is.environment(.env)) return(invisible(FALSE))
+  assign("cov", .r$cov, envir = .env)
+  assign("covMethod", .r$covMethod, envir = .env)
+  for (.n in names(.r$extras)) assign(.n, .r$extras[[.n]], envir = .env)
+  invisible(TRUE)
+}
+
 #' Set the covariance type based on prior calculated covariances
 #'
 #' @param fit nlmixr2 fit
