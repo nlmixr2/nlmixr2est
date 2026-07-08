@@ -6467,9 +6467,14 @@ int foceiCalcR(Environment e){
       // tell the user (not silent).  RSprintf is the visible channel (like "Could not
       // calculate covariance matrix"); the warning condition is for programmatic capture.
       RSprintf("\rcovType=\"analytic\" not available for this model (out of scope, or "
-               "the augmented model would not build/solve); using finite differences.\n");
+               "the augmented model would not build/solve); using the finite-difference "
+               "sandwich (\"r,s\") covariance.\n");
       Rf_warning("covType=\"analytic\": the analytic covariance is not available for "
-                 "this model; used the finite-difference covariance instead.");
+                 "this model; used the finite-difference sandwich (\"r,s\") covariance instead.");
+      // analytic requested but unavailable -> fall back to the finite-difference SANDWICH
+      // ("r,s"), not the R-matrix alone ("r"): covMethod=2 was only the internal slot the
+      // "analytic" token maps to.  The S block in foceiCalcCov fires once this is 1.
+      if (op_focei.covMethod == 2) op_focei.covMethod = 1;
     }
   }
   arma::mat H(op_focei.npars, op_focei.npars);
