@@ -515,8 +515,18 @@ rxUiGet.saemModelPred <- function(x, ...) {
   if (.optExpression) {
     .ret0 <- gsub("rx_expr_", "rx_expr", rxode2::rxOptExpr(.ret0, "saem predOnly model 0"))
     .ret <- rxode2::rxOptExpr(.ret, "saem predOnly model 1")
-    .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2"))
-    .msuccess("done")
+    ## .ret2 is the residual + lhs (+ tad/dosenum) fragment.  When a delay()
+    ## appears in an intermediate lhs (e.g. `ceff <- delay(cen, tau)`) that lhs is
+    ## in .ret2 but the delayed state's d/dt is in .ret, so optimizing .ret2 alone
+    ## builds an rxode2 model with an orphaned delay() and errors.  The final
+    ## combined model (.ret0 + .ret + .ret2) is valid, so just skip the (cosmetic)
+    ## common-subexpression optimization of this fragment for delay models.
+    if (any(grepl("delay(", .ret2, fixed = TRUE))) {
+      .msuccess("done")
+    } else {
+      .ret2 <- gsub("rx_expr_", "rx_expr__", rxode2::rxOptExpr(.ret2, "saem predOnly model 2"))
+      .msuccess("done")
+    }
   }
   .ret <- paste(c(
     .ret0,
