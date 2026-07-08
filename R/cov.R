@@ -178,22 +178,34 @@
                   error = function(e) NULL)
   if (is.null(.ui)) return(NULL)
   .baseEst <- sub("^(mu|irls)", "", est)     # mufocei->focei, mufoce->foce, mufocep->focep
-  .control$muModel <- "none"                 # recompute on the full (non-reduced) model
+  .control$muModel <- "none"                 # recompute the foceiModel on the full model
   # drop the mu-group wiring so the recompute treats every structural theta as an
-  # ordinary parameter (nothing excluded/re-profiled by the mu machinery)
+  # ordinary parameter (nothing excluded/re-profiled by the mu machinery); keep `fast`
+  # (and every other setting) as specified so the full model is rebuilt the same way.
   for (.mn in grep("^foceiMu", names(.control), value = TRUE)) .control[[.mn]] <- NULL
-  # Re-fit through the FULL nlmixr2() path (preprocessing hooks matter -- the leaner
-  # nlmixr2CreateOutputFromUi posthoc cov is not faithful) with maxOuterIterations=0 so
-  # it stays at the converged estimates and only recomputes the covariance.  This must
-  # run on the COMPLETED fit (post mu-finalization); mid-assembly it corrupts the outer
-  # mu-covariate fit's rewriting state.
+  # The covariance must be evaluated AT the mu fit's converged point -- NOT re-optimized to
+  # a (possibly better) nearby point.  So freeze BOTH problems: maxOuterIterations=0 (final
+  # thetas) AND maxInnerIterations=0 (final etas held at etaMat).  Runs through the FULL
+  # nlmixr2() path (the leaner nlmixr2CreateOutputFromUi posthoc cov is not faithful); must
+  # run on the COMPLETED fit (post mu-finalization) or it corrupts the mu-covariate rewrite.
   .control$est <- .baseEst
   .control$maxOuterIterations <- 0L
+  .control$maxInnerIterations <- 0L
   .control$boundTol <- 0
   .control$calcTables <- FALSE
   .control$skipCov <- NULL                   # recompute skipCov for the full model (keep mu thetas)
-  .em <- tryCatch(fit$etaMat, error = function(e) NULL)
-  if (!is.null(.em)) .control$etaMat <- .em
+  # explicitly pin the final thetas (on the UI) and the final etas (etaMat)
+  .th <- tryCatch(fit$theta, error = function(e) NULL)
+  if (!is.null(.th)) {
+    .w <- match(names(.th), .ui$iniDf$name)
+    .ok <- !is.na(.w)
+    .ui$iniDf$est[.w[.ok]] <- as.numeric(.th)[.ok]
+  }
+  .eta <- tryCatch(fit$eta, error = function(e) NULL)
+  if (!is.null(.eta)) {
+    .etaCols <- setdiff(names(.eta), "ID")
+    .control$etaMat <- as.matrix(.eta[, .etaCols, drop = FALSE])
+  }
   # the nested re-fit resets mu-referencing global state (.muRefTrans$cur); save + restore.
   .savedMuRef <- .muRefTrans$cur
   on.exit(.muRefTrans$cur <- .savedMuRef, add = TRUE)

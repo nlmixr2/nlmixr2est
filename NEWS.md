@@ -10,11 +10,15 @@
   plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
 
 - The mu-referenced FOCEI families (`mufocei`/`irlsfocei`/`mufoce`/`mufocep`/...) now
-  compute their covariance on the full corresponding `focei`/`foce`/`focep` model at the
-  converged estimates instead of the mu->phi reduced model used during estimation, fixing
-  incorrect standard errors on the mu-referenced/covariate ("linear") parameters (the
-  sandwich `covMethod="r,s"` was the most affected).  Applies to `analytic` and the
-  finite-difference covariances alike.
+  compute their covariance on the full corresponding `focei`/`foce`/`focep` model, at the
+  mu fit's converged theta and eta with the inner problem frozen (as if the full model had
+  produced that point), instead of the mu->phi reduced model used during estimation.  This
+  fixes incorrect standard errors on the mu-referenced/covariate ("linear") parameters (the
+  sandwich `covMethod="r,s"` was the most affected) and honors the requested `covMethod`.
+
+- `covMethod="analytic"` now falls back to the finite-difference sandwich (`"r,s"`) when
+  the analytic covariance is unavailable for a model (e.g. `linCmt()`), instead of the
+  R-matrix (`"r"`) alone.
 
 - The analytic `fast` gradient and `covMethod="analytic"` now cover `matExp()` /
   `indLin()` (matrix-exponential / inductive-linearization) models for FOCEI, FOCE,
