@@ -358,31 +358,42 @@
   .byId <- split(data, as.character(data$ID))         # pre-split once (avoid per-subject rescan)
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
+  # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
+  # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
+  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched) and
+  # re-solves each EBE (per-subject Newton, censoring-aware) to S_FOCE=0; that eta0 matrix feeds
+  # the batched FD3.  foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
+  .obsAll <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+  if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)   # unmatched subject -> caller FD
+  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+  .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
+  E0List <- vector("list", length(ids))
+  if (.needF0) {                                       # eta=0 population solve (frozen R0), batched
+    E0List <- .foceiAnalyticSolveAll(am, th, matrix(0, length(ids), neta), .idCode, data, .obsT, solveTol)
+    if (is.null(E0List)) return(NULL)
+  }
+  eta0Mat <- ebes
+  if (.foce) for (i in seq_along(ids)) {              # FOCE EBE re-solve (per-subject Newton)
+    .o <- .obsAll[[i]]
+    .e0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], .byId[[as.character(.idCode[i])]], .o$TIME, .o$DV, etav,
+                                 if (is.null(E0List[[i]])) NULL else E0List[[i]]$R, Oi, neta, solveTol,
+                                 foceType = foceType, cens = .o$CENS, limit = .o$LIMIT)
+    if (is.null(.e0)) return(NULL)
+    eta0Mat[i, ] <- .e0
+  }
+  .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+  .EsAll <- NULL
+  if (.batch) {
+    .EsAll <- .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE)
+    if (is.null(.EsAll)) .batch <- FALSE              # batched solve failed -> per-subject fallback
+  }
   for (i in seq_along(ids)) {
-    s <- .byId[[as.character(.idCode[i])]]             # subject's actual events (integer-code join)
-    if (is.null(s) || nrow(s) == 0L) return(NULL)      # unmatched subject -> caller falls back to FD
-    obs <- s[s$EVID == 0, , drop = FALSE]
-    eta0 <- ebes[i, ]
-    # CORRECTED FOCE (interaction=0, foceType=0): the variance R0 is frozen at the eta=0
-    # POPULATION prediction.  Solve the augmented model at eta=0 to get f0 (and its
-    # theta-chain a0/A0) only when R0 actually depends on the prediction (proportional
-    # part); additive R0=sa^2 needs no population solve (== FOCEI-add).  The stored EBEs
-    # stationarize S_FOCE with this R0, so the re-solve is ~a no-op (kept for robustness).
-    # "foce+" (foceType=1) keeps the live conditional R and never needs the eta=0 solve.
-    E0 <- NULL
-    .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
-    if (.needF0) {
-      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-      if (is.null(E0)) return(NULL)
-    }
-    if (.foce) {
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
-                                    cens = obs$CENS, limit = obs$LIMIT)
-      if (is.null(eta0)) return(NULL)
-    }
-    p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
-    E <- .foceiAnalyticSolveSubjectFD3(am, p, s, obs$TIME, tol = solveTol)
+    s <- .byId[[as.character(.idCode[i])]]
+    obs <- .obsAll[[i]]
+    eta0 <- eta0Mat[i, ]
+    E0 <- E0List[[i]]
+    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol)
     if (is.null(E)) return(NULL)                       # solve failure -> caller falls back to FD
     # near-zero-prediction guard for a vanishing residual variance (pure proportional
     # R = sp^2 f^2 -> 0): the 1/R observed-information terms blow up, so drop to FD.
@@ -551,13 +562,14 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    # censored (M2/M3/M4) analytic cov: FOCEI and FOCE with censOption="gauss" are in scope
-    # (censored score partials feed the (f,R) path; the determinant stays Gauss-Newton, matching
-    # the gauss fit).  Only the laplace censored determinant still bows out to the FD cov.
+    # Censored data (M2/M3/M4) is OUT OF SCOPE for the analytic observed-information cov: any
+    # censored/BLOQ observation (CENS != 0 or a finite LIMIT) falls back to the finite-difference
+    # cov.  Censoring remains fully supported in the analytic outer GRADIENT -- only the cov's
+    # censored determinant is deliberately not carried here.
     .hasCensD <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
       (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-    if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
-      return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
+    if (.hasCensD)
+      return(.foceiAnalyticFallback("censored observations (analytic cov gated to FD)"))
 
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
@@ -801,8 +813,46 @@
 #' cheaply than a 3rd-order model.
 #' @return list(augMod, dirs, ndir, st, P2) or `NULL` on failure
 #' @noRd
+.foceiAnalyticAugCache <- new.env(parent = emptyenv())     # session cache: (model digest | dirs) -> aug model
+#' Solve-output column names + index maps for the augmented model (from dirs, P2, sigTh).
+#' Precomputed once on `am$cols` at build time so the matrix-extraction readers avoid per-call
+#' paste0; recomputed on the fly for a reconstructed `am` (from foceiModel$outer) that predates it.
+#' @noRd
+.foceiAnalyticCols <- function(dirs, P2, sigTh) {
+  sigP2 <- if (length(sigTh)) do.call(rbind, lapply(seq_along(sigTh), function(.a)
+    data.frame(a = .a, b = seq_along(sigTh)[seq_along(sigTh) >= .a]))) else NULL
+  list(f1 = paste0("rx_f1_", dirs), f2 = paste0("rx_f2_", P2$i, "_", P2$j),
+       ii = match(P2$i, dirs), jj = match(P2$j, dirs),
+       rvar1 = paste0("rx_rvar1_", dirs), rvar2 = paste0("rx_rvar2_", P2$i, "_", P2$j),
+       rsig = if (length(sigTh)) paste0("rx_rsig_", sigTh, "_") else character(0),
+       rsig1 = lapply(sigTh, function(.n) paste0("rx_rsig1_", .n, "_", dirs)),
+       rsig2 = if (is.null(sigP2)) character(0) else paste0("rx_rsig2_", sigTh[sigP2$a], "_", sigTh[sigP2$b]),
+       sigP2 = sigP2)
+}
+.foceiAnalyticEtCache <- new.env(parent = emptyenv())      # per-fit translated event table (etTrans reuse)
+#' The augmented model's events are IDENTICAL across every solve of a fit (only the theta/eta
+#' params vary), so translate them once with etTrans and reuse -- ~40% off each population solve
+#' (validated: identical predictions).  Keyed by the model key + a cheap data fingerprint (nrow +
+#' sum of EVERY numeric column, so covariate differences never collide); falls back to raw data.
+#' @noRd
+.foceiAnalyticEvents <- function(am, data) {
+  if (is.null(am$key)) return(data)
+  .fp <- sum(vapply(data, function(.c) if (is.numeric(.c)) sum(.c, na.rm = TRUE) else 0, numeric(1)))
+  .ek <- paste0(am$key, "|et|", nrow(data), "|", .fp)
+  .et <- get0(.ek, envir = .foceiAnalyticEtCache, inherits = FALSE)
+  if (is.null(.et)) {
+    .et <- tryCatch(rxode2::etTrans(data, am$augMod), error = function(e) NULL)
+    if (is.null(.et)) return(data)
+    assign(.ek, .et, envir = .foceiAnalyticEtCache)
+  }
+  .et
+}
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
-  tryCatch({
+  .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ",")),
+                   error = function(e) NULL)
+  if (!is.null(.key)) { .hit <- get0(.key, envir = .foceiAnalyticAugCache, inherits = FALSE)
+    if (!is.null(.hit)) return(.hit) }
+  .res <- tryCatch({
     .s <- ui$loadPruneSens
     .st <- rxode2::rxStateOde(.s)
     # matExp()/indLin(): the base ODEs are materialized into the pruned env (via
@@ -913,10 +963,17 @@
     .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
     .modTxt <- paste(.param, .modTxt, sep = "\n")
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
-    # (forward variational jumps at dose times) for the sensitivity compartments.
+    # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
+    # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
+    # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
+    .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
+                       error = function(e) 0L)
     list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs),
-         st = .st, P2 = .P2, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans)
+         st = .st, P2 = .P2, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
+         cols = .foceiAnalyticCols(dirs, .P2, .sigTh), cores = if (length(.cores)) .cores else 0L, key = .key)
   }, error = function(e) NULL)
+  if (!is.null(.key) && !is.null(.res)) assign(.key, .res, envir = .foceiAnalyticAugCache)
+  .res
 }
 
 #' Solve the direction-set 2nd-order model for one subject and recover the
@@ -964,6 +1021,53 @@
             if (!is.null(E0$trans)) list(trans = E0$trans) else NULL)
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) return(NULL)
   .out
+}
+
+#' Batched analogue of [.foceiAnalyticSolveSubjectFD3]: recover the 3rd-order tensor `Ath` (and
+#' `AthR` when `withR`) for ALL subjects at once by central-differencing the analytic 2nd-order
+#' sensitivities `A` w.r.t. each ETA coordinate via BATCHED population solves ([.foceiAnalyticSolveAll],
+#' 1 base + 2*neta perturbed) instead of the per-subject Shi (~O(nsub*neta) solves).  RICHARDSON-
+#' extrapolated over steps (h, h/2) to 4th order, with the perturbed solves at a tighter tol, so the
+#' batched Ath reproduces the per-subject adaptive-Shi Ath (the FOCEI-vs-FOCE analytic-R agreement,
+#' not just the SEs).  Returns the per-subject E-list with `Ath` attached, or NULL (-> per-subject).
+#' @noRd
+.foceiAnalyticSolveAllFD3 <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10,
+                                      fdEps = 1e-3, withR = FALSE) {
+  dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
+  E0 <- .foceiAnalyticSolveAll(am, thv, ebes, ids, data, obsTimes, tol)
+  if (is.null(E0)) return(NULL)
+  nsub <- length(E0)
+  Ath  <- lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd)))
+  AthR <- if (withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd))) else NULL
+  # differencing A carries the ODE solve's ~tol error floor; solve the PERTURBED models tighter
+  # than the base so the 3rd-order Ath stays as clean as the per-subject adaptive Shi.
+  .ptol <- min(tol, 1e-12)
+  .cdiff <- function(li, h) {
+    ep <- ebes; ep[, li] <- ebes[, li] + h; em <- ebes; em[, li] <- ebes[, li] - h
+    Ep <- .foceiAnalyticSolveAll(am, thv, ep, ids, data, obsTimes, .ptol)
+    Em <- .foceiAnalyticSolveAll(am, thv, em, ids, data, obsTimes, .ptol)
+    if (is.null(Ep) || is.null(Em) || length(Ep) != nsub || length(Em) != nsub) return(NULL)
+    list(Ep = Ep, Em = Em, h = h)
+  }
+  for (li in seq_len(neta)) {                             # ETA_li coordinate == ebes column li
+    h <- fdEps * max(abs(ebes[, li]), 1)
+    s1 <- .cdiff(li, h); s2 <- .cdiff(li, h / 2)
+    if (is.null(s1) || is.null(s2)) return(NULL)
+    for (i in seq_len(nsub)) {
+      d1 <- (s1$Ep[[i]]$A - s1$Em[[i]]$A) / (2 * s1$h); d2 <- (s2$Ep[[i]]$A - s2$Em[[i]]$A) / (2 * s2$h)
+      Ath[[i]][, li, , ] <- (4 * d2 - d1) / 3
+      if (withR) {
+        e1 <- (s1$Ep[[i]]$AR - s1$Em[[i]]$AR) / (2 * s1$h); e2 <- (s2$Ep[[i]]$AR - s2$Em[[i]]$AR) / (2 * s2$h)
+        AthR[[i]][, li, , ] <- (4 * e2 - e1) / 3
+      }
+    }
+  }
+  for (i in seq_len(nsub)) {
+    E0[[i]]$Ath <- Ath[[i]]
+    if (withR) E0[[i]]$AthR <- AthR[[i]]
+    if (!all(is.finite(E0[[i]]$A)) || !all(is.finite(E0[[i]]$Ath))) return(NULL)
+  }
+  E0
 }
 
 #' Per-subject observed-information R in the general (f,R) form: the prediction f and
@@ -1523,8 +1627,10 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
   dirs <- aug$dirs; nd <- length(dirs)
+  .ev <- .foceiAnalyticEvents(aug, ev)                    # reuse the pre-translated events (FOCE Newton reuse)
+  .nc <- if (is.null(aug$cores)) 0L else aug$cores
   .d <- tryCatch(withCallingHandlers(
-      as.data.frame(rxode2::rxSolve(aug$augMod, params = params, ev,
+      as.data.frame(rxode2::rxSolve(aug$augMod, params = params, .ev, cores = .nc,
           returnType = "data.frame", atol = tol, rtol = tol)),
       warning = function(w) invokeRestart("muffleWarning")),
     error = function(e) NULL)
