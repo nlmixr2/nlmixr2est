@@ -24,6 +24,15 @@
   finite-difference Hessian that already reflects censoring), so their censoring text stays
   plain while FOCEI/FOCE note the treatment used (e.g. `"M3 censoring (gauss)"`).
 
+- The analytic `fast` gradient and `covMethod="analytic"` now cover `matExp()` /
+  `indLin()` (matrix-exponential / inductive-linearization) models for FOCEI, FOCE,
+  and foce+ (and their mu/irls families), matching the equivalent ODE fit; an
+  `indLin()` forcing state no longer misorders compartments in the augmented model.
+
+- The analytic `fast` outer gradient now covers foce+ (`focep`), matching the
+  finite-difference gradient (its live-conditional-R kernel was already used by the
+  analytic covariance).
+
 - The analytic `fast` gradient now covers censored M2/M3/M4 observations for FOCEI
   (both `censOption` values) and FOCE (default `censOption="gauss"`); the FOCE EBE is
   re-solved with the exact censored score at the frozen variance.  The reported
