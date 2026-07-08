@@ -33,6 +33,7 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
+SEXP _nlmixr2est_censNormalPartials_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFocei_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectRFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -182,6 +183,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmixr2Parameters", (DL_FUNC) &_nlmixr2est_nlmixr2Parameters, 2},
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
+  {"_nlmixr2est_censNormalPartials_", (DL_FUNC) &_nlmixr2est_censNormalPartials_, 6},
   {"_nlmixr2est_foceiSubjectGradFocei_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFocei_, 18},
   {"_nlmixr2est_foceiSubjectGradFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFR_, 23},
   {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 23},

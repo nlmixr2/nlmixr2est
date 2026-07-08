@@ -79,8 +79,9 @@ static inline void censScoreCoefs(const arma::ivec& censv, const arma::vec& limv
 // eta-block; rho_R feeds the parameter columns.  The determinant stays Gauss-Newton (gauss).
 static inline void censFoceScoreCoefs(const arma::ivec& censv, const arma::vec& limv,
                                       const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v, int nobs,
-                                      arma::vec& rho_f, arma::vec& rho_R, arma::vec& rff) {
+                                      arma::vec& rho_f, arma::vec& rho_R, arma::vec& rff, arma::vec& rfR) {
   rff = 1.0 / R0v;
+  rfR = (yv - fv) / arma::square(R0v);                 // normal d(rho_f)/dR0 (the R0-chain cross deriv)
   const bool hasCens = ((int)censv.n_elem == nobs);
   if (!hasCens) return;
   for (int o = 0; o < nobs; o++) {
@@ -90,8 +91,25 @@ static inline void censFoceScoreCoefs(const arma::ivec& censv, const arma::vec& 
     if (!isCens) continue;
     double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
     censNormalPartials((double)cens, yv[o], lim, fv[o], R0v[o], 2, cp);
-    rho_f[o] = cp[0]; rho_R[o] = cp[1]; rff[o] = cp[2];
+    rho_f[o] = cp[0]; rho_R[o] = cp[1]; rff[o] = cp[2]; rfR[o] = cp[3];
   }
+}
+
+// R-callable wrapper for the exact censored rho(f,R) partials (M2/M3/M4).  Returns an
+// nobs x 9 matrix of rho_{f,r,ff,fr,rr,fff,ffr,frr,rrr}; used by the FOCE EBE re-solve to
+// build the censored inner score/Hessian (q0=rho_f, q1=rho_ff) at the frozen variance.
+// [[Rcpp::export]]
+arma::mat censNormalPartials_(const arma::ivec& cens, const arma::vec& dv, const arma::vec& lim,
+                              const arma::vec& fv, const arma::vec& rv, int order) {
+  const int n = (int)fv.n_elem;
+  arma::mat out(n, 9, arma::fill::zeros);
+  for (int o = 0; o < n; o++) {
+    double l = (lim.n_elem == (unsigned) n) ? lim[o] : R_NegInf;
+    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
+    censNormalPartials((double)cens[o], dv[o], l, fv[o], rv[o], order, cp);
+    for (int i = 0; i < 9; i++) out(o, i) = cp[i];
+  }
+  return out;
 }
 
 // [[Rcpp::export]]
@@ -435,9 +453,10 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
   vec res = yv - fv;
   vec rho_f = -res / R0v, rho_R = 0.5 * (1.0 / R0v - square(res) / square(R0v));
-  // censored (M2/M3/M4) score overrides rho_f/rho_R and the frozen-R inner 2nd deriv rff.
-  vec rff;
-  censFoceScoreCoefs(censv, limv, fv, yv, R0v, nobs, rho_f, rho_R, rff);
+  // censored (M2/M3/M4) score overrides rho_f/rho_R, the frozen-R inner 2nd deriv rff, and the
+  // R0-chain cross deriv rfR = d(rho_f)/dR0 (used by the EBE-sensitivity McolEBE).
+  vec rff, rfR;
+  censFoceScoreCoefs(censv, limv, fv, yv, R0v, nobs, rho_f, rho_R, rff, rfR);
   vec q0 = rho_f, q1 = rff;
   vec iR = 1.0 / R0v, iR2 = square(iR);
   vec gPhi = Oi * ehat;
@@ -461,11 +480,12 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   auto ouRc = [&](const arma::vec& v) { mat M(neta, neta, fill::zeros);
     for (int l = 0; l < neta; l++) for (int m = 0; m < neta; m++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += v[o] * a(o, l) * a(o, m); M(l, m) = s; } return M; };
   auto typ = [&](int p) { return p < nth ? 0 : (p < nth + nsg ? 1 : 2); };
+  // d(S_FOCE)/dparam explicit R0-chain uses d(rho_f)/dR0 = rfR (censored-exact; = res/R0^2 normal)
   auto McolEBE = [&](int p) -> vec { int t = typ(p);
     if (t == 0) { int d = dirTh[p] - 1; vec r = Nf.col(d);
-      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * (res[o] * iR2[o]) * aRc(o, d); r[l] += s; } return r; }
+      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * rfR[o] * aRc(o, d); r[l] += s; } return r; }
     if (t == 1) { int c = sigCol[p - nth] - 1; vec r(neta);
-      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * (res[o] * iR2[o]) * R0sig(o, c); r[l] = s; } return r; }
+      for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += a(o, l) * rfR[o] * R0sig(o, c); r[l] = s; } return r; }
     return vec(dOiEst.slice(p - nth - nsg) * ehat); };
   auto dHt_p = [&](int p) -> mat { int t = typ(p);
     if (t == 0) { int d = dirTh[p] - 1; mat D = dHtD[d]; if (!fp) D += ouRc(-aRc.col(d) % iR2); return D; }

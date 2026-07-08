@@ -23,6 +23,10 @@ rxode2hasLlik <- function() {
     .Call(`_nlmixr2est_rxode2hasLlik`)
 }
 
+censNormalPartials_ <- function(cens, dv, lim, fv, rv, order) {
+    .Call(`_nlmixr2est_censNormalPartials_`, cens, dv, lim, fv, rv, order)
+}
+
 foceiSubjectGradFocei_ <- function(a, A, r1, r2, p, p1, perRf, perPs, perRs, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh) {
     .Call(`_nlmixr2est_foceiSubjectGradFocei_`, a, A, r1, r2, p, p1, perRf, perPs, perRs, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh)
 }

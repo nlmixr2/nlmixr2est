@@ -382,14 +382,15 @@
   nom <- length(dOiEst)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
-  # censored (M2/M3/M4) observations: the FOCEI (f,R) grad kernel carries the censored score
-  # (both censOption values).  FOCE (frozen R0) falls back to the finite-difference gradient:
-  # the C++ censored FOCE score kernel is ready (censFoceScoreCoefs), but the FOCE EBE recompute
-  # (.foceiAnalyticFoceEbe) still uses the normal likelihood, so its eta* is wrong for censored
-  # data -- a censoring-aware frozen-R EBE solve is needed first.
+  # censored (M2/M3/M4) observations: the (f,R) grad kernels carry the censored score, and the
+  # FOCE EBE re-solve (.foceiAnalyticFoceEbe) uses the exact censored rho_f/rho_ff at the frozen
+  # R0.  FOCEI supports both censOption values (determinant generalization); FOCE (frozen R0)
+  # supports only the default "gauss" (Gauss-Newton determinant) -- the laplace censored FOCE
+  # determinant is not ported, so it falls back to the finite-difference gradient.
   .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
     (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-  if (.hasCens && .foce) return(NULL)
+  if (.hasCens && .foce &&
+        as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L) return(NULL)
   # The augmented model depends only on the model + direction set (fixed for a
   # fit), NOT on theta/eta/omega; the symbolic .rxSens build dominates each
   # gradient (~63%), so the live path passes a cached `am` (built once per fit).
@@ -426,7 +427,8 @@
       }
       E0List[[i]] <- E0
       eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
+                                    cens = obs$CENS, limit = obs$LIMIT)
       if (is.null(eta0)) return(NULL)
       etaSolve[i, ] <- eta0
     }

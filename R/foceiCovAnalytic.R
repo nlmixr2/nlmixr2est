@@ -209,7 +209,8 @@
       if (!.fp) { E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
         if (is.null(E0)) return(NULL) }
       eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
+                                    cens = obs$CENS, limit = obs$LIMIT)
       if (is.null(eta0)) return(NULL)
       E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
       if (is.null(E)) return(NULL)
@@ -364,7 +365,8 @@
     }
     if (.foce) {
       eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType)
+                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
+                                    cens = obs$CENS, limit = obs$LIMIT)
       if (is.null(eta0)) return(NULL)
     }
     p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
@@ -1562,18 +1564,29 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticFoceEbe <- function(aug, th, eta0, s, times, y, etav, R0, Oi, neta, tol,
                                   maxit = 30L, skip = 1e-3, conv = 1e-9,
-                                  foceType = 0L) {
+                                  foceType = 0L, cens = NULL, limit = NULL) {
   ei <- seq_len(neta)
-  # interaction-free FOCE inner gradient/curvature from (f,R0): q0 = -(y-f)/R0, q1 = 1/R0.
-  # foce+ (foceType=1) uses the live conditional R at the trial eta; nonmem freezes R0 at
-  # the eta=0 population value passed in.  Works for ANY variance structure (no symbolic ef).
+  # interaction-free FOCE inner gradient/curvature from (f,R0): q0 = -(y-f)/R0 = rho_f,
+  # q1 = 1/R0 = rho_ff.  For censored (M2/M3/M4) observations q0/q1 are the EXACT censored
+  # rho_f/rho_ff at the frozen R0 (censNormalPartials_) so the re-solved eta* is the censored
+  # FOCE stationary point.  foce+ (foceType=1) uses the live conditional R at the trial eta;
+  # nonmem freezes R0 at the eta=0 population value passed in.
   .fp <- identical(as.integer(foceType), 1L) || is.null(R0)
+  # censored (M2/M3/M4) per-obs CENS + LIMIT (NA/NULL -> uncensored) and the censored-obs index
+  .cv <- if (is.null(cens)) integer(length(y)) else as.integer(ifelse(is.na(cens), 0L, cens))
+  .lv <- if (is.null(limit)) rep(NA_real_, length(y)) else as.numeric(limit)
+  .cw <- which(.cv != 0 | is.finite(.lv))              # censored observations
   .SH <- function(eta) {                               # FOCE S_FOCE and its Jacobian Hf at eta
     E <- .foceiAnalyticSolveFA(aug, c(th, setNames(eta, etav)), s, times, tol = tol)
     if (is.null(E)) return(NULL)
     yt <- .foceiAnalyticTbsY(y, E$trans)               # DV -> rx_pred_ (transformed) scale; no-op if untransformed
     R0e <- if (.fp) E$R else R0
     q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
+    if (length(.cw)) {                                 # censored: exact rho_f/rho_ff at frozen R0
+      .limt <- .foceiAnalyticTbsY(.lv, E$trans)        # transform the censoring bound like the DV
+      .cp <- censNormalPartials_(.cv, yt, .limt, E$f, R0e, 2L)
+      q0[.cw] <- .cp[.cw, 1]; q1[.cw] <- .cp[.cw, 3]   # cp[,1]=rho_f, cp[,3]=rho_ff
+    }
     S <- as.numeric(Oi %*% eta); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
     Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
     list(S = S, Hf = Hf)
