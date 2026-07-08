@@ -115,11 +115,13 @@
 #'   (more accurate, used here) or "forward".
 #'
 #' @param censOption Treatment of the second derivative for censored
-#'   (M2/M3/M4/BLQ) observations.  \code{"gauss"} (the default) keeps the historic
-#'   uncensored Gauss-Newton curvature, matching common PMx tools; \code{"laplace"}
-#'   uses the exact censored second derivative of the objective (a proper Laplace
-#'   inner Hessian and analytic covariance).  Shared with
-#'   \code{saemControl}/\code{nlmControl}.
+#'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+#'   keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+#'   \code{"laplace"} uses the exact censored second derivative of the objective (a
+#'   proper Laplace inner Hessian and analytic covariance).  Accepted by
+#'   \code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+#'   SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+#'   finite-difference Hessian that already reflects censoring exactly.
 #'
 #' @param shi21maxOuter The maximum number of steps for the
 #'   optimization of the forward-difference step size.  When not zero,

@@ -393,8 +393,9 @@ saemControl <- function(seed = 99,
 
   checkmate::assertLogical(covFull, len=1, any.missing=FALSE)
 
-  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic Gauss-Newton,
-  # default) or "laplace" (exact); shared with focei/nlm.
+  # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
+  # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
+  # SAEM (stochastic EM has no Laplace inner Hessian); kept for alignment with focei/nlm.
   if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
     censOption <- as.integer(censOption)
   } else {
