@@ -6813,6 +6813,18 @@ NumericMatrix foceiCalcCov(Environment e){
   struct CovSolveArgsRelease { ~CovSolveArgsRelease() { releaseCovSolveArgs_(); } } _covSolveArgsRelease;
   try {
     if (op_focei.covMethod) {
+      // Mu-referenced-FOCEI-family (muModel = lin/irls): the covariance must be
+      // computed on the FULL corresponding focei/foce/focep model, NOT the mu->phi
+      // reduced model used during estimation (the reduced parameterization gives
+      // wrong SEs on the mu-referenced/linear parameters).  Bail here and recompute
+      // the covariance at the R level with muModel="none" (.foceiRecomputeMuCov).
+      if (op_focei.muModel != 0) {
+        op_focei.cur = op_focei.totTick;
+        op_focei.curTick = par_progress(op_focei.cur, op_focei.totTick, op_focei.curTick, 1, op_focei.t0, 0);
+        e["covMethod"] = CharacterVector::create("");
+        NumericMatrix ret;
+        return ret;
+      }
       op_focei.derivMethodSwitch=0;
       // Check boundaries
       unsigned int j, k;
@@ -6892,20 +6904,8 @@ NumericMatrix foceiCalcCov(Environment e){
       }
       // foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, op_focei.scaleTo, false);
       setupAq0_(e);
-      // Mu-group thetas were excluded from fixedTrans/npars throughout
-      // optimization; now that it's converged, unlock them for this final
-      // covariance/Hessian pass by temporarily zeroing muModel so
-      // foceiSetupTheta_() treats them as ordinary free parameters (getting a
-      // real SE) and updateMuGroups() early-returns during the Hessian FD
-      // perturbations instead of re-profiling mid-derivative. skipCov must NOT
-      // mark them skipped here, or they'd stay permanently "FIXED" with no SE.
-      // Restored via RAII since this function has several early returns/catch.
-      struct MuModelRestore {
-        int saved;
-        explicit MuModelRestore(int s) : saved(s) {}
-        ~MuModelRestore() { op_focei.muModel = saved; }
-      } _muModelRestore(op_focei.muModel);
-      op_focei.muModel = 0;
+      // muModel is always 0 here: ordinary methods never set it, and mu-referenced
+      // (lin/irls) families bail above and recompute the covariance on the full model.
       foceiSetupTheta_(op_focei.mvi, fullT2, skipCov, 0, false);
       op_focei.scaleType=10;
       if (op_focei.covMethod && !boundary) {
