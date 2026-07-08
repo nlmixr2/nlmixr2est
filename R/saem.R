@@ -213,6 +213,17 @@
   .model <- ui$saemModelList
   .inits <- ui$saemInit
   .rxControl <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+  ## Delay differential equation models need a dense-output solver so delay()
+  ## history is RECORDED (dense=TRUE) and interpolated; the SAEM default
+  ## (liblsoda/lsoda) does neither, which mis-evaluates delay() throughout the fit
+  ## and yields a non-finite covariance linearization.  Mirror rxode2::rxSolve()'s
+  ## hasDelay enforcement here so the SAEM solve and the covariance dopred both use
+  ## the dense dop853 path.
+  if (isTRUE(rxode2::rxModelVars(attr(.model$saem_mod, "rx"))$flags[["hasDelay"]] == 1L)) {
+    .rxControl$method <- 0L  # dop853 (dense; no analytic Jacobian required)
+    .rxControl$stiff2 <- 0L
+    .rxControl$dense <- TRUE # record dense history for delay() interpolation
+  }
   .ue <- .uninformativeEtas(ui,
                             handleUninformativeEtas=rxode2::rxGetControl(ui, "handleUninformativeEtas", TRUE),
                             data=data,

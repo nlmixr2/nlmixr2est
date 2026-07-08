@@ -84,6 +84,19 @@
   } else {
     nlmixr2global$nlmEnv$model <- .env$predOnly <- .f$predOnly
   }
+  ## Delay differential equation models need a dense-output solver so delay()
+  ## history is recorded and interpolated (also by the forward-sensitivity /
+  ## jump-sensitivity states).  nlm.cpp calls rxSolve_ directly, bypassing
+  ## rxSolve()'s hasDelay enforcement, so replicate it here: dense dop853 (which
+  ## needs no analytic Jacobian) unless a discrete-adjoint method (>=200) is
+  ## already selected -- those record their own dense history.
+  if (isTRUE(rxode2::rxModelVars(nlmixr2global$nlmEnv$model)$flags[["hasDelay"]] == 1L)) {
+    .env$rxControl$dense <- TRUE
+    if (is.null(.env$rxControl$method) || .env$rxControl$method < 200L) {
+      .env$rxControl$method <- 0L
+      .env$rxControl$stiff2 <- 0L
+    }
+  }
   .env$param <- setNames(par, sprintf("THETA[%d]", seq_along(par)))
   .nlmFitDataSetup(data)
   .env$needFD <- .f$eventTheta
