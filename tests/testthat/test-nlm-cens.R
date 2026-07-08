@@ -21,6 +21,10 @@ nmTest({
   # Base dataset (no censoring)
   .dat <- nlmixr2data::theo_sd
 
+  # nlm shares the focei inner problem, so its censoring text also carries the
+  # censored 2nd-derivative type " (laplace)"/" (gauss)"; strip it to test the METHOD.
+  .censMethod <- function(x) sub(" \\((laplace|gauss)\\)$", "", as.character(x$censInformation))
+
   for (meth in c("nlm", "bobyqa", "lbfgsb3c", "n1qn1", "newuoa", "nlminb", "optim")) {
     if (meth == "optim") {
       fit <- suppressMessages(suppressWarnings(
@@ -82,7 +86,7 @@ nmTest({
     }
     test_that(paste0(meth, " accepts and processes M3 (left) censored data"), {
       expect_s3_class(fit_m3, paste0("nlmixr2.", meth))
-      expect_equal(as.character(fit_m3$censInformation), "M3 censoring")
+      expect_equal(.censMethod(fit_m3), "M3 censoring")
     })
   }
 
@@ -133,7 +137,7 @@ nmTest({
     }
     test_that(paste0(meth, " accepts and processes M2 (interval) censored data"), {
       expect_s3_class(fit_m2, paste0("nlmixr2.", meth))
-      expect_equal(as.character(fit_m2$censInformation), "M2 censoring")
+      expect_equal(.censMethod(fit_m2), "M2 censoring")
     })
   }
 
@@ -174,7 +178,7 @@ nmTest({
     }
     test_that(paste0(meth, " method accepts and processes M4 (interval-censored) data"), {
       expect_s3_class(fit_m4, paste0("nlmixr2.", meth))
-      expect_equal(as.character(fit_m4$censInformation), "M2 and M4 censoring")
+      expect_equal(.censMethod(fit_m4), "M2 and M4 censoring")
     })
   }
 

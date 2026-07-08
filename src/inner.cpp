@@ -7682,7 +7682,17 @@ void foceiFinalizeTables(Environment e){
   preFinalParTableHooksRun(e);
 
   CharacterVector thetaNames=as<CharacterVector>(e["thetaNames"]);
-  e["censInformation"] = censEstGetFactor();
+  {
+    // censInformation text; when censoring is present, note the 2nd-derivative treatment
+    // (censOption: "laplace" = exact censored Hessian, "gauss" = historic Gauss-Newton) so
+    // it is clear which was used.
+    RObject ciR = censEstGetFactor();
+    IntegerVector ci = as<IntegerVector>(ciR);
+    CharacterVector lvls = as<CharacterVector>(ci.attr("levels"));
+    std::string ciStr = as<std::string>(lvls[ci[0] - 1]);
+    if (ci[0] > 1) ciStr += (op_focei.censOption == 1 ? " (laplace)" : " (gauss)");
+    e["censInformation"] = ciStr;
+  }
   resetCensFlag();
   arma::mat cov;
   bool covExists = e.exists("cov");
