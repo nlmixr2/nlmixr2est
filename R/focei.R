@@ -743,6 +743,10 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .preLhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (after every d/dt so the referenced
+    ## states/sens compartments are defined).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
@@ -760,6 +764,10 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .preLhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (after every d/dt so the referenced
+    ## states/sens compartments are defined).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
@@ -970,6 +978,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .lhs0,
     .preLhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -988,6 +998,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .lhs0,
     .preLhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,

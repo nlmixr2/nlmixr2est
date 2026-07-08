@@ -506,6 +506,8 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     #.lhs0,
     .lhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .prd,
     .fr$f_line,
     .fr$r_line,
@@ -757,6 +759,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .lhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (analytic nlm gradient/Hessian).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
@@ -777,6 +782,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .lhs0,
     .lhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr; the
+    ## pred-only model has no sensitivity compartments)
+    .s$..pastBaseLines,
     .yj,
     .lambda,
     .hi,
