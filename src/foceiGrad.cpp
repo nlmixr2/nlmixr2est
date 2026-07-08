@@ -11,7 +11,42 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 #include <RcppArmadillo.h>
 #include "rxomp.h"
+#include "censEst.h"   // censNormalPartials: exact censored rho(f,R) partials (M2/M3/M4)
 using namespace arma;
+
+// Fill the per-observation determinant coefficients dff/dfr/drr (2nd order) and their
+// (f,R) partials p_fff/p_ffR/p_fRR/p_RRR (3rd order), plus override the score/realized-H
+// partials rf/rR/rff/rfR/rRR for censored observations.  Normal obs keep the Gaussian
+// expected-info determinant (dff=1/R, dfr=0, drr=0.5/R^2; p_ffR=-1/R^2, p_RRR=-1/R^3,
+// rest 0).  Censored obs always get the censored realized 2nd derivs (rf..rRR); the
+// determinant coeffs follow only under censOption "laplace" (1) -- "gauss" (0) keeps the
+// Gaussian determinant.  censv[o]!=0 or a finite limv[o] marks a censored (M2/M3/M4) obs.
+static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
+                                 const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
+                                 int censOpt, int nobs,
+                                 arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
+                                 arma::vec& dff, arma::vec& dfr, arma::vec& drr,
+                                 arma::vec& pfff, arma::vec& pffR, arma::vec& pfRR, arma::vec& pRRR) {
+  const bool hasCens = ((int)censv.n_elem == nobs);
+  // normal defaults for the determinant coeffs
+  dff = 1.0 / Rv;  dfr = arma::zeros<arma::vec>(nobs);  drr = 0.5 / square(Rv);
+  pfff = arma::zeros<arma::vec>(nobs);  pffR = -1.0 / square(Rv);
+  pfRR = arma::zeros<arma::vec>(nobs);  pRRR = -1.0 / pow(Rv, 3);
+  if (!hasCens) return;
+  for (int o = 0; o < nobs; o++) {
+    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
+    int cens = censv[o];
+    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
+    if (!isCens) continue;
+    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
+    censNormalPartials((double)cens, yv[o], lim, fv[o], Rv[o], 3, cp);
+    rf[o] = cp[0];  rR[o] = cp[1];  rff[o] = cp[2];  rfR[o] = cp[3];  rRR[o] = cp[4];  // always
+    if (censOpt == 1) {   // laplace: exact censored determinant
+      dff[o] = cp[2];  dfr[o] = cp[3];  drr[o] = cp[4];
+      pfff[o] = cp[5]; pffR[o] = cp[6]; pfRR[o] = cp[7]; pRRR[o] = cp[8];
+    }
+  }
+}
 
 // [[Rcpp::export]]
 Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f / d dir)
@@ -139,6 +174,7 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
                                 const arma::mat& aR, const arma::cube& AR,
                                 const arma::mat& Rsig, const arma::cube& RsigDir,
                                 const arma::mat& dvSens,
+                                const arma::ivec& censv, const arma::vec& limv, int censOpt,
                                 const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                                 const arma::vec& ehat, const arma::mat& Oi,
                                 const arma::cube& dOiEst, const arma::vec& tr28,
@@ -152,11 +188,15 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
   // moves the DV (y'=tbs(DV,lambda)), so the residual pred sensitivity is a-dvSens
   // (dvSens=dy'/dlambda, nonzero only in the lambda column; the determinant keeps pred a).
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
-  // per-observation rho(f,R,y) partials
+  // per-observation rho(f,R,y) partials (normal); censored obs override rf..rRR below
   vec res = yv - fv;
   vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
   vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
-  vec eff = 1.0 / Rv, eRR = 0.5 / square(Rv);
+  // determinant coefficients dff/dfr/drr (+ 3rd-order coeff partials pfff/pffR/pfRR/pRRR);
+  // normal = Gauss-Newton expected info, censored+laplace = exact censored 2nd derivative.
+  vec dff, dfr, drr, pfff, pffR, pfRR, pRRR;
+  censGradCoefs(censv, limv, fv, yv, Rv, censOpt, nobs,
+                rf, rR, rff, rfR, rRR, dff, dfr, drr, pfff, pffR, pfRR, pRRR);
   // exact inner Hessian H (eta x eta), N (eta x dir), determinant Ht
   mat H = Oi, Ht = Oi, N(neta, ndir, fill::zeros);
   for (int l = 0; l < neta; l++) {
@@ -165,7 +205,8 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
       for (int o = 0; o < nobs; o++) {
         sh += rff[o] * a(o, l) * a(o, m) + rfR[o] * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
           rRR[o] * aR(o, l) * aR(o, m) + rf[o] * A(o, l, m) + rR[o] * AR(o, l, m);
-        sht += eff[o] * a(o, l) * a(o, m) + eRR[o] * aR(o, l) * aR(o, m);
+        sht += dff[o] * a(o, l) * a(o, m) + dfr[o] * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
+          drr[o] * aR(o, l) * aR(o, m);
       }
       H(l, m) += sh; Ht(l, m) += sht;
     }
@@ -196,9 +237,17 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
     for (int l = 0; l < neta; l++)
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
-        for (int o = 0; o < nobs; o++)
-          v += -aR(o, s) / (Rv[o] * Rv[o]) * a(o, l) * a(o, m) + eff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
-            -aR(o, s) / pow(Rv[o], 3) * aR(o, l) * aR(o, m) + eRR[o] * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s));
+        for (int o = 0; o < nobs; o++) {
+          // d(dff)/ddir_s = pfff*a(s) + pffR*aR(s); d(dfr)/ddir_s = pffR*a(s) + pfRR*aR(s);
+          // d(drr)/ddir_s = pfRR*a(s) + pRRR*aR(s)  (coeff (f,R) partials chained through dir s)
+          double ddff = pfff[o] * a(o, s) + pffR[o] * aR(o, s);
+          double ddfr = pffR[o] * a(o, s) + pfRR[o] * aR(o, s);
+          double ddrr = pfRR[o] * a(o, s) + pRRR[o] * aR(o, s);
+          v += ddff * a(o, l) * a(o, m) + dff[o] * (A(o, l, s) * a(o, m) + a(o, l) * A(o, m, s)) +
+            ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
+            dfr[o] * (A(o, l, s) * aR(o, m) + a(o, l) * AR(o, m, s) + AR(o, l, s) * a(o, m) + aR(o, l) * A(o, m, s)) +
+            ddrr * aR(o, l) * aR(o, m) + drr[o] * (AR(o, l, s) * aR(o, m) + aR(o, l) * AR(o, m, s));
+        }
         D(l, m) = v;
       }
     dHtD[s] = D;
@@ -210,9 +259,15 @@ static void foceiGradSubjectFR_(const arma::mat& a, const arma::cube& A,
     for (int l = 0; l < neta; l++)
       for (int m = 0; m < neta; m++) {
         double v = 0.0;
-        for (int o = 0; o < nobs; o++)
-          v += -Rsig(o, c) / (Rv[o] * Rv[o]) * a(o, l) * a(o, m) - Rsig(o, c) / pow(Rv[o], 3) * aR(o, l) * aR(o, m) +
-            eRR[o] * (RsigDir(o, l, c) * aR(o, m) + aR(o, l) * RsigDir(o, m, c));
+        for (int o = 0; o < nobs; o++) {
+          // sigma moves R only: d(dff)/dsig = pffR*Rsig, d(dfr)/dsig = pfRR*Rsig,
+          // d(drr)/dsig = pRRR*Rsig; aR moves via RsigDir, a is fixed.
+          double ddff = pffR[o] * Rsig(o, c), ddfr = pfRR[o] * Rsig(o, c), ddrr = pRRR[o] * Rsig(o, c);
+          v += ddff * a(o, l) * a(o, m) +
+            ddfr * (a(o, l) * aR(o, m) + aR(o, l) * a(o, m)) +
+            dfr[o] * (a(o, l) * RsigDir(o, m, c) + RsigDir(o, l, c) * a(o, m)) +
+            ddrr * aR(o, l) * aR(o, m) + drr[o] * (RsigDir(o, l, c) * aR(o, m) + aR(o, l) * RsigDir(o, m, c));
+        }
         D(l, m) = v;
       }
     dHtSg[k] = D;
@@ -254,13 +309,14 @@ Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A,
                                const arma::mat& aR, const arma::cube& AR,
                                const arma::mat& Rsig, const arma::cube& RsigDir,
                                const arma::mat& dvSens,
+                               const arma::ivec& censv, const arma::vec& limv, int censOpt,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                                const arma::vec& ehat, const arma::mat& Oi,
                                const arma::cube& dOiEst, const arma::vec& tr28,
                                int neta, int nth, int nsg, int nom,
                                const arma::ivec& dirTh, const arma::ivec& sigCol) {
   vec g; mat etaP;
-  foceiGradSubjectFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, fv, yv, Rv, ehat, Oi, dOiEst, tr28,
+  foceiGradSubjectFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, Oi, dOiEst, tr28,
                       neta, nth, nsg, nom, dirTh, sigCol, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
 }
@@ -274,6 +330,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
                            const arma::mat& aR, const arma::cube& AR,
                            const arma::mat& Rsig, const arma::cube& RsigDir,
                            const arma::mat& dvSens,
+                           const arma::ivec& censv, const arma::vec& limv, int censOpt,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::mat& ehat, const arma::ivec& obsOffset,
                            const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
@@ -286,6 +343,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
   cube etaPall(neta, np, nsub, fill::zeros);
   const bool hasSig = (Rsig.n_cols > 0);
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
+  const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
@@ -294,8 +352,10 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
     mat Rsigi = hasSig ? mat(Rsig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     cube RsigDiri = hasSig ? cube(RsigDir.rows(o0, o1)) : cube(o1 - o0 + 1, ndir, 0);
     mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
     vec gi; mat etaPi;
-    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, fv.subvec(o0, o1), yv.subvec(o0, o1),
+    foceiGradSubjectFR_(ai, Ai, aRi, ARi, Rsigi, RsigDiri, dvi, censi, limi, censOpt, fv.subvec(o0, o1), yv.subvec(o0, o1),
                         Rv.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
                         neta, nth, nsg, nom, dirTh, sigCol, gi, etaPi);
     gmat.col(i) = gi; etaPall.slice(i) = etaPi;

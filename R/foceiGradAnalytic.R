@@ -218,13 +218,15 @@
 #' C++ from f/y/R).  Same signature/return as the R FR assembler.
 #' @noRd
 .foceiAnalyticSubjectGradFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
-                                           ndir, Oi = solve(Om), dvSens = matrix(0, length(E$f), 0L)) {
+                                           ndir, Oi = solve(Om), dvSens = matrix(0, length(E$f), 0L),
+                                           censv = integer(0), limv = numeric(0), censOpt = 1L) {
   nom <- length(dOiEst); nobs <- length(E$f)
   dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
   Rsig <- if (is.null(E$Rsig)) matrix(0, nobs, 0L) else E$Rsig
   RsigDir <- if (is.null(E$RsigDir)) array(0, c(nobs, ndir, 0L)) else E$RsigDir
-  foceiSubjectGradFR_(E$a, E$A, E$aR, E$AR, Rsig, RsigDir, dvSens, E$f, E$y, E$R,
+  foceiSubjectGradFR_(E$a, E$A, E$aR, E$AR, Rsig, RsigDir, dvSens,
+                      as.integer(censv), as.numeric(limv), as.integer(censOpt), E$f, E$y, E$R,
                       as.numeric(ehat), Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                       neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol))
 }
@@ -378,6 +380,15 @@
   nom <- length(dOiEst)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
+  # censored (M2/M3/M4) observations: the FOCEI (f,R) grad kernel carries the censored
+  # score + determinant.  Scope: M3/M4 (cens=+/-1) for FOCEI only.  FOCE (frozen-R0) is not
+  # yet censored, and the M2 analytic outer gradient has an open assembly discrepancy, so
+  # both fall back to the (correct) finite-difference gradient.
+  .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
+    (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
+  .cens0 <- if (is.null(data$CENS)) rep(TRUE, nrow(data)) else (is.na(data$CENS) | data$CENS == 0)
+  .hasM2 <- !is.null(data$LIMIT) && any(is.finite(data$LIMIT) & .cens0 & data$EVID == 0)
+  if (.hasCens && (.foce || .hasM2)) return(NULL)
   # The augmented model depends only on the model + direction set (fixed for a
   # fit), NOT on theta/eta/omega; the symbolic .rxSens build dominates each
   # gradient (~63%), so the live path passes a cached `am` (built once per fit).
@@ -481,6 +492,11 @@
     RsigB <- matrix(0, totObs, nsg); RsigDirB <- array(0, c(totObs, ndir, nsg))
     dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
     jacSum <- setNames(numeric(length(lamNames)), lamNames)
+    # censored (M2/M3/M4): per-obs CENS + transformed LIMIT; censOption picks the
+    # determinant treatment (laplace exact vs gauss).  Empty when no censoring.
+    .censOpt <- as.integer(rxode2::rxGetControl(ui, "censOption", 1L))
+    censB <- if (.hasCens) integer(totObs) else integer(0)
+    limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
     ehatB <- matrix(0, nsub, neta)
     for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; rows <- (off[i] + 1L):off[i + 1L]
@@ -492,13 +508,19 @@
         dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
         jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
       }
+      if (.hasCens) {
+        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
+        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
+        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)   # transform the censoring bound like the DV
+      }
       ehatB[i, ] <- etaSolve[i, ]
     }
     dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
     if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, dvSensB, fB, yB, RB, ehatB, as.integer(off),
+    .res <- tryCatch(foceiGradAllFR_(aB, AB, aRB, ARB, RsigB, RsigDirB, dvSensB,
+                                     as.integer(censB), as.numeric(limB), .censOpt, fB, yB, RB, ehatB, as.integer(off),
                                      Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                                      neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)), ncores),
                      error = function(e) NULL)
@@ -573,7 +595,8 @@
     if (is.null(st)) return(NULL)
     th <- setNames(as.numeric(thVals), paste0("THETA_", seq_along(thVals), "_"))
     ebes <- as.matrix(fit$eta[, st$etaNames, drop = FALSE])
-    if (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) return(NULL)
+    # censored obs: FOCEI (f,R) grad kernel handles them (.foceiAnalyticGradCore gates
+    # FOCE-censored to FD internally); no blanket fallback here.
     .r <- .foceiAnalyticGradCore(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, st$ef, st$dir,
                                  st$dOiEst, st$tr28, st$omNames, .foceiAnalyticSolveTol(ui),
                                  interaction = st$interaction, foceType = st$foceType)
@@ -596,7 +619,7 @@
     etaObf <- get("etaObf", e)
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(st$neta), "]"), drop = FALSE])
     data <- get("dataSav", e)
-    if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) return(NULL)
+    # censored obs handled in .foceiAnalyticGradCore (FOCE-censored gates to FD there)
     # The augmented model is the persistent `..outer` sibling of the inner model.
     # Prefer the copy built at model-setup time and qs2-cached in foceiModel$outer
     # (reconstruct am from the top-level compiled model + outerMeta); fall back to

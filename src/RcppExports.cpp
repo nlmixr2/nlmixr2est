@@ -114,8 +114,8 @@ BEGIN_RCPP
 END_RCPP
 }
 // foceiSubjectGradFR_
-Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A, const arma::mat& aR, const arma::cube& AR, const arma::mat& Rsig, const arma::cube& RsigDir, const arma::mat& dvSens, const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, const arma::vec& ehat, const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28, int neta, int nth, int nsg, int nom, const arma::ivec& dirTh, const arma::ivec& sigCol);
-RcppExport SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP aSEXP, SEXP ASEXP, SEXP aRSEXP, SEXP ARSEXP, SEXP RsigSEXP, SEXP RsigDirSEXP, SEXP dvSensSEXP, SEXP fvSEXP, SEXP yvSEXP, SEXP RvSEXP, SEXP ehatSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP, SEXP sigColSEXP) {
+Rcpp::List foceiSubjectGradFR_(const arma::mat& a, const arma::cube& A, const arma::mat& aR, const arma::cube& AR, const arma::mat& Rsig, const arma::cube& RsigDir, const arma::mat& dvSens, const arma::ivec& censv, const arma::vec& limv, int censOpt, const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, const arma::vec& ehat, const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28, int neta, int nth, int nsg, int nom, const arma::ivec& dirTh, const arma::ivec& sigCol);
+RcppExport SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP aSEXP, SEXP ASEXP, SEXP aRSEXP, SEXP ARSEXP, SEXP RsigSEXP, SEXP RsigDirSEXP, SEXP dvSensSEXP, SEXP censvSEXP, SEXP limvSEXP, SEXP censOptSEXP, SEXP fvSEXP, SEXP yvSEXP, SEXP RvSEXP, SEXP ehatSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP, SEXP sigColSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -126,6 +126,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::mat& >::type Rsig(RsigSEXP);
     Rcpp::traits::input_parameter< const arma::cube& >::type RsigDir(RsigDirSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type dvSens(dvSensSEXP);
+    Rcpp::traits::input_parameter< const arma::ivec& >::type censv(censvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type limv(limvSEXP);
+    Rcpp::traits::input_parameter< int >::type censOpt(censOptSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type fv(fvSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type yv(yvSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Rv(RvSEXP);
@@ -139,13 +142,13 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type nom(nomSEXP);
     Rcpp::traits::input_parameter< const arma::ivec& >::type dirTh(dirThSEXP);
     Rcpp::traits::input_parameter< const arma::ivec& >::type sigCol(sigColSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiSubjectGradFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol));
+    rcpp_result_gen = Rcpp::wrap(foceiSubjectGradFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol));
     return rcpp_result_gen;
 END_RCPP
 }
 // foceiGradAllFR_
-Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A, const arma::mat& aR, const arma::cube& AR, const arma::mat& Rsig, const arma::cube& RsigDir, const arma::mat& dvSens, const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, const arma::mat& ehat, const arma::ivec& obsOffset, const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28, int neta, int nth, int nsg, int nom, const arma::ivec& dirTh, const arma::ivec& sigCol, int ncores);
-RcppExport SEXP _nlmixr2est_foceiGradAllFR_(SEXP aSEXP, SEXP ASEXP, SEXP aRSEXP, SEXP ARSEXP, SEXP RsigSEXP, SEXP RsigDirSEXP, SEXP dvSensSEXP, SEXP fvSEXP, SEXP yvSEXP, SEXP RvSEXP, SEXP ehatSEXP, SEXP obsOffsetSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP, SEXP sigColSEXP, SEXP ncoresSEXP) {
+Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A, const arma::mat& aR, const arma::cube& AR, const arma::mat& Rsig, const arma::cube& RsigDir, const arma::mat& dvSens, const arma::ivec& censv, const arma::vec& limv, int censOpt, const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, const arma::mat& ehat, const arma::ivec& obsOffset, const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28, int neta, int nth, int nsg, int nom, const arma::ivec& dirTh, const arma::ivec& sigCol, int ncores);
+RcppExport SEXP _nlmixr2est_foceiGradAllFR_(SEXP aSEXP, SEXP ASEXP, SEXP aRSEXP, SEXP ARSEXP, SEXP RsigSEXP, SEXP RsigDirSEXP, SEXP dvSensSEXP, SEXP censvSEXP, SEXP limvSEXP, SEXP censOptSEXP, SEXP fvSEXP, SEXP yvSEXP, SEXP RvSEXP, SEXP ehatSEXP, SEXP obsOffsetSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP, SEXP sigColSEXP, SEXP ncoresSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -156,6 +159,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::mat& >::type Rsig(RsigSEXP);
     Rcpp::traits::input_parameter< const arma::cube& >::type RsigDir(RsigDirSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type dvSens(dvSensSEXP);
+    Rcpp::traits::input_parameter< const arma::ivec& >::type censv(censvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type limv(limvSEXP);
+    Rcpp::traits::input_parameter< int >::type censOpt(censOptSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type fv(fvSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type yv(yvSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Rv(RvSEXP);
@@ -171,7 +177,7 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::ivec& >::type dirTh(dirThSEXP);
     Rcpp::traits::input_parameter< const arma::ivec& >::type sigCol(sigColSEXP);
     Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
-    rcpp_result_gen = Rcpp::wrap(foceiGradAllFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, fv, yv, Rv, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores));
+    rcpp_result_gen = Rcpp::wrap(foceiGradAllFR_(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores));
     return rcpp_result_gen;
 END_RCPP
 }

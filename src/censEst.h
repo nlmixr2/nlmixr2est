@@ -241,9 +241,11 @@ rxOptExpr(x)
 // dCensNormal1 (first derivative) does not provide.  cens/limDv/lim/f/r follow doCensNormal1.
 //
 // DERIVED + VERIFIED by tools/genCensPartials.R (symengine D of rho, rxOptExpr CSE, then
-// translated to C); every partial validated vs numDeriv of doCensNormal1 in f,r to ~1e-6
-// for |z|<3.5 (deep tails share doCensNormal1's erf-form cancellation; _safe_zero guards
-// keep them finite).  Regenerate with that script; do NOT hand-edit the body below.
+// translated to C, with the normal CDF evaluated via Rf_pnorm5 -- 1+erf/1-erf are rewritten
+// to 2*Phi(+/-sqrt2*.) so the deep-tail cancellation of the erf form is avoided and the
+// function is numerically robust for ALL z, IN C (thread-safe for the inner problem)).
+// Validated vs numDeriv of doCensNormal1 in f,r (~1e-3 2nd order) across M2/M3/M4, both cens
+// signs, |z| up to ~14, zero non-finite outputs.  Regenerate with that script; do NOT hand-edit.
 static inline void censNormalPartials(double cens, double limDv, double lim,
                                       double f, double r, int order, double* out) {
   double dv = limDv;
@@ -263,7 +265,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
       double rx_expr_20 = (rx_expr_17 / _safe_zero(r));
       double rx_expr_21 = erf(rx_expr_18);
       double rx_expr_22 = exp(rx_expr_20);
-      double rx_expr_23 = (1.000000000000000 + rx_expr_21);
+      double rx_expr_23 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_18), 0.0, 1.0, 1, 0));
       double rx_expr_24 = (rx_expr_7 * rx_expr_22);
       out[0] = (((-(rx_expr_0)) / _safe_zero(r)) - (rx_expr_24 / _safe_zero((((rx_expr_3 * rx_expr_6) * (rx_expr_23))))));
       double rx_expr_1 = R_pow(r, -1.000000000000000);
@@ -304,7 +306,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
         double rx_expr_29 = (rx_expr_26 / _safe_zero(r));
         double rx_expr_31 = erf(rx_expr_25);
         double rx_expr_32 = exp(rx_expr_28);
-        double rx_expr_33 = (1.000000000000000 + rx_expr_31);
+        double rx_expr_33 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_25), 0.0, 1.0, 1, 0));
         double rx_expr_34 = exp(rx_expr_29);
         double rx_expr_36 = (rx_expr_9 * rx_expr_34);
         double rx_expr_38 = (rx_expr_16 * (rx_expr_33));
@@ -343,7 +345,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
       double rx_expr_20 = (rx_expr_17 / _safe_zero(r));
       double rx_expr_21 = erf(rx_expr_18);
       double rx_expr_22 = exp(rx_expr_20);
-      double rx_expr_23 = (1.000000000000000 - rx_expr_21);
+      double rx_expr_23 = (2.0*Rf_pnorm5((-M_SQRT2)*(rx_expr_18), 0.0, 1.0, 1, 0));
       double rx_expr_24 = (rx_expr_7 * rx_expr_22);
       out[0] = (((-(rx_expr_0)) / _safe_zero(r)) + (rx_expr_24 / _safe_zero((((rx_expr_3 * rx_expr_6) * (rx_expr_23))))));
       double rx_expr_1 = R_pow(r, -1.000000000000000);
@@ -384,7 +386,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
         double rx_expr_29 = (rx_expr_26 / _safe_zero(r));
         double rx_expr_31 = erf(rx_expr_25);
         double rx_expr_32 = exp(rx_expr_28);
-        double rx_expr_33 = (1.000000000000000 - rx_expr_31);
+        double rx_expr_33 = (2.0*Rf_pnorm5((-M_SQRT2)*(rx_expr_25), 0.0, 1.0, 1, 0));
         double rx_expr_34 = exp(rx_expr_29);
         double rx_expr_36 = (rx_expr_9 * rx_expr_34);
         double rx_expr_38 = (rx_expr_16 * (rx_expr_33));
@@ -429,8 +431,8 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
     double rx_expr_28 = (rx_expr_25 / _safe_zero(rx_expr_2));
     double rx_expr_29 = erf(rx_expr_26);
     double rx_expr_30 = erf(rx_expr_28);
-    double rx_expr_31 = (1.000000000000000 + rx_expr_29);
-    double rx_expr_33 = (1.000000000000000 + rx_expr_30);
+    double rx_expr_31 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_26), 0.0, 1.0, 1, 0));
+    double rx_expr_33 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_28), 0.0, 1.0, 1, 0));
     double rx_expr_35 = (rx_expr_20 * rx_expr_22);
     double rx_expr_36 = (0.500000000000000 * (rx_expr_31));
     double rx_expr_38 = (rx_expr_35 / _safe_zero(r));
@@ -502,8 +504,8 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
       double rx_expr_47 = ((((((cens) * (cens)) * (cens)) * (cens)) * (cens)));
       double rx_expr_48 = erf(rx_expr_44);
       double rx_expr_49 = erf(rx_expr_46);
-      double rx_expr_50 = (1.000000000000000 + rx_expr_48);
-      double rx_expr_52 = (1.000000000000000 + rx_expr_49);
+      double rx_expr_50 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_44), 0.0, 1.0, 1, 0));
+      double rx_expr_52 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_46), 0.0, 1.0, 1, 0));
       double rx_expr_55 = (rx_expr_35 * rx_expr_38);
       double rx_expr_56 = (0.500000000000000 * (rx_expr_50));
       double rx_expr_57 = (rx_expr_37 * rx_expr_38);
@@ -590,7 +592,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
     double rx_expr_15 = (rx_expr_13 * cens);
     double rx_expr_17 = (rx_expr_15 / _safe_zero(rx_expr_2));
     double rx_expr_18 = erf(rx_expr_17);
-    double rx_expr_19 = (1.000000000000000 + rx_expr_18);
+    double rx_expr_19 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_17), 0.0, 1.0, 1, 0));
     out[0] = (((rx_expr_6 * exp((((-0.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) * rx_expr_9) / _safe_zero(r)))) * cens) / _safe_zero((((rx_expr_2 * rx_expr_5) * (rx_expr_19)))));
     double rx_expr_3 = R_pow(r, 1.500000000000000);
     double rx_expr_7 = (0.500000000000000 * rx_expr_1);
@@ -625,7 +627,7 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
       double rx_expr_31 = (rx_expr_26 / _safe_zero(rx_expr_3));
       double rx_expr_32 = ((((((cens) * (cens)) * (cens)) * (cens)) * (cens)));
       double rx_expr_34 = erf(rx_expr_31);
-      double rx_expr_35 = (1.000000000000000 + rx_expr_34);
+      double rx_expr_35 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_31), 0.0, 1.0, 1, 0));
       double rx_expr_44 = (rx_expr_17 * (rx_expr_35));
       out[5] = (((((((4.000000000000000 * rx_expr_1) * exp((((-1.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) * rx_expr_16) / _safe_zero(r)))) * rx_expr_25) / _safe_zero((((rx_expr_2 * rx_expr_7) * ((((rx_expr_35) * (rx_expr_35)) * (rx_expr_35))))))) - (((rx_expr_9 * exp((((-0.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) * rx_expr_16) / _safe_zero(r)))) * rx_expr_25) / _safe_zero((((rx_expr_2 * rx_expr_8) * (rx_expr_35)))))) + ((((6.000000000000000 * exp((((-(((rx_expr_0) * (rx_expr_0)))) * rx_expr_16) / _safe_zero(r)))) * (rx_expr_0)) * rx_expr_30) / _safe_zero(((rx_expr_13 * (((rx_expr_35) * (rx_expr_35)))))))) + ((((rx_expr_9 * exp((((-0.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) * rx_expr_16) / _safe_zero(r)))) * (((rx_expr_0) * (rx_expr_0)))) * rx_expr_32) / _safe_zero((rx_expr_44))));
       double rx_expr_5 = R_pow(r, 3.500000000000000);
@@ -646,7 +648,6 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
     }
   }
 }
-
 #undef hasFiniteLimit
 #undef isM2
 #undef isM3orM4
