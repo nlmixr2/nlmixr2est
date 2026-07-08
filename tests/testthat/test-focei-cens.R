@@ -43,10 +43,10 @@ nmTest({
   })
 
   test_that("censInformation notes the censored 2nd-derivative type (laplace/gauss)", {
-    fl <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))
-    fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc", control = list(censOption = "gauss"))))
-    expect_match(as.character(fl$censInformation), "\\(laplace\\)$")
+    fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))  # gauss is the default
+    fl <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc", control = list(censOption = "laplace"))))
     expect_match(as.character(fg$censInformation), "\\(gauss\\)$")
+    expect_match(as.character(fl$censInformation), "\\(laplace\\)$")
     expect_equal(as.character(f.focei$censInformation), "No censoring")   # no suffix when uncensored
   })
 

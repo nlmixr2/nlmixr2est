@@ -15,6 +15,10 @@
 - Censored (M2/M3/M4/BLQ) observations now use the exact censored second derivative
   for the FOCEI inner Laplace Hessian (`foceiControl(censOption = "laplace")`, the new
   default); `censOption = "gauss"` keeps the historic uncensored Gauss-Newton curvature.
+- Added `foceiControl(censOption = ...)` to choose the censored (M2/M3/M4/BLQ)
+  second-derivative treatment.  `"gauss"` (the default) keeps the historic uncensored
+  Gauss-Newton curvature, matching common PMx tools; `"laplace"` uses the exact
+  censored second derivative for the inner Laplace Hessian and analytic covariance.
   Non-censored fits are unchanged.  The option is shared with `saemControl`/`nlmControl`.
 
 - The FOCEI analytic `fast` gradient now covers censored M2/M3/M4 observations;
