@@ -627,7 +627,7 @@
   # (currently gated off by the saem opt-out assert).
   .arTime <- cfg$evt[cfg$evt[, "EVID"] == 0, "TIME"]
   .arGrp <- paste0(.s_id, "_", cfg$ix_endpnt)
-  .arPos <- ave(seq_along(.arGrp), .arGrp,
+  .arPos <- stats::ave(seq_along(.arGrp), .arGrp,
                 FUN = function(.v) c(NA_integer_, utils::head(.v, -1L))) # prev 1-based orig idx
   cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L)                  # 0-based, -1 = first
   cfg$arDt <- ifelse(is.na(.arPos), 0, .arTime - .arTime[.arPos])
