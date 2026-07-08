@@ -20,7 +20,9 @@ nmTest({
   }
 
   ct <- function(model, censInfo) {
-    expect_equal(as.character(model$censInformation), censInfo)
+    # focei/foce append the censored 2nd-derivative type " (laplace)"/" (gauss)" to the
+    # censoring text; strip it here so these checks test the censoring METHOD (M2/M3/M4).
+    expect_equal(sub(" \\((laplace|gauss)\\)$", "", as.character(model$censInformation)), censInfo)
   }
 
   dat2 <- dat
@@ -38,6 +40,14 @@ nmTest({
   test_that("censoring information is correct", {
     ct(f.foce, "No censoring")
     ct(f.focei, "No censoring")
+  })
+
+  test_that("censInformation notes the censored 2nd-derivative type (laplace/gauss)", {
+    fl <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc")))
+    fg <- suppressWarnings(suppressMessages(nlmixr(f, dat2, "posthoc", control = list(censOption = "gauss"))))
+    expect_match(as.character(fl$censInformation), "\\(laplace\\)$")
+    expect_match(as.character(fg$censInformation), "\\(gauss\\)$")
+    expect_equal(as.character(f.focei$censInformation), "No censoring")   # no suffix when uncensored
   })
 
 
