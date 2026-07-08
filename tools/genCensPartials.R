@@ -22,14 +22,35 @@ r2c <- function(node) {
     if (op=="-" && length(node)==2) return(sprintf("(-%s)", r2c(node[[2]])))
     if (op=="^") { b<-node[[3]]; if (is.numeric(b)&&b==2) return(sprintf("(%s*%s)", r2c(node[[2]]),r2c(node[[2]])))
       return(sprintf("R_pow(%s, %s)", r2c(node[[2]]), r2c(b))) }
+    # stable normal CDF: 1+erf(Y)=2*Phi(sqrt2*Y), 1-erf(Y)=2*Phi(-sqrt2*Y) -- via Rf_pnorm5
+    # (avoids the 1+erf cancellation when Phi(z)->0 in a deep tail; thread-safe C).
+    if (op=="PHIU") return(sprintf("(2.0*Rf_pnorm5(M_SQRT2*(%s), 0.0, 1.0, 1, 0))", r2c(node[[2]])))
+    if (op=="PHIL") return(sprintf("(2.0*Rf_pnorm5((-M_SQRT2)*(%s), 0.0, 1.0, 1, 0))", r2c(node[[2]])))
     if (op %in% c("sqrt","exp","log","erf")) return(sprintf("%s(%s)", op, r2c(node[[2]])))
     stop("unhandled fn: ", op) }
   stop("unhandled") }
+# rewrite the CSE'd rxOptExpr lines: replace (1 +/- <erf-temp>) with PHIU/PHIL(<erf-arg>)
+stabilizeErf <- function(lines) {
+  erfArg <- list()
+  for (ln in lines) {
+    lr <- regmatches(ln, regexec("^\\s*(rx_expr_[0-9]+)\\s*~\\s*erf\\((.*)\\)\\s*$", ln))[[1]]
+    if (length(lr)==3) erfArg[[lr[2]]] <- lr[3]
+  }
+  for (a in names(erfArg)) {
+    arg <- erfArg[[a]]
+    # bare `1 +/- <erf-temp>` (no outer parens); \b before 1 avoids matching the trailing
+    # digit of another temp (e.g. rx_expr_21), \b after the temp name pins the whole name.
+    lines <- gsub(sprintf("\\b1(?:\\.0+)?\\s*\\+\\s*%s\\b", a), sprintf("PHIU(%s)", arg), lines, perl=TRUE)
+    lines <- gsub(sprintf("\\b1(?:\\.0+)?\\s*-\\s*%s\\b", a), sprintf("PHIL(%s)", arg), lines, perl=TRUE)
+  }
+  lines
+}
 genBlock <- function(m, specs, indent="    ") {
   blk <- paste(vapply(names(specs), function(sp)
            sprintf("d_%s=%s", sp, as.character(partial(rho[[m]], specs[[sp]]))), character(1)), collapse="\n")
   opt <- suppressMessages({ tf<-tempfile(); sink(tf); on.exit(sink()); r<-rxode2::rxOptExpr(blk,"c"); sink(); r })
   lines <- strsplit(opt, "\n")[[1]]; lines <- lines[nzchar(trimws(lines)) & !grepl("====|→|optimiz|duplicate", lines)]
+  lines <- stabilizeErf(lines)
   out <- character(0)
   for (ln in lines) {
     lr <- regmatches(ln, regexec("^\\s*([A-Za-z0-9_]+)\\s*[~=]\\s*(.*)$", ln))[[1]]

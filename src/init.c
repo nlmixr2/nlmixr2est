@@ -34,10 +34,10 @@ extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFocei_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectRFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectRfoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
-SEXP _nlmixr2est_foceiGradAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiGradAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiSubjectGradFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiGradAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiRAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -183,10 +183,10 @@ static const R_CallMethodDef CallEntries[] = {
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
   {"_nlmixr2est_foceiSubjectGradFocei_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFocei_, 18},
-  {"_nlmixr2est_foceiSubjectGradFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFR_, 20},
+  {"_nlmixr2est_foceiSubjectGradFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFR_, 23},
   {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 21},
   {"_nlmixr2est_foceiSubjectRfoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRfoceFR_, 22},
-  {"_nlmixr2est_foceiGradAllFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFR_, 22},
+  {"_nlmixr2est_foceiGradAllFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFR_, 25},
   {"_nlmixr2est_foceiSubjectGradFoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFoceFR_, 20},
   {"_nlmixr2est_foceiGradAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFoceFR_, 22},
   {"_nlmixr2est_foceiRAllFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFR_, 23},
