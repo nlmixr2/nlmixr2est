@@ -425,7 +425,7 @@
         E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
         if (is.null(E0)) return(NULL)
       }
-      E0List[[i]] <- E0
+      E0List[i] <- list(E0)                              # `[i]<-list(NULL)` keeps the slot (foce+ E0 is NULL)
       eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav,
                                     if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
                                     cens = obs$CENS, limit = obs$LIMIT)
@@ -560,14 +560,9 @@
   if (isTRUE(as.logical(rxode2::rxGetControl(ui, "fo", FALSE)))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(ui, "interaction", 1L))            # 1 FOCEI / 0 FOCE
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(ui, "foceType", 0L)) else 0L
-  # foce+ (foceType=1, live conditional R): the inner optimizer uses the
-  # interaction-free gradient (eps*a/R) while the objective/likelihood uses the
-  # LIVE R (which depends on eta), so its function and gradient are inconsistent
-  # and the EBE does not stationarize S_FOCE=0 (observed max|S_FOCE|~1 even at a
-  # converged fit).  The analytic gradient assumes a clean S_FOCE=0 stationary
-  # point (as the covariance does), so it cannot match the finite-difference
-  # gradient of that ill-defined EBE -- keep foce+ on the FD gradient.
-  if (interaction == 0L && foceType == 1L) return(NULL)
+  # foce+ (foceType=1, live conditional R) uses the same live-R kernel as the
+  # analytic covariance (.foceiAnalyticSubjectGradFoceFR / .fpG), so its analytic
+  # gradient is in scope alongside FOCEI and FOCE-nonmem.
   if (as.integer(rxode2::rxGetControl(ui, "nAGQ", 1L)) > 1L) return(NULL)
   ef <- .foceiAnalyticErrFull(ui); if (is.null(ef)) return(NULL)
   ini <- ui$iniDf
@@ -680,7 +675,6 @@ rxUiGet.foceiOuter <- function(x, ...) {
   if (!isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))) return(NULL)
   interaction <- as.integer(rxode2::rxGetControl(.ui, "interaction", 1L))
   foceType <- if (interaction == 0L) as.integer(rxode2::rxGetControl(.ui, "foceType", 0L)) else 0L
-  if (interaction == 0L && foceType == 1L) return(NULL)              # foce+ stays on FD
   if (as.integer(rxode2::rxGetControl(.ui, "nAGQ", 1L)) > 1L) return(NULL)
   .dir <- .foceiOuterDirs(.ui); if (is.null(.dir)) return(NULL)
   .foceiAnalyticAugModelDirs(.ui, .dir$dirs)
