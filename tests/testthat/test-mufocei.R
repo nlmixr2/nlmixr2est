@@ -57,6 +57,43 @@ nmTest({
     }
   })
 
+  test_that("FOCE/focep mu families recompute covariance on the full base model (ODE/matExp)", {
+    # The FOCE- and foce+-based mu/irls variants pivot to foce/focep for the cov step.
+    # Use well-identified (no-covariate) models so foce/focep and the mu regression
+    # converge to the same point; the covariate case is exercised for FOCEI above.
+    theo_sd2 <- nlmixr2data::theo_sd
+
+    odeNC <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.sd) })
+    }
+    matNC <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl + eta.cl) / exp(tv)
+        cp <- central / exp(tv); cp ~ add(add.sd) })
+    }
+
+    .chk <- function(mfun, muEst, baseEst, muCtl, baseCtl) {
+      .fB <- .nlmixr(mfun, theo_sd2, baseEst, baseCtl(print = 0, covMethod = "r,s"))
+      .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0, covMethod = "r,s"))
+      expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
+      .sB <- sqrt(diag(.fB$cov)); .sM <- sqrt(diag(.fM$cov))
+      .cmn <- intersect(names(.sB), names(.sM))
+      expect_equal(unname(.sM[.cmn]), unname(.sB[.cmn]), tolerance = 0.05)
+    }
+
+    for (.mod in list(odeNC, matNC)) {
+      .chk(.mod, "mufoce",    "foce",  mufoceControl,    foceControl)
+      .chk(.mod, "irlsfoce",  "foce",  irlsfoceControl,  foceControl)
+      .chk(.mod, "mufocep",   "focep", mufocepControl,   focepControl)
+      .chk(.mod, "irlsfocep", "focep", irlsfocepControl, focepControl)
+    }
+  })
+
   test_that("mufocei recovers comparable estimates to plain focei", {
     # Local model/fits (not the shared helper-zzz-fits.R cache): this test
     # is specifically about the mu-referenced FOCEI restart-loop engine
