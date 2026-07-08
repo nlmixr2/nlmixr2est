@@ -85,6 +85,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// censNormalPartials_
+arma::mat censNormalPartials_(const arma::ivec& cens, const arma::vec& dv, const arma::vec& lim, const arma::vec& fv, const arma::vec& rv, int order);
+RcppExport SEXP _nlmixr2est_censNormalPartials_(SEXP censSEXP, SEXP dvSEXP, SEXP limSEXP, SEXP fvSEXP, SEXP rvSEXP, SEXP orderSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const arma::ivec& >::type cens(censSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type dv(dvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type lim(limSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type fv(fvSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type rv(rvSEXP);
+    Rcpp::traits::input_parameter< int >::type order(orderSEXP);
+    rcpp_result_gen = Rcpp::wrap(censNormalPartials_(cens, dv, lim, fv, rv, order));
+    return rcpp_result_gen;
+END_RCPP
+}
 // foceiSubjectGradFocei_
 Rcpp::List foceiSubjectGradFocei_(const arma::mat& a, const arma::cube& A, const arma::vec& r1, const arma::vec& r2, const arma::vec& p, const arma::vec& p1, const arma::mat& perRf, const arma::mat& perPs, const arma::mat& perRs, const arma::vec& ehat, const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28, int neta, int nth, int nsg, int nom, const arma::ivec& dirTh);
 RcppExport SEXP _nlmixr2est_foceiSubjectGradFocei_(SEXP aSEXP, SEXP ASEXP, SEXP r1SEXP, SEXP r2SEXP, SEXP pSEXP, SEXP p1SEXP, SEXP perRfSEXP, SEXP perPsSEXP, SEXP perRsSEXP, SEXP ehatSEXP, SEXP OiSEXP, SEXP dOiEstSEXP, SEXP tr28SEXP, SEXP netaSEXP, SEXP nthSEXP, SEXP nsgSEXP, SEXP nomSEXP, SEXP dirThSEXP) {

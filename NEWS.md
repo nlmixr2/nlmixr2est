@@ -6,9 +6,10 @@
   censored second derivative for the inner Laplace Hessian and analytic covariance.
   Non-censored fits are unchanged.  The option is shared with `saemControl`/`nlmControl`.
 
-- The FOCEI analytic `fast` gradient now covers censored M2/M3/M4 observations;
-  censored FOCE still falls back to finite differences.  The reported censoring
-  text notes the second-derivative treatment used (e.g. `"M3 censoring (laplace)"`).
+- The analytic `fast` gradient now covers censored M2/M3/M4 observations for FOCEI
+  (both `censOption` values) and FOCE (default `censOption="gauss"`); the FOCE EBE is
+  re-solved with the exact censored score at the frozen variance.  The reported
+  censoring text notes the second-derivative treatment used (e.g. `"M3 censoring (laplace)"`).
 
 - `covMethod="analytic"` now covers censored M2/M3/M4 observations for FOCEI with the
   default `censOption="gauss"` (censored score partials with the Gauss-Newton
