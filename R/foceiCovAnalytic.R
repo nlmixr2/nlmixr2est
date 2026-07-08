@@ -202,25 +202,38 @@
     # (nonmem: aRe/ARe=0, aRc/ARc/R0 from E0; foce+: all from the eta-hat solve E).
     nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
     eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
+    # BATCHED (f,R) FOCE/foce+ solves: the eta=0 population solve (nonmem frozen R0) is batched,
+    # the EBE re-solve stays per-subject (Newton), then ONE batched SolveAllFD3 delivers f/a/A/Ath
+    # AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
+    # never AthR).  foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
+    .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+    if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
+    .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+    E0all <- if (!.fp) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
+    if (!.fp && is.null(E0all)) return(NULL)
+    eta0Mat <- ebes
+    for (i in seq_len(nsub)) {                          # EBE re-solve (per-subject Newton)
+      .o <- .obsAll[[i]]
+      .e0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], .byId[[as.character(.idCode[i])]], .o$TIME, .o$DV, etav,
+                                   if (.fp) NULL else E0all[[i]]$R, Oi, neta, solveTol, foceType = foceType,
+                                   cens = .o$CENS, limit = .o$LIMIT)
+      if (is.null(.e0)) return(NULL)
+      eta0Mat[i, ] <- .e0
+    }
+    .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+    .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE) else NULL
+    if (.batch && is.null(.EsAll)) .batch <- FALSE
     for (i in seq_len(nsub)) {
-      s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-      obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
-      E0 <- NULL
-      if (!.fp) { E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-        if (is.null(E0)) return(NULL) }
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
-                                    cens = obs$CENS, limit = obs$LIMIT)
-      if (is.null(eta0)) return(NULL)
-      E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+      s <- .byId[[as.character(.idCode[i])]]; obs <- .obsAll[[i]]; eta0 <- eta0Mat[i, ]
+      E0 <- if (.fp) NULL else E0all[[i]]
+      E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = FALSE)
       if (is.null(E)) return(NULL)
       if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
         if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
           return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
       E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
-      # E0 is NULL for foce+ (foceType=1, no eta=0 population solve); `E0list[[i]] <- NULL`
-      # would DELETE the slot and shrink the list (later E0list[[i]] out of bounds -> the
-      # whole cov silently falls back to FD).  `E0list[i] <- list(E0)` keeps the NULL slot.
+      # E0list[i] <- list(E0) keeps a NULL slot (foce+) without shrinking the list.
       Elist[[i]] <- E; E0list[i] <- list(E0); eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
     }
     .fpG <- identical(as.integer(foceType), 1L) || is.null(E0list[[1L]])
@@ -273,10 +286,18 @@
   # FOCEI: per-subject FD3 (3rd-order Shi) solves collected in R, then ONE OpenMP C++ call
   # (foceiRAllFR_) sums the observed information over subjects -- no per-subject R<->C++ round-trip.
   nsub <- length(ids); Elist <- vector("list", nsub); nobsAll <- integer(nsub)
+  # BATCHED (f,R) FOCEI solves: ONE SolveAllFD3 gives f/a/A/Ath AND R/aR/AR/AthR for all subjects
+  # (withR=TRUE), instead of the per-subject Shi.  Per-subject Shi is the fallback.
+  .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+  if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
+  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+  .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+  .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, ebes, .idCode, data, .obsT, tol = solveTol, withR = TRUE) else NULL
+  if (.batch && is.null(.EsAll)) .batch <- FALSE
   for (i in seq_len(nsub)) {
-    s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-    obs <- s[s$EVID == 0, , drop = FALSE]
-    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+    s <- .byId[[as.character(.idCode[i])]]; obs <- .obsAll[[i]]
+    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
     if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
