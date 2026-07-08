@@ -164,7 +164,7 @@ test_that("covMethod='analytic' falls back to the finite-difference cov out of s
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
 })
 
-test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI (gauss); FOCE/laplace use FD", {
+test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI and FOCE (gauss); laplace uses FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
   cm <- function() {
@@ -197,13 +197,20 @@ test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI (gauss); FOCE
     expect_identical(f$covMethod, "analytic")
     expect_true(any(grepl("^om\\.", rownames(f$cov))))
   }
-  # laplace determinant + censored FOCE stay on the FD cov (theta-only)
+  # FOCE (gauss) censored is in scope too: full analytic cov, theta/sigma SEs close to FD
+  fF <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
+                                                 foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE))))
+  expect_identical(fF$covMethod, "analytic")
+  expect_true(any(grepl("^om\\.", rownames(fF$cov))))
+  fFr <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
+                                                  foceiControl(print = 0L, covMethod = "r", interaction = FALSE))))
+  cpf <- intersect(c("tka", "tcl", "tv", "add.sd"), intersect(rownames(fF$cov), rownames(fFr$cov)))
+  expect_lt(max(abs(sqrt(diag(fF$cov))[cpf] - sqrt(diag(fFr$cov))[cpf]) /
+                  (sqrt(diag(fFr$cov))[cpf] + 1e-8)), 0.03)
+  # only the laplace censored determinant stays on the FD cov (theta-only)
   fL <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                  foceiControl(print = 0L, covMethod = "analytic", censOption = "laplace"))))
   expect_false(any(grepl("^om\\.", rownames(fL$cov))))
-  fF <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                 foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE))))
-  expect_false(any(grepl("^om\\.", rownames(fF$cov))))
 })
 
 test_that("covMethod='analytic' with pure proportional error near a zero prediction falls back to FD", {
