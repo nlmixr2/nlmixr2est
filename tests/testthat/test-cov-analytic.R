@@ -207,6 +207,12 @@ test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI and FOCE (gau
   cpf <- intersect(c("tka", "tcl", "tv", "add.sd"), intersect(rownames(fF$cov), rownames(fFr$cov)))
   expect_lt(max(abs(sqrt(diag(fF$cov))[cpf] - sqrt(diag(fFr$cov))[cpf]) /
                   (sqrt(diag(fFr$cov))[cpf] + 1e-8)), 0.03)
+  # foce+ (live conditional R) censored is in scope too
+  fFp <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
+                                                  foceiControl(print = 0L, covMethod = "analytic",
+                                                               interaction = FALSE, foceType = "foce+"))))
+  expect_identical(fFp$covMethod, "analytic")
+  expect_true(any(grepl("^om\\.", rownames(fFp$cov))))
   # only the laplace censored determinant stays on the FD cov (theta-only)
   fL <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
                                                  foceiControl(print = 0L, covMethod = "analytic", censOption = "laplace"))))
