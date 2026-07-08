@@ -35,12 +35,12 @@ foceiGradAllFR_ <- function(a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, ce
     .Call(`_nlmixr2est_foceiGradAllFR_`, a, A, aR, AR, Rsig, RsigDir, dvSens, censv, limv, censOpt, fv, yv, Rv, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, ncores)
 }
 
-foceiSubjectGradFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp) {
-    .Call(`_nlmixr2est_foceiSubjectGradFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp)
+foceiSubjectGradFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp) {
+    .Call(`_nlmixr2est_foceiSubjectGradFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp)
 }
 
-foceiGradAllFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores) {
-    .Call(`_nlmixr2est_foceiGradAllFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores)
+foceiGradAllFoceFR_ <- function(a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores) {
+    .Call(`_nlmixr2est_foceiGradAllFoceFR_`, a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, obsOffset, Oi, dOiEst, tr28, neta, nth, nsg, nom, dirTh, sigCol, fp, ncores)
 }
 
 foceiSubjectRFR_ <- function(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD, neta, ndir, ndirP, nom, dirP) {

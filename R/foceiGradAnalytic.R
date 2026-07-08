@@ -238,7 +238,8 @@
 #' @noRd
 .foceiAnalyticSubjectGradFoceFRCpp <- function(E, ehat, Om, neta, nth, nsg, dirTh, sigCol, dOiEst, tr28,
                                                ndir, Oi = solve(Om), E0 = NULL, foceType = 0L,
-                                               dvSens = matrix(0, length(E$f), 0L)) {
+                                               dvSens = matrix(0, length(E$f), 0L),
+                                               censv = integer(0), limv = numeric(0)) {
   nobs <- length(E$f); nom <- length(dOiEst)
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
   if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; R0sig <- E$Rsig }
@@ -246,7 +247,8 @@
   if (is.null(R0sig)) R0sig <- matrix(0, nobs, nsg)
   dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
   if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
-  foceiSubjectGradFoceFR_(E$a, E$A, aRe, aRc, R0sig, dvSens, E$f, E$y, R0, as.numeric(ehat), Oi,
+  foceiSubjectGradFoceFR_(E$a, E$A, aRe, aRc, R0sig, dvSens, as.integer(censv), as.numeric(limv),
+                          E$f, E$y, R0, as.numeric(ehat), Oi,
                           dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                           neta, nth, nsg, nom, as.integer(dirTh), as.integer(sigCol), as.integer(.fp))
 }
@@ -380,10 +382,11 @@
   nom <- length(dOiEst)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)
-  # censored (M2/M3/M4) observations: the FOCEI (f,R) grad kernel carries the censored
-  # score + determinant.  Scope: M3/M4 (cens=+/-1) for FOCEI only.  FOCE (frozen-R0) is not
-  # yet censored, and the M2 analytic outer gradient has an open assembly discrepancy, so
-  # both fall back to the (correct) finite-difference gradient.
+  # censored (M2/M3/M4) observations: the FOCEI (f,R) grad kernel carries the censored score
+  # (both censOption values).  FOCE (frozen R0) falls back to the finite-difference gradient:
+  # the C++ censored FOCE score kernel is ready (censFoceScoreCoefs), but the FOCE EBE recompute
+  # (.foceiAnalyticFoceEbe) still uses the normal likelihood, so its eta* is wrong for censored
+  # data -- a censoring-aware frozen-R EBE solve is needed first.
   .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
     (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
   if (.hasCens && .foce) return(NULL)
@@ -448,6 +451,8 @@
     AB <- array(0, c(totObs, ndir, ndir)); R0B <- numeric(totObs); R0sigB <- matrix(0, totObs, nsg)
     dvSensB <- if (length(lamDir)) matrix(0, totObs, ndir) else matrix(0, totObs, 0L)
     jacSum <- setNames(numeric(length(lamNames)), lamNames)
+    censB <- if (.hasCens) integer(totObs) else integer(0)   # per-obs CENS + transformed LIMIT
+    limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
     fB <- numeric(totObs); yB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
     for (i in seq_len(nsub)) {
       E <- .EsAll[[i]]; E0 <- E0List[[i]]; rows <- (off[i] + 1L):off[i + 1L]
@@ -461,13 +466,19 @@
         dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
         jacSum <- jacSum + sum(.foceiAnalyticJacLambda(obs$DV, E$trans))
       }
+      if (.hasCens) {
+        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
+        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
+        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)   # transform the censoring bound like the DV
+      }
       ehatB[i, ] <- etaSolve[i, ]
     }
     dOiCube <- array(0, c(neta, neta, max(nom, 1L)))
     if (nom > 0L) for (k in seq_len(nom)) dOiCube[, , k] <- dOiEst[[k]]
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, dvSensB, fB, yB, R0B, ehatB, as.integer(off),
+    .res <- tryCatch(foceiGradAllFoceFR_(aB, AB, aReB, aRcB, R0sigB, dvSensB, as.integer(censB), as.numeric(limB),
+                                         fB, yB, R0B, ehatB, as.integer(off),
                                          Oi, dOiCube, if (nom > 0L) as.numeric(tr28) else numeric(0),
                                          neta, nth, nsg, nom, as.integer(dirTh), as.integer(seq_len(nsg)),
                                          as.integer(.fpG), ncores), error = function(e) NULL)
@@ -492,7 +503,7 @@
     jacSum <- setNames(numeric(length(lamNames)), lamNames)
     # censored (M2/M3/M4): per-obs CENS + transformed LIMIT; censOption picks the
     # determinant treatment (laplace exact vs gauss).  Empty when no censoring.
-    .censOpt <- as.integer(rxode2::rxGetControl(ui, "censOption", 1L))
+    .censOpt <- as.integer(rxode2::rxGetControl(ui, "censOption", 0L))
     censB <- if (.hasCens) integer(totObs) else integer(0)
     limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
     ehatB <- matrix(0, nsub, neta)

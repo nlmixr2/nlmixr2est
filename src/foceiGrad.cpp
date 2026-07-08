@@ -73,6 +73,27 @@ static inline void censScoreCoefs(const arma::ivec& censv, const arma::vec& limv
   }
 }
 
+// FOCE (frozen-R0) censored SCORE: override rho_f, rho_R and the inner-Hessian 2nd derivative
+// rff (=1/R0 for a normal obs, exact at (f,R0) for a censored obs) on censored observations.
+// The FOCE inner Hessian freezes the variance, so only the f-chain (rho_f, rho_ff) enters the
+// eta-block; rho_R feeds the parameter columns.  The determinant stays Gauss-Newton (gauss).
+static inline void censFoceScoreCoefs(const arma::ivec& censv, const arma::vec& limv,
+                                      const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v, int nobs,
+                                      arma::vec& rho_f, arma::vec& rho_R, arma::vec& rff) {
+  rff = 1.0 / R0v;
+  const bool hasCens = ((int)censv.n_elem == nobs);
+  if (!hasCens) return;
+  for (int o = 0; o < nobs; o++) {
+    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
+    int cens = censv[o];
+    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
+    if (!isCens) continue;
+    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
+    censNormalPartials((double)cens, yv[o], lim, fv[o], R0v[o], 2, cp);
+    rho_f[o] = cp[0]; rho_R[o] = cp[1]; rff[o] = cp[2];
+  }
+}
+
 // [[Rcpp::export]]
 Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f / d dir)
                                   const arma::cube& A,       // nobs x ndir x ndir (2nd order)
@@ -399,6 +420,7 @@ Rcpp::List foceiGradAllFR_(const arma::mat& a, const arma::cube& A,
 static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
                                     const arma::mat& aRe, const arma::mat& aRc,
                                     const arma::mat& R0sig, const arma::mat& dvSens,
+                                    const arma::ivec& censv, const arma::vec& limv,
                                     const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                     const arma::vec& ehat, const arma::mat& Oi,
                                     const arma::cube& dOiEst, const arma::vec& tr28,
@@ -413,7 +435,10 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir && dvSens.n_rows == (unsigned) nobs);
   vec res = yv - fv;
   vec rho_f = -res / R0v, rho_R = 0.5 * (1.0 / R0v - square(res) / square(R0v));
-  vec q0 = rho_f, q1 = 1.0 / R0v;
+  // censored (M2/M3/M4) score overrides rho_f/rho_R and the frozen-R inner 2nd deriv rff.
+  vec rff;
+  censFoceScoreCoefs(censv, limv, fv, yv, R0v, nobs, rho_f, rho_R, rff);
+  vec q0 = rho_f, q1 = rff;
   vec iR = 1.0 / R0v, iR2 = square(iR);
   vec gPhi = Oi * ehat;
   for (int l = 0; l < neta; l++) { double s = 0.0; for (int o = 0; o < nobs; o++) s += rho_f[o] * a(o, l) + rho_R[o] * aRe(o, l); gPhi[l] += s; }
@@ -466,13 +491,14 @@ static void foceiGradSubjectFoceFR_(const arma::mat& a, const arma::cube& A,
 Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
                                    const arma::mat& aRe, const arma::mat& aRc,
                                    const arma::mat& R0sig, const arma::mat& dvSens,
+                                   const arma::ivec& censv, const arma::vec& limv,
                                    const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                    const arma::vec& ehat, const arma::mat& Oi,
                                    const arma::cube& dOiEst, const arma::vec& tr28,
                                    int neta, int nth, int nsg, int nom,
                                    const arma::ivec& dirTh, const arma::ivec& sigCol, int fp) {
   vec g; mat etaP;
-  foceiGradSubjectFoceFR_(a, A, aRe, aRc, R0sig, dvSens, fv, yv, R0v, ehat, Oi, dOiEst, tr28,
+  foceiGradSubjectFoceFR_(a, A, aRe, aRc, R0sig, dvSens, censv, limv, fv, yv, R0v, ehat, Oi, dOiEst, tr28,
                           neta, nth, nsg, nom, dirTh, sigCol, fp, g, etaP);
   return Rcpp::List::create(Rcpp::Named("g") = g, Rcpp::Named("etaP") = etaP);
 }
@@ -484,7 +510,7 @@ Rcpp::List foceiSubjectGradFoceFR_(const arma::mat& a, const arma::cube& A,
 // [[Rcpp::export]]
 Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
                                const arma::mat& aRe, const arma::mat& aRc, const arma::mat& R0sig,
-                               const arma::mat& dvSens,
+                               const arma::mat& dvSens, const arma::ivec& censv, const arma::vec& limv,
                                const arma::vec& fv, const arma::vec& yv, const arma::vec& R0v,
                                const arma::mat& ehat, const arma::ivec& obsOffset,
                                const arma::mat& Oi, const arma::cube& dOiEst, const arma::vec& tr28,
@@ -497,6 +523,7 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
   cube etaPall(neta, np, nsub, fill::zeros);
   const bool hasSig = (R0sig.n_cols > 0);
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
+  const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
@@ -504,8 +531,10 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
     cube Ai = A.rows(o0, o1);
     mat R0sigi = hasSig ? mat(R0sig.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
     vec gi; mat etaPi;
-    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, fv.subvec(o0, o1), yv.subvec(o0, o1),
+    foceiGradSubjectFoceFR_(ai, Ai, aRei, aRci, R0sigi, dvi, censi, limi, fv.subvec(o0, o1), yv.subvec(o0, o1),
                             R0v.subvec(o0, o1), ehat.row(i).t(), Oi, dOiEst, tr28,
                             neta, nth, nsg, nom, dirTh, sigCol, fp, gi, etaPi);
     gmat.col(i) = gi; etaPall.slice(i) = etaPi;
