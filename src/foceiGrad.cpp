@@ -48,6 +48,31 @@ static inline void censGradCoefs(const arma::ivec& censv, const arma::vec& limv,
   }
 }
 
+// Overwrite the per-obs rho SCORE partials (1st..3rd order) with the exact censored
+// (M2/M3/M4) values on censored observations; normal obs keep the Gaussian forms.  Used by
+// the (f,R) covariance score terms (Gdd/N/Tn -> the true inner Hessian and its parameter
+// chain).  The Laplace-determinant block (Ht/dHtD/d2HtDD) stays Gauss-Newton, matching the
+// default censOption="gauss" fit; a laplace-censored cov (censored determinant) bows out to
+// FD in R.  censv[o]!=0 or a finite limv[o] marks a censored obs.  rfff is Gaussian-zero.
+static inline void censScoreCoefs(const arma::ivec& censv, const arma::vec& limv,
+                                  const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv, int nobs,
+                                  arma::vec& rf, arma::vec& rR, arma::vec& rff, arma::vec& rfR, arma::vec& rRR,
+                                  arma::vec& rffR, arma::vec& rfRR, arma::vec& rRRR, arma::vec& rfff) {
+  const bool hasCens = ((int)censv.n_elem == nobs);
+  rfff = arma::zeros<arma::vec>(nobs);            // Gaussian rho has rho_fff = 0
+  if (!hasCens) return;
+  for (int o = 0; o < nobs; o++) {
+    double lim = limv.n_elem == (unsigned) nobs ? limv[o] : R_NegInf;
+    int cens = censv[o];
+    bool isCens = (cens != 0) || (R_FINITE(lim) && !ISNA(lim));
+    if (!isCens) continue;
+    double cp[9]; for (int i = 0; i < 9; i++) cp[i] = 0.0;
+    censNormalPartials((double)cens, yv[o], lim, fv[o], Rv[o], 3, cp);
+    rf[o] = cp[0]; rR[o] = cp[1]; rff[o] = cp[2]; rfR[o] = cp[3]; rRR[o] = cp[4];
+    rfff[o] = cp[5]; rffR[o] = cp[6]; rfRR[o] = cp[7]; rRRR[o] = cp[8];
+  }
+}
+
 // [[Rcpp::export]]
 Rcpp::List foceiSubjectGradFocei_(const arma::mat& a,       // nobs x ndir  (d f / d dir)
                                   const arma::cube& A,       // nobs x ndir x ndir (2nd order)
@@ -499,6 +524,7 @@ Rcpp::List foceiGradAllFoceFR_(const arma::mat& a, const arma::cube& A,
 static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                            const arma::mat& dvSens, const arma::mat& dvSens2,
+                           const arma::ivec& censv, const arma::vec& limv,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
                            const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
@@ -509,6 +535,10 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
   vec rf = -res / Rv, rR = 0.5 * (1.0 / Rv - square(res) / square(Rv));
   vec rff = 1.0 / Rv, rfR = res / square(Rv), rRR = 0.5 * (-1.0 / square(Rv) + 2.0 * square(res) / pow(Rv, 3));
   vec rffR = -1.0 / square(Rv), rfRR = -2.0 * res / pow(Rv, 3), rRRR = 0.5 * (2.0 / pow(Rv, 3) - 6.0 * square(res) / pow(Rv, 4));
+  // censored (M2/M3/M4) SCORE partials overwrite the Gaussian rho derivs (rfff is 0 for a
+  // normal obs); the determinant below stays Gauss-Newton (censOption="gauss").
+  vec rfff;
+  censScoreCoefs(censv, limv, fv, yv, Rv, nobs, rf, rR, rff, rfR, rRR, rffR, rfRR, rRRR, rfff);
   vec iR = 1.0 / Rv, iR2 = square(iR), iR3 = pow(iR, 3), iR4 = pow(iR, 4);
   auto Ai = [&](const arma::cube& T, int o, int l, int s, int t) { return T(o, l, s + t * ndir); };
   // DV-transform chain (estimated boxCox/yeoJohnson lambda): the residual pred sensitivity
@@ -539,7 +569,7 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
     for (int o = 0; o < nobs; o++) {
       double ras = ra(o, s), rat = ra(o, t), Yst = (s == t) ? dvY(o, s) : 0.0;  // DV residual sens + d2y'/dl2
       double us = rff[o] * ras + rfR[o] * aR(o, s), ut = rff[o] * rat + rfR[o] * aR(o, t);
-      double ust = rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
+      double ust = rfff[o] * ras * rat + rffR[o] * (ras * aR(o, t) + aR(o, s) * rat) + rfRR[o] * aR(o, s) * aR(o, t) +
         rff[o] * A(o, s, t) - rff[o] * Yst + rfR[o] * AR(o, s, t);
       double ws = rfR[o] * ras + rRR[o] * aR(o, s), wt = rfR[o] * rat + rRR[o] * aR(o, t);
       double wst = rffR[o] * ras * rat + rfRR[o] * (ras * aR(o, t) + aR(o, s) * rat) +
@@ -633,11 +663,12 @@ static arma::mat foceiRSubjectFR_(const arma::mat& a, const arma::cube& A, const
 arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                            const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                            const arma::mat& dvSens, const arma::mat& dvSens2,
+                           const arma::ivec& censv, const arma::vec& limv,
                            const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                            const arma::vec& ehat, const arma::mat& Oi,
                            const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
                            int neta, int ndir, int ndirP, int nom, const arma::ivec& dirP) {
-  return foceiRSubjectFR_(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD,
+  return foceiRSubjectFR_(a, A, Ath, aR, AR, AthR, dvSens, dvSens2, censv, limv, fv, yv, Rv, ehat, Oi, dOi, d2Oi, d2LD,
                           neta, ndir, ndirP, nom, dirP);
 }
 
@@ -648,6 +679,7 @@ arma::mat foceiSubjectRFR_(const arma::mat& a, const arma::cube& A, const arma::
 arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube& Ath,
                        const arma::mat& aR, const arma::cube& AR, const arma::cube& AthR,
                        const arma::mat& dvSens, const arma::mat& dvSens2,
+                       const arma::ivec& censv, const arma::vec& limv,
                        const arma::vec& fv, const arma::vec& yv, const arma::vec& Rv,
                        const arma::mat& ehat, const arma::ivec& obsOffset,
                        const arma::mat& Oi, const arma::cube& dOi, const arma::cube& d2Oi, const arma::mat& d2LD,
@@ -655,14 +687,17 @@ arma::mat foceiRAllFR_(const arma::mat& a, const arma::cube& A, const arma::cube
   const int nsub = (int)ehat.n_rows;
   const int np = ndirP + nom;
   const bool hasDv = (dvSens.n_cols == (unsigned) ndir);
+  const bool hasCens = ((int)censv.n_elem == (int)fv.n_elem);
   cube Rall(np, np, nsub, fill::zeros);
 #pragma omp parallel for num_threads(ncores)
   for (int i = 0; i < nsub; i++) {
     int o0 = obsOffset[i], o1 = obsOffset[i + 1] - 1;
     mat dvi = hasDv ? mat(dvSens.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
     mat dv2i = hasDv ? mat(dvSens2.rows(o0, o1)) : mat(o1 - o0 + 1, 0);
+    ivec censi = hasCens ? ivec(censv.subvec(o0, o1)) : ivec();
+    vec limi = hasCens ? vec(limv.subvec(o0, o1)) : vec();
     Rall.slice(i) = foceiRSubjectFR_(a.rows(o0, o1), A.rows(o0, o1), Ath.rows(o0, o1),
-                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1), dvi, dv2i,
+                                     aR.rows(o0, o1), AR.rows(o0, o1), AthR.rows(o0, o1), dvi, dv2i, censi, limi,
                                      fv.subvec(o0, o1), yv.subvec(o0, o1), Rv.subvec(o0, o1),
                                      ehat.row(i).t(), Oi, dOi, d2Oi, d2LD,
                                      neta, ndir, ndirP, nom, dirP);

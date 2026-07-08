@@ -278,15 +278,28 @@
   fB <- numeric(totObs); yB <- numeric(totObs); RB <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
   dvSensB <- if (length(lamDir)) matrix(0, totObs, ndirCov) else matrix(0, totObs, 0L)
   dvSens2B <- dvSensB
+  # censored (M2/M3/M4): per-obs CENS + transformed LIMIT drive the censored score partials
+  # (the determinant stays Gauss-Newton, matching censOption="gauss"); empty when no censoring.
+  .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
+    (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
+  censB <- if (.hasCens) integer(totObs) else integer(0)
+  limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
   for (i in seq_len(nsub)) {
     E <- Elist[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
     aB[rows, ] <- E$a; aRB[rows, ] <- E$aR; AB[rows, , ] <- E$A; ARB[rows, , ] <- E$AR
     AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2)); AthRB[rows, , ] <- array(E$AthR, c(no, neta, nd2))
     fB[rows] <- E$f; yB[rows] <- E$y; RB[rows] <- E$R; ehatB[i, ] <- ebes[i, ]
-    if (length(lamDir)) {                              # DV-transform chain (estimated lambda)
+    if (length(lamDir) || .hasCens) {
       s <- .byId[[as.character(.idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
-      dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-      dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
+        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+        dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+      }
+      if (.hasCens) {
+        censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
+        .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
+        limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)   # transform the censoring bound like the DV
+      }
     }
   }
   nom <- omd$nom
@@ -297,7 +310,8 @@
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
   ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
   if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-  R <- tryCatch(foceiRAllFR_(aB, AB, AthB, aRB, ARB, AthRB, dvSensB, dvSens2B, fB, yB, RB, ehatB, as.integer(off),
+  R <- tryCatch(foceiRAllFR_(aB, AB, AthB, aRB, ARB, AthRB, dvSensB, dvSens2B, as.integer(censB), as.numeric(limB),
+                             fB, yB, RB, ehatB, as.integer(off),
                              Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
                 error = function(e) NULL)
   if (is.null(R) || !all(is.finite(R))) return(NULL)
@@ -523,8 +537,14 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    if (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE))               # censored -> FD
-      return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
+    # censored (M2/M3/M4) analytic cov: FOCEI + censOption="gauss" is in scope (censored score
+    # partials feed the (f,R) path; the determinant stays Gauss-Newton, matching the gauss fit).
+    # FOCE censoring and the laplace censored determinant still bow out to the FD cov.
+    .hasCensD <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
+      (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
+    if (.hasCensD && (interaction == 0L ||
+                        as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L))
+      return(.foceiAnalyticFallback("censored observations (FOCE or censOption='laplace')"))
 
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
@@ -533,7 +553,9 @@
     # (any structure, sigmas as directions); add/prop FOCEI keeps the fast symbolic
     # assembly until the (f,R) cov is ported to C++ (the R version is correct but slow).
     # FOCE and IOV keep the symbolic add/prop assembly.
-    Rfull <- if (length(iovVars) == 0L && isTRUE(ef$foceiOnly))
+    # censored FOCEI must use the general (f,R) path (the fast add/prop assembler has no
+    # censored partials); it also carries any general/estimated-lambda variance.
+    Rfull <- if (length(iovVars) == 0L && (isTRUE(ef$foceiOnly) || .hasCensD))
       .foceiAnalyticAssembleRFR(ui, th, ebes, ids, data, Om, ef, neta, length(.dir$dirP), .dir$dirP, omd,
                                 dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
                                 startedEnv = e, solveTol = .foceiAnalyticSolveTol(ui),
@@ -1164,7 +1186,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSubjectRFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir, Oi = solve(Om),
                                         dvSens = matrix(0, length(E$f), 0L),
-                                        dvSens2 = matrix(0, length(E$f), 0L)) {
+                                        dvSens2 = matrix(0, length(E$f), 0L),
+                                        censv = integer(0), limv = numeric(0)) {
   nobs <- length(E$f); nom <- omd$nom
   # Ath/AthR are [obs, neta, ndir, ndir] (eta axis first); reshape to (obs, neta, ndir^2)
   # so the kernel reads Ath(o, l, s + t*ndir) with l over the etas.
@@ -1174,7 +1197,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
   if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
-  foceiSubjectRFR_(E$a, E$A, AthC, E$aR, E$AR, AthRC, dvSens, dvSens2, E$f, E$y, E$R, as.numeric(ehat), Oi,
+  foceiSubjectRFR_(E$a, E$A, AthC, E$aR, E$AR, AthRC, dvSens, dvSens2, as.integer(censv), as.numeric(limv),
+                   E$f, E$y, E$R, as.numeric(ehat), Oi,
                    dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
 }
 
@@ -1591,8 +1615,13 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .idf0 <- ui$iniDf
   if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err)))            # IOV
     return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
-  if (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE))               # censored
-    return(.foceiAnalyticFallback("censored observations (M3/M4 likelihood)"))
+  # censored (M2/M3/M4): FOCEI + censOption="gauss" is in scope (censored score partials +
+  # Gauss-Newton determinant); FOCE censoring and the laplace censored determinant use FD.
+  .hasCens <- (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) ||
+    (!is.null(fit$dataSav$LIMIT) && any(is.finite(fit$dataSav$LIMIT)))
+  if (.hasCens && (interaction == 0L ||
+                     as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L))
+    return(.foceiAnalyticFallback("censored observations (FOCE or censOption='laplace')"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
 
@@ -1630,8 +1659,9 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   # (f,R) cov (sigmas as directions), matching the live covType="analytic" hook; add/prop keeps
   # the fast symbolic assembly.  (IOV already bowed out above.)  An estimated boxCox/yeoJohnson
   # lambda sits in thStruct as a theta-like direction, so name the sigma block with the
-  # lambda-excluded .dir$sgName (matching the live hook's fullNm).
-  R <- if (isTRUE(ef$foceiOnly))
+  # lambda-excluded .dir$sgName (matching the live hook's fullNm).  Censored FOCEI also routes
+  # here (the fast add/prop assembler has no censored partials).
+  R <- if (isTRUE(ef$foceiOnly) || .hasCens)
     .foceiAnalyticAssembleRFR(ui, th, ebes, fit$eta$ID, fit$dataSav, Om, ef, neta,
                               length(.dir$dirP), .dir$dirP, omd,
                               dirsCov = .dir$dirsCov, ndirCov = .dir$ndirCov,
