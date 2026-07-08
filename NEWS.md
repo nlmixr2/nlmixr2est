@@ -31,6 +31,12 @@
 - `covMethod="analytic"` now supports an estimated boxCox/yeoJohnson lambda for FOCEI,
   FOCE, and foce+ (the observed-information carries the DV-transform 2nd-order chain).
 
+- Fixed the post-fit `foceiCovAnalytic()`/`getVarCov()` recompute falling back to the
+  finite-difference covariance for a general `(f,R)` variance (multi-endpoint /
+  non-add-prop / estimated-lambda transform): it now routes to the same general `(f,R)`
+  assembly as the live fit, reproducing the installed analytic covariance instead of
+  returning `NULL`.
+
 - Fixed the analytic FOCE/foce+ covariance silently falling back to the finite-difference
   Hessian: the per-subject eta=0 solve list dropped its NULL foce+ slots (`list[[i]] <-
   NULL` shrinks the list), so foce+ (and some FOCE) covariances went out of bounds.
