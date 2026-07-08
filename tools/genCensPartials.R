@@ -5,8 +5,12 @@ rho <- list(
   M3  = S(sprintf("-log(%s)", PHI("cens*(dv-f)/sqrt(r)"))),
   M4  = S(sprintf("-(log(%s - %s) - log(1 - %s))",
              PHI("cens*(dv-f)/sqrt(r)"), PHI("cens*(lim-f)/sqrt(r)"), PHI("cens*(lim-f)/sqrt(r)"))),
-  M2g = S(sprintf("0.5*((dv-f)^2/r + log(r)) + log(%s)", PHI("-(lim-f)/sqrt(r)"))),
-  M2l = S(sprintf("0.5*((dv-f)^2/r + log(r)) + log(%s)", PHI("(lim-f)/sqrt(r)"))))
+  # M2 = ll - log(1-Phi(z)) = ll - log Phi(-z), z=((lim<f)*2-1)*(lim-f)/sqrt(r) (doCensNormal1
+  # uses the UPPER tail pnorm5(z,lower=0)); rho=-logLik = normal + log Phi(-z).
+  #   lim>=f (coeff -1): -z=(lim-f)/sqrt(r)   ->  log Phi((lim-f)/sqrt(r))
+  #   lim<f  (coeff +1): -z=(f-lim)/sqrt(r)   ->  log Phi(-(lim-f)/sqrt(r))
+  M2g = S(sprintf("0.5*((dv-f)^2/r + log(r)) + log(%s)", PHI("(lim-f)/sqrt(r)"))),
+  M2l = S(sprintf("0.5*((dv-f)^2/r + log(r)) + log(%s)", PHI("-(lim-f)/sqrt(r)"))))
 specs2 <- list(f="f", r="r", ff=c("f","f"), fr=c("f","r"), rr=c("r","r"))
 specs3 <- list(fff=c("f","f","f"), ffr=c("f","f","r"), frr=c("f","r","r"), rrr=c("r","r","r"))
 idx <- c(f=0,r=1,ff=2,fr=3,rr=4,fff=5,ffr=6,frr=7,rrr=8)

@@ -241,97 +241,18 @@ rxOptExpr(x)
 // dCensNormal1 (first derivative) does not provide.  cens/limDv/lim/f/r follow doCensNormal1.
 //
 // DERIVED + VERIFIED by tools/genCensPartials.R (symengine D of rho, rxOptExpr CSE, then
-// translated to C, with the normal CDF evaluated via Rf_pnorm5 -- 1+erf/1-erf are rewritten
-// to 2*Phi(+/-sqrt2*.) so the deep-tail cancellation of the erf form is avoided and the
-// function is numerically robust for ALL z, IN C (thread-safe for the inner problem)).
-// Validated vs numDeriv of doCensNormal1 in f,r (~1e-3 2nd order) across M2/M3/M4, both cens
-// signs, |z| up to ~14, zero non-finite outputs.  Regenerate with that script; do NOT hand-edit.
+// translated to C, with the normal CDF via Rf_pnorm5 -- 1+erf/1-erf rewritten to
+// 2*Phi(+/-sqrt2*.) so the deep-tail cancellation of the erf form is avoided and the function
+// is numerically robust for ALL z, IN C (thread-safe for the inner problem)).  M2 uses the
+// UPPER tail 1-Phi(z) = Phi(-z) to match doCensNormal1's pnorm5(z,lower=0).  Validated vs
+// numDeriv of doCensNormal1 in f,r across M2/M3/M4, both cens signs, |z| up to ~14, no
+// non-finite outputs.  Regenerate with that script; do NOT hand-edit.
 static inline void censNormalPartials(double cens, double limDv, double lim,
                                       double f, double r, int order, double* out) {
   double dv = limDv;
   int hasFin = (R_FINITE(lim) && !ISNA(lim));
   if (cens == 0.0 && hasFin) {            // M2
     if (lim < f) {
-      double rx_expr_0 = (dv - f);
-      double rx_expr_2 = 1.414213562373095;
-      double rx_expr_3 = sqrt(r);
-      double rx_expr_6 = sqrt(M_PI);
-      double rx_expr_7 = rx_expr_2;
-      double rx_expr_10 = (0.500000000000000 * rx_expr_2);
-      double rx_expr_15 = (rx_expr_10 * (((-f) + lim)));
-      double rx_expr_16 = (((((-f) + lim)) * (((-f) + lim))));
-      double rx_expr_17 = (-0.500000000000000 * rx_expr_16);
-      double rx_expr_18 = (rx_expr_15 / _safe_zero(rx_expr_3));
-      double rx_expr_20 = (rx_expr_17 / _safe_zero(r));
-      double rx_expr_21 = erf(rx_expr_18);
-      double rx_expr_22 = exp(rx_expr_20);
-      double rx_expr_23 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_18), 0.0, 1.0, 1, 0));
-      double rx_expr_24 = (rx_expr_7 * rx_expr_22);
-      out[0] = (((-(rx_expr_0)) / _safe_zero(r)) - (rx_expr_24 / _safe_zero((((rx_expr_3 * rx_expr_6) * (rx_expr_23))))));
-      double rx_expr_1 = R_pow(r, -1.000000000000000);
-      double rx_expr_4 = R_pow(r, 1.500000000000000);
-      double rx_expr_8 = (((r) * (r)));
-      double rx_expr_9 = (0.500000000000000 * rx_expr_2);
-      double rx_expr_12 = (rx_expr_4 * rx_expr_6);
-      double rx_expr_25 = (rx_expr_9 * rx_expr_22);
-      double rx_expr_26 = (rx_expr_12 * (rx_expr_23));
-      out[1] = ((((-0.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) / _safe_zero(rx_expr_8)) - ((rx_expr_25 * (((-f) + lim))) / _safe_zero((rx_expr_26)))) + (0.500000000000000 * rx_expr_1));
-      double rx_expr_19 = exp(((-rx_expr_16) / _safe_zero(r)));
-      out[2] = ((((-2.000000000000000 * rx_expr_19) / _safe_zero((((r * M_PI) * (((rx_expr_23) * (rx_expr_23))))))) - ((rx_expr_24 * (((-f) + lim))) / _safe_zero((rx_expr_26)))) + rx_expr_1);
-      double rx_expr_5 = R_pow(r, 2.500000000000000);
-      double rx_expr_13 = (rx_expr_5 * rx_expr_6);
-      double rx_expr_27 = (rx_expr_13 * (rx_expr_23));
-      out[3] = (((((rx_expr_0) / _safe_zero(rx_expr_8)) + (rx_expr_25 / _safe_zero((rx_expr_26)))) - ((rx_expr_19 * (((-f) + lim))) / _safe_zero((((rx_expr_8 * M_PI) * (((rx_expr_23) * (rx_expr_23)))))))) - ((rx_expr_25 * rx_expr_16) / _safe_zero((rx_expr_27))));
-      double rx_expr_11 = ((((r) * (r)) * (r)));
-      out[4] = ((((((((rx_expr_0) * (rx_expr_0))) / _safe_zero(rx_expr_11)) - (((0.500000000000000 * rx_expr_19) * rx_expr_16) / _safe_zero((((rx_expr_11 * M_PI) * (((rx_expr_23) * (rx_expr_23)))))))) - ((((0.250000000000000 * rx_expr_2) * rx_expr_22) * ((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))))) / _safe_zero((((R_pow(r, 3.500000000000000) * rx_expr_6) * (rx_expr_23)))))) + ((((0.750000000000000 * rx_expr_2) * rx_expr_22) * (((-f) + lim))) / _safe_zero((rx_expr_27)))) - (0.500000000000000 * R_pow(r, -2.000000000000000)));
-      if (order >= 3) {
-        double rx_expr_1 = 1.414213562373095;
-        double rx_expr_2 = R_pow(r, 1.500000000000000);
-        double rx_expr_3 = sqrt(r);
-        double rx_expr_4 = R_pow(r, 2.500000000000000);
-        double rx_expr_7 = R_pow(M_PI, 1.500000000000000);
-        double rx_expr_8 = sqrt(M_PI);
-        double rx_expr_9 = rx_expr_1;
-        double rx_expr_10 = (((r) * (r)));
-        double rx_expr_13 = (rx_expr_10 * M_PI);
-        double rx_expr_14 = (0.500000000000000 * rx_expr_1);
-        double rx_expr_16 = (rx_expr_4 * rx_expr_8);
-        double rx_expr_22 = (rx_expr_14 * (((-f) + lim)));
-        double rx_expr_23 = (((((-f) + lim)) * (((-f) + lim))));
-        double rx_expr_24 = (-1.500000000000000 * rx_expr_23);
-        double rx_expr_25 = (rx_expr_22 / _safe_zero(rx_expr_3));
-        double rx_expr_26 = (-0.500000000000000 * rx_expr_23);
-        double rx_expr_27 = exp(((-rx_expr_23) / _safe_zero(r)));
-        double rx_expr_28 = (rx_expr_24 / _safe_zero(r));
-        double rx_expr_29 = (rx_expr_26 / _safe_zero(r));
-        double rx_expr_31 = erf(rx_expr_25);
-        double rx_expr_32 = exp(rx_expr_28);
-        double rx_expr_33 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_25), 0.0, 1.0, 1, 0));
-        double rx_expr_34 = exp(rx_expr_29);
-        double rx_expr_36 = (rx_expr_9 * rx_expr_34);
-        double rx_expr_38 = (rx_expr_16 * (rx_expr_33));
-        out[5] = ((((((-4.000000000000000 * rx_expr_1) * rx_expr_32) / _safe_zero((((rx_expr_2 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33))))))) + (rx_expr_36 / _safe_zero((((rx_expr_2 * rx_expr_8) * (rx_expr_33)))))) - (((6.000000000000000 * rx_expr_27) * (((-f) + lim))) / _safe_zero(((rx_expr_13 * (((rx_expr_33) * (rx_expr_33)))))))) - ((rx_expr_36 * rx_expr_23) / _safe_zero((rx_expr_38))));
-        double rx_expr_5 = R_pow(r, 3.500000000000000);
-        double rx_expr_11 = (0.500000000000000 * rx_expr_1);
-        double rx_expr_12 = (1.500000000000000 * rx_expr_1);
-        double rx_expr_15 = ((((r) * (r)) * (r)));
-        double rx_expr_17 = (rx_expr_15 * M_PI);
-        double rx_expr_18 = (rx_expr_5 * rx_expr_8);
-        double rx_expr_30 = ((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))));
-        double rx_expr_37 = (rx_expr_12 * rx_expr_34);
-        double rx_expr_39 = (rx_expr_18 * (rx_expr_33));
-        out[6] = (((((((2.000000000000000 * rx_expr_27) / _safe_zero(((rx_expr_13 * (((rx_expr_33) * (rx_expr_33))))))) - (((3.000000000000000 * rx_expr_27) * rx_expr_23) / _safe_zero(((rx_expr_17 * (((rx_expr_33) * (rx_expr_33)))))))) - (((rx_expr_11 * rx_expr_34) * rx_expr_30) / _safe_zero((rx_expr_39)))) - ((((2.000000000000000 * rx_expr_1) * rx_expr_32) * (((-f) + lim))) / _safe_zero((((rx_expr_4 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((rx_expr_37 * (((-f) + lim))) / _safe_zero((rx_expr_38)))) - R_pow(r, -2.000000000000000));
-        double rx_expr_0 = (dv - f);
-        double rx_expr_6 = R_pow(r, 4.500000000000000);
-        double rx_expr_19 = (rx_expr_6 * rx_expr_8);
-        double rx_expr_20 = (((((r) * (r)) * (r)) * (r)));
-        double rx_expr_21 = (rx_expr_20 * M_PI);
-        double rx_expr_35 = (((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))));
-        double rx_expr_40 = (rx_expr_19 * (rx_expr_33));
-        out[7] = ((((((((-2.000000000000000 * (rx_expr_0)) / _safe_zero(rx_expr_15)) - (((0.750000000000000 * rx_expr_1) * rx_expr_34) / _safe_zero((rx_expr_38)))) - (((1.500000000000000 * rx_expr_27) * rx_expr_30) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.500000000000000 * rx_expr_27) * (((-f) + lim))) / _safe_zero(((rx_expr_17 * (((rx_expr_33) * (rx_expr_33)))))))) - ((((0.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_35) / _safe_zero((rx_expr_40)))) - (((rx_expr_9 * rx_expr_32) * rx_expr_23) / _safe_zero((((rx_expr_5 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((rx_expr_37 * rx_expr_23) / _safe_zero((rx_expr_39))));
-        out[8] = (((((((((-3.000000000000000 * (((rx_expr_0) * (rx_expr_0)))) / _safe_zero(rx_expr_20)) - (((0.750000000000000 * rx_expr_27) * rx_expr_35) / _safe_zero((((((((((r) * (r)) * (r)) * (r)) * (r))) * M_PI) * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.250000000000000 * rx_expr_27) * rx_expr_23) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) - ((((0.125000000000000 * rx_expr_1) * rx_expr_34) * ((((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))))) / _safe_zero((((R_pow(r, 5.500000000000000) * rx_expr_8) * (rx_expr_33)))))) - (((rx_expr_11 * rx_expr_32) * rx_expr_30) / _safe_zero((((rx_expr_6 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((((1.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_30) / _safe_zero((rx_expr_40)))) - ((((1.875000000000000 * rx_expr_1) * rx_expr_34) * (((-f) + lim))) / _safe_zero((rx_expr_39)))) + R_pow(r, -3.000000000000000));
-      }
-    } else {
       double rx_expr_0 = (dv - f);
       double rx_expr_2 = 1.414213562373095;
       double rx_expr_3 = sqrt(r);
@@ -410,6 +331,86 @@ static inline void censNormalPartials(double cens, double limDv, double lim,
         double rx_expr_40 = (rx_expr_19 * (rx_expr_33));
         out[7] = ((((((((-2.000000000000000 * (rx_expr_0)) / _safe_zero(rx_expr_15)) + (((0.750000000000000 * rx_expr_1) * rx_expr_34) / _safe_zero((rx_expr_38)))) - (((1.500000000000000 * rx_expr_27) * rx_expr_30) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.500000000000000 * rx_expr_27) * (((-f) + lim))) / _safe_zero(((rx_expr_17 * (((rx_expr_33) * (rx_expr_33)))))))) + ((((0.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_35) / _safe_zero((rx_expr_40)))) + (((rx_expr_9 * rx_expr_32) * rx_expr_23) / _safe_zero((((rx_expr_5 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) - ((rx_expr_37 * rx_expr_23) / _safe_zero((rx_expr_39))));
         out[8] = (((((((((-3.000000000000000 * (((rx_expr_0) * (rx_expr_0)))) / _safe_zero(rx_expr_20)) - (((0.750000000000000 * rx_expr_27) * rx_expr_35) / _safe_zero((((((((((r) * (r)) * (r)) * (r)) * (r))) * M_PI) * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.250000000000000 * rx_expr_27) * rx_expr_23) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) + ((((0.125000000000000 * rx_expr_1) * rx_expr_34) * ((((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))))) / _safe_zero((((R_pow(r, 5.500000000000000) * rx_expr_8) * (rx_expr_33)))))) + (((rx_expr_11 * rx_expr_32) * rx_expr_30) / _safe_zero((((rx_expr_6 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) - ((((1.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_30) / _safe_zero((rx_expr_40)))) + ((((1.875000000000000 * rx_expr_1) * rx_expr_34) * (((-f) + lim))) / _safe_zero((rx_expr_39)))) + R_pow(r, -3.000000000000000));
+      }
+    } else {
+      double rx_expr_0 = (dv - f);
+      double rx_expr_2 = 1.414213562373095;
+      double rx_expr_3 = sqrt(r);
+      double rx_expr_6 = sqrt(M_PI);
+      double rx_expr_7 = rx_expr_2;
+      double rx_expr_10 = (0.500000000000000 * rx_expr_2);
+      double rx_expr_15 = (rx_expr_10 * (((-f) + lim)));
+      double rx_expr_16 = (((((-f) + lim)) * (((-f) + lim))));
+      double rx_expr_17 = (-0.500000000000000 * rx_expr_16);
+      double rx_expr_18 = (rx_expr_15 / _safe_zero(rx_expr_3));
+      double rx_expr_20 = (rx_expr_17 / _safe_zero(r));
+      double rx_expr_21 = erf(rx_expr_18);
+      double rx_expr_22 = exp(rx_expr_20);
+      double rx_expr_23 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_18), 0.0, 1.0, 1, 0));
+      double rx_expr_24 = (rx_expr_7 * rx_expr_22);
+      out[0] = (((-(rx_expr_0)) / _safe_zero(r)) - (rx_expr_24 / _safe_zero((((rx_expr_3 * rx_expr_6) * (rx_expr_23))))));
+      double rx_expr_1 = R_pow(r, -1.000000000000000);
+      double rx_expr_4 = R_pow(r, 1.500000000000000);
+      double rx_expr_8 = (((r) * (r)));
+      double rx_expr_9 = (0.500000000000000 * rx_expr_2);
+      double rx_expr_12 = (rx_expr_4 * rx_expr_6);
+      double rx_expr_25 = (rx_expr_9 * rx_expr_22);
+      double rx_expr_26 = (rx_expr_12 * (rx_expr_23));
+      out[1] = ((((-0.500000000000000 * (((rx_expr_0) * (rx_expr_0)))) / _safe_zero(rx_expr_8)) - ((rx_expr_25 * (((-f) + lim))) / _safe_zero((rx_expr_26)))) + (0.500000000000000 * rx_expr_1));
+      double rx_expr_19 = exp(((-rx_expr_16) / _safe_zero(r)));
+      out[2] = ((((-2.000000000000000 * rx_expr_19) / _safe_zero((((r * M_PI) * (((rx_expr_23) * (rx_expr_23))))))) - ((rx_expr_24 * (((-f) + lim))) / _safe_zero((rx_expr_26)))) + rx_expr_1);
+      double rx_expr_5 = R_pow(r, 2.500000000000000);
+      double rx_expr_13 = (rx_expr_5 * rx_expr_6);
+      double rx_expr_27 = (rx_expr_13 * (rx_expr_23));
+      out[3] = (((((rx_expr_0) / _safe_zero(rx_expr_8)) + (rx_expr_25 / _safe_zero((rx_expr_26)))) - ((rx_expr_19 * (((-f) + lim))) / _safe_zero((((rx_expr_8 * M_PI) * (((rx_expr_23) * (rx_expr_23)))))))) - ((rx_expr_25 * rx_expr_16) / _safe_zero((rx_expr_27))));
+      double rx_expr_11 = ((((r) * (r)) * (r)));
+      out[4] = ((((((((rx_expr_0) * (rx_expr_0))) / _safe_zero(rx_expr_11)) - (((0.500000000000000 * rx_expr_19) * rx_expr_16) / _safe_zero((((rx_expr_11 * M_PI) * (((rx_expr_23) * (rx_expr_23)))))))) - ((((0.250000000000000 * rx_expr_2) * rx_expr_22) * ((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))))) / _safe_zero((((R_pow(r, 3.500000000000000) * rx_expr_6) * (rx_expr_23)))))) + ((((0.750000000000000 * rx_expr_2) * rx_expr_22) * (((-f) + lim))) / _safe_zero((rx_expr_27)))) - (0.500000000000000 * R_pow(r, -2.000000000000000)));
+      if (order >= 3) {
+        double rx_expr_1 = 1.414213562373095;
+        double rx_expr_2 = R_pow(r, 1.500000000000000);
+        double rx_expr_3 = sqrt(r);
+        double rx_expr_4 = R_pow(r, 2.500000000000000);
+        double rx_expr_7 = R_pow(M_PI, 1.500000000000000);
+        double rx_expr_8 = sqrt(M_PI);
+        double rx_expr_9 = rx_expr_1;
+        double rx_expr_10 = (((r) * (r)));
+        double rx_expr_13 = (rx_expr_10 * M_PI);
+        double rx_expr_14 = (0.500000000000000 * rx_expr_1);
+        double rx_expr_16 = (rx_expr_4 * rx_expr_8);
+        double rx_expr_22 = (rx_expr_14 * (((-f) + lim)));
+        double rx_expr_23 = (((((-f) + lim)) * (((-f) + lim))));
+        double rx_expr_24 = (-1.500000000000000 * rx_expr_23);
+        double rx_expr_25 = (rx_expr_22 / _safe_zero(rx_expr_3));
+        double rx_expr_26 = (-0.500000000000000 * rx_expr_23);
+        double rx_expr_27 = exp(((-rx_expr_23) / _safe_zero(r)));
+        double rx_expr_28 = (rx_expr_24 / _safe_zero(r));
+        double rx_expr_29 = (rx_expr_26 / _safe_zero(r));
+        double rx_expr_31 = erf(rx_expr_25);
+        double rx_expr_32 = exp(rx_expr_28);
+        double rx_expr_33 = (2.0*Rf_pnorm5(M_SQRT2*(rx_expr_25), 0.0, 1.0, 1, 0));
+        double rx_expr_34 = exp(rx_expr_29);
+        double rx_expr_36 = (rx_expr_9 * rx_expr_34);
+        double rx_expr_38 = (rx_expr_16 * (rx_expr_33));
+        out[5] = ((((((-4.000000000000000 * rx_expr_1) * rx_expr_32) / _safe_zero((((rx_expr_2 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33))))))) + (rx_expr_36 / _safe_zero((((rx_expr_2 * rx_expr_8) * (rx_expr_33)))))) - (((6.000000000000000 * rx_expr_27) * (((-f) + lim))) / _safe_zero(((rx_expr_13 * (((rx_expr_33) * (rx_expr_33)))))))) - ((rx_expr_36 * rx_expr_23) / _safe_zero((rx_expr_38))));
+        double rx_expr_5 = R_pow(r, 3.500000000000000);
+        double rx_expr_11 = (0.500000000000000 * rx_expr_1);
+        double rx_expr_12 = (1.500000000000000 * rx_expr_1);
+        double rx_expr_15 = ((((r) * (r)) * (r)));
+        double rx_expr_17 = (rx_expr_15 * M_PI);
+        double rx_expr_18 = (rx_expr_5 * rx_expr_8);
+        double rx_expr_30 = ((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))));
+        double rx_expr_37 = (rx_expr_12 * rx_expr_34);
+        double rx_expr_39 = (rx_expr_18 * (rx_expr_33));
+        out[6] = (((((((2.000000000000000 * rx_expr_27) / _safe_zero(((rx_expr_13 * (((rx_expr_33) * (rx_expr_33))))))) - (((3.000000000000000 * rx_expr_27) * rx_expr_23) / _safe_zero(((rx_expr_17 * (((rx_expr_33) * (rx_expr_33)))))))) - (((rx_expr_11 * rx_expr_34) * rx_expr_30) / _safe_zero((rx_expr_39)))) - ((((2.000000000000000 * rx_expr_1) * rx_expr_32) * (((-f) + lim))) / _safe_zero((((rx_expr_4 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((rx_expr_37 * (((-f) + lim))) / _safe_zero((rx_expr_38)))) - R_pow(r, -2.000000000000000));
+        double rx_expr_0 = (dv - f);
+        double rx_expr_6 = R_pow(r, 4.500000000000000);
+        double rx_expr_19 = (rx_expr_6 * rx_expr_8);
+        double rx_expr_20 = (((((r) * (r)) * (r)) * (r)));
+        double rx_expr_21 = (rx_expr_20 * M_PI);
+        double rx_expr_35 = (((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))));
+        double rx_expr_40 = (rx_expr_19 * (rx_expr_33));
+        out[7] = ((((((((-2.000000000000000 * (rx_expr_0)) / _safe_zero(rx_expr_15)) - (((0.750000000000000 * rx_expr_1) * rx_expr_34) / _safe_zero((rx_expr_38)))) - (((1.500000000000000 * rx_expr_27) * rx_expr_30) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.500000000000000 * rx_expr_27) * (((-f) + lim))) / _safe_zero(((rx_expr_17 * (((rx_expr_33) * (rx_expr_33)))))))) - ((((0.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_35) / _safe_zero((rx_expr_40)))) - (((rx_expr_9 * rx_expr_32) * rx_expr_23) / _safe_zero((((rx_expr_5 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((rx_expr_37 * rx_expr_23) / _safe_zero((rx_expr_39))));
+        out[8] = (((((((((-3.000000000000000 * (((rx_expr_0) * (rx_expr_0)))) / _safe_zero(rx_expr_20)) - (((0.750000000000000 * rx_expr_27) * rx_expr_35) / _safe_zero((((((((((r) * (r)) * (r)) * (r)) * (r))) * M_PI) * (((rx_expr_33) * (rx_expr_33)))))))) + (((2.250000000000000 * rx_expr_27) * rx_expr_23) / _safe_zero(((rx_expr_21 * (((rx_expr_33) * (rx_expr_33)))))))) - ((((0.125000000000000 * rx_expr_1) * rx_expr_34) * ((((((((-f) + lim)) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))) * (((-f) + lim))))) / _safe_zero((((R_pow(r, 5.500000000000000) * rx_expr_8) * (rx_expr_33)))))) - (((rx_expr_11 * rx_expr_32) * rx_expr_30) / _safe_zero((((rx_expr_6 * rx_expr_7) * ((((rx_expr_33) * (rx_expr_33)) * (rx_expr_33)))))))) + ((((1.250000000000000 * rx_expr_1) * rx_expr_34) * rx_expr_30) / _safe_zero((rx_expr_40)))) - ((((1.875000000000000 * rx_expr_1) * rx_expr_34) * (((-f) + lim))) / _safe_zero((rx_expr_39)))) + R_pow(r, -3.000000000000000));
       }
     }
   } else if (hasFin) {                    // M4
