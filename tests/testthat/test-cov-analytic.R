@@ -143,19 +143,22 @@ test_that("finite-difference covMethod='r,s' covFull=FALSE keeps the finite-diff
 test_that("covMethod='analytic' falls back to the finite-difference cov out of scope", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # a boxCox DV transform is out of analytic scope -> analytic bails before touching
-  # the solve, and the live finite-difference Hessian is used (a valid theta cov)
-  bc <- function() {
+  # censored (M3/M4) observations are out of analytic-covariance scope -> analytic bails
+  # and the live finite-difference Hessian is used (a valid theta cov).  (An estimated
+  # boxCox lambda IS in scope now -- see the "matches the s estimator" test below.)
+  cm <- function() {
     ini({ tka <- log(1.5); tcl <- log(2.7); tv <- log(31.5)
-          eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7; lambda <- 1 })
+          eta.ka ~ 0.6; eta.cl ~ 0.3; eta.v ~ 0.1; add.sd <- 0.7 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv + eta.v)
       d/dt(depot)  <- -ka * depot
       d/dt(center) <-  ka * depot - cl / v * center
       cp <- center / v
-      cp ~ add(add.sd) + boxCox(lambda) })
+      cp ~ add(add.sd) })
   }
+  d <- nlmixr2data::theo_sd
+  d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L); d$DV[d$CENS == 1] <- 2
   # out of scope -> foceiCalcR warns (visibly) and uses the finite-difference cov
-  fit <- suppressWarnings(suppressMessages(nlmixr(bc, nlmixr2data::theo_sd, "focei",
+  fit <- suppressWarnings(suppressMessages(nlmixr(cm, d, "focei",
                                                   foceiControl(print = 0L, covMethod = "analytic"))))
   expect_true(is.matrix(fit$cov))
   expect_false(any(grepl("^om\\.", rownames(fit$cov))))  # theta-only FD cov, not the full analytic
@@ -266,20 +269,22 @@ test_that("estimated boxCox lambda: analytic cov (FOCEI/FOCE/foce+) matches the 
 test_that("covMethod='analytic' emits an informative message when it falls back to FD", {
   skip_on_cran()
   skip_if_not_installed("nlmixr2data")
-  # an estimated boxCox lambda is out of scope (the DV-transform lambda chain is not ported);
+  # censored (M3/M4) observations are out of scope (the censored-likelihood cov is not ported);
   # with covMethod="analytic" the fallback to the FD cov is announced (message, not warning)
-  # so the user knows why they did not get analytic.  (lnorm and fixed-lambda transforms ARE
-  # in scope -- the DV is retransformed onto the rx_pred_ scale.)
-  lm <- function() {
-    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7; lambda <- 1 })
+  # so the user knows why they did not get analytic.  (lnorm, fixed- and estimated-lambda
+  # transforms ARE in scope -- the DV is retransformed onto the rx_pred_ scale.)
+  cm <- function() {
+    ini({ tcl <- log(2.7); eta.cl ~ 0.1; add.sd <- 0.7 })
     model({ ka <- 1.5; cl <- exp(tcl + eta.cl); v <- 31.5
       d/dt(depot)  <- -ka * depot
       d/dt(center) <-  ka * depot - cl / v * center
       cp <- center / v
-      cp ~ add(add.sd) + boxCox(lambda) })
+      cp ~ add(add.sd) })
   }
+  d <- nlmixr2data::theo_sd
+  d$CENS <- ifelse(d$DV < 2 & d$EVID == 0, 1L, 0L); d$DV[d$CENS == 1] <- 2
   expect_message(
-    suppressWarnings(nlmixr(lm, nlmixr2data::theo_sd, "focei",
+    suppressWarnings(nlmixr(cm, d, "focei",
                             foceiControl(print = 0L, covMethod = "analytic"))),
     "covType=\"analytic\".*finite-difference")
 })
