@@ -1,5 +1,9 @@
 # nlmixr2est (development version)
 
+- Computing NPDE for a fit with a degenerate simulated covariance (e.g. a
+  residual SD estimated near zero) no longer aborts the R session; the affected
+  subject's NPDE is set to `NA` instead
+
 - `matExp()`/`indLin()` models now estimate with the focei family, the nlm
   family, and SAEM, matching the equivalent ODE model; compartments are
   ordered source-first from the `k_<from>_<to>` graph so default dosing is
