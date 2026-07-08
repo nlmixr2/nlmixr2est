@@ -11,9 +11,10 @@
   re-solved with the exact censored score at the frozen variance.  The reported
   censoring text notes the second-derivative treatment used (e.g. `"M3 censoring (laplace)"`).
 
-- `covMethod="analytic"` now covers censored M2/M3/M4 observations for FOCEI with the
-  default `censOption="gauss"` (censored score partials with the Gauss-Newton
-  determinant); censored FOCE and `censOption="laplace"` still use the FD covariance.
+- `covMethod="analytic"` now covers censored M2/M3/M4 observations for FOCEI and FOCE
+  with the default `censOption="gauss"` (censored score partials with the Gauss-Newton
+  determinant, and a censoring-aware FOCE EBE re-solve); `censOption="laplace"` still
+  uses the FD covariance.
 
 - Fixed the sign of the M2 (interval) upper-tail term in the censored inner
   gradient, which had shifted M2 EBEs and objective values.

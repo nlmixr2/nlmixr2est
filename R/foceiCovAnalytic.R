@@ -231,16 +231,27 @@
     fB <- numeric(totObs); yB <- numeric(totObs); R0B <- numeric(totObs); ehatB <- matrix(0, nsub, neta)
     dvSensB <- if (length(lamDir)) matrix(0, totObs, ndirCov) else matrix(0, totObs, 0L)
     dvSens2B <- dvSensB
+    .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
+      (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
+    censB <- if (.hasCens) integer(totObs) else integer(0)
+    limB <- if (.hasCens) rep(NA_real_, totObs) else numeric(0)
     for (i in seq_len(nsub)) {
       E <- Elist[[i]]; E0 <- E0list[[i]]; no <- nobsAll[i]; rows <- (off[i] + 1L):off[i + 1L]
       aB[rows, ] <- E$a; AB[rows, , ] <- E$A; AthB[rows, , ] <- array(E$Ath, c(no, neta, nd2))
       fB[rows] <- E$f; yB[rows] <- E$y
       if (.fpG) { R0B[rows] <- E$R; aReB[rows, ] <- E$aR; aRcB[rows, ] <- E$aR; AReB[rows, , ] <- E$AR; ARcB[rows, , ] <- E$AR }
       else { R0B[rows] <- E0$R; aRcB[rows, ] <- E0$aR; ARcB[rows, , ] <- E0$AR }   # aReB/AReB stay 0 (frozen)
-      if (length(lamDir)) {                            # DV-transform chain (estimated lambda)
+      if (length(lamDir) || .hasCens) {
         s <- .byId[[as.character(.idCode[i])]]; obs <- s[s$EVID == 0, , drop = FALSE]
-        dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
-        dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+        if (length(lamDir)) {                          # DV-transform chain (estimated lambda)
+          dvSensB[rows, lamDir] <- .foceiAnalyticDvSensLambda(obs$DV, E$trans)
+          dvSens2B[rows, lamDir] <- .foceiAnalyticDvSensLambda2(obs$DV, E$trans)
+        }
+        if (.hasCens) {
+          censB[rows] <- if (is.null(obs$CENS)) 0L else as.integer(obs$CENS)
+          .lim <- if (is.null(obs$LIMIT)) rep(NA_real_, length(rows)) else as.numeric(obs$LIMIT)
+          limB[rows] <- .foceiAnalyticTbsY(.lim, E$trans)
+        }
       }
       ehatB[i, ] <- eta0list[[i]]
     }
@@ -252,7 +263,8 @@
     d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
     ncores <- tryCatch(as.integer(rxode2::getRxThreads()), error = function(e) 1L)
     if (length(ncores) != 1L || is.na(ncores) || ncores < 1L) ncores <- 1L
-    R <- tryCatch(foceiRAllFoceFR_(aB, AB, AthB, aReB, aRcB, AReB, ARcB, dvSensB, dvSens2B, fB, yB, R0B, ehatB, as.integer(off),
+    R <- tryCatch(foceiRAllFoceFR_(aB, AB, AthB, aReB, aRcB, AReB, ARcB, dvSensB, dvSens2B,
+                                   as.integer(censB), as.numeric(limB), fB, yB, R0B, ehatB, as.integer(off),
                                    Oi, dOiC, d2OiC, d2LD, neta, ndirCov, ndirP, nom, as.integer(dirP), ncores),
                   error = function(e) NULL)
     if (is.null(R) || !all(is.finite(R))) return(NULL)
@@ -539,14 +551,13 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    # censored (M2/M3/M4) analytic cov: FOCEI + censOption="gauss" is in scope (censored score
-    # partials feed the (f,R) path; the determinant stays Gauss-Newton, matching the gauss fit).
-    # FOCE censoring and the laplace censored determinant still bow out to the FD cov.
+    # censored (M2/M3/M4) analytic cov: FOCEI and FOCE with censOption="gauss" are in scope
+    # (censored score partials feed the (f,R) path; the determinant stays Gauss-Newton, matching
+    # the gauss fit).  Only the laplace censored determinant still bows out to the FD cov.
     .hasCensD <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
       (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-    if (.hasCensD && (interaction == 0L ||
-                        as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L))
-      return(.foceiAnalyticFallback("censored observations (FOCE or censOption='laplace')"))
+    if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
+      return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
 
     # Full natural-scale observed-information R (theta + sigma + Omega), summed over
     # subjects.  startedEnv=e flags `.analyticStarted` before the augmented solve so
@@ -1168,7 +1179,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 .foceiAnalyticSubjectRfoceFRCpp <- function(E, ehat, Om, neta, ndirP, dirP, omd, ndir,
                                             Oi = solve(Om), E0 = NULL, foceType = 0L,
                                             dvSens = matrix(0, length(E$f), 0L),
-                                            dvSens2 = matrix(0, length(E$f), 0L)) {
+                                            dvSens2 = matrix(0, length(E$f), 0L),
+                                            censv = integer(0), limv = numeric(0)) {
   nobs <- length(E$f); nom <- omd$nom
   .fp <- identical(as.integer(foceType), 1L) || is.null(E0)
   if (.fp) { R0 <- E$R; aRe <- E$aR; aRc <- E$aR; ARc <- E$AR; ARe <- E$AR }
@@ -1179,7 +1191,8 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   d2OiC <- array(0, c(neta, neta, max(nom * nom, 1L)))
   if (nom > 0L) for (aa in seq_len(nom)) for (bb in seq_len(nom)) d2OiC[, , (aa - 1L) * nom + bb] <- omd$d2Oi[[aa]][[bb]]
   d2LD <- if (nom > 0L) omd$d2LD else matrix(0, 1, 1)
-  foceiSubjectRfoceFR_(E$a, E$A, AthC, aRe, aRc, ARe, ARc, dvSens, dvSens2, E$f, E$y, R0, as.numeric(ehat), Oi,
+  foceiSubjectRfoceFR_(E$a, E$A, AthC, aRe, aRc, ARe, ARc, dvSens, dvSens2, as.integer(censv), as.numeric(limv),
+                       E$f, E$y, R0, as.numeric(ehat), Oi,
                        dOiC, d2OiC, d2LD, neta, ndir, ndirP, nom, as.integer(dirP))
 }
 
@@ -1628,13 +1641,12 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .idf0 <- ui$iniDf
   if (any(!is.na(.idf0$condition) & .idf0$condition != "id" & is.na(.idf0$err)))            # IOV
     return(.foceiAnalyticFallback("inter-occasion variability (IOV)"))
-  # censored (M2/M3/M4): FOCEI + censOption="gauss" is in scope (censored score partials +
-  # Gauss-Newton determinant); FOCE censoring and the laplace censored determinant use FD.
+  # censored (M2/M3/M4): FOCEI and FOCE with censOption="gauss" are in scope (censored score
+  # partials + Gauss-Newton determinant); only the laplace censored determinant uses FD.
   .hasCens <- (!is.null(fit$dataSav$CENS) && any(fit$dataSav$CENS != 0, na.rm = TRUE)) ||
     (!is.null(fit$dataSav$LIMIT) && any(is.finite(fit$dataSav$LIMIT)))
-  if (.hasCens && (interaction == 0L ||
-                     as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L))
-    return(.foceiAnalyticFallback("censored observations (FOCE or censOption='laplace')"))
+  if (.hasCens && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
+    return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
   ef <- .foceiAnalyticErrFull(ui)
   if (is.null(ef)) return(NULL)                     # unsupported error model -> errFull already messaged
 
