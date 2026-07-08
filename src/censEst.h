@@ -134,7 +134,7 @@ tmp <- rxode2(rxOptExpr("ll=-1.0*exp((-1/2)*(lim - f)^2/r)*((-1/2)*sqrt(2)*fpm/s
       double rx_expr_0 =lim-f;
       double rx_expr_1 = M_SQRT2;
       double rx_expr_2 =_safe_sqrt(r);
- return dll -exp((-0.5)*((rx_expr_0)*(rx_expr_0))/_safe_zero(r))*((-0.5)*rx_expr_1*df/_safe_zero(rx_expr_2)+(-0.25)*rx_expr_1*dr*(rx_expr_0)/_safe_zero(R_pow(_as_dbleps(r),(1.5))))/_safe_zero((M_SQRT_PI*(1-0.5*(1+erf((0.5)*rx_expr_1*(rx_expr_0)/_safe_zero(rx_expr_2))))));
+ return dll +exp((-0.5)*((rx_expr_0)*(rx_expr_0))/_safe_zero(r))*((-0.5)*rx_expr_1*df/_safe_zero(rx_expr_2)+(-0.25)*rx_expr_1*dr*(rx_expr_0)/_safe_zero(R_pow(_as_dbleps(r),(1.5))))/_safe_zero((M_SQRT_PI*(1-0.5*(1+erf((0.5)*rx_expr_1*(rx_expr_0)/_safe_zero(rx_expr_2))))));
     } else {
       /*
 Case 2:
@@ -145,7 +145,7 @@ D(S("log(1-0.5*(1+erf(((f(x)-lim)/sqrt(r(x)))/sqrt(2))))"),"x")
       double rx_expr_0 =M_SQRT2;
       double rx_expr_1 =_safe_sqrt(r);
       double rx_expr_2 =(0.5)*rx_expr_0;
-  return dll -exp((-0.5)*((-lim+f)*(-lim+f))/_safe_zero(r))*(rx_expr_2*df/_safe_zero(rx_expr_1)+(-0.25)*rx_expr_0*dr*(-lim+f)/_safe_zero(R_pow(_as_dbleps(r),(1.5))))/_safe_zero((M_SQRT_PI*(1-0.5*(1+erf(rx_expr_2*(-lim+f)/_safe_zero(rx_expr_1))))));
+  return dll +exp((-0.5)*((-lim+f)*(-lim+f))/_safe_zero(r))*(rx_expr_2*df/_safe_zero(rx_expr_1)+(-0.25)*rx_expr_0*dr*(-lim+f)/_safe_zero(R_pow(_as_dbleps(r),(1.5))))/_safe_zero((M_SQRT_PI*(1-0.5*(1+erf(rx_expr_2*(-lim+f)/_safe_zero(rx_expr_1))))));
     }
   } else if (isM3orM4(cens)) {
     // M3 and M4 has no contribution based on the "normal" likelihood slope

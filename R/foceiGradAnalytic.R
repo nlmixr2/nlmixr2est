@@ -386,9 +386,7 @@
   # both fall back to the (correct) finite-difference gradient.
   .hasCens <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
     (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
-  .cens0 <- if (is.null(data$CENS)) rep(TRUE, nrow(data)) else (is.na(data$CENS) | data$CENS == 0)
-  .hasM2 <- !is.null(data$LIMIT) && any(is.finite(data$LIMIT) & .cens0 & data$EVID == 0)
-  if (.hasCens && (.foce || .hasM2)) return(NULL)
+  if (.hasCens && .foce) return(NULL)
   # The augmented model depends only on the model + direction set (fixed for a
   # fit), NOT on theta/eta/omega; the symbolic .rxSens build dominates each
   # gradient (~63%), so the live path passes a cached `am` (built once per fit).
