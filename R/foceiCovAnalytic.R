@@ -805,6 +805,17 @@
   tryCatch({
     .s <- ui$loadPruneSens
     .st <- rxode2::rxStateOde(.s)
+    # matExp()/indLin(): the base ODEs are materialized into the pruned env (via
+    # .rxJacobian -> .rxInjectMatExpOdes) with correct RHS, but rxStateOde() can return
+    # them reversed (an indLin() state parses as compartment 1).  The augmented model
+    # numbers compartments by first d/dt() appearance, so emitting .baseOde in that
+    # reversed order misplaces default dosing (the dose lands in the wrong compartment)
+    # and the eta sensitivities collapse.  Reorder source-first, matching the inner model
+    # (.rxInjectMatExpDdt / rxUiGet.foceiCmtPreModel).
+    .mvS <- rxode2::rxModelVars(.s)
+    if (is.list(.mvS$indLin) && length(.mvS$indLin) == 4L) {
+      .st <- .rxMatExpStateOrder(.st, ls(envir = .s, all.names = TRUE))
+    }
     rxode2::.rxJacobian(.s, c(.st, dirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
