@@ -92,7 +92,7 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
-                       censOption=c("laplace", "gauss"),
+                       censOption=c("gauss", "laplace"),
 
                        eventSens=c("jump", "fd"),
 
@@ -212,8 +212,8 @@ nlmControl <- function(typsize = NULL,
   } else {
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
-  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "laplace" (exact, default)
-  # or "gauss" (historic Gauss-Newton); shared with focei/saem.
+  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic Gauss-Newton,
+  # default) or "laplace" (exact); shared with focei/saem.
   if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
     censOption <- as.integer(censOption)
   } else {

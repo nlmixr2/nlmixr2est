@@ -276,7 +276,7 @@ saemControl <- function(seed = 99,
                         mixProbStepExp = 1,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
-                        censOption = c("laplace", "gauss"),
+                        censOption = c("gauss", "laplace"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -393,8 +393,8 @@ saemControl <- function(seed = 99,
 
   checkmate::assertLogical(covFull, len=1, any.missing=FALSE)
 
-  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "laplace" (exact, default)
-  # or "gauss" (historic Gauss-Newton); shared with focei/nlm.
+  # censOption: censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic Gauss-Newton,
+  # default) or "laplace" (exact); shared with focei/nlm.
   if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
     censOption <- as.integer(censOption)
   } else {

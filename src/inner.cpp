@@ -395,7 +395,7 @@ struct focei_options {
   bool needOptimHess = false;
   int optimHessType = 1;
   int optimHessCovType = 1;
-  int censOption = 1;   // 1 laplace (exact censored 2nd deriv) / 0 gauss (historic Gauss-Newton)
+  int censOption = 0;   // 0 gauss (historic Gauss-Newton, default) / 1 laplace (exact censored 2nd deriv)
   double smatPer;
   std::atomic<bool> didLikCalc{false};
   bool zeroGradFirstReset= false;
@@ -5122,9 +5122,9 @@ NumericVector foceiSetup_(const RObject &obj,
   op_focei.optimHessCovType=as<int>(foceiO["optimHessCovType"]);
   op_focei.shi21maxFD = as<int>(foceiO["shi21maxFD"]);
   op_focei.optimHessType=as<int>(foceiO["optimHessType"]);
-  // censOption: 1 "laplace" (exact censored 2nd deriv, default) / 0 "gauss" (historic
-  // uncensored Gauss-Newton).  Tolerate an older control missing the field (-> laplace).
-  op_focei.censOption = foceiO.containsElementNamed("censOption") ? as<int>(foceiO["censOption"]) : 1;
+  // censOption: 0 "gauss" (historic uncensored Gauss-Newton, default) / 1 "laplace" (exact
+  // censored 2nd deriv).  Tolerate an older control missing the field (-> gauss).
+  op_focei.censOption = foceiO.containsElementNamed("censOption") ? as<int>(foceiO["censOption"]) : 0;
   op_focei.cholAccept=as<double>(foceiO["cholAccept"]);
   op_focei.resetEtaSize=as<double>(foceiO["resetEtaSize"]);
   op_focei.resetThetaSize=as<double>(foceiO["resetThetaSize"]);

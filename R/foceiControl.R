@@ -115,10 +115,11 @@
 #'   (more accurate, used here) or "forward".
 #'
 #' @param censOption Treatment of the second derivative for censored
-#'   (M2/M3/M4/BLQ) observations.  \code{"laplace"} (the default) uses the exact
-#'   censored second derivative of the objective (a proper Laplace inner Hessian
-#'   and analytic covariance); \code{"gauss"} keeps the historic uncensored
-#'   Gauss-Newton curvature.  Shared with \code{saemControl}/\code{nlmControl}.
+#'   (M2/M3/M4/BLQ) observations.  \code{"gauss"} (the default) keeps the historic
+#'   uncensored Gauss-Newton curvature, matching common PMx tools; \code{"laplace"}
+#'   uses the exact censored second derivative of the objective (a proper Laplace
+#'   inner Hessian and analytic covariance).  Shared with
+#'   \code{saemControl}/\code{nlmControl}.
 #'
 #' @param shi21maxOuter The maximum number of steps for the
 #'   optimization of the forward-difference step size.  When not zero,
@@ -645,7 +646,7 @@ foceiControl <- function(sigdig = 4, #
                          hessEpsLlik =(.Machine$double.eps)^(1/3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
-                         censOption = c("laplace", "gauss"),
+                         censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
@@ -959,8 +960,8 @@ foceiControl <- function(sigdig = 4, #
     optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
   # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
-  # "laplace" (default) uses the exact censored 2nd derivative (a proper Laplace); "gauss"
-  # keeps the historic uncensored Gauss-Newton curvature.  Shared with saem/nlm.
+  # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
+  # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
   if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
     censOption <- as.integer(censOption)
   } else {
