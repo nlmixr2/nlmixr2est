@@ -59,6 +59,23 @@ Excluded from M1: K>1 mixtures, IOV, censoring (M2/M3/M4 residual censoring).
 - Add/extend tests per `11-validation.md`; register fixtures once stable.
 - Terse `NEWS.md` bullet per merged milestone (house style).
 
+## Git cadence (every small step)
+
+Work happens in the `rpem` worktree (`~/src/nlmix2est-rpem`, branch `rpem`).
+At the end of each small, self-contained step:
+
+1. Commit early and often -- one focused commit per step (not one giant commit
+   per milestone). Terse, past-tense messages; ASCII only.
+2. `git fetch origin` and merge `origin/main` into `rpem`. Resolving small
+   conflicts continuously keeps the branch close to upstream so the eventual
+   merge back is cheap, rather than one large end-of-project reconciliation.
+3. `git push` (`-u origin rpem` the first time) so work is backed up and visible.
+4. If a change to rxode2 is needed, use a separate rxode2 worktree and apply the
+   same commit/merge-main/push cadence there.
+
+Never merge `rpem` back into `main` without an explicit request; the cadence
+pulls main INTO rpem, not the reverse.
+
 ## Dependency order
 
 ```

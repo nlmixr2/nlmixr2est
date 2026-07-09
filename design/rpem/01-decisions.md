@@ -19,6 +19,7 @@ conform to these; if a spec needs to deviate, change it here first.
 | D12 | Correctness bars | All four: reproduce paper analytic case; match SAEM/FOCEI on an nlmixr2 model; recover simulation truth; benchmark speed vs SAEM/FOCEI | See `11-validation.md` |
 | D13 | Benchmark models | Warfarin PK; Theophylline 1-cmt; Voriconazole ODE (paper); Paper 1-cmt analytic | Voriconazole is K=1; analytic is K=2 |
 | D14 | Deliverable of design phase | Numbered compartmentalized specs under `design/rpem/`, iterated and committed | This directory |
+| D15 | Git workflow | Work in the `rpem` worktree; commit often (one focused commit per small step); at each step end fetch + merge `origin/main` into `rpem` and push. Keeps the branch close to upstream for a cheap eventual merge | See `12-roadmap.md` "Git cadence" |
 
 ## Assumptions (house style; not explicitly asked -- flag if wrong)
 
