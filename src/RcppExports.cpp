@@ -617,6 +617,38 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemFree
+RObject rpemFree();
+RcppExport SEXP _nlmixr2est_rpemFree() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(rpemFree());
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemSetup
+RObject rpemSetup(Environment e);
+RcppExport SEXP _nlmixr2est_rpemSetup(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemSetup(e));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemSolvePop
+NumericVector rpemSolvePop(NumericMatrix parMat);
+RcppExport SEXP _nlmixr2est_rpemSolvePop(SEXP parMatSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type parMat(parMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemSolvePop(parMat));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

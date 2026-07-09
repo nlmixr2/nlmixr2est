@@ -246,6 +246,18 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+rpemFree <- function() {
+    .Call(`_nlmixr2est_rpemFree`)
+}
+
+rpemSetup <- function(e) {
+    .Call(`_nlmixr2est_rpemSetup`, e)
+}
+
+rpemSolvePop <- function(parMat) {
+    .Call(`_nlmixr2est_rpemSolvePop`, parMat)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

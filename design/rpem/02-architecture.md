@@ -19,8 +19,9 @@
 
 - `src/rpem.cpp`: the entire estimation engine -- E-step, M-step, iteration
   loop, and convergence -- in C++/C, like `saem.cpp` and `inner.cpp`. Added to
-  `SOURCES_CPP` in `src/Makevars(.in)`. Uses RcppArmadillo, OpenMP
-  (`src/rxomp.h`), and rxode2's solve/likelihood C API.
+  `SOURCES_CPP` in `src/Makevars.in` ONLY (never edit `src/Makevars`; it is a
+  generated file). Uses RcppArmadillo, OpenMP (`src/rxomp.h`), and rxode2's
+  solve/likelihood C API.
 - Exposed to R through `RcppExports` / `RcppExportMod` like `saem.cpp`: ideally a
   single entry point (`_nlmixr2est_rpemFit` or similar) that R calls once per
   fit and that runs all iterations internally.
