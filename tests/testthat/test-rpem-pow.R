@@ -28,7 +28,7 @@ test_that("RPEM supports power error with an estimated exponent (matches FOCEI)"
   fProp <- fit$parFixedDf["prop.sd", "Estimate"]; fPw <- fit$parFixedDf["pw", "Estimate"]
 
   rmod <- function() {
-    ini({ tka <- 0.3; tcl <- 1.0; tv <- 3.45; prop.sd <- 0.2; pw <- 0.5; eta.ka ~ 0.6 })
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); prop.sd <- 0.2; pw <- 0.5; eta.ka ~ 0.6 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ pow(prop.sd, pw) })
   }
   ui <- rxode2::rxode2(rmod)

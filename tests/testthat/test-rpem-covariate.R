@@ -36,7 +36,7 @@ test_that("RPEM estimates a mu2 covariate coefficient (matches FOCEI)", {
 
   # RPEM (no fix(); tcl/tv held at ini)
   rmod <- function() {
-    ini({ tka <- 0.2; kawt <- 0.3; tcl <- 1.0; tv <- 3.45; add.sd <- 0.3; eta.ka ~ 0.5 })
+    ini({ tka <- 0.2; kawt <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.3; eta.ka ~ 0.5 })
     model({ ka <- exp(tka + kawt * WT + eta.ka); cl <- exp(tcl); v <- exp(tv)
             cp <- linCmt(); cp ~ add(add.sd) })
   }

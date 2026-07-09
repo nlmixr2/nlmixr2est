@@ -823,6 +823,72 @@ List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0,
                       _["propSd"] = propNew, _["power"] = cHat, _["accept"] = accept);
 }
 
+// Numeric M-step for non-mu-referenced structural fixed effects (the paper's
+// beta): parameters with no random effect, which the conjugate mu update cannot
+// move (their sampled eta is identically 0).  Maximizes the importance-weighted
+// complete-data log-likelihood Q(beta) = sum_i sum_j w_ij log p(Y_i | beta,
+// eta_ij), with w_ij the E-step self-normalized weights and eta_ij the stored
+// samples -- so this re-solves p(Y_i | .) for candidate beta (the etas are held).
+// Takes one damped diagonal-Newton step (finite-difference gradient/curvature)
+// with a backtracking line search; the outer EM loop converges beta over
+// iterations.  Must be called while the E-step solve struct is still loaded
+// (before the MH residual step, whose rxRmvn draw clobbers it).
+//[[Rcpp::export]]
+NumericVector rpemMstepBeta(NumericVector base, IntegerVector etaIdx,
+                            IntegerVector structIdx, NumericVector struct0) {
+  if (!rpemOp.loaded) stop("run rpemEstepK1Draw before rpemMstepBeta");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
+  int nB = structIdx.size();
+  // self-normalized importance weights w_ij from the stored log p (E-step).
+  std::vector<double> w((size_t)nsub * nG);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double s = 0.0;
+    for (int j = 0; j < nG; ++j) { double e = exp(rpemOp.logp[(size_t)i * nG + j] - mx); w[(size_t)i * nG + j] = e; s += e; }
+    for (int j = 0; j < nG; ++j) w[(size_t)i * nG + j] /= s;
+  }
+  std::vector<double> baseBuf(rpemOp.ntheta);
+  for (unsigned int t = 0; t < rpemOp.ntheta; ++t) baseBuf[t] = base[t];
+  std::vector<double> row(rpemOp.ntheta);
+  std::vector<double> beta(nB); for (int k = 0; k < nB; ++k) beta[k] = struct0[k];
+  auto Q = [&](const std::vector<double> &b) -> double {
+    double q = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      for (int j = 0; j < nG; ++j) {
+        for (unsigned int t = 0; t < rpemOp.ntheta; ++t) row[t] = baseBuf[t];
+        for (int k = 0; k < nB; ++k) row[structIdx[k]] = b[k];
+        for (int a = 0; a < nEta; ++a) row[etaIdx[a]] = rpemOp.etaS[((size_t)i * nG + j) * nEta + a];
+        double logp = -rpemSolveSubject(row.data(), i);
+        q += w[(size_t)i * nG + j] * logp;
+      }
+    }
+    return q;
+  };
+  const double h = 1e-3;
+  double Q0 = Q(beta);
+  std::vector<double> step(nB, 0.0);
+  for (int k = 0; k < nB; ++k) {
+    std::vector<double> bp = beta, bm = beta;
+    bp[k] += h; bm[k] -= h;
+    double qp = Q(bp), qm = Q(bm);
+    double g = (qp - qm) / (2.0 * h);
+    double hess = (qp - 2.0 * Q0 + qm) / (h * h);   // diagonal curvature
+    step[k] = (hess < -1e-8) ? -g / hess : g;       // Newton if concave, else gradient
+  }
+  double t = 1.0; bool ok = false;
+  for (int ls = 0; ls < 30; ++ls) {
+    std::vector<double> bn = beta;
+    for (int k = 0; k < nB; ++k) bn[k] = beta[k] + t * step[k];
+    if (Q(bn) > Q0) { beta = bn; ok = true; break; }
+    t *= 0.5;
+  }
+  (void)ok;
+  NumericVector out(nB);
+  for (int k = 0; k < nB; ++k) out[k] = beta[k];
+  return out;
+}
+
 // K=1 multiple-endpoint M-step (mirrors SAEM's per-endpoint residual loop).  The
 // E-step already computes the joint multi-endpoint log-likelihood, so this shares
 // one MH + regression (rpemMHReg) and then updates each endpoint's scale

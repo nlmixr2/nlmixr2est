@@ -67,7 +67,6 @@
   .etas <- .etas[order(.etas$neta1), , drop = FALSE]
   nEta <- nrow(.etas)
   if (nEta == 0L) stop("RPEM requires at least one between-subject random effect")
-  if (any(.ini$fix)) stop("RPEM does not yet support fixed (fix()) parameters")
   # param vector order (rpemParams): THETA[1..nTheta], ETA[1..nEta] (+ DV from data)
   base <- c(.thetas$est, rep(0, nEta))
   etaIdx <- as.integer(nTheta + seq_len(nEta) - 1L)          # 0-based
@@ -165,6 +164,16 @@
     covNames <- as.character(.covDf$covariate)
   }
   covCoefIdx <- as.integer(match(covCoefNames, .thetas$name) - 1L)
+  # non-mu-referenced structural fixed effects (the paper's beta): thetas that are
+  # not mu-referenced, not a residual/transform param, not a covariate coefficient,
+  # and not user-fixed.  These are estimated by the numeric re-solve M-step; fixed
+  # (fix()) thetas are held.
+  .resIdx <- stats::na.omit(c(addSdIdx, propSdIdx, lambdaIdx, powIdx,
+                              if (!is.null(.endpt)) .endpt$sclIdx))
+  .fixIdx <- which(.thetas$fix) - 1L
+  structIdx <- setdiff(seq_len(nTheta) - 1L,
+                       c(muIdx, covCoefIdx, as.integer(.resIdx), as.integer(.fixIdx)))
+  structIdx <- as.integer(structIdx)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
        addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
@@ -172,6 +181,8 @@
        lambdaIdx = lambdaIdx, lambda0 = lambda0,
        tbsYj = .tbs$yj, tbsLow = .tbs$low, tbsHi = .tbs$hi,
        powIdx = powIdx, pow0 = pow0, endpt = .endpt,
+       structIdx = structIdx, struct0 = .thetas$est[structIdx + 1L],
+       fixIdx = as.integer(.fixIdx), fixNames = .thetas$name[.thetas$fix],
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
        thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
@@ -222,12 +233,14 @@
   lambda <- if (.tbs) .cl$lambda0 else NA_real_
   power <- if (.pow) .cl$pow0 else NA_real_
   if (.multi) { .endptIdx <- .rpemEndptIndex(data, .cl); sdVec <- .cl$endpt$scl0 }
+  .structOn <- length(.cl$structIdx) > 0L
   niter <- control$niter
   coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
   muTr <- matrix(0, niter, .cl$nEta); omTr <- matrix(0, niter, .cl$nEta)
   sdTr <- numeric(niter); propTr <- numeric(niter); lamTr <- numeric(niter)
   powTr <- numeric(niter); llTr <- numeric(niter)
   sdMat <- if (.multi) matrix(0, niter, .cl$endpt$nEndpt) else NULL
+  betaMat <- if (.structOn) matrix(0, niter, length(.cl$structIdx)) else NULL
   for (.it in seq_len(niter)) {
     if (.useReg) {
       base[.cl$muIdx + 1L] <- coefs[1]
@@ -242,6 +255,12 @@
     if (.multi) base[.cl$endpt$sclIdx + 1L] <- sdVec
     rxode2::rxSetSeed(control$seed + .it)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
+    # numeric M-step for non-mu-ref structural fixed effects, while the E-step
+    # solve is still loaded (before the MH step's rxRmvn draw clobbers it).
+    if (.structOn) {
+      .bt <- rpemMstepBeta(base, .cl$etaIdx, .cl$structIdx, base[.cl$structIdx + 1L])
+      base[.cl$structIdx + 1L] <- .bt; betaMat[.it, ] <- .bt
+    }
     if (.comb) {
       .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
@@ -289,6 +308,7 @@
   lambdaHat <- if (.tbs) mean(lamTr[.w]) else NA_real_
   powerHat <- if (.pow) mean(powTr[.w]) else NA_real_
   endptSdHat <- if (.multi) colMeans(sdMat[.w, , drop = FALSE]) else NULL
+  structHat <- if (.structOn) colMeans(betaMat[.w, , drop = FALSE]) else NULL
   covCoefHat <- if (.useReg && length(.cl$covCoefIdx))
                   colMeans(coefTr[.w, -1, drop = FALSE]) else numeric(0)
 
@@ -296,6 +316,7 @@
   # (posterior-mean etas, Eq 53): EBE_i = sum_j eta_ij * w_ij with the
   # self-normalized importance weights w_ij = softmax_j(log p_ij).
   base[.cl$muIdx + 1L] <- muHat
+  if (.structOn) base[.cl$structIdx + 1L] <- structHat
   if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
   if (!.multi) base[.cl$addSdIdx + 1L] <- sdHat
   if (.comb) base[.cl$propSdIdx + 1L] <- propHat
@@ -320,6 +341,7 @@
        omega = stats::setNames(omHat, .cl$etaNames),
        addSd = sdHat, propSd = propHat, lambda = lambdaHat, power = powerHat,
        endptSd = endptSdHat,
+       struct = if (.structOn) stats::setNames(structHat, .cl$thetaNames[.cl$structIdx + 1L]) else NULL,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
        ebe = ebe,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
@@ -355,16 +377,10 @@ getValidNlmixrCtl.rpem <- function(control) {
                                   method = "liblsoda")
   .foceiPreProcessData(env$data, .ret, ui, .rxControl)
   .cl <- rfit$classify
-  # M1 holds non-mu-ref structural params (no eta, not the residual) at their ini
-  # values; mark them fixed so the fit reports them as held rather than assigning
-  # FOCEI-covariance SEs.  They get a proper numeric M-step update later (D20).
-  .resNames <- if (.cl$errType == 5L) .cl$thetaNames[.cl$endpt$sclIdx + 1L]
-               else .cl$thetaNames[.cl$addSdIdx + 1L]
-  if (.cl$errType == 2L) .resNames <- c(.resNames, .cl$thetaNames[.cl$propSdIdx + 1L])
-  if (.cl$errType == 3L) .resNames <- c(.resNames, .cl$thetaNames[.cl$lambdaIdx + 1L])
-  if (.cl$errType == 4L) .resNames <- c(.resNames, .cl$thetaNames[.cl$powIdx + 1L])
-  .heldNames <- setdiff(.cl$thetaNames,
-                        c(.cl$muNames, .resNames, .cl$covCoefNames))
+  # Only user-fixed (fix()) thetas are held; non-mu-ref structural params are now
+  # estimated by the numeric re-solve M-step.  Mark the held ones fixed so the fit
+  # reports them as held rather than assigning FOCEI-covariance SEs.
+  .heldNames <- .cl$fixNames
   if (length(.heldNames) > 0L) {
     .uiD <- rxode2::rxUiDecompress(ui)
     .idf <- .uiD$iniDf
@@ -384,6 +400,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   if (.cl$errType == 3L) .ft[.tn[.cl$lambdaIdx + 1L]] <- rfit$lambda
   # power: exponent set here; the scale (prop.sd) is set via the addSd slot above.
   if (.cl$errType == 4L) .ft[.tn[.cl$powIdx + 1L]] <- rfit$power
+  if (length(rfit$struct)) .ft[.tn[.cl$structIdx + 1L]] <- rfit$struct
   if (length(rfit$covCoef)) .ft[.cl$covCoefNames] <- rfit$covCoef
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas

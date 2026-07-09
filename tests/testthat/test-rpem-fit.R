@@ -29,7 +29,7 @@ test_that(".rpemFit recovers FOCEI mu/Omega/add.sd via the packaged loop (K=1)",
 
   # RPEM through the packaged loop (no fix(); tcl/tv held fixed at their ini).
   rmod <- function() {
-    ini({ tka <- 0.1; tcl <- 1.0; tv <- 3.45; add.sd <- 0.3; eta.ka ~ 0.6 })
+    ini({ tka <- 0.1; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.3; eta.ka ~ 0.6 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
   }
   ui <- rxode2::rxode2(rmod)

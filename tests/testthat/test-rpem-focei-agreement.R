@@ -31,7 +31,7 @@ test_that("RPEM E-M loop agrees with FOCEI on population mu and Omega (K=1)", {
 
   # RPEM E-M loop.
   one.cmt <- function() {
-    ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; add.sd <- 0.15; eta.ka ~ 0.6 })
+    ini({ tka <- 0.45; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.15; eta.ka ~ 0.6 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
   }
   m <- rxode2::rxode2(one.cmt)$rpemRxModel$predOnly

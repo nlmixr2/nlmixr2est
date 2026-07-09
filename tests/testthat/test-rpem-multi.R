@@ -34,7 +34,7 @@ test_that("RPEM supports multiple endpoints with per-endpoint residuals (matches
   fAdd <- fit$parFixedDf["add.sd", "Estimate"]; fEff <- fit$parFixedDf["eff.sd", "Estimate"]
 
   rmod <- function() {
-    ini({ tka <- 0.3; tcl <- 1.0; tv <- 3.45; te0 <- 0.7; add.sd <- 0.3; eff.sd <- 0.3; eta.ka ~ 0.6 })
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); te0 <- fix(0.7); add.sd <- 0.3; eff.sd <- 0.3; eta.ka ~ 0.6 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); eff <- cp * exp(te0)
             cp ~ add(add.sd); eff ~ add(eff.sd) })
   }

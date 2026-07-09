@@ -30,7 +30,7 @@ test_that("RPEM supports TBS Box-Cox with a dynamic lambda (matches FOCEI)", {
   fAdd <- fit$parFixedDf["add.sd", "Estimate"]; fLam <- fit$parFixedDf["lambda", "Estimate"]
 
   rmod <- function() {
-    ini({ tka <- 0.3; tcl <- 1.0; tv <- 3.45; add.sd <- 0.2; lambda <- 1; eta.ka ~ 0.6 })
+    ini({ tka <- 0.3; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.2; lambda <- 1; eta.ka ~ 0.6 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) + boxCox(lambda) })
   }
   ui <- rxode2::rxode2(rmod)
