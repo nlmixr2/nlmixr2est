@@ -1856,6 +1856,14 @@ attr(rxUiGet.foceiSkipCov, "rstudio") <- c(FALSE, TRUE)
   if (!exists("model", envir=env)) {
     env$model <- rxUiGet.foceiModel(list(ui))
   }
+  # impmap: add the dedicated theta-sensitivity model (d(f)/d(theta)) used by the
+  # importance-sampling EM to update the non-mu structural thetas.  Built here,
+  # after the inner model, in the symengine pipeline context.
+  if (identical(rxode2::rxGetControl(ui, "est", ""), "impmap") &&
+        is.null(env$model$thetaSens)) {
+    env$model$thetaSens <- tryCatch(.impmapThetaSensModel(ui),
+                                    error = function(e) NULL)
+  }
   #} else {
   #env$model <- rxUiGet.ebe(list(ui))
   #}
