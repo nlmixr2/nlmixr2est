@@ -30,7 +30,9 @@ using namespace Rcpp;
 static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
                      int iter, double negHalfLogDetOmega,
                      arma::mat& condMean, std::vector<arma::mat>& condVar,
-                     arma::vec& Li, arma::vec& Neff, Environment* eStash) {
+                     arma::vec& Li, arma::vec& Neff,
+                     std::vector<arma::mat>& outS, std::vector<arma::vec>& outZk,
+                     Environment* eStash) {
   double invGamma2 = 1.0 / (2.0 * gamma);
 
   // Per-subject mode, information matrix H_i, log|H_i|, and the lower Cholesky
@@ -63,7 +65,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
   Li.set_size(nsub); Li.fill(NA_REAL);
   Neff.set_size(nsub); Neff.fill(NA_REAL);
 
-  std::vector<arma::mat> samples(nsub);
+  outS.assign(nsub, arma::mat());
+  outZk.assign(nsub, arma::vec());
   seedEng(cores);
   uint32_t seed0 = getRxSeed1(cores);
   bool doPar = (cores > 1);
@@ -98,6 +101,8 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
       arma::vec w = arma::exp(q - qmax);
       double sumw = arma::accu(w);
       arma::vec zk = w / sumw;
+      outS[id] = S;
+      outZk[id] = zk;
       double logMeanExp = qmax + std::log(sumw / (double)isample);
       double Ci = negHalfLogDetOmega + 0.5 * neta * std::log(gamma) -
         0.5 * logDetH[id];
@@ -111,7 +116,6 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
         B += zk[k] * (dr.t() * dr);
       }
       condVar[id] = B;
-      if (eStash != nullptr) samples[id] = S;
     }
 #ifdef _OPENMP
     if (doPar) setRxThreadId(-1);
@@ -125,7 +129,7 @@ static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
     for (int id = 0; id < nsub; ++id) {
       modeMat.row(id) = modes[id].t();
       hessList[id] = haveL[id] ? wrap(Hs[id]) : R_NilValue;
-      samplesList[id] = wrap(samples[id]);
+      samplesList[id] = wrap(outS[id]);
     }
     (*eStash)["impEtaMode"] = wrap(modeMat);
     (*eStash)["impEtaHess"] = hessList;
@@ -145,8 +149,11 @@ void impOuter(Environment e) {
 
   arma::mat condMean;
   std::vector<arma::mat> condVar;
+  std::vector<arma::mat> sampS;
+  std::vector<arma::vec> sampZk;
   arma::vec Li, Neff;
   double obj = R_PosInf;
+  int nSens = impThetaSensN();
 
   // Initial MAP at the starting parameters.
   impMapPass(e);
@@ -163,12 +170,29 @@ void impOuter(Environment e) {
     if (iter > 0) impReMap();
     Environment* stash = (iter == nIter - 1) ? &e : nullptr;
     impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(),
-             condMean, condVar, Li, Neff, stash);
+             condMean, condVar, Li, Neff, sampS, sampZk, stash);
     obj = 0.0;
     for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
 
-    // M-step.  Seed each subject's eta with its conditional mean, then update
-    // the mu-referenced population parameters -- covariate groups by regression
+    // M-step.  First a Newton step on the non-mu structural thetas from the
+    // IS-weighted score and Gauss-Newton Hessian accumulated over subjects/samples
+    // -- done before the mu updates (which shift thetas/etas) so it sees the
+    // E-step parameters, and before impSetEta since impThetaScore's re-solves
+    // overwrite the etas.  Skipped if the Hessian is not usable (thetas unchanged).
+    if (nSens > 0) {
+      arma::vec g(nSens, arma::fill::zeros);
+      arma::mat H(nSens, nSens, arma::fill::zeros);
+      for (int id = 0; id < nsub; ++id) {
+        if (sampS[id].n_rows > 0) impThetaScore(id, sampS[id], sampZk[id], g, H);
+      }
+      g /= (double)nsub;
+      H /= (double)nsub;
+      arma::vec step;
+      if (arma::solve(step, H, g) && step.is_finite()) impUpdateStructThetas(step);
+    }
+
+    // Seed each subject's eta with its conditional mean, then update the mu-
+    // referenced population parameters -- covariate groups by regression
     // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
     // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
     // average recentered conditional moment, masked to the estimated structure.
@@ -178,6 +202,7 @@ void impOuter(Environment e) {
     }
     impUpdateMuThetas();
     impMuInterceptStep();
+
     arma::mat Omega(neta, neta, arma::fill::zeros);
     for (int id = 0; id < nsub; ++id) {
       impGetEta(id, r);
@@ -191,17 +216,6 @@ void impOuter(Environment e) {
   // Finalize the fit at the converged estimates.
   impSyncInitParToFullTheta();
   impMapPass(e);
-
-  // diagnostic: theta-sensitivity d(f)/d(theta) for subject 0 at its mode
-  {
-    arma::vec m0(neta);
-    impGetMode(0, m0);
-    arma::mat dfdth0;
-    if (impThetaSensDfDtheta(0, m0, dfdth0)) {
-      e["impDfDthetaS0"] = wrap(dfdth0);
-      e["impDfDthetaS0Eta"] = wrap(m0);
-    }
-  }
 
   // Stash the last-iteration E-step diagnostics.
   List condVarList(nsub);

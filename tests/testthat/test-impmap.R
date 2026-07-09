@@ -255,3 +255,35 @@ test_that("M4: mu-referenced covariate (updateMuGroups) is estimated", {
   expect_equal(unname(fixef(.fi)["cl.wt"]), unname(fixef(.ff)["cl.wt"]), tolerance = 0.03)
   expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
 })
+
+test_that("M5: non-mu structural theta converges to FOCEI (symbolic sensitivity Newton step)", {
+  # tv is a non-mu structural theta -- estimated by the M-step Newton update on
+  # the IS-weighted score / Gauss-Newton Hessian built from the symbolic
+  # d(f)/d(theta) sensitivity model.  add.sd (sigma) stays fixed (a later module).
+  mstr <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- fix(0.7)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl / v * central
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(mstr, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(mstr, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  # the structural theta tv was actually estimated (moved off its start toward FOCEI)
+  expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
+  expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
+  expect_equal(unname(diag(.fi$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
+})

@@ -65,6 +65,18 @@ double impEvalJointLik(const arma::vec& eta, int id);
 // theta-sensitivity model is not available.
 bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth);
 
+// Accumulate subject `id`'s IS-weighted score (into `g`, length nSens) and
+// Gauss-Newton Hessian (into `H`, nSens x nSens) for the non-mu structural
+// thetas, from its samples `S` (nsamp x neta) and normalized weights `zk`.
+void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
+                   arma::vec& g, arma::mat& H);
+
+// Number of non-mu structural thetas (the length of impThetaSensIdx).
+int impThetaSensN();
+// Apply a Newton step: add `step` (length nSens) to the non-mu structural thetas
+// and propagate to the full parameter vector.
+void impUpdateStructThetas(const arma::vec& step);
+
 // ---- implemented in imp.cpp ----
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"

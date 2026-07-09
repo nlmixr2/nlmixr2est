@@ -8287,6 +8287,24 @@ void impMuInterceptStep() {
   }
 }
 
+int impThetaSensN() { return op_focei.impThetaSensIdx.size(); }
+
+// Newton step on the non-mu structural thetas: add step[s] to theta
+// impThetaSensIdx[s] in fullTheta and propagate to every subject's solve.
+void impUpdateStructThetas(const arma::vec& step) {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  IntegerVector &thIdx = op_focei.impThetaSensIdx;
+  for (int s = 0; s < thIdx.size(); ++s) {
+    int th = thIdx[s];
+    op_focei.fullTheta[th] += step[s];
+    for (int id = 0; id < nsub; ++id) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      setIndParPtr(ind, op_focei.thetaTrans[th], op_focei.fullTheta[th]);
+    }
+  }
+}
+
 // Re-optimize every subject's conditional mode at the current parameters.
 void impReMap() {
   innerOpt();
@@ -8409,6 +8427,49 @@ bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
     }
   }
   return true;
+}
+
+// Accumulate subject id's importance-sampling contribution to the score `g`
+// (length nSens) and Gauss-Newton Hessian `H` (nSens x nSens) for the non-mu
+// structural thetas, from its samples `S` (nsamp x neta) and normalized weights
+// `zk` (nsamp).  For each sample the inner model gives per-observation f and V
+// and the theta-sensitivity model gives d(f)/d(theta); with additive residual
+// error (d(V)/d(theta)=0) the score is sum_j -(f-dv)/V * d(f)/d(theta) and the
+// Gauss-Newton Hessian is sum_j d(f)/d(theta) d(f)/d(theta)' / V.
+void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
+                   arma::vec& g, arma::mat& H) {
+  int nSens = op_focei.impThetaSensIdx.size();
+  if (nSens == 0) return;
+  rx = getRxSolve_();
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  int nsamp = S.n_rows;
+  arma::mat dfdth;
+  for (int k = 0; k < nsamp; ++k) {
+    arma::vec eta = S.row(k).t();
+    std::vector<double> ev(eta.begin(), eta.end());
+    double ll = likInner0(ev.data(), id);
+    if (!R_finite(ll)) continue;
+    arma::mat fr = grabRFmatFromInner(id, false); // nObs x 2 (f, V)
+    int nobs = fr.n_rows;
+    arma::vec dv(nobs);
+    int kk, kobs = 0;
+    for (int j = 0; j < getIndNallTimes(ind) && kobs < nobs; ++j) {
+      setIndIdx(ind, j); kk = getIndIx(ind, j);
+      if (getIndEvid(ind, kk) == 0) { dv[kobs] = tbs(getIndDv(ind, kk)); kobs++; }
+    }
+    // theta-sensitivity solve overwrites the solve buffer, so grab f/V/dv first
+    if (!impThetaSensDfDtheta(id, eta, dfdth)) continue;
+    if ((int)dfdth.n_rows != nobs) continue;
+    for (int jo = 0; jo < nobs; ++jo) {
+      double f = fr(jo, 0), V = fr(jo, 1);
+      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
+      double err = f - dv[jo];
+      arma::rowvec d = dfdth.row(jo);
+      g += zk[k] * (-err / V) * d.t();
+      H += zk[k] * (d.t() * d) / V;
+    }
+  }
 }
 
 //' Fit/Evaluate FOCEi
