@@ -746,9 +746,11 @@
   sgNameAll <- er$name                               # ALL error params (excluded from directions)
   # pure proportional / power error (no additive floor) vanishes as f -> 0, making the
   # 1/R observed-information terms blow up near zero predictions; the assembly guards it.
-  # lnorm is additive on the transformed (log) scale (R = sd^2 constant), so it never
-  # vanishes even though the transformed prediction crosses zero.
-  canVanish <- !any(er$err %in% c("add", "lnorm"))
+  # lnorm/logitNorm/probitNorm are additive on their transformed (log / logit / probit) scale
+  # (R = sd^2 constant), so the variance never vanishes even though the transformed prediction
+  # crosses zero (e.g. logit(cp) = 0 at the bound midpoint) -- the canVanish guard, meant for
+  # pure proportional/power error whose R -> 0 with f, must not fire for them.
+  canVanish <- !any(er$err %in% c("add", "lnorm", "logitNorm", "probitNorm"))
   # model-declared addProp wins; the control applies only when the model says "default"
   addPr <- as.character(ui$predDf$addProp)
   if (length(addPr) != 1L || is.na(addPr) || addPr == "default") {
