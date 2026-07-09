@@ -99,6 +99,10 @@
       if (nrow(.er) == 1L && .er$err[1] %in% c("add", "prop")) {
         .et[.b] <- if (.er$err[1] == "prop") 1L else 0L
         .sclIdx[.b] <- as.integer(match(.er$name, .thetas$name) - 1L); .scl0[.b] <- .er$est
+      } else if (nrow(.er) == 1L && .er$err[1] == "lnorm") {
+        # lognormal: additive residual on the log scale (fixed transform, no lambda)
+        .et[.b] <- 6L
+        .sclIdx[.b] <- as.integer(match(.er$name, .thetas$name) - 1L); .scl0[.b] <- .er$est
       } else if (nrow(.er) == 2L && identical(.es, c("add", "prop"))) {
         .et[.b] <- 2L
         .aRow <- .er[.er$err == "add", , drop = FALSE]; .pRow <- .er[.er$err == "prop", , drop = FALSE]
@@ -120,9 +124,10 @@
     .endpt <- list(nEndpt = .nEndpt, cmt = .cmt, dvid = .dvid, errType = .et,
                    sclIdx = .sclIdx, scl0 = .scl0,
                    propIdx = .propIdx, prop0 = .prop0, name = .enm)
-  } else if (nrow(.res) == 1L && .res$err[1] %in% c("add", "prop")) {
-    errType <- if (.res$err[1] == "prop") 1L else 0L
-    # addSdIdx points at the single residual (holds add.sd or prop.sd)
+  } else if (nrow(.res) == 1L && .res$err[1] %in% c("add", "prop", "lnorm")) {
+    # additive, proportional, or lognormal (additive on log scale, errType 6)
+    errType <- switch(.res$err[1], prop = 1L, lnorm = 6L, 0L)
+    # addSdIdx points at the single residual (holds add.sd, prop.sd, or lnorm sd)
     addSdIdx <- as.integer(match(.res$name, .thetas$name) - 1L)
     propSdIdx <- NA_integer_; propSd0 <- NA_real_
     errName <- .res$err[1]

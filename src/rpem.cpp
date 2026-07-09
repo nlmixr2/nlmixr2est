@@ -506,7 +506,15 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
       Stt += theta * theta;
       int nobsi = rpemOp.nobs[ci];
       size_t r = (size_t)ci * nG + cj;
-      sumSS += (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
+      if (errType == 6) {                        // lognormal: additive on log scale
+        long ob = rpemOp.sampObsOff[ci] + (long)cj * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+          if (cp > 0.0 && dv > 0.0) { double lr = log(dv) - log(cp); sumSS += lr * lr; }
+        }
+      } else {
+        sumSS += (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
+      }
       sumNobs += nobsi;
       ++m;
     }
@@ -1052,9 +1060,17 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
       for (int o = 0; o < nobsi; ++o) {
         int b = endpt[base + o];
-        if (errTypes[b] == 2) continue;
-        double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
-        double contrib = (errTypes[b] == 1) ? (cp != 0.0 ? (rr / cp) * (rr / cp) : 0.0) : rr * rr;
+        if (errTypes[b] == 2 || errTypes[b] == 4) continue;  // combined/power done below
+        double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o], rr = dv - cp;
+        double contrib;
+        if (errTypes[b] == 6) {                    // lognormal: additive on log scale
+          double lr = (cp > 0.0 && dv > 0.0) ? (log(dv) - log(cp)) : 0.0;
+          contrib = lr * lr;
+        } else if (errTypes[b] == 1) {             // proportional
+          contrib = (cp != 0.0) ? (rr / cp) * (rr / cp) : 0.0;
+        } else {                                   // additive
+          contrib = rr * rr;
+        }
         sumSS[b] += (double)c * contrib;
         sumN[b] += c;
       }
