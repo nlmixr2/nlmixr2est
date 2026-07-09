@@ -6,10 +6,11 @@ STATUS (2026-07-09): SEs are DONE via the FOCEI-covariance path -- the eval-only
 finalize (`.rpemBuildFit`) now uses `foceiControl(covMethod="r,s")`, so FOCEI
 computes the R/S sandwich covariance at the fixed RPEM estimates and `parFixedDf`
 reports SE / %RSE / CI. This reuses existing machinery and gives immediate
-uncertainty. Two caveats: (1) these are FOCEI-covariance SEs, not the paper's
-Fisher-score SEs (below) -- a later refinement; (2) M1 holds non-mu-ref
-structural params fixed, yet FOCEI reports SEs for them, so those SEs are not
-meaningful until the numeric fixed-effect update (D20) estimates them.
+uncertainty. Caveat: these are FOCEI-covariance SEs, not the paper's Fisher-score
+SEs (below) -- a later refinement. (The M1-held non-mu-ref structural params are
+now marked fixed in the fit, so they correctly report NA SE rather than a
+misleading FOCEI SE; they get real estimates + SEs once the numeric fixed-effect
+update (D20) lands.)
 
 The paper's own method (Fisher-score on the converged Gaussian samples) remains
 the target refinement:

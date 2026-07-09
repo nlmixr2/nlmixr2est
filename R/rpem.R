@@ -135,8 +135,20 @@ getValidNlmixrCtl.rpem <- function(control) {
   .rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol,
                                   method = "liblsoda")
   .foceiPreProcessData(env$data, .ret, ui, .rxControl)
-  .ret$ui <- ui
   .cl <- rfit$classify
+  # M1 holds non-mu-ref structural params (no eta, not the residual) at their ini
+  # values; mark them fixed so the fit reports them as held rather than assigning
+  # FOCEI-covariance SEs.  They get a proper numeric M-step update later (D20).
+  .heldNames <- setdiff(.cl$thetaNames,
+                        c(.cl$muNames, .cl$thetaNames[.cl$addSdIdx + 1L]))
+  if (length(.heldNames) > 0L) {
+    .uiD <- rxode2::rxUiDecompress(ui)
+    .idf <- .uiD$iniDf
+    .idf$fix[.idf$name %in% .heldNames] <- TRUE
+    assign("iniDf", .idf, envir = .uiD)
+    ui <- rxode2::rxUiCompress(.uiD)
+  }
+  .ret$ui <- ui
   # full theta (named over all theta names): mu-referenced -> RPEM mu, additive
   # residual -> RPEM add.sd, held structural -> ini values.
   .tn <- .cl$thetaNames
