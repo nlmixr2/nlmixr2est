@@ -185,8 +185,15 @@
 .foceiAnalyticAssembleRFR <- function(ui, th, ebes, ids, data, Om, ef, neta, ndirP, dirP, omd,
                                       dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10,
                                       interaction = 1L, foceType = 0L, lamDir = integer(0)) {
-  am <- .foceiAnalyticAugModelDirs(ui, dirsCov)
-  if (is.null(am) || am$ndir != ndirCov || !isTRUE(am$hasRvar)) return(NULL)
+  # Route A (FOCEI_RSIG): build the gradient's `dirs` model (drop the sigma directions) so the
+  # (f,R) cov SHARES the gradient's compiled model; the sigma tensor slots are rebuilt from rsig in
+  # SolveAllFD3 (.foceiAnalyticExpandSigma), which expands the solved E back to ndirCov.
+  .rsigA <- nzchar(Sys.getenv("FOCEI_RSIG"))
+  .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
+  .sigDirs <- if (.rsigA) intersect(dirsCov, paste0("THETA_", .erN, "_")) else character(0)
+  .dirsF <- dirsCov[!(dirsCov %in% .sigDirs)]
+  am <- .foceiAnalyticAugModelDirs(ui, if (.rsigA) .dirsF else dirsCov)
+  if (is.null(am) || am$ndir != (ndirCov - length(.sigDirs)) || !isTRUE(am$hasRvar)) return(NULL)
   np <- ndirP + omd$nom; Oi <- solve(Om)
   etav <- paste0("ETA_", seq_len(neta), "_")
   .foce <- identical(as.integer(interaction), 0L)      # FOCE re-solves EBEs to S_FOCE=0
@@ -202,25 +209,36 @@
     # (nonmem: aRe/ARe=0, aRc/ARc/R0 from E0; foce+: all from the eta-hat solve E).
     nsub <- length(ids); Elist <- vector("list", nsub); E0list <- vector("list", nsub)
     eta0list <- vector("list", nsub); nobsAll <- integer(nsub)
+    # BATCHED (f,R) FOCE/foce+ solves: the eta=0 population solve (nonmem frozen R0) is batched,
+    # the EBE re-solve stays per-subject (Newton), then ONE batched SolveAllFD3 delivers f/a/A/Ath
+    # AND R/aR/AR for all subjects (withR=FALSE: FOCE reads R/aR/AR from the base solve + Ath, but
+    # never AthR).  foce+ (foceType=1) keeps the live R (no eta=0 solve).  Per-subject Shi fallback.
+    .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+    if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
+    .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+    E0all <- if (!.fp) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
+    if (!.fp && is.null(E0all)) return(NULL)
+    if (.rsigA && !.fp) {                                # Route A: rebuild frozen-R0 sigma slots (aR/AR) from rsig
+      .ns0 <- ncol(E0all[[1L]]$Rsig)
+      if (!is.null(.ns0) && .ns0 > 0L) E0all <- lapply(E0all, function(.E0) .foceiAnalyticExpandSigma(.E0, .ns0, neta, NULL, NULL))
+    }
+    eta0Mat <- .foceiAnalyticFoceEbeBatch(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
+                                          solveTol, foceType = foceType, E0all = E0all)   # batched EBE re-solve
+    if (is.null(eta0Mat)) return(NULL)
+    .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+    .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE) else NULL
+    if (.batch && is.null(.EsAll)) .batch <- FALSE
     for (i in seq_len(nsub)) {
-      s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-      obs <- s[s$EVID == 0, , drop = FALSE]; eta0 <- ebes[i, ]
-      E0 <- NULL
-      if (!.fp) { E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-        if (is.null(E0)) return(NULL) }
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
-                                    cens = obs$CENS, limit = obs$LIMIT)
-      if (is.null(eta0)) return(NULL)
-      E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+      s <- .byId[[as.character(.idCode[i])]]; obs <- .obsAll[[i]]; eta0 <- eta0Mat[i, ]
+      E0 <- if (.fp) NULL else E0all[[i]]
+      E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol, withR = FALSE)
       if (is.null(E)) return(NULL)
       if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
         if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
           return(.foceiAnalyticFallback("pure proportional error with a near-zero model prediction")) }
       E$y <- .foceiAnalyticTbsY(obs$DV, E$trans)
-      # E0 is NULL for foce+ (foceType=1, no eta=0 population solve); `E0list[[i]] <- NULL`
-      # would DELETE the slot and shrink the list (later E0list[[i]] out of bounds -> the
-      # whole cov silently falls back to FD).  `E0list[i] <- list(E0)` keeps the NULL slot.
+      # E0list[i] <- list(E0) keeps a NULL slot (foce+) without shrinking the list.
       Elist[[i]] <- E; E0list[i] <- list(E0); eta0list[[i]] <- eta0; nobsAll[i] <- length(E$f)
     }
     .fpG <- identical(as.integer(foceType), 1L) || is.null(E0list[[1L]])
@@ -273,10 +291,18 @@
   # FOCEI: per-subject FD3 (3rd-order Shi) solves collected in R, then ONE OpenMP C++ call
   # (foceiRAllFR_) sums the observed information over subjects -- no per-subject R<->C++ round-trip.
   nsub <- length(ids); Elist <- vector("list", nsub); nobsAll <- integer(nsub)
+  # BATCHED (f,R) FOCEI solves: ONE SolveAllFD3 gives f/a/A/Ath AND R/aR/AR/AthR for all subjects
+  # (withR=TRUE), instead of the per-subject Shi.  Per-subject Shi is the fallback.
+  .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+  if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
+  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+  .batch <- !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+  .EsAll <- if (.batch) .foceiAnalyticSolveAllFD3(am, th, ebes, .idCode, data, .obsT, tol = solveTol, withR = TRUE) else NULL
+  if (.batch && is.null(.EsAll)) .batch <- FALSE
   for (i in seq_len(nsub)) {
-    s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-    obs <- s[s$EVID == 0, , drop = FALSE]
-    E <- .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
+    s <- .byId[[as.character(.idCode[i])]]; obs <- .obsAll[[i]]
+    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(ebes[i, ], etav)), s, obs$TIME, tol = solveTol, withR = TRUE)
     if (is.null(E)) return(NULL)
     if (isTRUE(ef$canVanish)) { .fa <- abs(E$f)
       if (any(!is.finite(.fa)) || min(.fa) < 1e-6 * max(.fa))
@@ -358,31 +384,42 @@
   .byId <- split(data, as.character(data$ID))         # pre-split once (avoid per-subject rescan)
   .idCode <- if (is.factor(ids)) as.integer(ids) else match(ids, sort(unique(ids)))
   if (!is.null(startedEnv)) assign(".analyticStarted", TRUE, startedEnv)
+  # Batch the 3rd-order solve across ALL subjects (FOCEI *and* FOCE, no IOV rescale) so both take
+  # the IDENTICAL method and both get the speedup (1 + 2*neta population solves vs the per-subject
+  # Shi's O(nsub*neta)).  CORRECTED FOCE freezes R0 at the eta=0 population solve (batched) and
+  # re-solves each EBE (per-subject Newton, censoring-aware) to S_FOCE=0; that eta0 matrix feeds
+  # the batched FD3.  foce+ keeps the live R (no eta=0 solve).  Per-subject Shi is the fallback.
+  .obsAll <- lapply(seq_along(ids), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+    if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+  if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)   # unmatched subject -> caller FD
+  .obsT <- lapply(.obsAll, function(.o) .o$TIME)
+  .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
+  E0List <- vector("list", length(ids))
+  if (.needF0) {                                       # eta=0 population solve (frozen R0), batched
+    E0List <- .foceiAnalyticSolveAll(am, th, matrix(0, length(ids), neta), .idCode, data, .obsT, solveTol)
+    if (is.null(E0List)) return(NULL)
+  }
+  eta0Mat <- ebes
+  if (.foce) for (i in seq_along(ids)) {              # FOCE EBE re-solve (per-subject Newton)
+    .o <- .obsAll[[i]]
+    .e0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], .byId[[as.character(.idCode[i])]], .o$TIME, .o$DV, etav,
+                                 if (is.null(E0List[[i]])) NULL else E0List[[i]]$R, Oi, neta, solveTol,
+                                 foceType = foceType, cens = .o$CENS, limit = .o$LIMIT)
+    if (is.null(.e0)) return(NULL)
+    eta0Mat[i, ] <- .e0
+  }
+  .batch <- !rescale && !nzchar(Sys.getenv("FOCEI_NO_FD3_BATCH"))
+  .EsAll <- NULL
+  if (.batch) {
+    .EsAll <- .foceiAnalyticSolveAllFD3(am, th, eta0Mat, .idCode, data, .obsT, tol = solveTol, withR = FALSE)
+    if (is.null(.EsAll)) .batch <- FALSE              # batched solve failed -> per-subject fallback
+  }
   for (i in seq_along(ids)) {
-    s <- .byId[[as.character(.idCode[i])]]             # subject's actual events (integer-code join)
-    if (is.null(s) || nrow(s) == 0L) return(NULL)      # unmatched subject -> caller falls back to FD
-    obs <- s[s$EVID == 0, , drop = FALSE]
-    eta0 <- ebes[i, ]
-    # CORRECTED FOCE (interaction=0, foceType=0): the variance R0 is frozen at the eta=0
-    # POPULATION prediction.  Solve the augmented model at eta=0 to get f0 (and its
-    # theta-chain a0/A0) only when R0 actually depends on the prediction (proportional
-    # part); additive R0=sa^2 needs no population solve (== FOCEI-add).  The stored EBEs
-    # stationarize S_FOCE with this R0, so the re-solve is ~a no-op (kept for robustness).
-    # "foce+" (foceType=1) keeps the live conditional R and never needs the eta=0 solve.
-    E0 <- NULL
-    .needF0 <- .foce && identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
-    if (.needF0) {
-      E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-      if (is.null(E0)) return(NULL)
-    }
-    if (.foce) {
-      eta0 <- .foceiAnalyticFoceEbe(am, th, eta0, s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
-                                    cens = obs$CENS, limit = obs$LIMIT)
-      if (is.null(eta0)) return(NULL)
-    }
-    p <- c(th, setNames(eta0, etav))                  # solve at the Param A (unit-occ-eta) EBEs
-    E <- .foceiAnalyticSolveSubjectFD3(am, p, s, obs$TIME, tol = solveTol)
+    s <- .byId[[as.character(.idCode[i])]]
+    obs <- .obsAll[[i]]
+    eta0 <- eta0Mat[i, ]
+    E0 <- E0List[[i]]
+    E <- if (.batch) .EsAll[[i]] else .foceiAnalyticSolveSubjectFD3(am, c(th, setNames(eta0, etav)), s, obs$TIME, tol = solveTol)
     if (is.null(E)) return(NULL)                       # solve failure -> caller falls back to FD
     # near-zero-prediction guard for a vanishing residual variance (pure proportional
     # R = sp^2 f^2 -> 0): the 1/R observed-information terms blow up, so drop to FD.
@@ -551,11 +588,13 @@
     ebes <- as.matrix(etaObf[, paste0("ETA[", seq_len(neta), "]"), drop = FALSE])
     ids  <- etaObf$ID
     data <- get("dataSav", e)
-    # censored (M2/M3/M4) analytic cov: FOCEI and FOCE with censOption="gauss" are in scope
-    # (censored score partials feed the (f,R) path; the determinant stays Gauss-Newton, matching
-    # the gauss fit).  Only the laplace censored determinant still bows out to the FD cov.
+    # Censored data (M2/M3/M4): the analytic observed-information cov carries the censored
+    # determinant partials through the general (f,R) path (AssembleRFR), matching the exact
+    # censored analytic outer gradient.  Any censored/BLOQ observation (CENS != 0 or a finite
+    # LIMIT) routes to that path (and uses the same batched FD3 solve as the uncensored (f,R) cov).
     .hasCensD <- (!is.null(data$CENS) && any(data$CENS != 0, na.rm = TRUE)) ||
       (!is.null(data$LIMIT) && any(is.finite(data$LIMIT)))
+    # only the laplace censored determinant stays on the FD cov; gauss (default) is analytic
     if (.hasCensD && as.integer(rxode2::rxGetControl(ui, "censOption", 0L)) == 1L)
       return(.foceiAnalyticFallback("censored observations with censOption='laplace'"))
 
@@ -801,8 +840,50 @@
 #' cheaply than a 3rd-order model.
 #' @return list(augMod, dirs, ndir, st, P2) or `NULL` on failure
 #' @noRd
+.foceiAnalyticAugCache <- new.env(parent = emptyenv())     # session cache: (model digest | dirs) -> aug model
+#' Solve-output column names + index maps for the augmented model (from dirs, P2, sigTh).
+#' Precomputed once on `am$cols` at build time so the matrix-extraction readers avoid per-call
+#' paste0; recomputed on the fly for a reconstructed `am` (from foceiModel$outer) that predates it.
+#' @noRd
+.foceiAnalyticCols <- function(dirs, fDirs, P2, P2r, sigTh) {
+  sigP2 <- if (length(sigTh)) do.call(rbind, lapply(seq_along(sigTh), function(.a)
+    data.frame(a = .a, b = seq_along(sigTh)[seq_along(sigTh) >= .a]))) else NULL
+  # f-part (prediction a/A) spans f-directions only (sigma slots are zero-filled by the reader);
+  # R-part (aR/AR) spans every direction.  iiF/jjF index the f2 pairs into the FULL dirs vector.
+  list(f1 = paste0("rx_f1_", fDirs), fDirIdx = match(fDirs, dirs),
+       f2 = paste0("rx_f2_", P2$i, "_", P2$j), iiF = match(P2$i, dirs), jjF = match(P2$j, dirs),
+       rvar1 = paste0("rx_rvar1_", dirs), rvar2 = paste0("rx_rvar2_", P2r$i, "_", P2r$j),
+       ii = match(P2r$i, dirs), jj = match(P2r$j, dirs),
+       rsig = if (length(sigTh)) paste0("rx_rsig_", sigTh, "_") else character(0),
+       rsig1 = lapply(sigTh, function(.n) paste0("rx_rsig1_", .n, "_", dirs)),
+       rsig2 = if (is.null(sigP2)) character(0) else paste0("rx_rsig2_", sigTh[sigP2$a], "_", sigTh[sigP2$b]),
+       sigP2 = sigP2)
+}
+.foceiAnalyticEtCache <- new.env(parent = emptyenv())      # per-fit translated event table (etTrans reuse)
+#' The augmented model's events are IDENTICAL across every solve of a fit (only the theta/eta
+#' params vary), so translate them once with etTrans and reuse -- ~40% off each population solve
+#' (validated: identical predictions).  Keyed by the model key + a cheap data fingerprint (nrow +
+#' sum of EVERY numeric column, so covariate differences never collide); falls back to raw data.
+#' @noRd
+.foceiAnalyticEvents <- function(am, data) {
+  if (is.null(am$key)) return(data)
+  .fp <- sum(vapply(data, function(.c) if (is.numeric(.c)) sum(.c, na.rm = TRUE) else 0, numeric(1)))
+  .ek <- paste0(am$key, "|et|", nrow(data), "|", .fp)
+  .et <- get0(.ek, envir = .foceiAnalyticEtCache, inherits = FALSE)
+  if (is.null(.et)) {
+    .et <- tryCatch(rxode2::etTrans(data, am$augMod), error = function(e) NULL)
+    if (is.null(.et)) return(data)
+    assign(.ek, .et, envir = .foceiAnalyticEtCache)
+  }
+  .et
+}
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
-  tryCatch({
+  .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
+                          "|sk", Sys.getenv("FOCEI_SIGMA_SKIP")),   # skip flag -> distinct cached model
+                   error = function(e) NULL)
+  if (!is.null(.key)) { .hit <- get0(.key, envir = .foceiAnalyticAugCache, inherits = FALSE)
+    if (!is.null(.hit)) return(.hit) }
+  .res <- tryCatch({
     .s <- ui$loadPruneSens
     .st <- rxode2::rxStateOde(.s)
     # matExp()/indLin(): the base ODEs are materialized into the pruned env (via
@@ -816,12 +897,22 @@
     if (is.list(.mvS$indLin) && length(.mvS$indLin) == 4L) {
       .st <- .rxMatExpStateOrder(.st, ls(envir = .s, all.names = TRUE))
     }
-    rxode2::.rxJacobian(.s, c(.st, dirs))
+    # Sigma-skip (env FOCEI_SIGMA_SKIP): the residual-error (sigma) directions have
+    # df/dsigma=0, so their f-sensitivity columns (f1/f2) and state-sensitivities are all
+    # ZERO -- pure wasted compile (each sigma direction costs a full structural parameter's
+    # worth of gcc + states).  Build the prediction chain f1/f2 + state sensitivities over
+    # the model-affecting directions only (.fDirs); the variance chain still spans EVERY
+    # direction (sigma R-derivatives are algebraic, no state chain).  The reader zero-fills
+    # the sigma a/A slots (the assembly already treats a=A=Ath=0 for a sigma direction).
+    .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
+    .sigDirs <- if (nzchar(Sys.getenv("FOCEI_SIGMA_SKIP"))) intersect(dirs, paste0("THETA_", .erN, "_")) else character(0)
+    .fDirs <- dirs[!(dirs %in% .sigDirs)]
+    rxode2::.rxJacobian(.s, c(.st, .fDirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
     # unavailable the model is not differentiable, so bail before the 2nd-order build.
-    .s1 <- rxode2::.rxSens(.s, dirs)
+    .s1 <- rxode2::.rxSens(.s, .fDirs)
     if (length(.s1) == 0L) return(NULL)
-    .s2 <- rxode2::.rxSens(.s, dirs, dirs)          # 2nd order: the expensive expansion
+    .s2 <- rxode2::.rxSens(.s, .fDirs, .fDirs)      # 2nd order (f-directions only): the expensive expansion
     .pred <- get("rx_pred_", .s)
     # residual variance rx_r_ (any structure) with its own 1st/2nd sensitivity chains,
     # exactly like the prediction -- so R and dR/ddir, d2R/ddir2 come from the SOLVE
@@ -831,14 +922,20 @@
     .Dn <- function(.e, .v) symengine::D(.e, symengine::S(.v))
     .sn1 <- function(.j, ...) symengine::S(paste0("rx__sens_", .j, "_BY_", paste(c(...), collapse = "_BY_"), "__"))
     .toRx <- function(.l) rxode2::rxFromSE(.l)
-    .g1 <- function(.ex, .p) { .e <- .Dn(.ex, .p); for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
+    # state-sensitivity chains only for directions that have solved sensitivities (.fDirs);
+    # a sigma direction contributes only its direct partial (d(state)/dsigma=0).
+    .g1 <- function(.ex, .p) { .e <- .Dn(.ex, .p)
+      if (.p %in% .fDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p); .e }
     .g2 <- function(.ex, .p, .q) { .gq <- .g1(.ex, .q); .e <- .Dn(.gq, .p)
-      for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p); for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
+      if (.p %in% .fDirs) for (.k in .st) .e <- .e + .Dn(.gq, .k) * .sn1(.k, .p)
+      if (.p %in% .fDirs && .q %in% .fDirs) for (.j in .st) .e <- .e + .Dn(.ex, .j) * .sn1(.j, .p, .q); .e }
     # f2_i_j == f2_j_i, so only the i<=j triangle is differentiated/compiled (~2x off
     # the dominant model-build cost); the reader mirrors A[,i,j]=A[,j,i].
-    .P2 <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)
-    .P2 <- .P2[match(.P2$i, dirs) <= match(.P2$j, dirs), , drop = FALSE]
-    .fL1 <- vapply(dirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1))
+    .P2 <- expand.grid(i = .fDirs, j = .fDirs, stringsAsFactors = FALSE)     # prediction f2: f-directions only
+    .P2 <- .P2[match(.P2$i, .fDirs) <= match(.P2$j, .fDirs), , drop = FALSE]
+    .P2r <- expand.grid(i = dirs, j = dirs, stringsAsFactors = FALSE)        # variance rvar2: every direction
+    .P2r <- .P2r[match(.P2r$i, dirs) <= match(.P2r$j, dirs), , drop = FALSE]
+    .fL1 <- vapply(.fDirs, function(.p) paste0("rx_f1_", .p, "=", .toRx(.g1(.pred, .p))), character(1))
     .fL2 <- vapply(seq_len(nrow(.P2)), function(.r)
       paste0("rx_f2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.pred, .P2$i[.r], .P2$j[.r]))), character(1))
     # Variance rx_r_ and its 1st/2nd direction sensitivities.  The `rx_..._` naming
@@ -850,8 +947,8 @@
     .rvarL <- character(0)
     if (!is.null(.rvar)) {
       .rL1 <- vapply(dirs, function(.p) paste0("rx_rvar1_", .p, "=", .toRx(.g1(.rvar, .p))), character(1))
-      .rL2 <- vapply(seq_len(nrow(.P2)), function(.r)
-        paste0("rx_rvar2_", .P2$i[.r], "_", .P2$j[.r], "=", .toRx(.g2(.rvar, .P2$i[.r], .P2$j[.r]))), character(1))
+      .rL2 <- vapply(seq_len(nrow(.P2r)), function(.r)
+        paste0("rx_rvar2_", .P2r$i[.r], "_", .P2r$j[.r], "=", .toRx(.g2(.rvar, .P2r$i[.r], .P2r$j[.r]))), character(1))
       .rvarL <- c(paste0("rx_rvarf_=", .toRx(.rvar)), .rL1, .rL2)
     }
     # Residual-variance sigma sensitivities: for each error parameter the variance R
@@ -946,10 +1043,17 @@
     .param <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .param))
     .modTxt <- paste(.param, .modTxt, sep = "\n")
     # eventSens="jump" attaches rxode2's analytic event/dosing-parameter sensitivities
-    # (forward variational jumps at dose times) for the sensitivity compartments.
-    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs),
-         st = .st, P2 = .P2, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans)
+    # (forward variational jumps at dose times) for the sensitivity compartments.  `cols`
+    # precomputes solve-output column names/index maps; `cores` carries the fit's rxControl thread
+    # count so the batched solves run parallel; `key` seeds the per-fit event-table reuse cache.
+    .cores <- tryCatch(as.integer(rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())$cores),
+                       error = function(e) 0L)
+    list(augMod = rxode2::rxode2(.modTxt, eventSens = "jump"), dirs = dirs, ndir = length(dirs), fDirs = .fDirs,
+         st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
+         cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = if (length(.cores)) .cores else 0L, key = .key)
   }, error = function(e) NULL)
+  if (!is.null(.key) && !is.null(.res)) assign(.key, .res, envir = .foceiAnalyticAugCache)
+  .res
 }
 
 #' Solve the direction-set 2nd-order model for one subject and recover the
@@ -997,6 +1101,94 @@
             if (!is.null(E0$trans)) list(trans = E0$trans) else NULL)
   if (!all(is.finite(.out$f)) || !all(is.finite(.out$a)) || !all(is.finite(.out$A)) || !all(is.finite(.out$Ath))) return(NULL)
   .out
+}
+
+#' Route-A (FOCEI_RSIG) sigma reconstruction: the (f,R) cov shares the gradient's `dirs` model
+#' (no sigma directions) and rebuilds the sigma tensor slots from the model's own residual-sigma
+#' outputs (Rsig=dR/dsigma, RsigDir=d2R/(dsigma ddir), Rsig2=d2R/(dsigma dsigma')) plus their
+#' eta-derivatives (RsigDirEta, Rsig2Eta from the FD3).  A sigma has df/dsigma=0, so the prediction
+#' slots (a/A/Ath) are zero; the variance slots (aR/AR/AthR) carry the rsig values.  The result is
+#' the SAME ndirCov tensor the sigma-as-direction model produced -- but from a model shared with the
+#' gradient.
+#' @noRd
+.foceiAnalyticExpandSigma <- function(E, nsig, neta, RsigDirEta, Rsig2Eta) {
+  nd <- ncol(E$a); no <- nrow(E$a); ndc <- nd + nsig; sg <- nd + seq_len(nsig)
+  a <- cbind(E$a, matrix(0, no, nsig))
+  A <- array(0, c(no, ndc, ndc)); A[, seq_len(nd), seq_len(nd)] <- E$A
+  .hasAth <- !is.null(E$Ath)                              # E0 (frozen-R0 solve) has no Ath
+  Ath <- if (.hasAth) { .Y <- array(0, c(no, neta, ndc, ndc)); .Y[, , seq_len(nd), seq_len(nd)] <- E$Ath; .Y } else NULL
+  aR <- cbind(E$aR, E$Rsig)
+  AR <- array(0, c(no, ndc, ndc)); AR[, seq_len(nd), seq_len(nd)] <- E$AR
+  .hasAthR <- !is.null(E$AthR) && !is.null(RsigDirEta)     # withR: 3rd-order sigma slots too
+  AthR <- if (.hasAthR) { .X <- array(0, c(no, neta, ndc, ndc)); .X[, , seq_len(nd), seq_len(nd)] <- E$AthR; .X } else NULL
+  for (k in seq_len(nsig)) {
+    AR[, seq_len(nd), sg[k]] <- E$RsigDir[, , k]; AR[, sg[k], seq_len(nd)] <- E$RsigDir[, , k]
+    if (.hasAthR) { AthR[, , seq_len(nd), sg[k]] <- RsigDirEta[, , , k]; AthR[, , sg[k], seq_len(nd)] <- RsigDirEta[, , , k] }
+    for (l in seq_len(nsig)) { AR[, sg[k], sg[l]] <- E$Rsig2[, k, l]; if (.hasAthR) AthR[, , sg[k], sg[l]] <- Rsig2Eta[, , k, l] }
+  }
+  E$a <- a; E$A <- A; if (.hasAth) E$Ath <- Ath; E$aR <- aR; E$AR <- AR; if (.hasAthR) E$AthR <- AthR; E
+}
+
+#' Batched analogue of [.foceiAnalyticSolveSubjectFD3]: recover the 3rd-order tensor `Ath` (and
+#' `AthR` when `withR`) for ALL subjects at once by central-differencing the analytic 2nd-order
+#' sensitivities `A` w.r.t. each ETA coordinate via BATCHED population solves ([.foceiAnalyticSolveAll],
+#' 1 base + 2*neta perturbed) instead of the per-subject Shi (~O(nsub*neta) solves).  RICHARDSON-
+#' extrapolated over steps (h, h/2) to 4th order, with the perturbed solves at a tighter tol, so the
+#' batched Ath reproduces the per-subject adaptive-Shi Ath (the FOCEI-vs-FOCE analytic-R agreement,
+#' not just the SEs).  Returns the per-subject E-list with `Ath` attached, or NULL (-> per-subject).
+#' @noRd
+.foceiAnalyticSolveAllFD3 <- function(am, thv, ebes, ids, data, obsTimes, tol = 1e-10,
+                                      fdEps = 1e-3, withR = FALSE) {
+  dirs <- am$dirs; nd <- length(dirs); neta <- ncol(ebes)
+  E0 <- .foceiAnalyticSolveAll(am, thv, ebes, ids, data, obsTimes, tol)
+  if (is.null(E0)) return(NULL)
+  nsub <- length(E0)
+  Ath  <- lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd)))
+  AthR <- if (withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd))) else NULL
+  # Route A (FOCEI_RSIG): am is the gradient's `dirs` model (no sigma directions); rebuild the
+  # sigma tensor slots from the rsig outputs + their eta-derivatives (differenced here alongside A/AR).
+  .rsig <- nzchar(Sys.getenv("FOCEI_RSIG")) && !is.null(E0[[1L]]$Rsig) && length(E0[[1L]]$Rsig) > 0L
+  nsig <- if (.rsig) ncol(E0[[1L]]$Rsig) else 0L
+  RsigDirEta <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nsig))) else NULL
+  Rsig2Eta   <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nsig, nsig))) else NULL
+  # differencing A carries the ODE solve's ~tol error floor; solve the PERTURBED models tighter
+  # than the base so the 3rd-order Ath stays as clean as the per-subject adaptive Shi.
+  .ptol <- min(tol, 1e-12)
+  .cdiff <- function(li, h) {
+    ep <- ebes; ep[, li] <- ebes[, li] + h; em <- ebes; em[, li] <- ebes[, li] - h
+    Ep <- .foceiAnalyticSolveAll(am, thv, ep, ids, data, obsTimes, .ptol)
+    Em <- .foceiAnalyticSolveAll(am, thv, em, ids, data, obsTimes, .ptol)
+    if (is.null(Ep) || is.null(Em) || length(Ep) != nsub || length(Em) != nsub) return(NULL)
+    list(Ep = Ep, Em = Em, h = h)
+  }
+  for (li in seq_len(neta)) {                             # ETA_li coordinate == ebes column li
+    h <- fdEps * max(abs(ebes[, li]), 1)
+    s1 <- .cdiff(li, h); s2 <- .cdiff(li, h / 2)
+    if (is.null(s1) || is.null(s2)) return(NULL)
+    for (i in seq_len(nsub)) {
+      d1 <- (s1$Ep[[i]]$A - s1$Em[[i]]$A) / (2 * s1$h); d2 <- (s2$Ep[[i]]$A - s2$Em[[i]]$A) / (2 * s2$h)
+      Ath[[i]][, li, , ] <- (4 * d2 - d1) / 3
+      if (withR) {
+        e1 <- (s1$Ep[[i]]$AR - s1$Em[[i]]$AR) / (2 * s1$h); e2 <- (s2$Ep[[i]]$AR - s2$Em[[i]]$AR) / (2 * s2$h)
+        AthR[[i]][, li, , ] <- (4 * e2 - e1) / 3
+        if (.rsig) {
+          g1 <- (s1$Ep[[i]]$RsigDir - s1$Em[[i]]$RsigDir) / (2 * s1$h); g2 <- (s2$Ep[[i]]$RsigDir - s2$Em[[i]]$RsigDir) / (2 * s2$h)
+          RsigDirEta[[i]][, li, , ] <- (4 * g2 - g1) / 3
+          k1 <- (s1$Ep[[i]]$Rsig2 - s1$Em[[i]]$Rsig2) / (2 * s1$h); k2 <- (s2$Ep[[i]]$Rsig2 - s2$Em[[i]]$Rsig2) / (2 * s2$h)
+          Rsig2Eta[[i]][, li, , ] <- (4 * k2 - k1) / 3
+        }
+      }
+    }
+  }
+  for (i in seq_len(nsub)) {
+    E0[[i]]$Ath <- Ath[[i]]
+    if (withR) E0[[i]]$AthR <- AthR[[i]]
+    if (.rsig) E0[[i]] <- .foceiAnalyticExpandSigma(E0[[i]], nsig, neta,
+                            if (is.null(RsigDirEta)) NULL else RsigDirEta[[i]],
+                            if (is.null(Rsig2Eta)) NULL else Rsig2Eta[[i]])
+    if (!all(is.finite(E0[[i]]$A)) || !all(is.finite(E0[[i]]$Ath))) return(NULL)
+  }
+  E0
 }
 
 #' Per-subject observed-information R in the general (f,R) form: the prediction f and
@@ -1556,28 +1748,27 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
   dirs <- aug$dirs; nd <- length(dirs)
-  # DDE augmented solve: force pure dop853 (dense, no Jacobian).  dop853's
-  # 8th-order dense history reproduces the delayed sensitivity solve exactly and
-  # needs no Jacobian, so it sidesteps the composite/ros4 path's on-the-fly
-  # Jacobian generation for this THETA/ETA-named augmented model (which on rxode2
-  # < 5.1.3 mangled the parameter list -- the aug solve then failed and the
-  # covariance silently degraded to the finite-difference sandwich).  The fixed
-  # composite solves correctly too, but dop853 is exact here and works on every
-  # rxode2 version, so keep it.
+  .ev <- .foceiAnalyticEvents(aug, ev)                    # reuse the pre-translated events (FOCE Newton reuse)
+  .nc <- if (is.null(aug$cores)) 0L else aug$cores
+  # DDE augmented solve: force pure dop853 (dense, no Jacobian).  Its 8th-order dense history
+  # reproduces the delayed sensitivity solve exactly and needs no Jacobian, so it sidesteps the
+  # composite/ros4 on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(aug$augMod)$flags[["hasDelay"]] == 1L))
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .d <- tryCatch(withCallingHandlers(
-      as.data.frame(do.call(rxode2::rxSolve, c(list(aug$augMod, params = params, ev,
+      as.data.frame(do.call(rxode2::rxSolve, c(list(aug$augMod, params = params, .ev, cores = .nc,
           returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
       warning = function(w) invokeRestart("muffleWarning")),
     error = function(e) NULL)
-  if (is.null(.d)) return(NULL); .d <- .d[.d$time %in% times, , drop = FALSE]
+  if (is.null(.d)) return(NULL)
+  .d <- .d[.d$time %in% times, , drop = FALSE]
+  .fD <- if (is.null(aug$fDirs)) dirs else aug$fDirs   # sigma-skip: f-sensitivities only over f-directions
   if (nrow(.d) == 0L || nrow(.d) != length(times) ||
-        !all(c("rx_predf_", paste0("rx_f1_", dirs)) %in% names(.d))) return(NULL)
+        !all(c("rx_predf_", paste0("rx_f1_", .fD)) %in% names(.d))) return(NULL)
   no <- nrow(.d)
-  a <- matrix(vapply(dirs, function(q) .d[[paste0("rx_f1_", q)]], numeric(no)), no, nd)
+  a <- matrix(0, no, nd); a[, match(.fD, dirs)] <- vapply(.fD, function(q) .d[[paste0("rx_f1_", q)]], numeric(no))
   A <- array(0, c(no, nd, nd))
-  for (r in seq_len(nrow(aug$P2))) {                   # only i<=j emitted -> mirror to i>j
+  for (r in seq_len(nrow(aug$P2))) {                   # only i<=j emitted -> mirror to i>j (f-dir pairs)
     .ii <- match(aug$P2$i[r], dirs); .jj <- match(aug$P2$j[r], dirs)
     .v2 <- .d[[paste0("rx_f2_", aug$P2$i[r], "_", aug$P2$j[r])]]
     A[, .ii, .jj] <- .v2; A[, .jj, .ii] <- .v2
@@ -1593,7 +1784,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' every piece is read directly from the solve.
 #' @noRd
 .foceiReadRvar <- function(.d, aug, no) {
-  dirs <- aug$dirs; nd <- length(dirs); P2 <- aug$P2
+  dirs <- aug$dirs; nd <- length(dirs); P2 <- if (is.null(aug$P2r)) aug$P2 else aug$P2r   # rvar2 spans every direction
   aR <- matrix(vapply(dirs, function(q) .d[[paste0("rx_rvar1_", q)]], numeric(no)), no, nd)
   AR <- array(0, c(no, nd, nd))
   for (r in seq_len(nrow(P2))) {
@@ -1669,6 +1860,48 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
     if (max(abs(sh$S)) < conv) break
   }
   if (max(abs(sh$S)) >= conv) return(NULL)               # Newton did not converge -> FD fallback
+  eta
+}
+
+#' Batched FOCE/foce+ EBE re-solve: the same interaction-free Newton as
+#' [.foceiAnalyticFoceEbe] but over ALL subjects at once via [.foceiAnalyticSolveAll]
+#' (one batched solve per Newton iteration instead of per-subject SolveFA).  Bit-identical
+#' to the per-subject Newton; avoids the per-subject solve entirely (needed for the shared
+#' `dirs` model, which solves batched but not per-subject in the fit's cov-hook context) and
+#' is faster.  Returns the nsub x neta eta-hat matrix, or NULL if any subject fails to converge.
+#' @noRd
+.foceiAnalyticFoceEbeBatch <- function(am, th, ebes, ids, data, obsAll, obsTimes, etav, Oi, neta, tol,
+                                       foceType = 0L, E0all = NULL, maxit = 30L, skip = 1e-3, conv = 1e-9) {
+  nsub <- nrow(ebes); ei <- seq_len(neta)
+  .fp <- identical(as.integer(foceType), 1L) || is.null(E0all)
+  Y  <- lapply(obsAll, function(.o) .o$DV)
+  CV <- lapply(obsAll, function(.o) if (is.null(.o$CENS)) integer(length(.o$DV)) else as.integer(ifelse(is.na(.o$CENS), 0L, .o$CENS)))
+  LV <- lapply(obsAll, function(.o) if (is.null(.o$LIMIT)) rep(NA_real_, length(.o$DV)) else as.numeric(.o$LIMIT))
+  .SHi <- function(E, eta_i, i) {                        # S_FOCE + Hf for subject i (censored-aware)
+    yt <- .foceiAnalyticTbsY(Y[[i]], E$trans)
+    R0e <- if (.fp) E$R else E0all[[i]]$R
+    q0 <- -(yt - E$f) / R0e; q1 <- 1 / R0e
+    .cw <- which(CV[[i]] != 0 | is.finite(LV[[i]]))
+    if (length(.cw)) { .limt <- .foceiAnalyticTbsY(LV[[i]], E$trans)
+      .cp <- censNormalPartials_(CV[[i]], yt, .limt, E$f, R0e, 2L); q0[.cw] <- .cp[.cw, 1]; q1[.cw] <- .cp[.cw, 3] }
+    S <- as.numeric(Oi %*% eta_i); for (l in ei) S[l] <- S[l] + sum(q0 * E$a[, l])
+    Hf <- Oi; for (l in ei) for (m in ei) Hf[l, m] <- Hf[l, m] + sum(q1 * E$a[, l] * E$a[, m] + q0 * E$A[, l, m])
+    list(S = S, Hf = Hf)
+  }
+  eta <- ebes; active <- rep(TRUE, nsub)
+  for (it in seq_len(maxit + 1L)) {                      # it=1 evaluates at eta0 (skip test), then Newton steps
+    Es <- .foceiAnalyticSolveAll(am, th, eta, ids, data, obsTimes, tol)
+    if (is.null(Es)) return(NULL)
+    for (i in which(active)) {
+      sh <- .SHi(Es[[i]], eta[i, ], i)
+      if (max(abs(sh$S)) < (if (it == 1L) skip else conv)) { active[i] <- FALSE; next }
+      if (it == maxit + 1L) return(NULL)                 # did not converge -> FD fallback
+      step <- tryCatch(solve(sh$Hf, sh$S), error = function(e) NULL); if (is.null(step)) return(NULL)
+      eta[i, ] <- eta[i, ] - step
+    }
+    if (!any(active)) break
+  }
+  if (any(active)) return(NULL)
   eta
 }
 

@@ -335,41 +335,60 @@
   pars <- data.frame(ID = ids)
   for (k in seq_len(neta)) pars[[etav[k]]] <- ebes[, k]
   for (.nm in names(thv)) pars[[.nm]] <- thv[[.nm]]
-  # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history
-  # reproduces the delayed sensitivity solve exactly and needs no Jacobian, so it
-  # sidesteps the composite/ros4 on-the-fly Jacobian generation for this
-  # THETA/ETA-named augmented model (mangled the parameter list on rxode2 < 5.1.3;
-  # the fixed composite works too, but dop853 is exact and version-independent).
+  .ev <- .foceiAnalyticEvents(am, data)                    # reuse the pre-translated event table
+  .nc <- if (is.null(am$cores)) 0L else am$cores           # fit's rxControl thread count (parallel)
+  # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history reproduces the
+  # delayed sensitivity solve exactly and needs no Jacobian, sidestepping the composite/ros4
+  # on-the-fly Jacobian generation for this THETA/ETA-named augmented model.
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L))
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .sol <- tryCatch(withCallingHandlers(
-    as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = data,
+    as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = .ev, cores = .nc,
                                   returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
     warning = function(w) invokeRestart("muffleWarning")), error = function(e) NULL)
-  if (is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", dirs)) %in% names(.sol))) return(NULL)
+  if (is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", if (is.null(am$fDirs)) dirs else am$fDirs)) %in% names(.sol))) return(NULL)
+  # Extract every sensitivity column from the WHOLE solve as a matrix ONCE (the per-subject
+  # data.frame [[ + paste0 dominated the gradient -- the ODE solve itself is ~4%); slice by row
+  # per subject.  Column names + index maps are precomputed on `am$cols` at build time.
+  .cm <- if (is.null(am$cols)) .foceiAnalyticCols(dirs, if (is.null(am$fDirs)) dirs else am$fDirs, am$P2, if (is.null(am$P2r)) am$P2 else am$P2r, am$sigTh) else am$cols
+  np2 <- nrow(am$P2); np2r <- if (is.null(am$P2r)) np2 else nrow(am$P2r)
+  .M1 <- as.matrix(.sol[, .cm$f1, drop = FALSE]); .M2 <- as.matrix(.sol[, .cm$f2, drop = FALSE])
+  .fp <- .sol$rx_predf_; .tm <- .sol$time; .hasR <- isTRUE(am$hasRvar); .hasT <- isTRUE(am$hasTrans)
+  if (.hasR) {
+    .MR1 <- as.matrix(.sol[, .cm$rvar1, drop = FALSE]); .MR2 <- as.matrix(.sol[, .cm$rvar2, drop = FALSE])
+    .Rf <- .sol$rx_rvarf_; .nsig <- length(am$sigTh)
+    if (.nsig > 0L) { .MRs <- as.matrix(.sol[, .cm$rsig, drop = FALSE])
+      .MRs1 <- lapply(.cm$rsig1, function(cc) as.matrix(.sol[, cc, drop = FALSE]))
+      .MRs2 <- as.matrix(.sol[, .cm$rsig2, drop = FALSE]) }
+  }
+  if (.hasT) .tr <- list(yj = .sol$rx_tyj_, lambda = .sol$rx_tlambda_, low = .sol$rx_tlow_, hi = .sol$rx_thi_)
   .idcol <- if ("id" %in% names(.sol)) .sol$id else .sol$ID
   .byIdSol <- split(seq_len(nrow(.sol)), as.character(.idcol))
-  # rxode2 may label the solve id by the input ID or renumber 1..nsub; accept either.
   Es <- vector("list", length(ids))
   for (i in seq_along(ids)) {
     .ri <- .byIdSol[[as.character(ids[i])]]
     if (is.null(.ri)) .ri <- .byIdSol[[as.character(i)]]
     if (is.null(.ri)) return(NULL)
-    .di <- .sol[.ri, , drop = FALSE]
-    .di <- .di[.di$time %in% obsTimes[[i]], , drop = FALSE]
-    if (nrow(.di) != length(obsTimes[[i]])) return(NULL)
-    no <- nrow(.di)
-    a <- matrix(vapply(dirs, function(q) .di[[paste0("rx_f1_", q)]], numeric(no)), no, nd)
-    A <- array(0, c(no, nd, nd))
-    for (r in seq_len(nrow(am$P2))) {
-      .ii <- match(am$P2$i[r], dirs); .jj <- match(am$P2$j[r], dirs)
-      .v2 <- .di[[paste0("rx_f2_", am$P2$i[r], "_", am$P2$j[r])]]
-      A[, .ii, .jj] <- .v2; A[, .jj, .ii] <- .v2
+    .keep <- .ri[.tm[.ri] %in% obsTimes[[i]]]
+    no <- length(.keep); if (no != length(obsTimes[[i]])) return(NULL)
+    a <- matrix(0, no, nd); a[, .cm$fDirIdx] <- .M1[.keep, , drop = FALSE]; A <- array(0, c(no, nd, nd))
+    for (r in seq_len(np2)) { .v <- .M2[.keep, r]; A[, .cm$iiF[r], .cm$jjF[r]] <- .v; A[, .cm$jjF[r], .cm$iiF[r]] <- .v }
+    .E <- list(f = .fp[.keep], a = a, A = A)
+    if (.hasR) {
+      aR <- .MR1[.keep, , drop = FALSE]; AR <- array(0, c(no, nd, nd))
+      for (r in seq_len(np2r)) { .v <- .MR2[.keep, r]; AR[, .cm$ii[r], .cm$jj[r]] <- .v; AR[, .cm$jj[r], .cm$ii[r]] <- .v }
+      .E$R <- .Rf[.keep]; .E$aR <- aR; .E$AR <- AR
+      if (.nsig > 0L) {
+        .E$Rsig <- .MRs[.keep, , drop = FALSE]
+        .E$RsigDir <- array(vapply(.MRs1, function(M) M[.keep, , drop = FALSE], matrix(0, no, nd)), c(no, nd, .nsig))
+        .Rs2 <- array(0, c(no, .nsig, .nsig))
+        for (r in seq_len(nrow(.cm$sigP2))) { .v <- .MRs2[.keep, r]
+          .Rs2[, .cm$sigP2$a[r], .cm$sigP2$b[r]] <- .v; .Rs2[, .cm$sigP2$b[r], .cm$sigP2$a[r]] <- .v }
+        .E$Rsig2 <- .Rs2
+      }
     }
-    Es[[i]] <- list(f = .di$rx_predf_, a = a, A = A)
-    if (isTRUE(am$hasRvar)) Es[[i]] <- c(Es[[i]], .foceiReadRvar(.di, am, no))
-    if (isTRUE(am$hasTrans))                        # both-sides transform: DV -> tbs(DV) scale
-      Es[[i]]$trans <- list(yj = .di$rx_tyj_, lambda = .di$rx_tlambda_, low = .di$rx_tlow_, hi = .di$rx_thi_)
+    if (.hasT) .E$trans <- lapply(.tr, `[`, .keep)       # both-sides transform: DV -> tbs(DV) scale
+    Es[[i]] <- .E
   }
   Es
 }
