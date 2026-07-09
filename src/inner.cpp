@@ -432,6 +432,10 @@ struct focei_options {
   bool isImpmap = false; // importance-sampling EM (est="impmap"); outer runs impOuter
   int impIsample = 300;  // importance samples drawn per subject per iteration
   double impGamma = 1.0; // proposal-variance inflation factor: cov = gamma * H^-1
+  int impNiter = 100;    // maximum EM iterations
+  std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
+  IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
+  IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
 };
 
 focei_options op_focei;
@@ -4650,6 +4654,13 @@ NumericVector foceiSetup_(const RObject &obj,
   if (op_focei.isImpmap) {
     if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
     if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
+    if (foceiO.containsElementNamed("nIter")) op_focei.impNiter = as<int>(foceiO["nIter"]);
+    if (foceiO.containsElementNamed("diagXform") && TYPEOF(foceiO["diagXform"]) == STRSXP)
+      op_focei.impDiagXform = as<std::string>(foceiO["diagXform"]);
+    if (foceiO.containsElementNamed("impMuThetaIdx"))
+      op_focei.impMuThetaIdx = as<IntegerVector>(foceiO["impMuThetaIdx"]);
+    if (foceiO.containsElementNamed("impMuEtaIdx"))
+      op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
   }
 
   op_focei.zeroGrad = false;
@@ -8202,6 +8213,107 @@ int impCores() {
 // enters each subject's importance-sampling objective L_i.
 double impLogDetOmegaInv5() {
   return op_focei.logDetOmegaInv5;
+}
+
+int impNiter() {
+  return op_focei.impNiter;
+}
+
+std::string impDiagXform() {
+  return op_focei.impDiagXform;
+}
+
+int impMuGroupN() {
+  return (int)op_focei.muGroupN;
+}
+
+// M-step helpers (EM loop lives in impOuter, src/imp.cpp).
+
+// Overwrite subject id's eta (used to seed updateMuGroups with the conditional mean).
+void impSetEta(int id, const arma::vec& eta) {
+  focei_ind *fInd = &(inds_focei[id]);
+  std::copy(eta.begin(), eta.begin() + op_focei.neta, &fInd->eta[0]);
+}
+
+// Current Omega matrix (its zero pattern gives the estimated-element structure).
+void impGetOmega(arma::mat& Om) {
+  Om = getOmegaMat();
+}
+
+// Read subject id's current eta (after updateMuGroups this is the recentered residual).
+void impGetEta(int id, arma::vec& eta) {
+  focei_ind *fInd = &(inds_focei[id]);
+  eta.set_size(op_focei.neta);
+  std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, eta.begin());
+}
+
+// Mu-referenced population-parameter update: OLS-regress the (conditional-mean)
+// etas onto the mu-group covariates, updating fullTheta and recentering etas.
+double impUpdateMuThetas() {
+  return updateMuGroups();
+}
+
+// EM update for the simple mu-referenced intercepts (thetas that are the
+// population mean of an eta, with no covariates -- these are not handled by the
+// covariate regression in updateMuGroups()).  Operates on the current per-subject
+// etas (which the caller has set to the conditional means): shifts each theta by
+// the mean eta, recenters that eta to a mean-zero residual, and propagates both
+// to every subject's solve.
+void impMuInterceptStep() {
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  if (nsub == 0) return;
+  IntegerVector &thIdx = op_focei.impMuThetaIdx;
+  IntegerVector &etIdx = op_focei.impMuEtaIdx;
+  for (int g = 0; g < thIdx.size(); ++g) {
+    int th = thIdx[g], et = etIdx[g];
+    double s = 0.0;
+    for (int id = 0; id < nsub; ++id) s += inds_focei[id].eta[et];
+    double delta = s / (double)nsub;
+    op_focei.fullTheta[th] += delta;
+    for (int id = 0; id < nsub; ++id) {
+      rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+      inds_focei[id].eta[et] -= delta;
+      setIndParPtr(ind, op_focei.thetaTrans[th], op_focei.fullTheta[th]);
+      setIndParPtr(ind, op_focei.etaTrans[et], inds_focei[id].eta[et]);
+    }
+  }
+}
+
+// Re-optimize every subject's conditional mode at the current parameters.
+void impReMap() {
+  innerOpt();
+}
+
+// Install a new Omega: rebuild the rxSymInvChol environment (reusing the rxode2
+// matrix->parameterization machinery), refresh the cached inverse/Cholesky/log-
+// determinant, and copy the new Omega thetas into fullTheta so the next MAP and
+// the output see them.
+void impSetOmega(const arma::mat& Omega, const std::string& diagXform) {
+  Environment rxode2ns = Environment::namespace_env("rxode2");
+  Function f = rxode2ns["rxSymInvCholCreate"];
+  _rxInv = as<List>(f(Rcpp::Named("mat") = wrap(Omega),
+                      Rcpp::Named("diag.xform") = diagXform));
+  if (op_focei.fo == 1) {
+    op_focei.omega = getOmegaMat();
+  } else {
+    op_focei.omegaInv = getOmegaInv();
+    op_focei.cholOmegaInv = getCholOmegaInv();
+    op_focei.logDetOmegaInv5 = getOmegaDet();
+  }
+  NumericVector omegaTheta = getOmegaTheta();
+  std::copy(omegaTheta.begin(),
+            omegaTheta.begin() + op_focei.omegan,
+            &op_focei.fullTheta[0] + op_focei.ntheta);
+}
+
+// Sync the optimizer's reference point (initPar) to the current natural
+// fullTheta so the final foceiOuterFinal populates the fit at the converged
+// estimates rather than the initial ones.
+void impSyncInitParToFullTheta() {
+  for (unsigned int k = 0; k < op_focei.npars; k++) {
+    op_focei.initPar[k] = op_focei.fullTheta[op_focei.fixedTrans[k]];
+  }
 }
 
 void impMapPass(Environment e) {

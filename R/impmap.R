@@ -163,14 +163,30 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' @author Matthew L. Fidler
 #' @noRd
 .impmapFamilyFit <- function(env, ui, ...) {
-  # Module M1: the importance-sampling EM kernel is not implemented yet.  Reuse
-  # the FOCEI posthoc (MAP) path -- with est="impmap", foceiFitCpp_ runs
-  # impOuter() (src/imp.cpp) in place of foceiOuter(), performing a single MAP
-  # pass and adding each subject's mode/Hessian/individual-likelihood to the fit
-  # environment (impEtaMode/impEtaHess/impIndLik).
+  # With est="impmap", foceiFitCpp_ runs impOuter() (src/imp.cpp) in place of
+  # foceiOuter().  The FOCEI outer optimizer is turned off (maxOuterIterations=0)
+  # because impOuter drives its own EM iteration; covariance is off for now.
   .control <- ui$control
-  .control$maxOuterIterations <- 0L  # single MAP pass (no outer optimization)
-  .control$covMethod <- 0L           # 0L == no covariance (MAP-only milestone)
+  .control$maxOuterIterations <- 0L
+  .control$covMethod <- 0L
+  # 0-based index maps for the SIMPLE mu-referenced intercepts (theta = population
+  # mean of an eta, no covariates): impOuter's M-step shifts each such theta by
+  # the mean conditional eta.  Covariate mu-groups are excluded here because they
+  # are handled by the regression update (updateMuGroups) instead.
+  .env <- ui$foceiOptEnv  # builds foceiMuGroupTheta (the covariate-group thetas)
+  .iniDf <- ui$iniDf
+  .th <- .iniDf[!is.na(.iniDf$ntheta), ]
+  .thNames <- .th[order(.th$ntheta), "name"]
+  .etaRows <- .iniDf[!is.na(.iniDf$neta1) & .iniDf$neta1 == .iniDf$neta2, ]
+  .etaNames <- .etaRows[order(.etaRows$neta1), "name"]
+  .mr <- ui$muRefDataFrame
+  .muThetaIdx <- as.integer(match(.mr$theta, .thNames) - 1L)
+  .muEtaIdx <- as.integer(match(.mr$eta, .etaNames) - 1L)
+  .covGroupTheta <- rxode2::rxGetControl(ui, "foceiMuGroupTheta", integer(0))
+  .keep <- !is.na(.muThetaIdx) & !is.na(.muEtaIdx) &
+    !(.muThetaIdx %in% .covGroupTheta)
+  .control$impMuThetaIdx <- .muThetaIdx[.keep]
+  .control$impMuEtaIdx <- .muEtaIdx[.keep]
   assign("control", .control, envir=ui)
   .foceiFamilyReturn(env, ui, ..., est="impmap")
 }

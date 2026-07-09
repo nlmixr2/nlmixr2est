@@ -9,8 +9,10 @@
 // Module M2: per-subject multivariate-normal proposal + thread-safe threefry
 // sampler.
 // Module M3: importance weights, the individual objective contribution, and the
-// E-step conditional mean and variance.  The M-step (Omega / theta updates) is
-// added later.
+// E-step conditional mean and variance.
+// Module M4: the EM iteration -- {re-MAP, E-step, M-step} for nIter steps, where
+// the M-step updates the mu-referenced thetas and Omega from the weighted
+// conditional moments, then finalizes the fit at the converged estimates.
 #include <RcppArmadillo.h>
 #include <rxode2ptr.h>
 #include "imp.h"
@@ -20,27 +22,19 @@
 
 using namespace Rcpp;
 
-void impOuter(Environment e) {
-  // Single MAP pass (reuses the FOCEI posthoc path); leaves each subject's
-  // conditional mode in the live inner state.
-  impMapPass(e);
+// One importance-sampling E-step at the current conditional modes: draw
+// proposal samples, form importance weights, and return each subject's
+// conditional mean, variance, objective contribution, and effective sample
+// size.  `iter` shifts the per-subject RNG stream so successive iterations use
+// fresh (still thread-count-independent) samples.
+static void impEStep(int nsub, int neta, int isample, double gamma, int cores,
+                     int iter, double negHalfLogDetOmega,
+                     arma::mat& condMean, std::vector<arma::mat>& condVar,
+                     arma::vec& Li, arma::vec& Neff, Environment* eStash) {
+  double invGamma2 = 1.0 / (2.0 * gamma);
 
-  int nsub = impNsub();
-  int neta = impNeta();
-  int isample = impNsample();
-  double gamma = impGammaProp();
-  int cores = impCores();
-  if (cores < 1) cores = 1;
-
-  double negHalfLogDetOmega = impLogDetOmegaInv5(); // = -0.5 * log|Omega|
-
-  arma::mat modeMat(nsub, neta, arma::fill::zeros);
-  arma::vec indLik(nsub, arma::fill::zeros);
-  List hessList(nsub);
-
-  // Per-subject mode, inner information matrix H_i, log|H_i|, and the lower
-  // Cholesky factor of the proposal covariance Sigma_i = gamma * H_i^-1
-  // (Sigma_i = L_i L_i').  The linear algebra is done serially, before the RNG.
+  // Per-subject mode, information matrix H_i, log|H_i|, and the lower Cholesky
+  // factor of the proposal covariance gamma * H_i^-1 -- computed serially.
   std::vector<arma::vec> modes(nsub);
   std::vector<arma::mat> Hs(nsub);
   std::vector<double> logDetH(nsub, 0.0);
@@ -51,10 +45,7 @@ void impOuter(Environment e) {
   for (int id = 0; id < nsub; ++id) {
     impGetMode(id, mode);
     modes[id] = mode;
-    modeMat.row(id) = mode.t();
-    indLik[id] = impGetIndLik(id);
     if (impGetHessian(id, H)) {
-      hessList[id] = wrap(H);
       arma::mat Sigma;
       double ldv, lds;
       if (arma::inv_sympd(Sigma, H) && arma::log_det(ldv, lds, H) && lds > 0) {
@@ -62,36 +53,19 @@ void impOuter(Environment e) {
         logDetH[id] = ldv;
         Sigma *= gamma;
         arma::mat L;
-        if (arma::chol(L, Sigma, "lower")) {
-          cholL[id] = L;
-          haveL[id] = 1;
-        }
+        if (arma::chol(L, Sigma, "lower")) { cholL[id] = L; haveL[id] = 1; }
       }
-    } else {
-      hessList[id] = R_NilValue;
     }
   }
 
-  // For each subject: draw isample proposal samples phi_k = mode_i + L_i * z,
-  // z ~ N(0,I); then form importance weights w_k = exp(q_k) with
-  //   q_k = log(l(y_i|phi_k,theta) * h(phi_k|Omega)) [joint density kernel]
-  //         + (1/(2 gamma)) (phi_k - mode_i)' H_i (phi_k - mode_i) [minus log proposal].
-  // Normalized weights z_k = w_k / sum_k w_k give the conditional mean phi_bar_i
-  // and variance B_i; L_i = -log( mean_k exp(q_k + C_i) ) is the individual
-  // objective contribution, C_i = -0.5 log|Omega| + 0.5 n log gamma - 0.5 log|H_i|.
-  //
-  // Each subject reseeds its thread's threefry stream to seed0 + id*2 (offset by
-  // 2 to decorrelate from the ODE solver's per-subject stream seed0 + id) AFTER
-  // setRxThreadId sets the OpenMP thread id, so a subject's draws depend only on
-  // (seed0, id) and are identical regardless of the thread count.
+  condMean.set_size(nsub, neta);
+  condVar.assign(nsub, arma::mat(neta, neta, arma::fill::zeros));
+  Li.set_size(nsub); Li.fill(NA_REAL);
+  Neff.set_size(nsub); Neff.fill(NA_REAL);
+
+  std::vector<arma::mat> samples(nsub);
   seedEng(cores);
   uint32_t seed0 = getRxSeed1(cores);
-  double invGamma2 = 1.0 / (2.0 * gamma);
-  std::vector<arma::mat> samples(nsub);
-  std::vector<arma::mat> condVar(nsub);
-  arma::mat condMean(nsub, neta, arma::fill::zeros);
-  arma::vec Li(nsub); Li.fill(NA_REAL);
-  arma::vec Neff(nsub); Neff.fill(NA_REAL);
   bool doPar = (cores > 1);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(cores) if(doPar)
@@ -100,20 +74,19 @@ void impOuter(Environment e) {
 #ifdef _OPENMP
     if (doPar) setRxThreadId(omp_get_thread_num());
 #endif
-    setSeedEng1(seed0 + (uint32_t)id * 2u);
-    arma::mat S(isample, neta, arma::fill::zeros);
-    condVar[id] = arma::mat(neta, neta, arma::fill::zeros);
+    // fresh per-(iter,subject) stream, independent of thread count
+    setSeedEng1(seed0 + (uint32_t)((iter * nsub + id) * 2));
     condMean.row(id) = modes[id].t();
     if (haveL[id]) {
+      arma::mat S(isample, neta);
       for (int k = 0; k < isample; ++k) {
         arma::vec z(neta);
         for (int j = 0; j < neta; ++j) z[j] = rxNormEng(0.0, 1.0);
         S.row(k) = (modes[id] + cholL[id] * z).t();
       }
-      // importance weights on the log scale.  impEvalJointLik returns the
-      // NEGATIVE log joint density (the inner optimizer minimizes it), so the
-      // joint-density term enters with a minus sign; the proposal density is
-      // subtracted, contributing +(1/(2 gamma)) d' H d.
+      // log importance weights.  impEvalJointLik returns the NEGATIVE log joint
+      // density (minimized by the inner optimizer), so it enters with a minus;
+      // the proposal density is subtracted, contributing +(1/(2 gamma)) d'H d.
       arma::vec q(isample);
       for (int k = 0; k < isample; ++k) {
         arma::vec eta = S.row(k).t();
@@ -130,7 +103,7 @@ void impOuter(Environment e) {
         0.5 * logDetH[id];
       Li[id] = -(logMeanExp + Ci);
       Neff[id] = 1.0 / arma::accu(arma::square(zk));
-      arma::rowvec pbar = zk.t() * S; // weighted conditional mean (1 x neta)
+      arma::rowvec pbar = zk.t() * S;
       condMean.row(id) = pbar;
       arma::mat B(neta, neta, arma::fill::zeros);
       for (int k = 0; k < isample; ++k) {
@@ -138,33 +111,97 @@ void impOuter(Environment e) {
         B += zk[k] * (dr.t() * dr);
       }
       condVar[id] = B;
+      if (eStash != nullptr) samples[id] = S;
     }
-    samples[id] = S;
 #ifdef _OPENMP
     if (doPar) setRxThreadId(-1);
 #endif
   }
 
-  List samplesList(nsub), condVarList(nsub);
-  for (int id = 0; id < nsub; ++id) {
-    samplesList[id] = wrap(samples[id]);
-    condVarList[id] = wrap(condVar[id]);
+  // On the last iteration, stash the per-subject sampler diagnostics.
+  if (eStash != nullptr) {
+    arma::mat modeMat(nsub, neta);
+    List hessList(nsub), samplesList(nsub);
+    for (int id = 0; id < nsub; ++id) {
+      modeMat.row(id) = modes[id].t();
+      hessList[id] = haveL[id] ? wrap(Hs[id]) : R_NilValue;
+      samplesList[id] = wrap(samples[id]);
+    }
+    (*eStash)["impEtaMode"] = wrap(modeMat);
+    (*eStash)["impEtaHess"] = hessList;
+    (*eStash)["impSamples"] = samplesList;
   }
-  // objective (-2 log likelihood) summed over subjects with a valid proposal
-  double obj = 0.0;
-  for (int id = 0; id < nsub; ++id) {
-    if (R_finite(Li[id])) obj += 2.0 * Li[id];
+}
+
+void impOuter(Environment e) {
+  int nIter = impNiter();
+  std::string diagXform = impDiagXform();
+  int nsub = impNsub();
+  int neta = impNeta();
+  int isample = impNsample();
+  double gamma = impGammaProp();
+  int cores = impCores();
+  if (cores < 1) cores = 1;
+
+  arma::mat condMean;
+  std::vector<arma::mat> condVar;
+  arma::vec Li, Neff;
+  double obj = R_PosInf;
+
+  // Initial MAP at the starting parameters.
+  impMapPass(e);
+
+  // Omega structure mask: only the elements estimated in the model (nonzero in
+  // the starting Omega) are updated; the rest stay zero so the parameterization
+  // keeps the same number of Omega thetas.
+  arma::mat Om0;
+  impGetOmega(Om0);
+  arma::mat omMask = arma::conv_to<arma::mat>::from(Om0 != 0.0);
+
+  arma::vec r(neta);
+  for (int iter = 0; iter < nIter; ++iter) {
+    if (iter > 0) impReMap();
+    Environment* stash = (iter == nIter - 1) ? &e : nullptr;
+    impEStep(nsub, neta, isample, gamma, cores, iter, impLogDetOmegaInv5(),
+             condMean, condVar, Li, Neff, stash);
+    obj = 0.0;
+    for (int id = 0; id < nsub; ++id) if (R_finite(Li[id])) obj += 2.0 * Li[id];
+
+    // M-step.  Seed each subject's eta with its conditional mean, then update
+    // the mu-referenced population parameters -- covariate groups by regression
+    // (updateMuGroups) and simple intercepts by the mean-shift (impMuInterceptStep)
+    // -- both of which recenter the etas to mean-zero residuals.  Omega is then the
+    // average recentered conditional moment, masked to the estimated structure.
+    for (int id = 0; id < nsub; ++id) {
+      arma::vec cm = condMean.row(id).t();
+      impSetEta(id, cm);
+    }
+    impUpdateMuThetas();
+    impMuInterceptStep();
+    arma::mat Omega(neta, neta, arma::fill::zeros);
+    for (int id = 0; id < nsub; ++id) {
+      impGetEta(id, r);
+      Omega += r * r.t() + condVar[id];
+    }
+    Omega /= (double)nsub;
+    Omega %= omMask;
+    impSetOmega(Omega, diagXform);
   }
 
-  e["impEtaMode"]   = wrap(modeMat);
-  e["impIndLik"]    = wrap(indLik);
-  e["impEtaHess"]   = hessList;
-  e["impSamples"]   = samplesList;
-  e["impCondMean"]  = wrap(condMean);
-  e["impCondVar"]   = condVarList;
-  e["impLi"]        = wrap(Li);
-  e["impNeff"]      = wrap(Neff);
-  e["impObj"]       = obj;
+  // Finalize the fit at the converged estimates.
+  impSyncInitParToFullTheta();
+  impMapPass(e);
+
+  // Stash the last-iteration E-step diagnostics.
+  List condVarList(nsub);
+  for (int id = 0; id < nsub; ++id) condVarList[id] = wrap(condVar[id]);
+  e["impCondMean"] = wrap(condMean);
+  e["impCondVar"]  = condVarList;
+  e["impLi"]       = wrap(Li);
+  e["impNeff"]     = wrap(Neff);
+  e["impObj"]      = obj;
   e["impGammaUsed"] = gamma;
-  e["impNsample"]   = isample;
+  e["impNsample"]  = isample;
+  e["impNiter"]    = nIter;
+  e["impMuGroupN"] = impMuGroupN();
 }

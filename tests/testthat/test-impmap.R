@@ -56,7 +56,7 @@ test_that("getValidNlmixrCtl.impmap yields a default impmapControl", {
   expect_s3_class(getValidNlmixrCtl.impmap(list(NULL)), "impmapControl")
 })
 
-test_that("M1: impmap MAP pass reproduces FOCEI posthoc EBEs", {
+test_that("M1: impmap MAP pass exposes per-subject mode and Hessian", {
   one.cmt <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -71,22 +71,16 @@ test_that("M1: impmap MAP pass reproduces FOCEI posthoc EBEs", {
     })
   }
   .dat <- nlmixr2data::theo_sd
-  # FOCEI posthoc (maxOuterIterations=0): conditional modes at the initial thetas.
-  .foce <- suppressWarnings(
-    nlmixr2(one.cmt, .dat, "focei",
-            foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")))
-  # impmap M1: a single MAP pass over the same model/data/initial thetas.
+  # One EM iteration is enough to exercise the MAP + per-subject Hessian.
   .imp <- suppressWarnings(
-    nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L)))
+    nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L, nIter = 1L)))
 
   expect_true(inherits(.imp, "nlmixr2FitCore"))
-  # Per-subject conditional modes must match the FOCEI posthoc EBEs.
-  .k <- c("eta.ka", "eta.cl")
-  expect_equal(as.matrix(.imp$eta[, .k]), as.matrix(.foce$eta[, .k]),
-               tolerance = 1e-4)
-  # The MAP pass stashes each subject's eta Hessian; check it is present,
-  # square, symmetric, and positive-definite for subject 1.
+  # The MAP pass stashes each subject's mode + eta Hessian; check the Hessian is
+  # present, square, symmetric, and positive-definite for subject 1.
   .env <- .imp$env
+  expect_true(is.matrix(.env$impEtaMode) &&
+                nrow(.env$impEtaMode) == length(unique(.dat$ID)))
   .H <- .env$impEtaHess
   expect_true(is.list(.H) && length(.H) == length(unique(.dat$ID)))
   .H1 <- .H[[1]]
@@ -115,7 +109,7 @@ test_that("M2: threefry proposal sampler matches N(mode, gamma*H^-1)", {
   rxode2::rxSetSeed(42)
   .f <- suppressWarnings(
     nlmixr2(one.cmt, .dat, "impmap",
-            impmapControl(print = 0L, isample = 4000L, gamma = .gamma)))
+            impmapControl(print = 0L, nIter = 1L, isample = 4000L, gamma = .gamma)))
   .e <- .f$env
   expect_identical(.e$impNsample, 4000L)
   expect_equal(.e$impGammaUsed, .gamma)
@@ -151,7 +145,7 @@ test_that("M2: sampler is thread-count independent (D6)", {
     rxode2::rxSetSeed(42)
     suppressWarnings(
       nlmixr2(one.cmt, .dat, "impmap",
-              impmapControl(print = 0L, isample = 100L)))$env$impSamples
+              impmapControl(print = 0L, nIter = 1L, isample = 100L)))$env$impSamples
   }
   .s1 <- .run(1L)
   .s4 <- .run(4L)
@@ -180,7 +174,7 @@ test_that("M3: importance weights recover the conditional mean/variance", {
   rxode2::rxSetSeed(42)
   .f <- suppressWarnings(
     nlmixr2(one.cmt, .dat, "impmap",
-            impmapControl(print = 0L, isample = 6000L, gamma = .gamma)))
+            impmapControl(print = 0L, nIter = 1L, isample = 6000L, gamma = .gamma)))
   .e <- .f$env
   # E-step outputs present and well-formed
   expect_true(is.numeric(.e$impObj) && is.finite(.e$impObj))
@@ -203,4 +197,61 @@ test_that("M3: importance weights recover the conditional mean/variance", {
   expect_equal(unname(.B1), unname(.postCov), tolerance = 0.02)
   # and B is clearly closer to H^-1 than to the proposal covariance
   expect_lt(max(abs(.B1 - .postCov)), max(abs(.B1 - .propCov)))
+})
+
+test_that("M4: EM converges to FOCEI on the mu-referenced params and Omega", {
+  # Non-mu parameters (tv, add.sd) are held fixed so this isolates the EM update
+  # of the mu-referenced thetas and Omega (the non-mu FD updates are a later
+  # module); impmap should then match FOCEI on tka/tcl and the Omega diagonal.
+  mfix <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- fix(3.45)
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- fix(0.7)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(mfix, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(mfix, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 40L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
+  expect_equal(unname(diag(.fi$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
+})
+
+test_that("M4: mu-referenced covariate (updateMuGroups) is estimated", {
+  # cl.wt is a mu-referenced covariate effect -- handled by the covariate
+  # regression update (updateMuGroups), which impmap must drive.  The estimate
+  # should match FOCEI, and the fit should report a nonzero mu covariate group.
+  mcov <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; cl.wt <- 0.75; tv <- fix(3.45)
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- fix(0.7)
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + cl.wt * log(WT / 70) + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(mcov, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(mcov, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 40L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  # a mu covariate group was actually set up and driven
+  expect_true(.fi$env$impMuGroupN >= 1L)
+  # the covariate coefficient matches FOCEI
+  expect_equal(unname(fixef(.fi)["cl.wt"]), unname(fixef(.ff)["cl.wt"]), tolerance = 0.03)
+  expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
 })

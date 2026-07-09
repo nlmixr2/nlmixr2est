@@ -22,6 +22,24 @@ int impCores();
 // 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
 double impLogDetOmegaInv5();
 
+// Maximum EM iterations (from the impmap control).
+int impNiter();
+
+// Omega diagonal parameterization ("sqrt"/"log"/"identity") for the EM Omega update.
+std::string impDiagXform();
+
+int impMuGroupN();                    // number of mu-referenced covariate groups (diagnostic)
+
+// M-step helpers (the EM loop is in impOuter):
+void impSetEta(int id, const arma::vec& eta);      // overwrite subject id's eta
+void impGetEta(int id, arma::vec& eta);            // read subject id's eta
+void impGetOmega(arma::mat& Om);                   // current Omega (for its zero pattern)
+double impUpdateMuThetas();                        // mu-referenced covariate regression (updateMuGroups)
+void impMuInterceptStep();                         // simple mu intercept EM update (no covariates)
+void impReMap();                                   // re-optimize all conditional modes (innerOpt)
+void impSetOmega(const arma::mat& Omega, const std::string& diagXform); // install new Omega
+void impSyncInitParToFullTheta();                  // sync optimizer reference to converged fullTheta
+
 // Run a single MAP pass over all subjects at the initial parameters (reuses the
 // FOCEI posthoc path, foceiOuterFinal) and populate the fit environment `e`.
 void impMapPass(Rcpp::Environment e);
