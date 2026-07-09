@@ -18,6 +18,7 @@
 #include "armahead.h"
 #include "inner.h"
 #include "rxomp.h"
+#include "censEst.h"   // doCensNormal1: reusable censored normal log-likelihood
 #include <vector>
 #include <functional>
 
@@ -54,6 +55,11 @@ struct rpemOptions {
   std::vector<int> yjv;      // [nobsTot] yj0 transform code
   std::vector<double> lowv;  // [nobsTot] transform lower bound
   std::vector<double> hiv;   // [nobsTot] transform upper bound
+  // Per-observation censoring (constant across samples, indexed by idS[i]+o), for
+  // BLQ / M2 / M3 / M4 handling via doCensNormal1.
+  std::vector<int> censv;    // [nobsTot] CENS column (-1/0/1)
+  std::vector<double> limv;  // [nobsTot] LIMIT column (or -Inf)
+  bool anyCens = false;      // whether any observation is censored
 };
 
 rpemOptions rpemOp;
@@ -71,6 +77,9 @@ RObject rpemFree() {
   rpemOp.yjv.clear();
   rpemOp.lowv.clear();
   rpemOp.hiv.clear();
+  rpemOp.censv.clear();
+  rpemOp.limv.clear();
+  rpemOp.anyCens = false;
   return R_NilValue;
 }
 
@@ -87,6 +96,7 @@ static void rpemDoSetup(RObject pred, List rxControl, NumericVector p, RObject d
                    p, data, R_NilValue,
                    1);         // setupOnly
   rx = getRxSolve_();
+  rpemOp.anyCens = (hasRxCens(rx) != 0);
   rpemOp.nsub = getRxNsub(rx);
   rpemOp.buf.assign((size_t)rpemOp.nsub * 3u, 0);
   rpemOp.nobs = rpemOp.buf.data();
@@ -139,9 +149,11 @@ static inline void rpemSetSubject(const double *par, int id) {
 // batched par_solve.
 static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *wssOut = nullptr,
                                      double *cpOut = nullptr, double *dvOut = nullptr,
-                                     int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr) {
+                                     int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr,
+                                     int *censOut = nullptr, double *limOut = nullptr) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
+  bool anyCens = rpemOp.anyCens;
   double s = 0.0, ss = 0.0, wss = 0.0, curT;
   int kk, oi = 0;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
@@ -154,11 +166,24 @@ static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *ws
       continue;
     } else if (getIndEvid(ind, kk) == 0) {
       rxPred.calc_lhs(id, curT, getOpIndSolve(op, ind, j), lhs);
-      double v = lhs[0];
-      if (ISNA(v)) v = 0.0;
-      s += v;
       double cp = lhs[1];                // rx_pred_f_ = structural prediction
       double dv = getIndDv(ind, kk);
+      int cens = 0; double lim = R_NegInf;
+      if (anyCens) {
+        cens = getIndCens(ind, kk);
+        if (hasRxLimit(rx)) { lim = getIndLimit(ind, kk); if (ISNA(lim)) lim = R_NegInf; }
+      }
+      double v;
+      if (cens != 0 || (anyCens && R_FINITE(lim))) {
+        // censored (M2/M3/M4): -loglik via the reusable censored-normal function,
+        // using the per-obs variance rx_r_ = lhs[2].
+        double ll = -lhs[0];             // uncensored (density) loglik
+        v = -doCensNormal1((double)cens, dv, lim, ll, cp, lhs[2], 0);
+      } else {
+        v = lhs[0];                      // -density loglik (unchanged)
+      }
+      if (ISNA(v)) v = 0.0;
+      s += v;
       double r = dv - cp;
       if (ssOut != nullptr) ss += r * r;
       if (wssOut != nullptr && cp != 0.0) { double rc = r / cp; wss += rc * rc; }
@@ -169,6 +194,8 @@ static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *ws
       if (yjOut != nullptr) yjOut[oi] = getIndYj(ind);
       if (lowOut != nullptr) lowOut[oi] = getIndLogitLow(ind);
       if (hiOut != nullptr) hiOut[oi] = getIndLogitHi(ind);
+      if (censOut != nullptr) censOut[oi] = cens;
+      if (limOut != nullptr) limOut[oi] = lim;
       ++oi;
     }
   }
@@ -181,10 +208,11 @@ static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *ws
 static inline double rpemSolveSubject(const double *par, int id,
                                       double *ssOut = nullptr, double *wssOut = nullptr,
                                       double *cpOut = nullptr, double *dvOut = nullptr,
-                                      int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr) {
+                                      int *yjOut = nullptr, double *lowOut = nullptr, double *hiOut = nullptr,
+                                      int *censOut = nullptr, double *limOut = nullptr) {
   rpemSetSubject(par, id);
   rpemPredOde(id);
-  return rpemReadSubject(id, ssOut, wssOut, cpOut, dvOut, yjOut, lowOut, hiOut);
+  return rpemReadSubject(id, ssOut, wssOut, cpOut, dvOut, yjOut, lowOut, hiOut, censOut, limOut);
 }
 
 // parMat: nsub rows x ntheta cols (each subject's THETA+ETA). Returns per-subject
@@ -279,6 +307,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   rpemOp.yjv.assign((size_t)rpemOp.nobsTot, 0);      // per subject-obs (idS[i]+o)
   rpemOp.lowv.assign((size_t)rpemOp.nobsTot, 0.0);
   rpemOp.hiv.assign((size_t)rpemOp.nobsTot, 1.0);
+  rpemOp.censv.assign((size_t)rpemOp.nobsTot, 0);
+  rpemOp.limv.assign((size_t)rpemOp.nobsTot, R_NegInf);
 
   // Copy all R objects into plain C++ buffers BEFORE the parallel region; the
   // OpenMP loop must not touch any Rcpp/R object (only these buffers + the
@@ -315,7 +345,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
         long so = rpemOp.idS[id];
         double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob],
-                                       &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so]);
+                                       &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                       &rpemOp.censv[so], &rpemOp.limv[so]);
         rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
       }
     }
@@ -339,7 +370,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
         long so = rpemOp.idS[id];
         double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
                                         &rpemOp.cpv[ob], &rpemOp.dvv[ob],
-                                        &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so]);
+                                        &rpemOp.yjv[so], &rpemOp.lowv[so], &rpemOp.hiv[so],
+                                        &rpemOp.censv[so], &rpemOp.limv[so]);
         lp[j] = logp;
         rpemOp.logp[r] = logp;
         rpemOp.ssv[r] = ssTmp;
@@ -884,6 +916,48 @@ List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0,
   double propNew = sqrt(SSc / (double)N);
   return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
                       _["propSd"] = propNew, _["power"] = cHat, _["accept"] = accept);
+}
+
+// K=1 censored residual M-step (single endpoint, additive or proportional error
+// with M2/M3/M4 BLQ observations).  The naive sum-of-squares is biased under
+// censoring, so the residual scale is estimated by maximizing the censored
+// log-likelihood over the accepted MH samples: for each candidate sd the
+// observed observations contribute the Gaussian density and the censored ones the
+// CENS probability via doCensNormal1.  1-D golden-section over sd (>0).
+// errType 0 = additive (sd_obs = sd), 1 = proportional (sd_obs = sd*|cp|).
+//[[Rcpp::export]]
+List rpemMstepK1Cens(NumericMatrix design, NumericVector coefs, int errType,
+                     double sd0, int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Cens");
+  if (rpemOp.nEta != 1) stop("rpemMstepK1Cens currently supports nEta==1");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
+  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+
+  auto Q = [&](double sd) -> double {
+    double q = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i]; long so0 = rpemOp.idS[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j]; if (!c) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          long so = so0 + o;
+          double cp = rpemOp.cpv[ob + o], dv = rpemOp.dvv[ob + o];
+          double sdo = (errType == 1) ? sd * (fabs(cp) + 1e-300) : sd;
+          double r = sdo * sdo;
+          double gauss = -M_LN_SQRT_2PI - log(sdo) - 0.5 * (dv - cp) * (dv - cp) / r;
+          q += (double)c * doCensNormal1((double)rpemOp.censv[so], dv, rpemOp.limv[so],
+                                         gauss, cp, r, 0);
+        }
+      }
+    }
+    return q;
+  };
+  std::function<double(double)> f = [&](double sd) { return Q(sd); };
+  double sdHat = rpemGolden(f, 1e-4, std::max(5.0 * sd0, 1.0), 120);
+  return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
+                      _["addSd"] = sdHat, _["accept"] = accept);
 }
 
 // Numeric M-step for non-mu-referenced structural fixed effects (the paper's

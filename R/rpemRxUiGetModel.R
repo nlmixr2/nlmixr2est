@@ -59,6 +59,20 @@ rxUiGet.rpemModel0 <- function(x, ...) {
   .jac <- if (.hasTBS) {
     list(str2lang("rx_pred_ <- rx_pred_ + log(abs(rxTBSd(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_)))"))
   } else list()
+  # Emit the residual VARIANCE in rx_r_ (the llik model leaves it 0).  The E-step
+  # reads it as the per-observation variance to compute the censored likelihood
+  # (doCensNormal1) for BLQ observations.  rx_rll_ is the residual sd the llikNorm
+  # uses, so the variance is rx_rll_^2.
+  .hasRll <- any(vapply(.stmts, function(s) grepl("rx_rll_", paste(deparse(s), collapse = ""),
+                                                  fixed = TRUE), logical(1)))
+  if (.hasRll) {
+    .stmts <- lapply(.stmts, function(s) {
+      if (is.call(s) && (identical(s[[1]], as.name("~")) || identical(s[[1]], as.name("<-"))) &&
+          is.name(s[[2]]) && as.character(s[[2]]) == "rx_r_") {
+        str2lang("rx_r_ <- rx_rll_^2")
+      } else s
+    })
+  }
   # Sign note (spec 13 OI-3): keep identical to the proven nlm llik model
   # (rx_pred_ negated) so this is a faithful THETA+ETA analog; the E-step decides
   # how to consume the summed value.  Revisit sign when wiring the E-step.

@@ -236,6 +236,10 @@
   .idColF <- names(data)[tolower(names(data)) == "id"][1]
   if (is.na(.idColF)) stop("data must have an ID column")
   .nsub <- length(unique(data[[.idColF]]))
+  # censoring (BLQ): any non-zero CENS column -> the E-step uses the censored
+  # likelihood (doCensNormal1) and the residual M-step maximizes it.
+  .censColF <- names(data)[tolower(names(data)) == "cens"][1]
+  .hasCens <- !is.na(.censColF) && any(data[[.censColF]] != 0, na.rm = TRUE)
   # Draw the E-step etas in R (deterministic given the seed) so the sampling RNG is
   # independent of the solve's core count -- the fit is reproducible across cores.
   .drawEtas <- function(omega) {
@@ -331,7 +335,9 @@
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
       sdMat[.it, ] <- sdVec; propMat[.it, ] <- propVec
     } else if (.useReg) {
-      .ms <- rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
+      .ms <- if (.hasCens && .cl$errType %in% c(0L, 1L))
+        rpemMstepK1Cens(.design, coefs, .cl$errType, addSd, control$nMH, control$mhBurn)
+      else rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else {

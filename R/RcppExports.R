@@ -326,6 +326,10 @@ rpemMstepK1Pow <- function(design, coefs, propSd0, power0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Pow`, design, coefs, propSd0, power0, nTrials, burn)
 }
 
+rpemMstepK1Cens <- function(design, coefs, errType, sd0, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1Cens`, design, coefs, errType, sd0, nTrials, burn)
+}
+
 rpemMstepBeta <- function(base, etaIdx, structIdx, struct0) {
     .Call(`_nlmixr2est_rpemMstepBeta`, base, etaIdx, structIdx, struct0)
 }

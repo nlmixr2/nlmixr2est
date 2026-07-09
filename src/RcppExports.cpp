@@ -1073,6 +1073,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemMstepK1Cens
+List rpemMstepK1Cens(NumericMatrix design, NumericVector coefs, int errType, double sd0, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Cens(SEXP designSEXP, SEXP coefsSEXP, SEXP errTypeSEXP, SEXP sd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type coefs(coefsSEXP);
+    Rcpp::traits::input_parameter< int >::type errType(errTypeSEXP);
+    Rcpp::traits::input_parameter< double >::type sd0(sd0SEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Cens(design, coefs, errType, sd0, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rpemMstepBeta
 NumericVector rpemMstepBeta(NumericVector base, IntegerVector etaIdx, IntegerVector structIdx, NumericVector struct0);
 RcppExport SEXP _nlmixr2est_rpemMstepBeta(SEXP baseSEXP, SEXP etaIdxSEXP, SEXP structIdxSEXP, SEXP struct0SEXP) {
