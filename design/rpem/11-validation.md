@@ -36,6 +36,19 @@ Four correctness bars (D12), all required. Correctness before speed (D1).
   comparable accuracy) on comparable hardware/thread counts. Report wall-clock
   and accuracy side by side. Secondary to correctness.
 
+## Test execution environment
+
+- Run against `devtools::load_all()`-loaded **rxode2 and nlmixr2est worktrees**;
+  do NOT `install.packages` / `R CMD INSTALL` either package for RPEM testing.
+  A global install mutates the shared user library that other concurrent agents
+  (working other branches/worktrees) depend on, so it must be avoided.
+- When RPEM needs a modified rxode2 (spec 13 open items), `load_all()` the rxode2
+  worktree first, then `load_all()` this nlmixr2est worktree on top, so both are
+  the in-development source, not installed builds.
+- CI/CRAN (which build/install normally) still exercise the installed path; the
+  load_all rule is for local/agent development to preserve concurrency isolation.
+- Honor the thread policy in `tests/testthat.R`.
+
 ## Test artifacts
 
 - `tests/testthat/test-rpem-analytic.R` -- Bars 1 (K=1 smoke) / 3.
