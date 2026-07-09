@@ -59,11 +59,11 @@ bool impGetHessian(int id, arma::mat& H);
 // arbitrary eta for subject `id` (the importance-sampling weight numerator).
 double impEvalJointLik(const arma::vec& eta, int id);
 
-// Solve the theta-sensitivity model for subject `id` at `eta`, filling `dfdth`
-// (nobs x nSens) with d(prediction)/d(theta) at each observation.  Column s maps
-// to the non-mu structural theta impThetaSensIdx[s].  Returns false if the
-// theta-sensitivity model is not available.
-bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth);
+// Solve the sensitivity model for subject `id` at `eta`, filling `dfdth` and
+// `dVdth` (each nobs x nSens) with d(prediction)/d(theta) and d(variance)/d(theta)
+// at each observation.  Column s maps to the estimated non-mu theta
+// impThetaSensIdx[s].  Returns false if the sensitivity model is not available.
+bool impThetaSensDfDV(int id, const arma::vec& eta, arma::mat& dfdth, arma::mat& dVdth);
 
 // Accumulate subject `id`'s IS-weighted score (into `g`, length nSens) and
 // Gauss-Newton Hessian (into `H`, nSens x nSens) for the non-mu structural

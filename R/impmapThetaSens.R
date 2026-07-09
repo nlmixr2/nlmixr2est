@@ -1,86 +1,110 @@
-# Dedicated theta-sensitivity model for est="impmap".
+# Dedicated sensitivity model for est="impmap".
 #
-# The importance-sampling EM updates the non-mu structural thetas by a Newton
-# step on the analytic gradient of the individual data log-likelihood, which
-# needs d(f)/d(theta) -- the derivative of the prediction with respect to each
-# theta.  This compiled model provides it as output lhs
-# `rx__sens_rx_pred__BY_THETA_j___`, solved alongside the inner/pred models.
+# The importance-sampling EM updates the non-mu thetas (structural and residual-
+# error) by a Newton step on the analytic gradient of the individual data
+# log-likelihood.  For a Gaussian endpoint with mean f and variance V that needs,
+# per theta, both d(f)/d(theta) and d(V)/d(theta).  This compiled model provides
+# them as outputs rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
+# rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j), solved alongside the inner/pred
+# models.
 #
-# Only the NON-MU STRUCTURAL thetas get a sensitivity: the mu-referenced thetas
-# are updated by the EM closed form and residual-error (sigma) thetas do not enter
-# the prediction (d(f)/d(sigma)=0).  Restricting to that subset also keeps the
-# sensitivity-ODE state count bounded so it fits the shared inner solve buffer.
+# Only NON-MU thetas get sensitivities: mu-referenced thetas are updated by the EM
+# closed form.  Among those, structural thetas (which enter the ODE states / f)
+# carry a sensitivity ODE; residual-error (sigma) thetas enter only V algebraically
+# and need no state sensitivity, so restricting the sensitivity ODEs to the
+# structural thetas also keeps the state count bounded for the shared solve buffer.
 #
-# It is built in the inner-problem order (ODEs, sensitivity ODEs, prediction, then
-# the d(f)/d(theta) outputs); no error-model transform or endpoint machinery is
-# needed.  Works with or without ODE states.
+# d(f)/d(theta_j) and d(V)/d(theta_j) share the chain rule
+#   d(g)/d(theta_j) = D(g, THETA_j) + sum_state rx__sens_state_BY_THETA_j * D(g, state)
+# where the state-sensitivity term is present only for the structural thetas.
 #
-# rx_pred_ is retrieved with the `$` accessor via an intermediate variable
-# (the theta sensitivity setup shadows base get/:: and the `$` NSE misbehaves
+# rx_pred_ / rx_r_ are retrieved with the `$` accessor via an intermediate
+# variable (the sensitivity setup shadows base get/:: and the `$` NSE misbehaves
 # when nested in a call).
 
-#' 1-based theta indices (in the THETA_j_ / ntheta ordering) of the non-mu
-#' structural thetas: not mu-referenced (intercept or covariate) and not a
-#' residual-error parameter.  These are the thetas that need d(f)/d(theta).
+#' 1-based theta indices (THETA_j_ / ntheta ordering) that impmap estimates by
+#' the sensitivity Newton step: not mu-referenced (intercept or covariate).  This
+#' is the union of the structural thetas (\code{$struct}, which get a sensitivity
+#' ODE and d(f)/d(theta)) and the residual-error thetas (\code{$sigma}, which get
+#' only d(V)/d(theta)).  \code{$all} is the sorted union.
 #' @noRd
-.impmapNonMuStructTheta <- function(ui) {
+.impmapEstTheta <- function(ui) {
   .iniDf <- ui$iniDf
   .th <- .iniDf[!is.na(.iniDf$ntheta), ]
   .th <- .th[order(.th$ntheta), ]
   .muNames <- unique(ui$muRefDataFrame$theta)
-  # mu covariate-coefficient thetas (handled by the regression update) -- exclude
   .covNames <- character(0)
   .mrc <- try(ui$muRefCovariateReplaceDataFrame, silent = TRUE)
   if (!inherits(.mrc, "try-error") && is.data.frame(.mrc) && "covariateParameter" %in% names(.mrc)) {
     .covNames <- unique(.mrc$covariateParameter)
   }
-  .keep <- is.na(.th$err) & !(.th$name %in% .muNames) & !(.th$name %in% .covNames)
-  .th$ntheta[.keep]
+  .isMu <- (.th$name %in% .muNames) | (.th$name %in% .covNames)
+  .fixed <- !is.na(.th$fix) & .th$fix
+  .struct <- .th$ntheta[!.isMu & !.fixed & is.na(.th$err)]
+  .sigma <- .th$ntheta[!.isMu & !.fixed & !is.na(.th$err)]
+  list(struct = .struct, sigma = .sigma, all = sort(unique(c(.struct, .sigma))))
 }
 
-#' Build the symengine env carrying the impmap theta-sensitivity model
-#' (`..thetaSens`), whose output lhs `rx__sens_rx_pred__BY_THETA_j___` (for each
-#' non-mu structural theta j) is d(f)/d(theta_j).
+#' @noRd
+.impmapChainRule <- function(s, target, j, stateVars, structIdx) {
+  .terms <- paste0("D(", target, ", THETA_", j, "_)")
+  if (j %in% structIdx && length(stateVars) > 0L) {
+    .terms <- c(.terms,
+                paste0("rx__sens_", stateVars, "_BY_THETA_", j, "___*D(", target, ", ",
+                       stateVars, ")"))
+  }
+  .l <- eval(parse(text = paste0("with(s, ", paste(.terms, collapse = "+"), ")")))
+  rxode2::rxFromSE(.l)
+}
+
+#' Build the symengine env carrying the impmap sensitivity model
+#' (\code{..thetaSens}).  For each estimated non-mu theta j it outputs
+#' rx__sens_rx_pred__BY_THETA_j___ = d(f)/d(theta_j) and
+#' rx__sens_rx_r__BY_THETA_j___ = d(V)/d(theta_j).
 #' @export
 rxUiGet.impmapThetaSens <- function(x, ...) {
   .ui <- x[[1]]
-  .idx <- .impmapNonMuStructTheta(.ui)
-  if (length(.idx) == 0L) return(NULL)
-  # Load the (linCmt-promoted) model into symengine, then add sensitivity ODEs
-  # for the non-mu structural thetas only.
+  .idx <- .impmapEstTheta(.ui)
+  if (length(.idx$all) == 0L) return(NULL)
   .s <- rxUiGet.loadPruneSens(x, ...)
   if (!exists("..maxTheta", .s)) return(NULL)
   .stateVars <- .rxode2stateOdeNoOutput(.s)
-  .thetaVars <- paste0("THETA_", .idx, "_")
-  rxode2::.rxJacobian(.s, c(.stateVars, .thetaVars))
-  rxode2::.rxSens(.s, .thetaVars)
-  # rx_pred_ before the sensitivity eval shadows base get/::
+  # State sensitivities only for the structural thetas.
+  .thetaVars <- paste0("THETA_", .idx$struct, "_")
+  if (length(.thetaVars) > 0L) {
+    rxode2::.rxJacobian(.s, c(.stateVars, .thetaVars))
+    rxode2::.rxSens(.s, .thetaVars)
+  }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
-  # d(f)/d(theta_j) = D(f, THETA_j) + sum_state rx__sens_state_BY_THETA_j * D(f, state)
-  .hd <- vapply(.idx, function(j) {
-    .terms <- paste0("D(rx_pred_, THETA_", j, "_)")
-    if (length(.stateVars) > 0L) {
-      .terms <- c(.terms,
-                  paste0("rx__sens_", .stateVars, "_BY_THETA_", j, "___*D(rx_pred_, ",
-                         .stateVars, ")"))
+  # d(f)/d(theta_j): chain rule for structural thetas, 0 for sigma thetas.
+  .dfOut <- vapply(.idx$all, function(j) {
+    if (j %in% .idx$struct) {
+      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=",
+             .impmapChainRule(.s, "rx_pred_", j, .stateVars, .idx$struct))
+    } else {
+      paste0("rx__sens_rx_pred__BY_THETA_", j, "___=0")
     }
-    .l <- eval(parse(text = paste0("with(.s, ", paste(.terms, collapse = "+"), ")")))
-    paste0("rx__sens_rx_pred__BY_THETA_", j, "___=", rxode2::rxFromSE(.l))
+  }, character(1))
+  # d(V)/d(theta_j): chain rule (structural) or direct partial (sigma).
+  .dvOut <- vapply(.idx$all, function(j) {
+    paste0("rx__sens_rx_r__BY_THETA_", j, "___=",
+           .impmapChainRule(.s, "rx_r_", j, .stateVars, .idx$struct))
   }, character(1))
   .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .hd, ""), collapse = "\n")
-  .s$..thetaSensIdx <- .idx
+  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .dfOut, .dvOut, ""), collapse = "\n")
+  .s$..thetaSensIdx <- .idx$all
   .s
 }
 attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
 
-#' Compile the impmap theta-sensitivity model.
+#' Compile the impmap sensitivity model.
 #'
 #' @param ui rxode2 ui object
-#' @return a compiled rxode2 model outputting rx__sens_rx_pred__BY_THETA_j___ for
-#'   each non-mu structural theta j, or NULL if there are none.
+#' @return a compiled rxode2 model outputting rx__sens_rx_pred__BY_THETA_j___ and
+#'   rx__sens_rx_r__BY_THETA_j___ for each estimated non-mu theta j, or NULL if
+#'   there are none.
 #' @noRd
 .impmapThetaSensModel <- function(ui) {
   .s <- rxUiGet.impmapThetaSens(list(ui))
@@ -88,5 +112,5 @@ attr(rxUiGet.impmapThetaSens, "rstudio") <- emptyenv()
   nlmixr2global$toRxParam <-
     paste0(.uiGetThetaEtaParams(ui, TRUE), "\n", ui$foceiCmtPreModel, "\n")
   nlmixr2global$toRxDvidCmt <- .foceiToCmtLinesAndDvid(ui)
-  .toRx(.s$..thetaSens, "compiling theta-sensitivity model...")
+  .toRx(.s$..thetaSens, "compiling sensitivity model...")
 }

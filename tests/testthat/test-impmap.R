@@ -286,4 +286,65 @@ test_that("M5: non-mu structural theta converges to FOCEI (symbolic sensitivity 
   expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
   expect_equal(fixef(.fi)[c("tka", "tcl")], fixef(.ff)[c("tka", "tcl")], tolerance = 0.05)
   expect_equal(unname(diag(.fi$omega)), unname(diag(.ff$omega)), tolerance = 0.1)
+  # the fixed residual-error theta stays put (not swept into the Newton step)
+  expect_equal(unname(fixef(.fi)["add.sd"]), 0.7)
+})
+
+test_that("M6: residual-error sigma converges to FOCEI (symbolic d(V)/d(sigma))", {
+  # add.sd (additive residual error) is estimated by the same M-step Newton update,
+  # now including the variance-part score/Fisher from the symbolic d(V)/d(sigma).
+  madd <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl / v * central
+      cp <- central / v
+      cp ~ add(add.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(madd, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(madd, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.03)
+  expect_equal(unname(fixef(.fi)["tv"]), unname(fixef(.ff)["tv"]), tolerance = 0.03)
+})
+
+test_that("M6: combined additive+proportional error converges to FOCEI", {
+  # proportional error makes V depend on the prediction f, so d(V)/d(theta)
+  # couples through the structural theta as well -- the general sensitivity path
+  # (d(f)/d(theta) and d(V)/d(theta)) handles both add.sd and prop.sd.
+  mcomb <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.5; prop.sd <- 0.1
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      d/dt(depot) <- -ka * depot
+      d/dt(central) <- ka * depot - cl / v * central
+      cp <- central / v
+      cp ~ add(add.sd) + prop(prop.sd)
+    })
+  }
+  .d <- nlmixr2data::theo_sd
+  .ff <- suppressWarnings(nlmixr2(mcomb, .d, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(mcomb, .d, "impmap",
+                                  impmapControl(print = 0L, nIter = 30L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.02)
 })

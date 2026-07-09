@@ -187,10 +187,10 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
     !(.muThetaIdx %in% .covGroupTheta)
   .control$impMuThetaIdx <- .muThetaIdx[.keep]
   .control$impMuEtaIdx <- .muEtaIdx[.keep]
-  # 0-based theta indices of the non-mu structural thetas (those with a
-  # d(f)/d(theta) sensitivity output in the theta-sensitivity model); the M-step
-  # Newton update maps its output columns back to these thetas.
-  .control$impThetaSensIdx <- as.integer(.impmapNonMuStructTheta(ui) - 1L)
+  # 0-based theta indices of the estimated non-mu thetas (structural + residual
+  # error) with sensitivity outputs in the sensitivity model; the M-step Newton
+  # update maps its output columns back to these thetas.
+  .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
   assign("control", .control, envir=ui)
   .foceiFamilyReturn(env, ui, ..., est="impmap")
 }

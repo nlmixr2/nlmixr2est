@@ -160,8 +160,9 @@ struct focei_options {
   // d(r)/d(eta) columns follow rx_pred_ contiguously; located by name at setup.
   int predOffset;
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
-  int thetaSensOffset = -1; // lhs offset of rx__sens_rx_pred__BY_THETA_1___ (impmap)
-  int thetaSensNeq = 0;     // ODE state count of the theta-sensitivity model (impmap)
+  int thetaSensOffset = -1;   // lhs offset of the first d(f)/d(theta) output (impmap)
+  int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
+  int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
 
   unsigned int neta;
   unsigned int ntheta;
@@ -8384,11 +8385,13 @@ double impEvalJointLik(const arma::vec& eta, int id) {
 // Solve the theta-sensitivity model for subject id at eta and fill dfdth
 // (nobs x ntheta) with d(f)/d(theta_t) at each observation.  Needs the theta-sens
 // model loaded (rxThetaSens) with op_focei.thetaSensNeq/thetaSensOffset set.
-// dfdth is filled (nobs x nSens) where nSens = op_focei.impThetaSensIdx.size();
-// column s corresponds to theta op_focei.impThetaSensIdx[s] (0-based).
-bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
+// dfdth and dVdth are filled (nobs x nSens) with d(f)/d(theta) and d(V)/d(theta),
+// nSens = op_focei.impThetaSensIdx.size(); column s corresponds to theta
+// op_focei.impThetaSensIdx[s] (0-based).
+bool impThetaSensDfDV(int id, const arma::vec& eta, arma::mat& dfdth, arma::mat& dVdth) {
   int nSens = op_focei.impThetaSensIdx.size();
-  if (op_focei.thetaSensOffset < 0 || rxThetaSens.calc_lhs == NULL || nSens == 0) return false;
+  if (op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
+      rxThetaSens.calc_lhs == NULL || nSens == 0) return false;
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
@@ -8406,8 +8409,8 @@ bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
     kk = getIndIx(ind, j);
     if (getIndEvid(ind, kk) == 0) ++nobs;
   }
-  dfdth.set_size(nobs, nSens);
-  dfdth.zeros();
+  dfdth.set_size(nobs, nSens); dfdth.zeros();
+  dVdth.set_size(nobs, nSens); dVdth.zeros();
   int k = 0;
   double curT;
   for (int j = 0; j < nall; ++j) {
@@ -8422,6 +8425,7 @@ bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
       rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       for (int s = 0; s < nSens; ++s) {
         dfdth(k, s) = lhs[op_focei.thetaSensOffset + s];
+        dVdth(k, s) = lhs[op_focei.thetaSensDvOffset + s];
       }
       ++k;
     }
@@ -8430,12 +8434,14 @@ bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
 }
 
 // Accumulate subject id's importance-sampling contribution to the score `g`
-// (length nSens) and Gauss-Newton Hessian `H` (nSens x nSens) for the non-mu
-// structural thetas, from its samples `S` (nsamp x neta) and normalized weights
-// `zk` (nsamp).  For each sample the inner model gives per-observation f and V
-// and the theta-sensitivity model gives d(f)/d(theta); with additive residual
-// error (d(V)/d(theta)=0) the score is sum_j -(f-dv)/V * d(f)/d(theta) and the
-// Gauss-Newton Hessian is sum_j d(f)/d(theta) d(f)/d(theta)' / V.
+// (length nSens) and Fisher-information Hessian `H` (nSens x nSens) for the
+// estimated non-mu thetas, from its samples `S` (nsamp x neta) and normalized
+// weights `zk`.  For each sample the inner model gives per-observation f and V and
+// the sensitivity model gives d(f)/d(theta) and d(V)/d(theta).  For a Gaussian
+// endpoint the score is
+//   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
+// and the (mean+variance) Fisher information is
+//   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
 void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
                    arma::vec& g, arma::mat& H) {
   int nSens = op_focei.impThetaSensIdx.size();
@@ -8444,7 +8450,7 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   int _rxId = getRxId(id);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
   int nsamp = S.n_rows;
-  arma::mat dfdth;
+  arma::mat dfdth, dVdth;
   for (int k = 0; k < nsamp; ++k) {
     arma::vec eta = S.row(k).t();
     std::vector<double> ev(eta.begin(), eta.end());
@@ -8458,16 +8464,18 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
       setIndIdx(ind, j); kk = getIndIx(ind, j);
       if (getIndEvid(ind, kk) == 0) { dv[kobs] = tbs(getIndDv(ind, kk)); kobs++; }
     }
-    // theta-sensitivity solve overwrites the solve buffer, so grab f/V/dv first
-    if (!impThetaSensDfDtheta(id, eta, dfdth)) continue;
+    // sensitivity solve overwrites the solve buffer, so grab f/V/dv first
+    if (!impThetaSensDfDV(id, eta, dfdth, dVdth)) continue;
     if ((int)dfdth.n_rows != nobs) continue;
     for (int jo = 0; jo < nobs; ++jo) {
       double f = fr(jo, 0), V = fr(jo, 1);
       if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
       double err = f - dv[jo];
-      arma::rowvec d = dfdth.row(jo);
-      g += zk[k] * (-err / V) * d.t();
-      H += zk[k] * (d.t() * d) / V;
+      arma::rowvec df = dfdth.row(jo);
+      arma::rowvec dV = dVdth.row(jo);
+      g += zk[k] * ((-err / V) * df.t() +
+                    (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+      H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
     }
   }
 }
@@ -8550,15 +8558,19 @@ Environment foceiFitCpp_(Environment e){
           rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
           op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
           rxThetaSens.neq = op_focei.thetaSensNeq;
-          // The model outputs rx__sens_rx_pred__BY_THETA_j___ for each non-mu
-          // structural theta j (1-based), in ascending order, contiguous in lhs.
-          // Record the lhs offset of the first (impThetaSensIdx[0] + 1).
+          // The model outputs rx__sens_rx_pred__BY_THETA_j___ (d(f)/d(theta)) and
+          // rx__sens_rx_r__BY_THETA_j___ (d(V)/d(theta)) for each estimated non-mu
+          // theta j (1-based), in two ascending, contiguous blocks.  Record the lhs
+          // offsets of the first of each (impThetaSensIdx[0] + 1).
           CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
           if (op_focei.impThetaSensIdx.size() > 0) {
-            std::string first = "rx__sens_rx_pred__BY_THETA_" +
-              std::to_string(op_focei.impThetaSensIdx[0] + 1) + "___";
+            std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
+            std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
+            std::string firstV = "rx__sens_rx_r__BY_THETA_" + j0 + "___";
             for (int il = 0; il < tsLhs.size(); ++il) {
-              if (as<std::string>(tsLhs[il]) == first) { op_focei.thetaSensOffset = il; break; }
+              std::string nm = as<std::string>(tsLhs[il]);
+              if (nm == firstF) op_focei.thetaSensOffset = il;
+              else if (nm == firstV) op_focei.thetaSensDvOffset = il;
             }
           }
         }
