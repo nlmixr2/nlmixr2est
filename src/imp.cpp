@@ -192,6 +192,17 @@ void impOuter(Environment e) {
   impSyncInitParToFullTheta();
   impMapPass(e);
 
+  // diagnostic: theta-sensitivity d(f)/d(theta) for subject 0 at its mode
+  {
+    arma::vec m0(neta);
+    impGetMode(0, m0);
+    arma::mat dfdth0;
+    if (impThetaSensDfDtheta(0, m0, dfdth0)) {
+      e["impDfDthetaS0"] = wrap(dfdth0);
+      e["impDfDthetaS0Eta"] = wrap(m0);
+    }
+  }
+
   // Stash the last-iteration E-step diagnostics.
   List condVarList(nsub);
   for (int id = 0; id < nsub; ++id) condVarList[id] = wrap(condVar[id]);

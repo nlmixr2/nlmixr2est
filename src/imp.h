@@ -60,8 +60,9 @@ bool impGetHessian(int id, arma::mat& H);
 double impEvalJointLik(const arma::vec& eta, int id);
 
 // Solve the theta-sensitivity model for subject `id` at `eta`, filling `dfdth`
-// (nobs x ntheta) with d(prediction)/d(theta_t) at each observation.  Returns
-// false if the theta-sensitivity model is not available.
+// (nobs x nSens) with d(prediction)/d(theta) at each observation.  Column s maps
+// to the non-mu structural theta impThetaSensIdx[s].  Returns false if the
+// theta-sensitivity model is not available.
 bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth);
 
 // ---- implemented in imp.cpp ----

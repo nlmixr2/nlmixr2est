@@ -439,6 +439,7 @@ struct focei_options {
   std::string impDiagXform = "sqrt"; // Omega diagonal parameterization for the EM Omega update
   IntegerVector impMuThetaIdx; // 0-based theta indices of simple mu intercepts (no covariates)
   IntegerVector impMuEtaIdx;   // corresponding 0-based eta indices
+  IntegerVector impThetaSensIdx; // 0-based theta indices with a d(f)/d(theta) sensitivity output
 };
 
 focei_options op_focei;
@@ -4665,6 +4666,8 @@ NumericVector foceiSetup_(const RObject &obj,
       op_focei.impMuThetaIdx = as<IntegerVector>(foceiO["impMuThetaIdx"]);
     if (foceiO.containsElementNamed("impMuEtaIdx"))
       op_focei.impMuEtaIdx = as<IntegerVector>(foceiO["impMuEtaIdx"]);
+    if (foceiO.containsElementNamed("impThetaSensIdx"))
+      op_focei.impThetaSensIdx = as<IntegerVector>(foceiO["impThetaSensIdx"]);
   }
 
   op_focei.zeroGrad = false;
@@ -8363,25 +8366,33 @@ double impEvalJointLik(const arma::vec& eta, int id) {
 // Solve the theta-sensitivity model for subject id at eta and fill dfdth
 // (nobs x ntheta) with d(f)/d(theta_t) at each observation.  Needs the theta-sens
 // model loaded (rxThetaSens) with op_focei.thetaSensNeq/thetaSensOffset set.
+// dfdth is filled (nobs x nSens) where nSens = op_focei.impThetaSensIdx.size();
+// column s corresponds to theta op_focei.impThetaSensIdx[s] (0-based).
 bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
-  if (op_focei.thetaSensOffset < 0 || rxThetaSens.calc_lhs == NULL) return false;
+  int nSens = op_focei.impThetaSensIdx.size();
+  if (op_focei.thetaSensOffset < 0 || rxThetaSens.calc_lhs == NULL || nSens == 0) return false;
   rx = getRxSolve_();
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
-  focei_ind *fInd = &(inds_focei[id]);
-  int ntheta = (int)op_focei.ntheta;
   for (int j = 0; j < (int)op_focei.neta; ++j) {
     setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
   }
   IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
   setIndSolve(ind, -1);
   thetaSensOde(_rxId);
-  dfdth.set_size(fInd->nobs, ntheta);
+  int nall = getIndNallTimes(ind);
+  int nobs = 0, kk;
+  for (int j = 0; j < nall; ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    if (getIndEvid(ind, kk) == 0) ++nobs;
+  }
+  dfdth.set_size(nobs, nSens);
   dfdth.zeros();
-  int k = 0, kk;
+  int k = 0;
   double curT;
-  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+  for (int j = 0; j < nall; ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
     curT = getTime(kk, ind);
@@ -8389,13 +8400,12 @@ bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
     if (isDose(getIndEvid(ind, kk))) {
       rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
       continue;
-    } else if (getIndEvid(ind, kk) == 0) {
+    } else if (getIndEvid(ind, kk) == 0 && k < nobs) {
       rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      for (int t = 0; t < ntheta; ++t) {
-        dfdth(k, t) = lhs[op_focei.thetaSensOffset + t];
+      for (int s = 0; s < nSens; ++s) {
+        dfdth(k, s) = lhs[op_focei.thetaSensOffset + s];
       }
       ++k;
-      if (k >= (int)fInd->nobs) break;
     }
   }
   return true;
@@ -8479,10 +8489,15 @@ Environment foceiFitCpp_(Environment e){
           rxUpdateFuns(as<SEXP>(mvts["trans"]), &rxThetaSens);
           op_focei.thetaSensNeq = as<CharacterVector>(mvts["state"]).size();
           rxThetaSens.neq = op_focei.thetaSensNeq;
+          // The model outputs rx__sens_rx_pred__BY_THETA_j___ for each non-mu
+          // structural theta j (1-based), in ascending order, contiguous in lhs.
+          // Record the lhs offset of the first (impThetaSensIdx[0] + 1).
           CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
-          for (int il = 0; il < tsLhs.size(); ++il) {
-            if (as<std::string>(tsLhs[il]) == "rx__sens_rx_pred__BY_THETA_1___") {
-              op_focei.thetaSensOffset = il; break;
+          if (op_focei.impThetaSensIdx.size() > 0) {
+            std::string first = "rx__sens_rx_pred__BY_THETA_" +
+              std::to_string(op_focei.impThetaSensIdx[0] + 1) + "___";
+            for (int il = 0; il < tsLhs.size(); ++il) {
+              if (as<std::string>(tsLhs[il]) == first) { op_focei.thetaSensOffset = il; break; }
             }
           }
         }
