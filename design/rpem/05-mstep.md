@@ -110,15 +110,22 @@ paper's `beta`. Two paths, chosen per parameter:
   REMAINING: per-endpoint combined/TBS/power (currently add/prop per endpoint);
   power/lambda (propT) closed forms could reuse SAEM's `ares`/`bres`/`yptp` if
   faster.
-- **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
-  structural coefficients: maximize the Monte-Carlo Q-function
-  `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`
-  over `beta`, using the nlm-family optimizer. Because the accepted `theta`
-  samples and their cached structural predictions (`rx_pred_f_`) are stored,
-  re-scoring a candidate `beta` re-evaluates only the residual-likelihood
-  (`rx_r_`) branch of the RPEM likelihood model (`13-likelihood-model.md`) and
-  does NOT re-solve ODEs. This is what makes the numeric path cheap per
-  iteration.
+- **Numeric** for non-mu-referenced STRUCTURAL fixed effects (the paper's beta):
+  parameters with no random effect, which the conjugate mu update cannot move
+  (their sampled eta is identically 0). DONE (`rpemMstepBeta`, errType-independent,
+  runs every iteration when present). Maximize the importance-weighted
+  complete-data log-likelihood
+  `Q(beta) = sum_i sum_j w_ij log p(Y_i | beta, eta_ij)` over `beta`, with `w_ij`
+  the E-step self-normalized weights (softmax of stored log p) and `eta_ij` the
+  stored samples. Because beta enters the STRUCTURAL prediction, re-scoring a
+  candidate DOES re-solve the ODE (unlike the residual updates, which re-score
+  from cached cp/DV without solving). One damped diagonal-Newton step
+  (finite-difference gradient + curvature) with a backtracking line search per EM
+  iteration; the outer loop converges beta. Runs right after the E-step while the
+  solve struct is still loaded (the MH residual step's rxRmvn draw clobbers it).
+  Recovers tcl from 0.5 -> ~1.0 and matches FOCEI (`test-rpem-struct.R`). fix()ed
+  params are held. NOTE: the residual re-score path is cheap (no solve, cached
+  cpv/dvv); the structural path is ~8 extra solve-sweeps per EM iteration.
 
 The classifier decides the path; a model can have some closed-form and some
 numeric fixed effects simultaneously.
