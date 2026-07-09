@@ -8431,57 +8431,6 @@ double impEvalJointLik(const arma::vec& eta, int id) {
   return likInner0(ev.data(), id);
 }
 
-// Solve the theta-sensitivity model for subject id at eta and fill dfdth
-// (nobs x ntheta) with d(f)/d(theta_t) at each observation.  Needs the theta-sens
-// model loaded (rxThetaSens) with op_focei.thetaSensNeq/thetaSensOffset set.
-// dfdth and dVdth are filled (nobs x nSens) with d(f)/d(theta) and d(V)/d(theta),
-// nSens = op_focei.impThetaSensIdx.size(); column s corresponds to theta
-// op_focei.impThetaSensIdx[s] (0-based).
-bool impThetaSensDfDV(int id, const arma::vec& eta, arma::mat& dfdth, arma::mat& dVdth) {
-  int nSens = op_focei.impThetaSensIdx.size();
-  if (op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
-      rxThetaSens.calc_lhs == NULL || nSens == 0) return false;
-  rx = getRxSolve_();
-  rx_solving_options *op = getSolvingOptions(rx);
-  int _rxId = getRxId(id);
-  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
-  for (int j = 0; j < (int)op_focei.neta; ++j) {
-    setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
-  }
-  IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
-  setIndSolve(ind, -1);
-  thetaSensOde(_rxId);
-  int nall = getIndNallTimes(ind);
-  int nobs = 0, kk;
-  for (int j = 0; j < nall; ++j) {
-    setIndIdx(ind, j);
-    kk = getIndIx(ind, j);
-    if (getIndEvid(ind, kk) == 0) ++nobs;
-  }
-  dfdth.set_size(nobs, nSens); dfdth.zeros();
-  dVdth.set_size(nobs, nSens); dVdth.zeros();
-  int k = 0;
-  double curT;
-  for (int j = 0; j < nall; ++j) {
-    setIndIdx(ind, j);
-    kk = getIndIx(ind, j);
-    curT = getTime(kk, ind);
-    double *lhs = getIndLhs(ind);
-    if (isDose(getIndEvid(ind, kk))) {
-      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      continue;
-    } else if (getIndEvid(ind, kk) == 0 && k < nobs) {
-      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
-      for (int s = 0; s < nSens; ++s) {
-        dfdth(k, s) = lhs[op_focei.thetaSensOffset + s];
-        dVdth(k, s) = lhs[op_focei.thetaSensDvOffset + s];
-      }
-      ++k;
-    }
-  }
-  return true;
-}
-
 // Central-FD fallback for the theta-sensitivity gradient (mirrors the pred-model
 // finite-difference fallback the inner problem uses when the sensitivity ODE will
 // not solve).  Solves the pred model at the current (theta, eta) for per-obs f and
