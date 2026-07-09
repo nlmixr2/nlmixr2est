@@ -182,6 +182,8 @@ void impOuter(Environment e) {
     if (nSens > 0) {
       arma::vec g(nSens, arma::fill::zeros);
       arma::mat H(nSens, nSens, arma::fill::zeros);
+      // Batched gradient pass over the theta-sensitivity model (impThetaScore
+      // switches ind->neqOverride to thetaSensNeq); single shared pool, no swap.
       for (int id = 0; id < nsub; ++id) {
         if (sampS[id].n_rows > 0) impThetaScore(id, sampS[id], sampZk[id], g, H);
       }

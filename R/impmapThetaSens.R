@@ -77,6 +77,10 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }
   .pred <- .s$`rx_pred_`
   .prd <- paste0("rx_pred_=", rxode2::rxFromSE(.pred))
+  # Also output the residual variance V so the M-step gradient reads f and V from
+  # this one solve (no separate inner solve / context interleave).
+  .rvar <- .s$`rx_r_`
+  .rr <- paste0("rx_r_=", rxode2::rxFromSE(.rvar))
   # d(f)/d(theta_j): chain rule for structural thetas, 0 for sigma thetas.
   .dfOut <- vapply(.idx$all, function(j) {
     if (j %in% .idx$struct) {
@@ -93,7 +97,7 @@ rxUiGet.impmapThetaSens <- function(x, ...) {
   }, character(1))
   .ddt <- .s$..ddt; if (is.null(.ddt)) .ddt <- character(0)
   .sens <- .s$..sens; if (is.null(.sens)) .sens <- character(0)
-  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .dfOut, .dvOut, ""), collapse = "\n")
+  .s$..thetaSens <- paste(c(.ddt, .sens, .prd, .rr, .dfOut, .dvOut, ""), collapse = "\n")
   .s$..thetaSensIdx <- .idx$all
   .s
 }

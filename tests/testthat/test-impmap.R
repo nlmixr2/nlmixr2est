@@ -348,3 +348,58 @@ test_that("M6: combined additive+proportional error converges to FOCEI", {
   expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
   expect_equal(unname(fixef(.fi)["prop.sd"]), unname(fixef(.ff)["prop.sd"]), tolerance = 0.02)
 })
+
+test_that("M7: multiple endpoints with more structural thetas than etas (pool sized for theta-sens)", {
+  # 2-endpoint PK/PD (indirect response).  Only eta.cl is random, so the inner
+  # model has few states while the theta-sensitivity model (tka, tv, tec50, tkout,
+  # te0) has many -- exercising the pool-sized-for-the-larger-structure path where
+  # the inner MAP runs with ind->neqOverride.  All thetas + both sigmas should
+  # converge to FOCEI, and the fit must not crash.
+  skip_on_cran()
+  mpkpd <- function() {
+    ini({
+      tka <- 0.5; tcl <- -3.2; tv <- -0.7; tec50 <- 2; tkout <- -2; te0 <- 4.6
+      eta.cl ~ 0.09
+      add.sd <- 0.4; pdadd.sd <- 2
+    })
+    model({
+      ka <- exp(tka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+      ec50 <- exp(tec50); kout <- exp(tkout); e0 <- exp(te0)
+      d/dt(depot) <- -ka * depot
+      d/dt(center) <- ka * depot - cl / v * center
+      cp <- center / v
+      effect(0) <- e0
+      d/dt(effect) <- kout * (e0 * (1 - cp / (ec50 + cp)) - effect)
+      cp ~ add(add.sd) | center
+      effect ~ add(pdadd.sd) | effect
+    })
+  }
+  # simulate a 2-endpoint dataset from the model
+  set.seed(1); rxode2::rxSetSeed(1)
+  .ev <- rxode2::et(amt = 100, cmt = "depot", id = 1:12)
+  .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "center")
+  .ev <- rxode2::et(.ev, seq(0.5, 24, by = 3), cmt = "effect")
+  .d <- as.data.frame(rxode2::rxSolve(mpkpd, .ev, addDosing = TRUE))
+  .dose <- .d[.d$evid != 0, c("id", "time", "CMT", "amt", "evid")]
+  .dose$dv <- NA_real_
+  names(.dose)[names(.dose) == "CMT"] <- "cmt"
+  .obs <- .d[.d$evid == 0, c("id", "time", "CMT", "sim")]
+  .obs$amt <- 0; .obs$evid <- 0
+  names(.obs)[names(.obs) == "CMT"] <- "cmt"
+  names(.obs)[names(.obs) == "sim"] <- "dv"
+  .dat <- rbind(.dose[, c("id", "time", "dv", "cmt", "amt", "evid")],
+                .obs[, c("id", "time", "dv", "cmt", "amt", "evid")])
+  .dat <- .dat[order(.dat$id, .dat$time, -.dat$evid), ]
+  rxode2::rxSetSeed(42)
+  .ff <- suppressWarnings(nlmixr2(mpkpd, .dat, "focei", foceiControl(print = 0L, covMethod = "")))
+  rxode2::rxSetSeed(42)
+  .fi <- suppressWarnings(nlmixr2(mpkpd, .dat, "impmap",
+                                  impmapControl(print = 0L, nIter = 20L, isample = 300L)))
+  expect_true(inherits(.fi, "nlmixr2FitCore"))
+  # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
+  expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
+               fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
+  # both endpoints' residual-error sigmas match FOCEI
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  expect_equal(unname(fixef(.fi)["pdadd.sd"]), unname(fixef(.ff)["pdadd.sd"]), tolerance = 0.1)
+})

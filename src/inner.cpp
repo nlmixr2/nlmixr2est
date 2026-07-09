@@ -162,7 +162,10 @@ struct focei_options {
   int predNoLhsOffset; // same, for the predNoLhs model used in the FD fallback
   int thetaSensOffset = -1;   // lhs offset of the first d(f)/d(theta) output (impmap)
   int thetaSensDvOffset = -1; // lhs offset of the first d(V)/d(theta) output (impmap)
+  int thetaSensPredOffset = -1; // lhs offset of rx_pred_ (f) in the sensitivity model
+  int thetaSensROffset = -1;    // lhs offset of rx_r_ (V) in the sensitivity model
   int thetaSensNeq = 0;       // ODE state count of the sensitivity model (impmap)
+  int innerNeq = 0;           // inner model state count when the pool is sized larger (impmap)
 
   unsigned int neta;
   unsigned int ntheta;
@@ -4558,6 +4561,9 @@ extern "C" void outerGradNumOptim(int n, double *par, double *gr, void *ex);
 // Stash foceiSetup_'s rxSolve_ setup args so foceiCalcR can re-run them and restore
 // the fit solve before the finite-difference Hessian.
 static SEXP covSolveArgs_ = R_NilValue;
+// est="impmap": theta-sensitivity model that sizes the shared pool (the largest
+// structure), or R_NilValue to size for the inner model as usual.
+SEXP _impPoolModel = R_NilValue;
 static void storeCovSolveArgs_(SEXP obj, SEXP rxControl, SEXP params, SEXP data) {
   List L = List::create(obj, rxControl, params, data);
   if (covSolveArgs_ != R_NilValue) R_ReleaseObject(covSolveArgs_);
@@ -4947,7 +4953,10 @@ NumericVector foceiSetup_(const RObject &obj,
     if (_needSolveArgs) {
       storeCovSolveArgs_(obj, rxControl, params, data);
     }
-    rxode2::rxSolve_(obj, rxControl,
+    // est="impmap": size the shared solve pool for the theta-sensitivity model (the
+    // largest structure) when set; the inner MAP then uses ind->neqOverride.
+    RObject _poolObj = (_impPoolModel != R_NilValue) ? RObject(_impPoolModel) : obj;
+    rxode2::rxSolve_(_poolObj, rxControl,
                      R_NilValue,//const Nullable<CharacterVector> &specParams =
                      R_NilValue,//const Nullable<List> &extraArgs =
                      as<RObject>(params),//const RObject &params =
@@ -8436,47 +8445,83 @@ bool impThetaSensDfDV(int id, const arma::vec& eta, arma::mat& dfdth, arma::mat&
 // Accumulate subject id's importance-sampling contribution to the score `g`
 // (length nSens) and Fisher-information Hessian `H` (nSens x nSens) for the
 // estimated non-mu thetas, from its samples `S` (nsamp x neta) and normalized
-// weights `zk`.  For each sample the inner model gives per-observation f and V and
-// the sensitivity model gives d(f)/d(theta) and d(V)/d(theta).  For a Gaussian
-// endpoint the score is
-//   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
-// and the (mean+variance) Fisher information is
+// weights `zk`.  Runs ENTIRELY in the theta-sensitivity solve context (caller must
+// impSwapToTs first): that model outputs per-observation f (rx_pred_), V (rx_r_),
+// d(f)/d(theta) and d(V)/d(theta) in one solve.  For a Gaussian endpoint the score
+// is sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ] and
+// the (mean+variance) Fisher information is
 //   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
 void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
                    arma::vec& g, arma::mat& H) {
   int nSens = op_focei.impThetaSensIdx.size();
-  if (nSens == 0) return;
+  if (nSens == 0 || op_focei.thetaSensOffset < 0 || op_focei.thetaSensDvOffset < 0 ||
+      op_focei.thetaSensPredOffset < 0 || op_focei.thetaSensROffset < 0 ||
+      rxThetaSens.calc_lhs == NULL) return;
   rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
   int nsamp = S.n_rows;
-  arma::mat dfdth, dVdth;
+  // The shared solve pool is sized for the theta-sensitivity model (the largest
+  // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
+  // to thetaSensNeq for these solves and restore on exit (mirrors the predNeq FD
+  // pattern).
+  IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
+  // Sync the current thetas into this subject before solving (etas set per sample).
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
+  }
   for (int k = 0; k < nsamp; ++k) {
-    arma::vec eta = S.row(k).t();
-    std::vector<double> ev(eta.begin(), eta.end());
-    double ll = likInner0(ev.data(), id);
-    if (!R_finite(ll)) continue;
-    arma::mat fr = grabRFmatFromInner(id, false); // nObs x 2 (f, V)
-    int nobs = fr.n_rows;
-    arma::vec dv(nobs);
-    int kk, kobs = 0;
-    for (int j = 0; j < getIndNallTimes(ind) && kobs < nobs; ++j) {
-      setIndIdx(ind, j); kk = getIndIx(ind, j);
-      if (getIndEvid(ind, kk) == 0) { dv[kobs] = tbs(getIndDv(ind, kk)); kobs++; }
+    for (int j = 0; j < (int)op_focei.neta; ++j) {
+      setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
     }
-    // sensitivity solve overwrites the solve buffer, so grab f/V/dv first
-    if (!impThetaSensDfDV(id, eta, dfdth, dVdth)) continue;
-    if ((int)dfdth.n_rows != nobs) continue;
-    for (int jo = 0; jo < nobs; ++jo) {
-      double f = fr(jo, 0), V = fr(jo, 1);
-      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
-      double err = f - dv[jo];
-      arma::rowvec df = dfdth.row(jo);
-      arma::rowvec dV = dVdth.row(jo);
-      g += zk[k] * ((-err / V) * df.t() +
-                    (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-      H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+    setIndSolve(ind, -1);
+    thetaSensOde(_rxId);
+    int nall = getIndNallTimes(ind), kk;
+    double curT;
+    for (int jj = 0; jj < nall; ++jj) {
+      setIndIdx(ind, jj);
+      kk = getIndIx(ind, jj);
+      curT = getTime(kk, ind);
+      double *lhs = getIndLhs(ind);
+      if (isDose(getIndEvid(ind, kk))) {
+        rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+        continue;
+      } else if (getIndEvid(ind, kk) == 0) {
+        rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+        double f = lhs[op_focei.thetaSensPredOffset];
+        double V = lhs[op_focei.thetaSensROffset];
+        if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
+        double err = f - tbs(getIndDv(ind, kk));
+        arma::rowvec df(nSens), dV(nSens);
+        for (int s = 0; s < nSens; ++s) {
+          df[s] = lhs[op_focei.thetaSensOffset + s];
+          dV[s] = lhs[op_focei.thetaSensDvOffset + s];
+        }
+        g += zk[k] * ((-err / V) * df.t() +
+                      (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+        H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
+      }
     }
+  }
+}
+
+// est="impmap": the theta-sensitivity model is the largest structure, so it sizes
+// the single shared solve pool (foceiSetup_'s rxSolve_ uses _impPoolModel when set,
+// mirroring how the pool is sized for the inner model in plain FOCEI).  The inner
+// MAP then runs with ind->neqOverride = op_focei.innerNeq (like the predNeq FD
+// path), and the theta-sensitivity solve overrides to thetaSensNeq.
+// (_impPoolModel is declared earlier, before foceiSetup_.)
+
+// Pin every subject's effective inner state count to op_focei.innerNeq, since the
+// pool (and op->neq) is sized for the larger theta-sensitivity model.
+void impSetInnerNeqOverride() {
+  if (op_focei.innerNeq <= 0) return;
+  rx = getRxSolve_();
+  int nsub = getRxNsub(rx);
+  for (int id = 0; id < nsub; ++id) {
+    rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+    setIndNeqOverride(ind, op_focei.innerNeq);
   }
 }
 
@@ -8521,8 +8566,22 @@ Environment foceiFitCpp_(Environment e){
       Nullable<NumericMatrix> _etaMat = as<Nullable<NumericMatrix>>(e["etaMat"]);
       Nullable<List> _control = as<Nullable<List>>(e["control"]);
       setupAq0_(e);
+      // est="impmap": if the theta-sensitivity model has more ODE states than the
+      // inner model, use it to size the shared solve pool (foceiSetup_'s rxSolve_)
+      // and record the inner state count so inner solves run with neqOverride.
+      _impPoolModel = R_NilValue;
+      op_focei.innerNeq = 0;
+      if (model.containsElementNamed("thetaSens")) {
+        RObject _tsm = model["thetaSens"];
+        if (rxode2::rxIs(_tsm, "rxode2")) {
+          int _tsNeq = as<CharacterVector>(rxode2::rxModelVars_(_tsm)["state"]).size();
+          int _innNeq = as<CharacterVector>(rxode2::rxModelVars_(inner)["state"]).size();
+          if (_tsNeq > _innNeq) { _impPoolModel = _tsm; op_focei.innerNeq = _innNeq; }
+        }
+      }
       foceiSetup_(inner, _dataSav, _thetaIni, _mixIdx, _thetaFixed, _skipCov,
                   _rxInv, _lower, _upper, _etaMat, _control);
+      _impPoolModel = R_NilValue; // consumed by foceiSetup_
       if (model.containsElementNamed("predNoLhs")) {
         RObject noLhs;
         if (model.containsElementNamed("predNoLhsLlik")) {
@@ -8563,6 +8622,8 @@ Environment foceiFitCpp_(Environment e){
           // theta j (1-based), in two ascending, contiguous blocks.  Record the lhs
           // offsets of the first of each (impThetaSensIdx[0] + 1).
           CharacterVector tsLhs = as<CharacterVector>(mvts["lhs"]);
+          op_focei.thetaSensPredOffset = -1;
+          op_focei.thetaSensROffset = -1;
           if (op_focei.impThetaSensIdx.size() > 0) {
             std::string j0 = std::to_string(op_focei.impThetaSensIdx[0] + 1);
             std::string firstF = "rx__sens_rx_pred__BY_THETA_" + j0 + "___";
@@ -8571,8 +8632,15 @@ Environment foceiFitCpp_(Environment e){
               std::string nm = as<std::string>(tsLhs[il]);
               if (nm == firstF) op_focei.thetaSensOffset = il;
               else if (nm == firstV) op_focei.thetaSensDvOffset = il;
+              else if (nm == "rx_pred_") op_focei.thetaSensPredOffset = il;
+              else if (nm == "rx_r_") op_focei.thetaSensROffset = il;
             }
           }
+        }
+        // The pool is sized for the theta-sensitivity model (the largest); pin the
+        // inner solves to the inner state count via ind->neqOverride.
+        if (op_focei.thetaSensOffset >= 0 && op_focei.innerNeq > 0) {
+          impSetInnerNeqOverride();
         }
       }
       // Now setup which ETAs need a finite difference
