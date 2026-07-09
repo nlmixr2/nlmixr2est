@@ -46,6 +46,33 @@ Memory guard: with `n=50, K=1, m_Gauss=1000, nRandom=7` this is ~3M doubles
 large `n*K*m_Gauss`, allow a chunked mode (solve+score in blocks, keep only what
 the M-step needs). Flag if the store must be disk-backed (not expected M1).
 
+## C++ solve blueprint (src/rpem.cpp, mirrors nlm.cpp setup)
+
+The batched solve reuses the exact machinery `nlm.cpp` uses to solve the same
+`rx_pred_` model in C:
+
+- Setup once per fit (like `nlmSetup`): `rxUpdateFuns(mv["trans"], &rxPred)` to
+  bind the compiled rpem predOnly model; `rxode2::rxSolve_(model, rxControl, ...,
+  params, data, setupOnly=1)`; `rx = getRxSolve_()`; walk subjects via
+  `getSolvingOptionsInd`/`getIndEvid` to build per-id observation offsets
+  (`idS`/`idF`/`nobs`), as `nlmSetup` does.
+- **Batch shape**: expand the population so each `(subject i, component k, sample
+  j)` is its own solve "id". rxode2 supports per-id parameter rows, so build a
+  params matrix whose rows share `THETA` (population mu / fixed effects, constant
+  within an iteration) and carry that draw's `ETA`. The event records for each
+  real subject are replicated under the expanded ids. One `par_solve` then
+  threads across all `n*K*m_Gauss` ids (see `06-parallelization.md`).
+- **Read-back**: per expanded id, sum `lhs[0]` (`rx_pred_`) over its observation
+  rows -> `-log p(Y_i | theta)`; store `log p = -sum(rx_pred_)`. Cache `lhs[1]`
+  (`rx_pred_f_`) per observation for M-step residual re-scoring (C1.3).
+- Chunking: when `n*K*m_Gauss` is too large to expand at once, loop the batch in
+  blocks, reusing one expanded event buffer, keeping only per-sample `log p`,
+  `theta`, and cached `rx_pred_f_`.
+
+Open design point (resolve at implementation): confirm the cheapest way to vary
+`ETA` per id -- a per-id params matrix passed to `rxSolve_`, vs. supplying `ETA`
+as per-id data columns. Prototype both; pick by solve throughput.
+
 ## Controls (see `10-stopping-control.md`)
 
 - `nGauss` (`m_Gauss`): samples per subject per component. Default 1000
