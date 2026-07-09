@@ -26,11 +26,16 @@ test_that("est='rpem' dispatch runs end-to-end (K=1)", {
                  control=rpemControl(nGauss=200L, nMH=50000L, mhBurn=5000L,
                                      niter=20L, collect=8L, seed=100L))
 
-  # Plumbing smoke test: dispatch runs and returns finite, plausible estimates.
-  # Precise FOCEI-recovery is covered by test-rpem-fit.R.
-  expect_s3_class(fit, "nlmixr2rpem")
-  expect_true(is.finite(unname(fit$mu["tka"])))
-  expect_gt(unname(fit$mu["tka"]), 0.1);  expect_lt(unname(fit$mu["tka"]), 1.2)
-  expect_gt(unname(fit$omega["eta.ka"]), 0.05); expect_lt(unname(fit$omega["eta.ka"]), 0.8)
-  expect_gt(fit$addSd, 0.05); expect_lt(fit$addSd, 0.3)
+  # est="rpem" returns a full nlmixr2FitData (population fit assembled via the
+  # eval-only FOCEI path at the RPEM estimates).
+  expect_s3_class(fit, "nlmixr2FitData")
+  expect_true(is.data.frame(fit))
+  expect_true(all(c("IPRED", "PRED", "CWRES", "eta.ka") %in% names(fit)))
+  expect_equal(nrow(fit), sum(dat$evid == 0))
+  # parameter table has the RPEM estimates (finite, plausible ranges)
+  .pf <- fit$parFixedDf
+  expect_true(is.finite(.pf["tka", "Estimate"]))
+  expect_gt(.pf["tka", "Estimate"], 0.1);  expect_lt(.pf["tka", "Estimate"], 1.2)
+  expect_gt(fit$omega[1, 1], 0.05); expect_lt(fit$omega[1, 1], 0.8)
+  expect_true(is.finite(fit$objDf[1, "OBJF"]))
 })

@@ -132,7 +132,8 @@ getValidNlmixrCtl.rpem <- function(control) {
 .rpemBuildFit <- function(env, ui, control, rfit) {
   .ret <- new.env(parent = emptyenv())
   .ret$table <- env$table
-  .rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol)
+  .rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol,
+                                  method = "liblsoda")
   .foceiPreProcessData(env$data, .ret, ui, .rxControl)
   .ret$ui <- ui
   .cl <- rfit$classify
@@ -164,19 +165,40 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ret$est <- "rpem"
   .ret$ofvType <- "rpem"
   .ret$adjObf <- TRUE
+  # Store the control on the fit env so nmObjGetControl (hence methodOde, etc.)
+  # resolve later.  nmObjHandleControlObject may null env$control, so pass the
+  # saved .foceiControl variable (not .ret$control) to nlmixr2CreateOutputFromUi.
+  nmObjHandleControlObject(.foceiControl, .ret)
+  # Provide the compiled FOCEI model so the residual-table getters resolve:
+  # nmObjGet.innerModel -> foceiModel$inner, nmObjGetIpredModel.default ->
+  # foceiModel$predOnly (est="rpem" has no dedicated ipred-model getter). dataSav
+  # is recomputed from origData on demand.
+  .ret$foceiModel <- ui$focei
   .out <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
-                                    control = .ret$control, table = .ret$table,
+                                    control = .foceiControl, table = .ret$table,
                                     env = .ret, est = "rpem")
-  # The eval-only FOCEI path already yields a correct fit CORE (parFixedDf,
-  # objDf, omega, EBEs, shrinkage), but the per-observation residual table
-  # (addTable -> .foceiPredIpredList -> thetaEtaParameters$ipred) currently comes
-  # back length-zero, so the wrapped nlmixr2FitData is not produced (see
-  # design/rpem/09).  Until that is fixed, require the full data.frame fit and
-  # otherwise let nlmixr2Est.rpem fall back to the lightweight estimates object.
+  # The eval-only FOCEI pass produces the full nlmixr2FitData (parFixedDf, objDf,
+  # omega, EBEs, shrinkage, and the per-observation IPRED/PRED/CWRES table).  If
+  # anything goes wrong, require the full data.frame and let nlmixr2Est.rpem fall
+  # back to the lightweight estimates object.
   if (!inherits(.out, "nlmixr2FitData")) {
-    stop("rpem residual-table step incomplete (thetaEtaParameters$ipred empty)")
+    stop("rpem residual-table step incomplete")
   }
   .out
+}
+
+#' Retrieve the (focei eval) control stored on an RPEM fit.
+#' @rdname nmObjGetControl
+#' @export
+nmObjGetControl.rpem <- function(x, ...) {
+  .env <- x[[1]]
+  for (.name in c("foceiControl0", "control")) {
+    if (exists(.name, .env)) {
+      .control <- get(.name, .env)
+      if (inherits(.control, "foceiControl")) return(.control)
+    }
+  }
+  stop("cannot find rpem control object", call.=FALSE)
 }
 
 #' @rdname nlmixr2Est
