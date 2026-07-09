@@ -31,12 +31,26 @@
   .muName <- .mu$theta[match(.etas$name, .mu$eta)]
   if (anyNA(.muName)) stop("RPEM requires every random effect to be mu-referenced")
   muIdx <- as.integer(match(.muName, .thetas$name) - 1L)     # 0-based theta positions
-  # residual: one additive (add) or proportional (prop) error param
+  # residual: additive (add), proportional (prop), or combined (add + prop).
   .res <- .thetas[!is.na(.thetas$err), , drop = FALSE]
-  if (nrow(.res) != 1L || !(.res$err[1] %in% c("add", "prop")))
-    stop("RPEM currently supports exactly one additive or proportional residual")
-  addSdIdx <- as.integer(match(.res$name, .thetas$name) - 1L)
-  errType <- if (.res$err[1] == "prop") 1L else 0L
+  .errs <- sort(.res$err)
+  if (nrow(.res) == 1L && .res$err[1] %in% c("add", "prop")) {
+    errType <- if (.res$err[1] == "prop") 1L else 0L
+    # addSdIdx points at the single residual (holds add.sd or prop.sd)
+    addSdIdx <- as.integer(match(.res$name, .thetas$name) - 1L)
+    propSdIdx <- NA_integer_; propSd0 <- NA_real_
+    errName <- .res$err[1]
+    addSd0 <- .res$est
+  } else if (nrow(.res) == 2L && identical(.errs, c("add", "prop"))) {
+    errType <- 2L; errName <- "add+prop"
+    .addRow <- .res[.res$err == "add", , drop = FALSE]
+    .propRow <- .res[.res$err == "prop", , drop = FALSE]
+    addSdIdx <- as.integer(match(.addRow$name, .thetas$name) - 1L)
+    propSdIdx <- as.integer(match(.propRow$name, .thetas$name) - 1L)
+    addSd0 <- .addRow$est; propSd0 <- .propRow$est
+  } else {
+    stop("RPEM currently supports additive, proportional, or combined (add + prop) residual error")
+  }
   # mu2 covariates on the mu-referenced (eta) params (D22): the covariate
   # coefficients are estimated via the regression M-step, not held.
   .covDf <- ui$muRefCovariateDataFrame
@@ -50,8 +64,8 @@
   covCoefIdx <- as.integer(match(covCoefNames, .thetas$name) - 1L)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
-       addSdIdx = addSdIdx, addSd0 = .res$est, errType = errType,
-       errName = .res$err[1],
+       addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
+       propSdIdx = propSdIdx, propSd0 = propSd0, errName = errName,
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
        thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
@@ -93,11 +107,13 @@
     coefs <- c(.cl$mu0, .cl$covCoef0)
   }
 
-  base <- .cl$base; mu <- .cl$mu0; omega <- .cl$omega0; addSd <- .cl$addSd0
+  .comb <- (.cl$errType == 2L)
+  base <- .cl$base; mu <- .cl$mu0; omega <- .cl$omega0
+  addSd <- .cl$addSd0; propSd <- if (.comb) .cl$propSd0 else NA_real_
   niter <- control$niter
   coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
   muTr <- matrix(0, niter, .cl$nEta); omTr <- matrix(0, niter, .cl$nEta)
-  sdTr <- numeric(niter); llTr <- numeric(niter)
+  sdTr <- numeric(niter); propTr <- numeric(niter); llTr <- numeric(niter)
   for (.it in seq_len(niter)) {
     if (.useReg) {
       base[.cl$muIdx + 1L] <- coefs[1]
@@ -106,9 +122,15 @@
       base[.cl$muIdx + 1L] <- mu
     }
     base[.cl$addSdIdx + 1L] <- addSd
+    if (.comb) base[.cl$propSdIdx + 1L] <- propSd
     rxode2::rxSetSeed(control$seed + .it)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
-    if (.useReg) {
+    if (.comb) {
+      .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn)
+      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
+      addSd <- .ms$addSd; propSd <- .ms$propSd
+      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
+    } else if (.useReg) {
       .ms <- rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
@@ -117,7 +139,8 @@
       mu <- .ms$mu; omega <- .ms$omega; addSd <- .ms$addSd
       muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
     }
-    sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
+    sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
+    llTr[.it] <- .est$lnL
   }
 
   # Final estimate = mean over the converged iterations.
@@ -126,6 +149,7 @@
   muHat <- colMeans(muTr[.w, , drop = FALSE])
   omHat <- colMeans(omTr[.w, , drop = FALSE])
   sdHat <- mean(sdTr[.w])
+  propHat <- if (.comb) mean(propTr[.w]) else NA_real_
   covCoefHat <- if (.useReg && length(.cl$covCoefIdx))
                   colMeans(coefTr[.w, -1, drop = FALSE]) else numeric(0)
 
@@ -135,6 +159,7 @@
   base[.cl$muIdx + 1L] <- muHat
   if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
   base[.cl$addSdIdx + 1L] <- sdHat
+  if (.comb) base[.cl$propSdIdx + 1L] <- propHat
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
   .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omegaHat, control$nGauss, control$cores)
@@ -151,7 +176,7 @@
 
   list(mu = stats::setNames(muHat, .cl$muNames),
        omega = stats::setNames(omHat, .cl$etaNames),
-       addSd = sdHat,
+       addSd = sdHat, propSd = propHat,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
        ebe = ebe,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
@@ -190,9 +215,10 @@ getValidNlmixrCtl.rpem <- function(control) {
   # M1 holds non-mu-ref structural params (no eta, not the residual) at their ini
   # values; mark them fixed so the fit reports them as held rather than assigning
   # FOCEI-covariance SEs.  They get a proper numeric M-step update later (D20).
+  .resNames <- .cl$thetaNames[.cl$addSdIdx + 1L]
+  if (.cl$errType == 2L) .resNames <- c(.resNames, .cl$thetaNames[.cl$propSdIdx + 1L])
   .heldNames <- setdiff(.cl$thetaNames,
-                        c(.cl$muNames, .cl$thetaNames[.cl$addSdIdx + 1L],
-                          .cl$covCoefNames))
+                        c(.cl$muNames, .resNames, .cl$covCoefNames))
   if (length(.heldNames) > 0L) {
     .uiD <- rxode2::rxUiDecompress(ui)
     .idf <- .uiD$iniDf
@@ -207,6 +233,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ft <- stats::setNames(.cl$base[seq_along(.tn)], .tn)
   .ft[.cl$muNames] <- rfit$mu
   .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
+  if (.cl$errType == 2L) .ft[.tn[.cl$propSdIdx + 1L]] <- rfit$propSd
   if (length(rfit$covCoef)) .ft[.cl$covCoefNames] <- rfit$covCoef
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas

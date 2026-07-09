@@ -60,9 +60,17 @@ paper's `beta`. Two paths, chosen per parameter:
   `new sd = sqrt(sum accepted / sum accepted nobs)` (-> add.sd or prop.sd). Both
   verified vs FOCEI (`test-rpem-prop.R`); the additive path is algebraically the
   same as the earlier back-out-from-log-p (C1.1), so no-cov tests are unchanged.
-  REMAINING: combined1/2 (add+prop) via numeric 2-D optimize over
-  (add.sd, prop.sd) using cached `cp`+DV (sd = sqrt(add^2 + (prop*cp)^2)); and
-  power/lambda -- reuse SAEM's `ares`/`bres`/`yptp` expressions.
+  DONE: combined (add+prop) too. Its variance V = add^2 + prop^2 cp^2 has no
+  closed form, so the E-step caches per-obs cp^2 (`rpemOp.cp2v`) and residual^2
+  (`rpemOp.r2v`), and `rpemMstepK1Comb` maximizes the Gaussian log-likelihood
+  sum_visited count * sum_obs [-0.5 log V - r^2/(2V)] over (a=add^2, b=prop^2) by a
+  GUARDED optimizer: a Newton direction only when the local Hessian is
+  negative-definite (V is not globally concave in (a,b) -- raw Newton diverges to
+  1e39), else gradient ascent, with a backtracking line search that accepts a step
+  only if it raises the objective and keeps a,b>0. Verified vs FOCEI
+  (`test-rpem-comb.R`).
+  REMAINING: power/lambda -- reuse SAEM's `ares`/`bres`/`yptp` expressions; and
+  TBS + Box-Cox/Yeo-Johnson residual transforms (user directive, next step).
 - **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
   structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`

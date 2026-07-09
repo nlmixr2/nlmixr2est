@@ -41,6 +41,12 @@ struct rpemOptions {
   std::vector<double> etaS;  // [nsub*nGauss*nEta] drawn etas
   std::vector<double> ssv;   // [nsub*nGauss] additive SS = sum (DV-cp)^2
   std::vector<double> wssv;  // [nsub*nGauss] proportional WSS = sum ((DV-cp)/cp)^2
+  // Per-observation cp^2 and residual^2 for the combined (add+prop) M-step, which
+  // has no closed form (its variance add^2 + prop^2 cp^2 mixes obs nonlinearly).
+  // Block for sample (i,j) starts at sampObsOff[i] + j*nobs_i, length nobs_i.
+  std::vector<double> cp2v;  // [nGauss*nobsTot]
+  std::vector<double> r2v;   // [nGauss*nobsTot]
+  std::vector<long> sampObsOff; // [nsub] start offset of subject i's sample blocks
 };
 
 rpemOptions rpemOp;
@@ -52,6 +58,9 @@ RObject rpemFree() {
   rpemOp.nobsTot = 0;
   rpemOp.nsub = 0;
   rpemOp.loaded = false;
+  rpemOp.cp2v.clear();
+  rpemOp.r2v.clear();
+  rpemOp.sampObsOff.clear();
   return R_NilValue;
 }
 
@@ -101,8 +110,11 @@ RObject rpemSetup(Environment e) {
 // non-null, also accumulates the residual sum of squares SS = sum (DV - cp)^2
 // (additive) and the proportional WSS = sum ((DV - cp)/cp)^2, from the cached
 // structural prediction cp = rx_pred_f_ (lhs[1]) -- used by the residual M-step.
+// If cp2Out/r2Out are non-null they receive the per-observation cp^2 and
+// residual^2 (in observation order), for the combined-error M-step.
 static inline double rpemSolveSubject(const double *par, int id,
-                                      double *ssOut = nullptr, double *wssOut = nullptr) {
+                                      double *ssOut = nullptr, double *wssOut = nullptr,
+                                      double *cp2Out = nullptr, double *r2Out = nullptr) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (unsigned int i = 0; i < rpemOp.ntheta; ++i) {
@@ -112,7 +124,7 @@ static inline double rpemSolveSubject(const double *par, int id,
   rpemPredOde(id);
   double s = 0.0, ss = 0.0, wss = 0.0;
   double curT;
-  int kk;
+  int kk, oi = 0;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
     kk = getIndIx(ind, j);
@@ -126,12 +138,13 @@ static inline double rpemSolveSubject(const double *par, int id,
       double v = lhs[0];
       if (ISNA(v)) v = 0.0;
       s += v;
-      if (ssOut != nullptr || wssOut != nullptr) {
-        double cp = lhs[1];              // rx_pred_f_ = structural prediction
-        double r = getIndDv(ind, kk) - cp;
-        if (ssOut != nullptr) ss += r * r;
-        if (wssOut != nullptr && cp != 0.0) { double rc = r / cp; wss += rc * rc; }
-      }
+      double cp = lhs[1];                // rx_pred_f_ = structural prediction
+      double r = getIndDv(ind, kk) - cp;
+      if (ssOut != nullptr) ss += r * r;
+      if (wssOut != nullptr && cp != 0.0) { double rc = r / cp; wss += rc * rc; }
+      if (cp2Out != nullptr) cp2Out[oi] = cp * cp;
+      if (r2Out != nullptr) r2Out[oi] = r * r;
+      ++oi;
     }
   }
   if (ssOut != nullptr) *ssOut = ss;
@@ -240,6 +253,12 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
   rpemOp.ssv.assign((size_t)nAll, 0.0);
   rpemOp.wssv.assign((size_t)nAll, 0.0);
+  // Per-obs cp^2 / r^2 blocks for the combined-error M-step.
+  rpemOp.sampObsOff.assign((size_t)nsub, 0);
+  long acc = 0;
+  for (int id = 0; id < nsub; ++id) { rpemOp.sampObsOff[id] = acc; acc += (long)nGauss * rpemOp.nobs[id]; }
+  rpemOp.cp2v.assign((size_t)acc, 0.0);
+  rpemOp.r2v.assign((size_t)acc, 0.0);
 
   // Copy all R objects into plain C++ buffers BEFORE the parallel region; the
   // OpenMP loop must not touch any Rcpp/R object (only these buffers + the
@@ -263,7 +282,9 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
       for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
       for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
       double ssTmp = 0.0, wssTmp = 0.0;
-      double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp);
+      long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
+      double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
+                                      &rpemOp.cp2v[ob], &rpemOp.r2v[ob]);
       lp[j] = logp;
       rpemOp.logp[r] = logp;
       rpemOp.ssv[r] = ssTmp;
@@ -465,4 +486,155 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
   for (int a = 0; a < nCoef; ++a) coefOut[a] = betaNew[a];
   return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
+}
+
+// K=1 combined-error M-step (add + prop, errType 2).  Same regression MH as
+// rpemMstepK1Reg for the structural coefs / omega, but the residual has no closed
+// form: obs variance V = a + b*cp^2 with a=add.sd^2, b=prop.sd^2.  We accumulate
+// per-(i,j) MH visit counts, then Newton-maximize the Gaussian log-likelihood
+// sum_visited count * sum_obs [-0.5 log V - r^2/(2V)] over (a,b) using the stored
+// per-obs cp^2 (rpemOp.cp2v) and r^2 (rpemOp.r2v).  addSd0/propSd0 seed the Newton.
+//[[Rcpp::export]]
+List rpemMstepK1Comb(NumericMatrix design, NumericVector coefs, double addSd0,
+                     double propSd0, int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Comb");
+  if (rpemOp.nEta != 1) stop("rpemMstepK1Comb currently supports nEta==1");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  int nCoef = design.ncol();
+  if (design.nrow() != nsub) stop("design must have one row per subject");
+  if ((int)coefs.size() != nCoef) stop("coefs length must match design columns");
+
+  std::vector<double> logn(nsub);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double s = 0.0;
+    for (int j = 0; j < nG; ++j) s += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
+    logn[i] = mx + log(s) - log((double)nG);
+  }
+  std::vector<double> muLin(nsub, 0.0), dmat((size_t)nsub * nCoef);
+  for (int i = 0; i < nsub; ++i) {
+    double s = 0.0;
+    for (int k = 0; k < nCoef; ++k) { double x = design(i, k); dmat[(size_t)i * nCoef + k] = x; s += x * coefs[k]; }
+    muLin[i] = s;
+  }
+
+  int total = nTrials + burn;
+  size_t nU = (size_t)3 * total;
+  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
+  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
+  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
+                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
+                                wrap(IntegerVector::create(1)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(NumericVector::create(0.4)),
+                                wrap(NumericVector::create(2.05)),
+                                wrap(NumericVector::create(1e-10)),
+                                wrap(IntegerVector::create(100)));
+  NumericMatrix zm(zr);
+  std::vector<double> U(nU);
+  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+
+  int ci = 0, cj = 0;
+  double clogp = rpemOp.logp[0];
+  std::vector<double> XtX((size_t)nCoef * nCoef, 0.0), Xty(nCoef, 0.0);
+  std::vector<long> counts((size_t)nsub * nG, 0);
+  double Stt = 0.0; long m = 0, naccept = 0;
+  for (int t = 0; t < total; ++t) {
+    double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
+    int pih = (int)(u1 * nsub); if (pih >= nsub) pih = nsub - 1;
+    int pjh = (int)(u2 * nG);   if (pjh >= nG)   pjh = nG - 1;
+    double plogp = rpemOp.logp[(size_t)pih * nG + pjh];
+    double logA = (plogp - clogp) + (logn[ci] - logn[pih]);
+    if (log(u3) < logA) { ci = pih; cj = pjh; clogp = plogp; ++naccept; }
+    if (t >= burn) {
+      double theta = muLin[ci] + rpemOp.etaS[(size_t)ci * nG + cj];
+      const double *xi = &dmat[(size_t)ci * nCoef];
+      for (int a = 0; a < nCoef; ++a) {
+        Xty[a] += xi[a] * theta;
+        for (int b = 0; b < nCoef; ++b) XtX[(size_t)a * nCoef + b] += xi[a] * xi[b];
+      }
+      Stt += theta * theta;
+      counts[(size_t)ci * nG + cj]++;
+      ++m;
+    }
+  }
+  arma::mat A(XtX.data(), nCoef, nCoef);
+  arma::vec bb(Xty.data(), nCoef);
+  arma::vec betaNew = arma::solve(A, bb, arma::solve_opts::likely_sympd);
+  double omegaNew = (Stt - arma::dot(betaNew, bb)) / (double)m;
+
+  // Guarded optimization of (a=add^2, b=prop^2) over the visited (i,j).  The
+  // combined-variance Gaussian log-likelihood is not globally concave, so raw
+  // Newton diverges; we take a Newton direction only when the local Hessian is
+  // negative-definite, otherwise gradient ascent, and accept a step only if it
+  // increases the objective Q (backtracking line search keeps a,b > 0).
+  const double eps = 1e-12;
+  auto qFun = [&](double aa, double bb) -> double {
+    double Q = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j];
+        if (c == 0) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          double V = aa + bb * rpemOp.cp2v[ob + o]; if (V < eps) V = eps;
+          Q += (double)c * (-0.5 * log(V) - 0.5 * rpemOp.r2v[ob + o] / V);
+        }
+      }
+    }
+    return Q;
+  };
+  double a = addSd0 * addSd0, bpar = propSd0 * propSd0;
+  double Qcur = qFun(a, bpar);
+  for (int it = 0; it < 200; ++it) {
+    double ga = 0, gb = 0, Haa = 0, Hab = 0, Hbb = 0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j];
+        if (c == 0) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          double w = rpemOp.cp2v[ob + o];      // cp^2
+          double r2 = rpemOp.r2v[ob + o];
+          double V = a + bpar * w; if (V < eps) V = eps;
+          double invV = 1.0 / V;
+          double g = -0.5 * invV + 0.5 * r2 * invV * invV;         // df/da
+          double h = 0.5 * invV * invV - r2 * invV * invV * invV;  // d2f/da2
+          ga += c * g;      gb += c * w * g;
+          Haa += c * h;     Hab += c * w * h;     Hbb += c * w * w * h;
+        }
+      }
+    }
+    double gnorm = fabs(ga) + fabs(gb);
+    if (gnorm < 1e-9) break;
+    double det = Haa * Hbb - Hab * Hab, da, db;
+    if (Haa < 0.0 && det > 0.0) {             // Hessian negative-definite: Newton
+      da = -(Hbb * ga - Hab * gb) / det;
+      db = -(-Hab * ga + Haa * gb) / det;
+    } else {                                  // fall back to gradient ascent
+      double sc = 1.0 / (fabs(Haa) + fabs(Hbb) + 1.0);
+      da = sc * ga; db = sc * gb;
+    }
+    double step = 1.0; bool ok = false;
+    for (int ls = 0; ls < 40; ++ls) {
+      double an = a + step * da, bn = bpar + step * db;
+      if (an > eps && bn > eps) {
+        double Qn = qFun(an, bn);
+        if (Qn > Qcur) { a = an; bpar = bn; Qcur = Qn; ok = true; break; }
+      }
+      step *= 0.5;
+    }
+    if (!ok) break;
+  }
+
+  NumericVector coefOut(nCoef);
+  for (int k = 0; k < nCoef; ++k) coefOut[k] = betaNew[k];
+  return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
+                      _["addSd"] = sqrt(a), _["propSd"] = sqrt(bpar),
+                      _["accept"] = (double)naccept / total);
 }

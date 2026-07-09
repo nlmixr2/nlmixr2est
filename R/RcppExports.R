@@ -314,6 +314,10 @@ rpemMstepK1Reg <- function(design, coefs, errType, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Reg`, design, coefs, errType, nTrials, burn)
 }
 
+rpemMstepK1Comb <- function(design, coefs, addSd0, propSd0, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1Comb`, design, coefs, addSd0, propSd0, nTrials, burn)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
