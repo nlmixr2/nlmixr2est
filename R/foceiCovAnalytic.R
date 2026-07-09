@@ -865,17 +865,22 @@
 .foceiAnalyticEtCache <- new.env(parent = emptyenv())      # per-fit translated event table (etTrans reuse)
 #' The augmented model's events are IDENTICAL across every solve of a fit (only the theta/eta
 #' params vary), so translate them once with etTrans and reuse -- ~40% off each population solve
-#' (validated: identical predictions).  Keyed by the model key + a cheap data fingerprint (nrow +
-#' sum of EVERY numeric column, so covariate differences never collide); falls back to raw data.
+#' (validated: identical predictions).  Keyed by the model key + a content hash of the data
+#' (`digest`, already a dependency), so distinct datasets that happen to share summary statistics
+#' cannot collide onto the same translated event table; falls back to raw data.  The hash is far
+#' cheaper than the etTrans it guards, so the per-solve lookup stays a net win.
 #' @noRd
 .foceiAnalyticEvents <- function(am, data) {
   if (is.null(am$key)) return(data)
-  .fp <- sum(vapply(data, function(.c) if (is.numeric(.c)) sum(.c, na.rm = TRUE) else 0, numeric(1)))
+  .fp <- tryCatch(digest::digest(data), error = function(e) NULL)
+  if (is.null(.fp)) return(data)                          # cannot fingerprint -> translate fresh (no cache)
   .ek <- paste0(am$key, "|et|", nrow(data), "|", .fp)
   .et <- get0(.ek, envir = .foceiAnalyticEtCache, inherits = FALSE)
   if (is.null(.et)) {
     .et <- tryCatch(rxode2::etTrans(data, am$augMod), error = function(e) NULL)
     if (is.null(.et)) return(data)
+    if (length(ls(.foceiAnalyticEtCache, all.names = TRUE)) >= 256L)    # bound memory in long sessions
+      rm(list = ls(.foceiAnalyticEtCache, all.names = TRUE), envir = .foceiAnalyticEtCache)
     assign(.ek, .et, envir = .foceiAnalyticEtCache)
   }
   .et
@@ -1055,7 +1060,11 @@
          st = .st, P2 = .P2, P2r = .P2r, hasRvar = !is.null(.rvar), sigTh = .sigTh, hasTrans = .hasTrans,
          cols = .foceiAnalyticCols(dirs, .fDirs, .P2, .P2r, .sigTh), cores = if (length(.cores)) .cores else 0L, key = .key)
   }, error = function(e) NULL)
-  if (!is.null(.key) && !is.null(.res)) assign(.key, .res, envir = .foceiAnalyticAugCache)
+  if (!is.null(.key) && !is.null(.res)) {
+    if (length(ls(.foceiAnalyticAugCache, all.names = TRUE)) >= 64L)    # bound retained compiled models
+      rm(list = ls(.foceiAnalyticAugCache, all.names = TRUE), envir = .foceiAnalyticAugCache)
+    assign(.key, .res, envir = .foceiAnalyticAugCache)
+  }
   .res
 }
 
@@ -1760,7 +1769,7 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(aug$augMod)$flags[["hasDelay"]] == 1L))
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .d <- tryCatch(withCallingHandlers(
-      as.data.frame(do.call(rxode2::rxSolve, c(list(aug$augMod, params = params, .ev, cores = .nc,
+      as.data.frame(do.call(rxode2::rxSolve, c(list(aug$augMod, params = params, events = .ev, cores = .nc,
           returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
       warning = function(w) invokeRestart("muffleWarning")),
     error = function(e) NULL)

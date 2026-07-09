@@ -352,8 +352,17 @@
   # per subject.  Column names + index maps are precomputed on `am$cols` at build time.
   .cm <- if (is.null(am$cols)) .foceiAnalyticCols(dirs, if (is.null(am$fDirs)) dirs else am$fDirs, am$P2, if (is.null(am$P2r)) am$P2 else am$P2r, am$sigTh) else am$cols
   np2 <- nrow(am$P2); np2r <- if (is.null(am$P2r)) np2 else nrow(am$P2r)
+  .hasR <- isTRUE(am$hasRvar); .hasT <- isTRUE(am$hasTrans)
+  # Every column subset below must be present, or `.sol[, cols]` throws "undefined columns
+  # selected" (e.g. an rxode2 version/feature that did not emit an rvar/rsig/transform column).
+  # Verify up front and cleanly return NULL so the caller falls back to finite differences.
+  .need <- c("rx_predf_", "time", .cm$f1, .cm$f2)
+  if (.hasR) { .need <- c(.need, "rx_rvarf_", .cm$rvar1, .cm$rvar2)
+    if (length(am$sigTh) > 0L) .need <- c(.need, .cm$rsig, unlist(.cm$rsig1), .cm$rsig2) }
+  if (.hasT) .need <- c(.need, "rx_tyj_", "rx_tlambda_", "rx_tlow_", "rx_thi_")
+  if (!all(.need %in% names(.sol))) return(NULL)
   .M1 <- as.matrix(.sol[, .cm$f1, drop = FALSE]); .M2 <- as.matrix(.sol[, .cm$f2, drop = FALSE])
-  .fp <- .sol$rx_predf_; .tm <- .sol$time; .hasR <- isTRUE(am$hasRvar); .hasT <- isTRUE(am$hasTrans)
+  .fp <- .sol$rx_predf_; .tm <- .sol$time
   if (.hasR) {
     .MR1 <- as.matrix(.sol[, .cm$rvar1, drop = FALSE]); .MR2 <- as.matrix(.sol[, .cm$rvar2, drop = FALSE])
     .Rf <- .sol$rx_rvarf_; .nsig <- length(am$sigTh)
