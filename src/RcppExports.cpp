@@ -1073,6 +1073,22 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemMstepK1Multi
+List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt, IntegerVector errTypes, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Multi(SEXP designSEXP, SEXP coefsSEXP, SEXP endptSEXP, SEXP errTypesSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type coefs(coefsSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type endpt(endptSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type errTypes(errTypesSEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Multi(design, coefs, endpt, errTypes, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

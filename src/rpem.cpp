@@ -822,3 +822,44 @@ List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0,
   return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
                       _["propSd"] = propNew, _["power"] = cHat, _["accept"] = accept);
 }
+
+// K=1 multiple-endpoint M-step (mirrors SAEM's per-endpoint residual loop).  The
+// E-step already computes the joint multi-endpoint log-likelihood, so this shares
+// one MH + regression (rpemMHReg) and then updates each endpoint's scale
+// separately over the observations that belong to it.  endpt[idS[i]+o] is the
+// 0-based endpoint of subject i's o-th observation (in solve order, from R);
+// errTypes[b] is 0 additive or 1 proportional for endpoint b.  Returns the new
+// per-endpoint residual SDs (add.sd or prop.sd).
+//[[Rcpp::export]]
+List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt,
+                      IntegerVector errTypes, int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Multi");
+  if (rpemOp.nEta != 1) stop("rpemMstepK1Multi currently supports nEta==1");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  int nEndpt = errTypes.size();
+  std::vector<long> counts; NumericVector coefOut; double omegaNew, accept; long m;
+  rpemMHReg(design, coefs, nTrials, burn, counts, coefOut, omegaNew, accept, m);
+
+  std::vector<double> sumSS((size_t)nEndpt, 0.0);
+  std::vector<long> sumN((size_t)nEndpt, 0);
+  for (int i = 0; i < nsub; ++i) {
+    int nobsi = rpemOp.nobs[i];
+    long base = rpemOp.idS[i];
+    for (int j = 0; j < nG; ++j) {
+      long c = counts[(size_t)i * nG + j]; if (!c) continue;
+      long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+      for (int o = 0; o < nobsi; ++o) {
+        int b = endpt[base + o];
+        double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
+        double contrib = (errTypes[b] == 1) ? (cp != 0.0 ? (rr / cp) * (rr / cp) : 0.0)
+                                            : rr * rr;
+        sumSS[b] += (double)c * contrib;
+        sumN[b] += c;
+      }
+    }
+  }
+  NumericVector sdOut(nEndpt);
+  for (int b = 0; b < nEndpt; ++b) sdOut[b] = sqrt(sumSS[b] / (double)sumN[b]);
+  return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
+                      _["sd"] = sdOut, _["accept"] = accept);
+}

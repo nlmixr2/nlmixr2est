@@ -98,8 +98,18 @@ paper's `beta`. Two paths, chosen per parameter:
       `rpemMstepK1Pow` maximizes -0.5[N log(SSc/N) + 2c sum log|cp|]. Matches
       FOCEI on tka/prop.sd/power (`test-rpem-pow.R`; power location needs more MC
       precision -- late-time low-cp points dominate).
-  REMAINING: combined on the transformed scale (add+prop+TBS); power/lambda (propT)
-  closed forms could still reuse SAEM's `ares`/`bres`/`yptp` if faster.
+  DONE: multiple endpoints (errType 5), mirroring SAEM's per-endpoint residual
+  loop. The E-step already computes the joint multi-endpoint likelihood (the
+  rxode2 llik model branches on cmt), so `rpemMstepK1Multi` shares one MH +
+  regression and then updates each endpoint's scale over just its own observations.
+  `.rpemClassify` maps each predDf row to its residual via iniDf$condition;
+  `.rpemEndptIndex` builds the per-obs endpoint index (0-based) in the (id, time)
+  solve order from the data dvid/cmt tag (== SAEM's `ix_endpnt`). Additive or
+  proportional per endpoint for now. Matches FOCEI on tka + both endpoint residuals
+  (`test-rpem-multi.R`).
+  REMAINING: per-endpoint combined/TBS/power (currently add/prop per endpoint);
+  power/lambda (propT) closed forms could reuse SAEM's `ares`/`bres`/`yptp` if
+  faster.
 - **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
   structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`

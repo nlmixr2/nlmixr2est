@@ -326,6 +326,10 @@ rpemMstepK1Pow <- function(design, coefs, propSd0, power0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Pow`, design, coefs, propSd0, power0, nTrials, burn)
 }
 
+rpemMstepK1Multi <- function(design, coefs, endpt, errTypes, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1Multi`, design, coefs, endpt, errTypes, nTrials, burn)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
