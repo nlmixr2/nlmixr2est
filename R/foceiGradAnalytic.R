@@ -335,9 +335,14 @@
   pars <- data.frame(ID = ids)
   for (k in seq_len(neta)) pars[[etav[k]]] <- ebes[, k]
   for (.nm in names(thv)) pars[[.nm]] <- thv[[.nm]]
+  # DDE: force pure dop853 (dense, no ros4 secondary) -- the stiff augmented
+  # sensitivity system otherwise trips the AutoSwitch composite into ros4, whose
+  # dense delay-history is inaccurate and corrupts the delayed prediction.
+  .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L))
+    list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .sol <- tryCatch(withCallingHandlers(
-    as.data.frame(rxode2::rxSolve(am$augMod, params = pars, events = data,
-                                  returnType = "data.frame", atol = tol, rtol = tol)),
+    as.data.frame(do.call(rxode2::rxSolve, c(list(am$augMod, params = pars, events = data,
+                                  returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
     warning = function(w) invokeRestart("muffleWarning")), error = function(e) NULL)
   if (is.null(.sol) || !all(c("rx_predf_", paste0("rx_f1_", dirs)) %in% names(.sol))) return(NULL)
   .idcol <- if ("id" %in% names(.sol)) .sol$id else .sol$ID

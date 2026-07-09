@@ -1556,9 +1556,16 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
   dirs <- aug$dirs; nd <- length(dirs)
+  # DDE augmented solve: force pure dop853 (dense, no ros4 secondary).  The
+  # augmented sensitivity system is stiff enough to trip the AutoSwitch
+  # composite into its ros4 leg, whose dense delay-history is inaccurate here
+  # and makes the delayed prediction (hence the whole covariance) badly wrong;
+  # dop853's 8th-order dense history reproduces the inner solve exactly.
+  .ddeArgs <- if (isTRUE(rxode2::rxModelVars(aug$augMod)$flags[["hasDelay"]] == 1L))
+    list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .d <- tryCatch(withCallingHandlers(
-      as.data.frame(rxode2::rxSolve(aug$augMod, params = params, ev,
-          returnType = "data.frame", atol = tol, rtol = tol)),
+      as.data.frame(do.call(rxode2::rxSolve, c(list(aug$augMod, params = params, ev,
+          returnType = "data.frame", atol = tol, rtol = tol), .ddeArgs))),
       warning = function(w) invokeRestart("muffleWarning")),
     error = function(e) NULL)
   if (is.null(.d)) return(NULL); .d <- .d[.d$time %in% times, , drop = FALSE]
