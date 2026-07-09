@@ -266,6 +266,10 @@ rpemEstepK1Draw <- function(e, base, etaIdx, omega, nGauss, ncores) {
     .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, omega, nGauss, ncores)
 }
 
+rpemMstepK1 <- function(muIn, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1`, muIn, nTrials, burn)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

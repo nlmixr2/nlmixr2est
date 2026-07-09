@@ -258,8 +258,87 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   // Build the R return objects serially, after the parallel region.
   NumericVector logn(nsub);
   NumericMatrix etaOut(nAll, nEta);
+  NumericVector logpOut(nAll);        // layout [i*nGauss + j]
   double lnL = 0.0;
   for (int id = 0; id < nsub; ++id) { logn[id] = lognV[id]; lnL += lognV[id]; }
   for (size_t k = 0; k < (size_t)nAll * nEta; ++k) etaOut[k] = rpemOp.etaS[k];
-  return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut);
+  for (int k = 0; k < nAll; ++k) logpOut[k] = rpemOp.logp[k];
+  return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut,
+                      _["logp"] = logpOut);
+}
+
+// K=1 M-step: Metropolis-Hastings over the stored E-step samples (design/rpem/05).
+// State s=(i,j) indexes a stored sample; propose (i',j') uniformly and accept by
+// Eq 32 with w=1: A = min(1, exp((logp' - logp) + (logn_i - logn_i'))).  The
+// accepted theta = muIn + eta samples give the conjugate updates (Eq 15-16):
+//   mu^(1)    = mean of accepted theta
+//   Omega^(1) = covariance of accepted theta about the new mu
+// No solving: reuses stored log p / etas.  All randomness is pre-drawn up front
+// via the threefry rxRmvn (uniforms via pnorm of standard normals, D19); the
+// draw resets rxode2's solve state but the M-step does not solve, so that is fine.
+//[[Rcpp::export]]
+List rpemMstepK1(NumericVector muIn, int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
+  if ((int)muIn.size() != nEta) stop("muIn must have nEta entries");
+
+  // Per-subject log n_i (= log of the MC-mean likelihood) from the stored log p.
+  std::vector<double> logn(nsub);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double s = 0.0;
+    for (int j = 0; j < nG; ++j) s += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
+    logn[i] = mx + log(s) - log((double)nG);
+  }
+
+  // Pre-draw all MH uniforms: 3 per trial (proposal i', proposal j', accept).
+  int total = nTrials + burn;
+  size_t nU = (size_t)3 * total;
+  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
+  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
+  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
+                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
+                                wrap(IntegerVector::create(1)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(NumericVector::create(0.4)),
+                                wrap(NumericVector::create(2.05)),
+                                wrap(NumericVector::create(1e-10)),
+                                wrap(IntegerVector::create(100)));
+  NumericMatrix zm(zr);
+  std::vector<double> U(nU);
+  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+
+  int ci = 0, cj = 0;
+  double clogp = rpemOp.logp[0];
+  std::vector<double> sumT(nEta, 0.0), sumTT((size_t)nEta * nEta, 0.0);
+  long m = 0, naccept = 0;
+  for (int t = 0; t < total; ++t) {
+    double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
+    int pih = (int)(u1 * nsub); if (pih >= nsub) pih = nsub - 1;
+    int pjh = (int)(u2 * nG);   if (pjh >= nG)   pjh = nG - 1;
+    double plogp = rpemOp.logp[(size_t)pih * nG + pjh];
+    double logA = (plogp - clogp) + (logn[ci] - logn[pih]);
+    if (log(u3) < logA) { ci = pih; cj = pjh; clogp = plogp; ++naccept; }
+    if (t >= burn) {
+      size_t off = ((size_t)ci * nG + cj) * nEta;
+      for (int a = 0; a < nEta; ++a) {
+        double tha = muIn[a] + rpemOp.etaS[off + a];
+        sumT[a] += tha;
+        for (int b = 0; b < nEta; ++b)
+          sumTT[(size_t)a * nEta + b] += tha * (muIn[b] + rpemOp.etaS[off + b]);
+      }
+      ++m;
+    }
+  }
+  NumericVector muNew(nEta);
+  NumericMatrix omegaNew(nEta, nEta);
+  for (int a = 0; a < nEta; ++a) muNew[a] = sumT[a] / m;
+  for (int a = 0; a < nEta; ++a)
+    for (int b = 0; b < nEta; ++b)
+      omegaNew(a, b) = sumTT[(size_t)a * nEta + b] / m - muNew[a] * muNew[b];
+  return List::create(_["mu"] = muNew, _["omega"] = omegaNew,
+                      _["accept"] = (double)naccept / total);
 }
