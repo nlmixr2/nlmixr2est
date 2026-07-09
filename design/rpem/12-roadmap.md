@@ -12,12 +12,14 @@ DONE: likelihood model (C1.x); E-step (threefry rxRmvn draw -> in-process solve
 mu/Omega via joint Metropolis-Hastings + additive residual (Eq 17); R scaffold
 (rpemControl, parameter classifier .rpemClassify, .rpemFit E-M loop); and the
 `est="rpem"` dispatch (nlmixr2Est.rpem). `nlmixr2(model, data, est="rpem")` runs
-end-to-end and, on well-identified data, matches a FOCEI fit on mu, Omega AND
-add.sd. Six RPEM test files pass on top of origin/main.
-REMAINING: full nlmixr2FitData (residuals/tables/SEs); numeric fixed-effect
-update for non-additive residuals + non-mu-ref structural params; move the
-iteration loop into C++; OpenMP via par_solve (task #7); then M2+ (mixtures, IOV,
-censoring, multi-endpoint).
+end-to-end and returns a FULL `nlmixr2FitData` (IPRED/PRED/CWRES tables,
+parFixedDf, objDf/AIC/BIC/logLik, omega, EBEs, shrinkage) via the eval-only FOCEI
+finalize; on well-identified data it matches a FOCEI fit on mu, Omega AND add.sd.
+Seven RPEM test files pass on top of origin/main.
+REMAINING for M1: SEs (Fisher-score, or turn on FOCEI covMethod in the finalize);
+numeric fixed-effect update for non-additive residuals + non-mu-ref structural
+params; move the iteration loop into C++; OpenMP via par_solve (task #7). Then
+M2+ (mixtures via rxNormEng per-thread chains, IOV, censoring, multi-endpoint).
 
 Scope (in build order):
 - **First task DONE**: the dedicated RPEM likelihood model

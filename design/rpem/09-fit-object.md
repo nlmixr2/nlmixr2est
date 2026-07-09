@@ -69,18 +69,22 @@ with the focei control (it nulls `env$control` so `.foceiFamilyControl` hits the
 buggy `do.call(type)`); (b) the eval-only `foceiControl(maxOuter=0, maxInner=0,
 etaMat=EBEs)`.
 
-REMAINING BLOCKER: the per-observation residual table fails --
-`addTable` -> `.calcTables` -> `.foceiPredIpredList` ->
-`.foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred, ...)` errors with
-"argument is of length zero" because `fit$foceiThetaEtaParameters$ipred`
-(`nmObjGet.foceiThetaEtaParameters`, built from `fit$ranef`/`fit$fixef` via
-`_nlmixr2est_nlmixr2Parameters`) comes back empty. So `nlmixr2CreateOutputFromUi`
-returns the bare `nlmixr2FitCore` instead of the wrapped `nlmixr2FitData`.
-Next: figure out why `_nlmixr2Parameters(fixef, ranef)` yields an empty `$ipred`
-for the RPEM fit (likely a missing `dataSav`/ipred-model or ranef-format field
-the eval-only FOCEI pass didn't populate). Until then, `.rpemBuildFit` requires a
-full `nlmixr2FitData` and `est="rpem"` falls back to the lightweight estimates
-object (which stays fully working and tested).
+DONE (2026-07-09): `est="rpem"` now returns a full `nlmixr2FitData` (data.frame
+with IPRED/PRED/CWRES/IWRES/RES/WRES tables, `parFixedDf`, `objDf`/AIC/BIC/logLik,
+`omega`, EBEs, shrinkage). Because "rpem" is not a native FOCEI/SAEM est, the
+residual pipeline needed these to resolve (all in `.rpemBuildFit`):
+- `env$foceiModel <- ui$focei` so `nmObjGet.innerModel`/`ipredModel`/
+  `predOnlyModel` return the inner/predOnly models.
+- Store the eval control via `nmObjHandleControlObject` (saved as `foceiControl0`)
+  AND add `nmObjGetControl.rpem` to retrieve it -- otherwise `nmObjGetControl`
+  returns NULL, so `methodOde` is empty and `.foceiSolvePars` hits the length-zero
+  `if (currentOdeMethod %in% "dop853")`.
+- Pass the SAVED `foceiControl` (not `.ret$control`, which `nmObjHandleControlObject`
+  nulls) to `nlmixr2CreateOutputFromUi`, so `.foceiFamilyControl` sees a non-NULL
+  control (else it hits the buggy `do.call(type)`).
+- `rxControl(method="liblsoda")`.
+`_nlmixr2Parameters(fixef, ranef)$ipred` was NOT the problem (it returns a valid
+matrix); the earlier length-zero came from the empty `methodOde`.
 
 ## Store kept for post-fit
 
