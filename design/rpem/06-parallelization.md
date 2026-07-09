@@ -7,9 +7,23 @@ No MPI. Must stay CRAN-portable and honor nlmixr2's thread policy
 ## Where the time goes
 
 Per the paper, the E-step ODE solves dominate. So the primary parallel win is
-already delivered by handing one big population solve to rxode2 `par_solve`,
-which threads over (subject x sample x component). RPEM's own OpenMP is for the
-non-ODE reductions and the M-step chain.
+handing the solve to rxode2 `par_solve`, which owns the per-thread ODE workspace.
+
+STATUS (DONE, commit 3349a2b5): the E-step is parallel. With `cores>1`, for each
+Monte Carlo sample the engine sets every subject's parameters (population THETA +
+that sample's eta draw) and solves all subjects in ONE `par_solve` call -- the
+thread-safe route (a manual OpenMP loop over `ind_solve` segfaults because that
+per-thread ODE scratch is not set up). The cheap prediction read (`calc_lhs`, no
+ODE work) stays serial; `cores==1` keeps the serial `ind_solve` reference path.
+~2x speedup on 4 cores. The eta sampling was moved from C++ into R (`.drawEtas`
+via `rxode2::rxRmvn`), drawn before the solve, so the sampling RNG is decoupled
+from the solve core count: a fixed core count is exactly reproducible; across core
+counts fits agree to Monte-Carlo precision (the MH is a Markov chain, so one
+accept/reject flip from the ~1e-8 `ind_solve`-vs-`par_solve` difference diverges
+the chain to a statistically-equivalent trajectory). Verified in
+`test-rpem-parallel.R`. Not yet done: batching the whole (subject x sample) grid
+into ONE `par_solve` (would parallelize across samples too, not just subjects per
+sample); the M-step reductions remain serial.
 
 ## Parallel regions
 
