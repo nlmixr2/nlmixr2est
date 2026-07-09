@@ -144,7 +144,19 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $covMethod</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covType</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "analytic"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covSolveTol</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $covFull</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $fast</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] FALSE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $centralDerivEps</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2.980232e-07 2.980232e-07</span>
@@ -171,7 +183,7 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $outerOpt</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] -1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $ci</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.95</span>
@@ -197,6 +209,12 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> $interaction</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $foce</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "nonmem"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $foceType</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cholSEtol</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 6.055454e-06</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
@@ -211,6 +229,9 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $optimHessCovType</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $censOption</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $cholAccept</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.001</span>
@@ -243,7 +264,21 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $outerOptFun</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> NULL</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     ...) </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> {</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .controlIterMax(control)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl &lt;- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         "step.max", "sing.tol", "scale.inti", "diff.g")]</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ctl$trace &lt;- 0</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ret &lt;- stats::nlminb(start = par, objective = fn, gradient = gr, </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>         hessian = NULL, control = .ctl, lower = lower, upper = upper)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ret$x &lt;- .ret$par</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>     .ret</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> }</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;bytecode: 0x56220062fc90&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> &lt;environment: namespace:nlmixr2est&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rhobeg</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 0.2</span>
@@ -336,7 +371,7 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1e+05</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $outerOptTxt</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "lbfgsb3c"</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "nlminb"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $rmatNorm</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
@@ -415,6 +450,9 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $eventType</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $eventSens</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "jump"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $gradProgressOfvTime</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 10</span>
@@ -871,7 +909,10 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $mceta</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] -1</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] -2</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> $warm</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $nAGQ</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] 1</span>
@@ -881,9 +922,6 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $agqLow</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] -Inf</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> $eventSens</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "jump"</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> $sensMethod</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "default"</span>
@@ -904,7 +942,7 @@ ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

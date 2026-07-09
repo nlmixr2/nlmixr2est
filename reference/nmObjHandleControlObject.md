@@ -17,7 +17,13 @@ nmObjHandleControlObject(control, env)
 # S3 method for class 'foceControl'
 nmObjHandleControlObject(control, env)
 
+# S3 method for class 'focepControl'
+nmObjHandleControlObject(control, env)
+
 # S3 method for class 'foiControl'
+nmObjHandleControlObject(control, env)
+
+# S3 method for class 'irlsfocepControl'
 nmObjHandleControlObject(control, env)
 
 # S3 method for class 'laplaceControl'
@@ -48,6 +54,9 @@ nmObjHandleControlObject(control, env)
 nmObjHandleControlObject(control, env)
 
 # S3 method for class 'irlslaplaceControl'
+nmObjHandleControlObject(control, env)
+
+# S3 method for class 'mufocepControl'
 nmObjHandleControlObject(control, env)
 
 # S3 method for class 'n1qn1Control'

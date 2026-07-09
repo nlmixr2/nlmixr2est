@@ -23,6 +23,8 @@
 
 - **Hajar Besbassi**. Contributor.
 
+- **Hidde van de Beek**. Contributor.
+
 - **Johannes Pfeifer**. Contributor.
 
 - **Justin Wilkins**. Author. [](https://orcid.org/0000-0002-7099-9396)
@@ -51,6 +53,8 @@
 - **Vipul Mann**. Author.
 
 - **Yuan Xiong**. Author.
+
+- **Hidde van de Beek**. Contributor.
 
 ## Citation
 

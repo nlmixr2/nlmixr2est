@@ -59,12 +59,17 @@
 <span>  derivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"switch"</span>, <span class="st">"forward"</span>, <span class="st">"central"</span><span class="op">)</span>,</span>
 <span>  derivSwitchTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  covDerivMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
-<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"analytic"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covSolveTol <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  fast <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  hessEps <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  hessEpsLlik <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  optimHessType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
 <span>  optimHessCovType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  eventType <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"central"</span>, <span class="st">"forward"</span><span class="op">)</span>,</span>
+<span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  centralDerivEps <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/rep.html" class="external-link">rep</a></span><span class="op">(</span><span class="fl">20</span> <span class="op">*</span> <span class="fu"><a href="https://rdrr.io/r/base/MathFun.html" class="external-link">sqrt</a></span><span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  lbfgsLmm <span class="op">=</span> <span class="fl">7L</span>,</span>
 <span>  lbfgsPgtol <span class="op">=</span> <span class="fl">0</span>,</span>
@@ -82,6 +87,7 @@
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  noAbort <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  interaction <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  foce <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nonmem"</span>, <span class="st">"foce+"</span><span class="op">)</span>,</span>
 <span>  cholSEtol <span class="op">=</span> <span class="op">(</span><span class="va">.Machine</span><span class="op">$</span><span class="va">double.eps</span><span class="op">)</span><span class="op">^</span><span class="op">(</span><span class="fl">1</span><span class="op">/</span><span class="fl">3</span><span class="op">)</span>,</span>
 <span>  cholAccept <span class="op">=</span> <span class="fl">0.001</span>,</span>
 <span>  resetEtaP <span class="op">=</span> <span class="fl">0.15</span>,</span>
@@ -93,8 +99,8 @@
 <span>  cholSECov <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  fo <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  covTryHarder <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"lbfgsb3c"</span>, <span class="st">"nlminb"</span>, <span class="st">"bobyqa"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
-<span>    <span class="st">"Rvmmin"</span>, <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
+<span>  outerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"nlminb"</span>, <span class="st">"lbfgsb3c"</span>, <span class="st">"bobyqa"</span>, <span class="st">"L-BFGS-B"</span>, <span class="st">"mma"</span>, <span class="st">"lbfgsbLG"</span>, <span class="st">"slsqp"</span>,</span>
+<span>    <span class="st">"uobyqa"</span>, <span class="st">"newuoa"</span><span class="op">)</span>,</span>
 <span>  innerOpt <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"n1qn1"</span>, <span class="st">"BFGS"</span><span class="op">)</span>,</span>
 <span>  rhobeg <span class="op">=</span> <span class="fl">0.2</span>,</span>
 <span>  rhoend <span class="op">=</span> <span class="cn">NULL</span>,</span>
@@ -159,11 +165,11 @@
 <span>  zeroGradFirstReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  zeroGradRunReset <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  zeroGradBobyqa <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">1L</span>,</span>
+<span>  mceta <span class="op">=</span> <span class="op">-</span><span class="fl">2L</span>,</span>
+<span>  warm <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"calc"</span>, <span class="st">"save"</span><span class="op">)</span>,</span>
 <span>  nAGQ <span class="op">=</span> <span class="fl">0</span>,</span>
 <span>  agqLow <span class="op">=</span> <span class="op">-</span><span class="cn">Inf</span>,</span>
 <span>  agqHi <span class="op">=</span> <span class="cn">Inf</span>,</span>
-<span>  eventSens <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"jump"</span>, <span class="st">"fd"</span><span class="op">)</span>,</span>
 <span>  sensMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"default"</span>, <span class="st">"forward"</span>, <span class="st">"adjoint"</span><span class="op">)</span>,</span>
 <span>  boundedTransform <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
@@ -297,12 +303,54 @@ derivatives while calculating the covariance components
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating covariance, where R is the
-Hessian and S the sum of individual gradient cross-products (at the
-empirical Bayes estimates): <code>"r,s"</code> sandwich
+<dd><p>Method for calculating the covariance.  <code>"analytic"</code> (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\(R^{-1}\)) and additionally returns the residual and <code>Omega</code> standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, <code>nAGQ &gt; 1</code>, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD <code>iovXform</code>, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): <code>"r,s"</code> sandwich
 (<code>solve(R)%*%S%*%solve(R)</code>), <code>"r"</code> Hessian-based
-(<code>2%*%solve(R)</code>), <code>"s"</code> cross-product-based
-(<code>4%*%solve(S)</code>), or <code>""</code> to skip the covariance step.</p></dd>
+(<code>solve(R)</code>), <code>"s"</code> cross-product-based (<code>solve(S)</code>), or
+<code>""</code> to skip the covariance step.</p></dd>
+
+
+<dt id="arg-covsolvetol">covSolveTol<a class="anchor" aria-label="anchor" href="#arg-covsolvetol"></a></dt>
+<dd><p>absolute/relative ODE tolerance for the covariance solves –
+the augmented-sensitivity solves behind <code>covMethod="analytic"</code> and the
+perturbed solves behind the finite-difference methods.  <code>NULL</code> (default)
+derives a tight tolerance from <code>sigdig</code>; supply a number to override it.</p></dd>
+
+
+<dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>
+<dd><p>controls the shape of <code>fit$cov</code>.  <code>FALSE</code> (default)
+installs only the structural-theta block (the NONMEM-matched theta
+covariance, matching the historical finite-difference <code>fit$cov</code> shape
+for backwards compatibility); <code>TRUE</code> installs the full theta + residual
+sigma + Omega covariance – assembled analytically for
+<code>covMethod="analytic"</code>, or by central finite differences of the objective
+over the same parameter set for the finite-difference methods (perturbing Omega
+on the variance-covariance scale, with the per-parameter Gill (1983) step and the
+5-point/4-point stencils that <code>foceiCalcR</code> uses).  The theta standard
+errors are identical either way.</p></dd>
+
+
+<dt id="arg-fast">fast<a class="anchor" aria-label="anchor" href="#arg-fast"></a></dt>
+<dd><p>When <code>TRUE</code>, compute the outer (population) gradient
+analytically from Almquist (2015) sensitivity equations instead of by
+finite differences, and use the Eq-48 random-effect extrapolation for the
+next inner-problem starting values.  Requires an analytic-scope model
+(single additive/proportional Gaussian endpoint); out-of-scope models fall
+back to the finite-difference gradient with a message.  When unspecified,
+the outer optimizer defaults to <code>"lbfgsb3c"</code> (vs <code>"nlminb"</code> for
+<code>fast=FALSE</code>); pairing <code>fast=TRUE</code> with a derivative-free
+<code>outerOpt</code> reverts to <code>fast=FALSE</code>.  The <code>*f</code> methods (e.g.
+<code>foceif</code>) default this to <code>TRUE</code>.</p></dd>
 
 
 <dt id="arg-hesseps">hessEps<a class="anchor" aria-label="anchor" href="#arg-hesseps"></a></dt>
@@ -329,9 +377,27 @@ Hessians used for the covariance step/final likelihood: "central"
 (more accurate, used here) or "forward".</p></dd>
 
 
+<dt id="arg-censoption">censOption<a class="anchor" aria-label="anchor" href="#arg-censoption"></a></dt>
+<dd><p>Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations in the FOCEI family.  <code>"gauss"</code> (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+<code>"laplace"</code> uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+<code>saemControl</code>/<code>nlmControl</code> for a uniform interface but inert there –
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.</p></dd>
+
+
 <dt id="arg-eventtype">eventType<a class="anchor" aria-label="anchor" href="#arg-eventtype"></a></dt>
 <dd><p>Event gradient type for dosing events; Can be
 "central" or "forward"</p></dd>
+
+
+<dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
+<dd><p>Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.</p></dd>
 
 
 <dt id="arg-centralderiveps">centralDerivEps<a class="anchor" aria-label="anchor" href="#arg-centralderiveps"></a></dt>
@@ -424,6 +490,28 @@ evaluation if it runs into troubles.  (default TRUE)</p></dd>
 <dt id="arg-interaction">interaction<a class="anchor" aria-label="anchor" href="#arg-interaction"></a></dt>
 <dd><p>Boolean indicate FOCEi should be used (TRUE)
 instead of FOCE (FALSE)</p></dd>
+
+
+<dt id="arg-foce">foce<a class="anchor" aria-label="anchor" href="#arg-foce"></a></dt>
+<dd><p>Controls how FOCE (<code>interaction = FALSE</code>) evaluates the
+    residual variance R in the inner objective; ignored for FOCEi.  Either
+    <code>"nonmem"</code> (default) or <code>"foce+"</code>:</p>
+<p></p><ul><li><p><code>"nonmem"</code> freezes R at the <code>eta = 0</code> population
+    prediction and holds it constant across the inner optimization, matching
+    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+    errors, and an ODE model agrees with its closed-form (<code>linCmt</code>)
+    equivalent.  Disadvantage: R ignores the individual (conditional)
+    heteroscedasticity, so it can be slightly less accurate than
+    <code>"foce+"</code> for proportional/combined error.</p></li>
+<li><p><code>"foce+"</code> evaluates R at the current conditional
+    <code>eta</code> (the live variance), keeping the truncated FOCE
+    inner gradient.  Advantage: uses the conditional variance and
+    is a bit more accurate than NONMEM's FOCE in some cases.
+    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+    behavior in <span class="pkg">nlmixr2est</span> 6.0.1 and earlier. This does not
+    use the gradient of <code>eta</code> like the full <code>focei</code>
+    method, so it is not as accurate as <code>focei</code>.</p></li>
+</ul></dd>
 
 
 <dt id="arg-cholsetol">cholSEtol<a class="anchor" aria-label="anchor" href="#arg-cholsetol"></a></dt>
@@ -872,10 +960,25 @@ first zero gradient.</p></dd>
 
 <dt id="arg-mceta">mceta<a class="anchor" aria-label="anchor" href="#arg-mceta"></a></dt>
 <dd><p>Monte Carlo sampling for the best initial ETA estimate
-(based on `omega`): `-1` (default) uses the last eta; `0` uses eta=0
+(based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+accepting the extrapolated eta only when it is within the standardized-eta
+reset bound (else keeping the last eta, or resetting to 0 when that is also
+out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+the better; both `-2` and `-1` fall back to keeping the last eta when no
+analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
 for each inner optimization; for `n&gt;0`, the last eta, eta=0, and n-1
 etas sampled from omega are each evaluated and the best (by inner
 objective) is used.</p></dd>
+
+
+<dt id="arg-warm">warm<a class="anchor" aria-label="anchor" href="#arg-warm"></a></dt>
+<dd><p>Seeding of the n1qn1 inner-optimization Hessian:
+`"calc"` (default) warm-starts each inner problem with the eta
+Hessian calculated for the objective function at the same starting
+eta, calculating it at the starting point when unavailable;
+`"save"` uses the classic self-initialized Hessian.</p></dd>
 
 
 <dt id="arg-nagq">nAGQ<a class="anchor" aria-label="anchor" href="#arg-nagq"></a></dt>
@@ -895,13 +998,6 @@ gnlmm it was -700.</p></dd>
 <dd><p>The upper bound for adaptive quadrature
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.</p></dd>
-
-
-<dt id="arg-eventsens">eventSens<a class="anchor" aria-label="anchor" href="#arg-eventsens"></a></dt>
-<dd><p>Controls how dosing/event-parameter (`alag`, `F`,
-`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
-`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
-uses the legacy finite-difference behavior.</p></dd>
 
 
 <dt id="arg-sensmethod">sensMethod<a class="anchor" aria-label="anchor" href="#arg-sensmethod"></a></dt>
@@ -967,7 +1063,7 @@ Optimization.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

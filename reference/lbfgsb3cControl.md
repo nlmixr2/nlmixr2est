@@ -240,11 +240,21 @@ lbfgsb3cControl(
 
 - covMethod:
 
-  Method for calculating covariance, where R is the Hessian and S the
-  sum of individual gradient cross-products (at the empirical Bayes
-  estimates): `"r,s"` sandwich (`solve(R)%*%S%*%solve(R)`), `"r"`
-  Hessian-based (`2%*%solve(R)`), `"s"` cross-product-based
-  (`4%*%solve(S)`), or `""` to skip the covariance step.
+  Method for calculating the covariance. `"analytic"` (the default) uses
+  the exact analytic observed-information R-matrix (reported as
+  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
+  errors; it covers FOCEI/FOCE fits with additive, proportional, or
+  combined error, mu-referenced/covariate/other structural parameters
+  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
+  and emits a message and falls back to the finite-difference Hessian
+  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
+  error, bounded-parameter transforms, a structural theta shared by two
+  etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
+  at a near-zero prediction). The finite-difference methods use R (the
+  Hessian) and S (the sum of individual gradient cross-products at the
+  empirical Bayes estimates): `"r,s"` sandwich
+  (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
+  cross-product-based (`solve(S)`), or `""` to skip the covariance step.
 
 - adjObf:
 
@@ -343,88 +353,83 @@ print(fit2)
 #> ── nlmixr² log-likelihood lbfgsb3c ──
 #> 
 #>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -1518.235 325.6419 340.3652       -159.821    1.952515e+19               1
+#> lPop -704.4138 1139.463 1154.187      -566.7316        3319.744        164.2637
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01736186 0.004837161  3.485e-06      0.039       0.012 0.024    0.001
+#> elapsed 0.02217839 0.003006237  8.312e-06      0.056       0.016 0.032    0.001
 #>            other
-#> elapsed 1.859797
+#> elapsed 2.031807
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>       Est.        SE      %RSE        Back-transformed(95%CI) BSV(SD)
-#> E0  0.1598 4.745e+04 2.969e+07 0.1598 (-9.301e+04, 9.301e+04)        
-#> Em   -2.61 1.074e-05 0.0004114           -2.61 (-2.61, -2.61)        
-#> E50  1.188  1.35e-05  0.001136           1.188 (1.188, 1.188)        
-#> g        2     FIXED     FIXED                              2        
-#>     Shrink(SD)%
-#> E0             
-#> Em             
-#> E50            
-#> g              
+#>       Est.     SE  %RSE  Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.627 0.2189 34.92 -0.627 (-1.056, -0.1979)                    
+#> Em    9.06  7.546 83.29     9.06 (-5.729, 23.85)                    
+#> E50  4.027  2.418 60.04   4.027 (-0.7119, 8.766)                    
+#> g        2  FIXED FIXED                        2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
 #>   Minimization message ($message):  
-#>     ABNORMAL_TERMINATION_IN_LNSRCH 
+#>     CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH 
 #> 
 #> ── Fit Data (object is a modified tibble): ──
 #> # A tibble: 1,000 × 5
-#>   ID      TIME    DV  IPRED     v
-#>   <fct>  <dbl> <dbl>  <dbl> <dbl>
-#> 1 1     0.0249     0 -0.776 0.159
-#> 2 1     0.0403     0 -0.775 0.157
-#> 3 1     0.0864     1 -0.623 0.146
+#>   ID      TIME    DV  IPRED      v
+#>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
+#> 1 1     0.0249     0 -0.428 -0.627
+#> 2 1     0.0403     0 -0.428 -0.626
+#> 3 1     0.0864     1 -1.05  -0.623
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$lbfgsb3c
 
 fit2$lbfgsb3c
 #> $par
-#>        E0        Em       E50 
-#>  0.159821 -2.610462  1.187877 
+#>         E0         Em        E50 
+#> -0.6270132  9.0601102  4.0272143 
 #> 
 #> $grad
-#> [1] -1.3052311  0.3959589 -0.4120060
+#> [1]  2.919944e-08 -1.162765e-07  1.310491e-07
 #> 
 #> $value
-#> [1] 159.821
+#> [1] 566.7316
 #> 
 #> $counts
-#> [1] 48 48
+#> [1] 19 19
 #> 
 #> $convergence
-#> [1] NA
+#> [1] 0
 #> 
 #> $message
-#> [1] "ABNORMAL_TERMINATION_IN_LNSRCH"
+#> [1] "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH"
 #> 
 #> $scaleC
-#> [1] 0.0005000000 0.0003333333 0.0004189189
+#> [1] 0.00289795 0.04009648 0.03492545
 #> 
 #> $par.scaled
 #>         E0         Em        E50 
-#>  -681.3581 -9332.3868 -1937.6173 
+#> -389.90016  212.48784   59.04404 
 #> 
 #> $hessian
-#>            E0 Em E50
-#> E0  -3853.737  0   0
-#> Em      0.000  0   0
-#> E50     0.000  0   0
+#>               E0           Em          E50
+#> E0   0.001657843  0.001575858 -0.005137211
+#> Em   0.001575858  0.003667536 -0.010625243
+#> E50 -0.005137211 -0.010625243  0.031950367
 #> 
 #> $cov.scaled
-#>               E0          Em         E50
-#> E0  9.007199e+15 0.000000000 0.000000000
-#> Em  0.000000e+00 0.001037954 0.000000000
-#> E50 0.000000e+00 0.000000000 0.001037954
+#>           E0        Em       E50
+#> E0  5707.767  5643.183  2794.403
+#> Em  5643.183 35416.246 12685.189
+#> E50 2794.403 12685.189  4793.017
 #> 
 #> $r
-#>            E0 Em E50
-#> E0  -1926.868  0   0
-#> Em      0.000  0   0
-#> E50     0.000  0   0
+#>                E0            Em          E50
+#> E0   0.0008289214  0.0007879291 -0.002568605
+#> Em   0.0007879291  0.0018337680 -0.005312621
+#> E50 -0.0025686055 -0.0053126215  0.015975184
 #> 
 
 # The nlm control has been modified slightly to include

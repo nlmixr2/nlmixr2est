@@ -26,12 +26,17 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("r,s", "r", "s", ""),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covSolveTol = NULL,
+  covFull = TRUE,
+  fast = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
+  censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
+  eventSens = c("jump", "fd"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
   lbfgsPgtol = 0,
@@ -49,6 +54,7 @@ foceiControl(
   calcTables = TRUE,
   noAbort = TRUE,
   interaction = TRUE,
+  foce = c("nonmem", "foce+"),
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
@@ -60,8 +66,8 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
-    "Rvmmin", "uobyqa", "newuoa"),
+  outerOpt = c("nlminb", "lbfgsb3c", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+    "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
   rhoend = NULL,
@@ -126,11 +132,11 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L,
+  mceta = -2L,
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
-  eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward", "adjoint"),
   boundedTransform = TRUE
 )
@@ -255,11 +261,55 @@ foceiControl(
 
 - covMethod:
 
-  Method for calculating covariance, where R is the Hessian and S the
-  sum of individual gradient cross-products (at the empirical Bayes
-  estimates): `"r,s"` sandwich (`solve(R)%*%S%*%solve(R)`), `"r"`
-  Hessian-based (`2%*%solve(R)`), `"s"` cross-product-based
-  (`4%*%solve(S)`), or `""` to skip the covariance step.
+  Method for calculating the covariance. `"analytic"` (the default) uses
+  the exact analytic observed-information R-matrix (reported as
+  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
+  errors; it covers FOCEI/FOCE fits with additive, proportional, or
+  combined error, mu-referenced/covariate/other structural parameters
+  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
+  and emits a message and falls back to the finite-difference Hessian
+  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
+  error, bounded-parameter transforms, a structural theta shared by two
+  etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
+  at a near-zero prediction). The finite-difference methods use R (the
+  Hessian) and S (the sum of individual gradient cross-products at the
+  empirical Bayes estimates): `"r,s"` sandwich
+  (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
+  cross-product-based (`solve(S)`), or `""` to skip the covariance step.
+
+- covSolveTol:
+
+  absolute/relative ODE tolerance for the covariance solves – the
+  augmented-sensitivity solves behind `covMethod="analytic"` and the
+  perturbed solves behind the finite-difference methods. `NULL`
+  (default) derives a tight tolerance from `sigdig`; supply a number to
+  override it.
+
+- covFull:
+
+  controls the shape of `fit$cov`. `FALSE` (default) installs only the
+  structural-theta block (the NONMEM-matched theta covariance, matching
+  the historical finite-difference `fit$cov` shape for backwards
+  compatibility); `TRUE` installs the full theta + residual sigma +
+  Omega covariance – assembled analytically for `covMethod="analytic"`,
+  or by central finite differences of the objective over the same
+  parameter set for the finite-difference methods (perturbing Omega on
+  the variance-covariance scale, with the per-parameter Gill (1983) step
+  and the 5-point/4-point stencils that `foceiCalcR` uses). The theta
+  standard errors are identical either way.
+
+- fast:
+
+  When `TRUE`, compute the outer (population) gradient analytically from
+  Almquist (2015) sensitivity equations instead of by finite
+  differences, and use the Eq-48 random-effect extrapolation for the
+  next inner-problem starting values. Requires an analytic-scope model
+  (single additive/proportional Gaussian endpoint); out-of-scope models
+  fall back to the finite-difference gradient with a message. When
+  unspecified, the outer optimizer defaults to `"lbfgsb3c"` (vs
+  `"nlminb"` for `fast=FALSE`); pairing `fast=TRUE` with a
+  derivative-free `outerOpt` reverts to `fast=FALSE`. The `*f` methods
+  (e.g. `foceif`) default this to `TRUE`.
 
 - hessEps:
 
@@ -284,9 +334,27 @@ foceiControl(
   covariance step/final likelihood: "central" (more accurate, used here)
   or "forward".
 
+- censOption:
+
+  Treatment of the second derivative for censored (M2/M3/M4/BLQ)
+  observations in the FOCEI family. `"gauss"` (the default) keeps the
+  historic uncensored Gauss-Newton curvature, matching common PMx tools;
+  `"laplace"` uses the exact censored second derivative of the objective
+  (a proper Laplace inner Hessian and analytic covariance). Accepted by
+  `saemControl`/`nlmControl` for a uniform interface but inert there –
+  SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+  finite-difference Hessian that already reflects censoring exactly.
+
 - eventType:
 
   Event gradient type for dosing events; Can be "central" or "forward"
+
+- eventSens:
+
+  Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
+  \`dur\`) sensitivities are computed for THETA/ETA gradients:
+  \`"jump"\` (default) uses rxode2's analytic event sensitivities;
+  \`"fd"\` uses the legacy finite-difference behavior.
 
 - centralDerivEps:
 
@@ -374,6 +442,28 @@ foceiControl(
 - interaction:
 
   Boolean indicate FOCEi should be used (TRUE) instead of FOCE (FALSE)
+
+- foce:
+
+  Controls how FOCE (`interaction = FALSE`) evaluates the residual
+  variance R in the inner objective; ignored for FOCEi. Either
+  `"nonmem"` (default) or `"foce+"`:
+
+  - `"nonmem"` freezes R at the `eta = 0` population prediction and
+    holds it constant across the inner optimization, matching NONMEM's
+    FOCE. Advantage: reproduces NONMEM FOCE objective and standard
+    errors, and an ODE model agrees with its closed-form (`linCmt`)
+    equivalent. Disadvantage: R ignores the individual (conditional)
+    heteroscedasticity, so it can be slightly less accurate than
+    `"foce+"` for proportional/combined error.
+
+  - `"foce+"` evaluates R at the current conditional `eta` (the live
+    variance), keeping the truncated FOCE inner gradient. Advantage:
+    uses the conditional variance and is a bit more accurate than
+    NONMEM's FOCE in some cases. Disadvantage: does not match NONMEM
+    FOCE. This was the FOCE behavior in nlmixr2est 6.0.1 and earlier.
+    This does not use the gradient of `eta` like the full `focei`
+    method, so it is not as accurate as `focei`.
 
 - cholSEtol:
 
@@ -810,10 +900,26 @@ foceiControl(
 - mceta:
 
   Monte Carlo sampling for the best initial ETA estimate (based on
-  \`omega\`): \`-1\` (default) uses the last eta; \`0\` uses eta=0 for
-  each inner optimization; for \`n\>0\`, the last eta, eta=0, and n-1
-  etas sampled from omega are each evaluated and the best (by inner
+  \`omega\`): \`-2\` (default) uses the Almquist (2015) Eq-48
+  extrapolation \`eta^0 = eta\* + (d eta\*/d theta)(theta_new -
+  theta_old)\` when the analytic gradient supplies \`d eta\*/d theta\`
+  (\`fast = TRUE\`), accepting the extrapolated eta only when it is
+  within the standardized-eta reset bound (else keeping the last eta, or
+  resetting to 0 when that is also out of bound); \`-1\` jumps between
+  the extrapolated eta and eta=0, keeping the better; both \`-2\` and
+  \`-1\` fall back to keeping the last eta when no analytic \`d eta\*/d
+  theta\` is available (\`fast = FALSE\`). \`0\` uses eta=0 for each
+  inner optimization; for \`n\>0\`, the last eta, eta=0, and n-1 etas
+  sampled from omega are each evaluated and the best (by inner
   objective) is used.
+
+- warm:
+
+  Seeding of the n1qn1 inner-optimization Hessian: \`"calc"\` (default)
+  warm-starts each inner problem with the eta Hessian calculated for the
+  objective function at the same starting eta, calculating it at the
+  starting point when unavailable; \`"save"\` uses the classic
+  self-initialized Hessian.
 
 - nAGQ:
 
@@ -831,13 +937,6 @@ foceiControl(
 
   The upper bound for adaptive quadrature log-likelihood. By default
   this is Inf; in the original nlmixr's gnlmm was 400.
-
-- eventSens:
-
-  Controls how dosing/event-parameter (\`alag\`, \`F\`, \`rate\`,
-  \`dur\`) sensitivities are computed for THETA/ETA gradients:
-  \`"jump"\` (default) uses rxode2's analytic event sensitivities;
-  \`"fd"\` uses the legacy finite-difference behavior.
 
 - sensMethod:
 

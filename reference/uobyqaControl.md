@@ -210,11 +210,21 @@ uobyqaControl(
 
 - covMethod:
 
-  Method for calculating covariance, where R is the Hessian and S the
-  sum of individual gradient cross-products (at the empirical Bayes
-  estimates): `"r,s"` sandwich (`solve(R)%*%S%*%solve(R)`), `"r"`
-  Hessian-based (`2%*%solve(R)`), `"s"` cross-product-based
-  (`4%*%solve(S)`), or `""` to skip the covariance step.
+  Method for calculating the covariance. `"analytic"` (the default) uses
+  the exact analytic observed-information R-matrix (reported as
+  \\R^{-1}\\) and additionally returns the residual and `Omega` standard
+  errors; it covers FOCEI/FOCE fits with additive, proportional, or
+  combined error, mu-referenced/covariate/other structural parameters
+  (and non-mu-referenced etas), and SD-scale inter-occasion variability,
+  and emits a message and falls back to the finite-difference Hessian
+  for anything out of scope (FO, `nAGQ > 1`, censoring, DV-transformed
+  error, bounded-parameter transforms, a structural theta shared by two
+  etas, non-SD `iovXform`, or a pure-proportional variance that vanishes
+  at a near-zero prediction). The finite-difference methods use R (the
+  Hessian) and S (the sum of individual gradient cross-products at the
+  empirical Bayes estimates): `"r,s"` sandwich
+  (`solve(R)%*%S%*%solve(R)`), `"r"` Hessian-based (`solve(R)`), `"s"`
+  cross-product-based (`solve(S)`), or `""` to skip the covariance step.
 
 - adjObf:
 
@@ -323,23 +333,23 @@ fit2 <- nlmixr(mod, dsn, est="uobyqa")
 print(fit2)
 #> ── nlmixr² log-likelihood uobyqa ──
 #> 
-#>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
-#> lPop -679.7168 1164.16 1178.884      -579.0801        407.0929        67.95285
+#>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)
+#> lPop -714.4211 1129.456 1144.179       -561.728         361.496        60.18601
 #> 
 #> ── Time (sec $time): ──
 #> 
 #>              setup    optimize covariance preprocess postprocess table compress
-#> elapsed 0.01705502 0.002817502  4.186e-06      0.049       0.013 0.026    0.001
+#> elapsed 0.01708806 0.001903481  7.021e-06      0.053       0.013 0.026    0.001
 #>             other
-#> elapsed 0.6851233
+#> elapsed 0.6710014
 #> 
 #> ── ($parFixed or $parFixedDf): ──
 #> 
-#>        Est.    SE  %RSE  Back-transformed(95%CI) BSV(SD) Shrink(SD)%
-#> E0  -0.8062 0.247 30.64 -0.8062 (-1.29, -0.3221)                    
-#> Em    5.487 2.368 43.16    5.487 (0.8456, 10.13)                    
-#> E50   2.898 1.244 42.94    2.898 (0.4592, 5.337)                    
-#> g         2 FIXED FIXED                        2                    
+#>        Est.     SE  %RSE    Back-transformed(95%CI) BSV(SD) Shrink(SD)%
+#> E0  -0.5873 0.2499 42.55 -0.5873 (-1.077, -0.09754)                    
+#> Em    5.431  2.276 41.91      5.431 (0.9694, 9.893)                    
+#> E50   2.619  1.112 42.44      2.619 (0.4404, 4.798)                    
+#> g         2  FIXED FIXED                          2                    
 #>  
 #>   Covariance Type ($covMethod): r
 #>   Censoring ($censInformation): No censoring
@@ -348,17 +358,17 @@ print(fit2)
 #> # A tibble: 1,000 × 5
 #>   ID      TIME    DV  IPRED      v
 #>   <fct>  <dbl> <dbl>  <dbl>  <dbl>
-#> 1 1     0.0383     0 -0.369 -0.805
-#> 2 1     0.0509     0 -0.370 -0.805
-#> 3 1     0.0543     1 -1.17  -0.804
+#> 1 1     0.0358     0 -0.442 -0.586
+#> 2 1     0.0383     1 -1.03  -0.586
+#> 3 1     0.0509     0 -0.443 -0.585
 #> # ℹ 997 more rows
 
 # you can also get the nlm output with fit2$nlm
 
 fit2$uobyqa
-#> parameter estimates: -0.806218115844621, 5.48662262692952, 2.89816168968597 
-#> objective: 579.080149823443 
-#> number of function evaluations: 66 
+#> parameter estimates: -0.587284282457662, 5.43112062514237, 2.61929171601032 
+#> objective: 561.727968481139 
+#> number of function evaluations: 64 
 
 # The nlm control has been modified slightly to include
 # extra components and name the parameters

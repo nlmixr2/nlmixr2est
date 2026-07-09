@@ -17,7 +17,40 @@ getValidNlmixrCtl(control)
 # S3 method for class 'foce'
 getValidNlmixrCtl(control)
 
+# S3 method for class 'foceif'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'focef'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'focepf'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mufoceif'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mufocef'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mufocepf'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfoceif'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfocef'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfocepf'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'focep'
+getValidNlmixrCtl(control)
+
 # S3 method for class 'foi'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'irlsfocep'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'laplace'
@@ -48,6 +81,9 @@ getValidNlmixrCtl(control)
 getValidNlmixrCtl(control)
 
 # S3 method for class 'irlslaplace'
+getValidNlmixrCtl(control)
+
+# S3 method for class 'mufocep'
 getValidNlmixrCtl(control)
 
 # S3 method for class 'n1qn1'

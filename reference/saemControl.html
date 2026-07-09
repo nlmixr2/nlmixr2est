@@ -46,7 +46,9 @@
 <span>  nu <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">2</span>, <span class="fl">2</span>, <span class="fl">2</span><span class="op">)</span>,</span>
 <span>  print <span class="op">=</span> <span class="fl">1L</span>,</span>
 <span>  trace <span class="op">=</span> <span class="fl">0</span>,</span>
-<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"fim"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"linFim"</span>, <span class="st">"fim"</span>, <span class="st">"sa"</span>, <span class="st">"r,s"</span>, <span class="st">"r"</span>, <span class="st">"s"</span>, <span class="st">""</span><span class="op">)</span>,</span>
+<span>  covFull <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  nSaCov <span class="op">=</span> <span class="fl">500L</span>,</span>
 <span>  calcTables <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  logLik <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  nnodesGq <span class="op">=</span> <span class="fl">3</span>,</span>
@@ -83,6 +85,7 @@
 <span>  mixProbStepExp <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>  mixProbPriorN <span class="op">=</span> <span class="fl">20</span>,</span>
 <span>  mixSampleMethod <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"parallel"</span>, <span class="st">"msaem"</span><span class="op">)</span>,</span>
+<span>  censOption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"gauss"</span>, <span class="st">"laplace"</span><span class="op">)</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -147,11 +150,45 @@ typical fitting.</p></dd>
     gradient cross-product (evaluated at the individual empirical
     Bayes estimates).</p>
 <p>"<code>linFim</code>" Use the Linearized Fisher Information Matrix to calculate the covariance.</p>
-<p>"<code>fim</code>" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.</p>
+<p>"<code>fim</code>" Use the Fisher Information Matrix accumulated during SAEM
+ estimation to calculate the covariance.  Like <code>sa</code> it inverts the observed
+ information to a full theta + <code>Omega</code> diagonal + residual covariance, but
+ uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.</p>
+<p>"<code>sa</code>" Use the stochastic-approximation Fisher Information Matrix.  After
+ estimation, a dedicated covariance phase (<code>nSaCov</code> iterations) holds the
+ parameters at the converged estimate and keeps resimulating the individual
+ parameters, Monte-Carlo averaging the Louis observed-information integrand into a
+ converged FIM decoupled from the cooling schedule (the approach used by Monolix;
+ Kuhn &amp; Lavielle 2005).  Always includes every estimated population parameter
+ (theta, the <code>Omega</code> diagonal variances, and residual).</p>
+<p>For both <code>fim</code> and <code>sa</code> the simulation-based Fisher information covers the
+ structural theta, the <code>Omega</code> diagonal variances, and additive residual error.
+ Off-diagonal <code>Omega</code> covariances and proportional/combined residual error are not
+ estimated reliably by the simulation FIM (the complete-data correction is unstable when
+ between-subject variability dominates the residual), so those variance-block standard
+ errors are spliced in from the linearized FIM (<code>linFim</code>).</p>
 <p>"<code>r,s</code>" Uses the sandwich matrix to calculate the covariance, that is: \(R^-1 \times S \times R^-1\)</p>
 <p>"<code>r</code>" Uses the Hessian matrix to calculate the covariance as \(2\times R^-1\)</p>
 <p>"<code>s</code>" Uses the crossproduct matrix to calculate the covariance as \(4\times S^-1\)</p>
 <p>"" Does not calculate the covariance step.</p></dd>
+
+
+<dt id="arg-covfull">covFull<a class="anchor" aria-label="anchor" href="#arg-covfull"></a></dt>
+<dd><p>Boolean (default <code>TRUE</code>) indicating the covariance
+should include every estimated population parameter – the structural and
+residual thetas plus the <code>Omega</code> variance/covariance elements – named
+<code>om.&lt;eta&gt;</code> / <code>cov.&lt;eta&gt;.&lt;eta&gt;</code>.  When <code>FALSE</code> the legacy
+structural-theta-only covariance is reported.  Ignored by
+<code>covMethod="sa"</code>, which is always full.</p></dd>
+
+
+<dt id="arg-nsacov">nSaCov<a class="anchor" aria-label="anchor" href="#arg-nsacov"></a></dt>
+<dd><p>Number of iterations in the dedicated stochastic-approximation
+covariance phase used by <code>covMethod="sa"</code> (default <code>500</code>).  These
+iterations run at the converged estimate (parameters frozen) and only
+resimulate the individual parameters to build the observed Fisher
+information; a larger value gives a less noisy covariance.  Ignored by other
+covariance methods.</p></dd>
 
 
 <dt id="arg-calctables">calcTables<a class="anchor" aria-label="anchor" href="#arg-calctables"></a></dt>
@@ -417,6 +454,17 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
     specifically evaluating this method.</p></dd>
 
 
+<dt id="arg-censoption">censOption<a class="anchor" aria-label="anchor" href="#arg-censoption"></a></dt>
+<dd><p>Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations in the FOCEI family.  <code>"gauss"</code> (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+<code>"laplace"</code> uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+<code>saemControl</code>/<code>nlmControl</code> for a uniform interface but inert there –
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.</p></dd>
+
+
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
 <dd><p>Other arguments to control SAEM.</p></dd>
 
@@ -425,6 +473,15 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
     <h2 id="value">Value<a class="anchor" aria-label="anchor" href="#value"></a></h2>
     <p>List of options to be used in <code><a href="nlmixr2.html">nlmixr2</a></code> fit for
     SAEM.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="references">References<a class="anchor" aria-label="anchor" href="#references"></a></h2>
+    <p>Kuhn E, Lavielle M (2005). "Maximum likelihood estimation in nonlinear mixed
+effects models." Computational Statistics &amp; Data Analysis, 49(4), 1020-1038.
+<a href="https://doi.org/10.1016/j.csda.2004.07.002" class="external-link">doi:10.1016/j.csda.2004.07.002</a></p>
+<p>Jiang L, Roy A, Balasubramanian K, Davis D, Drusvyatskiy D, Na S (2025).
+"Online Covariance Estimation in Nonsmooth Stochastic Approximation."
+arXiv:2502.05305. <a href="https://doi.org/10.48550/arXiv.2502.05305" class="external-link">doi:10.48550/arXiv.2502.05305</a></p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>
@@ -446,7 +503,7 @@ the estimate more and need more `nBurn`/`nEm`. Default 20.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

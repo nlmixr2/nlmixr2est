@@ -19,7 +19,6 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-addPkgNlmixr2.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-agq.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-augPredIpredModel.html</loc></url>
-<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-collectWarn.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseDifferent.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-deparseFinal.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/dot-downgradeEtas.html</loc></url>
@@ -53,6 +52,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foceiFitCpp_.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/focepControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/foiControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getBaseSimModelFit.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.html</loc></url>
@@ -60,6 +60,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsagqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceiControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlsfocepControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/irlslaplaceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/iterPrintParams.html</loc></url>
@@ -68,6 +69,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/muagqControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/mufoceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/mufoceiControl.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/mufocepControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/mulaplaceControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/newuoaControl.html</loc></url>
@@ -132,6 +134,7 @@
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionFoceiLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlmeLines.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxGetDistributionNlsLines.html</loc></url>
+<url><loc>https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.foceiOuter.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/saemControl.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setCov.html</loc></url>
 <url><loc>https://nlmixr2.github.io/nlmixr2est/reference/setOfv.html</loc></url>

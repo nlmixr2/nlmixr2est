@@ -13,6 +13,9 @@ getBaseSimModelFit(x)
 # S3 method for class 'foce'
 getBaseSimModelFit(x)
 
+# S3 method for class 'focep'
+getBaseSimModelFit(x)
+
 # S3 method for class 'fo'
 getBaseSimModelFit(x)
 

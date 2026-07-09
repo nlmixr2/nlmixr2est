@@ -23,6 +23,36 @@ nlmixr2Est(env, ...)
 # S3 method for class 'output'
 nlmixr2Est(env, ...)
 
+# S3 method for class 'foceif'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'focef'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'focepf'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufoceif'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufocef'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufocepf'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfoceif'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfocef'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfocepf'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'focep'
+nlmixr2Est(env, ...)
+
 # S3 method for class 'foi'
 nlmixr2Est(env, ...)
 
@@ -33,6 +63,9 @@ nlmixr2Est(env, ...)
 nlmixr2Est(env, ...)
 
 # S3 method for class 'irlsfocei'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'irlsfocep'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'irlslaplace'
@@ -51,6 +84,9 @@ nlmixr2Est(env, ...)
 nlmixr2Est(env, ...)
 
 # S3 method for class 'mufocei'
+nlmixr2Est(env, ...)
+
+# S3 method for class 'mufocep'
 nlmixr2Est(env, ...)
 
 # S3 method for class 'mulaplace'

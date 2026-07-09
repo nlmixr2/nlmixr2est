@@ -13,7 +13,9 @@ saemControl(
   nu = c(2, 2, 2),
   print = 1L,
   trace = 0,
-  covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
+  covMethod = c("linFim", "fim", "sa", "r,s", "r", "s", ""),
+  covFull = TRUE,
+  nSaCov = 500L,
   calcTables = TRUE,
   logLik = FALSE,
   nnodesGq = 3,
@@ -50,6 +52,7 @@ saemControl(
   mixProbStepExp = 1,
   mixProbPriorN = 20,
   mixSampleMethod = c("parallel", "msaem"),
+  censOption = c("gauss", "laplace"),
   ...
 )
 ```
@@ -117,8 +120,29 @@ saemControl(
   "`linFim`" Use the Linearized Fisher Information Matrix to calculate
   the covariance.
 
-  "`fim`" Use the SAEM-calculated Fisher Information Matrix to calculate
-  the covariance.
+  "`fim`" Use the Fisher Information Matrix accumulated during SAEM
+  estimation to calculate the covariance. Like `sa` it inverts the
+  observed information to a full theta + `Omega` diagonal + residual
+  covariance, but uses the (noisier) estimation-phase matrix rather than
+  a dedicated cov phase.
+
+  "`sa`" Use the stochastic-approximation Fisher Information Matrix.
+  After estimation, a dedicated covariance phase (`nSaCov` iterations)
+  holds the parameters at the converged estimate and keeps resimulating
+  the individual parameters, Monte-Carlo averaging the Louis
+  observed-information integrand into a converged FIM decoupled from the
+  cooling schedule (the approach used by Monolix; Kuhn & Lavielle 2005).
+  Always includes every estimated population parameter (theta, the
+  `Omega` diagonal variances, and residual).
+
+  For both `fim` and `sa` the simulation-based Fisher information covers
+  the structural theta, the `Omega` diagonal variances, and additive
+  residual error. Off-diagonal `Omega` covariances and
+  proportional/combined residual error are not estimated reliably by the
+  simulation FIM (the complete-data correction is unstable when
+  between-subject variability dominates the residual), so those
+  variance-block standard errors are spliced in from the linearized FIM
+  (`linFim`).
 
   "`r,s`" Uses the sandwich matrix to calculate the covariance, that is:
   \\R^-1 \times S \times R^-1\\
@@ -130,6 +154,24 @@ saemControl(
   \\4\times S^-1\\
 
   "" Does not calculate the covariance step.
+
+- covFull:
+
+  Boolean (default `TRUE`) indicating the covariance should include
+  every estimated population parameter – the structural and residual
+  thetas plus the `Omega` variance/covariance elements – named
+  `om.<eta>` / `cov.<eta>.<eta>`. When `FALSE` the legacy
+  structural-theta-only covariance is reported. Ignored by
+  `covMethod="sa"`, which is always full.
+
+- nSaCov:
+
+  Number of iterations in the dedicated stochastic-approximation
+  covariance phase used by `covMethod="sa"` (default `500`). These
+  iterations run at the converged estimate (parameters frozen) and only
+  resimulate the individual parameters to build the observed Fisher
+  information; a larger value gives a less noisy covariance. Ignored by
+  other covariance methods.
 
 - calcTables:
 
@@ -400,6 +442,17 @@ saemControl(
   true variance. Prefer \`"parallel"\` unless specifically evaluating
   this method.
 
+- censOption:
+
+  Treatment of the second derivative for censored (M2/M3/M4/BLQ)
+  observations in the FOCEI family. `"gauss"` (the default) keeps the
+  historic uncensored Gauss-Newton curvature, matching common PMx tools;
+  `"laplace"` uses the exact censored second derivative of the objective
+  (a proper Laplace inner Hessian and analytic covariance). Accepted by
+  `saemControl`/`nlmControl` for a uniform interface but inert there –
+  SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+  finite-difference Hessian that already reflects censoring exactly.
+
 - ...:
 
   Other arguments to control SAEM.
@@ -409,6 +462,18 @@ saemControl(
 List of options to be used in
 [`nlmixr2`](https://nlmixr2.github.io/nlmixr2est/reference/nlmixr2.md)
 fit for SAEM.
+
+## References
+
+Kuhn E, Lavielle M (2005). "Maximum likelihood estimation in nonlinear
+mixed effects models." Computational Statistics & Data Analysis, 49(4),
+1020-1038.
+[doi:10.1016/j.csda.2004.07.002](https://doi.org/10.1016/j.csda.2004.07.002)
+
+Jiang L, Roy A, Balasubramanian K, Davis D, Drusvyatskiy D, Na S (2025).
+"Online Covariance Estimation in Nonsmooth Stochastic Approximation."
+arXiv:2502.05305.
+[doi:10.48550/arXiv.2502.05305](https://doi.org/10.48550/arXiv.2502.05305)
 
 ## See also
 

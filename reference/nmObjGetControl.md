@@ -17,7 +17,13 @@ nmObjGetControl(x, ...)
 # S3 method for class 'foce'
 nmObjGetControl(x, ...)
 
+# S3 method for class 'focep'
+nmObjGetControl(x, ...)
+
 # S3 method for class 'foi'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'irlsfocep'
 nmObjGetControl(x, ...)
 
 # S3 method for class 'laplace'
@@ -48,6 +54,9 @@ nmObjGetControl(x, ...)
 nmObjGetControl(x, ...)
 
 # S3 method for class 'irlslaplace'
+nmObjGetControl(x, ...)
+
+# S3 method for class 'mufocep'
 nmObjGetControl(x, ...)
 
 # S3 method for class 'n1qn1'

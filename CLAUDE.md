@@ -83,6 +83,25 @@ calculations - `censResid.cpp`, `censEst.cpp` – M2/M3/M4 censoring
 methods - `nearPD.cpp` – nearest positive-definite matrix -
 `uninformativeEtas.cpp`, `shrink.cpp` – ETA diagnostics
 
+### Registering C/C++ (`.Call`) routines – `src/init.c` is MANUAL
+
+`src/init.c` hand-maintains the `R_registerRoutines` `callMethods[]`
+table (Rcpp’s generated `R_init_nlmixr2est` in `RcppExports.cpp` is NOT
+used – init.c owns `R_init_nlmixr2est`). Each `.Call` entry lists an
+explicit prototype and a HARDCODED argument count,
+e.g. `{"_nlmixr2est_foo", (DL_FUNC) &_nlmixr2est_foo, 5}`. So when you
+add a `[[Rcpp::export]]` function OR change an existing one’s argument
+count, you MUST do BOTH: 1. `Rcpp::compileAttributes(".")` – regenerates
+`src/RcppExports.cpp` + `R/RcppExports.R`; and 2. hand-edit `src/init.c`
+– add/update the forward `SEXP ...(SEXP, ...)` prototype AND the
+`callMethods[]` entry’s arg count.
+
+Skipping step 2 gives a runtime `.Call` error like
+`Incorrect number of arguments (N), expecting M for '_nlmixr2est_foo'`
+(the loaded registration table still has the old arity), NOT a compile
+error – so it survives a clean rebuild. A header change still needs
+`rm -f src/*.o src/*.so` before rebuilding.
+
 ### Post-fit objects
 
 Fit results are `nlmixr2FitData` objects (a data frame subclass).
@@ -149,3 +168,33 @@ has received a shutdown signal”):
   use `snake_case` or `dot.case` for R objects.
 - **C++ Style**: Follow Rcpp/Armadillo conventions. Use `snake_case` or
   `camelCase` as appropriate.
+
+## Generating rxode2 model text (augmented/inner/outer models)
+
+When emitting rxode2 model text programmatically (e.g. the augmented
+sensitivity models in `R/foceiCovAnalytic.R` / `R/foceiGradAnalytic.R`,
+or the inner/pred models in `R/focei.R`):
+
+- **Name every generated output variable `rx_<name>_`** (leading `rx_`,
+  trailing `_`), matching the inner model’s `rx_pred_` / `rx__sens_..._`
+  convention. Two reasons: (1) the user can define a model variable with
+  any plain name (e.g. `rvar`, `predf`, `f1`), so an un-prefixed
+  generated name can collide and silently corrupt the model; (2)
+  **rxode2 parses a top-level `x = <constant>` as an initial value** (x
+  becomes a parameter, dropping out of the solve columns) UNLESS the
+  name is of the `rx_<name>_` form – those keep a constant assignment as
+  a real lhs output column. So a constant sensitivity
+  (e.g. `d(R)/d(eta)=0` for additive error) comes back as a column of
+  that constant, no special-casing needed. Use `rx_predf_`,
+  `rx_f1_<dir>`, `rx_rvarf_`, etc. – never `predf`, `f1_...`, `rvar`,
+  `rxPredF` (a plain `rxFoo` without the trailing `_` is still parsed as
+  an init).
+- **Use `=` only for a variable you will read back** (an output column
+  of the solve). Use `~` (suppressed assignment) for any intermediate
+  you compute but do NOT output – extra `=` output columns shift the
+  positional column layout and add solve overhead.
+- **Declare the theta/eta inputs AND the model covariates (`ui$allCovs`)
+  with `param(...)`** so the solve parameter order is fixed and
+  positional (values are keyed by name, but pinning order keeps the
+  input layout stable across builds). Covariates are supplied from the
+  event data at solve time but must still be declared in `param(...)`.

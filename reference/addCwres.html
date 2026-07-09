@@ -149,17 +149,22 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.02463282 2.8022e-05  0.0110106      0.065      0.03 1.826       1.789</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.02691685 3.6304e-05 0.01801427      0.075     0.034 1.842       1.818</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.076    0.136 1.270329</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.152    0.141 1.282033</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>              0.444  0.194 43.6       1.56 (1.07, 2.28)    70.48    <span style="color: #BB0000; font-weight: bold;">-0.467%</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.12 0.0901 8.03       3.07 (2.57, 3.66)    29.54      8.37% </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0452 1.31       31.4 (28.7, 34.3)    13.18      12.2% </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.698                               0.698                     </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>       <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>              0.444    0.194  43.6       1.56 (1.07, 2.28)    70.48</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.12   0.0259  2.31       3.07 (2.92, 3.23)    29.54</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45   0.0452  1.31       31.4 (28.7, 34.3)    13.18</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.698 -0.00157 0.225    0.698 (0.701, 0.695)         </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Shrink(SD)%</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>       <span style="color: #BB0000; font-weight: bold;">-0.467%</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>         8.37% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>          12.2% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>            </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">linFim</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   No correlations in between subject variability (BSV) matrix</span>
@@ -213,22 +218,27 @@ update.  By default this is the global environment.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> </span><span style="color: #BBBB00; font-weight: bold;">SAEM </span><span style="color: #555555; font-weight: bold; font-style: italic;">OBJF by FOCEi approximation</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> FOCEi 118.4874 375.0872 395.2668      -180.5436        19.02429        1.410032</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> FOCEi 118.4874 375.0872 395.2668      -180.5436        57.27446        1.410032</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              setup   optimize covariance preprocess configure  saem postprocess</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.02463282 2.8022e-05  0.0110106      0.065      0.03 1.826       1.789</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.02691685 3.6304e-05 0.01801427      0.075     0.034 1.842       1.818</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         table compress    other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.076    0.136 1.270329</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.152    0.141 1.282033</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Population Parameters (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span> <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>              0.444  0.194 43.6       1.56 (1.07, 2.28)    70.48    <span style="color: #BB0000; font-weight: bold;">-0.467%</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.12 0.0901 8.03       3.07 (2.57, 3.66)    29.54      8.37% </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45 0.0452 1.31       31.4 (28.7, 34.3)    13.18      12.2% </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.698                               0.698                     </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Parameter</span>  <span style="font-weight: bold;">Est.</span>       <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span> <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(CV%)</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>              0.444    0.194  43.6       1.56 (1.07, 2.28)    70.48</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>               1.12   0.0259  2.31       3.07 (2.92, 3.23)    29.54</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>         log V  3.45   0.0452  1.31       31.4 (28.7, 34.3)    13.18</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>           0.698 -0.00157 0.225    0.698 (0.701, 0.695)         </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Shrink(SD)%</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tka</span>       <span style="color: #BB0000; font-weight: bold;">-0.467%</span> </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tcl</span>         8.37% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">tv</span>          12.2% </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">add.sd</span>            </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">linFim</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   No correlations in between subject variability (BSV) matrix</span>
@@ -260,7 +270,7 @@ update.  By default this is the global environment.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

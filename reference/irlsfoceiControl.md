@@ -94,7 +94,19 @@ irlsfoceiControl()
 #> [1] 1
 #> 
 #> $covMethod
-#> [1] 1
+#> [1] 2
+#> 
+#> $covType
+#> [1] "analytic"
+#> 
+#> $covSolveTol
+#> NULL
+#> 
+#> $covFull
+#> [1] TRUE
+#> 
+#> $fast
+#> [1] FALSE
 #> 
 #> $centralDerivEps
 #> [1] 2.980232e-07 2.980232e-07
@@ -121,7 +133,7 @@ irlsfoceiControl()
 #> [1] TRUE
 #> 
 #> $outerOpt
-#> [1] 1
+#> [1] -1
 #> 
 #> $ci
 #> [1] 0.95
@@ -147,6 +159,12 @@ irlsfoceiControl()
 #> $interaction
 #> [1] 1
 #> 
+#> $foce
+#> [1] "nonmem"
+#> 
+#> $foceType
+#> [1] 0
+#> 
 #> $cholSEtol
 #> [1] 6.055454e-06
 #> 
@@ -161,6 +179,9 @@ irlsfoceiControl()
 #> 
 #> $optimHessCovType
 #> [1] 1
+#> 
+#> $censOption
+#> [1] 0
 #> 
 #> $cholAccept
 #> [1] 0.001
@@ -193,7 +214,21 @@ irlsfoceiControl()
 #> [1] 0
 #> 
 #> $outerOptFun
-#> NULL
+#> function (par, fn, gr, lower = -Inf, upper = Inf, control = list(), 
+#>     ...) 
+#> {
+#>     .ctl <- .controlIterMax(control)
+#>     .ctl <- .ctl[names(.ctl) %in% c("eval.max", "iter.max", "trace", 
+#>         "abs.tol", "rel.tol", "x.tol", "xf.tol", "step.min", 
+#>         "step.max", "sing.tol", "scale.inti", "diff.g")]
+#>     .ctl$trace <- 0
+#>     .ret <- stats::nlminb(start = par, objective = fn, gradient = gr, 
+#>         hessian = NULL, control = .ctl, lower = lower, upper = upper)
+#>     .ret$x <- .ret$par
+#>     .ret
+#> }
+#> <bytecode: 0x56220062fc90>
+#> <environment: namespace:nlmixr2est>
 #> 
 #> $rhobeg
 #> [1] 0.2
@@ -286,7 +321,7 @@ irlsfoceiControl()
 #> [1] 1e+05
 #> 
 #> $outerOptTxt
-#> [1] "lbfgsb3c"
+#> [1] "nlminb"
 #> 
 #> $rmatNorm
 #> [1] 1
@@ -365,6 +400,9 @@ irlsfoceiControl()
 #> 
 #> $eventType
 #> [1] 2
+#> 
+#> $eventSens
+#> [1] "jump"
 #> 
 #> $gradProgressOfvTime
 #> [1] 10
@@ -821,7 +859,10 @@ irlsfoceiControl()
 #> [1] TRUE
 #> 
 #> $mceta
-#> [1] -1
+#> [1] -2
+#> 
+#> $warm
+#> [1] 1
 #> 
 #> $nAGQ
 #> [1] 0
@@ -831,9 +872,6 @@ irlsfoceiControl()
 #> 
 #> $agqLow
 #> [1] -Inf
-#> 
-#> $eventSens
-#> [1] "jump"
 #> 
 #> $sensMethod
 #> [1] "default"

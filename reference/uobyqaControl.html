@@ -252,12 +252,21 @@ will calculate tables. By default this is <code>TRUE</code></p></dd>
 
 
 <dt id="arg-covmethod">covMethod<a class="anchor" aria-label="anchor" href="#arg-covmethod"></a></dt>
-<dd><p>Method for calculating covariance, where R is the
-Hessian and S the sum of individual gradient cross-products (at the
-empirical Bayes estimates): <code>"r,s"</code> sandwich
+<dd><p>Method for calculating the covariance.  <code>"analytic"</code> (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\(R^{-1}\)) and additionally returns the residual and <code>Omega</code> standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, <code>nAGQ &gt; 1</code>, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD <code>iovXform</code>, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): <code>"r,s"</code> sandwich
 (<code>solve(R)%*%S%*%solve(R)</code>), <code>"r"</code> Hessian-based
-(<code>2%*%solve(R)</code>), <code>"s"</code> cross-product-based
-(<code>4%*%solve(S)</code>), or <code>""</code> to skip the covariance step.</p></dd>
+(<code>solve(R)</code>), <code>"s"</code> cross-product-based (<code>solve(S)</code>), or
+<code>""</code> to skip the covariance step.</p></dd>
 
 
 <dt id="arg-adjobf">adjObf<a class="anchor" aria-label="anchor" href="#arg-adjobf"></a></dt>
@@ -368,23 +377,23 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">fit2</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── </span><span style="color: #0000BB; font-weight: bold;">nlmix</span><span style="color: #BB0000; font-weight: bold;">r²</span><span style="font-weight: bold;"> log-likelihood </span><span style="color: #BBBB00; font-weight: bold;">uobyqa</span><span style="font-weight: bold;"> ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF     AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -679.7168 1164.16 1178.884      -579.0801        407.0929        67.95285</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>           OBJF      AIC      BIC Log-likelihood Condition#(Cov) Condition#(Cor)</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> lPop -714.4211 1129.456 1144.179       -561.728         361.496        60.18601</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── Time (sec </span><span style="color: #0000BB; font-weight: bold;">$time</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>              setup    optimize covariance preprocess postprocess table compress</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01705502 0.002817502  4.186e-06      0.049       0.013 0.026    0.001</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.01708806 0.001903481  7.021e-06      0.053       0.013 0.026    0.001</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>             other</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.6851233</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> elapsed 0.6710014</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">── (</span><span style="color: #0000BB; font-weight: bold;">$parFixed</span><span style="font-weight: bold;"> or </span><span style="color: #0000BB; font-weight: bold;">$parFixedDf</span><span style="font-weight: bold;">): ──</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>    <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>  <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(SD)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.8062 0.247 30.64 -0.8062 (-1.29, -0.3221)                    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    5.487 2.368 43.16    5.487 (0.8456, 10.13)                    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   2.898 1.244 42.94    2.898 (0.4592, 5.337)                    </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>         2 <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                        2                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>        <span style="font-weight: bold;">Est.</span>     <span style="font-weight: bold;">SE</span>  <span style="font-weight: bold;">%RSE</span>    <span style="font-weight: bold;">Back-transformed(95%CI)</span> <span style="font-weight: bold;">BSV(SD)</span> <span style="font-weight: bold;">Shrink(SD)%</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E0</span>  -0.5873 0.2499 42.55 -0.5873 (-1.077, -0.09754)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">Em</span>    5.431  2.276 41.91      5.431 (0.9694, 9.893)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">E50</span>   2.619  1.112 42.44      2.619 (0.4404, 4.798)                    </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="font-weight: bold;">g</span>         2  <span style="color: #00BB00; font-weight: bold;">FIXED</span> <span style="color: #00BB00; font-weight: bold;">FIXED</span>                          2                    </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Covariance Type (<span style="color: #0000BB; font-weight: bold;">$covMethod</span>): <span style="font-weight: bold;">r</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   Censoring (<span style="color: #0000BB; font-weight: bold;">$censInformation</span>): No censoring</span>
@@ -393,17 +402,17 @@ uses the legacy finite-difference behavior.</p></dd>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># A tibble: 1,000 × 5</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   ID      TIME    DV  IPRED      v</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   <span style="color: #949494; font-style: italic;">&lt;fct&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span> <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span>  <span style="color: #949494; font-style: italic;">&lt;dbl&gt;</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.038<span style="text-decoration: underline;">3</span>     0 -<span style="color: #BB0000;">0.369</span> -<span style="color: #BB0000;">0.805</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.050<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.370</span> -<span style="color: #BB0000;">0.805</span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.054<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">1.17</span>  -<span style="color: #BB0000;">0.804</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">1</span> 1     0.035<span style="text-decoration: underline;">8</span>     0 -<span style="color: #BB0000;">0.442</span> -<span style="color: #BB0000;">0.586</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">2</span> 1     0.038<span style="text-decoration: underline;">3</span>     1 -<span style="color: #BB0000;">1.03</span>  -<span style="color: #BB0000;">0.586</span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #BCBCBC;">3</span> 1     0.050<span style="text-decoration: underline;">9</span>     0 -<span style="color: #BB0000;">0.443</span> -<span style="color: #BB0000;">0.585</span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> <span style="color: #949494;"># ℹ 997 more rows</span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># you can also get the nlm output with fit2$nlm</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">fit2</span><span class="op">$</span><span class="va">uobyqa</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.806218115844621, 5.48662262692952, 2.89816168968597 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 579.080149823443 </span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 66 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> parameter estimates: -0.587284282457662, 5.43112062514237, 2.61929171601032 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> objective: 561.727968481139 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> number of function evaluations: 64 </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># The nlm control has been modified slightly to include</span></span></span>
 <span class="r-in"><span><span class="co"># extra components and name the parameters</span></span></span>
@@ -419,7 +428,7 @@ uses the legacy finite-difference behavior.</p></dd>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>

@@ -180,6 +180,8 @@ plot(fit)
   : Control options for the foce estimation method
 - [`foceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foceiControl.md)
   : Control Options for FOCEi
+- [`focepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/focepControl.md)
+  : Control options for the focep (FOCE+) estimation method
 - [`foiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/foiControl.md)
   : Control options foir the FOI estimation method
 - [`getValidNlmixrControl()`](https://nlmixr2.github.io/nlmixr2est/reference/getValidNlmixrControl.md)
@@ -191,6 +193,8 @@ plot(fit)
   : Control options for the irlsfoce estimation method
 - [`irlsfoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsfoceiControl.md)
   : Control options for the irlsfocei estimation method
+- [`irlsfocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlsfocepControl.md)
+  : Control options for the irlsfocep (IRLS FOCE+) estimation method
 - [`irlslaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/irlslaplaceControl.md)
   : Control options for the irlslaplace estimation method
 - [`iterPrintControl()`](https://nlmixr2.github.io/nlmixr2est/reference/iterPrintControl.md)
@@ -205,6 +209,9 @@ plot(fit)
   : Control options for the mufoce estimation method
 - [`mufoceiControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mufoceiControl.md)
   : Control options for the mufocei estimation method
+- [`mufocepControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mufocepControl.md)
+  : Control options for the mufocep (mu-referenced FOCE+) estimation
+  method
 - [`mulaplaceControl()`](https://nlmixr2.github.io/nlmixr2est/reference/mulaplaceControl.md)
   : Control options for the mulaplace estimation method
 - [`n1qn1Control()`](https://nlmixr2.github.io/nlmixr2est/reference/n1qn1Control.md)
@@ -295,6 +302,15 @@ plot(fit)
   : Extract residuals from the FOCEI fit
 - [`rmEta()`](https://nlmixr2.github.io/nlmixr2est/reference/rmEta.md) :
   Remove an eta from the model
+- [`rxUiGet(`*`<foceiOuter>`*`)`](https://nlmixr2.github.io/nlmixr2est/reference/rxUiGet.foceiOuter.md)
+  : Build the augmented outer-gradient sensitivity model (compiled
+  model + \`dirs\` + \`P2\`) for a UI. This is the persistent
+  \`..outer\` sibling of the inner model: it depends only on the model +
+  direction set (NOT theta/eta/omega), so it is built once during model
+  setup (via \`rxUiGet.foceiModel\`/\`foceModel\`, which qs2-cache the
+  whole model list) and reused across every outer-gradient call.
+  Callable independently as \`ui\$foceiOuter\`. \`NULL\` when out of
+  analytic scope (the gradient then falls back to finite differences).
 - [`saemControl()`](https://nlmixr2.github.io/nlmixr2est/reference/saemControl.md)
   : Control Options for SAEM
 - [`setCov()`](https://nlmixr2.github.io/nlmixr2est/reference/setCov.md)

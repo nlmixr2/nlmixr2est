@@ -79,6 +79,11 @@
 <p>Core numerical work is in C++17 with RcppArmadillo/RcppEigen: - <code>saem.cpp</code> – SAEM algorithm kernel - <code>nlm.cpp</code> / <code>innerPoint.cpp</code> – NLM-family optimization - <code>cwres.cpp</code>, <code>npde.cpp</code>, <code>ires.cpp</code> – residual calculations - <code>censResid.cpp</code>, <code>censEst.cpp</code> – M2/M3/M4 censoring methods - <code>nearPD.cpp</code> – nearest positive-definite matrix - <code>uninformativeEtas.cpp</code>, <code>shrink.cpp</code> – ETA diagnostics</p>
 </div>
 <div class="section level3">
+<h3 id="registering-cc-call-routines--srcinitc-is-manual">Registering C/C++ (<code>.Call</code>) routines – <code>src/init.c</code> is MANUAL<a class="anchor" aria-label="anchor" href="#registering-cc-call-routines--srcinitc-is-manual"></a></h3>
+<p><code>src/init.c</code> hand-maintains the <code>R_registerRoutines</code> <code>callMethods[]</code> table (Rcpp’s generated <code>R_init_nlmixr2est</code> in <code>RcppExports.cpp</code> is NOT used – init.c owns <code>R_init_nlmixr2est</code>). Each <code>.Call</code> entry lists an explicit prototype and a HARDCODED argument count, e.g. <code>{"_nlmixr2est_foo", (DL_FUNC) &amp;_nlmixr2est_foo, 5}</code>. So when you add a <code>[[Rcpp::export]]</code> function OR change an existing one’s argument count, you MUST do BOTH: 1. <code>Rcpp::compileAttributes(".")</code> – regenerates <code>src/RcppExports.cpp</code> + <code>R/RcppExports.R</code>; and 2. hand-edit <code>src/init.c</code> – add/update the forward <code>SEXP ...(SEXP, ...)</code> prototype AND the <code>callMethods[]</code> entry’s arg count.</p>
+<p>Skipping step 2 gives a runtime <code>.Call</code> error like <code>Incorrect number of arguments (N), expecting M for '_nlmixr2est_foo'</code> (the loaded registration table still has the old arity), NOT a compile error – so it survives a clean rebuild. A header change still needs <code>rm -f src/*.o src/*.so</code> before rebuilding.</p>
+</div>
+<div class="section level3">
 <h3 id="post-fit-objects">Post-fit objects<a class="anchor" aria-label="anchor" href="#post-fit-objects"></a></h3>
 <p>Fit results are <code>nlmixr2FitData</code> objects (a data frame subclass). Post-fit accessors use <code>nmObjGet</code> S3 dispatch (<code>R/nmObjGet.R</code>, <code>R/nmObjHandle.R</code>). Residuals are added lazily via <code><a href="reference/addCwres.html">addCwres()</a></code> and <code><a href="reference/addNpde.html">addNpde()</a></code>.</p>
 </div>
@@ -121,6 +126,16 @@
 <li>
 <strong>C++ Style</strong>: Follow Rcpp/Armadillo conventions. Use <code>snake_case</code> or <code>camelCase</code> as appropriate.</li>
 </ul></div>
+<div class="section level2">
+<h2 id="generating-rxode2-model-text-augmentedinnerouter-models">Generating rxode2 model text (augmented/inner/outer models)<a class="anchor" aria-label="anchor" href="#generating-rxode2-model-text-augmentedinnerouter-models"></a></h2>
+<p>When emitting rxode2 model text programmatically (e.g. the augmented sensitivity models in <code>R/foceiCovAnalytic.R</code> / <code>R/foceiGradAnalytic.R</code>, or the inner/pred models in <code>R/focei.R</code>):</p>
+<ul><li>
+<strong>Name every generated output variable <code>rx_&lt;name&gt;_</code></strong> (leading <code>rx_</code>, trailing <code>_</code>), matching the inner model’s <code>rx_pred_</code> / <code>rx__sens_..._</code> convention. Two reasons: (1) the user can define a model variable with any plain name (e.g. <code>rvar</code>, <code>predf</code>, <code>f1</code>), so an un-prefixed generated name can collide and silently corrupt the model; (2) <strong>rxode2 parses a top-level <code>x = &lt;constant&gt;</code> as an initial value</strong> (x becomes a parameter, dropping out of the solve columns) UNLESS the name is of the <code>rx_&lt;name&gt;_</code> form – those keep a constant assignment as a real lhs output column. So a constant sensitivity (e.g. <code>d(R)/d(eta)=0</code> for additive error) comes back as a column of that constant, no special-casing needed. Use <code>rx_predf_</code>, <code>rx_f1_&lt;dir&gt;</code>, <code>rx_rvarf_</code>, etc. – never <code>predf</code>, <code>f1_...</code>, <code>rvar</code>, <code>rxPredF</code> (a plain <code>rxFoo</code> without the trailing <code>_</code> is still parsed as an init).</li>
+<li>
+<strong>Use <code>=</code> only for a variable you will read back</strong> (an output column of the solve). Use <code>~</code> (suppressed assignment) for any intermediate you compute but do NOT output – extra <code>=</code> output columns shift the positional column layout and add solve overhead.</li>
+<li>
+<strong>Declare the theta/eta inputs AND the model covariates (<code>ui$allCovs</code>) with <code>param(...)</code></strong> so the solve parameter order is fixed and positional (values are keyed by name, but pinning order keeps the input layout stable across builds). Covariates are supplied from the event data at solve time but must still be declared in <code>param(...)</code>.</li>
+</ul></div>
 </div>
 
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
@@ -132,7 +147,7 @@
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer></div>
