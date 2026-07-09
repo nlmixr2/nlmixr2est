@@ -1108,6 +1108,46 @@ arma::vec shi21EtaR(arma::vec &eta, int id) {
   return shi21EtaGeneral(eta, id, 1);
 }
 
+// est="impmap" gradient FD fallback: perturb the THETAS (holding the current eta,
+// set by the caller) and solve the pred model, returning per-observation f (w=0,
+// rx_pred_) or V (w=1, rx_r_).  Mirrors shi21EtaGeneral but over thetas; the
+// caller restores fullTheta afterward.  Used by shi21Central()/shi21Forward().
+arma::vec shi21ThetaGeneral(arma::vec &theta, int id, int w) {
+  focei_ind *fInd = &(inds_focei[id]);
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  rx_solving_options *op = getSolvingOptions(rx);
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], theta[t]);
+  }
+  IndNeqOverrideGuard neqGuard(ind, op_focei.predNeq);
+  setIndSolve(ind, -1);
+  predOde(_rxId);
+  int nObs = getIndNallTimes(ind) - getIndNdoses(ind) - getIndNevid2(ind);
+  fInd->nObs = nObs; // keep consistent for callers
+  arma::vec ret(nObs);
+  iniSubjectE(_rxId, 1, ind, op, rx, rxPred.update_inis);
+  int kk, k = 0;
+  double curT;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      continue;
+    }
+    rxPred.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+    if (k < nObs) ret(k) = lhs[op_focei.predNoLhsOffset + w];
+    k++;
+    if (k >= nObs) break;
+  }
+  return ret;
+}
+arma::vec shi21ThetaF(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 0); }
+arma::vec shi21ThetaR(arma::vec &theta, int id) { return shi21ThetaGeneral(theta, id, 1); }
+
 arma::vec calcGradForward(arma::vec &f0,
                           arma::vec &grPH,  double h) {
   if (grPH.is_finite()) {
@@ -8442,14 +8482,50 @@ bool impThetaSensDfDV(int id, const arma::vec& eta, arma::mat& dfdth, arma::mat&
   return true;
 }
 
+// Central-FD fallback for the theta-sensitivity gradient (mirrors the pred-model
+// finite-difference fallback the inner problem uses when the sensitivity ODE will
+// not solve).  Solves the pred model at the current (theta, eta) for per-obs f and
+// V, then shi21-optimized central differences over each estimated theta for
+// d(f)/d(theta) and d(V)/d(theta).  Fills fvec/Vvec (nobs) and dfmat/dVmat
+// (nobs x nSens); restores fullTheta on exit.
+static void impThetaSensFD(int id, arma::vec& curTheta,
+                           arma::vec& fvec, arma::vec& Vvec,
+                           arma::mat& dfmat, arma::mat& dVmat) {
+  int nSens = op_focei.impThetaSensIdx.size();
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  focei_ind *fInd = &(inds_focei[id]);
+  fvec = shi21ThetaGeneral(curTheta, id, 0); // f0 (also sets fInd->nObs)
+  Vvec = shi21ThetaGeneral(curTheta, id, 1); // V0
+  int nobs = (int)fInd->nObs;
+  dfmat.set_size(nobs, nSens); dfmat.zeros();
+  dVmat.set_size(nobs, nSens); dVmat.zeros();
+  for (int s = 0; s < nSens; ++s) {
+    int tIdx = op_focei.impThetaSensIdx[s];
+    arma::vec grF(nobs), grV(nobs);
+    double h = 0.0;
+    shi21Central(shi21ThetaF, curTheta, h, fvec, grF, id, tIdx,
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+    h = 0.0;
+    shi21Central(shi21ThetaR, curTheta, h, Vvec, grV, id, tIdx,
+                 op_focei.hessEpsInner, 1.5, 4.5, 3.0, op_focei.shi21maxFD);
+    dfmat.col(s) = grF;
+    dVmat.col(s) = grV;
+  }
+  for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
+  }
+}
+
 // Accumulate subject id's importance-sampling contribution to the score `g`
 // (length nSens) and Fisher-information Hessian `H` (nSens x nSens) for the
 // estimated non-mu thetas, from its samples `S` (nsamp x neta) and normalized
-// weights `zk`.  Runs ENTIRELY in the theta-sensitivity solve context (caller must
-// impSwapToTs first): that model outputs per-observation f (rx_pred_), V (rx_r_),
-// d(f)/d(theta) and d(V)/d(theta) in one solve.  For a Gaussian endpoint the score
-// is sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ] and
-// the (mean+variance) Fisher information is
+// weights `zk`.  The theta-sensitivity model outputs per-observation f (rx_pred_),
+// V (rx_r_), d(f)/d(theta) and d(V)/d(theta) in one solve; a bad ODE solve triggers
+// the FOCEI-style tolerance-relaxation retry and, if it still fails, the pred-model
+// central-FD fallback (impThetaSensFD).  For a Gaussian endpoint the score is
+//   sum_j [ -(f-dv)/V d(f)/d(theta) + 0.5 ((dv-f)^2/V^2 - 1/V) d(V)/d(theta) ]
+// and the (mean+variance) Fisher information is
 //   sum_j [ d(f)/d(theta) d(f)/d(theta)'/V + 0.5 d(V)/d(theta) d(V)/d(theta)'/V^2 ].
 void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
                    arma::vec& g, arma::mat& H) {
@@ -8461,6 +8537,7 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   rx_solving_options *op = getSolvingOptions(rx);
   int _rxId = getRxId(id);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  focei_ind *fInd = &(inds_focei[id]);
   int nsamp = S.n_rows;
   // The shared solve pool is sized for the theta-sensitivity model (the largest
   // structure); the inner MAP runs with ind->neqOverride = innerNeq, so switch it
@@ -8468,40 +8545,91 @@ void impThetaScore(int id, const arma::mat& S, const arma::vec& zk,
   // pattern).
   IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
   // Sync the current thetas into this subject before solving (etas set per sample).
+  arma::vec curTheta((unsigned int)op_focei.ntheta);
   for (int t = 0; t < (int)op_focei.ntheta; ++t) {
+    curTheta[t] = op_focei.fullTheta[t];
     setIndParPtr(ind, op_focei.thetaTrans[t], op_focei.fullTheta[t]);
   }
+  // per-observation DV (same across samples).
+  std::vector<double> dvv;
+  { int kk;
+    for (int jj = 0; jj < getIndNallTimes(ind); ++jj) {
+      setIndIdx(ind, jj); kk = getIndIx(ind, jj);
+      if (getIndEvid(ind, kk) == 0) dvv.push_back(tbs(getIndDv(ind, kk)));
+    }
+  }
+  int nobs = (int)dvv.size();
+  if (nobs == 0) return;
+  arma::vec fvec(nobs), Vvec(nobs);
+  arma::mat dfmat(nobs, nSens), dVmat(nobs, nSens);
   for (int k = 0; k < nsamp; ++k) {
     for (int j = 0; j < (int)op_focei.neta; ++j) {
       setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
     }
+    // Solve the sensitivity model, relaxing ODE tolerances on a bad solve (as the
+    // inner problem does), up to maxOdeRecalc; then fall back to central FD.
+    if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) fInd->stickyRecalcN2 = 0;
+    double prevTol = getIndTolFactor(ind);
     setIndSolve(ind, -1);
+    resetOpBadSolve(op);
     thetaSensOde(_rxId);
-    int nall = getIndNallTimes(ind), kk;
-    double curT;
-    for (int jj = 0; jj < nall; ++jj) {
-      setIndIdx(ind, jj);
-      kk = getIndIx(ind, jj);
-      curT = getTime(kk, ind);
-      double *lhs = getIndLhs(ind);
-      if (isDose(getIndEvid(ind, kk))) {
-        rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
-        continue;
-      } else if (getIndEvid(ind, kk) == 0) {
-        rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
-        double f = lhs[op_focei.thetaSensPredOffset];
-        double V = lhs[op_focei.thetaSensROffset];
-        if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
-        double err = f - tbs(getIndDv(ind, kk));
-        arma::rowvec df(nSens), dV(nSens);
-        for (int s = 0; s < nSens; ++s) {
-          df[s] = lhs[op_focei.thetaSensOffset + s];
-          dV[s] = lhs[op_focei.thetaSensDvOffset + s];
+    int jr = 0;
+    while (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN &&
+           indHasBadSolve(op, ind) && jr < op_focei.maxOdeRecalc) {
+      fInd->stickyRecalcN2++;
+      op_focei.reducedTol.store(1, std::memory_order_relaxed);
+      op_focei.reducedTol2.store(1, std::memory_order_relaxed);
+      atolRtolFactor_(op_focei.odeRecalcFactor);
+      setIndSolve(ind, -1);
+      resetOpBadSolve(op);
+      thetaSensOde(_rxId);
+      jr++;
+    }
+    if (jr != 0) {
+      if (fInd->stickyRecalcN2 <= op_focei.stickyRecalcN) setIndTolFactor(ind, prevTol);
+      else op_focei.stickyTol.store(1, std::memory_order_relaxed);
+    }
+    if (!indHasBadSolve(op, ind)) {
+      // read f, V, d(f)/d(theta), d(V)/d(theta) from the sensitivity model lhs
+      int ko = 0, kk;
+      double curT;
+      for (int jj = 0; jj < getIndNallTimes(ind) && ko < nobs; ++jj) {
+        setIndIdx(ind, jj); kk = getIndIx(ind, jj); curT = getTime(kk, ind);
+        double *lhs = getIndLhs(ind);
+        if (isDose(getIndEvid(ind, kk))) {
+          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          continue;
+        } else if (getIndEvid(ind, kk) == 0) {
+          rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, jj), lhs);
+          fvec[ko] = lhs[op_focei.thetaSensPredOffset];
+          Vvec[ko] = lhs[op_focei.thetaSensROffset];
+          for (int s = 0; s < nSens; ++s) {
+            dfmat(ko, s) = lhs[op_focei.thetaSensOffset + s];
+            dVmat(ko, s) = lhs[op_focei.thetaSensDvOffset + s];
+          }
+          ko++;
         }
-        g += zk[k] * ((-err / V) * df.t() +
-                      (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
-        H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
       }
+    } else {
+      // sensitivity ODE unsolvable: central FD on the pred model.  Flag it as an
+      // optimization problem (same warning as the inner FD fallback).
+      op_focei.didPredSolve.store(true, std::memory_order_relaxed);
+      impThetaSensFD(id, curTheta, fvec, Vvec, dfmat, dVmat);
+      // restore this sample's eta (impThetaSensFD only touched thetas)
+      for (int j = 0; j < (int)op_focei.neta; ++j) {
+        setIndParPtr(ind, op_focei.etaTrans[j], S(k, j));
+      }
+      if ((int)dfmat.n_rows != nobs) continue;
+    }
+    for (int jo = 0; jo < nobs; ++jo) {
+      double f = fvec[jo], V = Vvec[jo];
+      if (!R_finite(V) || V <= 0.0 || !R_finite(f)) continue;
+      double err = f - dvv[jo];
+      arma::rowvec df = dfmat.row(jo), dV = dVmat.row(jo);
+      if (!df.is_finite() || !dV.is_finite()) continue;
+      g += zk[k] * ((-err / V) * df.t() +
+                    (0.5 * (err * err / (V * V) - 1.0 / V)) * dV.t());
+      H += zk[k] * ((df.t() * df) / V + 0.5 * (dV.t() * dV) / (V * V));
     }
   }
 }
