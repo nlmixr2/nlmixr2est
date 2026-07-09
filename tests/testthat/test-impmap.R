@@ -56,7 +56,7 @@ test_that("getValidNlmixrCtl.impmap yields a default impmapControl", {
   expect_s3_class(getValidNlmixrCtl.impmap(list(NULL)), "impmapControl")
 })
 
-test_that("M0: impmap fit stops with an explicit under-construction error", {
+test_that("M1: impmap MAP pass reproduces FOCEI posthoc EBEs", {
   one.cmt <- function() {
     ini({
       tka <- 0.45; tcl <- 1; tv <- 3.45
@@ -70,8 +70,27 @@ test_that("M0: impmap fit stops with an explicit under-construction error", {
       linCmt() ~ add(add.sd)
     })
   }
-  expect_error(
-    nlmixr2(one.cmt, nlmixr2data::theo_sd, "impmap", impmapControl(print = 0L)),
-    "under construction"
-  )
+  .dat <- nlmixr2data::theo_sd
+  # FOCEI posthoc (maxOuterIterations=0): conditional modes at the initial thetas.
+  .foce <- suppressWarnings(
+    nlmixr2(one.cmt, .dat, "focei",
+            foceiControl(print = 0L, maxOuterIterations = 0L, covMethod = "")))
+  # impmap M1: a single MAP pass over the same model/data/initial thetas.
+  .imp <- suppressWarnings(
+    nlmixr2(one.cmt, .dat, "impmap", impmapControl(print = 0L)))
+
+  expect_true(inherits(.imp, "nlmixr2FitCore"))
+  # Per-subject conditional modes must match the FOCEI posthoc EBEs.
+  .k <- c("eta.ka", "eta.cl")
+  expect_equal(as.matrix(.imp$eta[, .k]), as.matrix(.foce$eta[, .k]),
+               tolerance = 1e-4)
+  # The MAP pass stashes each subject's eta Hessian; check it is present,
+  # square, symmetric, and positive-definite for subject 1.
+  .env <- .imp$env
+  .H <- .env$impEtaHess
+  expect_true(is.list(.H) && length(.H) == length(unique(.dat$ID)))
+  .H1 <- .H[[1]]
+  expect_true(is.matrix(.H1) && all(dim(.H1) == c(2, 2)))
+  expect_equal(.H1, t(.H1), tolerance = 1e-6)
+  expect_true(all(eigen(.H1, symmetric = TRUE, only.values = TRUE)$values > 0))
 })

@@ -9,6 +9,7 @@
 #include "nearPD.h"
 #include "shi21.h"
 #include "inner.h"
+#include "imp.h"
 #include "rxomp.h"
 #include "solveWarnHelper.h"
 
@@ -428,6 +429,7 @@ struct focei_options {
   scaling scale;
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
+  bool isImpmap = false; // importance-sampling EM (est="impmap"); outer runs impOuter
 };
 
 focei_options op_focei;
@@ -4637,9 +4639,11 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = (estStr == "nlm" || estStr == "nlminb" || estStr == "bobyqa" ||
                       estStr == "newuoa" || estStr == "n1qn1" || estStr == "lbfgsb3c" ||
                       estStr == "optim" || estStr == "uobyqa" || estStr == "nls");
+    op_focei.isImpmap = (estStr == "impmap");
   } else {
     op_focei.isSaem = false;
     op_focei.isNlm = false;
+    op_focei.isImpmap = false;
   }
 
   op_focei.zeroGrad = false;
@@ -8163,6 +8167,58 @@ void setupAq1_(Environment e) {
   }
 }
 
+// ---- Importance-sampling EM interface (imp.h); reuses the FOCEI inner state.
+// These run on the live op_focei / inds_focei set up by foceiSetup_ and are
+// called from the impOuter() driver (src/imp.cpp).
+int impNsub() {
+  rx = getRxSolve_();
+  return getRxNsub(rx);
+}
+
+int impNeta() {
+  return op_focei.neta;
+}
+
+void impMapPass(Environment e) {
+  // Single MAP pass at the initial parameters -- the same posthoc path
+  // foceiOuter() takes when maxOuterIterations == 0.
+  NumericVector x(op_focei.npars);
+  for (unsigned int k = op_focei.npars; k--;) {
+    x[k] = scalePar(op_focei.initPar, k);
+  }
+  foceiOuterFinal(x.begin(), e);
+}
+
+void impGetMode(int id, arma::vec& mode) {
+  focei_ind *fInd = &(inds_focei[id]);
+  mode.set_size(op_focei.neta);
+  std::copy(&fInd->eta[0], &fInd->eta[0] + op_focei.neta, mode.begin());
+}
+
+double impGetIndLik(int id) {
+  focei_ind *fInd = &(inds_focei[id]);
+  return fInd->lik[0];
+}
+
+bool impGetHessian(int id, arma::mat& H) {
+  focei_ind *fInd = &(inds_focei[id]);
+  int neta = op_focei.neta;
+  // Establish the inner solve at this subject's mode before the FD Hessian.
+  double f = likInner0(fInd->eta, id);
+  if (ISNA(f)) return false;
+  rx = getRxSolve_();
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, getRxId(id));
+  H.set_size(neta, neta);
+  H.zeros();
+  arma::mat H0(neta, neta, arma::fill::zeros);
+  return calcEtaHessian(fInd->eta, 0, id, fInd, ind, H, H0);
+}
+
+double impEvalJointLik(const arma::vec& eta, int id) {
+  std::vector<double> ev(eta.begin(), eta.end());
+  return likInner0(ev.data(), id);
+}
+
 //' Fit/Evaluate FOCEi
 //'
 //' This shouldn't be called directly.
@@ -8472,7 +8528,13 @@ Environment foceiFitCpp_(Environment e){
     op_focei.didEtaReset=0;
     op_focei.stickyRecalcN2=0;
     op_focei.stickyRecalcN1=0;
-    foceiOuter(e);
+    if (op_focei.isImpmap) {
+      // est="impmap": run the importance-sampling EM driver (src/imp.cpp) in
+      // place of the FOCEI outer optimizer.  Module M1 does a single MAP pass.
+      impOuter(e);
+    } else {
+      foceiOuter(e);
+    }
     if (op_focei.didHessianReset==1){
       warning(_("Hessian reset during optimization; (can control by foceiControl(resetHessianAndEta=.))"));
     }

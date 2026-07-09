@@ -159,17 +159,22 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
 #' Fit the impmap family of models
 #'
 #' @param env Environment from nlmixr2Est
+#' @param ui rxode2 ui object
 #' @param ... Other arguments
 #' @return fit environment
 #' @author Matthew L. Fidler
 #' @noRd
-.impmapFamilyFit <- function(env, ...) {
-  # M0: control plumbing is exercised (down-conversion validated), but the
-  # importance-sampling kernel (src/imp.cpp) is not implemented yet.
-  .impmapControlToFoceiControl(env, assign=FALSE)
-  stop("est=\"impmap\" is under construction: the importance-sampling kernel ",
-       "(src/imp.cpp) is not implemented yet (module M0: control + dispatch landed)",
-       call.=FALSE)
+.impmapFamilyFit <- function(env, ui, ...) {
+  # Module M1: the importance-sampling EM kernel is not implemented yet.  Reuse
+  # the FOCEI posthoc (MAP) path -- with est="impmap", foceiFitCpp_ runs
+  # impOuter() (src/imp.cpp) in place of foceiOuter(), performing a single MAP
+  # pass and adding each subject's mode/Hessian/individual-likelihood to the fit
+  # environment (impEtaMode/impEtaHess/impIndLik).
+  .control <- ui$control
+  .control$maxOuterIterations <- 0L  # single MAP pass (no outer optimization)
+  .control$covMethod <- 0L           # 0L == no covariance (MAP-only milestone)
+  assign("control", .control, envir=ui)
+  .foceiFamilyReturn(env, ui, ..., est="impmap")
 }
 
 #' @rdname nlmixr2Est
@@ -179,10 +184,8 @@ nlmixr2Est.impmap <- function(env, ...) {
   rxode2::assertRxUiTransformNormal(.ui, " for the estimation routine 'impmap'", .var.name=.ui$modelName)
   rxode2::assertRxUiIovNoCor(.ui, " for the estimation routine 'impmap'",
                              .var.name=.ui$modelName)
-  rxode2::assertRxUiMixedOnly(.ui, " for the estimation routine 'impmap'", .var.name=.ui$modelName)
   .control <- env$control
   .foceiFamilyControl(env, ..., type="impmapControl")
-  .impmapControlToFoceiControl(env)
   on.exit({
     if (is.environment(.ui) && exists("control", envir=.ui, inherits=FALSE)) {
       rm("control", envir=.ui)
@@ -190,7 +193,8 @@ nlmixr2Est.impmap <- function(env, ...) {
   }, add=TRUE)
   env$impmapControl <- .control
   env$est <- "impmap"
-  .impmapFamilyFit(env, ...)
+  .ui <- env$ui
+  .impmapFamilyFit(env, .ui, ...)
 }
 attr(nlmixr2Est.impmap, "covPresent") <- TRUE
 attr(nlmixr2Est.impmap, "unbounded") <- .foUnbounded
