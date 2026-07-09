@@ -69,8 +69,27 @@ paper's `beta`. Two paths, chosen per parameter:
   1e39), else gradient ascent, with a backtracking line search that accepts a step
   only if it raises the objective and keeps a,b>0. Verified vs FOCEI
   (`test-rpem-comb.R`).
-  REMAINING: power/lambda -- reuse SAEM's `ares`/`bres`/`yptp` expressions; and
-  TBS + Box-Cox/Yeo-Johnson residual transforms (user directive, next step).
+  TBS (transform-both-sides, Box-Cox / Yeo-Johnson) -- IN PROGRESS. Two hard
+  blockers resolved and committed:
+    1. Model generation: rxCombineErrorLines emitted each eta as an omega
+       DECLARATION (`eta ~ omega`) rather than an `eta <- ETA[k]` assignment; with
+       a transform present that undeclared-then-declared symbol crashed the
+       symengine load (rxTBS parse error), which is why only untransformed models
+       worked. rpemModel0 now strips the eta `~` declarations and injects
+       `eta <- ETA[k]` assignments before first use.
+    2. Jacobian: the generated llikNorm is the normal loglik of the TRANSFORMED
+       data and omits the change-of-variables Jacobian log|dt/dDV| (FOCEI adds it
+       in C). For a dynamic/estimated lambda the Jacobian depends on lambda, so
+       rpemModel0 now adds `log|rxTBSd(DV,...)|` (rxTBSd = d t/d DV) before negating
+       rx_pred_ when a boxCox/yeoJohnson transform is present. Verified the full
+       Box-Cox model -sum(rx_pred_) matches the hand transformed-normal loglik with
+       the Jacobian.
+  REMAINING for TBS: classifier detection of the lambda param + transform code;
+  transformed-scale residual (add.sd from `sum (t(DV)-t(cp))^2`); and the lambda
+  M-step -- a joint numeric optimize of (add.sd, lambda) over the accepted samples
+  (lambda enters both the transformed residual and the Jacobian), reusing the
+  guarded-optimizer pattern with per-obs raw cp+DV cached. Also power/lambda
+  (propT) -- reuse SAEM's `ares`/`bres`/`yptp`.
 - **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
   structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`
