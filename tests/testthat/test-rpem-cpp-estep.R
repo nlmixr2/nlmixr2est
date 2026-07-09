@@ -123,7 +123,7 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
   omega <- matrix(om, 1, 1)
 
   rxode2::rxSetSeed(1234)
-  res <- rpemEstepK1Draw(base, etaIdx, omega, nG, 1L)
+  res <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 1L)
 
   # correctness: recompute lnL from the etas the C++ engine drew
   etas <- as.numeric(res$eta)
@@ -140,7 +140,67 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
 
   # reproducibility (C3.1): same threefry seed -> identical draws and lnL
   rxode2::rxSetSeed(1234)
-  res2 <- rpemEstepK1Draw(base, etaIdx, omega, nG, 1L)
+  res2 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 1L)
   expect_equal(res2$eta, res$eta)
   expect_equal(res2$lnL, res$lnL)
+})
+
+test_that("rpem C++ E-step is correct and deterministic (multi-subject)", {
+  skip_on_cran()
+  one.cmt <- function() {
+    ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; add.sd <- 0.7; eta.ka ~ 0.6 })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      cp <- linCmt(); cp ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(one.cmt)
+  m  <- ui$rpemRxModel$predOnly
+
+  nid <- 3L
+  dat <- do.call(rbind, lapply(seq_len(nid), function(i) {
+    ev <- rxode2::et(amt=100, cmt="depot")
+    ev <- rxode2::et(ev, seq(0.5, 24, by=2.5))
+    d <- as.data.frame(ev); d$id <- i; d$DV <- 0
+    o <- d$evid == 0
+    d$DV[o] <- (c(4, 7, 6, 5, 4, 3, 2.5, 2, 1.5, 1.2) + i)[seq_len(sum(o))]
+    d
+  }))
+
+  th <- c(0.45, 1.0, 3.45, 0.7); om <- 0.6; nG <- 100
+  nm <- c("THETA[1]", "THETA[2]", "THETA[3]", "THETA[4]", "ETA[1]")
+
+  e <- new.env()
+  e$predOnly <- m
+  e$rxControl <- rxode2::rxControl(atol=1e-10, rtol=1e-10)
+  e$param <- stats::setNames(c(th, 0), nm)
+  e$data  <- dat
+  rpemSetup(e)
+  on.exit(rpemFree(), add=TRUE)
+
+  base <- c(th, 0); etaIdx <- 4L; omega <- matrix(om, 1, 1)
+
+  rxode2::rxSetSeed(7)
+  r1 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 2L)   # solve on 2 cores
+
+  # correctness under threading: recompute each subject's logn from its etas
+  etas <- as.numeric(r1$eta)
+  lognRef <- vapply(seq_len(nid), function(i) {
+    dsub <- dat[dat$id == i, ]
+    idx <- ((i - 1L) * nG + 1L):(i * nG)
+    logp <- vapply(idx, function(r) {
+      pars <- stats::setNames(c(th, etas[r]), nm)
+      s <- rxode2::rxSolve(m, params=pars, events=dsub, returnType="data.frame",
+                           addDosing=FALSE, atol=1e-10, rtol=1e-10)
+      -sum(s$rx_pred_)
+    }, numeric(1))
+    mx <- max(logp); mx + log(sum(exp(logp - mx))) - log(nG)
+  }, numeric(1))
+  expect_equal(r1$logn, lognRef, tolerance=1e-8)
+
+  # determinism (C3.1): same seed + same cores -> identical
+  rxode2::rxSetSeed(7)
+  r2 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 2L)
+  expect_equal(r2$logn, r1$logn)
+  expect_equal(r2$lnL, r1$lnL)
 })

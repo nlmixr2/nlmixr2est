@@ -107,7 +107,7 @@ SEXP _nlmixr2est_rpemSetup(SEXP);
 SEXP _nlmixr2est_rpemFree(void);
 SEXP _nlmixr2est_rpemSolvePop(SEXP);
 SEXP _nlmixr2est_rpemEstepK1(SEXP, SEXP);
-SEXP _nlmixr2est_rpemEstepK1Draw(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_rpemEstepK1Draw(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_optimFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlminbFunC(SEXP, SEXP);
 SEXP _nlmixr2est_nlmWarnings(void);
@@ -169,7 +169,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_rpemSetup", (DL_FUNC) &_nlmixr2est_rpemSetup, 1},
   {"_nlmixr2est_rpemSolvePop", (DL_FUNC) &_nlmixr2est_rpemSolvePop, 1},
   {"_nlmixr2est_rpemEstepK1", (DL_FUNC) &_nlmixr2est_rpemEstepK1, 2},
-  {"_nlmixr2est_rpemEstepK1Draw", (DL_FUNC) &_nlmixr2est_rpemEstepK1Draw, 5},
+  {"_nlmixr2est_rpemEstepK1Draw", (DL_FUNC) &_nlmixr2est_rpemEstepK1Draw, 6},
   {"_nlmixr2est_rpemFree", (DL_FUNC) &_nlmixr2est_rpemFree, 0},
   {"_nlmixr2est_RcppExport_registerCCallable", (DL_FUNC) &_nlmixr2est_RcppExport_registerCCallable, 0},
   {"_nlmixr2est_rxode2hasLlik", (DL_FUNC) &_nlmixr2est_rxode2hasLlik, 0},

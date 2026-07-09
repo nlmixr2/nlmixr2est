@@ -73,6 +73,14 @@ Open design point (resolve at implementation): confirm the cheapest way to vary
 `ETA` per id -- a per-id params matrix passed to `rxSolve_`, vs. supplying `ETA`
 as per-id data columns. Prototype both; pick by solve throughput.
 
+Implementation note (confirmed): the current `rpemEstepK1Draw` solves subjects
+**serially** via `rpemSolveSubject` (per-subject `ind_solve`). Driving
+`ind_solve` from a manual OpenMP loop **segfaults** -- rxode2's per-thread ODE
+workspace is not allocated for that path. Parallelism must therefore go through
+rxode2's `par_solve` (as `06-parallelization.md` already specifies): expand to
+one solve id per (subject, sample), set per-id params, and call `par_solve` once
+so rxode2 owns the threading. This is the pending OpenMP step for the E-step.
+
 ## Controls (see `10-stopping-control.md`)
 
 - `nGauss` (`m_Gauss`): samples per subject per component. Default 1000

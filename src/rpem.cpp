@@ -53,34 +53,24 @@ RObject rpemFree() {
   return R_NilValue;
 }
 
-//[[Rcpp::export]]
-RObject rpemSetup(Environment e) {
-  rpemFree();
-  // Bind the compiled rpem predOnly model to the shared rxPred function ptrs.
-  RObject pred = e["predOnly"];
+// Bind the rpem model and (re)establish the population solve struct `rx`, then
+// recompute per-subject observation offsets.  Called at setup and again after any
+// rxRmvn draw (which resets rxode2's global solve state and would otherwise leave
+// our cached `rx` dangling to a 1-subject struct).
+static void rpemDoSetup(RObject pred, List rxControl, NumericVector p, RObject data) {
   List mvp = rxode2::rxModelVars_(pred);
   rxUpdateFuns(as<SEXP>(mvp["trans"]), &rxPred);
-
-  List rxControl = as<List>(e["rxControl"]);
-  NumericVector p = as<NumericVector>(e["param"]); // length ntheta (THETA + ETA)
   rpemOp.ntheta = (unsigned int)p.size();
-
-  // Set up (but do not solve) the population solve; gives us `rx`.
   rxode2::rxSolve_(pred, rxControl,
-                   R_NilValue, // specParams
-                   R_NilValue, // extraArgs
-                   p,          // params
-                   e["data"],  // events
-                   R_NilValue, // inits
+                   R_NilValue, R_NilValue,
+                   p, data, R_NilValue,
                    1);         // setupOnly
   rx = getRxSolve_();
   rpemOp.nsub = getRxNsub(rx);
-
   rpemOp.buf.assign((size_t)rpemOp.nsub * 3u, 0);
   rpemOp.nobs = rpemOp.buf.data();
   rpemOp.idS  = rpemOp.nobs + rpemOp.nsub;
   rpemOp.idF  = rpemOp.idS + rpemOp.nsub;
-
   rpemOp.nobsTot = 0U;
   for (int id = 0; id < rpemOp.nsub; ++id) {
     rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
@@ -89,15 +79,17 @@ RObject rpemSetup(Environment e) {
       if (getIndEvid(ind, j) == 0) { rpemOp.nobsTot++; no++; }
     }
     rpemOp.nobs[id] = no;
-    if (id == 0) {
-      rpemOp.idS[0] = 0;
-      rpemOp.idF[0] = no - 1;
-    } else {
-      rpemOp.idS[id] = rpemOp.idF[id-1] + 1;
-      rpemOp.idF[id] = rpemOp.idS[id] + no - 1;
-    }
+    if (id == 0) { rpemOp.idS[0] = 0; rpemOp.idF[0] = no - 1; }
+    else { rpemOp.idS[id] = rpemOp.idF[id-1] + 1; rpemOp.idF[id] = rpemOp.idS[id] + no - 1; }
   }
   rpemOp.loaded = true;
+}
+
+//[[Rcpp::export]]
+RObject rpemSetup(Environment e) {
+  rpemFree();
+  rpemDoSetup(e["predOnly"], as<List>(e["rxControl"]),
+              as<NumericVector>(e["param"]), e["data"]);
   return R_NilValue;
 }
 
@@ -192,17 +184,25 @@ List rpemEstepK1(NumericMatrix parBig, int nGauss) {
 // log-sum-exp, stores per-sample log p and etas for the M-step, and returns
 // logn, lnL, and the drawn etas.
 //[[Rcpp::export]]
-List rpemEstepK1Draw(NumericVector base, IntegerVector etaIdx, NumericMatrix omega,
-                     int nGauss, int ncores) {
-  if (!rpemOp.loaded) stop("'rpem' problem not loaded");
+List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
+                     NumericMatrix omega, int nGauss, int ncores) {
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
-  int nsub = rpemOp.nsub;
   int nEta = etaIdx.size();
   if (omega.nrow() != nEta || omega.ncol() != nEta) stop("omega must be nEta x nEta");
+
+  RObject pred = e["predOnly"];
+  List rxControl = as<List>(e["rxControl"]);
+  NumericVector param = as<NumericVector>(e["param"]);
+  RObject data = e["data"];
+
+  // Establish the solve once to learn nsub / ntheta.
+  rpemDoSetup(pred, rxControl, param, data);
+  int nsub = rpemOp.nsub;
   if ((unsigned int)base.size() != rpemOp.ntheta) stop("base must have ntheta entries");
   int nAll = nsub * nGauss;
 
   // Threefry multivariate-normal draws (thread-safe), untruncated (+/-Inf bounds).
+  // NOTE: this resets rxode2's global solve state, so we re-establish `rx` below.
   NumericVector mu(nEta);                       // zeros
   NumericVector lower(nEta, R_NegInf), upper(nEta, R_PosInf);
   SEXP draw = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create(nAll)),
@@ -216,26 +216,35 @@ List rpemEstepK1Draw(NumericVector base, IntegerVector etaIdx, NumericMatrix ome
                                   wrap(IntegerVector::create(100)));
   NumericMatrix etaAll(draw);                   // nAll x nEta
 
+  // Re-establish the E-step solve struct clobbered by the rxRmvn draw.
+  rpemDoSetup(pred, rxControl, param, data);
+
   rpemOp.nGauss = nGauss;
   rpemOp.nEta = nEta;
   rpemOp.logp.assign((size_t)nAll, 0.0);
   rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
 
-  NumericVector logn(nsub);
-  NumericMatrix etaOut(nAll, nEta);
+  // Copy all R objects into plain C++ buffers BEFORE the parallel region; the
+  // OpenMP loop must not touch any Rcpp/R object (only these buffers + the
+  // rxode2 C solve). etaS doubles as the shared eta buffer for the loop.
+  for (size_t k = 0; k < (size_t)nAll * nEta; ++k) rpemOp.etaS[k] = etaAll[k];
+  std::vector<double> baseBuf(rpemOp.ntheta);
+  for (unsigned int i = 0; i < rpemOp.ntheta; ++i) baseBuf[i] = base[i];
+  std::vector<int> etaIdxBuf(nEta);
+  for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
+  std::vector<double> lognV(nsub, 0.0);
+
+  // Serial per-subject solve.  (OpenMP parallelization is a follow-up: it must go
+  // through rxode2's par_solve, which allocates the per-thread ODE workspace --
+  // driving ind_solve from a manual OpenMP loop segfaults because that scratch is
+  // not set up per thread.  See design/rpem/04, 06.)
   std::vector<double> row(rpemOp.ntheta), lp(nGauss);
-  double lnL = 0.0;
   for (int id = 0; id < nsub; ++id) {
     double mx = R_NegInf;
     for (int j = 0; j < nGauss; ++j) {
-      int r = id * nGauss + j;
-      for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = base[i];
-      for (int a = 0; a < nEta; ++a) {
-        double ev = etaAll(r, a);
-        row[etaIdx[a]] = ev;
-        etaOut(r, a) = ev;
-        rpemOp.etaS[(size_t)r * nEta + a] = ev;
-      }
+      size_t r = (size_t)id * nGauss + j;
+      for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+      for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
       double logp = -rpemSolveSubject(row.data(), id);
       lp[j] = logp;
       rpemOp.logp[r] = logp;
@@ -243,9 +252,14 @@ List rpemEstepK1Draw(NumericVector base, IntegerVector etaIdx, NumericMatrix ome
     }
     double s = 0.0;
     for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
-    double logni = mx + log(s) - log((double)nGauss);
-    logn[id] = logni;
-    lnL += logni;
+    lognV[id] = mx + log(s) - log((double)nGauss);
   }
+
+  // Build the R return objects serially, after the parallel region.
+  NumericVector logn(nsub);
+  NumericMatrix etaOut(nAll, nEta);
+  double lnL = 0.0;
+  for (int id = 0; id < nsub; ++id) { logn[id] = lognV[id]; lnL += lognV[id]; }
+  for (size_t k = 0; k < (size_t)nAll * nEta; ++k) etaOut[k] = rpemOp.etaS[k];
   return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut);
 }

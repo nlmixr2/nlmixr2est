@@ -39,14 +39,21 @@ Makevars) -- do not nest Armadillo/Eigen threading inside RPEM's OpenMP regions.
   no RNG call inside any OpenMP region -- thread-safe by construction, and
   CRAN-compliant because rxRmvn is exported through the `rxode2ptr.h`
   function-pointer struct.
-- **M-step scalar RNG (pending export):** the MH chain needs scalar uniform/
-  normal draws (`rxunif`/`rxnorm`/`rinorm`) that are NOT in the `rxode2ptr.h`
-  struct. Per CRAN policy we cannot link rxode2's C symbols directly; these must
-  be exported through the registered function-pointer struct. This requires an
-  rxode2 change (separate rxode2 worktree) that registers `rxnorm`/`rinorm`/
-  `rxunif`/`riunif` (and `_setThreadInd`) and adds them to `rxode2ptr.h`. Use the
-  `id`-indexed variants (`rinorm(id, ...)`) so each subject/chain has a
-  deterministic substream reproducible regardless of thread count.
+- **M-step RNG (M1): pre-drawn pools, no rxode2 change.** Within one M-step the
+  population `mu`/`Omega` are fixed, so the MH proposals (`theta' ~ N(mu,Omega)`)
+  and acceptance uniforms are iid, and for K=1 the chain is a single sequential
+  walk. Draw all of them UP FRONT with the already-exported threefry `rxRmvn`
+  (uniforms via `pnorm` of standard normals -- a deterministic, thread-safe math
+  transform), then consume the pool in the chain. Fully thread-safe and
+  CRAN-compliant with no scalar-RNG export.
+- **M-step scalar RNG (deferred to M2):** parallel mixture chains (K>1) want
+  per-chain scalar draws (`rxunif`/`rxnorm`/`rinorm`) that are NOT in
+  `rxode2ptr.h`. Since CRAN forbids linking rxode2's C symbols directly, at M2
+  export them through the registered function-pointer struct (rxode2 worktree:
+  register `rxnorm`/`rinorm`/`rxunif`/`riunif`/`_setThreadInd`, append at the end
+  of the `_rxode2_rxode2Ptr` list and `iniRxodePtrs0` to preserve indices). Note
+  the cross-package build implication: nlmixr2est must compile against the
+  modified header, so the dev rxode2 must be reachable at build time.
 - Seed from a `seed`/`sim` control via rxode2's seed mechanism. Bitwise
   reproducibility holds for a fixed thread count; across thread counts, expect
   statistically-equivalent draws (rxode2's documented policy).
