@@ -143,3 +143,36 @@ NumericVector rpemSolvePop(NumericMatrix parMat) {
   }
   return out;
 }
+
+// K=1 E-step Monte Carlo accumulation (design/rpem/04). parBig has
+// nsub*nGauss rows x ntheta cols; rows [id*nGauss .. id*nGauss+nGauss-1] are the
+// nGauss parameter draws (population THETA + sampled ETA) for subject id.
+// Returns per-subject log n_i and lnL = sum_i log n_i, where
+//   n_i = mean_j p(Y_i | theta_ij),  log p = -sum(rx_pred_)
+// combined with a numerically stable log-sum-exp.
+//[[Rcpp::export]]
+List rpemEstepK1(NumericMatrix parBig, int nGauss) {
+  if (!rpemOp.loaded) stop("'rpem' problem not loaded");
+  int nsub = rpemOp.nsub;
+  if (parBig.nrow() != nsub * nGauss) stop("parBig must have nsub*nGauss rows");
+  if ((unsigned int)parBig.ncol() != rpemOp.ntheta) stop("parBig must have ntheta columns");
+  NumericVector logn(nsub);
+  std::vector<double> row(rpemOp.ntheta);
+  std::vector<double> lp(nGauss);
+  double lnL = 0.0;
+  for (int id = 0; id < nsub; ++id) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nGauss; ++j) {
+      for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = parBig(id * nGauss + j, i);
+      double logp = -rpemSolveSubject(row.data(), id);
+      lp[j] = logp;
+      if (logp > mx) mx = logp;
+    }
+    double s = 0.0;
+    for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
+    double logni = mx + log(s) - log((double)nGauss);
+    logn[id] = logni;
+    lnL += logni;
+  }
+  return List::create(_["logn"] = logn, _["lnL"] = lnL);
+}

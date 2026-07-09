@@ -649,6 +649,18 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemEstepK1
+List rpemEstepK1(NumericMatrix parBig, int nGauss);
+RcppExport SEXP _nlmixr2est_rpemEstepK1(SEXP parBigSEXP, SEXP nGaussSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type parBig(parBigSEXP);
+    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepK1(parBig, nGauss));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

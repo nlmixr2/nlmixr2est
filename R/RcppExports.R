@@ -258,6 +258,10 @@ rpemSolvePop <- function(parMat) {
     .Call(`_nlmixr2est_rpemSolvePop`, parMat)
 }
 
+rpemEstepK1 <- function(parBig, nGauss) {
+    .Call(`_nlmixr2est_rpemEstepK1`, parBig, nGauss)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
