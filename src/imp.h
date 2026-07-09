@@ -59,6 +59,11 @@ bool impGetHessian(int id, arma::mat& H);
 // arbitrary eta for subject `id` (the importance-sampling weight numerator).
 double impEvalJointLik(const arma::vec& eta, int id);
 
+// Solve the theta-sensitivity model for subject `id` at `eta`, filling `dfdth`
+// (nobs x ntheta) with d(prediction)/d(theta_t) at each observation.  Returns
+// false if the theta-sensitivity model is not available.
+bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth);
+
 // ---- implemented in imp.cpp ----
 
 // Importance-sampling EM driver; called from foceiFitCpp_ when est=="impmap"

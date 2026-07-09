@@ -59,6 +59,7 @@ void restoreFromEnvrionment(Environment e);
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define innerOde(id) ind_solve(rx, getRxId(id), rxInner.dydt_liblsoda, rxInner.dydt_lsoda_dum, rxInner.jdum_lsoda, rxInner.dydt, rxInner.update_inis, rxInner.global_jt)
 #define predOde(id) ind_solve(rx, getRxId(id), rxPred.dydt_liblsoda, rxPred.dydt_lsoda_dum, rxPred.jdum_lsoda, rxPred.dydt, rxPred.update_inis, rxPred.global_jt)
+#define thetaSensOde(id) ind_solve(rx, getRxId(id), rxThetaSens.dydt_liblsoda, rxThetaSens.dydt_lsoda_dum, rxThetaSens.jdum_lsoda, rxThetaSens.dydt, rxThetaSens.update_inis, rxThetaSens.global_jt)
 #define getCholOmegaInv() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "chol.omegaInv", R_NilValue)))
 #define getOmega() (as<NumericMatrix>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
 #define getOmegaMat() (as<arma::mat>(rxode2::rxSymInvCholEnvCalculate(_rxInv, "omega", R_NilValue)))
@@ -8357,6 +8358,47 @@ bool impGetHessian(int id, arma::mat& H) {
 double impEvalJointLik(const arma::vec& eta, int id) {
   std::vector<double> ev(eta.begin(), eta.end());
   return likInner0(ev.data(), id);
+}
+
+// Solve the theta-sensitivity model for subject id at eta and fill dfdth
+// (nobs x ntheta) with d(f)/d(theta_t) at each observation.  Needs the theta-sens
+// model loaded (rxThetaSens) with op_focei.thetaSensNeq/thetaSensOffset set.
+bool impThetaSensDfDtheta(int id, const arma::vec& eta, arma::mat& dfdth) {
+  if (op_focei.thetaSensOffset < 0 || rxThetaSens.calc_lhs == NULL) return false;
+  rx = getRxSolve_();
+  rx_solving_options *op = getSolvingOptions(rx);
+  int _rxId = getRxId(id);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, _rxId);
+  focei_ind *fInd = &(inds_focei[id]);
+  int ntheta = (int)op_focei.ntheta;
+  for (int j = 0; j < (int)op_focei.neta; ++j) {
+    setIndParPtr(ind, op_focei.etaTrans[j], eta[j]);
+  }
+  IndNeqOverrideGuard neqGuard(ind, op_focei.thetaSensNeq);
+  setIndSolve(ind, -1);
+  thetaSensOde(_rxId);
+  dfdth.set_size(fInd->nobs, ntheta);
+  dfdth.zeros();
+  int k = 0, kk;
+  double curT;
+  for (int j = 0; j < getIndNallTimes(ind); ++j) {
+    setIndIdx(ind, j);
+    kk = getIndIx(ind, j);
+    curT = getTime(kk, ind);
+    double *lhs = getIndLhs(ind);
+    if (isDose(getIndEvid(ind, kk))) {
+      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      continue;
+    } else if (getIndEvid(ind, kk) == 0) {
+      rxThetaSens.calc_lhs(_rxId, curT, getOpIndSolve(op, ind, j), lhs);
+      for (int t = 0; t < ntheta; ++t) {
+        dfdth(k, t) = lhs[op_focei.thetaSensOffset + t];
+      }
+      ++k;
+      if (k >= (int)fInd->nobs) break;
+    }
+  }
+  return true;
 }
 
 //' Fit/Evaluate FOCEi
