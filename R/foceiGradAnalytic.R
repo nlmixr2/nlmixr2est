@@ -443,21 +443,24 @@
   etaSolve <- ebes
   E0List <- vector("list", length(ids))
   if (.foce) {
-    for (i in seq_along(ids)) {
-      s <- .byId[[as.character(.idCode[i])]]; if (is.null(s) || nrow(s) == 0L) return(NULL)
-      obs <- s[s$EVID == 0, , drop = FALSE]
-      E0 <- NULL
-      if (identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)) {
-        E0 <- .foceiAnalyticSolveFA(am, c(th, setNames(rep(0, neta), etav)), s, obs$TIME, tol = solveTol)
-        if (is.null(E0)) return(NULL)
-      }
-      E0List[i] <- list(E0)                              # `[i]<-list(NULL)` keeps the slot (foce+ E0 is NULL)
-      eta0 <- .foceiAnalyticFoceEbe(am, th, ebes[i, ], s, obs$TIME, obs$DV, etav,
-                                    if (is.null(E0)) NULL else E0$R, Oi, neta, solveTol, foceType = foceType,
-                                    cens = obs$CENS, limit = obs$LIMIT)
-      if (is.null(eta0)) return(NULL)
-      etaSolve[i, ] <- eta0
-    }
+    # BATCHED FOCE EBE re-solve (mirrors the cov path): the eta=0 population solve (nonmem
+    # frozen R0) and the per-subject Newton EBE re-solve are batched over ALL subjects -- one
+    # rxode2 population solve per Newton step via .foceiAnalyticFoceEbeBatch -- instead of a
+    # per-subject Newton loop (neta*maxit single-subject solves).  Bit-identical to the former
+    # loop (same S_FOCE=0 stationarity, same censored partials).  foce+ (foceType=1) and additive
+    # nonmem (no dependsF0) need no eta=0 solve, so E0all=NULL and the batch uses the live R.
+    nsub <- length(ids)
+    .obsAll <- lapply(seq_len(nsub), function(i) { .s <- .byId[[as.character(.idCode[i])]]
+      if (is.null(.s) || nrow(.s) == 0L) NULL else .s[.s$EVID == 0, , drop = FALSE] })
+    if (any(vapply(.obsAll, is.null, logical(1L)))) return(NULL)
+    .needE0 <- identical(as.integer(foceType), 0L) && isTRUE(ef$dependsF0)
+    E0all <- if (.needE0) .foceiAnalyticSolveAll(am, th, matrix(0, nsub, neta), .idCode, data, .obsT, solveTol) else NULL
+    if (.needE0 && is.null(E0all)) return(NULL)
+    eta0Mat <- .foceiAnalyticFoceEbeBatch(am, th, ebes, .idCode, data, .obsAll, .obsT, etav, Oi, neta,
+                                          solveTol, foceType = foceType, E0all = E0all)
+    if (is.null(eta0Mat)) return(NULL)
+    etaSolve <- eta0Mat
+    if (!is.null(E0all)) for (i in seq_len(nsub)) E0List[i] <- list(E0all[[i]])
   }
   .EsAll <- .foceiAnalyticSolveAll(am, th, etaSolve, .idCode, data, .obsT, solveTol)
   if (is.null(.EsAll)) return(NULL)
