@@ -46,14 +46,20 @@ Makevars) -- do not nest Armadillo/Eigen threading inside RPEM's OpenMP regions.
   (uniforms via `pnorm` of standard normals -- a deterministic, thread-safe math
   transform), then consume the pool in the chain. Fully thread-safe and
   CRAN-compliant with no scalar-RNG export.
-- **M-step scalar RNG (deferred to M2):** parallel mixture chains (K>1) want
-  per-chain scalar draws (`rxunif`/`rxnorm`/`rinorm`) that are NOT in
-  `rxode2ptr.h`. Since CRAN forbids linking rxode2's C symbols directly, at M2
-  export them through the registered function-pointer struct (rxode2 worktree:
-  register `rxnorm`/`rinorm`/`rxunif`/`riunif`/`_setThreadInd`, append at the end
-  of the `_rxode2_rxode2Ptr` list and `iniRxodePtrs0` to preserve indices). Note
-  the cross-package build implication: nlmixr2est must compile against the
-  modified header, so the dev rxode2 must be reachable at build time.
+- **Per-thread scalar RNG -- AVAILABLE (D21).** rxode2 now provides
+  `seedEng(ncores)` and `rxNormEng(mean, sd)` in the registered `rxode2ptr.h`
+  struct (indices 72-73). Pattern: `seedEng(cores)` once, then inside the OpenMP
+  loop each thread calls `setRxThreadId(omp_get_thread_num())` and draws with
+  `rxNormEng(0, 1)` on its own threefry engine -- thread-safe, CRAN-compliant, no
+  up-front pool needed. Use this for the OpenMP E-step (task #7) and the M2
+  parallel mixture chains. The M1 rxRmvn up-front-pool approach (D19) still works
+  and remains fine for the single-chain M1 M-step.
+- **Seeding convention (important):** seed the per-subject RNG stream as
+  `seed0 + id*2` (per `id`, stride 2), so RPEM's draws are INDEPENDENT of the
+  RNG streams rxode2 consumes during ODE solving. Using the plain `seed0` or a
+  stride of 1 risks RPEM's draws colliding/correlating with the solver's,
+  biasing the Monte Carlo. Apply this wherever RPEM seeds its own draws
+  (E-step eta sampling, M-step) once they use the per-thread `rxNormEng` path.
 - Seed from a `seed`/`sim` control via rxode2's seed mechanism. Bitwise
   reproducibility holds for a fixed thread count; across thread counts, expect
   statistically-equivalent draws (rxode2's documented policy).

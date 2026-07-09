@@ -59,9 +59,28 @@ Steps (see `R/saem.R` `nlmixr2Est.saem` lines ~1085-1122 as the template):
    maxInnerIterations=0, covMethod=0, etaMat=<EBEs>, calcTables=..., est="rpem")`
    so FOCEI only evaluates at the RPEM estimates + supplied EBEs.
 5. `nlmixr2CreateOutputFromUi(ui, data, control, table, env, est="rpem")`.
-This yields CWRES/NPDE/IPRED/tables for free via the FOCEI eval path. `est="rpem"`
-currently returns the lightweight estimates object; switching to this path is the
-remaining fit-object task (keep the lightweight object as a fallback on error).
+This yields CWRES/NPDE/IPRED/tables for free via the FOCEI eval path.
+
+STATUS (2026-07-09): `.rpemBuildFit` implements steps 1-5 and the FOCEI-eval
+assembly SUCCEEDS to a correct fit CORE -- `parFixedDf` (RPEM mu/add.sd, held
+tcl/tv), `objDf` (OBJF/AIC/BIC/logLik), `omega`, per-subject EBEs (`ranef`),
+shrinkage. Two fixes got this far: (a) do NOT call `nmObjHandleControlObject`
+with the focei control (it nulls `env$control` so `.foceiFamilyControl` hits the
+buggy `do.call(type)`); (b) the eval-only `foceiControl(maxOuter=0, maxInner=0,
+etaMat=EBEs)`.
+
+REMAINING BLOCKER: the per-observation residual table fails --
+`addTable` -> `.calcTables` -> `.foceiPredIpredList` ->
+`.foceiSolvePars(fit, .ipredModel, thetaEtaParameters$ipred, ...)` errors with
+"argument is of length zero" because `fit$foceiThetaEtaParameters$ipred`
+(`nmObjGet.foceiThetaEtaParameters`, built from `fit$ranef`/`fit$fixef` via
+`_nlmixr2est_nlmixr2Parameters`) comes back empty. So `nlmixr2CreateOutputFromUi`
+returns the bare `nlmixr2FitCore` instead of the wrapped `nlmixr2FitData`.
+Next: figure out why `_nlmixr2Parameters(fixef, ranef)` yields an empty `$ipred`
+for the RPEM fit (likely a missing `dataSav`/ipred-model or ranef-format field
+the eval-only FOCEI pass didn't populate). Until then, `.rpemBuildFit` requires a
+full `nlmixr2FitData` and `est="rpem"` falls back to the lightweight estimates
+object (which stays fully working and tested).
 
 ## Store kept for post-fit
 

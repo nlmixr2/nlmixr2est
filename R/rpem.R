@@ -123,6 +123,62 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ctl
 }
 
+#' Assemble a full nlmixr2FitData from RPEM estimates via eval-only FOCEI.
+#'
+#' Mirrors SAEM's finalize: set the estimated theta/omega and the RPEM EBEs on
+#' the UI, then let FOCEI evaluate (0 outer/inner iterations) at those fixed
+#' values to compute EBEs/residuals/tables (design/rpem/09).
+#' @noRd
+.rpemBuildFit <- function(env, ui, control, rfit) {
+  .ret <- new.env(parent = emptyenv())
+  .ret$table <- env$table
+  .rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol)
+  .foceiPreProcessData(env$data, .ret, ui, .rxControl)
+  .ret$ui <- ui
+  .cl <- rfit$classify
+  # full theta (named over all theta names): mu-referenced -> RPEM mu, additive
+  # residual -> RPEM add.sd, held structural -> ini values.
+  .tn <- .cl$thetaNames
+  .ft <- stats::setNames(.cl$base[seq_along(.tn)], .tn)
+  .ft[.cl$muNames] <- rfit$mu
+  .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
+  .ret$fullTheta <- .ft
+  # omega (diagonal) named over etas
+  .om <- diag(rfit$omega, .cl$nEta)
+  dimnames(.om) <- list(.cl$etaNames, .cl$etaNames)
+  .ret$omega <- .om
+  # per-subject EBEs -> etaMat for the FOCEI eval
+  .eb <- rfit$ebe
+  colnames(.eb) <- .cl$etaNames
+  .ret$.etaMat <- .eb
+  .ret$.etaMatBase <- .eb
+  .ret$etaObf <- data.frame(ID = seq_len(nrow(.eb)),
+                            stats::setNames(as.data.frame(.eb), .cl$etaNames),
+                            OBJI = NA)
+  .nlmixr2FitUpdateParams(.ret)
+  .foceiControl <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 0L,
+                                covMethod = 0L, etaMat = .eb, scaleTo = 0,
+                                calcTables = TRUE, interaction = 1L,
+                                rxControl = .rxControl, est = "rpem")
+  .ret$control <- .foceiControl
+  .ret$est <- "rpem"
+  .ret$ofvType <- "rpem"
+  .ret$adjObf <- TRUE
+  .out <- nlmixr2CreateOutputFromUi(.ret$ui, data = .ret$origData,
+                                    control = .ret$control, table = .ret$table,
+                                    env = .ret, est = "rpem")
+  # The eval-only FOCEI path already yields a correct fit CORE (parFixedDf,
+  # objDf, omega, EBEs, shrinkage), but the per-observation residual table
+  # (addTable -> .foceiPredIpredList -> thetaEtaParameters$ipred) currently comes
+  # back length-zero, so the wrapped nlmixr2FitData is not produced (see
+  # design/rpem/09).  Until that is fixed, require the full data.frame fit and
+  # otherwise let nlmixr2Est.rpem fall back to the lightweight estimates object.
+  if (!inherits(.out, "nlmixr2FitData")) {
+    stop("rpem residual-table step incomplete (thetaEtaParameters$ipred empty)")
+  }
+  .out
+}
+
 #' @rdname nlmixr2Est
 #' @export
 nlmixr2Est.rpem <- function(env, ...) {
@@ -132,6 +188,15 @@ nlmixr2Est.rpem <- function(env, ...) {
   # M1: single-endpoint, mu-referenced, diagonal omega, additive residual.
   # .rpemClassify raises a clear error if the model is outside that scope.
   .fit <- .rpemFit(.ui, env$data, .control)
+  # Try the full nlmixr2FitData via eval-only FOCEI; fall back to the lightweight
+  # estimates object if that path errors, so est="rpem" always returns something.
+  .full <- tryCatch(.rpemBuildFit(env, .ui, .control, .fit),
+                    error = function(e) {
+                      .minfo(paste0("rpem: full fit object unavailable (",
+                                    conditionMessage(e), "); returning estimates"))
+                      NULL
+                    })
+  if (!is.null(.full)) return(.full)
   .fit$ui <- .ui
   .fit$control <- .control
   class(.fit) <- "nlmixr2rpem"
