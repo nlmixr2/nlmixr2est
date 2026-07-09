@@ -994,6 +994,42 @@ static void rpemGuardedComb(const std::vector<long> &counts, const int *endpt,
   aOut = a; bOut = bpar;
 }
 
+// Power-error profile over endpoint endB's observations: variance (scale*cp^c)^2,
+// scale profiled out (scale^2 = SSc/N), golden-section on the exponent c.
+static void rpemGuardedPow(const std::vector<long> &counts, const int *endpt,
+                           int endB, double &sclOut, double &powOut) {
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  auto inB = [&](int i, int o) -> bool { return endB < 0 || endpt[rpemOp.idS[i] + o] == endB; };
+  long N = 0;
+  for (int i = 0; i < nsub; ++i) {
+    int nobsi = rpemOp.nobs[i];
+    for (int j = 0; j < nG; ++j) { long c = counts[(size_t)i * nG + j]; if (!c) continue;
+      for (int o = 0; o < nobsi; ++o) if (inB(i, o)) N += c; }
+  }
+  auto stat = [&](double cc, double &SSc, double &SumLogCp) {
+    SSc = 0.0; SumLogCp = 0.0;
+    for (int i = 0; i < nsub; ++i) {
+      int nobsi = rpemOp.nobs[i];
+      for (int j = 0; j < nG; ++j) {
+        long c = counts[(size_t)i * nG + j]; if (!c) continue;
+        long ob = rpemOp.sampObsOff[i] + (long)j * nobsi;
+        for (int o = 0; o < nobsi; ++o) {
+          if (!inB(i, o)) continue;
+          double cp = rpemOp.cpv[ob + o], rr = rpemOp.dvv[ob + o] - cp;
+          double acp = fabs(cp) + 1e-300;
+          SSc += (double)c * rr * rr / pow(acp, 2.0 * cc);
+          SumLogCp += (double)c * log(acp);
+        }
+      }
+    }
+  };
+  std::function<double(double)> f = [&](double cc) { double SSc, SL; stat(cc, SSc, SL);
+    if (SSc < 1e-300) SSc = 1e-300; return -0.5 * ((double)N * log(SSc / (double)N) + 2.0 * cc * SL); };
+  double cHat = rpemGolden(f, 0.0, 3.0, 100);
+  double SSc, SL; stat(cHat, SSc, SL);
+  sclOut = sqrt(SSc / (double)N); powOut = cHat;
+}
+
 //[[Rcpp::export]]
 List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector endpt,
                       IntegerVector errTypes, NumericVector add0, NumericVector prop0,
@@ -1024,7 +1060,7 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       }
     }
   }
-  // combined endpoints: guarded 2-D optimize over just their observations.
+  // combined / power endpoints: numeric optimize over just their observations.
   NumericVector sdAdd(nEndpt), sdProp(nEndpt);
   const int *endptp = &endpt[0];
   for (int b = 0; b < nEndpt; ++b) {
@@ -1032,6 +1068,10 @@ List rpemMstepK1Multi(NumericMatrix design, NumericVector coefs, IntegerVector e
       double aa, bp;
       rpemGuardedComb(counts, endptp, b, add0[b] * add0[b], prop0[b] * prop0[b], aa, bp);
       sdAdd[b] = sqrt(aa); sdProp[b] = sqrt(bp);
+    } else if (errTypes[b] == 4) {
+      double scl, pw;
+      rpemGuardedPow(counts, endptp, b, scl, pw);
+      sdAdd[b] = scl; sdProp[b] = pw;   // scale in add slot, exponent in prop slot
     } else {
       sdAdd[b] = sqrt(sumSS[b] / (double)sumN[b]); sdProp[b] = NA_REAL;
     }

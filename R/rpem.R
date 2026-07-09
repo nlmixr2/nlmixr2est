@@ -92,8 +92,7 @@
     .propIdx <- integer(.nEndpt); .prop0 <- numeric(.nEndpt); .enm <- character(.nEndpt)
     for (.b in seq_len(.nEndpt)) {
       .cond <- as.character(.pred$cond[.b])
-      .er <- .iniErr[as.character(.iniErr$condition) == .cond &
-                       .iniErr$err %in% c("add", "prop"), , drop = FALSE]
+      .er <- .iniErr[as.character(.iniErr$condition) == .cond, , drop = FALSE]
       .es <- sort(.er$err)
       .cmt[.b] <- as.integer(.pred$cmt[.b]); .dvid[.b] <- as.integer(.pred$dvid[.b])
       .enm[.b] <- .cond; .propIdx[.b] <- NA_integer_; .prop0[.b] <- NA_real_
@@ -105,8 +104,15 @@
         .aRow <- .er[.er$err == "add", , drop = FALSE]; .pRow <- .er[.er$err == "prop", , drop = FALSE]
         .sclIdx[.b] <- as.integer(match(.aRow$name, .thetas$name) - 1L); .scl0[.b] <- .aRow$est
         .propIdx[.b] <- as.integer(match(.pRow$name, .thetas$name) - 1L); .prop0[.b] <- .pRow$est
+      } else if (nrow(.er) == 2L && identical(.es, c("pow", "pow2"))) {
+        # power error on this endpoint: variance (scale * cp^exponent)^2; the
+        # second slot (propIdx/prop0) carries the estimated exponent.
+        .et[.b] <- 4L
+        .sRow <- .er[.er$err == "pow", , drop = FALSE]; .pwRow <- .er[.er$err == "pow2", , drop = FALSE]
+        .sclIdx[.b] <- as.integer(match(.sRow$name, .thetas$name) - 1L); .scl0[.b] <- .sRow$est
+        .propIdx[.b] <- as.integer(match(.pwRow$name, .thetas$name) - 1L); .prop0[.b] <- .pwRow$est
       } else {
-        stop("RPEM multiple-endpoint supports additive, proportional, or combined (add + prop) error per endpoint")
+        stop("RPEM multiple-endpoint supports additive, proportional, combined (add + prop), or power (pow) error per endpoint")
       }
     }
     errType <- 5L; errName <- "multiEndpoint"
@@ -250,7 +256,8 @@
   power <- if (.pow) .cl$pow0 else NA_real_
   if (.multi) {
     .endptIdx <- .rpemEndptIndex(data, .cl); sdVec <- .cl$endpt$scl0
-    propVec <- .cl$endpt$prop0; .combE <- .cl$endpt$errType == 2L
+    propVec <- .cl$endpt$prop0
+    .combE <- .cl$endpt$errType %in% c(2L, 4L)  # endpoints with a 2nd residual param
   }
   .structOn <- length(.cl$structIdx) > 0L
   niter <- control$niter
@@ -428,7 +435,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ft[.cl$muNames] <- rfit$mu
   if (.cl$errType == 5L) {
     .ft[.tn[.cl$endpt$sclIdx + 1L]] <- rfit$endptSd
-    .cE <- which(.cl$endpt$errType == 2L)
+    .cE <- which(.cl$endpt$errType %in% c(2L, 4L))  # 2nd param: prop.sd (combined) or exponent (power)
     if (length(.cE)) .ft[.tn[.cl$endpt$propIdx[.cE] + 1L]] <- rfit$endptProp[.cE]
   } else .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
   if (.cl$errType == 2L) .ft[.tn[.cl$propSdIdx + 1L]] <- rfit$propSd

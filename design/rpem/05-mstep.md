@@ -116,8 +116,13 @@ paper's `beta`. Two paths, chosen per parameter:
   the trial point onto the feasible region (clamp to eps) instead of rejecting it --
   applied to both `rpemGuardedComb` and `rpemMstepK1Comb`. Single-endpoint combined
   never hit the boundary so it had masked the bug.
-  REMAINING: per-endpoint TBS/power (combined done); power/lambda (propT) closed
-  forms could reuse SAEM's `ares`/`bres`/`yptp` if faster.
+  DONE: per-endpoint POWER too (errType 4) -- `rpemGuardedPow` profiles the scale
+  out and golden-sections the exponent over just that endpoint's observations
+  (mirrors `rpemMstepK1Pow`). The classifier detects a two-row pow+pow2 residual
+  per endpoint; the exponent rides in the endpoint's second-param slot
+  (propIdx/prop0). Matches FOCEI (`test-rpem-multi-pow.R`).
+  REMAINING: per-endpoint TBS (needs per-endpoint transform-code extraction);
+  power/lambda (propT) closed forms could reuse SAEM's `ares`/`bres`/`yptp`.
 - **Numeric** for non-mu-referenced STRUCTURAL fixed effects (the paper's beta):
   parameters with no random effect, which the conjugate mu update cannot move
   (their sampled eta is identically 0). DONE (`rpemMstepBeta`, errType-independent,
