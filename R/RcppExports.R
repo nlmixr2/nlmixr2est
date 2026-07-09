@@ -302,8 +302,8 @@ rpemEstepK1 <- function(parBig, nGauss) {
     .Call(`_nlmixr2est_rpemEstepK1`, parBig, nGauss)
 }
 
-rpemEstepK1Draw <- function(e, base, etaIdx, omega, nGauss, ncores) {
-    .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, omega, nGauss, ncores)
+rpemEstepK1Draw <- function(e, base, etaIdx, etaMat, nGauss, ncores) {
+    .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, etaMat, nGauss, ncores)
 }
 
 rpemMstepK1 <- function(muIn, addSd0, nTrials, burn) {

@@ -35,7 +35,8 @@ test_that("rpem C++ M-step MH matches importance-sampling conjugate update (K=1)
   e$data  <- dat
 
   rxode2::rxSetSeed(11)
-  est <- rpemEstepK1Draw(e, c(th, 0), 4L, matrix(om, 1, 1), nG, 1L)
+  etaMat <- rxode2::rxRmvn(nid * nG, mu = 0, sigma = matrix(om, 1, 1))
+  est <- rpemEstepK1Draw(e, c(th, 0), 4L, etaMat, nG, 1L)
   on.exit(rpemFree(), add=TRUE)
 
   etas <- as.numeric(est$eta)   # layout [(i-1)*nG + j]

@@ -123,7 +123,8 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
   omega <- matrix(om, 1, 1)
 
   rxode2::rxSetSeed(1234)
-  res <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 1L)
+  etaMat <- rxode2::rxRmvn(nG, mu = 0, sigma = omega)   # single subject: nAll = nG
+  res <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 1L)
 
   # correctness: recompute lnL from the etas the C++ engine drew
   etas <- as.numeric(res$eta)
@@ -140,7 +141,8 @@ test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproduci
 
   # reproducibility (C3.1): same threefry seed -> identical draws and lnL
   rxode2::rxSetSeed(1234)
-  res2 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 1L)
+  etaMat2 <- rxode2::rxRmvn(nG, mu = 0, sigma = omega)
+  res2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 1L)
   expect_equal(res2$eta, res$eta)
   expect_equal(res2$lnL, res$lnL)
 })
@@ -181,7 +183,8 @@ test_that("rpem C++ E-step is correct and deterministic (multi-subject)", {
   base <- c(th, 0); etaIdx <- 4L; omega <- matrix(om, 1, 1)
 
   rxode2::rxSetSeed(7)
-  r1 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 2L)   # solve on 2 cores
+  etaMat <- rxode2::rxRmvn(nid * nG, mu = 0, sigma = omega)
+  r1 <- rpemEstepK1Draw(e, base, etaIdx, etaMat, nG, 2L)   # solve on 2 cores
 
   # correctness under threading: recompute each subject's logn from its etas
   etas <- as.numeric(r1$eta)
@@ -200,7 +203,8 @@ test_that("rpem C++ E-step is correct and deterministic (multi-subject)", {
 
   # determinism (C3.1): same seed + same cores -> identical
   rxode2::rxSetSeed(7)
-  r2 <- rpemEstepK1Draw(e, base, etaIdx, omega, nG, 2L)
+  etaMat2 <- rxode2::rxRmvn(nid * nG, mu = 0, sigma = omega)
+  r2 <- rpemEstepK1Draw(e, base, etaIdx, etaMat2, nG, 2L)
   expect_equal(r2$logn, r1$logn)
   expect_equal(r2$lnL, r1$lnL)
 })

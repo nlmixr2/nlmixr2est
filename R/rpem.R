@@ -202,9 +202,18 @@
            paste0("ETA[", seq_len(.cl$nEta), "]"))
   .e <- new.env()
   .e$predOnly <- .m
-  .e$rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol)
+  .e$rxControl <- rxode2::rxControl(atol = control$atol, rtol = control$rtol,
+                                    cores = control$cores)
   .e$param <- stats::setNames(.cl$base, .nm)
   .e$data <- data
+  .idColF <- names(data)[tolower(names(data)) == "id"][1]
+  if (is.na(.idColF)) stop("data must have an ID column")
+  .nsub <- length(unique(data[[.idColF]]))
+  # Draw the E-step etas in R (deterministic given the seed) so the sampling RNG is
+  # independent of the solve's core count -- the fit is reproducible across cores.
+  .drawEtas <- function(omega) {
+    rxode2::rxRmvn(.nsub * control$nGauss, mu = rep(0, .cl$nEta), sigma = omega)
+  }
 
   # mu2 covariate design (D22): for a single random effect, estimate the typical
   # value + covariate coefficients via the regression M-step.  design row i =
@@ -254,7 +263,8 @@
     if (.pow) base[.cl$powIdx + 1L] <- power
     if (.multi) base[.cl$endpt$sclIdx + 1L] <- sdVec
     rxode2::rxSetSeed(control$seed + .it)
-    .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
+    .etaMat <- .drawEtas(omega)
+    .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .etaMat, control$nGauss, control$cores)
     # numeric M-step for non-mu-ref structural fixed effects, while the E-step
     # solve is still loaded (before the MH step's rxRmvn draw clobbers it).
     if (.structOn) {
@@ -325,7 +335,8 @@
   if (.multi) base[.cl$endpt$sclIdx + 1L] <- endptSdHat
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
-  .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omegaHat, control$nGauss, control$cores)
+  .feEta <- .drawEtas(omegaHat)
+  .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, .feEta, control$nGauss, control$cores)
   rpemFree()
   .nG <- control$nGauss
   .nsub <- length(.fe$logp) / .nG

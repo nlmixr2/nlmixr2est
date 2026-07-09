@@ -115,18 +115,25 @@ RObject rpemSetup(Environment e) {
 // If cpOut/dvOut are non-null they receive the per-observation raw structural
 // prediction cp and observed DV (in observation order), for the numeric residual
 // M-steps (combined, power, TBS lambda).
-static inline double rpemSolveSubject(const double *par, int id,
-                                      double *ssOut = nullptr, double *wssOut = nullptr,
-                                      double *cpOut = nullptr, double *dvOut = nullptr) {
+// Set subject `id`'s parameter pointers and (re)initialize its state, ready for a
+// solve (serial ind_solve or a batched par_solve).
+static inline void rpemSetSubject(const double *par, int id) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
-  for (unsigned int i = 0; i < rpemOp.ntheta; ++i) {
-    setIndParPtr(ind, (int)i, par[i]);
-  }
+  for (unsigned int i = 0; i < rpemOp.ntheta; ++i) setIndParPtr(ind, (int)i, par[i]);
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
-  rpemPredOde(id);
-  double s = 0.0, ss = 0.0, wss = 0.0;
-  double curT;
+}
+
+// Read subject `id`'s predictions AFTER its ODE has been solved (by ind_solve or
+// par_solve): calc_lhs at each observation and accumulate the summed rx_pred_
+// (= -log p), the additive/proportional sums of squares, and the raw per-obs
+// cp / DV.  No solving happens here, so it is safe to call serially after a
+// batched par_solve.
+static inline double rpemReadSubject(int id, double *ssOut = nullptr, double *wssOut = nullptr,
+                                     double *cpOut = nullptr, double *dvOut = nullptr) {
+  rx_solving_options *op = getSolvingOptions(rx);
+  rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
+  double s = 0.0, ss = 0.0, wss = 0.0, curT;
   int kk, oi = 0;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
     setIndIdx(ind, j);
@@ -154,6 +161,15 @@ static inline double rpemSolveSubject(const double *par, int id,
   if (ssOut != nullptr) *ssOut = ss;
   if (wssOut != nullptr) *wssOut = wss;
   return s;
+}
+
+// Serial solve of one subject (set params, solve its ODE, read predictions).
+static inline double rpemSolveSubject(const double *par, int id,
+                                      double *ssOut = nullptr, double *wssOut = nullptr,
+                                      double *cpOut = nullptr, double *dvOut = nullptr) {
+  rpemSetSubject(par, id);
+  rpemPredOde(id);
+  return rpemReadSubject(id, ssOut, wssOut, cpOut, dvOut);
 }
 
 // parMat: nsub rows x ntheta cols (each subject's THETA+ETA). Returns per-subject
@@ -206,50 +222,32 @@ List rpemEstepK1(NumericMatrix parBig, int nGauss) {
   return List::create(_["logn"] = logn, _["lnL"] = lnL);
 }
 
-// K=1 E-step with in-C++ eta sampling via rxode2's thread-safe threefry RNG
-// (design/rpem/06, D18). All etas are drawn UP FRONT with the registered
-// _rxode2_rxRmvnSEXP_ so no RNG runs inside the (future) parallel solve loop.
+// K=1 E-step.  The nGauss etas per subject ~ N(0, omega) are drawn IN R (before
+// this call) and passed as etaMat, so the sampling RNG is fully decoupled from the
+// solve -- the fit is reproducible regardless of the solve core count (D18, D21).
 //   base:   length-ntheta template param row (ETA slots overwritten per draw)
 //   etaIdx: 0-based positions of the ETA params in the row
-//   omega:  nEta x nEta between-subject covariance (not Cholesky)
-// Draws nGauss etas per subject ~ N(0, omega), solves, accumulates n_i via
-// log-sum-exp, stores per-sample log p and etas for the M-step, and returns
-// logn, lnL, and the drawn etas.
+//   etaMat: (nsub*nGauss) x nEta pre-drawn etas, layout [i*nGauss + j]
+//   ncores: >1 solves each Monte Carlo sample's subjects in parallel via par_solve
+// Solves, accumulates n_i via log-sum-exp, stores per-sample log p / etas / cp /
+// DV for the M-step, and returns logn, lnL, and the etas.
 //[[Rcpp::export]]
 List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
-                     NumericMatrix omega, int nGauss, int ncores) {
-  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+                     NumericMatrix etaMat, int nGauss, int ncores) {
   int nEta = etaIdx.size();
-  if (omega.nrow() != nEta || omega.ncol() != nEta) stop("omega must be nEta x nEta");
 
   RObject pred = e["predOnly"];
   List rxControl = as<List>(e["rxControl"]);
   NumericVector param = as<NumericVector>(e["param"]);
   RObject data = e["data"];
 
-  // Establish the solve once to learn nsub / ntheta.
+  // Establish the solve once (no in-C++ draw to clobber it).
   rpemDoSetup(pred, rxControl, param, data);
   int nsub = rpemOp.nsub;
   if ((unsigned int)base.size() != rpemOp.ntheta) stop("base must have ntheta entries");
   int nAll = nsub * nGauss;
-
-  // Threefry multivariate-normal draws (thread-safe), untruncated (+/-Inf bounds).
-  // NOTE: this resets rxode2's global solve state, so we re-establish `rx` below.
-  NumericVector mu(nEta);                       // zeros
-  NumericVector lower(nEta, R_NegInf), upper(nEta, R_PosInf);
-  SEXP draw = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create(nAll)),
-                                  wrap(mu), wrap(omega), wrap(lower), wrap(upper),
-                                  wrap(IntegerVector::create(ncores)),
-                                  wrap(LogicalVector::create(false)),  // isChol
-                                  wrap(LogicalVector::create(false)),  // keepNames
-                                  wrap(NumericVector::create(0.4)),
-                                  wrap(NumericVector::create(2.05)),
-                                  wrap(NumericVector::create(1e-10)),
-                                  wrap(IntegerVector::create(100)));
-  NumericMatrix etaAll(draw);                   // nAll x nEta
-
-  // Re-establish the E-step solve struct clobbered by the rxRmvn draw.
-  rpemDoSetup(pred, rxControl, param, data);
+  if (etaMat.nrow() != nAll || etaMat.ncol() != nEta) stop("etaMat must be (nsub*nGauss) x nEta");
+  NumericMatrix etaAll = etaMat;
 
   rpemOp.nGauss = nGauss;
   rpemOp.nEta = nEta;
@@ -274,30 +272,62 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   for (int a = 0; a < nEta; ++a) etaIdxBuf[a] = etaIdx[a];
   std::vector<double> lognV(nsub, 0.0);
 
-  // Serial per-subject solve.  (OpenMP parallelization is a follow-up: it must go
-  // through rxode2's par_solve, which allocates the per-thread ODE workspace --
-  // driving ind_solve from a manual OpenMP loop segfaults because that scratch is
-  // not set up per thread.  See design/rpem/04, 06.)
   std::vector<double> row(rpemOp.ntheta), lp(nGauss);
-  for (int id = 0; id < nsub; ++id) {
-    double mx = R_NegInf;
+  if (ncores > 1) {
+    // Parallel E-step: for each Monte Carlo sample, set every subject's parameters
+    // (population THETA + that subject's eta draw) and solve all subjects in one
+    // par_solve call.  par_solve owns the per-thread ODE workspace, so this is the
+    // thread-safe route (a manual OpenMP loop over ind_solve segfaults).  The cheap
+    // prediction read (calc_lhs, no ODE work) stays serial.  Each subject's solve
+    // is correct to solver tolerance for any thread count; the stochastic MH M-step
+    // means cross-core fits can differ negligibly (Monte-Carlo level), but a fixed
+    // core count is fully reproducible.
     for (int j = 0; j < nGauss; ++j) {
-      size_t r = (size_t)id * nGauss + j;
-      for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
-      for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
-      double ssTmp = 0.0, wssTmp = 0.0;
-      long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
-      double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
-                                      &rpemOp.cpv[ob], &rpemOp.dvv[ob]);
-      lp[j] = logp;
-      rpemOp.logp[r] = logp;
-      rpemOp.ssv[r] = ssTmp;
-      rpemOp.wssv[r] = wssTmp;
-      if (logp > mx) mx = logp;
+      for (int id = 0; id < nsub; ++id) {
+        for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+        for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[((size_t)id * nGauss + j) * nEta + a];
+        rpemSetSubject(row.data(), id);
+        setIndSolve(getSolvingOptionsInd(rx, id), -1);
+      }
+      resetRxBadSolve(rx);
+      par_solve(rx);
+      for (int id = 0; id < nsub; ++id) {
+        size_t r = (size_t)id * nGauss + j;
+        double ssTmp = 0.0, wssTmp = 0.0;
+        long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
+        double logp = -rpemReadSubject(id, &ssTmp, &wssTmp, &rpemOp.cpv[ob], &rpemOp.dvv[ob]);
+        rpemOp.logp[r] = logp; rpemOp.ssv[r] = ssTmp; rpemOp.wssv[r] = wssTmp;
+      }
     }
-    double s = 0.0;
-    for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
-    lognV[id] = mx + log(s) - log((double)nGauss);
+    for (int id = 0; id < nsub; ++id) {
+      double mx = R_NegInf;
+      for (int j = 0; j < nGauss; ++j) { double v = rpemOp.logp[(size_t)id * nGauss + j]; if (v > mx) mx = v; }
+      double s = 0.0;
+      for (int j = 0; j < nGauss; ++j) s += exp(rpemOp.logp[(size_t)id * nGauss + j] - mx);
+      lognV[id] = mx + log(s) - log((double)nGauss);
+    }
+  } else {
+    // Serial reference path (cores == 1): solve each subject with ind_solve.
+    for (int id = 0; id < nsub; ++id) {
+      double mx = R_NegInf;
+      for (int j = 0; j < nGauss; ++j) {
+        size_t r = (size_t)id * nGauss + j;
+        for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
+        for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
+        double ssTmp = 0.0, wssTmp = 0.0;
+        long ob = rpemOp.sampObsOff[id] + (long)j * rpemOp.nobs[id];
+        double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp,
+                                        &rpemOp.cpv[ob], &rpemOp.dvv[ob]);
+        lp[j] = logp;
+        rpemOp.logp[r] = logp;
+        rpemOp.ssv[r] = ssTmp;
+        rpemOp.wssv[r] = wssTmp;
+        if (logp > mx) mx = logp;
+      }
+      double s = 0.0;
+      for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
+      lognV[id] = mx + log(s) - log((double)nGauss);
+    }
   }
 
   // Build the R return objects serially, after the parallel region.
