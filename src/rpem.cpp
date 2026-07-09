@@ -39,6 +39,8 @@ struct rpemOptions {
   int nEta = 0;
   std::vector<double> logp;  // [nsub*nGauss] log p(Y_i | theta_ij)
   std::vector<double> etaS;  // [nsub*nGauss*nEta] drawn etas
+  std::vector<double> ssv;   // [nsub*nGauss] additive SS = sum (DV-cp)^2
+  std::vector<double> wssv;  // [nsub*nGauss] proportional WSS = sum ((DV-cp)/cp)^2
 };
 
 rpemOptions rpemOp;
@@ -95,7 +97,12 @@ RObject rpemSetup(Environment e) {
 
 // Solve subject `id` at parameter vector `par` (length ntheta); return the
 // summed rx_pred_ over its observations (= -log p(Y_id | theta)).
-static inline double rpemSolveSubject(const double *par, int id) {
+// Returns the summed rx_pred_ (= -log p) for subject id.  If ssOut/wssOut are
+// non-null, also accumulates the residual sum of squares SS = sum (DV - cp)^2
+// (additive) and the proportional WSS = sum ((DV - cp)/cp)^2, from the cached
+// structural prediction cp = rx_pred_f_ (lhs[1]) -- used by the residual M-step.
+static inline double rpemSolveSubject(const double *par, int id,
+                                      double *ssOut = nullptr, double *wssOut = nullptr) {
   rx_solving_options *op = getSolvingOptions(rx);
   rx_solving_options_ind *ind = getSolvingOptionsInd(rx, id);
   for (unsigned int i = 0; i < rpemOp.ntheta; ++i) {
@@ -103,7 +110,7 @@ static inline double rpemSolveSubject(const double *par, int id) {
   }
   iniSubjectE(id, 1, ind, op, rx, rxPred.update_inis);
   rpemPredOde(id);
-  double s = 0.0;
+  double s = 0.0, ss = 0.0, wss = 0.0;
   double curT;
   int kk;
   for (int j = 0; j < getIndNallTimes(ind); ++j) {
@@ -119,8 +126,16 @@ static inline double rpemSolveSubject(const double *par, int id) {
       double v = lhs[0];
       if (ISNA(v)) v = 0.0;
       s += v;
+      if (ssOut != nullptr || wssOut != nullptr) {
+        double cp = lhs[1];              // rx_pred_f_ = structural prediction
+        double r = getIndDv(ind, kk) - cp;
+        if (ssOut != nullptr) ss += r * r;
+        if (wssOut != nullptr && cp != 0.0) { double rc = r / cp; wss += rc * rc; }
+      }
     }
   }
+  if (ssOut != nullptr) *ssOut = ss;
+  if (wssOut != nullptr) *wssOut = wss;
   return s;
 }
 
@@ -223,6 +238,8 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
   rpemOp.nEta = nEta;
   rpemOp.logp.assign((size_t)nAll, 0.0);
   rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
+  rpemOp.ssv.assign((size_t)nAll, 0.0);
+  rpemOp.wssv.assign((size_t)nAll, 0.0);
 
   // Copy all R objects into plain C++ buffers BEFORE the parallel region; the
   // OpenMP loop must not touch any Rcpp/R object (only these buffers + the
@@ -245,9 +262,12 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
       size_t r = (size_t)id * nGauss + j;
       for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = baseBuf[i];
       for (int a = 0; a < nEta; ++a) row[etaIdxBuf[a]] = rpemOp.etaS[r * nEta + a];
-      double logp = -rpemSolveSubject(row.data(), id);
+      double ssTmp = 0.0, wssTmp = 0.0;
+      double logp = -rpemSolveSubject(row.data(), id, &ssTmp, &wssTmp);
       lp[j] = logp;
       rpemOp.logp[r] = logp;
+      rpemOp.ssv[r] = ssTmp;
+      rpemOp.wssv[r] = wssTmp;
       if (logp > mx) mx = logp;
     }
     double s = 0.0;
@@ -363,8 +383,11 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
 // reconstruct theta_ij = design_i . coefs + eta_ij.  Returns new coefs, omega
 // (residual variance of the regression), the additive add.sd, and accept rate.
 // The intercept-only case (nCoef==1, design all ones) reduces to rpemMstepK1.
+// errType 0 = additive residual, sd is add.sd; errType 1 = proportional, sd is
+// prop.sd times cp.  The residual param is updated in closed form from the stored
+// per-sample SS for additive or WSS for proportional: sqrt(sum acc / sum nobs).
 //[[Rcpp::export]]
-List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, double addSd0,
+List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, int errType,
                     int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Reg");
   if (rpemOp.nEta != 1) stop("rpemMstepK1Reg currently supports nEta==1");
@@ -373,7 +396,6 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, double addSd0,
   int nCoef = design.ncol();
   if (design.nrow() != nsub) stop("design must have one row per subject");
   if ((int)coefs.size() != nCoef) stop("coefs length must match design columns");
-  double resC = 0.5 * log(2.0 * M_PI) + log(addSd0);
 
   std::vector<double> logn(nsub);
   for (int i = 0; i < nsub; ++i) {
@@ -428,7 +450,8 @@ List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, double addSd0,
       }
       Stt += theta * theta;
       int nobsi = rpemOp.nobs[ci];
-      sumSS += -2.0 * addSd0 * addSd0 * (clogp + nobsi * resC);
+      size_t r = (size_t)ci * nG + cj;
+      sumSS += (errType == 1) ? rpemOp.wssv[r] : rpemOp.ssv[r];
       sumNobs += nobsi;
       ++m;
     }

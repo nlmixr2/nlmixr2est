@@ -31,11 +31,12 @@
   .muName <- .mu$theta[match(.etas$name, .mu$eta)]
   if (anyNA(.muName)) stop("RPEM requires every random effect to be mu-referenced")
   muIdx <- as.integer(match(.muName, .thetas$name) - 1L)     # 0-based theta positions
-  # additive residual (M1)
+  # residual: one additive (add) or proportional (prop) error param
   .res <- .thetas[!is.na(.thetas$err), , drop = FALSE]
-  if (nrow(.res) != 1L || .res$err[1] != "add")
-    stop("RPEM M1 currently supports exactly one additive residual (add.sd)")
+  if (nrow(.res) != 1L || !(.res$err[1] %in% c("add", "prop")))
+    stop("RPEM currently supports exactly one additive or proportional residual")
   addSdIdx <- as.integer(match(.res$name, .thetas$name) - 1L)
+  errType <- if (.res$err[1] == "prop") 1L else 0L
   # mu2 covariates on the mu-referenced (eta) params (D22): the covariate
   # coefficients are estimated via the regression M-step, not held.
   .covDf <- ui$muRefCovariateDataFrame
@@ -49,7 +50,8 @@
   covCoefIdx <- as.integer(match(covCoefNames, .thetas$name) - 1L)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
-       addSdIdx = addSdIdx, addSd0 = .res$est,
+       addSdIdx = addSdIdx, addSd0 = .res$est, errType = errType,
+       errName = .res$err[1],
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
        thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
@@ -107,7 +109,7 @@
     rxode2::rxSetSeed(control$seed + .it)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
     if (.useReg) {
-      .ms <- rpemMstepK1Reg(.design, coefs, addSd, control$nMH, control$mhBurn)
+      .ms <- rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else {

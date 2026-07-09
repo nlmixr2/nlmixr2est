@@ -53,11 +53,16 @@ paper's `beta`. Two paths, chosen per parameter:
   `rmAddProp`, `rmAddPropLam`, `handleF`, the `ares`/`bres` machinery) and
   `saem_fit_aux.R`. RPEM's M-step reuses these SAME formulas, applied to the
   accepted MH samples (the sums over accepted `(i,j)` replace SAEM's stochastic-
-  approximation sums). For pure additive this is the paper's Eq-17 closed form
-  (`new addSd^2 = sum accepted SS / sum accepted nobs`), already implemented in
-  `rpemMstepK1` by backing `SS_ij` out of the stored log p (exact per C1.1).
-  Proportional/combined/power reuse SAEM's `ares`/`bres`/`yptp` update
-  expressions over the accepted samples.
+  approximation sums). DONE for additive AND proportional (both closed form) in
+  `rpemMstepK1Reg` via an `errType` arg: the E-step (`rpemSolveSubject`)
+  accumulates per sample the additive `SS = sum (DV-cp)^2` and the proportional
+  `WSS = sum ((DV-cp)/cp)^2` from the cached `cp = rx_pred_f_`, and the update is
+  `new sd = sqrt(sum accepted / sum accepted nobs)` (-> add.sd or prop.sd). Both
+  verified vs FOCEI (`test-rpem-prop.R`); the additive path is algebraically the
+  same as the earlier back-out-from-log-p (C1.1), so no-cov tests are unchanged.
+  REMAINING: combined1/2 (add+prop) via numeric 2-D optimize over
+  (add.sd, prop.sd) using cached `cp`+DV (sd = sqrt(add^2 + (prop*cp)^2)); and
+  power/lambda -- reuse SAEM's `ares`/`bres`/`yptp` expressions.
 - **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
   structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`
