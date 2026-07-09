@@ -192,7 +192,14 @@ nmObjGetFoceiControl.impmap <- function(x, ...) {
   # update maps its output columns back to these thetas.
   .control$impThetaSensIdx <- as.integer(.impmapEstTheta(ui)$all - 1L)
   assign("control", .control, envir=ui)
-  .foceiFamilyReturn(env, ui, ..., est="impmap")
+  # Seed the importance-sampling RNG from the control (impSeed) right before the
+  # fit, mirroring saem's set.seed(seed).  The E-step draws through rxode2's
+  # threefry engine (getRxSeed1), so a fixed rxseed makes the fit reproducible
+  # and independent of the thread count / ambient RNG state; rxWithSeed restores
+  # the prior seed state afterward so it does not leak globally.
+  .impSeed <- if (is.null(.control$impSeed)) 42L else as.integer(.control$impSeed)
+  rxode2::rxWithSeed(.impSeed, rxseed=.impSeed,
+                     code=.foceiFamilyReturn(env, ui, ..., est="impmap"))
 }
 
 #' @rdname nlmixr2Est

@@ -140,16 +140,18 @@ test_that("M2: sampler is thread-count independent (D6)", {
   .dat <- nlmixr2data::theo_sd
   .thr0 <- rxode2::getRxThreads()
   on.exit(rxode2::setRxThreads(.thr0), add = TRUE)
+  # Perturb the ambient RNG differently before each run and do NOT set a seed
+  # ourselves: the fit seeds its own E-step from impmapControl(impSeed=), so the
+  # samples must be bit-identical regardless of thread count or ambient state.
   .run <- function(nthr) {
     rxode2::setRxThreads(nthr)
-    rxode2::rxSetSeed(42)
+    rxode2::rxSetSeed(sample.int(9999L, 1L)); stats::runif(sample.int(50L, 1L))
     suppressWarnings(
       nlmixr2(one.cmt, .dat, "impmap",
               impmapControl(print = 0L, nIter = 1L, isample = 100L)))$env$impSamples
   }
   .s1 <- .run(1L)
   .s4 <- .run(4L)
-  # same base seed + per-subject reseed => bit-identical regardless of thread count
   for (.i in seq_along(.s1)) {
     expect_identical(.s1[[.i]], .s4[[.i]])
   }
@@ -399,10 +401,8 @@ test_that("M7: multiple endpoints with more structural thetas than etas (pool si
   # PD structural thetas (in the higher-state theta-sensitivity model) match FOCEI
   expect_equal(fixef(.fi)[c("tec50", "tkout", "te0")],
                fixef(.ff)[c("tec50", "tkout", "te0")], tolerance = 0.05)
-  # both endpoints' residual-error sigmas match FOCEI (looser: sigmas are the
-  # noisiest quantities, this is a small 12-subject Monte-Carlo fit, and the
-  # parallel E-step is not bit-reproducible run to run -- the PD sigma on the
-  # poorly-identified effect endpoint needs the most headroom)
-  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.15)
-  expect_equal(unname(fixef(.fi)["pdadd.sd"]), unname(fixef(.ff)["pdadd.sd"]), tolerance = 0.3)
+  # both endpoints' residual-error sigmas match FOCEI (the E-step is seeded from
+  # impmapControl(impSeed=) so the fit is reproducible and thread-count independent)
+  expect_equal(unname(fixef(.fi)["add.sd"]), unname(fixef(.ff)["add.sd"]), tolerance = 0.05)
+  expect_equal(unname(fixef(.fi)["pdadd.sd"]), unname(fixef(.ff)["pdadd.sd"]), tolerance = 0.05)
 })
