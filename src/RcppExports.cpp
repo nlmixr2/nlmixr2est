@@ -933,6 +933,80 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemFree
+RObject rpemFree();
+RcppExport SEXP _nlmixr2est_rpemFree() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(rpemFree());
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemSetup
+RObject rpemSetup(Environment e);
+RcppExport SEXP _nlmixr2est_rpemSetup(SEXP eSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemSetup(e));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemSolvePop
+NumericVector rpemSolvePop(NumericMatrix parMat);
+RcppExport SEXP _nlmixr2est_rpemSolvePop(SEXP parMatSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type parMat(parMatSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemSolvePop(parMat));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemEstepK1
+List rpemEstepK1(NumericMatrix parBig, int nGauss);
+RcppExport SEXP _nlmixr2est_rpemEstepK1(SEXP parBigSEXP, SEXP nGaussSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type parBig(parBigSEXP);
+    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepK1(parBig, nGauss));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemEstepK1Draw
+List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx, NumericMatrix omega, int nGauss, int ncores);
+RcppExport SEXP _nlmixr2est_rpemEstepK1Draw(SEXP eSEXP, SEXP baseSEXP, SEXP etaIdxSEXP, SEXP omegaSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Environment >::type e(eSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type base(baseSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type etaIdx(etaIdxSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
+    Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepK1Draw(e, base, etaIdx, omega, nGauss, ncores));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemMstepK1
+List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP addSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type muIn(muInSEXP);
+    Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, addSd0, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

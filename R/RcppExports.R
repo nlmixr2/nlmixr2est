@@ -286,6 +286,30 @@ augPredTrans <- function(pred, ipred, lambda, yjIn, low, hi) {
     .Call(`_nlmixr2est_augPredTrans`, pred, ipred, lambda, yjIn, low, hi)
 }
 
+rpemFree <- function() {
+    .Call(`_nlmixr2est_rpemFree`)
+}
+
+rpemSetup <- function(e) {
+    .Call(`_nlmixr2est_rpemSetup`, e)
+}
+
+rpemSolvePop <- function(parMat) {
+    .Call(`_nlmixr2est_rpemSolvePop`, parMat)
+}
+
+rpemEstepK1 <- function(parBig, nGauss) {
+    .Call(`_nlmixr2est_rpemEstepK1`, parBig, nGauss)
+}
+
+rpemEstepK1Draw <- function(e, base, etaIdx, omega, nGauss, ncores) {
+    .Call(`_nlmixr2est_rpemEstepK1Draw`, e, base, etaIdx, omega, nGauss, ncores)
+}
+
+rpemMstepK1 <- function(muIn, addSd0, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1`, muIn, addSd0, nTrials, burn)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }
