@@ -884,6 +884,30 @@
     }
     .hasTrans <- length(.tvarL) > 0L && !identical(as.character(ui$predDf$transform), "untransformed")
     .baseOde <- vapply(.st, function(.x) paste0("d/dt(", .x, ")=", .toRx(get(paste0("rx__d_dt_", .x, "__"), .s))), character(1))
+    # State initial conditions (state(0) <- expr).  Emit the base IC AND its
+    # per-direction 1st/2nd-order sensitivity-compartment ICs -- otherwise the
+    # augmented model starts every state (and sensitivity compartment) at 0,
+    # which for a model whose prediction is driven by a parameter-dependent IC
+    # (e.g. y(0) <- exp(ta), or a DDE history amplitude) makes f -- and every
+    # residual-weighted covariance term -- badly wrong.  The IC is a function of
+    # parameters/covariates evaluated at t=0 (before integration), so its
+    # direction derivatives are direct partials (no state-sensitivity chain).
+    # Compartments whose IC .rxSens already emitted (e.g. the DDE delay-sensitivity
+    # augmentation writes the sensitivity-compartment histories/ICs itself); skip
+    # those to avoid a duplicate `cmt(0)=` assignment.
+    .icDone <- trimws(sub("\\(0\\)=.*$", "", grep("\\(0\\)=", unlist(strsplit(c(.s1, .s2), "\n")), value = TRUE)))
+    .emitIc <- function(.cmt, .expr) if (identical(.toRx(.expr), "0") || .cmt %in% .icDone) character(0)
+      else paste0(.cmt, "(0)=", .toRx(.expr))
+    .icL <- character(0)
+    for (.x in .st) {
+      .ic <- tryCatch(get(paste0("rx_", .x, "_ini_0__"), .s), error = function(e) NULL)
+      if (is.null(.ic)) next
+      if (!(.x %in% .icDone)) .icL <- c(.icL, paste0(.x, "(0)=", .toRx(.ic)))  # base state IC
+      for (.p in dirs) .icL <- c(.icL, .emitIc(paste0("rx__sens_", .x, "_BY_", .p, "__"), .Dn(.ic, .p)))
+      for (.r in seq_len(nrow(.P2)))
+        .icL <- c(.icL, .emitIc(paste0("rx__sens_", .x, "_BY_", .P2$i[.r], "_BY_", .P2$j[.r], "__"),
+                                .Dn(.Dn(.ic, .P2$i[.r]), .P2$j[.r])))
+    }
     # Dosing modifiers (bioavailability f(), lag()/alag(), rate(), dur()) live in the
     # pruned env as rx_<mod>_<state>_ and are NOT part of rx__d_dt_*.  Emit them so the
     # augmented model doses correctly AND so eventSens="jump" (below) fills the analytic
@@ -904,7 +928,7 @@
     # NULL (no delay()) for ordinary models.
     .pastLines <- .s$..pastLines
     if (is.null(.pastLines)) .pastLines <- character(0)
-    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
+    .modTxt <- paste(c(.baseOde, .dose, .s1, .s2, .icL, .pastLines, paste0("rx_predf_=", .toRx(.pred)), .fL1, .fL2, .rvarL, .sigL, .tvarL), collapse = "\n")
     .modTxt <- gsub("ETA\\[([0-9]+)\\]", "ETA_\\1_", .modTxt); .modTxt <- gsub("THETA\\[([0-9]+)\\]", "THETA_\\1_", .modTxt)
     # Optimize common subexpressions (as the inner model does): the augmented model
     # has heavy shared subexpressions across the sensitivity ODEs and the f1/f2
