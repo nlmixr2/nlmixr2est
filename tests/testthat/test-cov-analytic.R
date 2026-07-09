@@ -182,12 +182,12 @@ test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI and FOCE (gau
   dM4 <- dM3; dM4$LIMIT <- 0
   # FOCEI + gauss: full analytic cov (theta+sigma+Omega), close to the FD Hessian cov
   fitA <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                   foceiControl(print = 0L, covMethod = "analytic"))))
+                                                   foceiControl(print = 0L, covMethod = "analytic", sigdig = 6))))
   expect_identical(fitA$covMethod, "analytic")
   expect_true(any(grepl("^om\\.", rownames(fitA$cov))))
   expect_true(all(is.finite(sqrt(diag(fitA$cov)))))
   fitR <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                   foceiControl(print = 0L, covMethod = "r"))))
+                                                   foceiControl(print = 0L, covMethod = "r", sigdig = 6))))
   cp <- intersect(rownames(fitA$cov), rownames(fitR$cov))
   expect_lt(max(abs(sqrt(diag(fitA$cov))[cp] - sqrt(diag(fitR$cov))[cp]) /
                   (sqrt(diag(fitR$cov))[cp] + 1e-8)), 0.05)
@@ -199,11 +199,11 @@ test_that("covMethod='analytic' covers censored M2/M3/M4 for FOCEI and FOCE (gau
   }
   # FOCE (gauss) censored is in scope too: full analytic cov, theta/sigma SEs close to FD
   fF <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                 foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE))))
+                                                 foceiControl(print = 0L, covMethod = "analytic", interaction = FALSE, sigdig = 6))))
   expect_identical(fF$covMethod, "analytic")
   expect_true(any(grepl("^om\\.", rownames(fF$cov))))
   fFr <- suppressWarnings(suppressMessages(nlmixr(cm, dM3, "focei",
-                                                  foceiControl(print = 0L, covMethod = "r", interaction = FALSE))))
+                                                  foceiControl(print = 0L, covMethod = "r", interaction = FALSE, sigdig = 6))))
   cpf <- intersect(c("tka", "tcl", "tv", "add.sd"), intersect(rownames(fF$cov), rownames(fFr$cov)))
   expect_lt(max(abs(sqrt(diag(fF$cov))[cpf] - sqrt(diag(fFr$cov))[cpf]) /
                   (sqrt(diag(fFr$cov))[cpf] + 1e-8)), 0.03)
@@ -641,9 +641,9 @@ test_that("FOCE (interaction=FALSE) combined analytic cov matches the corrected-
   # the analytic R MATRIX reproduces the gold-FD Hessian, not that it is invertible.
   theo <- nlmixr2data::theo_sd
   fitF <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
-            foceiControl(print = 0L, covMethod = "", interaction = FALSE)))
+            foceiControl(print = 0L, covMethod = "", interaction = FALSE, sigdig = 6)))
   fitI <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
-            foceiControl(print = 0L, covMethod = "")))
+            foceiControl(print = 0L, covMethod = "", sigdig = 6)))
   rF <- foceiCovAnalytic(fitF); rI <- foceiCovAnalytic(fitI)
   expect_false(is.null(rF)); expect_identical(rF$method, "analytic")
   # FOCE combined != FOCEI combined (the interaction term is non-zero for prop error)
@@ -720,7 +720,7 @@ test_that("foce+ (foce='foce+') combined analytic cov matches the live-R gold FD
   # "nonmem" FOCE (frozen R0) and FOCEI (interaction term).
   theo <- nlmixr2data::theo_sd
   fitP <- suppressMessages(nlmixr(.cov_combined, theo, "focei",
-            foceiControl(print = 0L, covMethod = "", interaction = FALSE, foce = "foce+")))
+            foceiControl(print = 0L, covMethod = "", interaction = FALSE, foce = "foce+", sigdig = 6)))
   rP <- foceiCovAnalytic(fitP)
   expect_false(is.null(rP)); expect_identical(rP$method, "analytic")
 
