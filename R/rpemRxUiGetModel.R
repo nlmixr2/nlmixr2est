@@ -32,13 +32,28 @@ rxUiGet.rpemModel0 <- function(x, ...) {
                                       cmtLines=FALSE,
                                       dvidLine=FALSE)
   .ret <- .ret[[2]]
+  # rxCombineErrorLines emits each random effect as an omega DECLARATION
+  # (`eta.ka ~ 0.6`) rather than the prefix's `eta.ka <- ETA[1]` assignment.  For
+  # RPEM the etas are supplied inputs (ETA[]) and the `~` declaration is not only
+  # spurious but breaks the symengine load whenever a transform (rxTBS) is present.
+  # Replace the declarations with ETA[k] assignments placed before first use.
+  .etaDf <- .ui$iniDf[!is.na(.ui$iniDf$neta1) & .ui$iniDf$neta1 == .ui$iniDf$neta2, , drop = FALSE]
+  .etaNames <- .etaDf$name
+  .isEtaDecl <- function(s) {
+    is.call(s) && identical(s[[1]], as.name("~")) &&
+      is.name(s[[2]]) && as.character(s[[2]]) %in% .etaNames
+  }
+  .stmts <- lapply(seq_along(.ret)[-1], function(i) .ret[[i]])
+  .stmts <- Filter(function(s) !.isEtaDecl(s), .stmts)
+  .etaAssign <- lapply(seq_len(nrow(.etaDf)), function(i) {
+    str2lang(paste0(.etaDf$name[i], " <- ETA[", .etaDf$neta1[i], "]"))
+  })
   # Sign note (spec 13 OI-3): keep identical to the proven nlm llik model
   # (rx_pred_ negated) so this is a faithful THETA+ETA analog; the E-step decides
   # how to consume the summed value.  Revisit sign when wiring the E-step.
   .ret <- as.call(c(quote(`{`),
-                    lapply(seq_along(.ret)[-1], function(i) {
-                      .ret[[i]]
-                    }),
+                    .etaAssign,
+                    .stmts,
                     list(str2lang("rx_pred_ <- -rx_pred_"))))
   as.call(c(list(quote(`rxModelVars`)), .ret))
 }
