@@ -38,4 +38,7 @@ test_that("est='rpem' dispatch runs end-to-end (K=1)", {
   expect_gt(.pf["tka", "Estimate"], 0.1);  expect_lt(.pf["tka", "Estimate"], 1.2)
   expect_gt(fit$omega[1, 1], 0.05); expect_lt(fit$omega[1, 1], 0.8)
   expect_true(is.finite(fit$objDf[1, "OBJF"]))
+  # standard errors (FOCEI covariance at the RPEM estimates)
+  expect_true(is.finite(.pf["tka", "SE"]) && .pf["tka", "SE"] > 0)
+  expect_true(is.finite(.pf["add.sd", "SE"]) && .pf["add.sd", "SE"] > 0)
 })

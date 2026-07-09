@@ -157,8 +157,11 @@ getValidNlmixrCtl.rpem <- function(control) {
                             stats::setNames(as.data.frame(.eb), .cl$etaNames),
                             OBJI = NA)
   .nlmixr2FitUpdateParams(.ret)
+  # covMethod "r,s" makes FOCEI compute the covariance (hence SEs / %RSE / CIs)
+  # at the fixed RPEM estimates.  These are FOCEI-covariance-based SEs; the
+  # paper's Fisher-score SEs (design/rpem/08) are a later refinement.
   .foceiControl <- foceiControl(maxOuterIterations = 0L, maxInnerIterations = 0L,
-                                covMethod = 0L, etaMat = .eb, scaleTo = 0,
+                                covMethod = "r,s", etaMat = .eb, scaleTo = 0,
                                 calcTables = TRUE, interaction = 1L,
                                 rxControl = .rxControl, est = "rpem")
   .ret$control <- .foceiControl

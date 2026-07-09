@@ -1,8 +1,18 @@
 # RPEM -- Standard Errors
 
-In scope for the first increment (D9). RPEM's SEs come from the Fisher-score
-method (paper section 5, ref [4]) applied to the converged Gaussian samples --
-not from a FOCEI-style Hessian of the objective.
+In scope for the first increment (D9).
+
+STATUS (2026-07-09): SEs are DONE via the FOCEI-covariance path -- the eval-only
+finalize (`.rpemBuildFit`) now uses `foceiControl(covMethod="r,s")`, so FOCEI
+computes the R/S sandwich covariance at the fixed RPEM estimates and `parFixedDf`
+reports SE / %RSE / CI. This reuses existing machinery and gives immediate
+uncertainty. Two caveats: (1) these are FOCEI-covariance SEs, not the paper's
+Fisher-score SEs (below) -- a later refinement; (2) M1 holds non-mu-ref
+structural params fixed, yet FOCEI reports SEs for them, so those SEs are not
+meaningful until the numeric fixed-effect update (D20) estimates them.
+
+The paper's own method (Fisher-score on the converged Gaussian samples) remains
+the target refinement:
 
 ## Method
 
