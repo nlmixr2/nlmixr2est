@@ -35,10 +35,11 @@ sensitivity/steady-state with liblsoda), and boundary check tolerance
 \item{nIter}{Maximum number of importance-sampling EM iterations.}
 
 \item{mapIter}{Number of MAP re-centering iterations per EM step; `> 0`
-re-centers the proposal at the MAP mode each iteration (IMPMAP behavior).}
+re-centers the proposal at the MAP mode each iteration.}
 
-\item{gamma}{Initial proposal-variance inflation factor (NONMEM ISCALE);
-the proposal variance is `gamma * (Omega^-1 + S_i^-1)^-1`.}
+\item{gamma}{Initial proposal-variance inflation factor (NONMEM ISCALE); the
+proposal covariance is `gamma` times the inverse of the inner information
+matrix at the mode.}
 
 \item{iscaleMin, iscaleMax}{Lower/upper bounds for the adapted `gamma`
 (NONMEM ISCALE_MIN / ISCALE_MAX).}
@@ -62,11 +63,11 @@ streams; results are reproducible and independent of the thread count.}
 impmapControl object
 }
 \description{
-NONMEM-style IMPMAP: a Monte Carlo importance-sampling EM built on the
-mu-referenced FOCEI MAP.  The proposal density for each subject is centered
-at the MAP mode (`muModel="lin"`); mu-referenced population parameters are
-updated by the EM gradient, while non-mu parameters (including the residual
-error) are updated by finite differences.
+A NONMEM-style Monte Carlo importance-sampling EM built on the mu-referenced
+FOCEI MAP.  The proposal density for each subject is centered at the MAP mode
+(`muModel="lin"`); mu-referenced population parameters are updated by the EM
+gradient, while non-mu parameters (including the residual error) are updated
+by finite differences.
 }
 \examples{
 

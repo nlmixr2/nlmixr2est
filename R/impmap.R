@@ -1,27 +1,24 @@
-# est="impmap" -- NONMEM-style importance-sampling EM (MC-PEM).
+# est="impmap" -- importance-sampling EM.
 #
-# IMPMAP centers a multivariate-normal proposal at each subject's MAP mode
+# impmap centers a multivariate-normal proposal at each subject's MAP mode
 # (produced by the mu-referenced FOCEI inner problem, muModel="lin"), draws
 # importance samples, and updates the population parameters by an EM step.
 # The numerical kernel lives in C++ (src/imp.cpp); this file is orchestration
 # only: control construction, dispatch, and post-fit assembly.
-#
-# Module M0: control + dispatch skeleton.  The kernel is added in later modules;
-# until then `.impmapFamilyFit()` stops with an explicit under-construction error.
 
-# IS/EM-specific control names -- stripped when down-converting to a plain
-# foceiControl for the MAP inner problem / output.
+# Importance-sampling / EM control names -- stripped when down-converting to a
+# plain foceiControl for the MAP inner problem / output.
 .impmapIsControlNames <- c("isample", "nIter", "mapIter", "gamma",
                            "iscaleMin", "iscaleMax", "iaccept",
                            "ctol", "nConvWindow", "impSeed")
 
 #' Control options for the impmap (importance-sampling EM) estimation method
 #'
-#' NONMEM-style IMPMAP: a Monte Carlo importance-sampling EM built on the
-#' mu-referenced FOCEI MAP.  The proposal density for each subject is centered
-#' at the MAP mode (`muModel="lin"`); mu-referenced population parameters are
-#' updated by the EM gradient, while non-mu parameters (including the residual
-#' error) are updated by finite differences.
+#' A NONMEM-style Monte Carlo importance-sampling EM built on the mu-referenced
+#' FOCEI MAP.  The proposal density for each subject is centered at the MAP mode
+#' (`muModel="lin"`); mu-referenced population parameters are updated by the EM
+#' gradient, while non-mu parameters (including the residual error) are updated
+#' by finite differences.
 #'
 #' @inheritParams foceiControl
 #' @param ... Parameters used in the default `foceiControl()`
@@ -29,9 +26,10 @@
 #'   (NONMEM ISAMPLE).
 #' @param nIter Maximum number of importance-sampling EM iterations.
 #' @param mapIter Number of MAP re-centering iterations per EM step; `> 0`
-#'   re-centers the proposal at the MAP mode each iteration (IMPMAP behavior).
-#' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE);
-#'   the proposal variance is `gamma * (Omega^-1 + S_i^-1)^-1`.
+#'   re-centers the proposal at the MAP mode each iteration.
+#' @param gamma Initial proposal-variance inflation factor (NONMEM ISCALE); the
+#'   proposal covariance is `gamma` times the inverse of the inner information
+#'   matrix at the mode.
 #' @param iscaleMin,iscaleMax Lower/upper bounds for the adapted `gamma`
 #'   (NONMEM ISCALE_MIN / ISCALE_MAX).
 #' @param iaccept Target importance-sampling acceptance ratio used to adapt

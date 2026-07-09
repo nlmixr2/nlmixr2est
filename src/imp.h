@@ -19,6 +19,9 @@ int impNsample();
 double impGammaProp();
 int impCores();
 
+// 0.5 * log|Omega^-1| = -0.5 * log|Omega| (importance-sampling objective normalizer).
+double impLogDetOmegaInv5();
+
 // Run a single MAP pass over all subjects at the initial parameters (reuses the
 // FOCEI posthoc path, foceiOuterFinal) and populate the fit environment `e`.
 void impMapPass(Rcpp::Environment e);

@@ -160,3 +160,47 @@ test_that("M2: sampler is thread-count independent (D6)", {
     expect_identical(.s1[[.i]], .s4[[.i]])
   }
 })
+
+test_that("M3: importance weights recover the conditional mean/variance", {
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .dat <- nlmixr2data::theo_sd
+  .gamma <- 2
+  rxode2::rxSetSeed(42)
+  .f <- suppressWarnings(
+    nlmixr2(one.cmt, .dat, "impmap",
+            impmapControl(print = 0L, isample = 6000L, gamma = .gamma)))
+  .e <- .f$env
+  # E-step outputs present and well-formed
+  expect_true(is.numeric(.e$impObj) && is.finite(.e$impObj))
+  expect_equal(nrow(.e$impCondMean), length(.e$impNeff))
+  expect_true(all(is.finite(.e$impLi)))
+  # effective sample size strictly between 1 and isample
+  expect_true(all(.e$impNeff > 1 & .e$impNeff <= 6000))
+
+  .k <- 1L
+  .mode1 <- as.numeric(.e$impEtaMode[.k, ])
+  .H1 <- .e$impEtaHess[[.k]]
+  # conditional mean tracks the mode for a near-Gaussian posterior
+  expect_equal(as.numeric(.e$impCondMean[.k, ]), .mode1, tolerance = 0.03)
+  # KEY: the importance weights reweight samples drawn from the inflated
+  # proposal (cov = gamma*H^-1) back to the TRUE posterior covariance ~ H^-1,
+  # NOT the proposal covariance.  This is what validates the weights.
+  .B1 <- .e$impCondVar[[.k]]
+  .postCov <- solve(.H1)
+  .propCov <- .gamma * .postCov
+  expect_equal(unname(.B1), unname(.postCov), tolerance = 0.02)
+  # and B is clearly closer to H^-1 than to the proposal covariance
+  expect_lt(max(abs(.B1 - .postCov)), max(abs(.B1 - .propCov)))
+})
