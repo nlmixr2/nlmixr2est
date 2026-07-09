@@ -41,12 +41,26 @@ scale is internally consistent -- the Gaussian mixture lives on the transformed
 scale, which is also where SAEM's omega lives. This keeps RPEM's population
 model aligned with SAEM/FOCEI reporting conventions.
 
-## Covariates
+## Covariates (mu2)
 
-Covariate effects enter through the mu-referencing expressions (as in SAEM):
-covariate coefficients that are mu-referenced ride along in class 1; those that
-are not are class 3 (numeric). Covariate handling reuses
-`preProcessCovariatesPresent`.
+Covariate effects enter through the mu-referencing expressions (as in SAEM), read
+from `ui$muRefCovariateDataFrame` (theta -> covariate -> covariateParameter). The
+compiled rpem model already contains the covariate term (the covariate is a data
+column in `rpemParams`, its coefficient a THETA), so the E-step solve handles the
+covariate-adjusted per-subject mean with no special handling.
+
+Estimation (D22): for a covariate on a mu-referenced (eta) param the coefficient
+is estimated by generalizing the conjugate `mu` update (Eq 15) from a MEAN to a
+weighted linear REGRESSION of the accepted `theta` samples on the per-subject
+design matrix `X_i = [1, cov1_i, cov2_i, ...]`:
+  `beta^(r+1) = (sum_acc X_i' X_i)^{-1} (sum_acc X_i' theta_ij)`,
+  `omega^(r+1) = mean_acc (theta_ij - X_i beta)^2`.
+The intercept-only case (no covariates) reduces to `mu = mean(theta)`, matching
+the current `rpemMstepK1`. Covariate coefficients on params WITHOUT an eta are
+pure fixed effects (class 3, numeric -- deferred with the other non-mu-ref
+structural params, D20). The classifier builds `X_i` from
+`muRefCovariateDataFrame` + the data; `.rpemBuildFit` reports the coefficients
+(estimated, with SEs) rather than marking them held.
 
 ## Open items
 

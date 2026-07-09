@@ -36,9 +36,22 @@
   if (nrow(.res) != 1L || .res$err[1] != "add")
     stop("RPEM M1 currently supports exactly one additive residual (add.sd)")
   addSdIdx <- as.integer(match(.res$name, .thetas$name) - 1L)
+  # mu2 covariates on the mu-referenced (eta) params (D22): the covariate
+  # coefficients are estimated via the regression M-step, not held.
+  .covDf <- ui$muRefCovariateDataFrame
+  if (is.null(.covDf) || nrow(.covDf) == 0L) {
+    covCoefNames <- character(0); covNames <- character(0)
+  } else {
+    .covDf <- .covDf[.covDf$theta %in% .muName, , drop = FALSE]
+    covCoefNames <- as.character(.covDf$covariateParameter)
+    covNames <- as.character(.covDf$covariate)
+  }
+  covCoefIdx <- as.integer(match(covCoefNames, .thetas$name) - 1L)
   list(base = base, nTheta = nTheta, nEta = nEta, etaIdx = etaIdx, omega0 = omega0,
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
        addSdIdx = addSdIdx, addSd0 = .res$est,
+       covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
+       covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
        thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
 }
 
@@ -60,18 +73,49 @@
   .e$param <- stats::setNames(.cl$base, .nm)
   .e$data <- data
 
+  # mu2 covariate design (D22): for a single random effect, estimate the typical
+  # value + covariate coefficients via the regression M-step.  design row i =
+  # [1, cov1_i, ...] with per-subject covariate values (solve order = sorted id).
+  .useReg <- (.cl$nEta == 1L)
+  if (!.useReg && length(.cl$covCoefNames) > 0L)
+    stop("RPEM does not yet support covariates with more than one random effect")
+  if (.useReg) {
+    .idCol <- names(data)[tolower(names(data)) == "id"][1]
+    if (is.na(.idCol)) stop("data must have an ID column")
+    .ids <- sort(unique(data[[.idCol]]))
+    .design <- matrix(1, length(.ids), 1L + length(.cl$covNames))
+    for (.j in seq_along(.cl$covNames)) {
+      .cv <- .cl$covNames[.j]
+      .design[, .j + 1L] <- vapply(.ids, function(i) data[[.cv]][data[[.idCol]] == i][1], numeric(1))
+    }
+    coefs <- c(.cl$mu0, .cl$covCoef0)
+  }
+
   base <- .cl$base; mu <- .cl$mu0; omega <- .cl$omega0; addSd <- .cl$addSd0
   niter <- control$niter
+  coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
   muTr <- matrix(0, niter, .cl$nEta); omTr <- matrix(0, niter, .cl$nEta)
   sdTr <- numeric(niter); llTr <- numeric(niter)
   for (.it in seq_len(niter)) {
-    base[.cl$muIdx + 1L] <- mu
+    if (.useReg) {
+      base[.cl$muIdx + 1L] <- coefs[1]
+      if (length(.cl$covCoefIdx)) base[.cl$covCoefIdx + 1L] <- coefs[-1]
+    } else {
+      base[.cl$muIdx + 1L] <- mu
+    }
     base[.cl$addSdIdx + 1L] <- addSd
     rxode2::rxSetSeed(control$seed + .it)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
-    .ms  <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn)
-    mu <- .ms$mu; omega <- .ms$omega; addSd <- .ms$addSd
-    muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega); sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
+    if (.useReg) {
+      .ms <- rpemMstepK1Reg(.design, coefs, addSd, control$nMH, control$mhBurn)
+      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1); addSd <- .ms$addSd
+      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
+    } else {
+      .ms <- rpemMstepK1(mu, addSd, control$nMH, control$mhBurn)
+      mu <- .ms$mu; omega <- .ms$omega; addSd <- .ms$addSd
+      muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
+    }
+    sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
   }
 
   # Final estimate = mean over the converged iterations.
@@ -80,11 +124,14 @@
   muHat <- colMeans(muTr[.w, , drop = FALSE])
   omHat <- colMeans(omTr[.w, , drop = FALSE])
   sdHat <- mean(sdTr[.w])
+  covCoefHat <- if (.useReg && length(.cl$covCoefIdx))
+                  colMeans(coefTr[.w, -1, drop = FALSE]) else numeric(0)
 
   # One final E-step at the converged estimates to compute per-subject EBEs
   # (posterior-mean etas, Eq 53): EBE_i = sum_j eta_ij * w_ij with the
   # self-normalized importance weights w_ij = softmax_j(log p_ij).
   base[.cl$muIdx + 1L] <- muHat
+  if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
   base[.cl$addSdIdx + 1L] <- sdHat
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
@@ -102,7 +149,9 @@
 
   list(mu = stats::setNames(muHat, .cl$muNames),
        omega = stats::setNames(omHat, .cl$etaNames),
-       addSd = sdHat, ebe = ebe,
+       addSd = sdHat,
+       covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
+       ebe = ebe,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
 }
@@ -140,7 +189,8 @@ getValidNlmixrCtl.rpem <- function(control) {
   # values; mark them fixed so the fit reports them as held rather than assigning
   # FOCEI-covariance SEs.  They get a proper numeric M-step update later (D20).
   .heldNames <- setdiff(.cl$thetaNames,
-                        c(.cl$muNames, .cl$thetaNames[.cl$addSdIdx + 1L]))
+                        c(.cl$muNames, .cl$thetaNames[.cl$addSdIdx + 1L],
+                          .cl$covCoefNames))
   if (length(.heldNames) > 0L) {
     .uiD <- rxode2::rxUiDecompress(ui)
     .idf <- .uiD$iniDf
@@ -155,6 +205,7 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ft <- stats::setNames(.cl$base[seq_along(.tn)], .tn)
   .ft[.cl$muNames] <- rfit$mu
   .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
+  if (length(rfit$covCoef)) .ft[.cl$covCoefNames] <- rfit$covCoef
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas
   .om <- diag(rfit$omega, .cl$nEta)

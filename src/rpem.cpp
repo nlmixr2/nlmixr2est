@@ -355,3 +355,91 @@ List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
   return List::create(_["mu"] = muNew, _["omega"] = omegaNew,
                       _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }
+
+// K=1 M-step with a covariate design (mu2, D22).  Generalizes rpemMstepK1's mu
+// update to a weighted linear regression of the accepted theta samples on the
+// per-subject design matrix (nEta==1).  design: nsub x nCoef with row i =
+// [1, cov1_i, cov2_i, ...]; coefs: current [typical, covCoef...] used to
+// reconstruct theta_ij = design_i . coefs + eta_ij.  Returns new coefs, omega
+// (residual variance of the regression), the additive add.sd, and accept rate.
+// The intercept-only case (nCoef==1, design all ones) reduces to rpemMstepK1.
+//[[Rcpp::export]]
+List rpemMstepK1Reg(NumericMatrix design, NumericVector coefs, double addSd0,
+                    int nTrials, int burn) {
+  if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1Reg");
+  if (rpemOp.nEta != 1) stop("rpemMstepK1Reg currently supports nEta==1");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  int nsub = rpemOp.nsub, nG = rpemOp.nGauss;
+  int nCoef = design.ncol();
+  if (design.nrow() != nsub) stop("design must have one row per subject");
+  if ((int)coefs.size() != nCoef) stop("coefs length must match design columns");
+  double resC = 0.5 * log(2.0 * M_PI) + log(addSd0);
+
+  std::vector<double> logn(nsub);
+  for (int i = 0; i < nsub; ++i) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nG; ++j) { double v = rpemOp.logp[(size_t)i * nG + j]; if (v > mx) mx = v; }
+    double s = 0.0;
+    for (int j = 0; j < nG; ++j) s += exp(rpemOp.logp[(size_t)i * nG + j] - mx);
+    logn[i] = mx + log(s) - log((double)nG);
+  }
+  // per-subject current linear predictor
+  std::vector<double> muLin(nsub, 0.0), dmat((size_t)nsub * nCoef);
+  for (int i = 0; i < nsub; ++i) {
+    double s = 0.0;
+    for (int k = 0; k < nCoef; ++k) { double x = design(i, k); dmat[(size_t)i * nCoef + k] = x; s += x * coefs[k]; }
+    muLin[i] = s;
+  }
+
+  int total = nTrials + burn;
+  size_t nU = (size_t)3 * total;
+  NumericVector mu0(1); NumericMatrix s0(1, 1); s0(0, 0) = 1.0;
+  NumericVector lo(1, R_NegInf), hi(1, R_PosInf);
+  SEXP zr = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create((int)nU)),
+                                wrap(mu0), wrap(s0), wrap(lo), wrap(hi),
+                                wrap(IntegerVector::create(1)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(LogicalVector::create(false)),
+                                wrap(NumericVector::create(0.4)),
+                                wrap(NumericVector::create(2.05)),
+                                wrap(NumericVector::create(1e-10)),
+                                wrap(IntegerVector::create(100)));
+  NumericMatrix zm(zr);
+  std::vector<double> U(nU);
+  for (size_t k = 0; k < nU; ++k) U[k] = R::pnorm(zm[(int)k], 0.0, 1.0, 1, 0);
+
+  int ci = 0, cj = 0;
+  double clogp = rpemOp.logp[0];
+  std::vector<double> XtX((size_t)nCoef * nCoef, 0.0), Xty(nCoef, 0.0);
+  double Stt = 0.0, sumSS = 0.0; long sumNobs = 0, m = 0, naccept = 0;
+  for (int t = 0; t < total; ++t) {
+    double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
+    int pih = (int)(u1 * nsub); if (pih >= nsub) pih = nsub - 1;
+    int pjh = (int)(u2 * nG);   if (pjh >= nG)   pjh = nG - 1;
+    double plogp = rpemOp.logp[(size_t)pih * nG + pjh];
+    double logA = (plogp - clogp) + (logn[ci] - logn[pih]);
+    if (log(u3) < logA) { ci = pih; cj = pjh; clogp = plogp; ++naccept; }
+    if (t >= burn) {
+      double theta = muLin[ci] + rpemOp.etaS[(size_t)ci * nG + cj];
+      const double *xi = &dmat[(size_t)ci * nCoef];
+      for (int a = 0; a < nCoef; ++a) {
+        Xty[a] += xi[a] * theta;
+        for (int b = 0; b < nCoef; ++b) XtX[(size_t)a * nCoef + b] += xi[a] * xi[b];
+      }
+      Stt += theta * theta;
+      int nobsi = rpemOp.nobs[ci];
+      sumSS += -2.0 * addSd0 * addSd0 * (clogp + nobsi * resC);
+      sumNobs += nobsi;
+      ++m;
+    }
+  }
+  arma::mat A(XtX.data(), nCoef, nCoef);  // symmetric, so column/row-major agree
+  arma::vec b(Xty.data(), nCoef);
+  arma::vec betaNew = arma::solve(A, b, arma::solve_opts::likely_sympd);
+  double omegaNew = (Stt - arma::dot(betaNew, b)) / (double)m;
+  double addNew = sqrt(sumSS / (double)sumNobs);
+  NumericVector coefOut(nCoef);
+  for (int a = 0; a < nCoef; ++a) coefOut[a] = betaNew[a];
+  return List::create(_["coefs"] = coefOut, _["omega"] = omegaNew,
+                      _["addSd"] = addNew, _["accept"] = (double)naccept / total);
+}
