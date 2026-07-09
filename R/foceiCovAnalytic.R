@@ -185,10 +185,13 @@
 .foceiAnalyticAssembleRFR <- function(ui, th, ebes, ids, data, Om, ef, neta, ndirP, dirP, omd,
                                       dirsCov, ndirCov, startedEnv = NULL, solveTol = 1e-10,
                                       interaction = 1L, foceType = 0L, lamDir = integer(0)) {
-  # Route A (FOCEI_RSIG): build the gradient's `dirs` model (drop the sigma directions) so the
-  # (f,R) cov SHARES the gradient's compiled model; the sigma tensor slots are rebuilt from rsig in
-  # SolveAllFD3 (.foceiAnalyticExpandSigma), which expands the solved E back to ndirCov.
-  .rsigA <- nzchar(Sys.getenv("FOCEI_RSIG"))
+  # Route A (default ON; set FOCEI_NO_RSIG=1 to opt out): build the gradient's `dirs` model
+  # (drop the sigma directions) so the (f,R) cov SHARES the gradient's already-compiled model
+  # -- one augmented-model compile instead of two, and the sigma directions' wasted (all-zero)
+  # state-sensitivity columns vanish.  The sigma tensor slots (aR/AR/AthR) are rebuilt from the
+  # model's own rsig outputs in SolveAllFD3 (.foceiAnalyticExpandSigma), which expands the solved
+  # E back to ndirCov -- numerically identical to carrying explicit sigma directions.
+  .rsigA <- !nzchar(Sys.getenv("FOCEI_NO_RSIG"))
   .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
   .sigDirs <- if (.rsigA) intersect(dirsCov, paste0("THETA_", .erN, "_")) else character(0)
   .dirsF <- dirsCov[!(dirsCov %in% .sigDirs)]
@@ -879,7 +882,7 @@
 }
 .foceiAnalyticAugModelDirs <- function(ui, dirs) {
   .key <- tryCatch(paste0(rxUiGet.foceiModelDigest(list(ui)), "|", paste(dirs, collapse = ","),
-                          "|sk", Sys.getenv("FOCEI_SIGMA_SKIP")),   # skip flag -> distinct cached model
+                          "|sk", Sys.getenv("FOCEI_NO_SIGMA_SKIP")),   # skip flag -> distinct cached model
                    error = function(e) NULL)
   if (!is.null(.key)) { .hit <- get0(.key, envir = .foceiAnalyticAugCache, inherits = FALSE)
     if (!is.null(.hit)) return(.hit) }
@@ -897,7 +900,7 @@
     if (is.list(.mvS$indLin) && length(.mvS$indLin) == 4L) {
       .st <- .rxMatExpStateOrder(.st, ls(envir = .s, all.names = TRUE))
     }
-    # Sigma-skip (env FOCEI_SIGMA_SKIP): the residual-error (sigma) directions have
+    # Sigma-skip (default ON; set FOCEI_NO_SIGMA_SKIP=1 to opt out): the residual-error (sigma) directions have
     # df/dsigma=0, so their f-sensitivity columns (f1/f2) and state-sensitivities are all
     # ZERO -- pure wasted compile (each sigma direction costs a full structural parameter's
     # worth of gcc + states).  Build the prediction chain f1/f2 + state sensitivities over
@@ -905,7 +908,7 @@
     # direction (sigma R-derivatives are algebraic, no state chain).  The reader zero-fills
     # the sigma a/A slots (the assembly already treats a=A=Ath=0 for a sigma direction).
     .erN <- ui$iniDf$ntheta[!is.na(ui$iniDf$err) & !(ui$iniDf$err %in% c("boxCox", "yeoJohnson"))]
-    .sigDirs <- if (nzchar(Sys.getenv("FOCEI_SIGMA_SKIP"))) intersect(dirs, paste0("THETA_", .erN, "_")) else character(0)
+    .sigDirs <- if (!nzchar(Sys.getenv("FOCEI_NO_SIGMA_SKIP"))) intersect(dirs, paste0("THETA_", .erN, "_")) else character(0)
     .fDirs <- dirs[!(dirs %in% .sigDirs)]
     rxode2::.rxJacobian(.s, c(.st, .fDirs))
     # 1st-order sensitivities are already expanded for the gradient (free); if
@@ -1103,7 +1106,7 @@
   .out
 }
 
-#' Route-A (FOCEI_RSIG) sigma reconstruction: the (f,R) cov shares the gradient's `dirs` model
+#' Route-A (default on; FOCEI_NO_RSIG opts out) sigma reconstruction: the (f,R) cov shares the gradient's `dirs` model
 #' (no sigma directions) and rebuilds the sigma tensor slots from the model's own residual-sigma
 #' outputs (Rsig=dR/dsigma, RsigDir=d2R/(dsigma ddir), Rsig2=d2R/(dsigma dsigma')) plus their
 #' eta-derivatives (RsigDirEta, Rsig2Eta from the FD3).  A sigma has df/dsigma=0, so the prediction
@@ -1145,9 +1148,10 @@
   nsub <- length(E0)
   Ath  <- lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd)))
   AthR <- if (withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nd))) else NULL
-  # Route A (FOCEI_RSIG): am is the gradient's `dirs` model (no sigma directions); rebuild the
-  # sigma tensor slots from the rsig outputs + their eta-derivatives (differenced here alongside A/AR).
-  .rsig <- nzchar(Sys.getenv("FOCEI_RSIG")) && !is.null(E0[[1L]]$Rsig) && length(E0[[1L]]$Rsig) > 0L
+  # Route A (default ON; FOCEI_NO_RSIG=1 opts out): am is the gradient's `dirs` model (no sigma
+  # directions); rebuild the sigma tensor slots from the rsig outputs + their eta-derivatives
+  # (differenced here alongside A/AR).  Guarded on Rsig actually being present in the solve.
+  .rsig <- !nzchar(Sys.getenv("FOCEI_NO_RSIG")) && !is.null(E0[[1L]]$Rsig) && length(E0[[1L]]$Rsig) > 0L
   nsig <- if (.rsig) ncol(E0[[1L]]$Rsig) else 0L
   RsigDirEta <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nd, nsig))) else NULL
   Rsig2Eta   <- if (.rsig && withR) lapply(E0, function(E) array(0, c(nrow(E$a), neta, nsig, nsig))) else NULL
