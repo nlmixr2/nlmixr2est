@@ -1,4 +1,5 @@
 #include <math.h>
+#include "solveWarnHelper.h"
 #define min2( a , b )  ( (a) < (b) ? (a) : (b) )
 #define max2( a , b )  ( (a) > (b) ? (a) : (b) )
 #define expit(alpha, low, high) _powerDi(alpha, 1.0, 4, low, high)
@@ -759,11 +760,12 @@ static inline void scalePrintFun(scaling *scale, double *x, double f) {
       }
     }
   }
-  // Universal user-interrupt check at each per-iteration print event.  Doing
-  // this here (rather than in each estimator's outer loop) ensures every
-  // method routed through scalePrintFun — saem, nlm, optim, nls, nlminb — is
-  // interruptible without each one needing its own Rcpp::checkUserInterrupt()
-  // call site.
+  // Flush accumulated rxode2 solve warnings here so every estimator routed through
+  // scalePrintFun gets one summary line per printed iteration (see solveWarnHelper.h).
+  if (scale->every != 0 && scale->cn % scale->every == 0) {
+    nmFlushRxSolveWarn(5);
+  }
+  // Centralized user-interrupt check so no estimator needs its own call site.
   Rcpp::checkUserInterrupt();
 }
 

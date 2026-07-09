@@ -231,6 +231,16 @@ nlmControl <- function(typsize = NULL,
   ## getOption("nlmixr2est.adjoint").
   sensMethod <- match.arg(sensMethod)
 
+  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
+  eventSens <- match.arg(eventSens)
+
+  ## sensMethod: "forward" builds the ODE parameter sensitivities the classic
+  ## (variational) way; "adjoint" solves them with the in-engine discrete
+  ## adjoint (matching s-method); "default" defers to
+  ## getOption("nlmixr2est.adjoint").
+  sensMethod <- match.arg(sensMethod)
+
   .iterPrintControl <- .absorbIterPrintControl(print = print,
                                                printNcol = printNcol,
                                                useColor = useColor,
@@ -282,6 +292,9 @@ nlmControl <- function(typsize = NULL,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
                censOption=censOption,
+
+               eventSens=eventSens,
+               sensMethod=sensMethod,
 
                eventSens=eventSens,
                sensMethod=sensMethod,

@@ -464,15 +464,96 @@
 - Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
   `posthoc`, which had dropped out once the shared printer gained `showOfv`
 
+
+- Added `sensMethod` to the nlm-family controls (`nlmControl()`,
+  `nlminbControl()`, `optimControl()`, `n1qn1Control()`, `lbfgsb3cControl()`)
+  and to `foceiControl()` (focei/foce inner ETA sensitivities); ODE parameter
+  sensitivities can be computed with the forward sensitivities (`"forward"`) or
+  the in-engine discrete adjoint (`"adjoint"`).  When left at `"default"`, the
+  method is taken from the global option `getOption("nlmixr2est.adjoint")`
+  (default `"forward"`), so the package-wide policy can be set in one place
+
+- `fo`/`foi` now force forward sensitivities (adjoint does not apply to the
+  eta=0 linearization), and the adjoint base-method restore in the focei family
+  is a strict no-op for forward fits, fixing `fo`/`foi` tables/residuals
+
+- Fix a fit aborting with `initial 'omega' matrix inverse is non-positive
+  definite` when a degenerate fit (e.g. SAEM collapsing an uninformative
+  random-effect variance to 0) leaves a singular omega; the sym-inv-chol setup
+  now nearPD-corrects it so the residual/table diagnostics still run
+
+- Fix SAEM erroring with `No data with ID: <id>` for a dosed subject with no
+  usable observation; such subjects are now dropped before estimation and
+  re-inserted into the output with a population `PRED` and `NA` individual
+  columns, like FOCEi (#687)
+
+- Internal consolidation of data preparation and the nlm-family
+  control/fit functions across estimation methods; no change to any fit
+  result
+
+- Fix `cov2cor` error when omega has exactly one nonzero diagonal
+
+- Fix SAEM linearized-FIM covariance (`covMethod = "linFim"`) erroring
+  when exactly one covariate-model parameter is estimated
+
+- Fix FOCEi aborting R with `Cube::slice(): index out of bounds` when
+  `mceta >= 1` and `maxInnerIterations == 0`
+
+- Fix Windows heap-corruption segfault for gradient/pooled estimator
+  fits at more than one core
+
+- Fix SAEM covariance error (`rxInv(.tmp): Not a matrix`) for models
+  with a single population parameter
+
+- Test suite uses a single testthat worker on CI/CRAN and parallel
+  elsewhere; rxode2's within-solve threads capped to 2 only on CRAN
+
+- Restore the `Function Val.` objective column for `focei`/`foce`/`fo`/`foi`/
+  `posthoc`, which had dropped out once the shared printer gained `showOfv`
+
 - Periodic header re-emits now repeat only the column labels, not the
   full `Key:` legend
 
 - `fit$time` now reports every estimation stage consistently
 
+- `foceiControl()` now defaults to `outerOpt = "lbfgsb3c"` and
+  `sigdig = 4`
+
+- Added mu-referenced FOCEI-family estimation methods: `mufocei`/
+  `irlsfocei`, `mufoce`/`irlsfoce`, `muagq`/`irlsagq`,
+  `mulaplace`/`irlslaplace`, with new `foceiControl()` options
+  `muModel`, `muRefCovAlg`, `muModelTol`, `muModelMaxCycles`
+
+- Errors during estimation are now collected and reported together
+  instead of only the last one
+
+- Fix issue 641: FOCEI now updates additive mu-referenced population
+  parameters with large-magnitude initial estimates
+
+- Iteration-time progress output for all estimators now flows through
+  a shared printer; new `iterPrintControl()` bundles the `every`,
+  `ncol`, `headerEvery`, `useColor`, `simple` options
+
+- Added focei, foce, foi, fo mixture support in `nlmixr2est`
+
+- Fix `focei` mixture models with llik residual distributions erroring
+  when a model had exactly one mixture probability parameter
+
+- Fix `fit$mixList` returning only the first mixture component
+
+- `parHistData` Back-Transformed rows now show mixture probability
+  parameters on the natural probability scale
+
+- Hardened mixture-model (`mix()`) estimation: clearer errors for
+  `est="nlme"` and invalid initial probabilities, warnings for
+  underflowing/collapsing mixture probabilities, and a fix for the
+  SAEM omega-diagonal floor being raised outside mixture fits
+
 - Fix segfault in `nlmSetup` on the first estimator call of a fresh R
-  session affecting every pooled estimator except `nls`
-  (`bobyqa`, `nlm`, `optim`, `nls`, `nlminb`, `lbfgsb3c`, `n1qn1`,
-  `newuoa`, `uobyqa`);
+  session for pooled estimators
+
+- Fix heap-buffer overflow and wrong back-transform in SAEM lambda
+  (Box-Cox) residual-error models
 
 - Fix heap-buffer overflow and wrong back-transform in SAEM lambda
   (Box-Cox) residual-error models

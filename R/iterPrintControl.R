@@ -69,40 +69,12 @@ iterPrintControl <- function(every = 1L,
 
 #' Derive every iteration-print transform vector from a ui object
 #'
-#' Pure inspection helper.  Walks `ui$muRefCurEval` against
-#' `ui$iniDf` and emits, in one pass, every per-printed-parameter
-#' transform vector any estimator's iteration printer or C-side
-#' setup needs.  All output vectors are aligned to `printNames` —
-#' index `i` describes the i-th printed parameter.
-#'
-#'   `xPar`              integer log/logit code per printed param:
-#'                       `1`  = log-transformed; X shows `exp(value)`
-#'                       `-m` = m-th logit-transformed parameter
-#'                              (1-based); X shows
-#'                              `expit(value, logitThetaLow[m-1],
-#'                                    logitThetaHi[m-1])`
-#'                       `0`  = no log/logit transform.
-#'   `probitIdx`         integer probit index per printed param:
-#'                       `k`  = k-th probit-transformed parameter
-#'                              (1-based); X shows
-#'                              `probitInv(value, probitThetaLow[k-1],
-#'                                        probitThetaHi[k-1])`
-#'                       `0`  = no probit transform.
-#'                       Probit is carried as a parallel index rather
-#'                       than folded into `xPar` so omega xPar codes
-#'                       (2-5, used by `scaleGetScaleC`) cannot collide.
-#'   `logitThetaLow`     lower bounds (one per logit entry, in the
-#'                       occurrence order encoded in `xPar`).
-#'   `logitThetaHi`      upper bounds, same ordering as logitThetaLow.
-#'   `probitThetaLow`    lower bounds for probit, in occurrence order.
-#'   `probitThetaHi`     upper bounds for probit, same ordering.
-#'
-#' Function is pure — never mutates the ui or any environment.
-#' Callers do their own assignments.
-#'
-#' Names in `printNames` not present in `ui$muRefCurEval`
-#' (e.g. saem's `V(eta.*)` omega-variance names or residual-error
-#' names) silently get `xPar = 0` and `probitIdx = 0`.
+#' Pure inspection helper: walks `ui$muRefCurEval` against `ui$iniDf` and
+#' emits the transform vectors needed by an estimator's iteration printer
+#' or C-side setup (per-printed-param `xPar`/`probitIdx`/bounds, and
+#' ntheta-indexed `log`/`logit`/`probit` theta vectors with matching
+#' bounds). Names in `printNames` not present in `ui$muRefCurEval` (e.g.
+#' saem's `V(eta.*)` or residual-error names) get `xPar = 0`/`probitIdx = 0`.
 #'
 #' @param ui rxode2 ui object.
 #' @param printNames Character vector of parameter names in the same
@@ -123,12 +95,19 @@ iterPrintControl <- function(every = 1L,
   probitThetaLow <- numeric(0)
   probitThetaHi <- numeric(0)
   empty <- function() list(
-    xPar           = xPar,
-    probitIdx      = probitIdx,
-    logitThetaLow  = logitThetaLow,
-    logitThetaHi   = logitThetaHi,
-    probitThetaLow = probitThetaLow,
-    probitThetaHi  = probitThetaHi
+    xPar             = xPar,
+    probitIdx        = probitIdx,
+    logitThetaLow    = logitThetaLow,
+    logitThetaHi     = logitThetaHi,
+    probitThetaLow   = probitThetaLow,
+    probitThetaHi    = probitThetaHi,
+    logNthetas       = integer(0),
+    logitNthetas     = integer(0),
+    logitNthetasLow  = numeric(0),
+    logitNthetasHi   = numeric(0),
+    probitNthetas    = integer(0),
+    probitNthetasLow = numeric(0),
+    probitNthetasHi  = numeric(0)
   )
   if (is.null(muRef) || nrow(muRef) == 0L) return(empty())
   if (!is.null(ui$boundedTransforms)) {
@@ -159,13 +138,26 @@ iterPrintControl <- function(every = 1L,
       probitIdx[i] <- as.integer(length(probitThetaLow))
     }
   }
+  # ntheta-indexed views over the unfixed-theta order.  These are
+  # always emitted regardless of `printNames` because
+  # .postEstimationBoundedTransform consumes them on the env under
+  # logThetasF/logitThetasF/probitThetasF names.
+  tr <- merge(iniThetas, muRef, by.x = "name", by.y = "parameter")
+  tr <- tr[order(tr$ntheta), ]
   list(
-    xPar           = xPar,
-    probitIdx      = probitIdx,
-    logitThetaLow  = logitThetaLow,
-    logitThetaHi   = logitThetaHi,
-    probitThetaLow = probitThetaLow,
-    probitThetaHi  = probitThetaHi
+    xPar             = xPar,
+    probitIdx        = probitIdx,
+    logitThetaLow    = logitThetaLow,
+    logitThetaHi     = logitThetaHi,
+    probitThetaLow   = probitThetaLow,
+    probitThetaHi    = probitThetaHi,
+    logNthetas       = as.integer(tr[which(tr$curEval == "exp"),       "ntheta"]),
+    logitNthetas     = as.integer(tr[which(tr$curEval == "expit"),     "ntheta"]),
+    logitNthetasLow  = as.double( tr[which(tr$curEval == "expit"),     "low"]),
+    logitNthetasHi   = as.double( tr[which(tr$curEval == "expit"),     "hi"]),
+    probitNthetas    = as.integer(tr[which(tr$curEval == "probitInv"), "ntheta"]),
+    probitNthetasLow = as.double( tr[which(tr$curEval == "probitInv"), "low"]),
+    probitNthetasHi  = as.double( tr[which(tr$curEval == "probitInv"), "hi"])
   )
 }
 
