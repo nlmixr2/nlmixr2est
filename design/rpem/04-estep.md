@@ -4,6 +4,11 @@ Purpose: for each subject `i` and mixture component `k`, estimate
 `n_ik = integral p(Y_i|theta_i) p(theta_i|mu^(k),Sigma^(k)) dtheta_i` (Eq 23) by
 Monte Carlo, and cache the per-sample likelihoods for the M-step.
 
+Implemented entirely in C++ (`src/rpem.cpp`, D17) -- no per-iteration R
+round-trip. The steps below run inside the C++ iteration loop; the batched solve
+uses rxode2's C-level `par_solve` in-process and reads `rx_pred_` straight from
+the solve buffer.
+
 ## Procedure (per iteration)
 
 1. For each `k`, factor `Sigma^(k) = L_k L_k^T` (Cholesky). Draw `m_Gauss`
@@ -12,12 +17,13 @@ Monte Carlo, and cache the per-sample likelihoods for the M-step.
 2. Back-transform `theta` to natural scale; assemble the population solve input
    for all (subject x sample x component) rows.
 3. **Single batched `par_solve`** over the whole matrix (see
-   `06-parallelization.md`). One solve call per iteration, not per sample.
-4. Evaluate `p(Y_i | theta)` per sample via the **dedicated RPEM likelihood
+   `06-parallelization.md`), called from C++ via rxode2's C API. One solve call
+   per iteration, not per sample, and no R round-trip.
+4. Evaluate `p(Y_i | theta)` per sample from the **dedicated RPEM likelihood
    model** (`13-likelihood-model.md`): supply `THETA` (population/fixed) and
-   `ETA` (the drawn eta) as inputs, no optimization. This yields, per
-   (i, k, sample), an observation log-likelihood sum; exponentiate/stabilize to
-   get the contribution to `n_ik`.
+   `ETA` (the drawn eta) as inputs, no optimization. Read `rx_pred_` from the
+   solve buffer; `log p(Y_i | theta) = -sum_obs(rx_pred_)` per (i, k, sample).
+   Exponentiate/stabilize (log-sum-exp) to get the contribution to `n_ik`.
 5. `n_ik = mean over samples of p(Y_i | theta)` (Eq 24). Use a log-sum-exp with
    a per-subject max for numerical stability, then divide by `m_Gauss`.
 6. `N_i = sum_k w^(k) n_ik` (Eq 22); `tau_i(k) = w^(k) n_ik / N_i` (Eq 25).

@@ -7,11 +7,13 @@ own acceptance gate. Milestones bias toward small, compartmentalized PRs.
 ## M1 -- Breadth-first likelihood core (first mergeable increment)
 
 Scope (in build order):
-- **First task**: the dedicated RPEM likelihood model (`13-likelihood-model.md`)
-  -- phi/eta supplied, no optimization. Nothing else can be validated until this
-  returns `p(Y_i | theta_i)` correctly, so build and unit-test it against a known
-  hand-computed likelihood before the engine.
-- E-step + M-step engine, K=1 (single Gaussian).
+- **First task DONE**: the dedicated RPEM likelihood model
+  (`13-likelihood-model.md`) -- phi/eta supplied, no optimization. Built,
+  compiles, and C1.x-verified at machine precision
+  (`tests/testthat/test-rpem-llik-model.R`).
+- E-step + M-step engine, K=1 (single Gaussian), **in C++/C in `src/rpem.cpp`**
+  (D17), driving rxode2's C-level solve in-process with no per-iteration R
+  round-trip.
 - All continuous error structures + multiple endpoints + autocorrelated
   residuals, ALL via the rxode2 `llik` path (no bespoke residual math).
 - Hybrid M-step: conjugate `mu`/`Sigma`, numeric fixed effects (residual +

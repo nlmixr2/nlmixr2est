@@ -51,7 +51,10 @@ Template on `nlmModel0` and `foceiModel0ll`:
 - **E-step**: for each MC sample, set `THETA` (population mu / fixed effects) and
   `ETA` (the drawn eta) as inputs, solve once inside the batched `par_solve`,
   and read back the summed log-likelihood -> `p(Y_i | theta_i)`. Etas are
-  **supplied data** per (subject, sample), never optimized.
+  **supplied data** per (subject, sample), never optimized. In production this
+  solve is driven from C++ via rxode2's C API, reading `rx_pred_` from the solve
+  buffer (D17); the R-level `rxSolve` used in the spec-13/C1.x tests is a
+  test-only convenience.
 - **M-step numeric re-scoring**: re-evaluate the same model with updated
   residual/fixed `THETA` against the cached `theta` samples. When only residual
   params change, the structural solution is unchanged -- so cache the structural

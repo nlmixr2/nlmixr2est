@@ -6,6 +6,10 @@ the population parameters are updated as sample averages of the target
 distribution `pi(s) = g_ik(theta_i)/N` (Eq 30). No new ODE solves -- everything
 reuses the E-step sample pool and stored likelihoods.
 
+Implemented in C++ (`src/rpem.cpp`, D17) inside the iteration loop, with no R
+round-trip. The MH chain, conjugate updates, and the numeric fixed-effect
+re-scoring all operate on in-memory C++ buffers from the E-step.
+
 ## Joint Metropolis-Hastings (Eq 31-33)
 
 State `s = {i, k, theta_i}`. Proposal `s' = {i', k', theta'_{i'}}`:

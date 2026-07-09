@@ -21,6 +21,7 @@ conform to these; if a spec needs to deviate, change it here first.
 | D14 | Deliverable of design phase | Numbered compartmentalized specs under `design/rpem/`, iterated and committed | This directory |
 | D15 | Git workflow | Work in the `rpem` worktree; commit often (one focused commit per small step); at each step end fetch + merge `origin/main` into `rpem` and push. Keeps the branch close to upstream for a cheap eventual merge | See `12-roadmap.md` "Git cadence" |
 | D16 | Test execution | Run tests against `devtools::load_all()`-loaded rxode2 and nlmixr2est worktrees whenever possible -- do NOT `install`/`R CMD INSTALL` these packages. A global install mutates the shared library that other concurrent agents' worktrees depend on | See `11-validation.md` "Test execution environment" |
+| D17 | Engine language / R boundary | The estimation engine (E-step, M-step, iteration loop, convergence) lives in C++/C in `src/rpem.cpp`, like `saem.cpp`/`inner.cpp`. Drive rxode2's C-level solve API in-process and read `rx_pred_`/`rx_pred_f_` straight from the solve buffer. Minimize R<->C++ round-trips: R only sets up (compiled model + data + starting values) and tears down (fit assembly); the whole iteration loop stays in C++ | See `02-architecture.md`, `04`, `05`, `06` |
 
 ## Assumptions (house style; not explicitly asked -- flag if wrong)
 

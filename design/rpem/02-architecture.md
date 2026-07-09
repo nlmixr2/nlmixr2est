@@ -15,30 +15,54 @@
   (`preProcessBoundedTransform`), covariates, data/UI validation, zero-omega,
   literal fix. No RPEM-specific hook expected for M1.
 
-## C++ kernel
+## C++ kernel (the engine lives here, D17)
 
-- `src/rpem.cpp`: the E-step/M-step engine. Added to `SOURCES_CPP` in
-  `src/Makevars(.in)`. Uses RcppArmadillo, OpenMP (`src/rxomp.h`), and rxode2's
-  solve/likelihood C API.
-- Exposed to R through `RcppExports` / `RcppExportMod` like `saem.cpp`.
+- `src/rpem.cpp`: the entire estimation engine -- E-step, M-step, iteration
+  loop, and convergence -- in C++/C, like `saem.cpp` and `inner.cpp`. Added to
+  `SOURCES_CPP` in `src/Makevars(.in)`. Uses RcppArmadillo, OpenMP
+  (`src/rxomp.h`), and rxode2's solve/likelihood C API.
+- Exposed to R through `RcppExports` / `RcppExportMod` like `saem.cpp`: ideally a
+  single entry point (`_nlmixr2est_rpemFit` or similar) that R calls once per
+  fit and that runs all iterations internally.
+
+### R <-> C++ boundary -- minimize round-trips
+
+- The iteration loop does NOT return to R between iterations. Sampling, the
+  batched solve, likelihood accumulation, the MH M-step, parameter updates, and
+  the convergence test all happen inside the C++ loop.
+- Solving uses rxode2's C-level API in-process (the same `rx_solve`/`par_solve`
+  machinery `saem.cpp` drives), reading `rx_pred_`/`rx_pred_f_`/`rx_r_` directly
+  from the solve output buffer -- NOT via an R-level `rxSolve(returnType=...)`
+  call per iteration. (The R `rxSolve` used in the spec-13 verification test is a
+  test-only convenience, not the production path.)
+- R responsibilities are confined to setup (compile the rpem model, build the
+  data/event matrices, parameter classification, starting values, control) and
+  teardown (assemble `nlmixr2FitData`, lazy residuals). Optional per-iteration
+  progress printing is a lightweight callback, not a data round-trip.
+- Rationale: per-iteration R round-trips dominate runtime for MCPEM (thousands
+  of solves per iteration); keeping the loop in C++ is what makes the speed goal
+  (D1, C4.x) attainable.
 
 ## Data flow (one fit)
 
 ```
 rpem UI --rxPipeline--> rxode2 model (compiled C)
         --hooks--> transformed/validated problem
-   R: rpem.R assembles control + param classification + data matrices
-   C++: rpem.cpp iterate:
-        E-step: draw theta ~ mixture Gaussians
-                --> rxode2 par_solve (batched population solve)
-                --> rxode2 llik: p(Y_i | theta_i) per sample   [store]
-                --> n_ik, N_i, tau, lnL
-        M-step: joint MH over (i,k,theta) reusing stored likelihoods
-                --> conjugate updates: mu^(k), Sigma^(k), w^(k)
-                --> numeric updates (nlm): residual error + non-mu-ref fixed
-        convergence check
+   R (setup only): rpem.R assembles control + param classification +
+       data/event matrices + compiled rpem model; ONE call into C++
+   C++ (src/rpem.cpp -- whole loop, no R round-trips):
+        iterate:
+          E-step: draw theta ~ mixture Gaussians
+                  --> rxode2 C-level par_solve (batched population solve)
+                  --> read rx_pred_ from solve buffer: p(Y_i|theta_i) per sample [store]
+                  --> n_ik, N_i, tau, lnL
+          M-step: joint MH over (i,k,theta) reusing stored likelihoods
+                  --> conjugate updates: mu^(k), Sigma^(k), w^(k)
+                  --> numeric updates (nlm): residual error + non-mu-ref fixed
+          convergence check
+        (optional lightweight progress callback -- not a data round-trip)
    C++ --> estimates, lnL trace, converged-sample store (for SEs + predictions)
-   R: build nlmixr2FitData; residuals/predictions lazily
+   R (teardown only): build nlmixr2FitData; residuals/predictions lazily
 ```
 
 ## Reuse boundaries (interfaces, not copies)
