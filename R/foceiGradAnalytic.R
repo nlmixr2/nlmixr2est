@@ -335,9 +335,11 @@
   pars <- data.frame(ID = ids)
   for (k in seq_len(neta)) pars[[etav[k]]] <- ebes[, k]
   for (.nm in names(thv)) pars[[.nm]] <- thv[[.nm]]
-  # DDE: force pure dop853 (dense, no ros4 secondary) -- the stiff augmented
-  # sensitivity system otherwise trips the AutoSwitch composite into ros4, whose
-  # dense delay-history is inaccurate and corrupts the delayed prediction.
+  # DDE: force pure dop853 (dense, no Jacobian) -- its 8th-order dense history
+  # reproduces the delayed sensitivity solve exactly and needs no Jacobian, so it
+  # sidesteps the composite/ros4 on-the-fly Jacobian generation for this
+  # THETA/ETA-named augmented model (mangled the parameter list on rxode2 < 5.1.3;
+  # the fixed composite works too, but dop853 is exact and version-independent).
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(am$augMod)$flags[["hasDelay"]] == 1L))
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .sol <- tryCatch(withCallingHandlers(

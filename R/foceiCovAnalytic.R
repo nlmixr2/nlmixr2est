@@ -1556,11 +1556,14 @@ E_ARelm <- function(E, l, m, fp) if (fp) E$AR[, l, m] else 0
 #' @noRd
 .foceiAnalyticSolveFA <- function(aug, params, ev, times, tol = 1e-10) {
   dirs <- aug$dirs; nd <- length(dirs)
-  # DDE augmented solve: force pure dop853 (dense, no ros4 secondary).  The
-  # augmented sensitivity system is stiff enough to trip the AutoSwitch
-  # composite into its ros4 leg, whose dense delay-history is inaccurate here
-  # and makes the delayed prediction (hence the whole covariance) badly wrong;
-  # dop853's 8th-order dense history reproduces the inner solve exactly.
+  # DDE augmented solve: force pure dop853 (dense, no Jacobian).  dop853's
+  # 8th-order dense history reproduces the delayed sensitivity solve exactly and
+  # needs no Jacobian, so it sidesteps the composite/ros4 path's on-the-fly
+  # Jacobian generation for this THETA/ETA-named augmented model (which on rxode2
+  # < 5.1.3 mangled the parameter list -- the aug solve then failed and the
+  # covariance silently degraded to the finite-difference sandwich).  The fixed
+  # composite solves correctly too, but dop853 is exact here and works on every
+  # rxode2 version, so keep it.
   .ddeArgs <- if (isTRUE(rxode2::rxModelVars(aug$augMod)$flags[["hasDelay"]] == 1L))
     list(method = "dop853", stiff2 = 0L, dense = TRUE) else list()
   .d <- tryCatch(withCallingHandlers(
