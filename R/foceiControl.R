@@ -770,10 +770,8 @@ foceiControl <- function(sigdig = 4, #
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
-                         eventSens = c("jump", "fd"),
                          sensMethod = c("default", "forward", "adjoint"),
                          boundedTransform=TRUE) { #
-  eventSens <- match.arg(eventSens)
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
   ## "default" defers to getOption("nlmixr2est.adjoint").

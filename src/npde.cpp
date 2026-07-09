@@ -344,7 +344,8 @@ extern "C" SEXP _nlmixr2est_npdeCalc(SEXP npdeSim, SEXP dvIn, SEXP evidIn, SEXP 
   SEXP s0 = rx_protect.protect(VECTOR_ELT(npdeSim, 0));
   int simLen = Rf_length(s0);
   if (simLen == 0) {
-    UNPROTECT(pro);
+    // rx_protect (rxProtect RAII) unprotects on scope exit, including when
+    // stop() throws, so no manual UNPROTECT is needed here.
     stop("npdeCalc: simulation input has zero rows");
   }
   arma::Col<int> aSimIdVec(INTEGER(s0), simLen, false, true);

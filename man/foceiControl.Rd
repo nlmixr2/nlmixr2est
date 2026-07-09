@@ -25,12 +25,17 @@ foceiControl(
   derivMethod = c("switch", "forward", "central"),
   derivSwitchTol = NULL,
   covDerivMethod = c("central", "forward"),
-  covMethod = c("r,s", "r", "s", ""),
+  covMethod = c("analytic", "r,s", "r", "s", ""),
+  covSolveTol = NULL,
+  covFull = TRUE,
+  fast = FALSE,
   hessEps = (.Machine$double.eps)^(1/3),
   hessEpsLlik = (.Machine$double.eps)^(1/3),
   optimHessType = c("central", "forward"),
   optimHessCovType = c("central", "forward"),
+  censOption = c("gauss", "laplace"),
   eventType = c("central", "forward"),
+  eventSens = c("jump", "fd"),
   centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2),
   lbfgsLmm = 7L,
   lbfgsPgtol = 0,
@@ -48,6 +53,7 @@ foceiControl(
   calcTables = TRUE,
   noAbort = TRUE,
   interaction = TRUE,
+  foce = c("nonmem", "foce+"),
   cholSEtol = (.Machine$double.eps)^(1/3),
   cholAccept = 0.001,
   resetEtaP = 0.15,
@@ -59,7 +65,7 @@ foceiControl(
   cholSECov = FALSE,
   fo = FALSE,
   covTryHarder = FALSE,
-  outerOpt = c("lbfgsb3c", "nlminb", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
+  outerOpt = c("nlminb", "lbfgsb3c", "bobyqa", "L-BFGS-B", "mma", "lbfgsbLG", "slsqp",
     "uobyqa", "newuoa"),
   innerOpt = c("n1qn1", "BFGS"),
   rhobeg = 0.2,
@@ -72,6 +78,10 @@ foceiControl(
   abstol = NULL,
   reltol = NULL,
   resetHessianAndEta = FALSE,
+  muModel = c("none", "irls", "lin"),
+  muRefCovAlg = TRUE,
+  muModelTol = 0.001,
+  muModelMaxCycles = 10L,
   stateTrim = Inf,
   shi21maxOuter = 0L,
   shi21maxInner = 20L,
@@ -121,28 +131,21 @@ foceiControl(
   zeroGradFirstReset = TRUE,
   zeroGradRunReset = TRUE,
   zeroGradBobyqa = TRUE,
-  mceta = -1L,
+  mceta = -2L,
+  warm = c("calc", "save"),
   nAGQ = 0,
   agqLow = -Inf,
   agqHi = Inf,
+  sensMethod = c("default", "forward", "adjoint"),
   boundedTransform = TRUE
 )
 }
 \arguments{
-\item{sigdig}{Optimization significant digits. This controls:
-
-\itemize{
-
- \item The tolerance of the inner and outer optimization is \code{10^-sigdig}
-
- \item The tolerance of the ODE solvers is
- \code{0.5*10^(-sigdig-2)}; For the sensitivity equations and
- steady-state solutions the default is \code{0.5*10^(-sigdig-1.5)}
- (sensitivity changes only applicable for liblsoda)
-
- \item The tolerance of the boundary check is \code{5 * 10 ^ (-sigdig + 1)}
-
-}}
+\item{sigdig}{Optimization significant digits; controls the inner/outer
+optimization tolerance (\code{10^-sigdig}), ODE solver tolerance
+(\code{0.5*10^(-sigdig-2)}, or \code{0.5*10^(-sigdig-1.5)} for
+sensitivity/steady-state with liblsoda), and boundary check tolerance
+(\code{5*10^(-sigdig+1)}).}
 
 \item{...}{Ignored parameters}
 
@@ -157,20 +160,13 @@ for outer problem.}
 \item{n1qn1nsim}{Number of function evaluations for n1qn1
 optimization.}
 
-\item{print}{Either a scalar print-frequency (`0` = suppress
-iteration output; `1` (default) = print every parameter
-evaluation; `N` = print every Nth evaluation), OR a pre-built
-[iterPrintControl()] object bundling all iteration-print options
-(column wrap, header cadence, color, simple/three-row mode).
-The scalar form is equivalent to
-`iterPrintControl(every = print, ncol = printNcol,
-useColor = useColor)`.}
+\item{print}{Either a scalar print-frequency (`0` = suppress, `1`
+(default) = every evaluation, `N` = every Nth), OR a pre-built
+[iterPrintControl()] object. Equivalent to
+`iterPrintControl(every = print, ncol = printNcol, useColor = useColor)`.}
 
-\item{printNcol}{Integer (or `NULL`) — number of parameter columns
-emitted per row before wrapping to a continuation row.  `NULL`
-(the default) defers to [iterPrintControl()]'s default
-(`floor((getOption("width") - 23) / 12)`, which fits an 80-column
-terminal).  Equivalent to `print = iterPrintControl(ncol = ...)`.}
+\item{printNcol}{Integer (or `NULL`) parameter columns per row before
+wrapping. `NULL` (default) uses `floor((getOption("width") - 23) / 12)`.}
 
 \item{scaleTo}{Scale the initial parameter estimate to this value.
 By default this is 1.  When zero or below, no scaling is performed.}
@@ -178,170 +174,48 @@ By default this is 1.  When zero or below, no scaling is performed.}
 \item{scaleObjective}{Scale the initial objective function to this
 value.  By default this is 0 (meaning do not scale)}
 
-\item{normType}{This is the type of parameter
-    normalization/scaling used to get the scaled initial values
-    for nlmixr2.  These are used with \code{scaleType} of.
+\item{normType}{Parameter normalization/scaling used to get scaled
+initial values for \code{scaleType}, of the form
+\code{Vscaled = (Vunscaled-C1)/C2} (see
+\href{https://en.wikipedia.org/wiki/Feature_scaling}{Feature Scaling};
+\code{rescale2} follows the
+\href{http://apmonitor.com/me575/uploads/Main/optimization_book.pdf}{OptdesX}
+manual): \code{"rescale2"} scales all parameters to (-1, 1);
+\code{"rescale"} (min-max) scales to (0, 1); \code{"mean"} centers on
+the mean with range (0, 1); \code{"std"} standardizes by mean/sd;
+\code{"len"} scales to unit (Euclidean) length; \code{"constant"}
+performs no normalization (\code{C1=0}, \code{C2=1}).}
 
-    With the exception of \code{rescale2}, these come
-    from
-    \href{https://en.wikipedia.org/wiki/Feature_scaling}{Feature
-    Scaling}. The \code{rescale2} The rescaling is the same type
-    described in the
-    \href{http://apmonitor.com/me575/uploads/Main/optimization_book.pdf}{OptdesX}
-    software manual.
-
-    In general, all all scaling formula can be described by:
-
-    \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{unscaled}-C_{1}}{Vunscaled-C1})/\deqn{C_{2}}{C2}
-
-
-    Where
-
-
-    The other data normalization approaches follow the following formula
-
-    \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{unscaled}-C_{1}}{Vunscaled-C1})/\deqn{C_{2}}{C2}
-
-\itemize{
-
-\item \code{rescale2} This scales all parameters from (-1 to 1).
-    The relative differences between the parameters are preserved
-    with this approach and the constants are:
-
-    \deqn{C_{1}}{C1} = (max(all unscaled values)+min(all unscaled values))/2
-
-    \deqn{C_{2}}{C2} = (max(all unscaled values) - min(all unscaled values))/2
-
-
-\item \code{rescale} or min-max normalization. This rescales all
-    parameters from (0 to 1).  As in the \code{rescale2} the
-    relative differences are preserved.  In this approach:
-
-    \deqn{C_{1}}{C1} = min(all unscaled values)
-
-    \deqn{C_{2}}{C2} = max(all unscaled values) - min(all unscaled values)
-
-
-\item \code{mean} or mean normalization.  This rescales to center
-    the parameters around the mean but the parameters are from 0
-    to 1.  In this approach:
-
-    \deqn{C_{1}}{C1} = mean(all unscaled values)
-
-    \deqn{C_{2}}{C2} = max(all unscaled values) - min(all unscaled values)
-
-\item \code{std} or standardization.  This standardizes by the mean
-     and standard deviation.  In this approach:
-
-    \deqn{C_{1}}{C1} = mean(all unscaled values)
-
-    \deqn{C_{2}}{C2} = sd(all unscaled values)
-
-\item \code{len} or unit length scaling.  This scales the
-   parameters to the unit length.  For this approach we use the Euclidean length, that
-   is:
-
-    \deqn{C_{1}}{C1} = 0
-
-    \deqn{C_{2}}{C2} = \deqn{\sqrt(v_1^2 + v_2^2 + \cdots + v_n^2)}{sqrt(v_1^2 + v_2^2 + ... + v_n^2)}
-
-
-\item \code{constant} which does not perform data normalization. That is
-
-    \deqn{C_{1}}{C1} = 0
-
-    \deqn{C_{2}}{C2} = 1
-
-}}
-
-\item{scaleType}{The scaling scheme for nlmixr2.  The supported types are:
-
-\itemize{
-\item \code{nlmixr2}  In this approach the scaling is performed by the following equation:
-
-   \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{current} - v_{init}}{Vcurrent - Vinit})*scaleC[i] + scaleTo
-
-The \code{scaleTo} parameter is specified by the \code{normType},
-and the scales are specified by \code{scaleC}.
-
-\item \code{norm} This approach uses the simple scaling provided
-    by the \code{normType} argument.
-
-\item \code{mult} This approach does not use the data
-normalization provided by \code{normType}, but rather uses
-multiplicative scaling to a constant provided by the \code{scaleTo}
-argument.
-
-  In this case:
-
-  \deqn{v_{scaled}}{Vscaled} = \deqn{v_{current}}{Vcurrent}/\deqn{v_{init}}{Vinit}*scaleTo
-
-\item \code{multAdd} This approach changes the scaling based on
-the parameter being specified.  If a parameter is defined in an
-exponential block (ie exp(theta)), then it is scaled on a
-linearly, that is:
-
-  \deqn{v_{scaled}}{Vscaled} = (\deqn{v_{current}-v_{init}}{Vcurrent-Vinit}) + scaleTo
-
-Otherwise the parameter is scaled multiplicatively.
-
-   \deqn{v_{scaled}}{Vscaled} = \deqn{v_{current}}{Vcurrent}/\deqn{v_{init}}{Vinit}*scaleTo
-
-}}
+\item{scaleType}{The scaling scheme for nlmixr2: \code{"nlmixr2"}
+(default) scales as \code{(current-init)*scaleC[i] + scaleTo}, with
+\code{scaleTo} from \code{normType} and scales from \code{scaleC};
+\code{"norm"} uses the simple scaling from \code{normType};
+\code{"mult"} scales multiplicatively as \code{current/init*scaleTo};
+\code{"multAdd"} scales linearly (\code{(current-init)+scaleTo}) for
+parameters in an exponential block (e.g. \code{exp(theta)}) and
+multiplicatively otherwise.}
 
 \item{scaleCmax}{Maximum value of the scaleC to prevent overflow.}
 
 \item{scaleCmin}{Minimum value of the scaleC to prevent underflow.}
 
-\item{scaleC}{The scaling constant used with
-    \code{scaleType=nlmixr2}.  When not specified, it is based on
-    the type of parameter that is estimated.  The idea is to keep
-    the derivatives similar on a log scale to have similar
-    gradient sizes.  Hence parameters like log(exp(theta)) would
-    have a scaling factor of 1 and log(theta) would have a scaling
-    factor of ini_value (to scale by 1/value; ie
-    d/dt(log(ini_value)) = 1/ini_value or scaleC=ini_value)
-
-   \itemize{
-
-   \item For parameters in an exponential (ie exp(theta)) or
-   parameters specifying powers, boxCox or yeoJohnson
-   transformations , this is 1.
-
-   \item For additive, proportional, lognormal error structures,
-   these are given by 0.5*abs(initial_estimate)
-
-   \item Factorials are scaled by abs(1/digamma(initial_estimate+1))
-
-   \item parameters in a log scale (ie log(theta)) are transformed
-   by log(abs(initial_estimate))*abs(initial_estimate)
-
-   }
-
-   These parameter scaling coefficients are chose to try to keep
-   similar slopes among parameters.  That is they all follow the
-   slopes approximately on a log-scale.
-
-   While these are chosen in a logical manner, they may not always
-   apply.  You can specify each parameters scaling factor by this
-   parameter if you wish.}
+\item{scaleC}{Scaling constant used with \code{scaleType="nlmixr2"};
+when not specified, chosen by parameter type to keep gradient sizes
+similar on a log scale: `1` for exp()-transformed/power/boxCox/
+yeoJohnson parameters, `0.5*abs(est)` for additive/proportional/
+lognormal error parameters, `abs(1/digamma(est+1))` for factorials,
+and `log(abs(est))*abs(est)` for log-scale parameters. May be set
+explicitly per parameter if these defaults don't apply well.}
 
 \item{scaleC0}{Number to adjust the scaling factor by if the initial
 gradient is zero.}
 
-\item{derivEps}{Forward difference tolerances, which is a
-    vector of relative difference and absolute difference.  The
-    central/forward difference step size h is calculated as:
+\item{derivEps}{Forward difference tolerances (relative, absolute); step
+size \code{h = abs(x)*derivEps[1] + derivEps[2]}.}
 
-        \code{h = abs(x)*derivEps[1] + derivEps[2]}}
-
-\item{derivMethod}{indicates the method for calculating
-derivatives of the outer problem.  Currently supports
-"switch", "central" and "forward" difference methods.  Switch
-starts with forward differences.  This will switch to central
-differences when abs(delta(OFV)) <= derivSwitchTol and switch
-back to forward differences when abs(delta(OFV)) >
-derivSwitchTol.}
+\item{derivMethod}{Derivative method for the outer problem: "switch",
+"central", or "forward". "switch" starts forward and toggles to
+central when \code{abs(delta(OFV)) <= derivSwitchTol}.}
 
 \item{derivSwitchTol}{The tolerance to switch forward to central
 differences.}
@@ -350,25 +224,48 @@ differences.}
 derivatives while calculating the covariance components
 (Hessian and S).}
 
-\item{covMethod}{Method for calculating covariance.  In this
-    discussion, R is the Hessian matrix of the objective
-    function. The S matrix is the sum of individual
-    gradient cross-product (evaluated at the individual empirical
-    Bayes estimates).
+\item{covMethod}{Method for calculating the covariance.  \code{"analytic"} (the
+default) uses the exact analytic observed-information R-matrix (reported as
+\eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+error, mu-referenced/covariate/other structural parameters (and
+non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+message and falls back to the finite-difference Hessian for anything out of
+scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+pure-proportional variance that vanishes at a near-zero prediction).  The
+finite-difference methods use R (the Hessian) and S (the sum of individual
+gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
+(\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
+(\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+\code{""} to skip the covariance step.}
 
-\itemize{
+\item{covSolveTol}{absolute/relative ODE tolerance for the covariance solves --
+the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+derives a tight tolerance from \code{sigdig}; supply a number to override it.}
 
- \item "\code{r,s}" Uses the sandwich matrix to calculate the
- covariance, that is: \code{solve(R) \%*\% S \%*\% solve(R)}
+\item{covFull}{controls the shape of \code{fit$cov}.  \code{FALSE} (default)
+installs only the structural-theta block (the NONMEM-matched theta
+covariance, matching the historical finite-difference \code{fit$cov} shape
+for backwards compatibility); \code{TRUE} installs the full theta + residual
+sigma + Omega covariance -- assembled analytically for
+\code{covMethod="analytic"}, or by central finite differences of the objective
+over the same parameter set for the finite-difference methods (perturbing Omega
+on the variance-covariance scale, with the per-parameter Gill (1983) step and the
+5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
+errors are identical either way.}
 
- \item "\code{r}" Uses the Hessian matrix to calculate the
- covariance as \code{2 \%*\% solve(R)}
-
- \item "\code{s}" Uses the cross-product matrix to calculate the
- covariance as \code{4 \%*\% solve(S)}
-
- \item "" Does not calculate the covariance step.
-}}
+\item{fast}{When \code{TRUE}, compute the outer (population) gradient
+analytically from Almquist (2015) sensitivity equations instead of by
+finite differences, and use the Eq-48 random-effect extrapolation for the
+next inner-problem starting values.  Requires an analytic-scope model
+(single additive/proportional Gaussian endpoint); out-of-scope models fall
+back to the finite-difference gradient with a message.  When unspecified,
+the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+\code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+\code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+\code{foceif}) default this to \code{TRUE}.}
 
 \item{hessEps}{is a double value representing the epsilon for the
 Hessian calculation. This is used for the R matrix calculation.}
@@ -378,85 +275,55 @@ the Hessian calculation when doing focei generalized
 log-likelihood estimation.  This is used for the R matrix
 calculation.}
 
-\item{optimHessType}{The hessian type for when calculating the
-individual hessian by numeric differences (in generalized
-log-likelihood estimation).  The options are "central", and
-"forward".  The central differences is what R's `optimHess()`
-uses and is the default for this method. (Though the "forward" is
-faster and still reasonable for most cases).  The Shi21 cannot be
-changed for the Gill83 algorithm with the optimHess in a
-generalized likelihood problem.}
+\item{optimHessType}{Hessian type for numeric-difference individual
+Hessians in generalized log-likelihood estimation: "central" (matches
+R's `optimHess()`, default) or "forward" (faster).}
 
-\item{optimHessCovType}{The hessian type for when calculating the
-individual hessian by numeric differences (in generalized
-log-likelihood estimation).  The options are "central", and
-"forward".  The central differences is what R's `optimHess()`
-uses.  While this takes longer in optimization, it is more
-accurate, so for calculating the covariance and final likelihood,
-the central differences are used. This also uses the modified
-Shi21 method}
+\item{optimHessCovType}{Hessian type for numeric-difference individual
+Hessians used for the covariance step/final likelihood: "central"
+(more accurate, used here) or "forward".}
+
+\item{censOption}{Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+\code{"laplace"} uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+\code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.}
 
 \item{eventType}{Event gradient type for dosing events; Can be
 "central" or "forward"}
 
-\item{centralDerivEps}{Central difference tolerances.  This is a
-  numeric vector of relative difference and absolute difference.
-  The central/forward difference step size h is calculated as:
+\item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
+`rate`, `dur`) sensitivities are computed for THETA/ETA gradients:
+`"jump"` (default) uses rxode2's analytic event sensitivities; `"fd"`
+uses the legacy finite-difference behavior.}
 
-        \code{h = abs(x)*derivEps[1] + derivEps[2]}}
+\item{centralDerivEps}{Central difference tolerances (relative,
+absolute); step size \code{h = abs(x)*derivEps[1] + derivEps[2]}.}
 
 \item{lbfgsLmm}{An integer giving the number of BFGS updates
 retained in the "L-BFGS-B" method, It defaults to 7.}
 
-\item{lbfgsPgtol}{is a double precision variable.
+\item{lbfgsPgtol}{Projected-gradient convergence tolerance for
+"L-BFGS-B": iteration stops when
+\code{max(| proj g_i |) <= lbfgsPgtol}. Defaults to `0` (check
+suppressed).}
 
-    On entry pgtol >= 0 is specified by the user.  The iteration
-    will stop when:
-
-       \code{max(\| proj g_i \| i = 1, ..., n) <= lbfgsPgtol}
-
-    where pg_i is the ith component of the projected gradient.
-
-    On exit pgtol is unchanged.  This defaults to zero, when the
-    check is suppressed.}
-
-\item{lbfgsFactr}{Controls the convergence of the "L-BFGS-B"
-method.  Convergence occurs when the reduction in the
-objective is within this factor of the machine
-tolerance. Default is 1e10, which gives a tolerance of about
-\code{2e-6}, approximately 4 sigdigs.  You can check your
-exact tolerance by multiplying this value by
-\code{.Machine$double.eps}}
+\item{lbfgsFactr}{Convergence factor for "L-BFGS-B": converges when the
+objective reduction is within \code{lbfgsFactr * .Machine$double.eps}.
+Default `1e10` (~4 sigdigs, \code{2e-6}).}
 
 \item{eigen}{A boolean indicating if eigenvectors are calculated
 to include a condition number calculation.}
 
-\item{diagXform}{This is the transformation used on the diagonal
-    of the \code{chol(solve(omega))}. This matrix and values are the
-    parameters estimated in FOCEi. The possibilities are:
+\item{diagXform}{Transformation used on the diagonal of
+\code{chol(solve(omega))} (the FOCEi-estimated parameters): one of
+\code{"sqrt"} (default), \code{"log"}, or \code{"identity"}.}
 
-\itemize{
- \item \code{sqrt} Estimates the sqrt of the diagonal elements of \code{chol(solve(omega))}.  This is the default method.
-
- \item \code{log} Estimates the log of the diagonal elements of \code{chol(solve(omega))}
-
- \item \code{identity} Estimates the diagonal elements without any transformations
-}}
-
-\item{iovXform}{This is the transformation used on the diagonal
-    of the `iov`. The possibilities are:
-
-\itemize{
-
- \item \code{sd} Estimate the IOV as the standard deviation for IOV
-
- \item \code{var} Estimate the IOV as the variance for IOV.
-
- \item \code{logsd} Estimate the IOV as the log(sd) instead of sd.
-
- \item \code{logvar} Estimate the IOV as the log(var) instead of variance.
-
-}}
+\item{iovXform}{Transformation used on the diagonal of the IOV: one of
+\code{"sd"}, \code{"var"}, \code{"logsd"}, or \code{"logvar"}.}
 
 \item{sumProd}{Is a boolean indicating if the model should change
 multiplication to high precision multiplication and sums to
@@ -477,10 +344,8 @@ optimization; Default is `TRUE`.}
 \item{ci}{Confidence level for some tables.  By default this is
 0.95 or 95\% confidence.}
 
-\item{useColor}{Logical (or `NULL`) — whether to emit ANSI
-bold/color escapes in the iteration print.  `NULL` (the default)
-defers to [iterPrintControl()]'s default ([crayon::has_color()]).
-Equivalent to `print = iterPrintControl(useColor = ...)`.}
+\item{useColor}{Logical (or `NULL`) emit ANSI bold/color escapes in the
+iteration print. `NULL` (default) defers to [crayon::has_color()].}
 
 \item{boundTol}{Tolerance for boundary issues.}
 
@@ -493,44 +358,54 @@ evaluation if it runs into troubles.  (default TRUE)}
 \item{interaction}{Boolean indicate FOCEi should be used (TRUE)
 instead of FOCE (FALSE)}
 
+\item{foce}{Controls how FOCE (\code{interaction = FALSE}) evaluates the
+    residual variance R in the inner objective; ignored for FOCEi.  Either
+    \code{"nonmem"} (default) or \code{"foce+"}:
+
+    \itemize{
+
+    \item \code{"nonmem"} freezes R at the \code{eta = 0} population
+    prediction and holds it constant across the inner optimization, matching
+    NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+    errors, and an ODE model agrees with its closed-form (\code{linCmt})
+    equivalent.  Disadvantage: R ignores the individual (conditional)
+    heteroscedasticity, so it can be slightly less accurate than
+    \code{"foce+"} for proportional/combined error.
+
+    \item \code{"foce+"} evaluates R at the current conditional
+    \code{eta} (the live variance), keeping the truncated FOCE
+    inner gradient.  Advantage: uses the conditional variance and
+    is a bit more accurate than NONMEM's FOCE in some cases.
+    Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+    behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+    use the gradient of \code{eta} like the full \code{focei}
+    method, so it is not as accurate as \code{focei}.
+
+    }}
+
 \item{cholSEtol}{tolerance for Generalized Cholesky
 Decomposition.  Defaults to suggested (.Machine$double.eps)^(1/3)}
 
 \item{cholAccept}{Tolerance to accept a Generalized Cholesky
 Decomposition for a R or S matrix.}
 
-\item{resetEtaP}{represents the p-value for reseting the
-individual ETA to 0 during optimization (instead of the saved
-value).  The two test statistics used in the z-test are either
-chol(omega^-1) \%*\% eta or eta/sd(allEtas).  A p-value of 0
-indicates the ETAs never reset.  A p-value of 1 indicates the
-ETAs always reset.}
+\item{resetEtaP}{P-value for resetting an individual ETA to 0 during
+optimization, based on a z-test of \code{chol(omega^-1) \%*\% eta}
+or \code{eta/sd(allEtas)}. `0` = never reset, `1` = always reset.}
 
-\item{resetThetaP}{represents the p-value for reseting the
-population mu-referenced THETA parameters based on ETA drift
-during optimization, and resetting the optimization.  A
-p-value of 0 indicates the THETAs never reset.  A p-value of 1
-indicates the THETAs always reset and is not allowed.  The
-theta reset is checked at the beginning and when nearing a
-local minima.  The percent change in objective function where
-a theta reset check is initiated is controlled in
-\code{resetThetaCheckPer}.}
+\item{resetThetaP}{P-value for resetting mu-referenced THETAs based on
+ETA drift, checked at the start and near a local minimum (see
+\code{resetThetaCheckPer}). `0` = never reset; `1` is not allowed.}
 
 \item{resetThetaFinalP}{represents the p-value for reseting the
 population mu-referenced THETA parameters based on ETA drift
 during optimization, and resetting the optimization one final time.}
 
-\item{diagOmegaBoundUpper}{This represents the upper bound of the
-diagonal omega matrix.  The upper bound is given by
-diag(omega)*diagOmegaBoundUpper.  If
-\code{diagOmegaBoundUpper} is 1, there is no upper bound on
-Omega.}
+\item{diagOmegaBoundUpper}{Upper bound of the diagonal omega matrix, as
+\code{diag(omega)*diagOmegaBoundUpper}. `1` = no upper bound.}
 
-\item{diagOmegaBoundLower}{This represents the lower bound of the
-diagonal omega matrix.  The lower bound is given by
-diag(omega)/diagOmegaBoundUpper.  If
-\code{diagOmegaBoundLower} is 1, there is no lower bound on
-Omega.}
+\item{diagOmegaBoundLower}{Lower bound of the diagonal omega matrix, as
+\code{diag(omega)/diagOmegaBoundLower}. `1` = no lower bound.}
 
 \item{cholSEOpt}{Boolean indicating if the generalized Cholesky
 should be used while optimizing.}
@@ -549,25 +424,17 @@ the Hessian on the unscaled parameter space.}
 \item{innerOpt}{optimization method for the inner problem (not
 implemented yet.)}
 
-\item{rhobeg}{Beginning change in parameters for bobyqa algorithm
-(trust region).  By default this is 0.2 or 20% of the initial
-parameters when the parameters are scaled to 1. rhobeg and
-rhoend must be set to the initial and final values of a trust
-region radius, so both must be positive with 0 < rhoend <
-rhobeg. Typically rhobeg should be about one tenth of the
-greatest expected change to a variable.  Note also that
-smallest difference abs(upper-lower) should be greater than or
-equal to rhobeg*2. If this is not the case then rhobeg will be
-adjusted. (bobyqa)}
+\item{rhobeg}{Initial trust region radius for the bobyqa outer optimizer
+(with `rhoend`, must satisfy `0 < rhoend < rhobeg`). Default `0.2`
+(20% of scaled parameters); adjusted upward if smaller than
+`abs(upper-lower)/2`. (bobyqa)}
 
-\item{rhoend}{The smallest value of the trust region radius that
-is allowed. If not defined, then 10^(-sigdig-1) will be used. (bobyqa)}
+\item{rhoend}{Final trust region radius. If not defined,
+`10^(-sigdig-1)` is used. (bobyqa)}
 
-\item{npt}{The number of points used to approximate the objective
-function via a quadratic approximation for bobyqa. The value
-of npt must be in the interval [n+2,(n+1)(n+2)/2] where n is
-the number of parameters in par. Choices that exceed 2*n+1 are
-not recommended. If not defined, it will be set to 2*n + 1. (bobyqa)}
+\item{npt}{Number of points for bobyqa's quadratic approximation to the
+objective; must be in `[n+2, (n+1)(n+2)/2]`. Defaults to `2*n + 1`.
+(bobyqa)}
 
 \item{rel.tol}{Relative tolerance before nlminb stops (nlmimb).}
 
@@ -584,6 +451,39 @@ not recommended. If not defined, it will be set to 2*n + 1. (bobyqa)}
 \item{resetHessianAndEta}{is a boolean representing if the
 individual Hessian is reset when ETAs are reset using the
 option \code{resetEtaP}.}
+
+\item{muModel}{Selects the mu-referenced-FOCEI-family regression variant
+    for theta/eta in a mu-ref covariate relationship (see
+    \code{muRefCovAlg}): \code{"none"} (default, ordinary FOCEI);
+    \code{"lin"} (\code{mufocei}/\code{mufoce}/\code{muagq}/
+    \code{mulaplace}: population theta and covariate coefficient(s) per
+    mu-ref-covariate group are excluded from the outer optimizer and
+    re-derived in C++ by closed-form OLS regression of each subject's
+    back-calculated value on the covariate(s), residual becomes that
+    subject's eta; repeats until convergence, see \code{muModelTol}/
+    \code{muModelMaxCycles}); or \code{"irls"}
+    (\code{irlsfocei}/\code{irlsfoce}/\code{irlsagq}/\code{irlslaplace}:
+    same mechanism, reweighted by inner-optimization curvature).
+
+    A mu-ref-covariate theta with a finite bound falls back to ordinary
+    bounded outer-optimizer handling with a warning (a bound on the
+    group's population theta excludes the whole group; a bound on one
+    covariate coefficient excludes only that covariate).}
+
+\item{muRefCovAlg}{When `TRUE` (default), algebraic expressions that can
+be mu-referenced are internally rewritten as mu-referenced
+covariates and restored after optimization. Mirrors
+\code{saemControl(muRefCovAlg=)}/\code{nlmeControl(muRefCovAlg=)};
+for \code{foceiControl()} only takes effect when
+\code{muModel != "none"}.}
+
+\item{muModelTol}{Convergence tolerance for the mu-referenced-FOCEI-family
+"re-optimize etas, then regress" cycle (\code{muModel != "none"}):
+repeats until the max mu-group theta change drops below this value
+or \code{muModelMaxCycles} is reached.}
+
+\item{muModelMaxCycles}{Maximum number of "re-optimize etas, regress"
+cycles per outer iteration (see \code{muModel}, \code{muModelTol}).}
 
 \item{stateTrim}{Trim state amounts/concentrations to this value.}
 
@@ -605,11 +505,9 @@ un-optimized finite differences are used.}
 of the forward difference step size when using dosing events (lag
 time, modeled duration/rate and bioavailability)}
 
-\item{gillK}{The total number of possible steps to determine the
-optimal forward/central difference step size per parameter (by
-the Gill 1983 method).  If 0, no optimal step size is
-determined.  Otherwise this is the optimal step size
-determined.}
+\item{gillK}{Max steps to determine the optimal forward/central
+difference step size per parameter (Gill 1983). `0` = no optimal
+step size determined.}
 
 \item{gillStep}{When looking for the optimal forward difference
 step size, this is This is the step size to increase the
@@ -622,17 +520,12 @@ is acceptable before issuing a warning/error about the gradient estimates.}
 \item{gillRtol}{The relative tolerance used for Gill 1983
 determination of optimal step size.}
 
-\item{gillKcov}{The total number of possible steps to determine
-the optimal forward/central difference step size per parameter
-(by the Gill 1983 method) during the covariance step.  If 0,
-no optimal step size is determined.  Otherwise this is the
-optimal step size determined.}
+\item{gillKcov}{Max steps to determine the optimal forward/central
+difference step size per parameter (Gill 1983) during the
+covariance step. `0` = no optimal step size determined.}
 
-\item{gillKcovLlik}{The total number of possible steps to determine
-the optimal forward/central difference step per parameter when
-using the generalized focei log-likelihood method (by the Gill
-1986 method).  If 0, no optimal step size is
-determined. Otherwise this is the optimal step size is determined}
+\item{gillKcovLlik}{Same as \code{gillK} but for the generalized focei
+log-likelihood method (Gill 1986).}
 
 \item{gillStepCovLlik}{Same as above but during generalized focei
 log-likelihood}
@@ -671,21 +564,14 @@ during the central difference gradient calculation.}
 step size for the instead of the central difference step size
 during the central differences for optimization.}
 
-\item{covSmall}{The covSmall is the small number to compare
-covariance numbers before rejecting an estimate of the
-covariance as the final estimate (when comparing sandwich vs
-R/S matrix estimates of the covariance).  This number controls
-how small the variance is before the covariance matrix is
-rejected.}
+\item{covSmall}{Small number used to compare covariance estimates
+(sandwich vs R/S matrix) before rejecting one as too small to be
+the final covariance estimate.}
 
-\item{adjLik}{In nlmixr2, the objective function matches NONMEM's
-objective function, which removes a 2*pi constant from the
-likelihood calculation. If this is TRUE, the likelihood
-function is adjusted by this 2*pi factor.  When adjusted this
-number more closely matches the likelihood approximations of
-nlme, and SAS approximations.  Regardless of if this is turned
-on or off the objective function matches NONMEM's objective
-function.}
+\item{adjLik}{When `TRUE`, adjusts the likelihood by the 2*pi constant
+nlmixr2's objective function otherwise omits (to match NONMEM),
+more closely matching nlme/SAS likelihood approximations. The
+objective function itself always matches NONMEM regardless.}
 
 \item{gradTrim}{The parameter to adjust the gradient to if the
 |gradient| is very large.}
@@ -705,16 +591,11 @@ switch to central differences.}
 where |grad| > gradCalcCentralLarge where forward differences
 switch to central differences.}
 
-\item{etaNudge}{By default initial ETA estimates start at zero;
-Sometimes this doesn't optimize appropriately.  If this value is
-non-zero, when the n1qn1 optimization didn't perform
-appropriately, reset the Hessian, and nudge the ETA up by this
-value; If the ETA still doesn't move, nudge the ETA down by this
-value. By default this value is qnorm(1-0.05/2)*1/sqrt(3), the
-first of the Gauss Quadrature numbers times by the 0.95\% normal
-region. If this is not successful try the second eta nudge
-number (below).  If +-etaNudge2 is not successful, then assign
-to zero and do not optimize any longer}
+\item{etaNudge}{When n1qn1 optimization of an ETA (starting at zero)
+misbehaves, reset the Hessian and nudge the ETA up by this value, then
+down if it still doesn't move. Defaults to
+`qnorm(1-0.05/2)*1/sqrt(3)`. Falls back to \code{etaNudge2}, then to
+zero (stop optimizing) if unsuccessful.}
 
 \item{etaNudge2}{This is the second eta nudge.  By default it is
 qnorm(1-0.05/2)*sqrt(3/5), which is the n=3 quadrature point
@@ -730,18 +611,10 @@ generator should be initialized}
 \item{resetThetaCheckPer}{represents objective function
 \% percentage below which resetThetaP is checked.}
 
-\item{etaMat}{Eta matrix for initial estimates or final estimates
-  of the ETAs.
-
-  This can also be a fit to take use the final estimation estimates
-  and use them as the initial eta value of the next fit.
-
-  By default, it will be the initial values of the etas from the
-  last fit (if supplied) or missing, meaning all ETAs start at
-  zero (`NULL`)
-
-  When this value is `NA`, the initial ETA estimates are not taken
-  from the last fit.}
+\item{etaMat}{Initial (or final) ETA estimates; can also be a prior fit,
+whose final ETAs are then used as initial values. By default, uses the
+last fit's ETAs if supplied, else all ETAs start at zero (`NULL`).
+`NA` disables reuse from a prior fit.}
 
 \item{repeatGillMax}{If the tolerances were reduced when
 calculating the initial Gill differences, the Gill difference
@@ -760,29 +633,13 @@ each retry and tolerances are reset afterward.}
 \item{gradProgressOfvTime}{This is the time for a single objective
 function evaluation (in seconds) to start progress bars on gradient evaluations}
 
-\item{addProp}{specifies the type of additive plus proportional
-  errors, the one where standard deviations add (combined1) or the
-  type where the variances add (combined2).
-
-The combined1 error type can be described by the following equation:
-
-  \deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err}
-
-The combined2 error model can be described by the following equation:
-
- \deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}
-
- Where:
-
- - y represents the observed value
-
- - f represents the predicted value
-
- - a  is the additive standard deviation
-
- - b is the proportional/power standard deviation
-
- - c is the power exponent (in the proportional case c=1)}
+\item{addProp}{Type of additive-plus-proportional error: `"combined1"`,
+where standard deviations add:
+\deqn{y = f + (a + b\times f^c) \times \varepsilon}{y = f + (a + b*f^c)*err};
+or `"combined2"`, where variances add:
+\deqn{y = f + \sqrt{a^2 + b^2\times f^{2\times c}} \times \varepsilon}{y = f + sqrt(a^2 + b^2*(f^c)^2)*err}.
+Here y = observed, f = predicted, a = additive sd, b = proportional/power
+sd, c = power exponent (1 in the proportional case).}
 
 \item{badSolveObjfAdj}{The objective function adjustment when the
 ODE system cannot be solved.  It is based on each individual bad
@@ -799,65 +656,49 @@ If not specified, then it matches the significant digits in the
 \item{fallbackFD}{Fallback to the finite differences if the
 sensitivity equations do not solve.}
 
-\item{smatPer}{A percentage representing the number of failed
-parameter gradients for each individual (which are replaced with
-the overall gradient for the parameter) out of the total number
-of gradients parameters (ie `ntheta*nsub`) before the S matrix is
-considered to be a bad matrix.}
+\item{smatPer}{Percentage of failed per-individual parameter gradients
+(replaced with the overall parameter gradient) out of the total
+(`ntheta*nsub`) above which the S matrix is considered bad.}
 
-\item{sdLowerFact}{A factor for multiplying the estimate by when
-the lower estimate is zero and the error is known to represent a
-standard deviation of a parameter (like add.sd, prop.sd, pow.sd,
-lnorm.sd, etc).  When zero, no factor is applied.  If your
-initial estimate is 0.15 and your lower bound is zero, then the
-lower bound would be assumed to be 0.00015.}
+\item{sdLowerFact}{Factor multiplying the estimate when the lower bound
+is zero for a standard-deviation error parameter (add.sd, prop.sd,
+etc); e.g. estimate 0.15 with lower bound 0 assumes a lower bound of
+0.00015. `0` disables this.}
 
-\item{zeroGradFirstReset}{boolean, when `TRUE` if the first
-gradient is zero, reset the zero gradient to
-`sqrt(.Machine$double.eps)` to get past the bad initial estimate,
-otherwise error (and possibly reset), when `FALSE` error when the
-first gradient is zero.  When `NA` on the last reset, have the
-zero gradient ignored, otherwise error and look for another
-value.  Default is `TRUE`}
+\item{zeroGradFirstReset}{When `TRUE` (default), reset a zero first
+gradient to `sqrt(.Machine$double.eps)` instead of erroring; `FALSE`
+errors; `NA` ignores it only on the last reset attempt.}
 
-\item{zeroGradRunReset}{boolean, when `TRUE` if a gradient is zero,
-reset the zero gradient to `sqrt(.Machine$double.eps)` to get
-past the bad estimate while running.  Otherwise error (and
-possibly reset). Default is `TRUE`}
+\item{zeroGradRunReset}{When `TRUE` (default), reset a zero gradient
+encountered mid-run to `sqrt(.Machine$double.eps)` instead of erroring.}
 
-\item{zeroGradBobyqa}{boolean, when `TRUE` if a gradient is zero,
-the reset will change the method to the gradient free bobyqa
-method. When `NA`, the zero gradient will change to bobyqa only
-when the first gradient is zero.  Default is `TRUE`}
+\item{zeroGradBobyqa}{When `TRUE` (default), a zero-gradient reset
+switches to the gradient-free bobyqa method; `NA` only does so for the
+first zero gradient.}
 
-\item{mceta}{Integer indicating the type of Monte Carlo sampling to
-  perform for the best initial ETA estimate (based on
-  `omega`). When:
+\item{mceta}{Monte Carlo sampling for the best initial ETA estimate
+(based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+accepting the extrapolated eta only when it is within the standardized-eta
+reset bound (else keeping the last eta, or resetting to 0 when that is also
+out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+the better; both `-2` and `-1` fall back to keeping the last eta when no
+analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
+for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
+etas sampled from omega are each evaluated and the best (by inner
+objective) is used.}
 
-  - `-1` the last eta is used for the optimization (default)
+\item{warm}{Seeding of the n1qn1 inner-optimization Hessian:
+`"calc"` (default) warm-starts each inner problem with the eta
+Hessian calculated for the objective function at the same starting
+eta, calculating it at the starting point when unavailable;
+`"save"` uses the classic self-initialized Hessian.}
 
-  - `0` eta=0 is used for each inner optimization
-
- For the rest of the `mceta`, each parameter's inner objective
- function is calculated and the eta set with the best objective
- function is used.  With these further options:
-
-  - `1` the last eta and eta=0 are used
-
-  - `2` the last eta and eta=0 are used, as well as 1 sampled eta
-  from the omega matrix
-
-  - `n` the last eta and eta=0 are used, as well as n-1 sampled
-  etas from the omega matrix}
-
-\item{nAGQ}{Number of Gauss-Hermite Adaptive Quadrature points to
-take.  When `nAGQ=0`, the AGQ is not used.  With `nAGQ=1`, this
-is equivalent to the Laplace method. The adaptive quadrature
-expands every node for each of the ETAs, so it can be quite
-expensive with a large amount of ETAs.  Once the EBE is obtained
-for a subject, you will have nAGQ^neta additional function
-evaluations for even nAGQ numbers and (nAGQ^neta)-1 additional
-function evaluations for odd nAGQ numbers.}
+\item{nAGQ}{Number of Gauss-Hermite adaptive quadrature points. `0`
+disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
+ETAs: once the EBE is found, expect `nAGQ^neta` (even `nAGQ`) or
+`(nAGQ^neta)-1` (odd `nAGQ`) additional evaluations per subject.}
 
 \item{agqLow}{The lower bound for adaptive quadrature
 log-likelihood. By default this is -Inf; in the original nlmixr's
@@ -867,15 +708,18 @@ gnlmm it was -700.}
 log-likelihood.  By default this is Inf; in the original nlmixr's
 gnlmm was 400.}
 
-\item{boundedTransform}{boolean indicating if the bounded
-parameters should by transformed when using a unbounded
-optimization method to make sure they are in bounds.  By default
-this is `TRUE`, which transforms during optimization and
-back-transforms for the final estimates.  When `FALSE`, the
-optimization is performed on the original scale and the bounds
-are passed to the optimization method.  When `NA`, the bounded
-parameters are transformed for the optimization, but the final
-estimates are not back-transformed.}
+\item{sensMethod}{Method used to compute the ODE parameter sensitivities:
+`"default"` (the default) defers to the global option
+`getOption("nlmixr2est.adjoint")` (itself `"forward"` by default);
+`"forward"` uses the classic variational (forward) sensitivity ODEs;
+`"adjoint"` uses the in-engine discrete adjoint with the matching adjoint
+(`s`) method.}
+
+\item{boundedTransform}{When `TRUE` (default), bounded parameters are
+transformed for unbounded optimization methods and back-transformed
+for final estimates. `FALSE` optimizes on the original scale with
+bounds passed to the optimizer. `NA` transforms for optimization but
+skips the final back-transform.}
 }
 \value{
 The control object that changes the options for the FOCEi
@@ -885,18 +729,11 @@ The control object that changes the options for the FOCEi
 Control Options for FOCEi
 }
 \details{
-Note this uses the R's L-BFGS-B in \code{\link{optim}} for the
-outer problem and the BFGS \code{\link[n1qn1]{n1qn1}} with that
-allows restoring the prior individual Hessian (for faster
-optimization speed).
-
-However the inner problem is not scaled.  Since most eta estimates
-start near zero, scaling for these parameters do not make sense.
-
-This process of scaling can fix some ill conditioning for the
-unscaled problem.  The covariance step is performed on the
-unscaled problem, so the condition number of that matrix may not
-be reflective of the scaled problem's condition-number.
+Uses R's L-BFGS-B (\code{\link{optim}}) for the outer problem and BFGS
+\code{\link[n1qn1]{n1qn1}} (restoring the prior individual Hessian) for
+the inner problem, which is left unscaled since eta estimates start near
+zero. The covariance step is performed on the unscaled problem, so its
+condition number may differ from the scaled problem's.
 }
 \references{
 Gill, P.E., Murray, W., Saunders, M.A., & Wright,
