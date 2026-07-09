@@ -84,12 +84,22 @@ paper's `beta`. Two paths, chosen per parameter:
        rx_pred_ when a boxCox/yeoJohnson transform is present. Verified the full
        Box-Cox model -sum(rx_pred_) matches the hand transformed-normal loglik with
        the Jacobian.
-  REMAINING for TBS: classifier detection of the lambda param + transform code;
-  transformed-scale residual (add.sd from `sum (t(DV)-t(cp))^2`); and the lambda
-  M-step -- a joint numeric optimize of (add.sd, lambda) over the accepted samples
-  (lambda enters both the transformed residual and the Jacobian), reusing the
-  guarded-optimizer pattern with per-obs raw cp+DV cached. Also power/lambda
-  (propT) -- reuse SAEM's `ares`/`bres`/`yptp`.
+  DONE: TBS lambda AND power, both via a 1-D PROFILE optimize (profile out the
+  scale in closed form, golden-section on the exponent/lambda) over the accepted
+  MH samples. The shared `rpemMHReg` runs the joint MH + regression; per-obs raw
+  cp/DV are cached (`rpemOp.cpv/dvv`, replacing the combined-only cp^2/r^2) so any
+  candidate residual param can be re-scored.
+    - TBS (errType 3): additive on the transformed scale + dynamic Box-Cox/
+      Yeo-Johnson lambda. `rpemMstepK1TBS` maximizes
+      -0.5 N log(SS(lambda)/N) + sum log|dt/dDV| with `_powerD`/`_powerDD` using
+      the model's own yj/low/hi (`.rpemExtractTBS`), so the C++ transform matches
+      the model exactly. Matches FOCEI on tka/add.sd/lambda (`test-rpem-tbs.R`).
+    - Power (errType 4): variance (prop.sd*cp^power)^2, exponent estimated.
+      `rpemMstepK1Pow` maximizes -0.5[N log(SSc/N) + 2c sum log|cp|]. Matches
+      FOCEI on tka/prop.sd/power (`test-rpem-pow.R`; power location needs more MC
+      precision -- late-time low-cp points dominate).
+  REMAINING: combined on the transformed scale (add+prop+TBS); power/lambda (propT)
+  closed forms could still reuse SAEM's `ares`/`bres`/`yptp` if faster.
 - **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
   structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`
