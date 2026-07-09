@@ -6,6 +6,16 @@ own acceptance gate. Milestones bias toward small, compartmentalized PRs.
 
 ## M1 -- Breadth-first likelihood core (first mergeable increment)
 
+Progress (as of 2026-07-09): the C++ numerical core is built and validated.
+DONE: likelihood model (C1.x); E-step (threefry rxRmvn draw -> in-process solve
+-> log p -> n_i/lnL via log-sum-exp, with sample storage); M-step conjugate
+mu/Omega via joint Metropolis-Hastings (verified vs importance-sampling
+reference); end-to-end E-M loop (currently R-driven) matching a FOCEI fit on
+well-identified data to |dmu|~0.003, |dOmega|~0.017 with lnL climbing (Bar 2, K=1,
+fixed effects held). REMAINING: numeric fixed-effect M-step update; C++ iteration
+loop; OpenMP via par_solve (task #7); R scaffold (rpemControl/dispatch/param
+classification); fit object; SEs.
+
 Scope (in build order):
 - **First task DONE**: the dedicated RPEM likelihood model
   (`13-likelihood-model.md`) -- phi/eta supplied, no optimization. Built,
