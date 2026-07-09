@@ -13,6 +13,7 @@ Authors@R: c(
     person("Emmanuelle", "Comets", , "emmanuelle.comets@inserm.fr", role = "ctb"),
     person("Hadley", "Wickham", role = "ctb"),
     person("Hajar", "Besbassi", , "", role="ctb"),
+    person("Hidde", "van de Beek", , "hiddevdbeek@icloud.com", role = "ctb"),
     person("Johannes", "Pfeifer", role = "ctb"),
     person("Justin", "Wilkins", , "justin.wilkins@occams.com", role = "aut", comment = c(ORCID = "0000-0002-7099-9396")),
     person("Katharine", "Mullen", role = "cph"),
@@ -26,7 +27,8 @@ Authors@R: c(
     person("Robert", "Leary", role = "ctb"),
     person("Teun", "Post", , "t.post@lapp.nl", role = "ctb"),
     person("Vipul", "Mann", , "vm2583@columbia.edu", role = "aut"),
-    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut")
+    person("Yuan", "Xiong", , "yuan.xiong@gmail.com", role = "aut"),
+    person("Hidde", "van de Beek", , "hiddevdbeek@icloud.com", role = "ctb")
   )
 Maintainer: Matthew Fidler <matthew.fidler@gmail.com>
 Description: Fit and compare nonlinear mixed-effects models in

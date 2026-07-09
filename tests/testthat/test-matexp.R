@@ -135,6 +135,80 @@ nmTest({
     expect_equal(unname(fixef(.fM)), unname(fixef(.fO)), tolerance = 1e-3)
   })
 
+  test_that("matExp()/indLin() analytic gradient + covariance match the ODE (focei/foce/focep + mu/irls)", {
+    # The augmented outer/cov model must materialize matExp/indLin ODEs in the same
+    # source-first compartment order as the inner model; an indLin() forcing state
+    # otherwise parses as compartment 1, misplacing dosing and collapsing the eta
+    # sensitivities (analytic gradient wrong, observed-information R singular -> FD).
+    odeLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matLin <- function() {
+      ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl) / exp(tv)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    odeMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        ka <- exp(tka + eta.ka); vmax <- exp(tvmax); km <- exp(tkm); v <- exp(tv)
+        d/dt(depot) <- -ka * depot
+        d/dt(central) <- ka * depot - vmax * central / (km + central)
+        cp <- central / v
+        cp ~ add(add.sd)
+      })
+    }
+    matMM <- function() {
+      ini({ tka <- 0.45; tvmax <- log(60); tkm <- log(40); tv <- 3.45; eta.ka ~ 0.09; add.sd <- 0.7 })
+      model({
+        matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        indLin(central) <- -exp(tvmax) * central / (exp(tkm) + central)
+        cp <- central / exp(tv)
+        cp ~ add(add.sd)
+      })
+    }
+    .datLin <- .mkData(odeLin, c(tka = 0.6, tcl = 1.1, tv = 3.6))
+    .datMM  <- .mkData(odeMM,  c(tka = 0.6, tvmax = log(70), tkm = log(45), tv = 3.6))
+
+    .cmp <- function(ode, mat, dat, est, ctlFun, seTol = 1e-2) {
+      .ctl <- ctlFun(print = 0, fast = TRUE, covMethod = "analytic")
+      .fO <- .nlmixr(ode, dat, est = est, control = .ctl)
+      .fM <- .nlmixr(mat, dat, est = est, control = .ctl)
+      # the matExp/indLin fit takes the analytic covariance (not a silent FD fallback)
+      expect_equal(.fM$covMethod, "analytic")
+      expect_equal(.fM$objf, .fO$objf, tolerance = 1e-3)
+      expect_equal(unname(sqrt(diag(.fM$cov))), unname(sqrt(diag(.fO$cov))), tolerance = seTol)
+    }
+
+    for (.est in c("focei", "foce", "focep")) {
+      .ctlFun <- switch(.est, focei = foceiControl, foce = foceControl, focep = focepControl)
+      .cmp(odeLin, matLin, .datLin, .est, .ctlFun)   # pure-linear matExp
+      .cmp(odeMM,  matMM,  .datMM,  .est, .ctlFun)   # indLin() Michaelis-Menten
+    }
+    # mu-referenced and IRLS families share the same augmented builder; the FOCE-based
+    # mu/irls variants converge the matExp and ODE forms to marginally different points
+    # (regression-updated mu-ref theta), so the analytic SEs are compared a bit looser.
+    for (.est in c("mufocei", "irlsfocei")) {
+      .cmp(odeMM, matMM, .datMM, .est, foceiControl)
+    }
+    for (.est in c("mufoce", "irlsfoce")) {
+      .cmp(odeMM, matMM, .datMM, .est, foceControl, seTol = 3e-2)
+    }
+  })
+
   test_that("matExp() estimates identically to the ODE (saem)", {
     odeS <- function() {
       ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; eta.ka ~ 0.3; add.sd <- 0.7 })

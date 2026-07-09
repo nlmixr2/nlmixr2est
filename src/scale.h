@@ -519,7 +519,8 @@ static inline void scalePrintLine(scaling *scale, int ncol) {
 static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
   if (scale->every != 0) {
     if (withKey) {
-      // Match scalePrintFun's auto-skip rules so Key only lists rows that appear.
+      // Match scalePrintFun's auto-skip rules so the Key text only
+      // mentions rows that will actually appear in iteration output.
       int skipU = (scale->scaleType == scaleTypeNone);
       int anyXform = 0;
       for (int k = 0; k < scale->npars; k++) {
@@ -534,8 +535,9 @@ static inline void scalePrintHeader(scaling *scale, int withKey = 1) {
           RSprintf("Key: ");
         if (!skipU) RSprintf("U: Unscaled Parameters; ");
         if (!skipX) RSprintf("X: Back-transformed parameters; ");
-        // Estimator-specific Key suffix (e.g. focei's gradient legend); NULL closes
-        // the line with a newline so the header follows on a fresh row.
+        // Estimator-specific Key suffix (e.g. focei's G/F/C/M gradient
+        // legend and omega note).  When NULL the standard "Key:" line is
+        // closed with a newline so the column header follows on a fresh row.
         if (scale->keyExtra != NULL) {
           RSprintf("%s", scale->keyExtra);
         } else {

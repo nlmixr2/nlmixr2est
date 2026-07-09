@@ -331,8 +331,36 @@ calc.COV <- function(fit0) {
   DF <- (f1 - f0) / dphi[id, ]
   g <- ares + bres * abs(f0s)
 
-  # spectral decom for invVi, idea from saemix
-  Xi <- lapply(1:N, function(i) {
+  # covFull: also assemble the variance block (residual + Omega) of the linearized
+  # FIM (saemix func_FIM.R blocB), returned as attributes on the theta cov.  The FIM
+  # is block-diagonal (no fixed-effect<->variance cross-terms), so the theta and
+  # variance blocks are inverted separately.
+  .env <- attr(fit, "env")
+  .ui <- if (is.environment(.env)) .env$ui else NULL
+  .covFull <- !is.null(.ui) && isTRUE(rxode2::rxGetControl(.ui, "covFull", TRUE))
+  .omPairs <- NULL; .omNames <- character(0); .resNames <- character(0); .resType <- integer(0)
+  if (.covFull) {
+    .idf <- .ui$iniDf
+    .etaN <- tryCatch(.foceiEtaThetaMap(.ui)$etaNames, error = function(e) NULL)
+    .op   <- tryCatch(.foceiOmegaPairs(omega, .idf), error = function(e) NULL)
+    if (!is.null(.op) && !is.null(.etaN) && nrow(.op) > 0L &&
+          ncol(omega) == length(.etaN) && max(.op) <= length(.etaN)) {
+      .omPairs <- .op
+      .omNames <- .foceiOmegaCovNames(.op, .etaN)
+    }
+    .ri <- .idf[!is.na(.idf$err) & !.idf$fix, , drop = FALSE]
+    if (nrow(.ri) > 0L) {
+      .resNames <- .ri$name
+      .resType  <- ifelse(grepl("prop|pow", .ri$err), 2L, 1L)   # 1 = additive (a), 2 = proportional (b)
+    }
+  }
+  .nom <- if (is.null(.omPairs)) 0L else nrow(.omPairs)
+  .nvar <- length(.resNames) + .nom
+  .doVar <- .covFull && .nvar > 0L
+  .absF0 <- abs(f0s)
+
+  # spectral decom for invVi, idea from saemix; also accumulates the variance FIM (blocB)
+  .parts <- lapply(1:N, function(i) {
     ix <- id == i
     nobs <- sum(ix)
     DFi <- DF[ix, ]
@@ -352,12 +380,49 @@ calc.COV <- function(fit0) {
     Ai <- kronecker(diag(nphi), saem.cfg$Mcovariables[i, ])
     # drop = FALSE avoids a vector collapse (and wrong transpose) when only one covariate parameter is estimated
     DFAi <- DFi %*% t(Ai[cov.est.ix, , drop = FALSE])
-    ret <- invVi.5 %*% DFAi
+    .xr <- invVi.5 %*% DFAi
+    .b <- NULL
+    if (.doVar) {
+      invVi <- crossprod(invVi.5)                            # Vi^{-1}
+      .gix <- g[ix]; .fix <- .absF0[ix]
+      # A_k = Vi^{-1} dVi/d(param_k) for each variance parameter
+      .A <- vector("list", .nvar); .k <- 0L
+      for (r in seq_along(.resNames)) {
+        .k <- .k + 1L
+        .dv <- if (.resType[r] == 1L) 2 * .gix else 2 * .gix * .fix   # dVi/da = 2 diag(g); dVi/db = 2 diag(g|f|)
+        .A[[.k]] <- sweep(invVi, 2L, .dv, "*")               # Vi^{-1} diag(.dv)
+      }
+      if (.nom > 0L) for (pp in seq_len(.nom)) {
+        .k <- .k + 1L
+        .a <- .omPairs[pp, 1]; .bb <- .omPairs[pp, 2]
+        .DV <- tcrossprod(DFi.i1[, .a], DFi.i1[, .bb])       # dVi/d(Omega_ab)
+        if (.a != .bb) .DV <- .DV + t(.DV)
+        .A[[.k]] <- invVi %*% .DV
+      }
+      # blocB[ii,ij] = tr(A_ii A_ij)/2 = sum(A_ii * t(A_ij))/2
+      .b <- matrix(0, .nvar, .nvar)
+      for (ii in seq_len(.nvar)) for (ij in ii:.nvar) {
+        .val <- sum(.A[[ii]] * t(.A[[ij]])) / 2
+        .b[ii, ij] <- .b[ij, ii] <- .val
+      }
+    }
     rxode2::rxTick()
-    return(ret)
+    list(x = .xr, b = .b)
   })
-  X <- do.call("rbind", Xi)
+  X <- do.call("rbind", lapply(.parts, `[[`, "x"))
   ret <- .nlmixr2RobustCov(X)
+  if (.doVar) {
+    # the variance block is an optional add-on to the (existing) theta cov; keep it
+    # silent so a near-singular block at degenerate settings never pollutes $runInfo
+    .blocB <- Reduce(`+`, lapply(.parts, `[[`, "b"))
+    .varCov <- suppressWarnings(tryCatch(solve(.blocB), error = function(e) NULL))
+    if (!is.null(.varCov) && all(is.finite(.varCov))) {
+      .vn <- c(.resNames, .omNames)
+      dimnames(.varCov) <- list(.vn, .vn)
+      attr(ret, "varCov") <- .varCov
+      attr(ret, "varNames") <- .vn
+    }
+  }
   rxode2::rxProgressStop()
   return(ret)
 }

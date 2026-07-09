@@ -1,4 +1,89 @@
 nmTest({
+  test_that("mu/irls covariance is the full base model at the converged point (ODE/matExp)", {
+    # The mu/irls covariance step bails and is recomputed on the full base
+    # focei/foce/focep model (muModel="none") AT the mu fit's converged theta + eta with
+    # the inner problem FROZEN (maxOuter=maxInner=0) -- true to that point, not re-optimized.
+    # It must equal the base method computed the SAME way at that point, and (analytic
+    # default, well-identified) equal a normal base fit.
+    theo_sd2 <- nlmixr2data::theo_sd
+
+    odeNC <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.sd) })
+    }
+    matNC <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ matExp()
+        k_depot_central <- exp(tka + eta.ka)
+        k_central_output <- exp(tcl + eta.cl) / exp(tv)
+        cp <- central / exp(tv); cp ~ add(add.sd) })
+    }
+
+    # base method computed with the SAME frozen algorithm at a given theta/eta point
+    .baseFrozen <- function(mfun, baseEst, baseCtl, ui, eta, cm) {
+      .em <- as.matrix(eta[, setdiff(names(eta), "ID"), drop = FALSE])
+      .nlmixr(rxode2::rxUiDecompress(ui), theo_sd2, baseEst,
+              baseCtl(print = 0, covMethod = cm, maxOuterIterations = 0L,
+                      maxInnerIterations = 0L, etaMat = .em))
+    }
+
+    .chk <- function(mfun, muEst, baseEst, muCtl, baseCtl) {
+      # analytic is the default; the mu recompute freezes the inner problem, and for the
+      # analytic observed information that reproduces the same value as a normal fit.
+      .fM <- .nlmixr(mfun, theo_sd2, muEst, muCtl(print = 0))
+      expect_equal(.fM$covMethod, "analytic")
+      expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
+      # (a) equals the base method computed the SAME (frozen) way at the mu point
+      .fF <- .baseFrozen(mfun, baseEst, baseCtl, .fM$ui, .fM$eta, "analytic")
+      .sM <- sqrt(diag(.fM$cov)); .sF <- sqrt(diag(.fF$cov))
+      .cmn <- intersect(names(.sM), names(.sF))
+      expect_equal(unname(.sM[.cmn]), unname(.sF[.cmn]), tolerance = 1e-2)
+      # (b) well-identified: also equals a normal base fit (converges to the same point)
+      .fN <- .nlmixr(mfun, theo_sd2, baseEst, baseCtl(print = 0))
+      .sN <- sqrt(diag(.fN$cov))
+      expect_equal(unname(.sM[.cmn]), unname(.sN[.cmn]), tolerance = 5e-2)
+    }
+
+    for (.mod in list(odeNC, matNC)) {
+      .chk(.mod, "mufocei",   "focei", mufoceiControl,   foceiControl)
+      .chk(.mod, "irlsfocei", "focei", irlsfoceiControl, foceiControl)
+      .chk(.mod, "mufoce",    "foce",  mufoceControl,    foceControl)
+      .chk(.mod, "irlsfoce",  "foce",  irlsfoceControl,  foceControl)
+      .chk(.mod, "mufocep",   "focep", mufocepControl,   focepControl)
+      .chk(.mod, "irlsfocep", "focep", irlsfocepControl, focepControl)
+    }
+  })
+
+  test_that("mu/irls covariance on a covariate (linear-component) model has finite SEs", {
+    # The mu-ref/covariate ("linear") parameters (the ~8.5x-wrong case under the mu->phi
+    # reduction) get finite SEs from the full-model recompute; the weakly-identified
+    # covariate coefficient converges to a slightly different point than a normal fit, so
+    # only its finiteness + the well-identified structural thetas are checked.
+    theo_sd2 <- nlmixr2data::theo_sd
+    theo_sd2$logWT <- log(theo_sd2$WT / 70)
+
+    modOde <- function() {
+      ini({ tka <- 0.45; tcl <- 1; tv <- 3.45; allo.cl <- 0.75
+            eta.ka ~ 0.6; eta.cl ~ 0.3; add.sd <- 0.7 })
+      model({ ka <- exp(tka + eta.ka); cl <- exp(tcl + eta.cl + allo.cl * logWT); v <- exp(tv)
+        d/dt(depot) <- -ka * depot; d/dt(central) <- ka * depot - cl / v * central
+        cp <- central / v; cp ~ add(add.sd) })
+    }
+    for (.est in c("mufocei", "irlsfocei")) {
+      .ctl <- if (.est == "mufocei") mufoceiControl else irlsfoceiControl
+      .fB <- .nlmixr(modOde, theo_sd2, "focei", foceiControl(print = 0))
+      .fM <- .nlmixr(modOde, theo_sd2, .est, .ctl(print = 0))
+      expect_equal(.fM$covMethod, "analytic")
+      expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["allo.cl", "SE"]))))
+      expect_false(is.na(suppressWarnings(as.numeric(.fM$parFixed["tcl", "SE"]))))
+      .sM <- sqrt(diag(.fM$cov)); .sB <- sqrt(diag(.fB$cov))
+      .th <- c("tka", "tcl", "tv", "add.sd")
+      expect_equal(unname(.sM[.th]), unname(.sB[.th]), tolerance = 0.1)
+    }
+  })
+
   test_that("mufocei recovers comparable estimates to plain focei", {
     # Local model/fits (not the shared helper-zzz-fits.R cache): this test
     # is specifically about the mu-referenced FOCEI restart-loop engine

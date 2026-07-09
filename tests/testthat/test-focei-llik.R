@@ -93,7 +93,10 @@ if (rxode2hasLlik()) {
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
 
-      expect_equal(f$objf, of1)
+      # warm="calc" optimizes the FD Hessian step (etahh) at the inner starting
+      # eta for the reference fit, while this maxInnerIterations=0 fit optimizes
+      # it at the supplied etas, so the objfs agree only to FD error
+      expect_equal(f$objf, of1, tolerance=1e-4)
 
       one.cmt.ll |>
         ini(theta2) |>
@@ -107,7 +110,7 @@ if (rxode2hasLlik()) {
       expect_false(inherits(f, "try-error"))
       expect_equal(f$ll, f$IPRED)
       expect_false("CWRES" %in% names(f))
-      expect_equal(f$objf, of2)
+      expect_equal(f$objf, of2, tolerance=1e-4)
 
       # no etas test
       one.cmt.noeta <- function() {
@@ -372,7 +375,9 @@ if (rxode2hasLlik()) {
 
 
     test_that("objective values are equal for mixed ll", {
-      expect_equal(f2$objf, of1)
+      # etahh reference-point difference between warm="calc" and
+      # maxInnerIterations=0 fits; see the tolerance note above
+      expect_equal(f2$objf, of1, tolerance=1e-4)
     })
 
     fll <- addNpde(f2)

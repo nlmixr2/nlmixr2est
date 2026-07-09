@@ -43,7 +43,25 @@
 #'
 #'  "\code{linFim}" Use the Linearized Fisher Information Matrix to calculate the covariance.
 #'
-#'  "\code{fim}" Use the SAEM-calculated Fisher Information Matrix to calculate the covariance.
+#'  "\code{fim}" Use the Fisher Information Matrix accumulated during SAEM
+#'  estimation to calculate the covariance.  Like \code{sa} it inverts the observed
+#'  information to a full theta + \code{Omega} diagonal + residual covariance, but
+#'  uses the (noisier) estimation-phase matrix rather than a dedicated cov phase.
+#'
+#'  "\code{sa}" Use the stochastic-approximation Fisher Information Matrix.  After
+#'  estimation, a dedicated covariance phase (\code{nSaCov} iterations) holds the
+#'  parameters at the converged estimate and keeps resimulating the individual
+#'  parameters, Monte-Carlo averaging the Louis observed-information integrand into a
+#'  converged FIM decoupled from the cooling schedule (the approach used by Monolix;
+#'  Kuhn & Lavielle 2005).  Always includes every estimated population parameter
+#'  (theta, the \code{Omega} diagonal variances, and residual).
+#'
+#'  For both \code{fim} and \code{sa} the simulation-based Fisher information covers the
+#'  structural theta, the \code{Omega} diagonal variances, and additive residual error.
+#'  Off-diagonal \code{Omega} covariances and proportional/combined residual error are not
+#'  estimated reliably by the simulation FIM (the complete-data correction is unstable when
+#'  between-subject variability dominates the residual), so those variance-block standard
+#'  errors are spliced in from the linearized FIM (\code{linFim}).
 #'
 #'  "\code{r,s}" Uses the sandwich matrix to calculate the covariance, that is: \eqn{R^-1 \times S \times R^-1}
 #'
@@ -52,6 +70,20 @@
 #'  "\code{s}" Uses the crossproduct matrix to calculate the covariance as \eqn{4\times S^-1}
 #'
 #'  "" Does not calculate the covariance step.
+#'
+#' @param covFull Boolean (default \code{TRUE}) indicating the covariance
+#'   should include every estimated population parameter -- the structural and
+#'   residual thetas plus the \code{Omega} variance/covariance elements -- named
+#'   \code{om.<eta>} / \code{cov.<eta>.<eta>}.  When \code{FALSE} the legacy
+#'   structural-theta-only covariance is reported.  Ignored by
+#'   \code{covMethod="sa"}, which is always full.
+#'
+#' @param nSaCov Number of iterations in the dedicated stochastic-approximation
+#'   covariance phase used by \code{covMethod="sa"} (default \code{500}).  These
+#'   iterations run at the converged estimate (parameters frozen) and only
+#'   resimulate the individual parameters to build the observed Fisher
+#'   information; a larger value gives a less noisy covariance.  Ignored by other
+#'   covariance methods.
 #'
 #' @param logLik boolean indicating that log-likelihood should be
 #'     calculate by Gaussian quadrature.
@@ -188,6 +220,14 @@
 #' @return List of options to be used in \code{\link{nlmixr2}} fit for
 #'     SAEM.
 #' @author Wenping Wang & Matthew L. Fidler
+#' @references
+#' Kuhn E, Lavielle M (2005). "Maximum likelihood estimation in nonlinear mixed
+#' effects models." Computational Statistics & Data Analysis, 49(4), 1020-1038.
+#' \doi{10.1016/j.csda.2004.07.002}
+#'
+#' Jiang L, Roy A, Balasubramanian K, Davis D, Drusvyatskiy D, Na S (2025).
+#' "Online Covariance Estimation in Nonsmooth Stochastic Approximation."
+#' arXiv:2502.05305. \doi{10.48550/arXiv.2502.05305}
 #' @family Estimation control
 #' @export
 saemControl <- function(seed = 99,
@@ -197,7 +237,9 @@ saemControl <- function(seed = 99,
                         nu = c(2, 2, 2),
                         print = 1L,
                         trace = 0, # nolint
-                        covMethod = c("linFim", "fim", "r,s", "r", "s", ""),
+                        covMethod = c("linFim", "fim", "sa", "r,s", "r", "s", ""),
+                        covFull = TRUE,
+                        nSaCov = 500L,
                         calcTables = TRUE,
                         logLik = FALSE,
                         nnodesGq = 3,
@@ -234,6 +276,7 @@ saemControl <- function(seed = 99,
                         mixProbStepExp = 1,
                         mixProbPriorN = 20,
                         mixSampleMethod = c("parallel", "msaem"),
+                        censOption = c("gauss", "laplace"),
                         ...) {
   .xtra <- list(...)
   .bad <- names(.xtra)
@@ -348,10 +391,21 @@ saemControl <- function(seed = 99,
     .covMethod <- match.arg(covMethod)
   }
 
+  checkmate::assertLogical(covFull, len=1, any.missing=FALSE)
+
+  # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
+  # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
+  # SAEM (stochastic EM has no Laplace inner Hessian); kept for alignment with focei/nlm.
+  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+    censOption <- as.integer(censOption)
+  } else {
+    censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
+  }
   .ret <- list(
     mcmc = list(niter = c(nBurn, nEm), nmc = nmc, nu = nu),
     rxControl = rxControl,
     seed = seed,
+    censOption = censOption,
     iterPrintControl = .iterPrintControl,
     DEBUG = trace, # nolint
     optExpression = optExpression,
@@ -378,6 +432,8 @@ saemControl <- function(seed = 99,
     sigdigTable=sigdigTable,
     ci=ci,
     covMethod=.covMethod,
+    covFull=covFull,
+    nSaCov=as.integer(nSaCov),
     logLik=logLik,
     calcTables=calcTables,
     muRefCov=muRefCov,

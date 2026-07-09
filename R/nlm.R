@@ -92,6 +92,8 @@ nlmControl <- function(typsize = NULL,
                        hessErr =(.Machine$double.eps)^(1/3),
                        shi21maxHess=20L,
 
+                       censOption=c("gauss", "laplace"),
+
                        eventSens=c("jump", "fd"),
 
                        sensMethod=c("default", "forward", "adjoint"),
@@ -210,6 +212,24 @@ nlmControl <- function(typsize = NULL,
   } else {
     optimHessType <- setNames(.optimHessTypeIdx[match.arg(optimHessType)], NULL)
   }
+  # censOption: FOCEI-family censored (M2/M3/M4) 2nd-derivative treatment -- "gauss" (historic
+  # Gauss-Newton, default) or "laplace" (exact).  Accepted for a uniform interface but INERT for
+  # NLM (its finite-difference Hessian already reflects censoring exactly); kept for alignment.
+  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+    censOption <- as.integer(censOption)
+  } else {
+    censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
+  }
+
+  ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
+  ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
+  eventSens <- match.arg(eventSens)
+
+  ## sensMethod: "forward" builds the ODE parameter sensitivities the classic
+  ## (variational) way; "adjoint" solves them with the in-engine discrete
+  ## adjoint (matching s-method); "default" defers to
+  ## getOption("nlmixr2est.adjoint").
+  sensMethod <- match.arg(sensMethod)
 
   ## eventSens: "jump" routes dosing-parameter (alag/F/rate/dur) sensitivities
   ## through rxode2's analytic event jumps; "fd" uses the legacy path that misses them.
@@ -271,6 +291,10 @@ nlmControl <- function(typsize = NULL,
                optimHessType=optimHessType,
                hessErr=hessErr,
                shi21maxHess=as.integer(shi21maxHess),
+               censOption=censOption,
+
+               eventSens=eventSens,
+               sensMethod=sensMethod,
 
                eventSens=eventSens,
                sensMethod=sensMethod,
@@ -499,6 +523,14 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     .lhs <- .s$..lhs
     if (is.null(.lhs)) .lhs <- character(0)
   }
+  # variables referenced by lag()/history functions (eg the AR(1) residual) are
+  # not part of rx_pred_ itself; include their definitions so the history
+  # reference resolves in the compiled model
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
+    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+  }
   # Add rx_pred_f_ and rx_r_ as lhs outputs for censoring support
   .fr <- .nlmGetFRLines(.s)
   .ret <- paste(c(
@@ -506,6 +538,9 @@ rxUiGet.nlmRxModel <- function(x, ...) {
     #.lhs0,
     .lhs,
     .ddt,
+    .lagDefs,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .prd,
     .fr$f_line,
     .fr$r_line,
@@ -757,6 +792,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .lhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (analytic nlm gradient/Hessian).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
@@ -777,6 +815,9 @@ attr(rxUiGet.nlmHdTheta, "rstudio") <- emptyenv()
     .lhs0,
     .lhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr; the
+    ## pred-only model has no sensitivity compartments)
+    .s$..pastBaseLines,
     .yj,
     .lambda,
     .hi,

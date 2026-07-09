@@ -454,6 +454,19 @@ rxGetDistributionFoceiLines <- function(line) {
   nlmixr2global$rxPredLlik
 }
 
+#' Get the AR(1) norm-form inner-model option
+#'
+#' TRUE only during the focei/foce/ebe norm inner-model build, so ar() endpoints
+#' emit the Gaussian mean/variance (exact-Hessian) form.  Never set for
+#' simulation or nlm.
+#'
+#' @return logical
+#' @author Matthew L. Fidler
+#' @noRd
+.getRxArNormOption <- function() {
+  isTRUE(nlmixr2global$rxArNorm)
+}
+
 #' @export
 rxGetDistributionFoceiLines.norm <- function(line) {
   env <- line[[1]]
@@ -461,7 +474,8 @@ rxGetDistributionFoceiLines.norm <- function(line) {
   .errNum <- line[[3]]
   if (rxode2hasLlik()) {
     rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1, .errNum,
-                                                 rxPredLlik=.getRxPredLlikOption())
+                                                 rxPredLlik=.getRxPredLlikOption(),
+                                                 arNorm=.getRxArNormOption())
   } else {
     rxode2::.handleSingleErrTypeNormOrTFoceiBase(env, pred1)
   }
@@ -648,6 +662,49 @@ rxUiGet.foceiThetaS <- function(x, ..., theta=FALSE) {
 #attr(rxUiGet.foceiEtaS, "desc") <- "Get symengine environment with eta sensitivities"
 attr(rxUiGet.foceiThetaS, "rstudio") <- emptyenv()
 
+#' Add the exact AR(1) lagged-residual term to the inner d(f)/d(eta)
+#'
+#' In the norm form rx_pred_ is the conditional MEAN = pred + phi*e_{i-1} with
+#' e_{i-1} = rx_arEp_<var> (= lag0(rx_arE_<var>)), whose eta-dependence symengine
+#' drops.  Because the mean is linear in e_{i-1}, D(rx_pred_, rx_arEp_) = phi =
+#' rx_arPhi_<var> exactly, so the missing analytic term is simply
+#'   d(f)/deta_n -= rx_arPhi_<var> * lag0(d(rx_pred_f_)/d(eta_n), 1)
+#' (since d(rx_arEp)/deta = -lag0(d(pred_struct)/deta), pred_struct = rx_pred_f_,
+#' identity DV transform).  No symengine derivative of rx_pred_ is needed -- phi
+#' is the known rx_arPhi_ symbol -- so nothing poisons the evaluator.  The
+#' structural-prediction eta-sensitivities are emitted ahead of rx_pred_ (real
+#' lhs, lag()-referenced) so they do not shift the FOCEi column block.  Single AR
+#' endpoint, identity DV transform only; a no-op otherwise.
+#' @noRd
+#' @author Matthew L. Fidler
+.rxFoceiArEtaCorrect <- function(.s, .grd) {
+  .vars <- ls(envir = .s)
+  .arEp <- .vars[grepl("^rx_arEp_", .vars)]
+  if (length(.arEp) != 1L || !exists("rx_pred_f_", envir = .s)) return(NULL)
+  # D(rx_pred_, rx_arEp_) = phi in the norm form (mean is linear in e_prev), so
+  # this yields the phi expression directly (expanded over kept lag symbols).
+  # assign() returns its value; eval() of the "assign(..envir=.s)" string yields
+  # the Basic (get() is masked here).  Keep the temp name neutral (no trailing
+  # "_", no "Dmean" substring).
+  .phiBasic <- eval(parse(text = paste0("assign(\"rxArDmpVar\", with(.s, D(rx_pred_, ",
+                                        .arEp, ")), envir=.s)")))
+  # S_n = d(rx_pred_f_)/d(eta_n) is lag()-free, so rxFromSE() it inline.
+  .snNames <- character(nrow(.grd))
+  .snText <- character(nrow(.grd))
+  for (.n in seq_len(nrow(.grd))) {
+    .calc <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "calc"], fixed = TRUE)
+    .snBasic <- eval(parse(text = .calc))
+    .snNames[.n] <- gsub("rx_pred_", "rx_pred_f_", .grd[.n, "dfe"], fixed = TRUE)
+    .snText[.n] <- rxode2::rxFromSE(.snBasic)
+  }
+  assign("..arEtaSens", paste0(.snNames, "=", .snText), envir = .s)
+  # phi contains lag0()/lag(), so its rxFromSE poisons later get()/[[ -- do it
+  # LAST; only vectorized base ops (paste0) follow.
+  .phi <- rxode2::rxFromSE(.phiBasic)
+  # d(rx_arEp)/deta = -lag0(d(pred_struct)/deta); missing term = -phi*lag0(S_n)
+  paste0("-(", .phi, ")*lag0(", .snNames, ",1)")
+}
+
 #' @export
 rxUiGet.foceiHdEta <- function(x, ...) {
   .s <- rxUiGet.foceiEtaS(x)
@@ -662,6 +719,13 @@ rxUiGet.foceiHdEta <- function(x, ...) {
     .malert("calculate \u2202(f)/\u2202(\u03B7)")
   } else {
     .malert("calculate d(f)/d(eta)")
+  }
+  # AR(1) exact eta-gradient: all symbolic work BEFORE the main apply (which
+  # poisons later get()/[[ for AR endpoints).  Returns the per-eta correction
+  # text (a plain vector) and stores ..arEtaSens on .s.
+  .arCorr <- NULL
+  if (isTRUE(rxode2::rxHasAr(x[[1]]))) {
+    .arCorr <- .rxFoceiArEtaCorrect(.s, .grd)
   }
   rxode2::rxProgress(dim(.grd)[1])
   on.exit({
@@ -687,6 +751,11 @@ rxUiGet.foceiHdEta <- function(x, ...) {
   }
   if (.any.zero) {
     warning("some of the predictions do not depend on 'ETA'", call. = FALSE)
+  }
+  if (!is.null(.arCorr)) {
+    # .arCorr is a plain vector computed before the apply; appending it needs no
+    # poisoned $/[[ read.
+    .ret <- paste0(.ret, .arCorr)
   }
   .s$..HdEta <- .ret
   .s$..pred.minus.dv <- .predMinusDv
@@ -739,14 +808,36 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
   # output columns -- extra output columns shift the column layout the FOCEi C++
   # reads and corrupt the inner objective.
   .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
+  # Variables referenced by lag()/history functions (eg the AR(1) residual and
+  # its time) cannot be inlined -- lag() needs them as real lhs so the previous
+  # record's value is stored.  Emit their definitions ahead of rx_pred_ (they
+  # reference the structural prediction, which precedes them).  These add output
+  # columns, so rx_pred_ is no longer lhs[0]; the FOCEi C++ locates rx_pred_ by
+  # name (op_focei.predOffset) and offsets its reads.
+  .lagDefs <- character(0)
+  if (!is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L && !is.null(.s$..lhs)) {
+    .pat <- paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")=")
+    .lagDefs <- .s$..lhs[grepl(.pat, .s$..lhs)]
+  }
+  # AR(1) exact eta-gradient: structural-prediction eta-sensitivities lag()-
+  # referenced by the corrected HdEta lines; emit them (real lhs) ahead of
+  # rx_pred_ so the FOCEi column block stays contiguous.
+  .arEtaSens <- .s$..arEtaSens
+  if (is.null(.arEtaSens)) .arEtaSens <- character(0)
   .s$..inner <- paste(c(
     .preLhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (after every d/dt so the referenced
+    ## states/sens compartments are defined).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
     .low,
+    .lagDefs,
+    .arEtaSens,
     .prd,
     .s$..HdEta,
     .r,
@@ -760,10 +851,16 @@ attr(rxUiGet.foceiHdEta, "rstudio") <- emptyenv()
     .preLhs,
     .ddt,
     .sens,
+    ## DDE non-constant delay() pre-history: base past(state,tau)<-expr + the
+    ## per-sensitivity-compartment histories (after every d/dt so the referenced
+    ## states/sens compartments are defined).
+    .s$..pastLines,
     .yj,
     .lambda,
     .hi,
     .low,
+    .lagDefs,
+    .arEtaSens,
     .prd,
     .s$..HdEta,
     .r,
@@ -860,8 +957,13 @@ attr(rxUiGet.foceiEnv, "rstudio") <- emptyenv()
 rxUiGet.foceEnv <- function(x, ...) {
   .s <- rxUiGet.foceiHdEta(x, ...)
   .s$..REta <- NULL
-  ## Take etas from rx_r
-  eval(parse(text = rxode2::rxRepR0_(.s$..maxEta)))
+  ## FOCE leaves rx_r_ untouched (a clean single-linCmt inner model with correct
+  ## d(f)/d(eta)) for both `foce` modes; the choice of R happens at runtime in C++
+  ## (likInner0), not by rewriting the model here.  `foce = "nonmem"` freezes R at
+  ## the eta=0 population value (getPopR); `foce = "foce+"` keeps the live rx_r_ at
+  ## the current eta.  This replaces the old `rxRepR0_` symbolic freeze, which only
+  ## zeroed EXPLICIT etas -- it left ODE model states live in R and injected a
+  ## second linCmt call that corrupted the gradients.
   .sumProd <- rxode2::rxGetControl(x[[1]], "sumProd", FALSE)
   .optExpression <- rxode2::rxGetControl(x[[1]], "optExpression", TRUE)
   .foceiInnerAdjSens(x, .s)
@@ -963,13 +1065,25 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
   # It is emitted suppressed ('~' not '=') so it does not add output columns.
   # Other models keep the LHS after the prediction (some error-model LHS depend
   # on rx_pred_).
-  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else character(0)
-  .postLhs <- if (.isMatExp) character(0) else .lhs
+  # variables referenced inside lag()/history functions must be defined BEFORE
+  # rx_pred_ (which references them), unlike the other error-model lhs which may
+  # depend on rx_pred_ and stay after it
+  .lagDefs <- character(0)
+  .restLhs <- .lhs
+  if (!.isMatExp && !is.null(.s$..laggedVars) && length(.s$..laggedVars) > 0L) {
+    .isLag <- grepl(paste0("^(", paste0(.s$..laggedVars, collapse = "|"), ")="), .lhs)
+    .lagDefs <- .lhs[.isLag]
+    .restLhs <- .lhs[!.isLag]
+  }
+  .preLhs <- if (.isMatExp) sub("^([^=]+)=", "\\1~", .lhs) else .lagDefs
+  .postLhs <- if (.isMatExp) character(0) else .restLhs
   .s$..pred <- paste(c(
     .s$..stateInfo["state"],
     .lhs0,
     .preLhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -988,6 +1102,8 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
     .lhs0,
     .preLhs,
     .ddt,
+    ## DDE non-constant delay() pre-history (base past(state,tau)<-expr)
+    rxode2:::.rxPastBaseLinesFromEnv(.s),
     .yj,
     .lambda,
     .hi,
@@ -1109,12 +1225,17 @@ attr(rxUiGet.predDfFocei, "rstudio") <- NA
                            "compiling Llik EBE model...",
                            "compiling EBE model..."))
   }
+  # Augmented outer-gradient model (fast=TRUE): built here, once, with the compiled
+  # rxode2 model at top level (`outer`) so rxUiGet.foceiModel's qs2 rxLoad reloads
+  # it; the direction metadata travels separately in `outerMeta`.
+  .outerAm <- tryCatch(rxUiGet.foceiOuter(list(ui)), error = function(e) NULL)
   .ret <- list(
     inner = inner,
     innerOeta = innerOeta,
     predOnly = .predOnly,
     extra.pars = s$..extraPars,
-    outer = .toRx(s$..outer),
+    outer = if (is.null(.outerAm)) .toRx(s$..outer) else .outerAm$augMod,
+    outerMeta = if (is.null(.outerAm)) NULL else .outerAm[c("dirs", "ndir", "st", "P2")],
     predNoLhs = .toRx(pred.opt, ifelse(.getRxPredLlikOption(),
                                        "compiling events Llik FD model...",
                                        "compiling events FD model...")),
@@ -1138,12 +1259,16 @@ rxUiGet.focei <- function(x, ...) {
   .ui <- x[[1]]
   # For t/cauchy/dnorm, predOnly model
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(nlmixr2global$rxPredLlik <- FALSE)
+  # ar() endpoints emit the whitened residual in Gaussian norm (mean/variance)
+  # form so the exact eta-Hessian is used (not the llik path).
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.foceiEnv(x, ...)
   .ret <-  .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.foceiEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1164,12 +1289,14 @@ rxUiGet.focei <- function(x, ...) {
 rxUiGet.foce <- function(x, ...) {
   .ui <- x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(nlmixr2global$rxPredLlik <- FALSE)
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.foceEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.foceEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1191,12 +1318,14 @@ rxUiGet.foce <- function(x, ...) {
 rxUiGet.ebe <- function(x, ...) {
   .ui <-x[[1]]
   nlmixr2global$rxPredLlik <- FALSE
-  on.exit(  nlmixr2global$rxPredLlik <- FALSE)
+  nlmixr2global$rxArNorm <- TRUE
+  on.exit({nlmixr2global$rxPredLlik <- FALSE; nlmixr2global$rxArNorm <- FALSE})
   .s <- rxUiGet.getEBEEnv(x, ...)
   .ret <- .innerInternal(.ui, .s)
   .predDf <- .ui$predDfFocei
   if (any(.predDf$distribution %in% c("t", "cauchy", "dnorm"))) {
     nlmixr2global$rxPredLlik <- TRUE
+    nlmixr2global$rxArNorm <- FALSE
     .s <- rxUiGet.getEBEEnv(x, ...)
     .s2 <- .innerInternal(.ui, .s)
     .w <- vapply(seq_along(.s2),
@@ -1229,11 +1358,16 @@ rxUiGet.foceiModelDigest <- function(x, ...) {
   ## forward build would be reused for an adjoint fit (or vice versa).
   .sensMethod <- rxode2::rxGetControl(.ui, "sensMethod", "default")
   .rxMethod <- rxode2::rxGetControl(.ui, "rxControl", rxode2::rxControl())$method
+  ## fast=TRUE adds the augmented outer-gradient model (foceiModelList$outer), so it
+  ## must key the cache -- else a non-fast build (outer=NULL) would be reused for a
+  ## fast fit (foceType too, since foce+ has no outer model).
+  .fast <- isTRUE(rxode2::rxGetControl(.ui, "fast", FALSE))
+  .foceType <- rxode2::rxGetControl(.ui, "foceType", 0L)
   digest::digest(c(all(is.na(.iniDf$neta1)),
                    rxode2::rxGetControl(.ui, "interaction", 1L),
                    .iniDf$name,
                    .sumProd, .optExpression, .predMinusDv,
-                   .eventSens, .sensMethod, .rxMethod,
+                   .eventSens, .sensMethod, .rxMethod, .fast, .foceType,
                    rxode2::rxGetControl(.ui, "addProp", getOption("rxode2.addProp", "combined2")),
                    .ui$lstExpr))
 }
@@ -1335,6 +1469,16 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
       rxode2::rxAssignControlValue(ui, "rxControl", .rxControl)
     }
   }
+  if (!is.null(env$model$inner) &&
+      isTRUE(rxode2::rxModelVars(env$model$inner)$flags[["hasDelay"]] == 1L)) {
+    .rxControl2 <- rxode2::rxGetControl(ui, "rxControl", rxode2::rxControl())
+    if (isTRUE(unname(.rxControl2$method) == 2L)) {
+      .rxControl2$method <- 0L
+      .rxControl2$stiff2 <- 13L
+      .rxControl2$dense <- TRUE
+      rxode2::rxAssignControlValue(ui, "rxControl", .rxControl2)
+    }
+  }
 }
 #' Assign the number of log likelihood items that need to be allocated
 #'
@@ -1386,12 +1530,23 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
                              .iniDf$err[i] %in% c("add",
                                                   "lnorm", "logitNorm", "probitNorm",
                                                   "prop", "propT", "propF",
-                                                  "pow", "powF", "powT")) {
+                                                  "pow", "powF", "powT", "ar")) {
                          .low <- .iniDf$est[i] * 0.001
                        }
                        .low
                      }, numeric(1), USE.NAMES=FALSE)
-    .upper <- .iniDf$upper[.w]
+    .upper <- vapply(.w,
+                     function(i) {
+                       .up <- .iniDf$upper[i]
+                       # ar() correlation is [0, 1): keep the optimizer strictly
+                       # below 1 so the whitened variance R*(1-cor^(2dt)) never
+                       # hits 0 (cor==1 floors the log term -> spurious spike,
+                       # collapsing the residual sd).
+                       if (identical(.iniDf$err[i], "ar") && (is.na(.up) || .up >= 1)) {
+                         .up <- 1 - 1e-4
+                       }
+                       .up
+                     }, numeric(1), USE.NAMES=FALSE)
     env$thetaIni <- ui$thetaIniMix
     env$mixIdx <- ui$thetaMixIndex
     env$thetaIni <- setNames(env$thetaIni, paste0("THETA[", seq_along(env$thetaIni), "]"))
@@ -1479,6 +1634,11 @@ attr(rxUiGet.foceiEtaNames, "rstudio") <- c("eta.ka", "eta.cl", "eta.vc")
     if (is.na(.scaleC[.ini$ntheta[.i]])) {
       if (any(.ini$err[.i] == c("boxCox", "yeoJohnson", "pow2", "tbs", "tbsYj"))) {
         .scaleC[.ini$ntheta[.i]] <- 1
+      } else if (identical(.ini$err[.i], "ar")) {
+        # ar() correlation gets its own (tuned) scaleC factor of the initial
+        # estimate -- finer than the 0.5 used for sd-like residual parameters
+        # (0.4 gave the closest cor recovery / best objf on the AR(1) test).
+        .scaleC[.ini$ntheta[.i]] <- getOption("rxode2.arScaleCFact", 0.4) * abs(.ini$est[.i])
       } else if (any(.ini$err[.i] == c("prop", "add", "norm", "dnorm", "logn", "dlogn", "lnorm", "dlnorm"))) {
         .scaleC[.ini$ntheta[.i]] <- 0.5 * abs(.ini$est[.i])
       }
@@ -1567,7 +1727,7 @@ rxUiGet.scaleCnls <- function(x, ...) {
   .env <- new.env(parent=emptyenv())
   .env$lower <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), "lower"]
   .foceiOptEnvSetupScaleC(.ui, .env)
-  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow"))]
+  .env$scaleC[!.ui$iniDf$fix & !(.ui$iniDf$err %in% c("add", "prop", "pow", "ar"))]
 }
 attr(rxUiGet.scaleCnls, "rstudio") <- c(1.0, NA_real_)
 
@@ -1642,7 +1802,9 @@ rxUiGet.foceiSkipCov <- function(x, ...) {
   } else {
     .theta <- .ui$iniDf[!is.na(.ui$iniDf$ntheta), ]
     .skipCov <- rep(FALSE, .maxTheta)
-    .skipCov[which(!is.na(.theta$err))] <- TRUE
+    # residual (error-model) thetas are now part of the covariance -- their standard
+    # errors are estimated alongside the structural thetas (all theta parameters are
+    # included).  Only fixed, IOV, and (mlogit-scale) mixture-probability thetas skip.
     .skipCov[.theta$fix] <- TRUE
     if (length(.uiIovEnv$iovVars) > 0) {
       .skipCov[which(.theta$name %in% .uiIovEnv$iovVars)] <- TRUE
@@ -2117,6 +2279,14 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
   .control$needOptimHess <- .optimHess
   if (.control$needOptimHess) {
     .control$interaction <- 0L
+    # a log-likelihood / generalized endpoint has no Gaussian add/prop a/B/c error
+    # machinery (its inner Hessian is a finite-difference of the inner gradient), so
+    # the analytic outer gradient does not apply -- downgrade fast so the fit reports
+    # it and skips building the augmented `..outer` model.
+    if (isTRUE(.control$fast)) {
+      .minfo("log-likelihood endpoint: the analytic 'fast' gradient does not apply -- using fast = FALSE")
+      .control$fast <- FALSE
+    }
   }
   assign("control", .control, envir=.ui)
 }
@@ -2375,6 +2545,8 @@ attr(rxUiGet.foceiOptEnv, "rstudio") <- emptyenv()
       .ret$shrink <- .Call(`_nlmixr2est_calcShrinkOnly`, .ret$omega, .pars$eta.lst, length(.etas$ID))
     }
     assign("est", est, envir=.ret)
+    .foceiInstallAnalyticCov(.ret)
+    .foceiInstallFdFullCov(.ret)
     .updateParFixed(.ret)
     if (!exists("table", .ret)) {
       .ret$table <- tableControl()

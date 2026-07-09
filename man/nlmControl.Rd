@@ -26,6 +26,7 @@ nlmControl(
   optimHessType = c("central", "forward"),
   hessErr = (.Machine$double.eps)^(1/3),
   shi21maxHess = 20L,
+  censOption = c("gauss", "laplace"),
   eventSens = c("jump", "fd"),
   sensMethod = c("default", "forward", "adjoint"),
   useColor = NULL,
@@ -140,6 +141,15 @@ Hessian step size using the Shi2021 method.}
 
 \item{shi21maxHess}{Maximum number of times to optimize the best
 step size for the hessian calculation}
+
+\item{censOption}{Treatment of the second derivative for censored
+(M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+\code{"laplace"} uses the exact censored second derivative of the objective (a
+proper Laplace inner Hessian and analytic covariance).  Accepted by
+\code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+finite-difference Hessian that already reflects censoring exactly.}
 
 \item{eventSens}{Controls how dosing/event-parameter (`alag`, `F`,
 `rate`, `dur`) sensitivities are computed for THETA/ETA gradients:

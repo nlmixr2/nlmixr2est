@@ -1,16 +1,17 @@
-.foceiControlInternal <- c("genRxControl", "resetEtaSize",
+.foceiControlInternal <- c("genRxControl", "resetEtaSize", "foceType",
                            "resetThetaSize", "resetThetaFinalSize",
                            "outerOptFun", "outerOptTxt", "skipCov",
-                           "foceiMuRef", "predNeq", "nfixed", "nomega",
+                           "foceiMuRef", "foceiMuCovEta", "predNeq", "nfixed", "nomega",
                            "neta", "ntheta", "nF", "printTop", "needOptimHess",
-                           "iterPrintControl", "est",
-                           "foceiMuCovEta", "foceiMuModel",
-                           "foceiMuGroupTheta", "foceiMuGroupEta",
-                           "foceiMuGroupCovStart", "foceiMuGroupCovCount",
+                           "iterPrintControl", "est", "foceiMuModel", "foceiMuGroupTheta",
+                           "foceiMuGroupEta", "foceiMuGroupCovStart", "foceiMuGroupCovCount",
                            "foceiMuGroupCovTheta", "foceiMuGroupCovUserFixed",
                            "foceiMuGroupCovBounded",
                            "foceiMuGroupCovData", "foceiMuGroupTol",
-                           "foceiMuGroupMaxCycles")
+                           "foceiMuGroupMaxCycles",
+                           # derived from covMethod ("analytic" vs the finite-difference
+                           # formulas); kept internal so a built control round-trips.
+                           "covType")
 
 #' Control Options for FOCEi
 #'
@@ -48,12 +49,48 @@
 #'     derivatives while calculating the covariance components
 #'     (Hessian and S).
 #'
-#' @param covMethod Method for calculating covariance, where R is the
-#'     Hessian and S the sum of individual gradient cross-products (at the
-#'     empirical Bayes estimates): \code{"r,s"} sandwich
+#' @param covMethod Method for calculating the covariance.  \code{"analytic"} (the
+#'     default) uses the exact analytic observed-information R-matrix (reported as
+#'     \eqn{R^{-1}}) and additionally returns the residual and \code{Omega} standard
+#'     errors; it covers FOCEI/FOCE fits with additive, proportional, or combined
+#'     error, mu-referenced/covariate/other structural parameters (and
+#'     non-mu-referenced etas), and SD-scale inter-occasion variability, and emits a
+#'     message and falls back to the finite-difference Hessian for anything out of
+#'     scope (FO, \code{nAGQ > 1}, censoring, DV-transformed error, bounded-parameter
+#'     transforms, a structural theta shared by two etas, non-SD \code{iovXform}, or a
+#'     pure-proportional variance that vanishes at a near-zero prediction).  The
+#'     finite-difference methods use R (the Hessian) and S (the sum of individual
+#'     gradient cross-products at the empirical Bayes estimates): \code{"r,s"} sandwich
 #'     (\code{solve(R)\%*\%S\%*\%solve(R)}), \code{"r"} Hessian-based
-#'     (\code{2\%*\%solve(R)}), \code{"s"} cross-product-based
-#'     (\code{4\%*\%solve(S)}), or \code{""} to skip the covariance step.
+#'     (\code{solve(R)}), \code{"s"} cross-product-based (\code{solve(S)}), or
+#'     \code{""} to skip the covariance step.
+#'
+#' @param covSolveTol absolute/relative ODE tolerance for the covariance solves --
+#'     the augmented-sensitivity solves behind \code{covMethod="analytic"} and the
+#'     perturbed solves behind the finite-difference methods.  \code{NULL} (default)
+#'     derives a tight tolerance from \code{sigdig}; supply a number to override it.
+#'
+#' @param covFull controls the shape of \code{fit$cov}.  \code{FALSE} (default)
+#'     installs only the structural-theta block (the NONMEM-matched theta
+#'     covariance, matching the historical finite-difference \code{fit$cov} shape
+#'     for backwards compatibility); \code{TRUE} installs the full theta + residual
+#'     sigma + Omega covariance -- assembled analytically for
+#'     \code{covMethod="analytic"}, or by central finite differences of the objective
+#'     over the same parameter set for the finite-difference methods (perturbing Omega
+#'     on the variance-covariance scale, with the per-parameter Gill (1983) step and the
+#'     5-point/4-point stencils that \code{foceiCalcR} uses).  The theta standard
+#'     errors are identical either way.
+#'
+#' @param fast When \code{TRUE}, compute the outer (population) gradient
+#'     analytically from Almquist (2015) sensitivity equations instead of by
+#'     finite differences, and use the Eq-48 random-effect extrapolation for the
+#'     next inner-problem starting values.  Requires an analytic-scope model
+#'     (single additive/proportional Gaussian endpoint); out-of-scope models fall
+#'     back to the finite-difference gradient with a message.  When unspecified,
+#'     the outer optimizer defaults to \code{"lbfgsb3c"} (vs \code{"nlminb"} for
+#'     \code{fast=FALSE}); pairing \code{fast=TRUE} with a derivative-free
+#'     \code{outerOpt} reverts to \code{fast=FALSE}.  The \code{*f} methods (e.g.
+#'     \code{foceif}) default this to \code{TRUE}.
 #'
 #' @param covTryHarder If the R matrix is non-positive definite and
 #'     cannot be corrected to be non-positive definite try estimating
@@ -74,6 +111,15 @@
 #' @param optimHessCovType Hessian type for numeric-difference individual
 #'   Hessians used for the covariance step/final likelihood: "central"
 #'   (more accurate, used here) or "forward".
+#'
+#' @param censOption Treatment of the second derivative for censored
+#'   (M2/M3/M4/BLQ) observations in the FOCEI family.  \code{"gauss"} (the default)
+#'   keeps the historic uncensored Gauss-Newton curvature, matching common PMx tools;
+#'   \code{"laplace"} uses the exact censored second derivative of the objective (a
+#'   proper Laplace inner Hessian and analytic covariance).  Accepted by
+#'   \code{saemControl}/\code{nlmControl} for a uniform interface but inert there --
+#'   SAEM (stochastic EM) has no Laplace inner Hessian, and NLM uses a
+#'   finite-difference Hessian that already reflects censoring exactly.
 #'
 #' @param shi21maxOuter The maximum number of steps for the
 #'   optimization of the forward-difference step size.  When not zero,
@@ -120,7 +166,6 @@
 #'     high precision sums using the PreciseSums package.  By default
 #'     this is \code{FALSE}.
 #'
-#'
 #' @param optExpression Optimize the rxode2 expression to speed up
 #'     calculation. By default this is turned on.
 #'
@@ -159,6 +204,31 @@
 #'
 #' @param interaction Boolean indicate FOCEi should be used (TRUE)
 #'     instead of FOCE (FALSE)
+#'
+#' @param foce Controls how FOCE (\code{interaction = FALSE}) evaluates the
+#'     residual variance R in the inner objective; ignored for FOCEi.  Either
+#'     \code{"nonmem"} (default) or \code{"foce+"}:
+#'
+#'     \itemize{
+#'
+#'     \item \code{"nonmem"} freezes R at the \code{eta = 0} population
+#'     prediction and holds it constant across the inner optimization, matching
+#'     NONMEM's FOCE.  Advantage: reproduces NONMEM FOCE objective and standard
+#'     errors, and an ODE model agrees with its closed-form (\code{linCmt})
+#'     equivalent.  Disadvantage: R ignores the individual (conditional)
+#'     heteroscedasticity, so it can be slightly less accurate than
+#'     \code{"foce+"} for proportional/combined error.
+#'
+#'     \item \code{"foce+"} evaluates R at the current conditional
+#'     \code{eta} (the live variance), keeping the truncated FOCE
+#'     inner gradient.  Advantage: uses the conditional variance and
+#'     is a bit more accurate than NONMEM's FOCE in some cases.
+#'     Disadvantage: does not match NONMEM FOCE.  This was the FOCE
+#'     behavior in \pkg{nlmixr2est} 6.0.1 and earlier. This does not
+#'     use the gradient of \code{eta} like the full \code{focei}
+#'     method, so it is not as accurate as \code{focei}.
+#'
+#'     }
 #'
 #' @param cholSEOpt Boolean indicating if the generalized Cholesky
 #'     should be used while optimizing.
@@ -413,6 +483,14 @@
 #' @param eventType Event gradient type for dosing events; Can be
 #'   "central" or "forward"
 #'
+#' @param eventSens How sensitivities of dosing/event parameters
+#'   (absorption lag time, bioavailability, infusion rate and duration,
+#'   etc.) are computed.  `"fd"` uses the legacy finite
+#'   differences.  `"jump"` (the default) uses the analytic event ("jump")
+#'   sensitivities provided by `rxode2`, which add accuracy and can speed
+#'   up the gradient/Hessian by avoiding the extra finite-difference
+#'   solves for these parameters.
+#'
 #' @param gradProgressOfvTime This is the time for a single objective
 #'     function evaluation (in seconds) to start progress bars on gradient evaluations
 #'
@@ -464,10 +542,23 @@
 #'   first zero gradient.
 #'
 #' @param mceta Monte Carlo sampling for the best initial ETA estimate
-#'   (based on `omega`): `-1` (default) uses the last eta; `0` uses eta=0
+#'   (based on `omega`): `-2` (default) uses the Almquist (2015) Eq-48
+#'   extrapolation `eta^0 = eta* + (d eta*/d theta)(theta_new - theta_old)`
+#'   when the analytic gradient supplies `d eta*/d theta` (`fast = TRUE`),
+#'   accepting the extrapolated eta only when it is within the standardized-eta
+#'   reset bound (else keeping the last eta, or resetting to 0 when that is also
+#'   out of bound); `-1` jumps between the extrapolated eta and eta=0, keeping
+#'   the better; both `-2` and `-1` fall back to keeping the last eta when no
+#'   analytic `d eta*/d theta` is available (`fast = FALSE`).  `0` uses eta=0
 #'   for each inner optimization; for `n>0`, the last eta, eta=0, and n-1
 #'   etas sampled from omega are each evaluated and the best (by inner
 #'   objective) is used.
+#'
+#' @param warm Seeding of the n1qn1 inner-optimization Hessian:
+#'   `"calc"` (default) warm-starts each inner problem with the eta
+#'   Hessian calculated for the objective function at the same starting
+#'   eta, calculating it at the starting point when unavailable;
+#'   `"save"` uses the classic self-initialized Hessian.
 #'
 #' @param nAGQ Number of Gauss-Hermite adaptive quadrature points. `0`
 #'   disables AGQ; `1` is equivalent to Laplace. Cost grows quickly with
@@ -552,7 +643,10 @@ foceiControl <- function(sigdig = 4, #
                          derivMethod = c("switch", "forward", "central"), #
                          derivSwitchTol = NULL, #
                          covDerivMethod = c("central", "forward"), #
-                         covMethod = c("r,s", "r", "s", ""), #
+                         covMethod = c("analytic", "r,s", "r", "s", ""), #
+                         covSolveTol = NULL, #
+                         covFull = TRUE, #
+                         fast = FALSE, #
                          # norm of weights = 1/0.225
                          #hessEps = (1/0.225*.Machine$double.eps)^(1 / 4), #
                          hessEps =(.Machine$double.eps)^(1/3),
@@ -560,7 +654,9 @@ foceiControl <- function(sigdig = 4, #
                          hessEpsLlik =(.Machine$double.eps)^(1/3),
                          optimHessType = c("central", "forward"),
                          optimHessCovType=c("central", "forward"),
+                         censOption = c("gauss", "laplace"),
                          eventType = c("central", "forward"), #
+                         eventSens = c("jump", "fd"), #
                          centralDerivEps = rep(20 * sqrt(.Machine$double.eps), 2), #
                          lbfgsLmm = 7L, #
                          lbfgsPgtol = 0, #
@@ -578,6 +674,7 @@ foceiControl <- function(sigdig = 4, #
                          calcTables = TRUE,#
                          noAbort = TRUE, #
                          interaction = TRUE, #
+                         foce = c("nonmem", "foce+"), #
                          cholSEtol = (.Machine$double.eps)^(1 / 3), #
                          cholAccept = 1e-3, #
                          resetEtaP = 0.15, #
@@ -589,14 +686,13 @@ foceiControl <- function(sigdig = 4, #
                          cholSECov = FALSE, #
                          fo = FALSE, #
                          covTryHarder = FALSE, #
-                         outerOpt = c("lbfgsb3c",
-                                      "nlminb",
+                         outerOpt = c("nlminb",
+                                      "lbfgsb3c",
                                       "bobyqa",
                                       "L-BFGS-B",
                                       "mma",
                                       "lbfgsbLG",
                                       "slsqp",
-                                      "Rvmmin",
                                       "uobyqa",
                                       "newuoa"), #
                          innerOpt = c("n1qn1", "BFGS"), #
@@ -669,14 +765,13 @@ foceiControl <- function(sigdig = 4, #
                          zeroGradFirstReset=TRUE,
                          zeroGradRunReset=TRUE,
                          zeroGradBobyqa=TRUE,
-                         mceta=-1L,
+                         mceta=-2L,
+                         warm=c("calc", "save"),
                          nAGQ=0,
                          agqLow=-Inf,
                          agqHi=Inf,
-                         eventSens = c("jump", "fd"),
                          sensMethod = c("default", "forward", "adjoint"),
                          boundedTransform=TRUE) { #
-  eventSens <- match.arg(eventSens)
   ## sensMethod: "forward" variational ODE parameter sensitivities; "adjoint"
   ## solves them with the in-engine discrete adjoint (matching s-method);
   ## "default" defers to getOption("nlmixr2est.adjoint").
@@ -839,6 +934,12 @@ foceiControl <- function(sigdig = 4, #
   }
   interaction <- as.integer(interaction)
 
+  foce <- match.arg(foce)
+  ## FOCE (interaction=FALSE) residual-variance choice: 0="nonmem" (eta=0 frozen R),
+  ## 1="foce+" (live conditional R; also covMethod="analytic" via ef$focePlus).
+  ## Ignored when interaction=TRUE (FOCEi).
+  foceType <- as.integer(foce == "foce+")
+
   checkmate::assertNumeric(cholSEtol, lower=0, any.missing=FALSE, len=1)
   checkmate::assertNumeric(cholAccept, lower=0, any.missing=FALSE, len=1)
 
@@ -864,12 +965,24 @@ foceiControl <- function(sigdig = 4, #
     .optimHessCovTypeIdx <- c("central" = 1L, "forward" = 3L)
     optimHessCovType <- setNames(.optimHessCovTypeIdx[match.arg(optimHessCovType)], NULL)
   }
+  # censOption: the censored (M2/M3/M4) inner-Hessian / 2nd-derivative treatment.
+  # "gauss" (default) keeps the historic uncensored Gauss-Newton curvature; "laplace"
+  # uses the exact censored 2nd derivative (a proper Laplace).  Shared with saem/nlm.
+  if (checkmate::testIntegerish(censOption, len=1, lower=0, upper=1, any.missing=FALSE)) {
+    censOption <- as.integer(censOption)
+  } else {
+    censOption <- setNames(c("gauss" = 0L, "laplace" = 1L)[match.arg(censOption)], NULL)
+  }
   if (checkmate::testIntegerish(eventType, len=1, lower=1, upper=3, any.missing=FALSE)) {
     eventType <- as.integer(eventType)
   } else {
     .eventTypeIdx <- c("central" = 2L, "forward" = 3L)
     eventType <- setNames(.eventTypeIdx[match.arg(eventType)], NULL)
   }
+  ## How dosing/event-parameter (alag, F, rate, dur, ...) sensitivities are
+  ## computed: "fd" (legacy finite differences) or "jump" (analytic jump/event
+  ## sensitivities from rxode2).  "fd" is the backward-compatible default.
+  eventSens <- match.arg(eventSens)
 
   .normTypeIdx <- c("rescale2" = 1L, "rescale" = 2L, "mean" = 3L, "std" = 4L, "len" = 5L, "constant" = 6L)
   if (checkmate::testIntegerish(normType, len=1, lower=1, upper=6, any.missing=FALSE)) {
@@ -890,17 +1003,35 @@ foceiControl <- function(sigdig = 4, #
     covDerivMethod <- match.arg(covDerivMethod)
     covDerivMethod <- setNames(.methodIdx[covDerivMethod], NULL)
   }
+  # covMethod folds in the R-matrix (Hessian) source: "analytic" (the default) uses the
+  # exact analytic observed-information R-matrix, reported with the observed-information
+  # "r" formula; "r,s"/"r"/"s" use the finite-difference Hessian with that formula; ""
+  # skips the covariance step.  The analytic-vs-finite-difference choice is carried to the
+  # solver as the (internal, derived) covType string, which also travels via ... so a
+  # built control round-trips.
+  covType <- "fd"
   if (checkmate::testIntegerish(covMethod, len=1, lower=0L, upper=3L, any.missing=FALSE)) {
     covMethod <- as.integer(covMethod)
+    .ct <- list(...)$covType
+    if (!is.null(.ct)) covType <- match.arg(.ct, c("analytic", "fd"))
   } else if (rxode2::rxIs(covMethod, "character")) {
     if (all(covMethod == "")) {
       covMethod <- 0L
     } else {
       covMethod <- match.arg(covMethod)
-      .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-      covMethod <- setNames(.covMethodIdx[match.arg(covMethod)], NULL)
+      if (identical(covMethod, "analytic")) {
+        covType <- "analytic"
+        covMethod <- 2L
+      } else {
+        .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+        covMethod <- setNames(.covMethodIdx[covMethod], NULL)
+      }
     }
   }
+  if (!is.null(covSolveTol)) checkmate::assertNumeric(covSolveTol, len = 1, lower = 0,
+                                                      finite = TRUE, any.missing = FALSE)
+  checkmate::assertFlag(covFull)
+  checkmate::assertFlag(fast)
   .xtra <- list(...)
   .bad <- names(.xtra)
   .bad <- .bad[!(.bad %in% .foceiControlInternal)]
@@ -921,6 +1052,12 @@ foceiControl <- function(sigdig = 4, #
   if (!is.null(.xtra$outerOptFun)) {
     outerOptFun <- .xtra$outerOptFun
   } else if (rxode2::rxIs(outerOpt, "character")) {
+    # mode-dependent default when the user did not specify outerOpt: base methods
+    # use nlminb, fast methods use the gradient-friendly lbfgsb3c.  An explicit
+    # outerOpt (a single string) skips this.
+    if (missing(outerOpt)) {
+      outerOpt <- if (isTRUE(fast)) "lbfgsb3c" else "nlminb"
+    }
     outerOpt <- match.arg(outerOpt)
     .outerOptTxt <- outerOpt
     if (outerOpt == "bobyqa") {
@@ -961,11 +1098,25 @@ foceiControl <- function(sigdig = 4, #
     outerOptFun <- outerOpt
     outerOpt <- -1L
   }
+  # A derivative-free outer optimizer never consumes the analytic 'fast' gradient,
+  # so computing it is wasted work: downgrade to fast=FALSE with a warning.
+  if (isTRUE(fast) && .outerOptTxt %in% c("bobyqa", "uobyqa", "newuoa")) {
+    warning("outerOpt='", .outerOptTxt,
+            "' is derivative-free; the analytic 'fast' gradient is unused -- reverting to fast=FALSE",
+            call.=FALSE)
+    fast <- FALSE
+  }
   if (checkmate::testIntegerish(innerOpt, lower=1, upper=2, len=1)) {
     innerOpt <- as.integer(innerOpt)
   } else {
     .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
     innerOpt <- setNames(.innerOptFun[match.arg(innerOpt)], NULL)
+  }
+  if (checkmate::testIntegerish(warm, lower=0, upper=1, len=1, any.missing=FALSE)) {
+    warm <- as.integer(warm)
+  } else {
+    .warmIdx <- c("calc" = 1L, "save" = 0L)
+    warm <- setNames(.warmIdx[match.arg(warm)], NULL)
   }
   if (!is.null(.xtra$resetEtaSize)) {
     .resetEtaSize <- .xtra$resetEtaSize
@@ -1083,7 +1234,7 @@ foceiControl <- function(sigdig = 4, #
   checkmate::assertIntegerish(shi21maxInner, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxInnerCov, lower=0, len=1, any.missing=FALSE)
   checkmate::assertIntegerish(shi21maxFD, lower=0, len=1, any.missing=FALSE)
-  checkmate::assertIntegerish(mceta, lower=-1, len=1,any.missing=FALSE)
+  checkmate::assertIntegerish(mceta, lower=-2, len=1,any.missing=FALSE)
 
   checkmate::assertNumeric(smatPer, any.missing=FALSE, lower=0, upper=1, len=1)
   checkmate::assertIntegerish(nAGQ, lower=0, len=1, any.missing=FALSE)
@@ -1104,6 +1255,10 @@ foceiControl <- function(sigdig = 4, #
     derivMethod = derivMethod,
     covDerivMethod = covDerivMethod,
     covMethod = covMethod,
+    covType = covType,
+    covSolveTol = covSolveTol,
+    covFull = covFull,
+    fast = fast,
     centralDerivEps = centralDerivEps,
     eigen = eigen,
     diagXform = match.arg(diagXform),
@@ -1121,11 +1276,14 @@ foceiControl <- function(sigdig = 4, #
     calcTables = calcTables,
     noAbort = noAbort,
     interaction = interaction,
+    foce = foce,
+    foceType = foceType,
     cholSEtol = as.double(cholSEtol),
     hessEps = as.double(hessEps),
     hessEpsLlik = as.double(hessEpsLlik),
     optimHessType=optimHessType,
     optimHessCovType=optimHessCovType,
+    censOption=censOption,
     cholAccept = as.double(cholAccept),
     resetEtaSize = as.double(.resetEtaSize),
     resetThetaSize = as.double(.resetThetaSize),
@@ -1197,6 +1355,7 @@ foceiControl <- function(sigdig = 4, #
     stickyRecalcN = as.integer(max(1, abs(stickyRecalcN))),
     indTolRelax = as.logical(indTolRelax),
     eventType = eventType,
+    eventSens = eventSens,
     gradProgressOfvTime = gradProgressOfvTime,
     addProp = addProp,
     badSolveObjfAdj=badSolveObjfAdj,
@@ -1215,13 +1374,16 @@ foceiControl <- function(sigdig = 4, #
     zeroGradRunReset=zeroGradRunReset,
     zeroGradBobyqa=zeroGradBobyqa,
     mceta=as.integer(mceta),
+    warm=warm,
     nAGQ=as.integer(nAGQ),
     agqHi=as.double(agqHi),
     agqLow=as.double(agqLow),
-    eventSens=eventSens,
     sensMethod=sensMethod,
     boundedTransform=boundedTransform
   )
+  if (!is.null(.xtra$est)) {
+    .ret$est <- .xtra$est
+  }
   if (length(etaMat) == 1L && is.na(etaMat)) {
     .ret$etaMat <- NA
   } else if (!is.null(etaMat)) {
@@ -1247,43 +1409,67 @@ foceiControl <- function(sigdig = 4, #
     warning("functions for `outerOpt` cannot be deparsed, reset to default",
             call.=FALSE)
   } else if (!(object$outerOptTxt %in% c(.ret$outerOptTxt, "stats::optimize"))) {
-    .outerOpt <- paste0("outerOpt=", deparse1(object$outerOptTxt))
+    .outerOpt <- paste0("outerOpt = ", deparse1(object$outerOptTxt))
   }
   .w <- .deparseDifferent(.ret, object, .foceiControlInternal)
-  if (length(.w) == 0 && length(.outerOpt) == 0) {
+  # covMethod folds the analytic-vs-finite-difference R-matrix choice (carried by the
+  # derived internal covType) into a single token; covType is never deparsed on its own.
+  .covMethodStr <- function(o) {
+    if (identical(o$covType, "analytic")) return("analytic")
+    if (identical(as.integer(o$covMethod), 0L)) return("")
+    .idx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
+    names(.idx)[match(as.integer(o$covMethod), .idx)]
+  }
+  .covTok <- character(0)
+  if (!identical(.covMethodStr(object), .covMethodStr(.ret))) {
+    .covTok <- paste0("covMethod = ", deparse1(.covMethodStr(object)))
+  }
+  if (length(.w) == 0 && length(.outerOpt) == 0 && length(.covTok) == 0) {
     return(str2lang(paste0(var, " <- ", type, "()")))
   }
   .n <- names(.ret)[.w]
-  .n <- .n[.n != "outerOpt"]
+  .n <- .n[!(.n %in% c("outerOpt", "covMethod"))]
+  if (length(.covTok) > 0) {
+    .n <- c(.n, "covMethod")
+  }
+  # preserve the formal-argument declaration order (names(.ret)) so the covMethod
+  # token lands in its natural position instead of always first
+  .n <- .n[order(match(.n, names(.ret)))]
   .retD <- c(vapply(.n, function(x) {
+    if (x == "covMethod") {
+      return(.covTok)
+    }
     .val <- .deparseShared(x, object[[x]])
     if (!is.na(.val)) {
       return(.val)
     }
     if (x == "innerOpt") {
       .innerOptFun <- c("n1qn1" = 1L, "BFGS" = 2L)
-      paste0("innerOpt =", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+      paste0("innerOpt = ", deparse1(names(.innerOptFun[which(object[[x]] == .innerOptFun)])))
+    } else if (x == "warm") {
+      .warmIdx <- c("calc" = 1L, "save" = 0L)
+      paste0("warm = ", deparse1(names(.warmIdx[which(object[[x]] == .warmIdx)])))
     } else if (x %in% c("optimHessType", "optimHessCovType")) {
       .methodIdx <- c("central" = 1L, "forward" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "eventType") {
       .methodIdx <- c("central" = 2L, "forward" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x %in% c("derivMethod", "covDerivMethod")) {
       .methodIdx <- c("forward" = 0L, "central" = 1L, "switch" = 3L)
-      paste0(x, " =", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
+      paste0(x, " = ", deparse1(names(.methodIdx[which(object[[x]] == .methodIdx)])))
     } else if (x == "covMethod") {
       if (object[[x]] == 0L) {
         paste0(x, " = \"\"")
       } else {
         .covMethodIdx <- c("r,s" = 1L, "r" = 2L, "s" = 3L)
-        paste0(x, " =", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
+        paste0(x, " = ", deparse1(names(.covMethodIdx[which(object[[x]] == .covMethodIdx)])))
       }
     } else {
-      paste0(x, "=", deparse1(object[[x]]))
+      paste0(x, " = ", deparse1(object[[x]]))
     }
   }, character(1)), .outerOpt)
-  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=","),")"))
+  str2lang(paste(var, " <- ", type, "(", paste(.retD, collapse=", "), ")"))
 }
 
 #' @export

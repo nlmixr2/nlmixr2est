@@ -33,8 +33,19 @@ extern SEXP _nlmixr2est_llik_neg_binomial(SEXP, SEXP);
 extern SEXP _nlmixr2est_nlmixr2Parameters(SEXP, SEXP);
 
 SEXP _nlmixr2est_foceiInnerLp(SEXP, SEXP);
+SEXP _nlmixr2est_censNormalPartials_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectGradFocei_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectGradFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectRFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectRfoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiGradAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiSubjectGradFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiGradAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiRAllFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_foceiRAllFoceFR_(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_likInner(SEXP, SEXP);
 SEXP _nlmixr2est_cholSE_(SEXP, SEXP);
+SEXP _nlmixr2est_shi21CentralWrap(SEXP, SEXP, SEXP, SEXP, SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
 SEXP _nlmixr2est_foceiOfv(SEXP);
 SEXP _nlmixr2est_foceiLik(SEXP);
@@ -80,6 +91,9 @@ static const R_CMethodDef CEntries[] = {
 };
 
 SEXP _nlmixr2est_powerD(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_powerDLambda(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_powerDLambda2(SEXP, SEXP, SEXP, SEXP, SEXP);
+SEXP _nlmixr2est_powerDL(SEXP, SEXP, SEXP, SEXP, SEXP);
 
 SEXP _saemResidF(SEXP v);
 
@@ -169,7 +183,18 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_nlmixr2Parameters", (DL_FUNC) &_nlmixr2est_nlmixr2Parameters, 2},
   // FOCEi
   {"_nlmixr2est_foceiInnerLp", (DL_FUNC) &_nlmixr2est_foceiInnerLp, 2},
+  {"_nlmixr2est_censNormalPartials_", (DL_FUNC) &_nlmixr2est_censNormalPartials_, 6},
+  {"_nlmixr2est_foceiSubjectGradFocei_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFocei_, 18},
+  {"_nlmixr2est_foceiSubjectGradFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFR_, 23},
+  {"_nlmixr2est_foceiSubjectRFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRFR_, 23},
+  {"_nlmixr2est_foceiSubjectRfoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectRfoceFR_, 24},
+  {"_nlmixr2est_foceiGradAllFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFR_, 25},
+  {"_nlmixr2est_foceiSubjectGradFoceFR_", (DL_FUNC) &_nlmixr2est_foceiSubjectGradFoceFR_, 22},
+  {"_nlmixr2est_foceiGradAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiGradAllFoceFR_, 24},
+  {"_nlmixr2est_foceiRAllFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFR_, 25},
+  {"_nlmixr2est_foceiRAllFoceFR_", (DL_FUNC) &_nlmixr2est_foceiRAllFoceFR_, 26},
   {"_nlmixr2est_cholSE_", (DL_FUNC) &_nlmixr2est_cholSE_, 2},
+  {"_nlmixr2est_shi21CentralWrap", (DL_FUNC) &_nlmixr2est_shi21CentralWrap, 5},
   {"_nlmixr2est_likInner", (DL_FUNC) &_nlmixr2est_likInner, 2},
   {"_nlmixr2est_foceiLik", (DL_FUNC) &_nlmixr2est_foceiLik, 1},
   {"_nlmixr2est_foceiOfv", (DL_FUNC) &_nlmixr2est_foceiOfv, 1},
@@ -194,6 +219,9 @@ static const R_CallMethodDef CallEntries[] = {
   {"_nlmixr2est_saem_fit", (DL_FUNC) &_nlmixr2est_saem_fit, 1},
   {"_nlmixr2est_saem_do_pred", (DL_FUNC) &_nlmixr2est_saem_do_pred, 3},
   {"_nlmixr2est_powerD", (DL_FUNC) &_nlmixr2est_powerD, 5},
+  {"_nlmixr2est_powerDLambda", (DL_FUNC) &_nlmixr2est_powerDLambda, 5},
+  {"_nlmixr2est_powerDLambda2", (DL_FUNC) &_nlmixr2est_powerDLambda2, 5},
+  {"_nlmixr2est_powerDL", (DL_FUNC) &_nlmixr2est_powerDL, 5},
   {"_nlmixr2est_powerL", (DL_FUNC) &_nlmixr2est_powerL, 5},
   {"_saemResidF", (DL_FUNC) &_saemResidF, 1},
   {"_nlmixr2est_npdeCalc", (DL_FUNC) &_nlmixr2est_npdeCalc, 6},

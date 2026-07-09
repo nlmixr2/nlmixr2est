@@ -104,12 +104,14 @@
                        seed = 99, fixedOmega = NULL, fixedOmegaValues=NULL,
                        parHistThetaKeep=NULL,
                        parHistOmegaKeep=NULL,
+                       parHistOmegaOffPairs=matrix(integer(0), ncol=2L),
                        DEBUG = 0,
                        tol = 1e-4, itmax = 100L, type = c("nelder-mead", "newuoa"),
                        lambdaRange = 3, powRange = 10,
                        odeRecalcFactor=10^(0.5),
                        maxOdeRecalc=5L,
                        indTolRelax=TRUE,
+                       nSaCov=0L,
                        nres,
                        perSa=0.75,
                        perNoCor=0.75,
@@ -530,6 +532,7 @@
     coef_sa = .95,
     pas = pas,
     pash = pash,
+    nSaCov = nSaCov,
     pasMix = pasMix,
     mixProbMethod = if (identical(mixProbMethod, "regularized")) 1L else 0L,
     mixProbPriorN = mixProbPriorN,
@@ -588,6 +591,7 @@
     distribution = distribution,
     parHistThetaKeep=parHistThetaKeep,
     parHistOmegaKeep=parHistOmegaKeep,
+    parHistOmegaOffPairs=parHistOmegaOffPairs,
     seed = seed,
     fixed.i1 = fixed.i1,
     fixed.i0 = fixed.i0,
@@ -615,6 +619,21 @@
   .t <- cumsum(c(0L, rep(.obs_counts, cfg$nmc))) # N*nmc + 1 entries
   cfg$ix_idM <- cbind(.t[-length(.t)], .t[-1] - 1L) # c-index of obs records of each subject
 
+  # AR(1) autocorrelated residuals (continuous-time): for each observation (in
+  # the original 1-chain order the E-step uses) find the previous same-subject-
+  # same-endpoint observation (time order = record order for sorted data) and the
+  # time gap to it, so the whitened conditional likelihood can carry the previous
+  # residual.  arActive/arCor default off; the model sets them when it has ar()
+  # (currently gated off by the saem opt-out assert).
+  .arTime <- cfg$evt[cfg$evt[, "EVID"] == 0, "TIME"]
+  .arGrp <- paste0(.s_id, "_", cfg$ix_endpnt)
+  .arPos <- stats::ave(seq_along(.arGrp), .arGrp,
+                FUN = function(.v) c(NA_integer_, utils::head(.v, -1L))) # prev 1-based orig idx
+  cfg$arPrev <- ifelse(is.na(.arPos), -1L, .arPos - 1L)                  # 0-based, -1 = first
+  cfg$arDt <- ifelse(is.na(.arPos), 0, .arTime - .arTime[.arPos])
+  cfg$arActive <- as.integer(if (is.null(model$arActive)) rep(0L, cfg$nendpnt) else model$arActive)
+  cfg$arCor <- as.double(if (is.null(model$arCor)) rep(0, cfg$nendpnt) else model$arCor)
+
   cfg$ares <- rep(10, cfg$nendpnt)
   cfg$bres <- rep(1, cfg$nendpnt)
   cfg$cres <- rep(1, cfg$nendpnt)
@@ -630,7 +649,8 @@
   nMix <- max(1L, length(mixProb))
   cfg$nMix <- nMix
   cfg$mixProb <- mixProb
-  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) + sum(1L - resFixed) + (nMix - 1L))
+  cfg$par.hist <- matrix(0, cfg$niter, sum(parHistThetaKeep) + sum(parHistOmegaKeep) +
+                                        nrow(parHistOmegaOffPairs) + sum(1L - resFixed) + (nMix - 1L))
 
   cfg$DEBUG <- cfg$opt$DEBUG <- cfg$optM$DEBUG <- DEBUG
   cfg$phiMFile <- tempfile("phi-", rxode2::rxTempDir(), ".phi")

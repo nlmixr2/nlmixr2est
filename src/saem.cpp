@@ -11,6 +11,7 @@
 #include "censEst.h"
 #include "nearPD.h"
 #include "inner.h"
+#include "solveWarnHelper.h"
 
 #define _(String) (String)
 
@@ -560,6 +561,145 @@ public:
     user_fn = f;
   }
 
+  // Continuous-time AR(1) whitening of a residual/SD pair, in place.  e and g are
+  // indexed in the original 1-chain observation order (length ntotal).  For each
+  // AR endpoint obs with a previous same-subject-same-endpoint record:
+  //   phi_i = cor^dt_i, eps_i = e_i - phi_i*e_{prev}, gstar_i = g_i*sqrt(1-phi_i^2).
+  // The first record of each subject/endpoint (arPrev<0) is left marginal.  The
+  // previous residual is the RAW (pre-whitening) residual, so snapshot e first.
+  void arWhiten(vec &e, vec &g) {
+    if (!hasAr) return;
+    vec e0 = e;
+    for (arma::uword i = 0; i < e.n_elem; ++i) {
+      int b = (int)ix_endpnt(i);
+      if (!arActive(b)) continue;
+      arma::sword p = arPrev(i);
+      if (p < 0) continue;
+      double phi = std::pow(arCor(b), arDt(i));
+      double om = 1.0 - phi*phi;
+      if (om < 1e-8) om = 1e-8;
+      e(i) = e0(i) - phi*e0((arma::uword)p);
+      g(i) *= std::sqrt(om);
+    }
+  }
+
+  // Per-observation Gaussian -LL contribution with the AR(1) whitening applied
+  // (reduces to the independent 0.5*((yt-ft)/g)^2 + log(g) when no AR).
+  vec arDYFhyp(const vec &yt, const vec &ft, const vec &g) {
+    vec e = yt - ft;
+    vec gg = g;
+    arWhiten(e, gg);
+    return 0.5*(e/gg)%(e/gg) + log(gg);
+  }
+
+  // Final per-endpoint estimated AR(1) correlation (0 for non-AR endpoints).
+  vec get_arCor() { return arCor; }
+
+  // Reset the AR(1) M-step accumulators (called with the statr reset each iter).
+  void arResetMstep() {
+    for (int b = 0; b < nendpnt; ++b) {
+      arPairR[b].clear(); arPairP[b].clear();
+      arPairDt[b].clear(); arPairW[b].clear();
+      arFirstSSR[b] = 0.0; arNobs[b] = 0;
+    }
+  }
+
+  // AR(1) correlation M-step for endpoint b: grid-search the profiled negative
+  // log-likelihood g(cor) = n*log(WSSR(cor)) + sum w*log(1-phi^2) over cor in
+  // [0, ~1), then take a stochastic-approximation step toward the maximizer.
+  // WSSR(cor) = firstSSR + sum w*eps(cor)^2/(1-phi^2), eps = r_i - cor^dt*r_prev.
+  void arUpdateCor(int b, int kiter, const vec &pas) {
+    const double double_xmin = 1.0e-200;
+    size_t np = arPairR[b].size();
+    if (np == 0 || arNobs[b] == 0) return;
+    double best = std::numeric_limits<double>::infinity();
+    double corHat = arCor(b);
+    for (int gi = 0; gi <= 99; ++gi) {
+      double c = gi*0.0099;
+      double wssr = arFirstSSR[b];
+      double logdet = 0.0;
+      for (size_t j = 0; j < np; ++j) {
+        double phi = std::pow(c, arPairDt[b][j]);
+        double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+        double eps = arPairR[b][j] - phi*arPairP[b][j];
+        wssr += arPairW[b][j]*eps*eps/om;
+        logdet += arPairW[b][j]*std::log(om);
+      }
+      if (wssr < double_xmin) wssr = double_xmin;
+      double g = arNobs[b]*std::log(wssr) + logdet;
+      if (g < best) { best = g; corHat = c; }
+    }
+    arCor(b) = arCor(b) + pas(kiter)*(corHat - arCor(b));
+    if (arCor(b) < 0.0) arCor(b) = 0.0;
+    if (arCor(b) > 0.999) arCor(b) = 0.999;
+  }
+
+  // One endpoint's residual SSR contribution for one MCMC chain / mixture
+  // component (weightCol into mixWeights).  Independent path = original sum of
+  // standardized r^2.  AR path accumulates the whitened SSR (eps^2/(1-phi^2))
+  // and stores the (r, r_prev, dt, w) pairs + first-obs SSR for arUpdateCor.
+  double arResk(int b, const vec &f_cur, const vec &y_cur, int weightCol) {
+    const double double_xmin = 1.0e-200, xmax = 1e300;
+    double resk = 0.0;
+    if (arActive(b)) {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        _arRorig(idx_orig) = r_ji;
+      }
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
+        double r_ji = _arRorig(idx_orig);
+        arma::sword p = arPrev(idx_orig);
+        double contrib;
+        if (p < 0) {
+          contrib = r_ji*r_ji;
+          arFirstSSR[b] += w*contrib;
+        } else {
+          double phi = std::pow(arCor(b), arDt(idx_orig));
+          double om = 1.0 - phi*phi; if (om < 1e-8) om = 1e-8;
+          double rp = _arRorig((arma::uword)p);
+          double eps = r_ji - phi*rp;
+          contrib = eps*eps/om;
+          arPairR[b].push_back(r_ji); arPairP[b].push_back(rp);
+          arPairDt[b].push_back(arDt(idx_orig)); arPairW[b].push_back(w);
+        }
+        arNobs[b] += 1;
+        if (contrib > xmax) contrib = xmax;
+        else if (contrib < double_xmin) contrib = double_xmin;
+        resk += w * contrib;
+      }
+    } else {
+      for (int i = 0; i < (int)y_cur.size(); i++) {
+        int idx_orig = ix_sorting(y_offset(b) + i);
+        int i_subj = obs_subject(idx_orig);
+        double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
+        double r_ji = y_cur[i] - ft;
+        if (res_mod(b) == rmProp) {
+          double fci = f_cur[i];
+          double fa = handleF(propT(b), ft, fci, true, true);
+          if (fa <= double_xmin) fa = 1.0;
+          r_ji /= fa;
+        }
+        double r_ji_sq = r_ji * r_ji;
+        if (r_ji_sq > xmax) r_ji_sq = xmax;
+        else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
+        double w = (weightCol < 0) ? 1.0 : mixWeights(i_subj, weightCol);
+        resk += w * r_ji_sq;
+      }
+    }
+    return resk;
+  }
+
   mat get_resMat() {
     mat m(nendpnt,4);
     m.col(0) = ares;
@@ -624,6 +764,9 @@ public:
   mat get_par_hist() {
     return par_hist;
   }
+  mat get_HaSa() {
+    return HaSa;
+  }
 
   vec get_mixProb() {
     return mixProb;
@@ -671,6 +814,18 @@ public:
     rmcmc = as<double>(x["rmcmc"]);
     pas = as<vec>(x["pas"]);
     pash = as<vec>(x["pash"]);
+    // SA (stochastic-approximation) covariance phase: after the niter estimation
+    // iterations, run nSaCov extra iterations with the gain frozen at zero so the
+    // parameters stay at the converged estimate (theta_hat).  Only the MCMC E-step
+    // resimulates phi ~ p(phi|y,theta_hat); the per-iteration Louis observed-information
+    // integrand (DDa) is Monte-Carlo averaged into HaSa, giving a converged Fisher
+    // information decoupled from the cooling schedule (cf. Monolix "stochastic
+    // approximation" standard errors; Kuhn & Lavielle 2005).  nSaCov==0 is a no-op.
+    nSaCov = x.containsElementNamed("nSaCov") ? as<int>(x["nSaCov"]) : 0;
+    if (nSaCov > 0) {
+      pas  = join_cols(pas,  zeros<vec>(nSaCov));   // freeze theta during the cov phase
+      pash = join_cols(pash, zeros<vec>(nSaCov));
+    }
     minv = as<vec>(x["minv"]);
 
     N = as<int>(x["N"]);
@@ -779,6 +934,11 @@ public:
     ix_idM=as<umat>(x["ix_idM"]);
     res_offset=as<uvec>(x["res_offset"]);
     addProp=as<uvec>(x["addProp"]);
+    arCor=as<vec>(x["arCor"]);
+    arActive=as<uvec>(x["arActive"]);
+    arPrev=as<arma::ivec>(x["arPrev"]);
+    arDt=as<vec>(x["arDt"]);
+    hasAr = (int)accu(arActive);
     hasFixedObsTransform = true;
     for (unsigned int b = 0; b < res_mod.n_elem; ++b) {
       if (res_mod[b] >= rmAddLam && res_mod[b] <= rmAddPowLam) {
@@ -812,6 +972,7 @@ public:
     _scratch_ftT.set_size(ntotal);
     _scratch_g.set_size(ntotal);
     _scratch_indio = indio;  // same length as indio, initialise from it
+    _arRorig.set_size(ntotal);
     for (int b=0; b<nendpnt; ++b) {
       sigma2[b] = 10;
       if (res_mod(b) == rmAdd) {
@@ -828,6 +989,10 @@ public:
     parHistThetaKeep = find(parHistThetaKeep);
     parHistOmegaKeep=as<uvec>(x["parHistOmegaKeep"]);
     parHistOmegaKeep = find(parHistOmegaKeep);
+    // off-diagonal Omega covariances recorded in the iteration history: 0-indexed
+    // (row, col) pairs into Gamma2_phi1, appended after the diagonal variances
+    parHistOmegaOffPairs = x.containsElementNamed("parHistOmegaOffPairs") ?
+      as<umat>(x["parHistOmegaOffPairs"]) : umat(0, 2);
 
     obs_subject.set_size(ntotal);
     for (int i = 0; i < N; i++) {
@@ -841,7 +1006,9 @@ public:
     // Set up the shared scale.h iteration-print struct (scaleTypeNone; xform
     // sub-list wired via scaleAttachXform, same path as other estimators).
     scaleNames = as<CharacterVector>(x["parHistNames"]);
-    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
+    // Off-diagonal Omega covariances add parHistOmegaOffPairs.n_rows rows;
+    // mixture models add (nMix - 1) mixture-weight rows.
+    int nprint = parHistThetaKeep.n_elem + parHistOmegaKeep.n_elem + parHistOmegaOffPairs.n_rows + resKeep.n_elem + (nMix > 1 ? nMix - 1 : 0);
     scaleInitPar.assign(std::max(nprint, 1), 0.0);
     scaleC.assign(std::max(nprint, 1), NA_REAL);
     scaleSetup(&scale,
@@ -937,7 +1104,17 @@ public:
         }
       }
     }
-    for (unsigned int kiter=0; kiter<(unsigned int)(niter); kiter++) {
+    if (nSaCov > 0) { HaSa = zeros<mat>(nb_param, nb_param); covCount = 0; }
+    for (unsigned int kiter=0; kiter<(unsigned int)(niter + nSaCov); kiter++) {
+      // entering the SA covariance phase: snapshot the converged estimate so it can be
+      // restored afterward (the cov-phase iterations fluctuate the parameters).
+      if (nSaCov > 0 && kiter == (unsigned int)niter) {
+        _savPlambda = Plambda; _savGamma2_phi1 = Gamma2_phi1; _savGamma2_phi0 = Gamma2_phi0;
+        _savGamma2_phi1Report = Gamma2_phi1Report; _savMprior_phi1 = mprior_phi1;
+        _savMprior_phi0 = mprior_phi0; _savAres = ares; _savBres = bres; _savCres = cres;
+        _savLres = lres; _savVcsig2 = vcsig2; _savPhiM = phiM; _savHa = Ha;
+        if (nMix > 1) { _savMixProb = mixProb; _savMixWeights = mixWeights; }
+      }
       gamma2_phi1=Gamma2_phi1.diag();
       IGamma2_phi1=inv_sympd(Gamma2_phi1);
       D1Gamma21=LCOV1*IGamma2_phi1;
@@ -979,6 +1156,7 @@ public:
       for (int b = 0; b < nendpnt; b++) {
         statr[b] = 0.0;
       }
+      arResetMstep();
       double resk = 0.0;
       vec D1 = zeros<vec>(nb_param);
       mat D11 = zeros<mat>(nb_param, nb_param);
@@ -1009,7 +1187,7 @@ public:
           do_mcmc_msaem(3, nu3, mx, mphi0, phiM, U_y, U_phi);
         }
         if (DEBUG > 0) Rcout << "mcmc successful (msaem)\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         // E-step: posterior responsibility gamma_{i,m} (softmax, see mixWeights below) from
         // the one simulated phi, plus per-hypothesis predictions for the residual term below.
@@ -1050,7 +1228,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1164,22 +1342,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, mHyp) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, mHyp);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1257,7 +1420,7 @@ public:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = indio + (arma::uword)k * stride;
-              cur_DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              cur_DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 cur_DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                        cur_DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1376,7 +1539,7 @@ public:
             phiM_weighted.row(row) += mixWeights(i_subj, jMix) * phiM_mix(jMix).row(row);
           }
         }
-        phiFile << phiM_weighted;
+        if (kiter < (unsigned int)niter) phiFile << phiM_weighted;
         for (int k = 0; k < nmc; k++) {
           phi.slice(k) = phiM_weighted.rows(span(k * N, (k + 1) * N - 1));
         }
@@ -1440,22 +1603,7 @@ public:
               } else {
                 y_cur = ys(span(y_offset(b), y_offset(b+1)-1));
               }
-              for (int i = 0; i < y_cur.size(); i++) {
-                int idx_orig = ix_sorting(y_offset(b) + i);
-                int i_subj = obs_subject(idx_orig);
-                double ft = _powerD(f_cur[i], lambda(b), yj(b), low(b), hi(b));
-                double r_ji = y_cur[i] - ft;
-                if (res_mod(b) == rmProp) {
-                  double fa = handleF(propT(b), ft, f_cur[i], true, true);
-                  if (fa <= double_xmin) fa = 1.0;
-                  r_ji /= fa;
-                }
-                double r_ji_sq = r_ji * r_ji;
-                if (r_ji_sq > xmax) r_ji_sq = xmax;
-                else if (r_ji_sq < double_xmin) r_ji_sq = double_xmin;
-
-                resk += mixWeights(i_subj, jMix) * r_ji_sq;
-              }
+              resk += arResk(b, f_cur, y_cur, jMix);
             }
             statr[b] += resk;
             resy(k) = resk;
@@ -1530,7 +1678,7 @@ public:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = indio + (arma::uword)k * stride;
-            DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYF(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                      DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -1573,7 +1721,7 @@ public:
           do_mcmc(3, nu3, mx, mphi0, DYF, phiM, U_y, U_phi, fsave, cens, limit);
         }
         if (DEBUG>0) Rcout << "mcmc successful\n";
-        phiFile << phiM;
+        if (kiter < (unsigned int)niter) phiFile << phiM;
 
         //integration
         for(int k=0; k<nmc; k++) {
@@ -1618,7 +1766,10 @@ public:
               }
             }
 
-            if (res_mod(b) <= rmProp) {
+            if (arActive(b)) {
+              // AR(1): whitened SSR + accumulate residual pairs for arUpdateCor
+              resk = arResk(b, f_cur, y_cur, -1);
+            } else if (res_mod(b) <= rmProp) {
               resk = dot(resid, resid);
               if (resk > xmax) {
                 resk = xmax;
@@ -1884,6 +2035,10 @@ public:
       }
       //CHECK the following seg on b & yptr & fptr
       for(int b=0; b<nendpnt; ++b) {
+        // AR(1): update the correlation from this iteration's residual pairs
+        // (grid-search profile likelihood + stochastic approximation).  statrese
+        // already holds the whitened SSR, so sig2 below is the marginal variance.
+        if (arActive(b)) arUpdateCor(b, kiter, pas);
         double sig2=statrese[b]/(y_offset(b+1)-y_offset(b));       //CHK: range
         int offsetR = res_offset[b];
         _saemFixedIdx[0] = _saemFixedIdx[1] = _saemFixedIdx[2] = _saemFixedIdx[3] = 0;
@@ -2500,9 +2655,29 @@ public:
       //    Fisher information
       DDa=(D1/nmc)*(D1/nmc).t()-D11/nmc-D2/nmc;
       DDb=-D11/nmc-D2/nmc;
+      // d2logk omits the deterministic mu-block complete Hessian (-M'Omega^{-1}M), leaving
+      // DDa's fixed-effect block equal to -Var[score] (indefinite -> solve(Ha) yields NaN
+      // SEs for covMethod="fim").  Add that block (= CGamma2, the mu Fisher information the
+      // M-step forms) so DDa = -E[Hessian] - Var[score] is the true observed information.
+      {
+        unsigned int nl1 = CGamma21.n_rows, nl0 = CGamma20.n_rows;
+        if (nl1 > 0) DDa.submat(0, 0, nl1 - 1, nl1 - 1) += CGamma21;
+        if (nl0 > 0) DDa.submat(nl1, nl1, nl1 + nl0 - 1, nl1 + nl0 - 1) += CGamma20;
+      }
       L=L+pash(kiter)*(D1/nmc-L);
       Ha=Ha+pash(kiter)*(DDa- Ha);
       Hb=Hb+pash(kiter)*(DDb- Hb);
+      // SA covariance phase (covMethod="sa"): theta is frozen (pas==pash==0 above), so the
+      // now-corrected DDa is a Monte-Carlo draw of the observed information at theta_hat.
+      // Monte-Carlo average it (after a short burn-in) into HaSa; the covariance is
+      // solve(HaSa).
+      if (nSaCov > 0 && kiter >= (unsigned int)niter) {
+        unsigned int cc = kiter - (unsigned int)niter;
+        if (cc >= (unsigned int)(0.1 * nSaCov)) {
+          covCount++;
+          HaSa += (DDa - HaSa) / (double)covCount;
+        }
+      }
       cube phi2 = phi%phi;
       mat sphi1 = sum(phi ,2);
       mat sphi2 = sum(phi2,2);
@@ -2584,17 +2759,41 @@ public:
       vec g2 = Gamma2_phi1.diag();
       g2 = g2.elem(parHistOmegaKeep);
       pl = join_cols(pl, g2);
+      if (parHistOmegaOffPairs.n_rows > 0) {                    // off-diagonal Omega covariances
+        vec offv(parHistOmegaOffPairs.n_rows);
+        for (unsigned int p = 0; p < parHistOmegaOffPairs.n_rows; ++p) {
+          offv(p) = Gamma2_phi1(parHistOmegaOffPairs(p, 0), parHistOmegaOffPairs(p, 1));
+        }
+        pl = join_cols(pl, offv);
+      }
       g2 = vcsig2.elem(resKeep);
       pl = join_cols(pl, g2);
       if (nMix > 1) {
         vec mixP = mixProb.head(nMix - 1);
         pl = join_cols(pl, mixP);
       }
-      par_hist.row(kiter) = pl.t();
-      // saem has no per-iteration objective function (scale.showOfv=0, so `f` is ignored here);
-      // scalePrintFun gates printing, checks for user interrupt, and flushes solve warnings.
-      scalePrintFun(&scale, pl.memptr(), NA_REAL);
+      if (kiter < (unsigned int)niter) {
+        par_hist.row(kiter) = pl.t();
+        // saem has no per-iteration objective function; scale.showOfv=0 so the
+        // `f` argument is ignored here.  scalePrintFun gates printing on
+        // (cn % every == 0) and runs the user-interrupt check internally.
+        scalePrintFun(&scale, pl.memptr(), NA_REAL);
+        // One summary line per printed iteration for any ODE-solve warnings
+        // accumulated since the last flush (see inner.cpp foceiOfvOptim).
+        nmFlushRxSolveWarn(5);
+      }
+      // SA covariance phase (kiter >= niter): theta is frozen and HaSa is accumulated
+      // above; nothing is recorded to par_hist and no printing happens.
     }//kiter
+    // restore the converged estimate after the SA covariance phase (the reported fit
+    // must be the converged value, not a cov-phase iterate)
+    if (nSaCov > 0) {
+      Plambda = _savPlambda; Gamma2_phi1 = _savGamma2_phi1; Gamma2_phi0 = _savGamma2_phi0;
+      Gamma2_phi1Report = _savGamma2_phi1Report; mprior_phi1 = _savMprior_phi1;
+      mprior_phi0 = _savMprior_phi0; ares = _savAres; bres = _savBres; cres = _savCres;
+      lres = _savLres; vcsig2 = _savVcsig2; phiM = _savPhiM; Ha = _savHa;
+      if (nMix > 1) { mixProb = _savMixProb; mixWeights = _savMixWeights; }
+    }
     phiFile.close();
   }
 
@@ -2684,6 +2883,15 @@ private:
   mat par_hist;
   uvec parHistThetaKeep;
   uvec parHistOmegaKeep;
+  umat parHistOmegaOffPairs;
+
+  // SA (stochastic-approximation) covariance phase
+  int nSaCov;
+  mat HaSa;                      // converged Louis FIM (nb_param x nb_param) at theta_hat
+  int covCount;                  // averaged cov-phase iterations
+  // saved converged state, restored after the cov phase so the fit is unperturbed
+  vec _savPlambda, _savAres, _savBres, _savCres, _savLres, _savVcsig2, _savMixProb;
+  mat _savGamma2_phi1, _savGamma2_phi0, _savGamma2_phi1Report, _savMprior_phi1, _savMprior_phi0, _savPhiM, _savHa, _savMixWeights;
 
   int distribution;
 
@@ -2725,6 +2933,24 @@ private:
   uvec _scratch_indio;  // DYF row indices per chain (replaces indio_k)
 
   uvec obs_subject;
+
+  // AR(1) autocorrelated residuals (continuous-time; phi = cor^dt).  arActive[b]
+  // flags an endpoint with ar(); arCor[b] is its correlation (stochastic-approx
+  // updated in the M-step).  Per-observation (ORIGINAL order, one chain) arPrev
+  // is the previous same-subject-same-endpoint observation index in time order
+  // (-1 = first of its subject/endpoint) and arDt the time gap to it.
+  vec arCor;
+  uvec arActive;
+  arma::ivec arPrev;
+  vec arDt;
+  int hasAr;
+  // M-step scratch: residual indexed by original obs (_arRorig), and per-endpoint
+  // (r_i, r_prev, dt, weight) pairs + first-obs SSR accumulated over MCMC chains,
+  // used by the AR(1) correlation grid-search M-step (arUpdateCor).
+  vec _arRorig;
+  std::vector<double> arPairR[MAXENDPNT], arPairP[MAXENDPNT], arPairDt[MAXENDPNT], arPairW[MAXENDPNT];
+  double arFirstSSR[MAXENDPNT];
+  int arNobs[MAXENDPNT];
 
   int DEBUG;
   std::vector< std::string > phiMFile;
@@ -2837,7 +3063,7 @@ private:
               _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
               _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
               _scratch_indio = mx.indio + (arma::uword)k * stride;
-              DYF(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+              DYF(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
               for (int j = ntotal; j--;) {
                 DYF(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                        DYF(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -2936,7 +3162,7 @@ private:
             _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
             _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
             _scratch_indio = mx.indio + (arma::uword)k * stride;
-            DYFm(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+            DYFm(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
             for (int j = ntotal; j--;) {
               DYFm(_scratch_indio(j)) = doCensNormal1(censk[j], mx.y[j], _scratch_limitT[j],
                                                      DYFm(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -3038,7 +3264,7 @@ private:
           _scratch_g.elem(find(_scratch_g < double_xmin)).fill(double_xmin);
           _scratch_g.elem(find(_scratch_g > xmax)).fill(xmax);
           _scratch_indio = indio + (arma::uword)k * stride;
-          DYFhyp(_scratch_indio) = 0.5*(((yt - _scratch_ft)/_scratch_g) % ((yt - _scratch_ft)/_scratch_g)) + log(_scratch_g);
+          DYFhyp(_scratch_indio) = arDYFhyp(yt, _scratch_ft, _scratch_g);
           for (int j = ntotal; j--;) {
             DYFhyp(_scratch_indio(j)) = doCensNormal1(censk[j], y[j], _scratch_limitT[j],
                                                    DYFhyp(_scratch_indio(j)), _scratch_ft[j], _scratch_g[j], 0);
@@ -3372,6 +3598,7 @@ SEXP saem_fit(SEXP xSEXP) {
   }
   List out = List::create(
     Named("resMat") = saem.get_resMat(),
+    Named("arCor") = saem.get_arCor(),
     Named("transMat") = saem.get_trans(),
     Named("mprior_phi") = saem.get_mprior_phi(),
     Named("mpost_phi") = saem.get_mpost_phi(),
@@ -3382,6 +3609,7 @@ SEXP saem_fit(SEXP xSEXP) {
     Named("sig2") = saem.get_sig2(),
     Named("eta") = saem.get_eta(),
     Named("par_hist") = saem.get_par_hist(),
+    Named("HaSa") = saem.get_HaSa(),
     Named("res_info") = saem.get_resInfo(),
     Named("tolFactor") = _saemTf,
     Named("mixProb") = wrap(saem.get_mixProb()),
