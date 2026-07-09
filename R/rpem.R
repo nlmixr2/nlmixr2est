@@ -73,13 +73,36 @@
     mu <- .ms$mu; omega <- .ms$omega; addSd <- .ms$addSd
     muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega); sdTr[.it] <- addSd; llTr[.it] <- .est$lnL
   }
-  rpemFree()
 
+  # Final estimate = mean over the converged iterations.
   .k <- min(control$collect, niter)
   .w <- (niter - .k + 1L):niter
-  list(mu = stats::setNames(colMeans(muTr[.w, , drop = FALSE]), .cl$muNames),
-       omega = stats::setNames(colMeans(omTr[.w, , drop = FALSE]), .cl$etaNames),
-       addSd = mean(sdTr[.w]),
+  muHat <- colMeans(muTr[.w, , drop = FALSE])
+  omHat <- colMeans(omTr[.w, , drop = FALSE])
+  sdHat <- mean(sdTr[.w])
+
+  # One final E-step at the converged estimates to compute per-subject EBEs
+  # (posterior-mean etas, Eq 53): EBE_i = sum_j eta_ij * w_ij with the
+  # self-normalized importance weights w_ij = softmax_j(log p_ij).
+  base[.cl$muIdx + 1L] <- muHat
+  base[.cl$addSdIdx + 1L] <- sdHat
+  omegaHat <- diag(omHat, .cl$nEta)
+  rxode2::rxSetSeed(control$seed)
+  .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omegaHat, control$nGauss, control$cores)
+  rpemFree()
+  .nG <- control$nGauss
+  .nsub <- length(.fe$logp) / .nG
+  .etaM <- matrix(.fe$eta, ncol = .cl$nEta)
+  ebe <- matrix(0, .nsub, .cl$nEta, dimnames = list(NULL, .cl$etaNames))
+  for (.i in seq_len(.nsub)) {
+    .idx <- ((.i - 1L) * .nG + 1L):(.i * .nG)
+    .lw <- .fe$logp[.idx]; .wt <- exp(.lw - max(.lw)); .wt <- .wt / sum(.wt)
+    ebe[.i, ] <- colSums(.etaM[.idx, , drop = FALSE] * .wt)
+  }
+
+  list(mu = stats::setNames(muHat, .cl$muNames),
+       omega = stats::setNames(omHat, .cl$etaNames),
+       addSd = sdHat, ebe = ebe,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
        classify = .cl)
 }

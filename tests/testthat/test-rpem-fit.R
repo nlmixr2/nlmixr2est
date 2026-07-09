@@ -39,4 +39,9 @@ test_that(".rpemFit recovers FOCEI mu/Omega/add.sd via the packaged loop (K=1)",
   expect_equal(unname(rfit$mu["tka"]), fTka, tolerance = 0.04)
   expect_equal(unname(rfit$omega["eta.ka"]), fOm, tolerance = 0.10)
   expect_equal(rfit$addSd, fSd, tolerance = 0.10)
+
+  # Per-subject EBEs (posterior-mean etas) should track the true simulated etas
+  # (correlation is shift-invariant, so it holds despite the mu offset).
+  expect_equal(nrow(rfit$ebe), nsub)
+  expect_gt(stats::cor(rfit$ebe[, 1], etasTrue), 0.8)
 })

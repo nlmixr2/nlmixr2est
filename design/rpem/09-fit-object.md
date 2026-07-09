@@ -40,6 +40,29 @@ predictions, and residuals -- indistinguishable in shape from a SAEM/FOCEI fit.
   the population model + parameter uncertainty; the paper's VPC (Eq VPC / Fig 4)
   is then just `vpcResultsUI`-compatible output.
 
+## Concrete integration plan (mirror SAEM's finalize)
+
+RPEM has random effects, so the full `nlmixr2FitData` is assembled the SAEM way,
+not the nlm way: estimate the population parameters, set them on the UI, then run
+FOCEI in eval-only mode to compute EBEs/residuals/tables at those fixed values.
+
+Steps (see `R/saem.R` `nlmixr2Est.saem` lines ~1085-1122 as the template):
+1. `.rpemFit` already returns `mu`/`omega`/`add.sd` and per-subject EBEs
+   (`$ebe`, posterior-mean etas via Eq 53 -- DONE).
+2. Build `env$fullTheta` (full theta vector in UI order: RPEM `mu` for the
+   mu-referenced thetas, `add.sd`, and the held-fixed structural thetas at ini),
+   `env$omega` (etaNames x etaNames from `omega`), `env$.etaMat`/`.etaMatBase`
+   (the N-row EBE matrix), and `env$etaObf` (ID + eta cols + OBJI). Mirror
+   `.getSaemTheta`/`.getSaemOmega`.
+3. `.nlmixr2FitUpdateParams(env)` to push estimates into `ui$iniDf`.
+4. `rpemControlToFoceiControl`: `foceiControl(maxOuterIterations=0,
+   maxInnerIterations=0, covMethod=0, etaMat=<EBEs>, calcTables=..., est="rpem")`
+   so FOCEI only evaluates at the RPEM estimates + supplied EBEs.
+5. `nlmixr2CreateOutputFromUi(ui, data, control, table, env, est="rpem")`.
+This yields CWRES/NPDE/IPRED/tables for free via the FOCEI eval path. `est="rpem"`
+currently returns the lightweight estimates object; switching to this path is the
+remaining fit-object task (keep the lightweight object as a fallback on error).
+
 ## Store kept for post-fit
 
 The converged-sample store (theta samples, per-sample likelihoods, labels) from
