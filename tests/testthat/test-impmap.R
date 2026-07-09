@@ -94,3 +94,69 @@ test_that("M1: impmap MAP pass reproduces FOCEI posthoc EBEs", {
   expect_equal(.H1, t(.H1), tolerance = 1e-6)
   expect_true(all(eigen(.H1, symmetric = TRUE, only.values = TRUE)$values > 0))
 })
+
+test_that("M2: threefry proposal sampler matches N(mode, gamma*H^-1)", {
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .dat <- nlmixr2data::theo_sd
+  .nsub <- length(unique(.dat$ID))
+  .gamma <- 1.5
+  rxode2::rxSetSeed(42)
+  .f <- suppressWarnings(
+    nlmixr2(one.cmt, .dat, "impmap",
+            impmapControl(print = 0L, isample = 4000L, gamma = .gamma)))
+  .e <- .f$env
+  expect_identical(.e$impNsample, 4000L)
+  expect_equal(.e$impGammaUsed, .gamma)
+  .S <- .e$impSamples
+  expect_true(is.list(.S) && length(.S) == .nsub)
+  expect_true(all(dim(.S[[1]]) == c(4000L, 2L)))
+  # subject 1: empirical mean ~ mode, empirical cov ~ gamma * H^-1
+  .m1 <- as.numeric(.e$impEtaMode[1, ])
+  expect_equal(colMeans(.S[[1]]), .m1, tolerance = 0.03)
+  .covTarget <- .gamma * solve(.e$impEtaHess[[1]])
+  expect_equal(unname(cov(.S[[1]])), unname(.covTarget), tolerance = 0.02)
+})
+
+test_that("M2: sampler is thread-count independent (D6)", {
+  one.cmt <- function() {
+    ini({
+      tka <- 0.45; tcl <- 1; tv <- 3.45
+      eta.ka ~ 0.6; eta.cl ~ 0.3
+      add.sd <- 0.7
+    })
+    model({
+      ka <- exp(tka + eta.ka)
+      cl <- exp(tcl + eta.cl)
+      v <- exp(tv)
+      linCmt() ~ add(add.sd)
+    })
+  }
+  .dat <- nlmixr2data::theo_sd
+  .thr0 <- rxode2::getRxThreads()
+  on.exit(rxode2::setRxThreads(.thr0), add = TRUE)
+  .run <- function(nthr) {
+    rxode2::setRxThreads(nthr)
+    rxode2::rxSetSeed(42)
+    suppressWarnings(
+      nlmixr2(one.cmt, .dat, "impmap",
+              impmapControl(print = 0L, isample = 100L)))$env$impSamples
+  }
+  .s1 <- .run(1L)
+  .s4 <- .run(4L)
+  # same base seed + per-subject reseed => bit-identical regardless of thread count
+  for (.i in seq_along(.s1)) {
+    expect_identical(.s1[[.i]], .s4[[.i]])
+  }
+})

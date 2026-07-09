@@ -430,6 +430,8 @@ struct focei_options {
   bool isSaem = false;
   bool isNlm = false;   // nlm-family outer optimizer (censOption is inert: FD outer Hessian)
   bool isImpmap = false; // importance-sampling EM (est="impmap"); outer runs impOuter
+  int impIsample = 300;  // importance samples per subject per iteration (ISAMPLE)
+  double impGamma = 1.0; // proposal-variance inflation (ISCALE): cov = gamma * H^-1
 };
 
 focei_options op_focei;
@@ -4645,6 +4647,10 @@ NumericVector foceiSetup_(const RObject &obj,
     op_focei.isNlm = false;
     op_focei.isImpmap = false;
   }
+  if (op_focei.isImpmap) {
+    if (foceiO.containsElementNamed("isample")) op_focei.impIsample = as<int>(foceiO["isample"]);
+    if (foceiO.containsElementNamed("gamma")) op_focei.impGamma = as<double>(foceiO["gamma"]);
+  }
 
   op_focei.zeroGrad = false;
   op_focei.resetThetaCheckPer = as<double>(foceiO["resetThetaCheckPer"]);
@@ -8177,6 +8183,19 @@ int impNsub() {
 
 int impNeta() {
   return op_focei.neta;
+}
+
+int impNsample() {
+  return op_focei.impIsample;
+}
+
+double impGammaProp() {
+  return op_focei.impGamma;
+}
+
+int impCores() {
+  rx = getRxSolve_();
+  return getOpCores(getSolvingOptions(rx));
 }
 
 void impMapPass(Environment e) {

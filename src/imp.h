@@ -12,6 +12,13 @@
 int impNsub();
 int impNeta();
 
+// Importance-sampling controls carried on op_focei (set in foceiSetup_ from the
+// impmap control): samples per subject, proposal-variance inflation gamma, and
+// the solve's OpenMP core count.
+int impNsample();
+double impGammaProp();
+int impCores();
+
 // Run a single MAP pass over all subjects at the initial parameters (reuses the
 // FOCEI posthoc path, foceiOuterFinal) and populate the fit environment `e`.
 void impMapPass(Rcpp::Environment e);
