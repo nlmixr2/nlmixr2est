@@ -318,6 +318,14 @@ rpemMstepK1Comb <- function(design, coefs, addSd0, propSd0, nTrials, burn) {
     .Call(`_nlmixr2est_rpemMstepK1Comb`, design, coefs, addSd0, propSd0, nTrials, burn)
 }
 
+rpemMstepK1TBS <- function(design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1TBS`, design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn)
+}
+
+rpemMstepK1Pow <- function(design, coefs, propSd0, power0, nTrials, burn) {
+    .Call(`_nlmixr2est_rpemMstepK1Pow`, design, coefs, propSd0, power0, nTrials, burn)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

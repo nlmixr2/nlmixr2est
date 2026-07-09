@@ -1038,6 +1038,41 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemMstepK1TBS
+List rpemMstepK1TBS(NumericMatrix design, NumericVector coefs, double addSd0, double lambda0, int yj, double low, double high, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1TBS(SEXP designSEXP, SEXP coefsSEXP, SEXP addSd0SEXP, SEXP lambda0SEXP, SEXP yjSEXP, SEXP lowSEXP, SEXP highSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type coefs(coefsSEXP);
+    Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
+    Rcpp::traits::input_parameter< double >::type lambda0(lambda0SEXP);
+    Rcpp::traits::input_parameter< int >::type yj(yjSEXP);
+    Rcpp::traits::input_parameter< double >::type low(lowSEXP);
+    Rcpp::traits::input_parameter< double >::type high(highSEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1TBS(design, coefs, addSd0, lambda0, yj, low, high, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
+// rpemMstepK1Pow
+List rpemMstepK1Pow(NumericMatrix design, NumericVector coefs, double propSd0, double power0, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1Pow(SEXP designSEXP, SEXP coefsSEXP, SEXP propSd0SEXP, SEXP power0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericMatrix >::type design(designSEXP);
+    Rcpp::traits::input_parameter< NumericVector >::type coefs(coefsSEXP);
+    Rcpp::traits::input_parameter< double >::type propSd0(propSd0SEXP);
+    Rcpp::traits::input_parameter< double >::type power0(power0SEXP);
+    Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
+    Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1Pow(design, coefs, propSd0, power0, nTrials, burn));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

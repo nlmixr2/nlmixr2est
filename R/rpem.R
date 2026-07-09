@@ -12,6 +12,27 @@
 #' @param ui rxode2 UI object.
 #' @return list with the engine inputs (see body).
 #' @noRd
+#' Extract the TBS transform code (yj) and bounds (low/hi) from the RPEM model.
+#'
+#' The generated `rpemModel0` sets `rx_yj_ ~ <code>`, `rx_low_ ~ <lo>`,
+#' `rx_hi_ ~ <hi>` -- the same yj0 code the model's rxTBS uses, so passing it to
+#' C++ `_powerD`/`_powerDD` reproduces the model transform exactly.
+#' @noRd
+.rpemExtractTBS <- function(ui) {
+  .m <- ui$rpemModel0
+  .stmts <- as.list(.m[[2]])
+  .grab <- function(nm) {
+    for (.s in .stmts) {
+      if (is.call(.s) && identical(.s[[1]], as.name("~")) &&
+          is.name(.s[[2]]) && as.character(.s[[2]]) == nm && is.numeric(.s[[3]])) {
+        return(as.numeric(.s[[3]]))
+      }
+    }
+    NA_real_
+  }
+  list(yj = as.integer(.grab("rx_yj_")), low = .grab("rx_low_"), hi = .grab("rx_hi_"))
+}
+
 .rpemClassify <- function(ui) {
   .ini <- ui$iniDf
   .thetas <- .ini[!is.na(.ini$ntheta), , drop = FALSE]
@@ -48,9 +69,38 @@
     addSdIdx <- as.integer(match(.addRow$name, .thetas$name) - 1L)
     propSdIdx <- as.integer(match(.propRow$name, .thetas$name) - 1L)
     addSd0 <- .addRow$est; propSd0 <- .propRow$est
+  } else if (any(.res$err %in% c("boxCox", "yeoJohnson"))) {
+    # transform-both-sides: additive residual on the transformed scale + a
+    # dynamic (estimated) Box-Cox / Yeo-Johnson lambda (errType 3).
+    .lamRow <- .res[.res$err %in% c("boxCox", "yeoJohnson"), , drop = FALSE]
+    .sclRow <- .res[!(.res$err %in% c("boxCox", "yeoJohnson")), , drop = FALSE]
+    if (nrow(.lamRow) != 1L || nrow(.sclRow) != 1L || .sclRow$err[1] != "add")
+      stop("RPEM TBS currently supports a single additive residual with a boxCox/yeoJohnson transform")
+    errType <- 3L; errName <- paste0("add+", .lamRow$err[1])
+    addSdIdx <- as.integer(match(.sclRow$name, .thetas$name) - 1L)
+    addSd0 <- .sclRow$est
+    propSdIdx <- NA_integer_; propSd0 <- NA_real_
+    lambdaIdx <- as.integer(match(.lamRow$name, .thetas$name) - 1L)
+    lambda0 <- .lamRow$est
+    .tbs <- .rpemExtractTBS(ui)
+  } else if (any(.res$err %in% c("pow", "pow2"))) {
+    # power error: variance (prop.sd * cp^power)^2, both estimated (errType 4).
+    .sclRow <- .res[.res$err == "pow", , drop = FALSE]
+    .powRow <- .res[.res$err == "pow2", , drop = FALSE]
+    if (nrow(.sclRow) != 1L || nrow(.powRow) != 1L)
+      stop("RPEM power error currently supports a single pow(scale, exponent) term")
+    errType <- 4L; errName <- "pow"
+    addSdIdx <- as.integer(match(.sclRow$name, .thetas$name) - 1L)  # holds the scale (prop.sd)
+    addSd0 <- .sclRow$est
+    powIdx <- as.integer(match(.powRow$name, .thetas$name) - 1L)
+    pow0 <- .powRow$est
+    propSdIdx <- NA_integer_; propSd0 <- NA_real_
   } else {
-    stop("RPEM currently supports additive, proportional, or combined (add + prop) residual error")
+    stop("RPEM currently supports additive, proportional, combined (add + prop), TBS (add + boxCox/yeoJohnson), or power residual error")
   }
+  if (errType != 3L) { lambdaIdx <- NA_integer_; lambda0 <- NA_real_
+    .tbs <- list(yj = NA_integer_, low = NA_real_, hi = NA_real_) }
+  if (errType != 4L) { powIdx <- NA_integer_; pow0 <- NA_real_ }
   # mu2 covariates on the mu-referenced (eta) params (D22): the covariate
   # coefficients are estimated via the regression M-step, not held.
   .covDf <- ui$muRefCovariateDataFrame
@@ -66,6 +116,9 @@
        muIdx = muIdx, mu0 = .thetas$est[muIdx + 1L],
        addSdIdx = addSdIdx, addSd0 = addSd0, errType = errType,
        propSdIdx = propSdIdx, propSd0 = propSd0, errName = errName,
+       lambdaIdx = lambdaIdx, lambda0 = lambda0,
+       tbsYj = .tbs$yj, tbsLow = .tbs$low, tbsHi = .tbs$hi,
+       powIdx = powIdx, pow0 = pow0,
        covCoefNames = covCoefNames, covNames = covNames, covCoefIdx = covCoefIdx,
        covCoef0 = if (length(covCoefIdx)) .thetas$est[covCoefIdx + 1L] else numeric(0),
        thetaNames = .thetas$name, etaNames = .etas$name, muNames = .muName)
@@ -108,12 +161,17 @@
   }
 
   .comb <- (.cl$errType == 2L)
+  .tbs <- (.cl$errType == 3L)
+  .pow <- (.cl$errType == 4L)
   base <- .cl$base; mu <- .cl$mu0; omega <- .cl$omega0
   addSd <- .cl$addSd0; propSd <- if (.comb) .cl$propSd0 else NA_real_
+  lambda <- if (.tbs) .cl$lambda0 else NA_real_
+  power <- if (.pow) .cl$pow0 else NA_real_
   niter <- control$niter
   coefTr <- if (.useReg) matrix(0, niter, ncol(.design)) else NULL
   muTr <- matrix(0, niter, .cl$nEta); omTr <- matrix(0, niter, .cl$nEta)
-  sdTr <- numeric(niter); propTr <- numeric(niter); llTr <- numeric(niter)
+  sdTr <- numeric(niter); propTr <- numeric(niter); lamTr <- numeric(niter)
+  powTr <- numeric(niter); llTr <- numeric(niter)
   for (.it in seq_len(niter)) {
     if (.useReg) {
       base[.cl$muIdx + 1L] <- coefs[1]
@@ -123,12 +181,25 @@
     }
     base[.cl$addSdIdx + 1L] <- addSd
     if (.comb) base[.cl$propSdIdx + 1L] <- propSd
+    if (.tbs) base[.cl$lambdaIdx + 1L] <- lambda
+    if (.pow) base[.cl$powIdx + 1L] <- power
     rxode2::rxSetSeed(control$seed + .it)
     .est <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omega, control$nGauss, control$cores)
     if (.comb) {
       .ms <- rpemMstepK1Comb(.design, coefs, addSd, propSd, control$nMH, control$mhBurn)
       coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
       addSd <- .ms$addSd; propSd <- .ms$propSd
+      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
+    } else if (.tbs) {
+      .ms <- rpemMstepK1TBS(.design, coefs, addSd, lambda, .cl$tbsYj,
+                            .cl$tbsLow, .cl$tbsHi, control$nMH, control$mhBurn)
+      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
+      addSd <- .ms$addSd; lambda <- .ms$lambda
+      coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
+    } else if (.pow) {
+      .ms <- rpemMstepK1Pow(.design, coefs, addSd, power, control$nMH, control$mhBurn)
+      coefs <- .ms$coefs; omega <- matrix(.ms$omega, 1, 1)
+      addSd <- .ms$propSd; power <- .ms$power
       coefTr[.it, ] <- coefs; muTr[.it, ] <- coefs[1]; omTr[.it, ] <- .ms$omega
     } else if (.useReg) {
       .ms <- rpemMstepK1Reg(.design, coefs, .cl$errType, control$nMH, control$mhBurn)
@@ -140,6 +211,8 @@
       muTr[.it, ] <- mu; omTr[.it, ] <- diag(omega)
     }
     sdTr[.it] <- addSd; propTr[.it] <- if (.comb) propSd else NA_real_
+    lamTr[.it] <- if (.tbs) lambda else NA_real_
+    powTr[.it] <- if (.pow) power else NA_real_
     llTr[.it] <- .est$lnL
   }
 
@@ -150,6 +223,8 @@
   omHat <- colMeans(omTr[.w, , drop = FALSE])
   sdHat <- mean(sdTr[.w])
   propHat <- if (.comb) mean(propTr[.w]) else NA_real_
+  lambdaHat <- if (.tbs) mean(lamTr[.w]) else NA_real_
+  powerHat <- if (.pow) mean(powTr[.w]) else NA_real_
   covCoefHat <- if (.useReg && length(.cl$covCoefIdx))
                   colMeans(coefTr[.w, -1, drop = FALSE]) else numeric(0)
 
@@ -160,6 +235,8 @@
   if (length(covCoefHat)) base[.cl$covCoefIdx + 1L] <- covCoefHat
   base[.cl$addSdIdx + 1L] <- sdHat
   if (.comb) base[.cl$propSdIdx + 1L] <- propHat
+  if (.tbs) base[.cl$lambdaIdx + 1L] <- lambdaHat
+  if (.pow) base[.cl$powIdx + 1L] <- powerHat
   omegaHat <- diag(omHat, .cl$nEta)
   rxode2::rxSetSeed(control$seed)
   .fe <- rpemEstepK1Draw(.e, base, .cl$etaIdx, omegaHat, control$nGauss, control$cores)
@@ -176,7 +253,7 @@
 
   list(mu = stats::setNames(muHat, .cl$muNames),
        omega = stats::setNames(omHat, .cl$etaNames),
-       addSd = sdHat, propSd = propHat,
+       addSd = sdHat, propSd = propHat, lambda = lambdaHat, power = powerHat,
        covCoef = stats::setNames(covCoefHat, .cl$covCoefNames),
        ebe = ebe,
        lnL = llTr, muTrace = muTr, omegaTrace = omTr, sdTrace = sdTr,
@@ -217,6 +294,8 @@ getValidNlmixrCtl.rpem <- function(control) {
   # FOCEI-covariance SEs.  They get a proper numeric M-step update later (D20).
   .resNames <- .cl$thetaNames[.cl$addSdIdx + 1L]
   if (.cl$errType == 2L) .resNames <- c(.resNames, .cl$thetaNames[.cl$propSdIdx + 1L])
+  if (.cl$errType == 3L) .resNames <- c(.resNames, .cl$thetaNames[.cl$lambdaIdx + 1L])
+  if (.cl$errType == 4L) .resNames <- c(.resNames, .cl$thetaNames[.cl$powIdx + 1L])
   .heldNames <- setdiff(.cl$thetaNames,
                         c(.cl$muNames, .resNames, .cl$covCoefNames))
   if (length(.heldNames) > 0L) {
@@ -234,6 +313,9 @@ getValidNlmixrCtl.rpem <- function(control) {
   .ft[.cl$muNames] <- rfit$mu
   .ft[.tn[.cl$addSdIdx + 1L]] <- rfit$addSd
   if (.cl$errType == 2L) .ft[.tn[.cl$propSdIdx + 1L]] <- rfit$propSd
+  if (.cl$errType == 3L) .ft[.tn[.cl$lambdaIdx + 1L]] <- rfit$lambda
+  # power: exponent set here; the scale (prop.sd) is set via the addSd slot above.
+  if (.cl$errType == 4L) .ft[.tn[.cl$powIdx + 1L]] <- rfit$power
   if (length(rfit$covCoef)) .ft[.cl$covCoefNames] <- rfit$covCoef
   .ret$fullTheta <- .ft
   # omega (diagonal) named over etas
