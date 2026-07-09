@@ -74,4 +74,9 @@ Template on `nlmModel0` and `foceiModel0ll`:
 - OI-2: Confirm residual-only re-scoring can truly skip the ODE by caching
   `rx_pred_f_` per sample; if not, the numeric M-step costs one extra
   llik pass (still cheap vs the E-step). Benchmark.
-- OI-3: Sign/scale of the emitted log-likelihood; align with `09`/`10`.
+- OI-3: RESOLVED -- the generated model emits `rx_pred_` as the **negative**
+  observation log-likelihood (`llikNorm(...)` then `rx_pred_ <- -rx_pred_`,
+  matching nlm), and `rx_pred_f_` as the structural prediction. So the E-step
+  uses `log p(Y_i | theta_i) = -sum(rx_pred_)`, and residual-only re-scoring
+  reuses cached `rx_pred_f_`. Confirmed by the `rpemModel0` smoke test on a
+  1-cmt add-error model.
