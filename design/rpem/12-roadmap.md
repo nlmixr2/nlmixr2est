@@ -6,15 +6,18 @@ own acceptance gate. Milestones bias toward small, compartmentalized PRs.
 
 ## M1 -- Breadth-first likelihood core (first mergeable increment)
 
-Progress (as of 2026-07-09): the C++ numerical core is built and validated.
+Progress (as of 2026-07-09): the K=1 core is built, validated, and callable.
 DONE: likelihood model (C1.x); E-step (threefry rxRmvn draw -> in-process solve
 -> log p -> n_i/lnL via log-sum-exp, with sample storage); M-step conjugate
-mu/Omega via joint Metropolis-Hastings (verified vs importance-sampling
-reference); end-to-end E-M loop (currently R-driven) matching a FOCEI fit on
-well-identified data to |dmu|~0.003, |dOmega|~0.017 with lnL climbing (Bar 2, K=1,
-fixed effects held). REMAINING: numeric fixed-effect M-step update; C++ iteration
-loop; OpenMP via par_solve (task #7); R scaffold (rpemControl/dispatch/param
-classification); fit object; SEs.
+mu/Omega via joint Metropolis-Hastings + additive residual (Eq 17); R scaffold
+(rpemControl, parameter classifier .rpemClassify, .rpemFit E-M loop); and the
+`est="rpem"` dispatch (nlmixr2Est.rpem). `nlmixr2(model, data, est="rpem")` runs
+end-to-end and, on well-identified data, matches a FOCEI fit on mu, Omega AND
+add.sd. Six RPEM test files pass on top of origin/main.
+REMAINING: full nlmixr2FitData (residuals/tables/SEs); numeric fixed-effect
+update for non-additive residuals + non-mu-ref structural params; move the
+iteration loop into C++; OpenMP via par_solve (task #7); then M2+ (mixtures, IOV,
+censoring, multi-endpoint).
 
 Scope (in build order):
 - **First task DONE**: the dedicated RPEM likelihood model
