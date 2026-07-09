@@ -34,6 +34,11 @@ struct rpemOptions {
   int nsub = 0;
   bool loaded = false;
   std::vector<int> buf;      // backing store for nobs/idS/idF
+  // E-step sample store (populated by rpemEstepK1Draw) for M-step reuse
+  int nGauss = 0;
+  int nEta = 0;
+  std::vector<double> logp;  // [nsub*nGauss] log p(Y_i | theta_ij)
+  std::vector<double> etaS;  // [nsub*nGauss*nEta] drawn etas
 };
 
 rpemOptions rpemOp;
@@ -175,4 +180,72 @@ List rpemEstepK1(NumericMatrix parBig, int nGauss) {
     lnL += logni;
   }
   return List::create(_["logn"] = logn, _["lnL"] = lnL);
+}
+
+// K=1 E-step with in-C++ eta sampling via rxode2's thread-safe threefry RNG
+// (design/rpem/06, D18). All etas are drawn UP FRONT with the registered
+// _rxode2_rxRmvnSEXP_ so no RNG runs inside the (future) parallel solve loop.
+//   base:   length-ntheta template param row (ETA slots overwritten per draw)
+//   etaIdx: 0-based positions of the ETA params in the row
+//   omega:  nEta x nEta between-subject covariance (not Cholesky)
+// Draws nGauss etas per subject ~ N(0, omega), solves, accumulates n_i via
+// log-sum-exp, stores per-sample log p and etas for the M-step, and returns
+// logn, lnL, and the drawn etas.
+//[[Rcpp::export]]
+List rpemEstepK1Draw(NumericVector base, IntegerVector etaIdx, NumericMatrix omega,
+                     int nGauss, int ncores) {
+  if (!rpemOp.loaded) stop("'rpem' problem not loaded");
+  if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
+  int nsub = rpemOp.nsub;
+  int nEta = etaIdx.size();
+  if (omega.nrow() != nEta || omega.ncol() != nEta) stop("omega must be nEta x nEta");
+  if ((unsigned int)base.size() != rpemOp.ntheta) stop("base must have ntheta entries");
+  int nAll = nsub * nGauss;
+
+  // Threefry multivariate-normal draws (thread-safe), untruncated (+/-Inf bounds).
+  NumericVector mu(nEta);                       // zeros
+  NumericVector lower(nEta, R_NegInf), upper(nEta, R_PosInf);
+  SEXP draw = _rxode2_rxRmvnSEXP_(wrap(IntegerVector::create(nAll)),
+                                  wrap(mu), wrap(omega), wrap(lower), wrap(upper),
+                                  wrap(IntegerVector::create(ncores)),
+                                  wrap(LogicalVector::create(false)),  // isChol
+                                  wrap(LogicalVector::create(false)),  // keepNames
+                                  wrap(NumericVector::create(0.4)),
+                                  wrap(NumericVector::create(2.05)),
+                                  wrap(NumericVector::create(1e-10)),
+                                  wrap(IntegerVector::create(100)));
+  NumericMatrix etaAll(draw);                   // nAll x nEta
+
+  rpemOp.nGauss = nGauss;
+  rpemOp.nEta = nEta;
+  rpemOp.logp.assign((size_t)nAll, 0.0);
+  rpemOp.etaS.assign((size_t)nAll * nEta, 0.0);
+
+  NumericVector logn(nsub);
+  NumericMatrix etaOut(nAll, nEta);
+  std::vector<double> row(rpemOp.ntheta), lp(nGauss);
+  double lnL = 0.0;
+  for (int id = 0; id < nsub; ++id) {
+    double mx = R_NegInf;
+    for (int j = 0; j < nGauss; ++j) {
+      int r = id * nGauss + j;
+      for (unsigned int i = 0; i < rpemOp.ntheta; ++i) row[i] = base[i];
+      for (int a = 0; a < nEta; ++a) {
+        double ev = etaAll(r, a);
+        row[etaIdx[a]] = ev;
+        etaOut(r, a) = ev;
+        rpemOp.etaS[(size_t)r * nEta + a] = ev;
+      }
+      double logp = -rpemSolveSubject(row.data(), id);
+      lp[j] = logp;
+      rpemOp.logp[r] = logp;
+      if (logp > mx) mx = logp;
+    }
+    double s = 0.0;
+    for (int j = 0; j < nGauss; ++j) s += exp(lp[j] - mx);
+    double logni = mx + log(s) - log((double)nGauss);
+    logn[id] = logni;
+    lnL += logni;
+  }
+  return List::create(_["logn"] = logn, _["lnL"] = lnL, _["eta"] = etaOut);
 }

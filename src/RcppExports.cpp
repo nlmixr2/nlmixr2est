@@ -661,6 +661,21 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// rpemEstepK1Draw
+List rpemEstepK1Draw(NumericVector base, IntegerVector etaIdx, NumericMatrix omega, int nGauss, int ncores);
+RcppExport SEXP _nlmixr2est_rpemEstepK1Draw(SEXP baseSEXP, SEXP etaIdxSEXP, SEXP omegaSEXP, SEXP nGaussSEXP, SEXP ncoresSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< NumericVector >::type base(baseSEXP);
+    Rcpp::traits::input_parameter< IntegerVector >::type etaIdx(etaIdxSEXP);
+    Rcpp::traits::input_parameter< NumericMatrix >::type omega(omegaSEXP);
+    Rcpp::traits::input_parameter< int >::type nGauss(nGaussSEXP);
+    Rcpp::traits::input_parameter< int >::type ncores(ncoresSEXP);
+    rcpp_result_gen = Rcpp::wrap(rpemEstepK1Draw(base, etaIdx, omega, nGauss, ncores));
+    return rcpp_result_gen;
+END_RCPP
+}
 // rxode2stateOde
 SEXP rxode2stateOde(SEXP inp);
 RcppExport SEXP _nlmixr2est_rxode2stateOde(SEXP inpSEXP) {

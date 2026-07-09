@@ -30,15 +30,26 @@ Makevars) -- do not nest Armadillo/Eigen threading inside RPEM's OpenMP regions.
 
 ## RNG and determinism (A2)
 
-- Use rxode2's thread-safe parallel RNG (threefry-style) seeded from a
-  `seed`/`sim` control, so results are reproducible for a fixed thread count.
-- Each (thread, iteration, subject, component, sample) must map to a
-  deterministic RNG substream so the same seed gives the same draws regardless
-  of scheduling. This is the standard rxode2 pattern -- reuse it, do not roll a
-  new generator.
-- Document that bitwise reproducibility holds for a fixed number of threads;
-  across thread counts, expect statistically-equivalent but not identical draws
-  (same policy rxode2 already documents).
+- Use rxode2's thread-safe **threefry** RNG. NEVER use R's RNG
+  (`norm_rand`/`unif_rand`/`GetRNGstate`) in the engine -- it is not thread-safe
+  and would corrupt state under the OpenMP solve loop.
+- **E-step draws (implemented):** draw all etas for the iteration UP FRONT via
+  the already-registered `_rxode2_rxRmvnSEXP_` (threefry, thread-safe, used in
+  `censResid.h`), then let the parallel solve loop read pre-drawn etas. Result:
+  no RNG call inside any OpenMP region -- thread-safe by construction, and
+  CRAN-compliant because rxRmvn is exported through the `rxode2ptr.h`
+  function-pointer struct.
+- **M-step scalar RNG (pending export):** the MH chain needs scalar uniform/
+  normal draws (`rxunif`/`rxnorm`/`rinorm`) that are NOT in the `rxode2ptr.h`
+  struct. Per CRAN policy we cannot link rxode2's C symbols directly; these must
+  be exported through the registered function-pointer struct. This requires an
+  rxode2 change (separate rxode2 worktree) that registers `rxnorm`/`rinorm`/
+  `rxunif`/`riunif` (and `_setThreadInd`) and adds them to `rxode2ptr.h`. Use the
+  `id`-indexed variants (`rinorm(id, ...)`) so each subject/chain has a
+  deterministic substream reproducible regardless of thread count.
+- Seed from a `seed`/`sim` control via rxode2's seed mechanism. Bitwise
+  reproducibility holds for a fixed thread count; across thread counts, expect
+  statistically-equivalent draws (rxode2's documented policy).
 
 ## Thread count
 

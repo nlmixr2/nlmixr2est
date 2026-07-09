@@ -262,6 +262,10 @@ rpemEstepK1 <- function(parBig, nGauss) {
     .Call(`_nlmixr2est_rpemEstepK1`, parBig, nGauss)
 }
 
+rpemEstepK1Draw <- function(base, etaIdx, omega, nGauss, ncores) {
+    .Call(`_nlmixr2est_rpemEstepK1Draw`, base, etaIdx, omega, nGauss, ncores)
+}
+
 rxode2stateOde <- function(inp) {
     .Call(`_nlmixr2est_rxode2stateOde`, inp)
 }

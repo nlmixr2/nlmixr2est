@@ -88,3 +88,59 @@ test_that("rpem C++ E-step K=1 log-sum-exp accumulation matches R (Eq 24/26)", {
   expect_equal(res$lnL, logniR, tolerance=1e-8)
   expect_equal(res$logn[1], logniR, tolerance=1e-8)
 })
+
+test_that("rpem C++ E-step draws etas via threefry rxRmvn (D18) and is reproducible", {
+  skip_on_cran()
+  one.cmt <- function() {
+    ini({ tka <- 0.45; tcl <- 1.0; tv <- 3.45; add.sd <- 0.7; eta.ka ~ 0.6 })
+    model({
+      ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv)
+      cp <- linCmt(); cp ~ add(add.sd)
+    })
+  }
+  ui <- rxode2::rxode2(one.cmt)
+  m  <- ui$rpemRxModel$predOnly
+
+  ev <- rxode2::et(amt=100, cmt="depot")
+  ev <- rxode2::et(ev, seq(0.5, 24, by=2.5))
+  dat <- as.data.frame(ev); dat$DV <- 0
+  .obs <- dat$evid == 0
+  dat$DV[.obs] <- c(4, 7, 6, 5, 4, 3, 2.5, 2, 1.5, 1.2)[seq_len(sum(.obs))]
+
+  th <- c(0.45, 1.0, 3.45, 0.7); om <- 0.6; nG <- 200
+
+  e <- new.env()
+  e$predOnly <- m
+  e$rxControl <- rxode2::rxControl(atol=1e-10, rtol=1e-10)
+  e$param <- stats::setNames(c(th, 0),
+                             c("THETA[1]", "THETA[2]", "THETA[3]", "THETA[4]", "ETA[1]"))
+  e$data  <- dat
+  rpemSetup(e)
+  on.exit(rpemFree(), add=TRUE)
+
+  base <- c(th, 0)         # ETA[1] slot placeholder, overwritten per draw
+  etaIdx <- 4L             # 0-based position of ETA[1] in the param row
+  omega <- matrix(om, 1, 1)
+
+  rxode2::rxSetSeed(1234)
+  res <- rpemEstepK1Draw(base, etaIdx, omega, nG, 1L)
+
+  # correctness: recompute lnL from the etas the C++ engine drew
+  etas <- as.numeric(res$eta)
+  logp <- vapply(seq_len(nG), function(j) {
+    pars <- stats::setNames(c(th, etas[j]),
+                            c("THETA[1]", "THETA[2]", "THETA[3]", "THETA[4]", "ETA[1]"))
+    s <- rxode2::rxSolve(m, params=pars, events=dat, returnType="data.frame",
+                         addDosing=FALSE, atol=1e-10, rtol=1e-10)
+    -sum(s$rx_pred_)
+  }, numeric(1))
+  mx <- max(logp)
+  lnLref <- mx + log(sum(exp(logp - mx))) - log(nG)
+  expect_equal(res$lnL, lnLref, tolerance=1e-8)
+
+  # reproducibility (C3.1): same threefry seed -> identical draws and lnL
+  rxode2::rxSetSeed(1234)
+  res2 <- rpemEstepK1Draw(base, etaIdx, omega, nG, 1L)
+  expect_equal(res2$eta, res$eta)
+  expect_equal(res2$lnL, res$lnL)
+})
