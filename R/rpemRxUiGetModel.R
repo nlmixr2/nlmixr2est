@@ -48,12 +48,24 @@ rxUiGet.rpemModel0 <- function(x, ...) {
   .etaAssign <- lapply(seq_len(nrow(.etaDf)), function(i) {
     str2lang(paste0(.etaDf$name[i], " <- ETA[", .etaDf$neta1[i], "]"))
   })
+  # Transform-both-sides (Box-Cox / Yeo-Johnson): the generated llikNorm is the
+  # normal log-likelihood of the TRANSFORMED data, which omits the change-of-
+  # variables Jacobian log|dt/dDV| (as in FOCEI, where it is added in C).  For a
+  # dynamic (estimated) lambda the Jacobian depends on lambda and must be carried
+  # in the likelihood; add log|rxTBSd(DV,...)| (rxTBSd = d t/d DV) before negating.
+  # For the identity transform rxTBSd == 1 so this term is harmless.
+  .hasTBS <- !is.null(.ui$predDf$transform) &&
+    any(as.character(.ui$predDf$transform) %in% c("boxCox", "yeoJohnson"))
+  .jac <- if (.hasTBS) {
+    list(str2lang("rx_pred_ <- rx_pred_ + log(abs(rxTBSd(DV, rx_lambda_, rx_yj_, rx_low_, rx_hi_)))"))
+  } else list()
   # Sign note (spec 13 OI-3): keep identical to the proven nlm llik model
   # (rx_pred_ negated) so this is a faithful THETA+ETA analog; the E-step decides
   # how to consume the summed value.  Revisit sign when wiring the E-step.
   .ret <- as.call(c(quote(`{`),
                     .etaAssign,
                     .stmts,
+                    .jac,
                     list(str2lang("rx_pred_ <- -rx_pred_"))))
   as.call(c(list(quote(`rxModelVars`)), .ret))
 }
