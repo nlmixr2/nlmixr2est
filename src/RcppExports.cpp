@@ -678,15 +678,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // rpemMstepK1
-List rpemMstepK1(NumericVector muIn, int nTrials, int burn);
-RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
+List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn);
+RcppExport SEXP _nlmixr2est_rpemMstepK1(SEXP muInSEXP, SEXP addSd0SEXP, SEXP nTrialsSEXP, SEXP burnSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< NumericVector >::type muIn(muInSEXP);
+    Rcpp::traits::input_parameter< double >::type addSd0(addSd0SEXP);
     Rcpp::traits::input_parameter< int >::type nTrials(nTrialsSEXP);
     Rcpp::traits::input_parameter< int >::type burn(burnSEXP);
-    rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, nTrials, burn));
+    rcpp_result_gen = Rcpp::wrap(rpemMstepK1(muIn, addSd0, nTrials, burn));
     return rcpp_result_gen;
 END_RCPP
 }

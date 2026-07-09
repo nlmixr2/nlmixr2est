@@ -276,12 +276,19 @@ List rpemEstepK1Draw(Environment e, NumericVector base, IntegerVector etaIdx,
 // No solving: reuses stored log p / etas.  All randomness is pre-drawn up front
 // via the threefry rxRmvn (uniforms via pnorm of standard normals, D19); the
 // draw resets rxode2's solve state but the M-step does not solve, so that is fine.
+// addSd0 is the additive residual SD used in the E-step; the additive residual is
+// updated in closed form (paper Eq 17) from the accepted samples' residual sum of
+// squares, backed out of the stored log p (which is exactly the additive-normal
+// log-likelihood, C1.1): SS_ij = -2 addSd0^2 (logp_ij + nobs_i (0.5 log 2pi +
+// log addSd0)); new addSd = sqrt(sum SS / sum nobs).  (General error structures
+// use numeric re-scoring instead -- deferred; see design/rpem/05.)
 //[[Rcpp::export]]
-List rpemMstepK1(NumericVector muIn, int nTrials, int burn) {
+List rpemMstepK1(NumericVector muIn, double addSd0, int nTrials, int burn) {
   if (rpemOp.nGauss == 0) stop("run rpemEstepK1Draw before rpemMstepK1");
   if (_rxode2_rxRmvnSEXP_ == NULL) stop("rxode2 rxRmvn pointer not initialized");
   int nsub = rpemOp.nsub, nG = rpemOp.nGauss, nEta = rpemOp.nEta;
   if ((int)muIn.size() != nEta) stop("muIn must have nEta entries");
+  double resC = 0.5 * log(2.0 * M_PI) + log(addSd0);
 
   // Per-subject log n_i (= log of the MC-mean likelihood) from the stored log p.
   std::vector<double> logn(nsub);
@@ -314,6 +321,7 @@ List rpemMstepK1(NumericVector muIn, int nTrials, int burn) {
   int ci = 0, cj = 0;
   double clogp = rpemOp.logp[0];
   std::vector<double> sumT(nEta, 0.0), sumTT((size_t)nEta * nEta, 0.0);
+  double sumSS = 0.0; long sumNobs = 0;
   long m = 0, naccept = 0;
   for (int t = 0; t < total; ++t) {
     double u1 = U[(size_t)3 * t], u2 = U[(size_t)3 * t + 1], u3 = U[(size_t)3 * t + 2];
@@ -330,6 +338,10 @@ List rpemMstepK1(NumericVector muIn, int nTrials, int burn) {
         for (int b = 0; b < nEta; ++b)
           sumTT[(size_t)a * nEta + b] += tha * (muIn[b] + rpemOp.etaS[off + b]);
       }
+      // Additive residual: back out this sample's SS from its stored log p.
+      int nobsi = rpemOp.nobs[ci];
+      double SS = -2.0 * addSd0 * addSd0 * (clogp + nobsi * resC);
+      sumSS += SS; sumNobs += nobsi;
       ++m;
     }
   }
@@ -339,6 +351,7 @@ List rpemMstepK1(NumericVector muIn, int nTrials, int burn) {
   for (int a = 0; a < nEta; ++a)
     for (int b = 0; b < nEta; ++b)
       omegaNew(a, b) = sumTT[(size_t)a * nEta + b] / m - muNew[a] * muNew[b];
+  double addNew = sqrt(sumSS / (double)sumNobs);
   return List::create(_["mu"] = muNew, _["omega"] = omegaNew,
-                      _["accept"] = (double)naccept / total);
+                      _["addSd"] = addNew, _["accept"] = (double)naccept / total);
 }

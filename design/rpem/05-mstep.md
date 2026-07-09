@@ -46,11 +46,20 @@ These operate on the transformed-scale random params (class 1 in
 Fixed effects (class 3: residual error, non-mu-ref structural/covariate) are the
 paper's `beta`. Two paths, chosen per parameter:
 
-- **Conjugate** where a closed form exists. The pure `sigma^2 * H_i(theta)` case
-  has the Eq 17 closed form and is used when the model's residual is exactly
-  that shape.
-- **Numeric** otherwise (combined/add+prop/power/autocorrelation, and non-mu-ref
-  structural coefficients): maximize the Monte-Carlo Q-function
+- **Sigma / residual-error params -- reuse SAEM's error-model updates (D20).**
+  SAEM already derives the sigma updates for every supported normal error type:
+  additive, proportional, combined1/combined2 (add+prop), and the power/lambda
+  (`propT`/Box-Cox-Yeo-Johnson) variants -- see `src/saem.cpp` (`rmProp`,
+  `rmAddProp`, `rmAddPropLam`, `handleF`, the `ares`/`bres` machinery) and
+  `saem_fit_aux.R`. RPEM's M-step reuses these SAME formulas, applied to the
+  accepted MH samples (the sums over accepted `(i,j)` replace SAEM's stochastic-
+  approximation sums). For pure additive this is the paper's Eq-17 closed form
+  (`new addSd^2 = sum accepted SS / sum accepted nobs`), already implemented in
+  `rpemMstepK1` by backing `SS_ij` out of the stored log p (exact per C1.1).
+  Proportional/combined/power reuse SAEM's `ares`/`bres`/`yptp` update
+  expressions over the accepted samples.
+- **Numeric** for the residuals SAEM does NOT close-form, and for non-mu-ref
+  structural coefficients: maximize the Monte-Carlo Q-function
   `Q(beta) = sum over accepted samples of log p(Y_i | theta_i, beta)`
   over `beta`, using the nlm-family optimizer. Because the accepted `theta`
   samples and their cached structural predictions (`rx_pred_f_`) are stored,
@@ -59,7 +68,7 @@ paper's `beta`. Two paths, chosen per parameter:
   does NOT re-solve ODEs. This is what makes the numeric path cheap per
   iteration.
 
-The classifier decides the path; a model can have some conjugate and some
+The classifier decides the path; a model can have some closed-form and some
 numeric fixed effects simultaneously.
 
 ## Correctness ordering within an iteration

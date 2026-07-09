@@ -19,13 +19,15 @@ test_that("RPEM E-M loop agrees with FOCEI on population mu and Omega (K=1)", {
     d$DV[o] <- s$cp + rnorm(nrow(s), 0, addSd); d
   }))
 
-  # FOCEI reference (fix tcl, tv, add.sd at truth to match the RPEM loop).
+  # FOCEI reference: fix tcl, tv at truth (RPEM holds those); estimate tka, Omega,
+  # and add.sd (RPEM now estimates the additive residual too).
   mod <- function() {
-    ini({ tka <- 0.1; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- fix(0.15); eta.ka ~ 1.0 })
+    ini({ tka <- 0.1; tcl <- fix(1.0); tv <- fix(3.45); add.sd <- 0.3; eta.ka ~ 1.0 })
     model({ ka <- exp(tka + eta.ka); cl <- exp(tcl); v <- exp(tv); cp <- linCmt(); cp ~ add(add.sd) })
   }
   fit <- suppressMessages(nlmixr2(mod, dat, est="focei", control=foceiControl(print=0)))
   fTka <- fit$parFixedDf["tka", "Estimate"]; fOm <- fit$omega[1, 1]
+  fSd <- fit$parFixedDf["add.sd", "Estimate"]
 
   # RPEM E-M loop.
   one.cmt <- function() {
@@ -37,21 +39,23 @@ test_that("RPEM E-M loop agrees with FOCEI on population mu and Omega (K=1)", {
   e <- new.env(); e$predOnly <- m; e$rxControl <- rxode2::rxControl(atol=1e-8, rtol=1e-8)
   e$param <- stats::setNames(c(trueTka, 1, 3.45, addSd, 0), nm); e$data <- dat
 
-  mu <- 0.1; Om <- 1.0; nG <- 300L; niter <- 30L; collect <- 12L
-  base <- c(mu, 1, 3.45, addSd, 0)
-  muTr <- numeric(niter); omTr <- numeric(niter)
+  mu <- 0.1; Om <- 1.0; sdHat <- 0.3; nG <- 300L; niter <- 30L; collect <- 12L
+  base <- c(mu, 1, 3.45, sdHat, 0)
+  muTr <- numeric(niter); omTr <- numeric(niter); sdTr <- numeric(niter)
   for (it in seq_len(niter)) {
-    base[1] <- mu
+    base[1] <- mu; base[4] <- sdHat            # estimate mu, Omega, AND add.sd
     rxode2::rxSetSeed(2000 + it)
     rpemEstepK1Draw(e, base, 4L, matrix(Om, 1, 1), nG, 1L)
-    ms <- rpemMstepK1(mu, 80000L, 8000L)
-    mu <- ms$mu[1]; Om <- ms$omega[1, 1]
-    muTr[it] <- mu; omTr[it] <- Om
+    ms <- rpemMstepK1(mu, sdHat, 80000L, 8000L)
+    mu <- ms$mu[1]; Om <- ms$omega[1, 1]; sdHat <- ms$addSd
+    muTr[it] <- mu; omTr[it] <- Om; sdTr[it] <- sdHat
   }
   rpemFree()
 
   # RPEM estimate = mean over the last `collect` (converged) iterations.
   muHat <- mean(tail(muTr, collect)); omHat <- mean(tail(omTr, collect))
+  sdEst <- mean(tail(sdTr, collect))
   expect_equal(muHat, fTka, tolerance = 0.04)
   expect_equal(omHat, fOm,  tolerance = 0.10)
+  expect_equal(sdEst, fSd,  tolerance = 0.10)
 })
